@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CAS - Computerized Accounting System{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* Hide all scrollbars */
+        * {
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none;  /* IE and Edge */
+        }
+        *::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+        }
+
+        /* Remove underline from sidebar links */
+        .nav-item {
+            text-decoration: none;
+        }
+
+        a {
+            text-decoration: none;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+        <div class="brand">
+            <div class="brand-logo">
+                <div class="brand-icon">⚖</div>
+                <div>
+                    <h4>Company Name</h4>
+                    <p>Computerized Accounting System</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav">
+            <!-- Main Section -->
+            <div class="nav-label">Main</div>
+            <a href="{{ url_for('dashboard.home') }}" class="nav-item {% if request.endpoint == 'dashboard.home' %}active{% endif %}">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-text">Dashboard</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">⚡</span>
+                <span class="nav-text">Action Items</span>
+                <span class="nav-badge">3</span>
+            </a>
+
+            <!-- Ledger Section -->
+            <div class="nav-label">Ledger</div>
+            <a href="{{ url_for('accounts.list_accounts') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts.') %}active{% endif %}">
+                <span class="nav-icon">📋</span>
+                <span class="nav-text">Chart of Accounts</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">📓</span>
+                <span class="nav-text">Journal Entries</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">📖</span>
+                <span class="nav-text">General Ledger</span>
+            </a>
+
+            <!-- Transactions Section -->
+            <div class="nav-label">Transactions</div>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">📄</span>
+                <span class="nav-text">Accounts Receivable</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">💰</span>
+                <span class="nav-text">Collections</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">📋</span>
+                <span class="nav-text">Accounts Payable</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">💸</span>
+                <span class="nav-text">Payments</span>
+            </a>
+
+            <!-- Maintenance Section -->
+            <div class="nav-label">Maintenance</div>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">👥</span>
+                <span class="nav-text">Customers</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">🏢</span>
+                <span class="nav-text">Vendors</span>
+            </a>
+
+            <!-- Analytics Section -->
+            <div class="nav-label">Analytics</div>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">Financial Reports</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">🏛</span>
+                <span class="nav-text">BIR Reports</span>
+            </a>
+
+            <!-- Admin Section -->
+            <div class="nav-label">Admin</div>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">👤</span>
+                <span class="nav-text">User Management</span>
+            </a>
+            <a href="#" class="nav-item">
+                <span class="nav-icon">🔍</span>
+                <span class="nav-text">Audit Log</span>
+            </a>
+        </div>
+
+        <!-- User Switcher -->
+        <div class="user-switcher">
+            <div class="user-avatar">MS</div>
+            <div>
+                <div class="user-name">Maria Santos</div>
+                <div class="user-role-label">Accountant</div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <div class="main">
+        <!-- Topbar -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <span class="page-title">{% block page_title %}Dashboard{% endblock %}</span>
+            </div>
+            <div class="topbar-right">
+                <span class="env-badge env-dev">Development</span>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/cas-ui.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,406 @@
+{# Macro for rendering form fields with consistent styling #}
+{% macro render_field(field, label_class='', input_class='form-control', wrapper_class='form-group') %}
+<div class="{{ wrapper_class }}">
+    {{ field.label(class=label_class or 'form-label') }}
+
+    {# Render the field based on its type #}
+    {% if field.type == 'SelectField' %}
+        {{ field(class=input_class) }}
+    {% elif field.type == 'TextAreaField' %}
+        {{ field(class=input_class) }}
+    {% else %}
+        {{ field(class=input_class) }}
+    {% endif %}
+
+    {# Display validation errors #}
+    {% if field.errors %}
+        <div class="field-errors">
+            {% for error in field.errors %}
+                <span class="error-message">{{ error }}</span>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# Macro for rendering flash messages #}
+{% macro render_flash_messages() %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">
+                {{ message }}
+                <button type="button" class="alert-close" onclick="this.parentElement.remove()">&times;</button>
+            </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endwith %}
+{% endmacro %}
+
+{# Macro for rendering action buttons #}
+{% macro action_buttons(view_url=None, edit_url=None, delete_url=None, delete_confirm='Are you sure?') %}
+<div class="action-buttons">
+    {% if view_url %}
+    <a href="{{ view_url }}" class="btn-icon" title="View">
+        👁️
+    </a>
+    {% endif %}
+
+    {% if edit_url %}
+    <a href="{{ edit_url }}" class="btn-icon" title="Edit">
+        ✏️
+    </a>
+    {% endif %}
+
+    {% if delete_url %}
+    <form action="{{ delete_url }}" method="POST" style="display: inline;" onsubmit="return confirm('{{ delete_confirm }}');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit" class="btn-icon" title="Delete">
+            🗑️
+        </button>
+    </form>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# Macro for rendering account type badge #}
+{% macro account_type_badge(account_type) %}
+<span class="badge badge-{{ account_type.lower() }}">{{ account_type }}</span>
+{% endmacro %}
+
+{# Macro for rendering normal balance #}
+{% macro normal_balance(balance) %}
+{% if balance == 'Debit' %}
+    <span class="balance-debit">Dr</span>
+{% else %}
+    <span class="balance-credit">Cr</span>
+{% endif %}
+{% endmacro %}
+
+{# Macro for page header with breadcrumb #}
+{% macro page_header(title, subtitle=None, back_url=None, back_text='Back') %}
+<div class="page-header">
+    {% if back_url %}
+    <a href="{{ back_url }}" class="back-link">
+        <span>←</span> {{ back_text }}
+    </a>
+    {% endif %}
+    <h2 class="page-title">{{ title }}</h2>
+    {% if subtitle %}
+    <p class="page-subtitle">{{ subtitle }}</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# Macro for rendering a card #}
+{% macro card(title=None, footer=None, card_class='') %}
+<div class="card {{ card_class }}">
+    {% if title %}
+    <div class="card-header">
+        <h3 class="card-title">{{ title }}</h3>
+    </div>
+    {% endif %}
+    <div class="card-body">
+        {{ caller() }}
+    </div>
+    {% if footer %}
+    <div class="card-footer">
+        {{ footer }}
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# Macro for rendering form buttons #}
+{% macro form_buttons(submit_text='Submit', cancel_url=None, cancel_text='Cancel') %}
+<div class="form-actions">
+    {% if cancel_url %}
+    <a href="{{ cancel_url }}" class="btn btn-secondary">{{ cancel_text }}</a>
+    {% endif %}
+    <button type="submit" class="btn btn-primary">{{ submit_text }}</button>
+</div>
+{% endmacro %}
+
+{# Macro for rendering empty state #}
+{% macro empty_state(icon, message, action_url=None, action_text=None) %}
+<div class="empty-state">
+    <div class="empty-icon">{{ icon }}</div>
+    <div class="empty-message">{{ message }}</div>
+    {% if action_url and action_text %}
+    <a href="{{ action_url }}" class="btn btn-primary">{{ action_text }}</a>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# Macro for table with proper styling #}
+{% macro table_header(columns) %}
+<thead>
+    <tr>
+        {% for column in columns %}
+        <th {% if column.width %}style="width: {{ column.width }};"{% endif %}
+            {% if column.align %}style="text-align: {{ column.align }};"{% endif %}>
+            {{ column.label }}
+        </th>
+        {% endfor %}
+    </tr>
+</thead>
+{% endmacro %}
+
+<style>
+/* Form styling */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 20px;
+}
+
+.form-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    margin-bottom: 6px;
+}
+
+.form-control {
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #1e293b;
+    background: white;
+    transition: border-color 0.15s;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-control.error {
+    border-color: #ef4444;
+}
+
+/* Error messages */
+.field-errors {
+    margin-top: 6px;
+}
+
+.error-message {
+    display: block;
+    color: #dc2626;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Flash messages */
+.flash-messages {
+    margin-bottom: 24px;
+}
+
+.alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.alert-success {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #22c55e;
+}
+
+.alert-error, .alert-danger {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #ef4444;
+}
+
+.alert-info {
+    background: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #3b82f6;
+}
+
+.alert-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #f59e0b;
+}
+
+.alert-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.6;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+}
+
+.alert-close:hover {
+    opacity: 1;
+}
+
+/* Action buttons */
+.action-buttons {
+    display: inline-flex;
+    gap: 8px;
+}
+
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: background 0.15s;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.btn-icon:hover {
+    background: #f1f5f9;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-asset {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.badge-liability {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.badge-equity {
+    background: #ede9fe;
+    color: #6b21a8;
+}
+
+.badge-revenue {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.badge-expense {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+/* Balance styling */
+.balance-debit {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.balance-credit {
+    color: #059669;
+    font-weight: 600;
+}
+
+/* Page header */
+.page-header {
+    margin-bottom: 24px;
+}
+
+.back-link {
+    color: #3b82f6;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.page-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 4px;
+}
+
+.page-subtitle {
+    color: #64748b;
+    font-size: 14px;
+}
+
+/* Form actions */
+.form-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-secondary {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.btn-secondary:hover {
+    background: #e2e8f0;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.empty-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.empty-message {
+    color: #94a3b8;
+    font-size: 16px;
+    margin-bottom: 24px;
+}
+</style>

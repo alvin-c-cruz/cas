@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_field, render_flash_messages, page_header, form_buttons %}
+
+{% block title %}{% if account %}Edit Account{% else %}New Account{% endif %} - CAS{% endblock %}
+
+{% block page_title %}{% if account %}Edit Account{% else %}New Account{% endif %}{% endblock %}
+
+{% block content %}
+{{ page_header(
+    title='Edit Account: ' + account.code + ' - ' + account.name if account else 'Create New Account',
+    back_url=url_for('accounts.list_accounts'),
+    back_text='Back to Chart of Accounts'
+) }}
+
+{{ render_flash_messages() }}
+
+<!-- Form Card -->
+<div class="card" style="max-width: 800px;">
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+
+            <div class="form-row">
+                {{ render_field(form.code, wrapper_class='form-group', input_class='form-control') }}
+                {{ render_field(form.name, wrapper_class='form-group', input_class='form-control') }}
+            </div>
+
+            <div class="form-row">
+                {{ render_field(form.account_type, wrapper_class='form-group', input_class='form-control') }}
+                {{ render_field(form.classification, wrapper_class='form-group', input_class='form-control') }}
+                {{ render_field(form.normal_balance, wrapper_class='form-group', input_class='form-control') }}
+            </div>
+
+            {{ render_field(form.parent_id, wrapper_class='form-group', input_class='form-control') }}
+
+            {{ render_field(form.description, wrapper_class='form-group', input_class='form-control') }}
+
+            {{ form_buttons(
+                submit_text='Update Account' if account else 'Create Account',
+                cancel_url=url_for('accounts.list_accounts'),
+                cancel_text='Cancel'
+            ) }}
+        </form>
+    </div>
+</div>
+
+<style>
+.form-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 0;
+}
+
+.form-row .form-group {
+    flex: 1;
+}
+
+.form-row .form-group:first-child {
+    flex: 1;
+}
+
+.form-row .form-group:nth-child(2) {
+    flex: 2;
+}
+</style>
+{% endblock %}

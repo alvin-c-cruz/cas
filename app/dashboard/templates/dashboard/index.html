@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - CAS{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block breadcrumb %}
+<span class="breadcrumb-item">Home</span>
+<span class="breadcrumb-separator">/</span>
+<span class="breadcrumb-item active">Dashboard</span>
+{% endblock %}
+
+{% block content %}
+<!-- Revenue and Expenses Stats -->
+<div class="grid-2" style="margin-bottom: 24px;">
+    <!-- Revenue Card -->
+    <div class="card">
+        <div class="card-body">
+            <div style="display: flex; align-items: flex-start; gap: 16px;">
+                <div class="stat-icon" style="background: #dbeafe;">
+                    <span style="font-size: 24px;">💰</span>
+                </div>
+                <div style="flex: 1;">
+                    <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 8px;">REVENUE</div>
+                    <div style="display: flex; gap: 24px; align-items: baseline;">
+                        <div>
+                            <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">MTD</div>
+                            <div style="font-size: 24px; font-weight: 700; color: #1e293b;">₱{{ "{:,.2f}".format(stats.revenue_mtd) }}</div>
+                        </div>
+                        <div>
+                            <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">YTD</div>
+                            <div style="font-size: 24px; font-weight: 700; color: #1e293b;">₱{{ "{:,.2f}".format(stats.revenue_ytd) }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expenses Card -->
+    <div class="card">
+        <div class="card-body">
+            <div style="display: flex; align-items: flex-start; gap: 16px;">
+                <div class="stat-icon" style="background: #fee2e2;">
+                    <span style="font-size: 24px;">📊</span>
+                </div>
+                <div style="flex: 1;">
+                    <div style="color: #64748b; font-size: 14px; font-weight: 500; margin-bottom: 8px;">EXPENSES</div>
+                    <div style="display: flex; gap: 24px; align-items: baseline;">
+                        <div>
+                            <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">MTD</div>
+                            <div style="font-size: 24px; font-weight: 700; color: #1e293b;">₱{{ "{:,.2f}".format(stats.expenses_mtd) }}</div>
+                        </div>
+                        <div>
+                            <div style="color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">YTD</div>
+                            <div style="font-size: 24px; font-weight: 700; color: #1e293b;">₱{{ "{:,.2f}".format(stats.expenses_ytd) }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Accounts Receivable and Payable -->
+<div class="grid-2" style="margin-bottom: 24px;">
+    <!-- Accounts Receivable -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Accounts Receivable</h3>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th style="text-align: right;">Balance</th>
+                        <th style="text-align: center;">Invoices</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for customer in top_customers %}
+                    <tr>
+                        <td>{{ customer.name }}</td>
+                        <td style="text-align: right; font-family: 'Courier New', monospace;">₱{{ "{:,.2f}".format(customer.balance) }}</td>
+                        <td style="text-align: center;">{{ customer.invoices }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td><strong>Total</strong></td>
+                        <td style="text-align: right; font-family: 'Courier New', monospace;"><strong>₱{{ "{:,.2f}".format(top_customers|sum(attribute='balance')) }}</strong></td>
+                        <td style="text-align: center;"><strong>{{ top_customers|sum(attribute='invoices') }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Accounts Payable -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Accounts Payable</h3>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Vendor</th>
+                        <th style="text-align: right;">Balance</th>
+                        <th style="text-align: center;">Bills</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vendor in top_vendors %}
+                    <tr>
+                        <td>{{ vendor.name }}</td>
+                        <td style="text-align: right; font-family: 'Courier New', monospace;">₱{{ "{:,.2f}".format(vendor.balance) }}</td>
+                        <td style="text-align: center;">{{ vendor.bills }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td><strong>Total</strong></td>
+                        <td style="text-align: right; font-family: 'Courier New', monospace;"><strong>₱{{ "{:,.2f}".format(top_vendors|sum(attribute='balance')) }}</strong></td>
+                        <td style="text-align: center;"><strong>{{ top_vendors|sum(attribute='bills') }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Action Items (Moved to Bottom) -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Needs Your Action</h3>
+    </div>
+    <div class="card-body">
+        {% if action_items %}
+        <div class="action-items-list">
+            {% for item in action_items %}
+            <div class="action-item">
+                <div class="action-item-icon">
+                    {% if item.type == 'JournalEntry' %}📝
+                    {% elif item.type == 'Invoice' %}📄
+                    {% elif item.type == 'Bill' %}📋
+                    {% else %}⚡{% endif %}
+                </div>
+                <div class="action-item-content">
+                    <div class="action-item-title">{{ item.description }}</div>
+                    <div class="action-item-meta">
+                        <span class="badge badge-{{ item.type.lower() }}">{{ item.type }}</span>
+                        <span style="color: #64748b;">•</span>
+                        <span style="color: #64748b;">{{ item.user }}</span>
+                    </div>
+                </div>
+                <div class="action-item-state">
+                    <span class="badge badge-{{ item.state.lower() }}">{{ item.state }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 40px; color: #94a3b8;">
+            <div style="font-size: 48px; margin-bottom: 16px;">✓</div>
+            <div>No pending actions</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+/* Prevent horizontal overflow */
+body {
+    overflow-x: hidden;
+}
+
+.main {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.content {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* Make tables responsive */
+.table {
+    width: 100%;
+    table-layout: auto;
+}
+
+.table td, .table th {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Grid improvements */
+.grid-2 {
+    max-width: 100%;
+}
+
+.action-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.action-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.action-item-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.action-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.action-item-title {
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 4px;
+}
+
+.action-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.action-item-state {
+    flex-shrink: 0;
+}
+
+.stat-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+</style>
+{% endblock %}
