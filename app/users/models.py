@@ -1,7 +1,7 @@
 from app import db
+from app.utils import ph_now
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
 import json
 
 
@@ -13,7 +13,7 @@ class LoginHistory(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     username = db.Column(db.String(80), nullable=False)  # Stored for record even if user deleted
     full_name = db.Column(db.String(200), nullable=False)
-    login_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    login_time = db.Column(db.DateTime, default=ph_now, nullable=False)
     ip_address = db.Column(db.String(45))  # IPv4 or IPv6
     user_agent = db.Column(db.String(500))  # Browser/device info
     status = db.Column(db.String(20), nullable=False)  # 'success' or 'failed'
@@ -59,8 +59,8 @@ class User(UserMixin, db.Model):
     # Stores: {"journal_entries": true, "accounts_receivable": true, ...}
     book_permissions = db.Column(db.Text, default='{}')
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=ph_now)
+    updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
     last_login = db.Column(db.DateTime)
 
     def set_password(self, password):

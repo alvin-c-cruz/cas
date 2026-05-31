@@ -32,45 +32,97 @@ def load_default_admin():
 
 
 def load_sample_chart_of_accounts():
-    """Create sample chart of accounts."""
+    """
+    Create critical chart of accounts for application functionality.
+
+    These accounts are essential for the CAS system to function properly,
+    including Philippine BIR compliance and core accounting operations.
+    """
     if Account.query.count() > 0:
         print("  [i] Chart of accounts already populated, skipping...")
         return []
 
-    sample_accounts = [
-        # Assets
-        Account(code='1000', name='Cash', account_type='Asset', classification='Current', normal_balance='Debit'),
+    critical_accounts = [
+        # ========================================
+        # ASSETS - Current Assets
+        # ========================================
+        Account(code='1000', name='Cash on Hand', account_type='Asset', classification='Current', normal_balance='Debit'),
+        Account(code='1010', name='Cash in Bank', account_type='Asset', classification='Current', normal_balance='Debit'),
+
+        # Accounts Receivable (CRITICAL for AR/invoicing)
         Account(code='1100', name='Accounts Receivable', account_type='Asset', classification='Current', normal_balance='Debit'),
-        Account(code='1200', name='Inventory', account_type='Asset', classification='Current', normal_balance='Debit'),
-        Account(code='1500', name='Equipment', account_type='Asset', classification='Non-Current', normal_balance='Debit'),
-        Account(code='1600', name='Accumulated Depreciation - Equipment', account_type='Asset', classification='Non-Current', normal_balance='Credit'),
+        Account(code='1110', name='Allowance for Doubtful Accounts', account_type='Asset', classification='Current', normal_balance='Credit'),
 
-        # Liabilities
+        # BIR Compliance - Input Tax & Creditable Withholding Tax (CRITICAL for VAT/Withholding)
+        Account(code='1200', name='Input Tax', account_type='Asset', classification='Current', normal_balance='Debit'),
+        Account(code='1210', name='Creditable Withholding Tax', account_type='Asset', classification='Current', normal_balance='Debit'),
+        Account(code='1220', name='Excess Input Tax Carry Over', account_type='Asset', classification='Current', normal_balance='Debit'),
+
+        # Inventory
+        Account(code='1300', name='Inventory', account_type='Asset', classification='Current', normal_balance='Debit'),
+        Account(code='1400', name='Prepaid Expenses', account_type='Asset', classification='Current', normal_balance='Debit'),
+
+        # ASSETS - Non-Current Assets
+        Account(code='1500', name='Property, Plant and Equipment', account_type='Asset', classification='Non-Current', normal_balance='Debit'),
+        Account(code='1510', name='Accumulated Depreciation', account_type='Asset', classification='Non-Current', normal_balance='Credit'),
+
+        # ========================================
+        # LIABILITIES - Current Liabilities
+        # ========================================
+        # Accounts Payable (CRITICAL for AP/bills)
         Account(code='2000', name='Accounts Payable', account_type='Liability', classification='Current', normal_balance='Credit'),
-        Account(code='2100', name='Notes Payable', account_type='Liability', classification='Non-Current', normal_balance='Credit'),
-        Account(code='2200', name='Salaries Payable', account_type='Liability', classification='Current', normal_balance='Credit'),
 
-        # Equity
-        Account(code='3000', name='Common Stock', account_type='Equity', classification='', normal_balance='Credit'),
+        # BIR Compliance - VAT & Withholding Taxes (CRITICAL)
+        Account(code='2100', name='Output Tax', account_type='Liability', classification='Current', normal_balance='Credit'),
+        Account(code='2105', name='VAT Payable', account_type='Liability', classification='Current', normal_balance='Credit'),
+        Account(code='2110', name='Withholding Tax Payable - Expanded', account_type='Liability', classification='Current', normal_balance='Credit'),
+        Account(code='2120', name='Withholding Tax Payable - Compensation', account_type='Liability', classification='Current', normal_balance='Credit'),
+
+        # Philippine Statutory Deductions (CRITICAL for Philippine payroll)
+        Account(code='2200', name='SSS Payable', account_type='Liability', classification='Current', normal_balance='Credit'),
+        Account(code='2210', name='PhilHealth Payable', account_type='Liability', classification='Current', normal_balance='Credit'),
+        Account(code='2220', name='Pag-IBIG Payable', account_type='Liability', classification='Current', normal_balance='Credit'),
+
+        # Other Current Liabilities
+        Account(code='2300', name='Salaries and Wages Payable', account_type='Liability', classification='Current', normal_balance='Credit'),
+        Account(code='2400', name='Accrued Expenses', account_type='Liability', classification='Current', normal_balance='Credit'),
+
+        # LIABILITIES - Non-Current Liabilities
+        Account(code='2500', name='Long-term Loans Payable', account_type='Liability', classification='Non-Current', normal_balance='Credit'),
+
+        # ========================================
+        # EQUITY (CRITICAL)
+        # ========================================
+        Account(code='3000', name='Capital Stock', account_type='Equity', classification='', normal_balance='Credit'),
         Account(code='3100', name='Retained Earnings', account_type='Equity', classification='', normal_balance='Credit'),
-        Account(code='3200', name='Dividends', account_type='Equity', classification='', normal_balance='Debit'),
+        Account(code='3200', name='Retained Earnings - Unappropriated', account_type='Equity', classification='', normal_balance='Credit'),
+        Account(code='3300', name='Drawings/Dividends', account_type='Equity', classification='', normal_balance='Debit'),
 
-        # Revenue
+        # ========================================
+        # REVENUE (CRITICAL)
+        # ========================================
         Account(code='4000', name='Sales Revenue', account_type='Revenue', classification='', normal_balance='Credit'),
-        Account(code='4100', name='Service Revenue', account_type='Revenue', classification='', normal_balance='Credit'),
+        Account(code='4200', name='Sales Returns and Allowances', account_type='Revenue', classification='', normal_balance='Debit'),
+        Account(code='4300', name='Sales Discounts', account_type='Revenue', classification='', normal_balance='Debit'),
+        Account(code='4400', name='Other Income', account_type='Revenue', classification='', normal_balance='Credit'),
 
-        # Expenses
+        # ========================================
+        # EXPENSES (CRITICAL)
+        # ========================================
+        # Cost of Goods Sold (Category)
         Account(code='5000', name='Cost of Goods Sold', account_type='Expense', classification='', normal_balance='Debit'),
-        Account(code='5100', name='Salaries Expense', account_type='Expense', classification='', normal_balance='Debit'),
-        Account(code='5200', name='Rent Expense', account_type='Expense', classification='', normal_balance='Debit'),
-        Account(code='5300', name='Utilities Expense', account_type='Expense', classification='', normal_balance='Debit'),
-        Account(code='5400', name='Depreciation Expense', account_type='Expense', classification='', normal_balance='Debit'),
+        Account(code='5100', name='Direct Materials', account_type='Expense', classification='', normal_balance='Debit'),
+        Account(code='5200', name='Direct Labor', account_type='Expense', classification='', normal_balance='Debit'),
+        Account(code='5300', name='Overhead', account_type='Expense', classification='', normal_balance='Debit'),
+
+        # Other Expenses
+        Account(code='6000', name='Income Tax Expense', account_type='Expense', classification='', normal_balance='Debit'),
     ]
 
-    db.session.add_all(sample_accounts)
+    db.session.add_all(critical_accounts)
     db.session.commit()
-    print(f"  [OK] Sample chart of accounts created ({len(sample_accounts)} accounts)")
-    return sample_accounts
+    print(f"  [OK] Critical chart of accounts created ({len(critical_accounts)} accounts)")
+    return critical_accounts
 
 
 def load_default_branch():

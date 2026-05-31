@@ -1,5 +1,5 @@
-from datetime import datetime
 from app import db
+from app.utils import ph_now
 
 class Account(db.Model):
     """Chart of Accounts model"""
@@ -14,8 +14,8 @@ class Account(db.Model):
     parent_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
     description = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=ph_now)
+    updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
 
     # Relationship for hierarchical accounts
     children = db.relationship('Account', backref=db.backref('parent', remote_side=[id]))

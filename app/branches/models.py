@@ -2,7 +2,7 @@
 Branch model for multi-branch accounting
 """
 from app import db
-from datetime import datetime
+from app.utils import ph_now
 
 
 class Branch(db.Model):
@@ -16,8 +16,8 @@ class Branch(db.Model):
     phone = db.Column(db.String(50))
     email = db.Column(db.String(120))
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=ph_now)
+    updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
 
     # Relationship to users assigned to this branch
     users = db.relationship('User', backref='branch', lazy='dynamic')

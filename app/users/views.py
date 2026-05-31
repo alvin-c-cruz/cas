@@ -3,7 +3,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from app import db
 from app.users.models import User, LoginHistory
 from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
-from datetime import datetime
+from app.utils import ph_now
 from functools import wraps
 
 
@@ -42,7 +42,7 @@ def login():
                     user_id=user.id,
                     username=user.username,
                     full_name=user.full_name,
-                    login_time=datetime.utcnow(),
+                    login_time=ph_now(),
                     ip_address=ip_address,
                     user_agent=user_agent,
                     status='failed',
@@ -54,7 +54,7 @@ def login():
                     user_id=0,  # Placeholder for non-existent user
                     username=form.username.data,
                     full_name='Unknown',
-                    login_time=datetime.utcnow(),
+                    login_time=ph_now(),
                     ip_address=ip_address,
                     user_agent=user_agent,
                     status='failed',
@@ -75,7 +75,7 @@ def login():
                 user_id=user.id,
                 username=user.username,
                 full_name=user.full_name,
-                login_time=datetime.utcnow(),
+                login_time=ph_now(),
                 ip_address=ip_address,
                 user_agent=user_agent,
                 status='failed',
@@ -93,14 +93,14 @@ def login():
         # Successful login
         try:
             # Update last login
-            user.last_login = datetime.utcnow()
+            user.last_login = ph_now()
 
             # Log successful login
             login_record = LoginHistory(
                 user_id=user.id,
                 username=user.username,
                 full_name=user.full_name,
-                login_time=datetime.utcnow(),
+                login_time=ph_now(),
                 ip_address=ip_address,
                 user_agent=user_agent,
                 status='success',

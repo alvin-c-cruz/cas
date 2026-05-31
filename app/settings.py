@@ -2,7 +2,7 @@
 Application settings module for storing system-wide configurations
 """
 from app import db
-from datetime import datetime
+from app.utils import ph_now
 
 
 class AppSettings(db.Model):
@@ -12,7 +12,7 @@ class AppSettings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(50), unique=True, nullable=False, index=True)
     value = db.Column(db.String(200), nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
     updated_by = db.Column(db.String(80))  # Username who updated
 
     def __repr__(self):
@@ -31,7 +31,7 @@ class AppSettings(db.Model):
         if setting:
             setting.value = value
             setting.updated_by = updated_by
-            setting.updated_at = datetime.utcnow()
+            setting.updated_at = ph_now()
         else:
             setting = AppSettings(key=key, value=value, updated_by=updated_by)
             db.session.add(setting)

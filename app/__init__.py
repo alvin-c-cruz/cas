@@ -12,10 +12,11 @@ def create_app(config=None):
     """Application factory pattern"""
     app = Flask(__name__)
 
-    # Make datetime available in templates
+    # Make datetime available in templates (Philippine Standard Time)
     @app.context_processor
     def inject_now():
-        return {'now': datetime.now()}
+        from app.utils import ph_now
+        return {'now': ph_now()}
 
     # Default configuration
     app.config['SECRET_KEY'] = config.get('SECRET_KEY', 'your-secret-key-here') if config else 'your-secret-key-here'
@@ -24,7 +25,7 @@ def create_app(config=None):
 
     # Initialize extensions
     db.init_app(app)
-    migrate.init_app(app, db)
+
     login_manager.init_app(app)
     login_manager.login_view = 'users.login'
     login_manager.login_message = 'Please log in to access this page.'
@@ -49,11 +50,8 @@ def create_app(config=None):
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(branches_bp)
 
-    with app.app_context():
-        db.create_all()
 
-    # Note: Database tables should be created via Flask-Migrate
-    # Use: flask db upgrade
-    # Fixtures will be loaded automatically after upgrade
+    migrate.init_app(app, db)
+
 
     return app
