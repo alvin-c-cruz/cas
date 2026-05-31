@@ -1,66 +1,204 @@
 {% extends "base.html" %}
-{% from "macros.html" import render_field, render_flash_messages, page_header, form_buttons %}
+{% from "macros.html" import render_flash_messages %}
 
 {% block title %}{% if account %}Edit Account{% else %}New Account{% endif %} - CAS{% endblock %}
 
 {% block page_title %}{% if account %}Edit Account{% else %}New Account{% endif %}{% endblock %}
 
 {% block content %}
-{{ page_header(
-    title='Edit Account: ' + account.code + ' - ' + account.name if account else 'Create New Account',
-    back_url=url_for('accounts.list_accounts'),
-    back_text='Back to Chart of Accounts'
-) }}
 
 {{ render_flash_messages() }}
 
 <!-- Form Card -->
 <div class="card" style="max-width: 800px;">
+    <div class="card-header">
+        <div class="card-title">{% if account %}Edit Account: {{ account.code }} - {{ account.name }}{% else %}Create New Account{% endif %}</div>
+    </div>
     <div class="card-body">
         <form method="POST" novalidate>
             {{ form.hidden_tag() }}
 
-            <div class="form-row">
-                {{ render_field(form.code, wrapper_class='form-group', input_class='form-control') }}
-                {{ render_field(form.name, wrapper_class='form-group', input_class='form-control') }}
+            <div class="form-row-2">
+                <div class="form-group">
+                    {{ form.code.label(class='form-label') }}
+                    {{ form.code(class='form-control') }}
+                    {% if form.code.errors %}
+                        {% for error in form.code.errors %}
+                            <div style="color: #dc2626; font-size: 12px; margin-top: 4px;">{{ error }}</div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    {{ form.name.label(class='form-label') }}
+                    {{ form.name(class='form-control') }}
+                    {% if form.name.errors %}
+                        {% for error in form.name.errors %}
+                            <div style="color: #dc2626; font-size: 12px; margin-top: 4px;">{{ error }}</div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
             </div>
 
-            <div class="form-row">
-                {{ render_field(form.account_type, wrapper_class='form-group', input_class='form-control') }}
-                {{ render_field(form.classification, wrapper_class='form-group', input_class='form-control') }}
-                {{ render_field(form.normal_balance, wrapper_class='form-group', input_class='form-control') }}
+            <div class="form-group">
+                {{ form.parent_id.label(class='form-label') }}
+                {{ form.parent_id(class='form-control', id='parent-account-field') }}
+                <div class="form-hint">Leave as "None (Top Level)" to create a parent account. Child accounts inherit Account Type and Normal Balance from parent.</div>
+                {% if form.parent_id.errors %}
+                    {% for error in form.parent_id.errors %}
+                        <div style="color: #dc2626; font-size: 12px; margin-top: 4px;">{{ error }}</div>
+                    {% endfor %}
+                {% endif %}
             </div>
 
-            {{ render_field(form.parent_id, wrapper_class='form-group', input_class='form-control') }}
+            <div class="form-row-2">
+                <div class="form-group">
+                    {{ form.account_type.label(class='form-label') }}
+                    {{ form.account_type(class='form-control', id='account-type-field') }}
+                    <div class="form-hint" id="account-type-hint" style="display: none;">Inherited from parent account</div>
+                    {% if form.account_type.errors %}
+                        {% for error in form.account_type.errors %}
+                            <div style="color: #dc2626; font-size: 12px; margin-top: 4px;">{{ error }}</div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    {{ form.normal_balance.label(class='form-label') }}
+                    {{ form.normal_balance(class='form-control', id='normal-balance-field') }}
+                    <div class="form-hint" id="normal-balance-hint" style="display: none;">Inherited from parent account</div>
+                    {% if form.normal_balance.errors %}
+                        {% for error in form.normal_balance.errors %}
+                            <div style="color: #dc2626; font-size: 12px; margin-top: 4px;">{{ error }}</div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
 
-            {{ render_field(form.description, wrapper_class='form-group', input_class='form-control') }}
+            <div class="form-group" id="classification-field-group" style="display: none;">
+                {{ form.classification.label(class='form-label') }}
+                {{ form.classification(class='form-control', id='classification-field') }}
+                <div class="form-hint">For parent Assets and Liabilities only. Specify Current or Non-Current. Child accounts inherit this from parent.</div>
+                {% if form.classification.errors %}
+                    {% for error in form.classification.errors %}
+                        <div style="color: #dc2626; font-size: 12px; margin-top: 4px;">{{ error }}</div>
+                    {% endfor %}
+                {% endif %}
+            </div>
 
-            {{ form_buttons(
-                submit_text='Update Account' if account else 'Create Account',
-                cancel_url=url_for('accounts.list_accounts'),
-                cancel_text='Cancel'
-            ) }}
+            <div class="form-group">
+                {{ form.description.label(class='form-label') }}
+                {{ form.description(class='form-control', rows=3) }}
+                {% if form.description.errors %}
+                    {% for error in form.description.errors %}
+                        <div style="color: #dc2626; font-size: 12px; margin-top: 4px;">{{ error }}</div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <div style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #e2e8f0; margin-top: 8px;">
+                <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">{% if account %}Update Account{% else %}Create Account{% endif %}</button>
+            </div>
         </form>
     </div>
 </div>
 
-<style>
-.form-row {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 0;
-}
+<script>
+// Handle parent account inheritance
+document.addEventListener('DOMContentLoaded', function() {
+    const accountTypeField = document.getElementById('account-type-field');
+    const normalBalanceField = document.getElementById('normal-balance-field');
+    const parentField = document.getElementById('parent-account-field');
+    const classificationGroup = document.getElementById('classification-field-group');
+    const classificationField = document.getElementById('classification-field');
+    const accountTypeHint = document.getElementById('account-type-hint');
+    const normalBalanceHint = document.getElementById('normal-balance-hint');
 
-.form-row .form-group {
-    flex: 1;
-}
+    // Store parent account data
+    const parentAccountsData = {};
 
-.form-row .form-group:first-child {
-    flex: 1;
-}
+    // Parse parent account dropdown to extract account data
+    Array.from(parentField.options).forEach(option => {
+        if (option.value) {
+            // Extract account code from the option text (format: "1000 - Cash")
+            const text = option.text;
+            const code = text.split(' - ')[0];
+            parentAccountsData[option.value] = {
+                code: code,
+                text: text
+            };
+        }
+    });
 
-.form-row .form-group:nth-child(2) {
-    flex: 2;
-}
-</style>
+    async function handleParentChange() {
+        const parentId = parentField.value;
+        const hasParent = parentId !== '';
+
+        if (hasParent) {
+            // Child account - fetch parent data and inherit
+            try {
+                const response = await fetch(`/accounts/${parentId}/json`);
+                if (response.ok) {
+                    const parentData = await response.json();
+
+                    // Inherit account type and normal balance from parent
+                    accountTypeField.value = parentData.account_type;
+                    normalBalanceField.value = parentData.normal_balance;
+                }
+            } catch (error) {
+                console.error('Error fetching parent account:', error);
+            }
+
+            // Make fields readonly (visual only - values still submit)
+            accountTypeField.style.backgroundColor = '#f1f5f9';
+            accountTypeField.style.pointerEvents = 'none';
+            accountTypeField.style.cursor = 'not-allowed';
+            normalBalanceField.style.backgroundColor = '#f1f5f9';
+            normalBalanceField.style.pointerEvents = 'none';
+            normalBalanceField.style.cursor = 'not-allowed';
+            accountTypeHint.style.display = 'block';
+            normalBalanceHint.style.display = 'block';
+        } else {
+            // Parent account - enable fields and reset
+            accountTypeField.style.backgroundColor = 'white';
+            accountTypeField.style.pointerEvents = 'auto';
+            accountTypeField.style.cursor = 'pointer';
+            normalBalanceField.style.backgroundColor = 'white';
+            normalBalanceField.style.pointerEvents = 'auto';
+            normalBalanceField.style.cursor = 'pointer';
+            accountTypeHint.style.display = 'none';
+            normalBalanceHint.style.display = 'none';
+
+            // Reset to default values when no parent selected
+            accountTypeField.value = '';
+            normalBalanceField.value = '';
+        }
+
+        toggleClassification();
+    }
+
+    function toggleClassification() {
+        const accountType = accountTypeField.value;
+        const hasParent = parentField.value !== '';
+
+        // Show classification only when:
+        // 1. Parent is "None (Top Level)" (no parent selected)
+        // 2. Account type is Asset or Liability
+        if (!hasParent && (accountType === 'Asset' || accountType === 'Liability')) {
+            classificationGroup.style.display = 'block';
+        } else {
+            classificationGroup.style.display = 'none';
+            // Clear classification when hiding it
+            classificationField.value = '';
+        }
+    }
+
+    // Run on page load
+    handleParentChange();
+
+    // Run when account type or parent account changes
+    accountTypeField.addEventListener('change', toggleClassification);
+    parentField.addEventListener('change', handleParentChange);
+});
+</script>
+
 {% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}User Management{% endblock %}
+{% block page_title %}User Management{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('users.create_user') }}" class="btn btn-primary">
+            <span class="btn-icon">+</span> Create User
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td><strong>{{ user.username }}</strong></td>
+                    <td>{{ user.full_name }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        <span class="badge badge-role-{{ user.role }}">
+                            {% if user.role == 'admin' %}Administrator
+                            {% elif user.role == 'accountant' %}Accountant
+                            {% elif user.role == 'staff' %}Staff
+                            {% elif user.role == 'viewer' %}Viewer
+                            {% else %}{{ user.role|title }}
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if user.is_active %}
+                            <span class="badge badge-success">Active</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if user.last_login %}
+                            {{ user.last_login.strftime('%Y-%m-%d %H:%M') }}
+                        {% else %}
+                            <span style="color: #94a3b8;">Never</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{{ url_for('users.edit_user', id=user.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                            {% if current_user.role == 'admin' and user.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('users.delete_user', id=user.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete user {{ user.username }}?');">
+                                <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if not users %}
+        <div class="empty-state">
+            <p>No users found.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

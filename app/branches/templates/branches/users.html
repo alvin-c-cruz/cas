@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Branch Users - {{ branch.name }}{% endblock %}
+{% block page_title %}Branch Users - {{ branch.name }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('branches.list_branches') }}" class="btn btn-secondary">
+            ← Back to Branches
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600;">Branch Information</h3>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+            <div>
+                <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Branch Code</div>
+                <div style="font-weight: 600;">{{ branch.code }}</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Branch Name</div>
+                <div style="font-weight: 600;">{{ branch.name }}</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Address</div>
+                <div>{{ branch.address or '—' }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600;">Assigned Users ({{ assigned_users|length }})</h3>
+    </div>
+    <div class="card-body">
+        {% if assigned_users %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in assigned_users %}
+                <tr>
+                    <td><strong>{{ user.full_name }}</strong></td>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        <span class="badge badge-role-{{ user.role }}">
+                            {% if user.role == 'accountant' %}Accountant
+                            {% elif user.role == 'staff' %}Staff
+                            {% else %}{{ user.role|title }}
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if user.is_active %}
+                            <span class="badge badge-success">Active</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('branches.unassign_user', id=branch.id, user_id=user.id) }}" style="display: inline;" onsubmit="return confirm('Unassign {{ user.full_name }} from this branch?');">
+                            <button type="submit" class="btn-action btn-action-delete" title="Unassign">Unassign</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No users assigned to this branch yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600;">Available Users ({{ available_users|length }})</h3>
+    </div>
+    <div class="card-body">
+        {% if available_users %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in available_users %}
+                <tr>
+                    <td><strong>{{ user.full_name }}</strong></td>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        <span class="badge badge-role-{{ user.role }}">
+                            {% if user.role == 'accountant' %}Accountant
+                            {% elif user.role == 'staff' %}Staff
+                            {% else %}{{ user.role|title }}
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if user.is_active %}
+                            <span class="badge badge-success">Active</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('branches.assign_user', id=branch.id, user_id=user.id) }}" style="display: inline;">
+                            <button type="submit" class="btn-action btn-action-primary" title="Assign">Assign</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No available users to assign. All eligible users (Accountant and Staff) are already assigned to branches.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.btn-action-primary {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.btn-action-primary:hover {
+    background: #dbeafe;
+}
+</style>
+{% endblock %}

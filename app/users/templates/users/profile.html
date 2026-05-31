@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('users.change_password') }}" class="btn btn-secondary">
+            <span class="btn-icon">🔒</span> Change Password
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div style="max-width: 600px;">
+            <div class="profile-row">
+                <div class="profile-label">Username</div>
+                <div class="profile-value">{{ user.username }}</div>
+            </div>
+
+            <div class="profile-row">
+                <div class="profile-label">Full Name</div>
+                <div class="profile-value">{{ user.full_name }}</div>
+            </div>
+
+            <div class="profile-row">
+                <div class="profile-label">Email</div>
+                <div class="profile-value">{{ user.email }}</div>
+            </div>
+
+            <div class="profile-row">
+                <div class="profile-label">Role</div>
+                <div class="profile-value">
+                    <span class="badge badge-role-{{ user.role }}">
+                        {% if user.role == 'admin' %}Administrator
+                        {% elif user.role == 'accountant' %}Accountant
+                        {% elif user.role == 'staff' %}Staff
+                        {% elif user.role == 'viewer' %}Viewer
+                        {% else %}{{ user.role|title }}
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <div class="profile-row">
+                <div class="profile-label">Account Status</div>
+                <div class="profile-value">
+                    {% if user.is_active %}
+                        <span class="badge badge-success">Active</span>
+                    {% else %}
+                        <span class="badge badge-inactive">Inactive</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="profile-row">
+                <div class="profile-label">Member Since</div>
+                <div class="profile-value">
+                    {% if user.created_at %}
+                        {{ user.created_at.strftime('%B %d, %Y') }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="profile-row">
+                <div class="profile-label">Last Login</div>
+                <div class="profile-value">
+                    {% if user.last_login %}
+                        {{ user.last_login.strftime('%B %d, %Y at %I:%M %p') }}
+                    {% else %}
+                        Never
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

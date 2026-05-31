@@ -1,37 +1,31 @@
 {% extends "base.html" %}
+{% from "macros.html" import render_flash_messages %}
 
 {% block title %}Chart of Accounts - CAS{% endblock %}
 
 {% block page_title %}Chart of Accounts{% endblock %}
 
 {% block content %}
-<!-- Header with Add Button -->
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-    <div>
-        <h2 style="font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Chart of Accounts</h2>
-        <p style="color: #64748b; font-size: 14px;">Manage your company's chart of accounts</p>
-    </div>
-    <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">
-        <span style="margin-right: 8px;">+</span>
-        Add Account
-    </a>
-</div>
 
-<!-- Flash Messages -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-        {% for category, message in messages %}
-        <div class="alert alert-{{ category }}" style="margin-bottom: 24px; padding: 12px 16px; border-radius: 6px; {% if category == 'success' %}background: #dcfce7; color: #15803d; border: 1px solid #22c55e;{% else %}background: #fee2e2; color: #dc2626; border: 1px solid #ef4444;{% endif %}">
-            {{ message }}
-        </div>
-        {% endfor %}
+{{ render_flash_messages() }}
+
+<!-- Header with Add Button -->
+<div class="page-header-actions">
+    <div>
+        <h2 class="page-heading">Chart of Accounts</h2>
+        <p class="page-subheading">Manage your company's chart of accounts</p>
+    </div>
+    {% if current_user.role in ['accountant', 'admin'] %}
+    <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">
+        ＋ Add Account
+    </a>
     {% endif %}
-{% endwith %}
+</div>
 
 <!-- Accounts Table -->
 <div class="card">
-    <div class="card-body" style="padding: 0;">
-        <table class="table">
+    <div class="table-wrap">
+        <table>
             <thead>
                 <tr>
                     <th style="width: 120px;">Code</th>
@@ -45,52 +39,53 @@
             <tbody>
                 {% if accounts %}
                     {% for account in accounts %}
-                    <tr class="account-row account-type-{{ account.account_type.lower() }}">
-                        <td style="font-family: 'Courier New', monospace; font-weight: 600;">{{ account.code }}</td>
+                    <tr class="account-row account-type-{{ account.account_type.lower() }} {% if account.parent_id %}account-child{% else %}account-parent{% endif %}">
+                        <td class="account-code">{{ account.code }}</td>
                         <td>
-                            <div style="font-weight: 600; color: #1e293b;">{{ account.name }}</div>
+                            <div class="account-name-wrapper {% if account.parent_id %}account-name-child{% endif %}">
+                                {% if account.parent_id %}
+                                <span class="child-indicator">└─</span>
+                                {% endif %}
+                                <div class="account-name">{{ account.name }}</div>
+                            </div>
                             {% if account.description %}
-                            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">{{ account.description[:50] }}{% if account.description|length > 50 %}...{% endif %}</div>
+                            <div class="account-desc {% if account.parent_id %}account-desc-child{% endif %}">{{ account.description[:50] }}{% if account.description|length > 50 %}...{% endif %}</div>
                             {% endif %}
                         </td>
                         <td>
                             <span class="badge badge-{{ account.account_type.lower() }}">{{ account.account_type }}</span>
                         </td>
-                        <td>
+                        <td class="account-classification">
                             {% if account.classification %}
-                            <span style="font-size: 13px; color: #64748b;">{{ account.classification }}</span>
+                            {{ account.classification }}
                             {% else %}
-                            <span style="font-size: 13px; color: #cbd5e1;">—</span>
+                            —
                             {% endif %}
                         </td>
                         <td>
                             {% if account.normal_balance == 'Debit' %}
-                            <span style="color: #dc2626; font-weight: 600;">Dr</span>
+                            <span class="balance-debit">Dr</span>
                             {% else %}
-                            <span style="color: #059669; font-weight: 600;">Cr</span>
+                            <span class="balance-credit">Cr</span>
                             {% endif %}
                         </td>
                         <td style="text-align: center;">
-                            <div style="display: inline-flex; gap: 8px;">
-                                <a href="{{ url_for('accounts.view', id=account.id) }}" class="btn-icon" title="View">
-                                    👁️
-                                </a>
-                                <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn-icon" title="Edit">
-                                    ✏️
-                                </a>
+                            <div class="action-buttons">
+                                <a href="{{ url_for('accounts.view', id=account.id) }}" class="btn-icon" title="View">👁️</a>
+                                {% if current_user.role in ['accountant', 'admin'] %}
+                                <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn-icon" title="Edit">✏️</a>
                                 <form action="{{ url_for('accounts.delete', id=account.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this account?');">
-                                    <button type="submit" class="btn-icon" title="Delete" style="border: none; background: none; cursor: pointer; padding: 4px 8px;">
-                                        🗑️
-                                    </button>
+                                    <button type="submit" class="btn-icon" title="Delete">🗑️</button>
                                 </form>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="6" style="text-align: center; padding: 40px; color: #94a3b8;">
-                            <div style="font-size: 48px; margin-bottom: 16px;">📋</div>
+                        <td colspan="6" class="empty-state-cell">
+                            <div class="empty-icon">📋</div>
                             <div>No accounts found. Click "Add Account" to create your first account.</div>
                         </td>
                     </tr>
@@ -100,97 +95,4 @@
     </div>
 </div>
 
-<style>
-.btn {
-    display: inline-flex;
-    align-items: center;
-    padding: 10px 20px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s;
-}
-
-.btn-primary {
-    background: #3b82f6;
-    color: white;
-}
-
-.btn-primary:hover {
-    background: #2563eb;
-}
-
-.btn-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 14px;
-    transition: background 0.15s;
-}
-
-.btn-icon:hover {
-    background: #f1f5f9;
-}
-
-/* Account type row colors */
-.account-type-asset {
-    border-left: 3px solid #3b82f6;
-}
-
-.account-type-liability {
-    border-left: 3px solid #ef4444;
-}
-
-.account-type-equity {
-    border-left: 3px solid #8b5cf6;
-}
-
-.account-type-revenue {
-    border-left: 3px solid #22c55e;
-}
-
-.account-type-expense {
-    border-left: 3px solid #f59e0b;
-}
-
-/* Badge styles */
-.badge {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.badge-asset {
-    background: #dbeafe;
-    color: #1e40af;
-}
-
-.badge-liability {
-    background: #fee2e2;
-    color: #991b1b;
-}
-
-.badge-equity {
-    background: #ede9fe;
-    color: #6b21a8;
-}
-
-.badge-revenue {
-    background: #dcfce7;
-    color: #15803d;
-}
-
-.badge-expense {
-    background: #fef3c7;
-    color: #92400e;
-}
-</style>
 {% endblock %}

@@ -1,13 +1,16 @@
 from flask import Blueprint, render_template, redirect, url_for
+from flask_login import login_required
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder='templates')
 
 @dashboard_bp.route('/')
+@login_required
 def index():
     """Redirect to dashboard"""
     return redirect(url_for('dashboard.home'))
 
 @dashboard_bp.route('/dashboard')
+@login_required
 def home():
     """Main dashboard page"""
     # Mock data for dashboard

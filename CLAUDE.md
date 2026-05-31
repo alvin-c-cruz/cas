@@ -206,7 +206,28 @@ Then render with:
 {{ render_flash_messages() }}
 ```
 
-### 8. Database Operations
+### 8. Database Migrations with Flask-Migrate
+
+**This project uses Flask-Migrate for database schema management.**
+
+See [MIGRATIONS.md](MIGRATIONS.md) for complete documentation.
+
+**Quick reference:**
+```bash
+# Set Flask app (required before each command)
+set FLASK_APP=flask_app.py
+
+# Create migration after model changes
+flask db migrate -m "Description of changes"
+
+# Apply migrations
+flask db upgrade
+
+# Rollback migration
+flask db downgrade
+```
+
+### 9. Database Operations
 
 **Creating records:**
 ```python

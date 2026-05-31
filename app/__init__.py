@@ -1,11 +1,21 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager
+from flask_migrate import Migrate
+from datetime import datetime
 
 db = SQLAlchemy()
+migrate = Migrate()
+login_manager = LoginManager()
 
 def create_app(config=None):
     """Application factory pattern"""
     app = Flask(__name__)
+
+    # Make datetime available in templates
+    @app.context_processor
+    def inject_now():
+        return {'now': datetime.now()}
 
     # Default configuration
     app.config['SECRET_KEY'] = config.get('SECRET_KEY', 'your-secret-key-here') if config else 'your-secret-key-here'
@@ -14,37 +24,36 @@ def create_app(config=None):
 
     # Initialize extensions
     db.init_app(app)
+    migrate.init_app(app, db)
+    login_manager.init_app(app)
+    login_manager.login_view = 'users.login'
+    login_manager.login_message = 'Please log in to access this page.'
+    login_manager.login_message_category = 'info'
+
+    # User loader for Flask-Login
+    @login_manager.user_loader
+    def load_user(user_id):
+        from app.users.models import User
+        return User.query.get(int(user_id))
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
     from app.accounts.views import accounts_bp
+    from app.users.views import users_bp
+    from app.api.views import api_bp
+    from app.branches.views import branches_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
+    app.register_blueprint(users_bp)
+    app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(branches_bp)
 
-    # Create database tables
     with app.app_context():
         db.create_all()
 
-        # Add sample accounts if database is empty
-        from app.accounts.models import Account
-        if Account.query.count() == 0:
-            sample_accounts = [
-                Account(code='1000', name='Cash', account_type='Asset', classification='Current', normal_balance='Debit'),
-                Account(code='1100', name='Accounts Receivable', account_type='Asset', classification='Current', normal_balance='Debit'),
-                Account(code='1200', name='Inventory', account_type='Asset', classification='Current', normal_balance='Debit'),
-                Account(code='1500', name='Equipment', account_type='Asset', classification='Non-Current', normal_balance='Debit'),
-                Account(code='2000', name='Accounts Payable', account_type='Liability', classification='Current', normal_balance='Credit'),
-                Account(code='2100', name='Notes Payable', account_type='Liability', classification='Non-Current', normal_balance='Credit'),
-                Account(code='3000', name='Common Stock', account_type='Equity', classification='', normal_balance='Credit'),
-                Account(code='3100', name='Retained Earnings', account_type='Equity', classification='', normal_balance='Credit'),
-                Account(code='4000', name='Sales Revenue', account_type='Revenue', classification='', normal_balance='Credit'),
-                Account(code='5000', name='Cost of Goods Sold', account_type='Expense', classification='', normal_balance='Debit'),
-                Account(code='5100', name='Salaries Expense', account_type='Expense', classification='', normal_balance='Debit'),
-                Account(code='5200', name='Rent Expense', account_type='Expense', classification='', normal_balance='Debit'),
-            ]
-            db.session.add_all(sample_accounts)
-            db.session.commit()
-            print("Sample accounts added to database")
+    # Note: Database tables should be created via Flask-Migrate
+    # Use: flask db upgrade
+    # Fixtures will be loaded automatically after upgrade
 
     return app

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Login History{% endblock %}
+{% block page_title %}Login History{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <p style="color: #64748b; margin: 0;">Track all user login attempts including successful and failed logins</p>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date & Time</th>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Status</th>
+                    <th>IP Address</th>
+                    <th>User Agent</th>
+                    <th>Failure Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in history %}
+                <tr>
+                    <td>
+                        <strong>{{ record.login_time.strftime('%Y-%m-%d') }}</strong><br>
+                        <span style="color: #64748b; font-size: 12px;">{{ record.login_time.strftime('%H:%M:%S') }}</span>
+                    </td>
+                    <td><strong>{{ record.username }}</strong></td>
+                    <td>{{ record.full_name }}</td>
+                    <td>
+                        {% if record.status == 'success' %}
+                            <span class="badge badge-success">Success</span>
+                        {% else %}
+                            <span class="badge badge-danger">Failed</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 3px; font-size: 12px;">
+                            {{ record.ip_address or 'N/A' }}
+                        </code>
+                    </td>
+                    <td>
+                        <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #64748b;" title="{{ record.user_agent }}">
+                            {{ record.user_agent or 'N/A' }}
+                        </div>
+                    </td>
+                    <td>
+                        {% if record.failure_reason %}
+                            <span style="color: #ef4444; font-size: 13px;">{{ record.failure_reason }}</span>
+                        {% else %}
+                            <span style="color: #94a3b8;">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if not history %}
+        <div class="empty-state">
+            <p>No login history found.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+/* Badge styles for status */
+.badge-success {
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.badge-danger {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+</style>
+{% endblock %}

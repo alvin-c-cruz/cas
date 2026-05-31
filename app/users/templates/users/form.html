@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}{% if user %}Edit User{% else %}Create User{% endif %}{% endblock %}
+{% block page_title %}{% if user %}Edit User{% else %}Create User{% endif %}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field, render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('users.list_users') }}" class="btn btn-secondary">
+            <span class="btn-icon">←</span> Back to Users
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    {{ form.username.label(class='form-label') }}
+                    {{ form.username(class='form-control') }}
+                    {% if form.username.errors %}
+                        <div class="form-error">
+                            {% for error in form.username.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.email.label(class='form-label') }}
+                    {{ form.email(class='form-control', type='email') }}
+                    {% if form.email.errors %}
+                        <div class="form-error">
+                            {% for error in form.email.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="form-group">
+                {{ form.full_name.label(class='form-label') }}
+                {{ form.full_name(class='form-control') }}
+                {% if form.full_name.errors %}
+                    <div class="form-error">
+                        {% for error in form.full_name.errors %}{{ error }}{% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    {{ form.role.label(class='form-label') }}
+                    {{ form.role(class='form-control') }}
+                    <div class="form-hint">Select the user's role in the system</div>
+                    {% if form.role.errors %}
+                        <div class="form-error">
+                            {% for error in form.role.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <div style="padding-top: 8px;">
+                        <label class="checkbox-label">
+                            {{ form.is_active() }}
+                            <span>Account is active</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Book Permissions (only for Staff and Accountant roles) -->
+            <div id="book-permissions-section" style="display: none;">
+                <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e8f0;">
+
+                <div class="form-group">
+                    <label class="form-label">Book Access Permissions</label>
+                    <div class="form-hint" style="margin-bottom: 12px;">Select which books this user can access. Admins have access to all books by default.</div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="book_journal_entries" id="book_journal_entries" value="1">
+                            <span>Journal Entries</span>
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="book_accounts_receivable" id="book_accounts_receivable" value="1">
+                            <span>Accounts Receivable</span>
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="book_collections" id="book_collections" value="1">
+                            <span>Collections</span>
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="book_accounts_payable" id="book_accounts_payable" value="1">
+                            <span>Accounts Payable</span>
+                        </label>
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="book_payments" id="book_payments" value="1">
+                            <span>Payments</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            {% if not user %}
+            <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e8f0;">
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    {{ form.password.label(class='form-label') }}
+                    {{ form.password(class='form-control') }}
+                    <div class="form-hint">Required for new users (minimum 6 characters)</div>
+                    {% if form.password.errors %}
+                        <div class="form-error">
+                            {% for error in form.password.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.confirm_password.label(class='form-label') }}
+                    {{ form.confirm_password(class='form-control') }}
+                    {% if form.confirm_password.errors %}
+                        <div class="form-error">
+                            {% for error in form.confirm_password.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    {% if user %}Update User{% else %}Create User{% endif %}
+                </button>
+                <a href="{{ url_for('users.list_users') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const roleField = document.getElementById('role');
+    const bookPermissionsSection = document.getElementById('book-permissions-section');
+
+    // Function to show/hide book permissions based on role
+    function toggleBookPermissions() {
+        const role = roleField.value;
+        if (role === 'staff' || role === 'accountant') {
+            bookPermissionsSection.style.display = 'block';
+        } else {
+            bookPermissionsSection.style.display = 'none';
+        }
+    }
+
+    // Listen for role changes
+    roleField.addEventListener('change', toggleBookPermissions);
+
+    // Initialize on page load
+    toggleBookPermissions();
+
+    {% if user %}
+    // Pre-populate book permissions for existing user
+    const userPermissions = {{ user.get_book_permissions()|tojson }};
+
+    if (userPermissions.journal_entries) {
+        document.getElementById('book_journal_entries').checked = true;
+    }
+    if (userPermissions.accounts_receivable) {
+        document.getElementById('book_accounts_receivable').checked = true;
+    }
+    if (userPermissions.collections) {
+        document.getElementById('book_collections').checked = true;
+    }
+    if (userPermissions.accounts_payable) {
+        document.getElementById('book_accounts_payable').checked = true;
+    }
+    if (userPermissions.payments) {
+        document.getElementById('book_payments').checked = true;
+    }
+    {% endif %}
+});
+</script>
+{% endblock %}
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Branch Management{% endblock %}
+{% block page_title %}Branch Management{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('branches.create') }}" class="btn btn-primary">
+            <span class="btn-icon">+</span> Add Branch
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Branch Name</th>
+                    <th>Address</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Assigned Users</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for branch in branches %}
+                <tr>
+                    <td><strong>{{ branch.code }}</strong></td>
+                    <td>{{ branch.name }}</td>
+                    <td>{{ branch.address or '—' }}</td>
+                    <td>{{ branch.phone or '—' }}</td>
+                    <td>{{ branch.email or '—' }}</td>
+                    <td>
+                        <a href="{{ url_for('branches.branch_users', id=branch.id) }}" class="badge badge-info" style="text-decoration: none;">
+                            {{ branch.users.count() }} user{{ 's' if branch.users.count() != 1 else '' }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if branch.is_active %}
+                            <span class="badge badge-success">Active</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{{ url_for('branches.branch_users', id=branch.id) }}" class="btn-action btn-action-info" title="Manage Users">
+                                Users
+                            </a>
+                            <a href="{{ url_for('branches.edit', id=branch.id) }}" class="btn-action btn-action-edit" title="Edit">
+                                Edit
+                            </a>
+                            <form method="POST" action="{{ url_for('branches.delete', id=branch.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete branch {{ branch.name }}?');">
+                                <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if not branches %}
+        <div class="empty-state">
+            <p>No branches found.</p>
+            <p><a href="{{ url_for('branches.create') }}" class="btn btn-primary">Create your first branch</a></p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.badge-info {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.badge-info:hover {
+    background: #dbeafe;
+}
+
+.btn-action-info {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.btn-action-info:hover {
+    background: #dbeafe;
+}
+</style>
+{% endblock %}

@@ -7,7 +7,7 @@ class Account(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False)
-    name = db.Column(db.String(200), nullable=False)
+    name = db.Column(db.String(200), unique=True, nullable=False)
     account_type = db.Column(db.String(20), nullable=False)  # Asset, Liability, Equity, Revenue, Expense
     classification = db.Column(db.String(20))  # Current, Non-Current
     normal_balance = db.Column(db.String(10), nullable=False)  # Debit, Credit
