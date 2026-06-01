@@ -18,6 +18,22 @@ def create_app(config=None):
         from app.utils import ph_now
         return {'now': ph_now()}
 
+    # Make action items count available in all templates for sidebar badge
+    @app.context_processor
+    def inject_action_items_count():
+        from flask_login import current_user
+        count = 0
+        if current_user.is_authenticated and current_user.role in ['accountant', 'admin']:
+            from app.accounts.approval_models import AccountChangeRequest
+            from app.vat_categories.models import VATCategoryChangeRequest
+            from app.withholding_tax.models import WithholdingTaxChangeRequest
+
+            count += AccountChangeRequest.query.filter_by(status='pending').count()
+            count += VATCategoryChangeRequest.query.filter_by(status='pending').count()
+            count += WithholdingTaxChangeRequest.query.filter_by(status='pending').count()
+
+        return {'action_items_count': count}
+
     # Default configuration
     app.config['SECRET_KEY'] = config.get('SECRET_KEY', 'your-secret-key-here') if config else 'your-secret-key-here'
     app.config['SQLALCHEMY_DATABASE_URI'] = config.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///cas.db') if config else 'sqlite:///cas.db'

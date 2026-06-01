@@ -976,7 +976,11 @@
             <a href="{{ url_for('dashboard.action_items') }}" class="nav-item {% if request.endpoint == 'dashboard.action_items' %}active{% endif %}">
                 <span class="nav-icon">⚡</span>
                 <span class="nav-text">Action Items</span>
+                {% if action_items_count and action_items_count > 0 %}
+                <span class="nav-badge" id="nav-action-badge">{{ action_items_count }}</span>
+                {% else %}
                 <span class="nav-badge" id="nav-action-badge" style="display:none">0</span>
+                {% endif %}
             </a>
             {% endif %}
 
