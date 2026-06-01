@@ -62,6 +62,7 @@ def create_app(config=None):
     from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
     from app.withholding_tax.models import WithholdingTax, WithholdingTaxChangeRequest
     from app.customers.models import Customer
+    from app.audit.models import AuditLog
     from app.settings import AppSettings
 
     # Register blueprints

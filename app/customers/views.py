@@ -9,6 +9,7 @@ from app.customers.models import Customer
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.customers.forms import CustomerForm
+from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 
 customers_bp = Blueprint('customers', __name__, template_folder='templates')
 
