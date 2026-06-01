@@ -109,6 +109,11 @@ def delete(id):
     """Delete branch."""
     branch = Branch.query.get_or_404(id)
 
+    # Prevent deletion of main branch
+    if branch.code == 'MAIN':
+        flash('The Main Branch cannot be deleted.', 'error')
+        return redirect(url_for('branches.list_branches'))
+
     # Check if branch has assigned users
     if branch.users.count() > 0:
         flash(f'Cannot delete branch "{branch.name}" because it has {branch.users.count()} assigned user(s). Please reassign users first.', 'error')

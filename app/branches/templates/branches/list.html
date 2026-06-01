@@ -59,9 +59,13 @@
                             <a href="{{ url_for('branches.edit', id=branch.id) }}" class="btn-action btn-action-edit" title="Edit">
                                 Edit
                             </a>
+                            {% if branch.code != 'MAIN' %}
                             <form method="POST" action="{{ url_for('branches.delete', id=branch.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete branch {{ branch.name }}?');">
                                 <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
                             </form>
+                            {% else %}
+                            <button type="button" class="btn-action btn-action-disabled" title="Main Branch cannot be deleted" disabled>Delete</button>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>
@@ -102,6 +106,19 @@
 
 .btn-action-info:hover {
     background: #dbeafe;
+}
+
+.btn-action-disabled {
+    background: #f3f4f6;
+    color: #9ca3af;
+    border: 1px solid #e5e7eb;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.btn-action-disabled:hover {
+    background: #f3f4f6;
+    color: #9ca3af;
 }
 </style>
 {% endblock %}
