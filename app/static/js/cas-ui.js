@@ -243,4 +243,133 @@
     });
   });
 
+  /* ─── Form Change Tracking ───────────────────────────────────── */
+  /*  Tracks changes in forms and shows/hides Update button accordingly.
+      Usage: Add data-track-changes="true" to any form element.
+      The Update button will only be visible when there are actual changes.
+  */
+  class FormChangeTracker {
+    constructor(form) {
+      this.form = form;
+      this.originalValues = {};
+      this.updateButton = form.querySelector('button[type="submit"]');
+
+      // Store original values when form loads
+      this.storeOriginalValues();
+
+      // Listen for changes
+      this.attachListeners();
+
+      // Initially hide the update button if it's an edit form
+      // Unless there are validation errors (indicated by error messages on the page)
+      if (this.updateButton && this.updateButton.textContent.includes('Update')) {
+        const hasErrors = this.form.querySelector('.error-message') ||
+                         document.querySelector('.alert-error');
+        if (!hasErrors) {
+          this.checkForChanges();
+        }
+      }
+    }
+
+    storeOriginalValues() {
+      const inputs = this.form.querySelectorAll('input, select, textarea');
+      inputs.forEach(input => {
+        // Skip hidden fields and CSRF token
+        if (input.name === 'csrf_token' || (input.type === 'hidden' && !input.name.startsWith('wt_'))) {
+          return;
+        }
+
+        if (input.type === 'checkbox' || input.type === 'radio') {
+          this.originalValues[input.name] = input.checked;
+        } else {
+          this.originalValues[input.name] = input.value;
+        }
+      });
+    }
+
+    attachListeners() {
+      // Listen for any input changes
+      this.form.addEventListener('input', () => this.checkForChanges());
+      this.form.addEventListener('change', () => this.checkForChanges());
+
+      // For checkboxes and radios, we need to listen to click events too
+      const checkboxes = this.form.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+      checkboxes.forEach(cb => {
+        cb.addEventListener('click', () => this.checkForChanges());
+      });
+    }
+
+    checkForChanges() {
+      const inputs = this.form.querySelectorAll('input, select, textarea');
+      let hasChanges = false;
+
+      inputs.forEach(input => {
+        // Skip CSRF token and other hidden fields that shouldn't trigger changes
+        if (input.name === 'csrf_token' || input.type === 'hidden') {
+          return;
+        }
+
+        let currentValue;
+        if (input.type === 'checkbox' || input.type === 'radio') {
+          currentValue = input.checked;
+        } else {
+          currentValue = input.value;
+        }
+
+        const originalValue = this.originalValues[input.name];
+
+        // Compare values (handle undefined, null, and empty strings)
+        if (currentValue !== originalValue) {
+          // Special handling for empty vs null/undefined
+          if ((currentValue === '' && (originalValue === null || originalValue === undefined)) ||
+              (originalValue === '' && (currentValue === null || currentValue === undefined))) {
+            // Consider empty string and null/undefined as the same
+            return;
+          }
+
+          // Special handling for string representations of booleans
+          // (e.g., "0" vs false, "1" vs true)
+          const currentStr = String(currentValue);
+          const originalStr = String(originalValue);
+          if ((currentStr === '0' && originalStr === 'false') ||
+              (currentStr === '1' && originalStr === 'true') ||
+              (currentStr === 'false' && originalStr === '0') ||
+              (currentStr === 'true' && originalStr === '1')) {
+            return;
+          }
+
+          hasChanges = true;
+        }
+      });
+
+      // Show or hide the update button based on changes
+      if (this.updateButton && this.updateButton.textContent.includes('Update')) {
+        if (hasChanges) {
+          this.updateButton.style.display = '';
+          this.updateButton.disabled = false;
+        } else {
+          this.updateButton.style.display = 'none';
+          this.updateButton.disabled = true;
+        }
+      }
+    }
+
+    // Method to reset tracking (useful after successful save)
+    reset() {
+      this.storeOriginalValues();
+      this.checkForChanges();
+    }
+  }
+
+  // Auto-initialize for forms with data-track-changes attribute
+  document.addEventListener('DOMContentLoaded', () => {
+    const trackedForms = document.querySelectorAll('form[data-track-changes="true"]');
+    trackedForms.forEach(form => {
+      new FormChangeTracker(form);
+    });
+  });
+
+  // Export for manual initialization
+  window.FormChangeTracker = FormChangeTracker;
+
 })();

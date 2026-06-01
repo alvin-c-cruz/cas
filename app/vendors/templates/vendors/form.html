@@ -9,7 +9,7 @@
 {{ render_flash_messages() }}
 
 <div class="vendor-form-container">
-    <form method="POST" novalidate autocomplete="off">
+    <form method="POST" novalidate autocomplete="off" data-track-changes="{{ 'true' if vendor else 'false' }}">
         {{ form.hidden_tag() }}
 
         <!-- Hidden dummy fields to prevent browser autocomplete -->

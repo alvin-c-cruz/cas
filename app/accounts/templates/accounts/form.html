@@ -15,7 +15,7 @@
         <div class="card-title">{% if account %}Edit Account: {{ account.code }} - {{ account.name }}{% else %}Create New Account{% endif %}</div>
     </div>
     <div class="card-body">
-        <form method="POST" novalidate>
+        <form method="POST" novalidate data-track-changes="{{ 'true' if account else 'false' }}">
             {{ form.hidden_tag() }}
 
             <div class="form-row-2">

@@ -10,7 +10,7 @@
 
 <div class="card">
     <div class="card-body">
-        <form method="POST" novalidate>
+        <form method="POST" novalidate data-track-changes="{{ 'true' if branch else 'false' }}">
             {{ form.hidden_tag() }}
 
             <div class="form-row-2">

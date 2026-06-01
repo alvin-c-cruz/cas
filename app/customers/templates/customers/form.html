@@ -10,7 +10,7 @@
 
 <div class="card">
     <div class="card-body">
-        <form method="POST" novalidate autocomplete="off">
+        <form method="POST" novalidate autocomplete="off" data-track-changes="{{ 'true' if customer else 'false' }}">
             {{ form.hidden_tag() }}
 
             <!-- Hidden decoy fields to prevent browser autocomplete -->
