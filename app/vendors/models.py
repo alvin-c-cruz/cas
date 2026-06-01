@@ -27,11 +27,24 @@ class Vendor(db.Model):
     # Payment terms (Net 15, Net 30, Net 45, etc.)
     payment_terms = db.Column(db.String(50), default='Net 30')
 
-    # Default VAT type: VATOG (VAT on Goods) 12%, VATSV (VAT on Services) 12%
-    default_vat = db.Column(db.String(50))
+    # Check payee name (defaults to vendor name if blank)
+    check_payee_name = db.Column(db.String(200))
 
-    # Default Withholding Tax: WC158 (2%), WC160 (1%), WC100 (5%), etc.
-    default_wt = db.Column(db.String(50))
+    # Postal code
+    postal_code = db.Column(db.String(20))
+
+    # Default VAT Category: Other Goods (12%), Services (12%), etc.
+    default_vat_category = db.Column(db.String(100))
+
+    # Default Withholding Tax - Multiple checkboxes stored as JSON
+    # WC010: Prof. Fees - Individuals (10%)
+    # WC011: Prof. Fees - Corporations (15%)
+    # WC100: Contractors & Subcontractors (2%)
+    # WC158: Purchases of Goods (1%)
+    wt_wc010 = db.Column(db.Boolean, default=False)  # Prof. Fees - Individuals
+    wt_wc011 = db.Column(db.Boolean, default=False)  # Prof. Fees - Corporations
+    wt_wc100 = db.Column(db.Boolean, default=False)  # Contractors & Subcontractors
+    wt_wc158 = db.Column(db.Boolean, default=False)  # Purchases of Goods
 
     # Address and other details
     address = db.Column(db.Text)
@@ -57,8 +70,13 @@ class Vendor(db.Model):
             'phone': self.phone,
             'tin': self.tin,
             'payment_terms': self.payment_terms,
-            'default_vat': self.default_vat,
-            'default_wt': self.default_wt,
+            'check_payee_name': self.check_payee_name,
+            'postal_code': self.postal_code,
+            'default_vat_category': self.default_vat_category,
+            'wt_wc010': self.wt_wc010,
+            'wt_wc011': self.wt_wc011,
+            'wt_wc100': self.wt_wc100,
+            'wt_wc158': self.wt_wc158,
             'address': self.address,
             'email': self.email,
             'is_active': self.is_active,

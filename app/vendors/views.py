@@ -53,11 +53,16 @@ def create():
                 contact_person=form.contact_person.data,
                 phone=form.phone.data,
                 tin=form.tin.data,
-                payment_terms=form.payment_terms.data,
-                default_vat=form.default_vat.data if form.default_vat.data else None,
-                default_wt=form.default_wt.data if form.default_wt.data else None,
-                address=form.address.data,
                 email=form.email.data,
+                payment_terms=form.payment_terms.data,
+                check_payee_name=form.check_payee_name.data,
+                postal_code=form.postal_code.data,
+                default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
+                wt_wc010=form.wt_wc010.data,
+                wt_wc011=form.wt_wc011.data,
+                wt_wc100=form.wt_wc100.data,
+                wt_wc158=form.wt_wc158.data,
+                address=form.address.data,
                 is_active=form.is_active.data if form.is_active.data is not None else True
             )
             db.session.add(vendor)
@@ -97,11 +102,16 @@ def edit(id):
             vendor.contact_person = form.contact_person.data
             vendor.phone = form.phone.data
             vendor.tin = form.tin.data
-            vendor.payment_terms = form.payment_terms.data
-            vendor.default_vat = form.default_vat.data if form.default_vat.data else None
-            vendor.default_wt = form.default_wt.data if form.default_wt.data else None
-            vendor.address = form.address.data
             vendor.email = form.email.data
+            vendor.payment_terms = form.payment_terms.data
+            vendor.check_payee_name = form.check_payee_name.data
+            vendor.postal_code = form.postal_code.data
+            vendor.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
+            vendor.wt_wc010 = form.wt_wc010.data
+            vendor.wt_wc011 = form.wt_wc011.data
+            vendor.wt_wc100 = form.wt_wc100.data
+            vendor.wt_wc158 = form.wt_wc158.data
+            vendor.address = form.address.data
             vendor.is_active = form.is_active.data
             db.session.commit()
             flash(f'Vendor "{vendor.name}" updated successfully!', 'success')

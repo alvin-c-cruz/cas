@@ -1,66 +1,171 @@
 {% extends "base.html" %}
 
-{% block title %}{{ 'Edit Vendor' if vendor else 'Create Vendor' }}{% endblock %}
-{% block page_title %}{{ 'Edit Vendor' if vendor else 'Create Vendor' }}{% endblock %}
+{% block title %}{{ 'Edit Vendor' if vendor else 'Add Vendor' }}{% endblock %}
+{% block page_title %}{{ 'Edit Vendor' if vendor else 'Add Vendor' }}{% endblock %}
 
 {% block content %}
 {% from "macros.html" import render_field, render_flash_messages %}
 
 {{ render_flash_messages() }}
 
-<div class="card">
+<div class="card modal-style-card">
     <div class="card-body">
         <form method="POST" novalidate>
             {{ form.hidden_tag() }}
 
+            <!-- Code and Name -->
             <div class="form-row-2">
                 {{ render_field(form.code) }}
                 {{ render_field(form.name) }}
             </div>
 
+            <!-- Contact Person and Phone -->
             <div class="form-row-2">
                 {{ render_field(form.contact_person) }}
                 {{ render_field(form.phone) }}
             </div>
 
+            <!-- Email and TIN -->
             <div class="form-row-2">
-                {{ render_field(form.tin) }}
                 {{ render_field(form.email) }}
+                {{ render_field(form.tin) }}
             </div>
 
-            <div class="form-row-3">
+            <!-- Payment Terms and Status -->
+            <div class="form-row-2">
                 {{ render_field(form.payment_terms) }}
-                {{ render_field(form.default_vat) }}
-                {{ render_field(form.default_wt) }}
+                <div class="form-group">
+                    <label for="{{ form.is_active.id }}">Status</label>
+                    <select id="{{ form.is_active.id }}" name="{{ form.is_active.name }}" class="form-control">
+                        <option value="1" {% if form.is_active.data %}selected{% endif %}>Active</option>
+                        <option value="0" {% if not form.is_active.data %}selected{% endif %}>Inactive</option>
+                    </select>
+                </div>
             </div>
 
+            <!-- Address -->
             <div class="form-group">
                 {{ render_field(form.address) }}
             </div>
 
+            <!-- Check Payee Name -->
             <div class="form-group">
-                <div class="checkbox-wrapper">
-                    {{ form.is_active() }}
-                    <label for="{{ form.is_active.id }}">{{ form.is_active.label.text }}</label>
+                <label for="{{ form.check_payee_name.id }}">{{ form.check_payee_name.label.text }}</label>
+                {{ form.check_payee_name(class="form-control") }}
+                <small class="form-text text-muted">Name to be printed on checks (if different from vendor name)</small>
+            </div>
+
+            <!-- Postal Code -->
+            <div class="form-group">
+                {{ render_field(form.postal_code) }}
+            </div>
+
+            <!-- Default VAT Category -->
+            <div class="form-group">
+                {{ render_field(form.default_vat_category) }}
+            </div>
+
+            <!-- Default Withholding Tax -->
+            <div class="form-group wt-section">
+                <label class="wt-section-label">Default Withholding Tax</label>
+                <div class="wt-checkboxes">
+                    <div class="checkbox-wrapper">
+                        {{ form.wt_wc010(id=form.wt_wc010.id) }}
+                        <label for="{{ form.wt_wc010.id }}">{{ form.wt_wc010.label.text }}</label>
+                    </div>
+                    <div class="checkbox-wrapper">
+                        {{ form.wt_wc011(id=form.wt_wc011.id) }}
+                        <label for="{{ form.wt_wc011.id }}">{{ form.wt_wc011.label.text }}</label>
+                    </div>
+                    <div class="checkbox-wrapper">
+                        {{ form.wt_wc100(id=form.wt_wc100.id) }}
+                        <label for="{{ form.wt_wc100.id }}">{{ form.wt_wc100.label.text }}</label>
+                    </div>
+                    <div class="checkbox-wrapper">
+                        {{ form.wt_wc158(id=form.wt_wc158.id) }}
+                        <label for="{{ form.wt_wc158.id }}">{{ form.wt_wc158.label.text }}</label>
+                    </div>
                 </div>
             </div>
 
+            <!-- Form Actions -->
             <div class="form-actions">
-                <button type="submit" class="btn btn-primary">
-                    {{ 'Update Vendor' if vendor else 'Create Vendor' }}
-                </button>
                 <a href="{{ url_for('vendors.list_vendors') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    {{ 'Save Changes' if vendor else 'Save Vendor' }}
+                </button>
             </div>
         </form>
     </div>
 </div>
 
 <style>
-.form-row-3 {
+.modal-style-card {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.form-row-2 {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr 1fr;
     gap: 20px;
     margin-bottom: 20px;
+}
+
+.form-text {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.wt-section {
+    padding: 16px;
+    background-color: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+.wt-section-label {
+    display: block;
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 12px;
+    color: #111827;
+}
+
+.wt-checkboxes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.checkbox-wrapper label {
+    margin: 0;
+    cursor: pointer;
+    font-size: 14px;
+    color: #374151;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
 }
 </style>
 {% endblock %}
