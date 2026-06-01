@@ -243,12 +243,13 @@ def delete(id):
 @login_required
 @accountant_or_admin_required
 def change_requests():
-    """View all pending change requests"""
-    pending_requests = WithholdingTaxChangeRequest.query.filter_by(status='pending').order_by(WithholdingTaxChangeRequest.requested_at.desc()).all()
+    """View all change requests (pending, approved, rejected)"""
+    all_requests = WithholdingTaxChangeRequest.query.order_by(WithholdingTaxChangeRequest.requested_at.desc()).all()
 
     # Parse JSON data for each request
+    import json
     requests_with_data = []
-    for req in pending_requests:
+    for req in all_requests:
         req_dict = {
             'id': req.id,
             'action': req.action,
@@ -375,6 +376,19 @@ def review_change_request(id):
                         flash(f'withholding tax "{wt_name}" has been deleted successfully.', 'success')
 
             else:
+                # Log rejection to audit
+                proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
+                record_identifier = f"{proposed_data.get('code', 'N/A')} - {proposed_data.get('name', 'Withholding Tax')}"
+
+                log_audit(
+                    module='withholding_tax',
+                    action='reject',
+                    record_id=change_request.id,
+                    record_identifier=record_identifier,
+                    old_values=proposed_data,
+                    notes=f'Rejected by {current_user.username}: {change_request.review_notes or "No reason provided"}'
+                )
+
                 flash('Change request has been rejected.', 'info')
 
             db.session.commit()
