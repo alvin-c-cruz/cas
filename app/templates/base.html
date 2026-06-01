@@ -1018,7 +1018,7 @@
                 <span class="nav-icon">👥</span>
                 <span class="nav-text">Customers</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('vendors.list_vendors') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vendors.') %}active{% endif %}">
                 <span class="nav-icon">🏢</span>
                 <span class="nav-text">Vendors</span>
             </a>
