@@ -37,6 +37,13 @@ def create_app(config=None):
         from app.users.models import User
         return User.query.get(int(user_id))
 
+    # Import models for migrations (must be before migrate.init_app)
+    from app.accounts.models import Account
+    from app.accounts.approval_models import AccountChangeRequest
+    from app.users.models import User, LoginHistory
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+
     # Register blueprints
     from app.dashboard.views import dashboard_bp
     from app.accounts.views import accounts_bp

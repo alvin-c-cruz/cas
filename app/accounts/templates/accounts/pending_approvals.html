@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Approvals - Chart of Accounts{% endblock %}
+{% block page_title %}Pending Approvals - Chart of Accounts{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-secondary">
+            <span class="btn-icon">←</span> Back to Chart of Accounts
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if pending_requests %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Request Type</th>
+                    <th>Account Code</th>
+                    <th>Account Name</th>
+                    <th>Requested By</th>
+                    <th>Requested At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for request in pending_requests %}
+                {% set change_data = request.get_change_data() %}
+                <tr>
+                    <td>
+                        {% if request.change_type == 'create' %}
+                            <span class="badge badge-success">Create</span>
+                        {% elif request.change_type == 'update' %}
+                            <span class="badge badge-info">Update</span>
+                        {% elif request.change_type == 'delete' %}
+                            <span class="badge badge-danger">Delete</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ change_data.code }}</strong></td>
+                    <td>{{ change_data.name }}</td>
+                    <td>{{ request.requested_by }}</td>
+                    <td>{{ request.requested_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button type="button" class="btn-action btn-action-info" onclick="viewDetails({{ request.id }})" title="View Details">
+                                View
+                            </button>
+
+                            {% if request.can_be_approved_by(current_user.username) %}
+                            <form method="POST" action="{{ url_for('accounts.approve_request', request_id=request.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to APPROVE this {{ request.change_type }} request?');">
+                                <button type="submit" class="btn-action btn-action-success" title="Approve">Approve</button>
+                            </form>
+
+                            <button type="button" class="btn-action btn-action-delete" onclick="showRejectModal({{ request.id }})" title="Reject">
+                                Reject
+                            </button>
+                            {% else %}
+                            <span class="text-muted" style="font-size: 12px;">(Your own request)</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- Details row (hidden by default) -->
+                <tr id="details-{{ request.id }}" class="details-row" style="display: none;">
+                    <td colspan="6">
+                        <div class="details-panel">
+                            <h4>Request Details</h4>
+                            <div class="details-grid">
+                                <div class="detail-item">
+                                    <strong>Account Code:</strong> {{ change_data.code }}
+                                </div>
+                                <div class="detail-item">
+                                    <strong>Account Name:</strong> {{ change_data.name }}
+                                </div>
+                                <div class="detail-item">
+                                    <strong>Account Type:</strong> {{ change_data.account_type }}
+                                </div>
+                                <div class="detail-item">
+                                    <strong>Normal Balance:</strong> {{ change_data.normal_balance }}
+                                </div>
+                                {% if change_data.classification %}
+                                <div class="detail-item">
+                                    <strong>Classification:</strong> {{ change_data.classification }}
+                                </div>
+                                {% endif %}
+                                {% if change_data.parent_id %}
+                                <div class="detail-item">
+                                    <strong>Parent Account:</strong> ID {{ change_data.parent_id }}
+                                </div>
+                                {% endif %}
+                                {% if change_data.description %}
+                                <div class="detail-item" style="grid-column: 1 / -1;">
+                                    <strong>Description:</strong><br>{{ change_data.description }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No pending approval requests.</p>
+            <p><a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-primary">Go to Chart of Accounts</a></p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div id="reject-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Reject Request</h3>
+        <form id="reject-form" method="POST" action="">
+            <div class="form-group">
+                <label for="rejection_reason">Reason for Rejection:</label>
+                <textarea name="rejection_reason" id="rejection_reason" rows="4" class="form-control" required></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Reject Request</button>
+                <button type="button" class="btn btn-secondary" onclick="closeRejectModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.badge-success {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.badge-info {
+    background: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.badge-danger {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+.badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.btn-action-success {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.btn-action-success:hover {
+    background: #bbf7d0;
+}
+
+.btn-action-info {
+    background: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.btn-action-info:hover {
+    background: #bfdbfe;
+}
+
+.details-row {
+    background: #f9fafb;
+}
+
+.details-panel {
+    padding: 20px;
+}
+
+.details-panel h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #374151;
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.detail-item {
+    padding: 10px;
+    background: white;
+    border-radius: 4px;
+    border: 1px solid #e5e7eb;
+}
+
+.detail-item strong {
+    display: block;
+    color: #6b7280;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    max-width: 500px;
+    width: 90%;
+}
+
+.modal-content h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+
+.form-control {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.text-muted {
+    color: #9ca3af;
+}
+</style>
+
+<script>
+function viewDetails(requestId) {
+    const detailsRow = document.getElementById('details-' + requestId);
+    if (detailsRow.style.display === 'none') {
+        detailsRow.style.display = 'table-row';
+    } else {
+        detailsRow.style.display = 'none';
+    }
+}
+
+function showRejectModal(requestId) {
+    const modal = document.getElementById('reject-modal');
+    const form = document.getElementById('reject-form');
+    form.action = '/accounts/reject/' + requestId;
+    modal.style.display = 'flex';
+}
+
+function closeRejectModal() {
+    const modal = document.getElementById('reject-modal');
+    modal.style.display = 'none';
+}
+
+// Close modal when clicking outside
+document.getElementById('reject-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeRejectModal();
+    }
+});
+</script>
+{% endblock %}

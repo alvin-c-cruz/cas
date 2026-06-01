@@ -16,9 +16,16 @@
         <p class="page-subheading">Manage your company's chart of accounts</p>
     </div>
     {% if current_user.role in ['accountant', 'admin'] %}
-    <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">
-        ＋ Add Account
-    </a>
+    <div style="display: flex; gap: 10px;">
+        {% if pending_requests %}
+        <a href="{{ url_for('accounts.pending_approvals') }}" class="btn btn-warning">
+            <span class="btn-icon">⏳</span> Pending Approvals ({{ pending_requests|length }})
+        </a>
+        {% endif %}
+        <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">
+            ＋ Add Account
+        </a>
+    </div>
     {% endif %}
 </div>
 
