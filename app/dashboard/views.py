@@ -83,7 +83,7 @@ def action_items():
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
-                'reviewUrl': f'/vat-categories/review-change-request/{req.id}'
+                'reviewUrl': f'/vat-categories/change-requests/{req.id}/review'
             })
 
         # Withholding Tax change requests
@@ -97,7 +97,7 @@ def action_items():
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
-                'reviewUrl': f'/withholding-tax/review-change-request/{req.id}'
+                'reviewUrl': f'/withholding-tax/change-requests/{req.id}/review'
             })
 
     return render_template('dashboard/action_items.html', action_items=items)
@@ -139,7 +139,7 @@ def get_action_items():
                 'state': 'Pending',
                 'recId': req.id,
                 'module': 'vat_categories',
-                'reviewUrl': f'/vat-categories/review-change-request/{req.id}'
+                'reviewUrl': f'/vat-categories/change-requests/{req.id}/review'
             })
 
         # Withholding Tax change requests
@@ -156,7 +156,7 @@ def get_action_items():
                 'state': 'Pending',
                 'recId': req.id,
                 'module': 'withholding_tax',
-                'reviewUrl': f'/withholding-tax/review-change-request/{req.id}'
+                'reviewUrl': f'/withholding-tax/change-requests/{req.id}/review'
             })
 
     return jsonify(items)
