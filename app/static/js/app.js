@@ -4436,7 +4436,22 @@ function rejectCancelRequest(id) {
 const ACTION_TYPE_ICON = {
   JournalEntry:'📓', Invoice:'💰', Bill:'🧾',
   Collection:'💵', Payment:'💸', AccountChange:'📋', CancelRequest:'🚫',
+  VATChange:'📊', WTChange:'💼',
 };
+
+// Store fetched action items from backend
+let _backendActionItems = [];
+
+async function fetchBackendActionItems() {
+  try {
+    const response = await fetch('/dashboard/api/action-items');
+    if (response.ok) {
+      _backendActionItems = await response.json();
+    }
+  } catch (error) {
+    console.error('Failed to fetch action items:', error);
+  }
+}
 
 function getActionItems() {
   const role = _currentUser?.role;
@@ -4458,6 +4473,9 @@ function getActionItems() {
       items.push({type:'AccountChange', id:r.accountCode, desc:`${r.accountName} — ${r.reason}`, by:r.submittedBy || '—', when:r.submittedDate, state:'Pending', recId:r.id, isCoa:true}));
     CANCEL_REQUESTS.filter(r => r.status === 'Pending').forEach(r =>
       items.push({type:'CancelRequest', id:r.recordId, desc:`Cancel ${r.recordType} ${r.recordId} — ${r.reason}`, by:r.requestedBy, when:r.requestedAt, state:'Pending', recId:r.id, isCancelReq:true}));
+
+    // Add backend action items (VAT, WT change requests)
+    _backendActionItems.forEach(item => items.push(item));
   } else if (role === 'Staff') {
     JOURNAL_ENTRIES.filter(j => j.status === 'Draft').forEach(j =>
       items.push({type:'JournalEntry', id:j.id, desc:j.desc, by:j.createdBy, when:j.createdAt || j.date, state:'Draft', recId:j.id, lcType:'je'}));
@@ -4478,6 +4496,10 @@ function _actionItemButtons(item) {
   if (item.isCoa) {
     return `<button class="btn btn-sm btn-success" onclick="approveChangeRequest(${item.recId})">Approve</button>
             <button class="btn btn-sm btn-danger" onclick="rejectChangeRequest(${item.recId})">Reject</button>`;
+  }
+  // VAT and WT change requests - link to review page
+  if (item.type === 'VATChange' || item.type === 'WTChange') {
+    return `<button class="btn btn-sm btn-primary" onclick="window.location.href='${item.reviewUrl}'">Review</button>`;
   }
   if (item.isCancelReq) {
     return `<button class="btn btn-sm btn-success" onclick="approveCancelRequest(${item.recId})">Approve Cancel</button>
@@ -4927,8 +4949,10 @@ function _seedAuditFootprint() {
   PAYMENTS.forEach(p    => setApproved(p, 'Juan Dela Cruz', (p.date || '2026-05-27') + ' 09:00'));
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   _seedAuditFootprint();
+  // Fetch backend action items first
+  await fetchBackendActionItems();
   navigate('dashboard');
   renderCOA('All');
   renderPendingApprovals();

@@ -1,5 +1,8 @@
-from flask import Blueprint, render_template, redirect, url_for
-from flask_login import login_required
+from flask import Blueprint, render_template, redirect, url_for, jsonify
+from flask_login import login_required, current_user
+from app.accounts.approval_models import AccountChangeRequest
+from app.vat_categories.models import VATCategoryChangeRequest
+from app.withholding_tax.models import WithholdingTaxChangeRequest
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder='templates')
 
@@ -46,3 +49,62 @@ def home():
                          action_items=action_items,
                          top_customers=top_customers,
                          top_vendors=top_vendors)
+
+@dashboard_bp.route('/api/action-items')
+@login_required
+def get_action_items():
+    """API endpoint to get action items for the current user"""
+    items = []
+
+    # Only accountants and admins see pending change requests
+    if current_user.role in ['accountant', 'admin']:
+        # Chart of Accounts change requests
+        coa_requests = AccountChangeRequest.query.filter_by(status='pending').all()
+        for req in coa_requests:
+            items.append({
+                'type': 'AccountChange',
+                'id': req.account_code,
+                'desc': f'{req.account_name} — {req.action}',
+                'by': req.requested_by.username if req.requested_by else '—',
+                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
+                'state': 'Pending',
+                'recId': req.id,
+                'module': 'accounts',
+                'reviewUrl': f'/accounts/review-change-request/{req.id}'
+            })
+
+        # VAT Category change requests
+        vat_requests = VATCategoryChangeRequest.query.filter_by(status='pending').all()
+        for req in vat_requests:
+            import json
+            proposed = json.loads(req.proposed_data) if req.proposed_data else {}
+            items.append({
+                'type': 'VATChange',
+                'id': proposed.get('code', req.id),
+                'desc': f"{proposed.get('name', 'VAT Category')} — {req.action}",
+                'by': req.requested_by.username if req.requested_by else '—',
+                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
+                'state': 'Pending',
+                'recId': req.id,
+                'module': 'vat_categories',
+                'reviewUrl': f'/vat-categories/review-change-request/{req.id}'
+            })
+
+        # Withholding Tax change requests
+        wt_requests = WithholdingTaxChangeRequest.query.filter_by(status='pending').all()
+        for req in wt_requests:
+            import json
+            proposed = json.loads(req.proposed_data) if req.proposed_data else {}
+            items.append({
+                'type': 'WTChange',
+                'id': proposed.get('code', req.id),
+                'desc': f"{proposed.get('name', 'Withholding Tax')} — {req.action}",
+                'by': req.requested_by.username if req.requested_by else '—',
+                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
+                'state': 'Pending',
+                'recId': req.id,
+                'module': 'withholding_tax',
+                'reviewUrl': f'/withholding-tax/review-change-request/{req.id}'
+            })
+
+    return jsonify(items)
