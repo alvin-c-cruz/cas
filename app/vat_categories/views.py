@@ -261,7 +261,7 @@ def change_requests():
             'reviewed_by': req.reviewed_by,
             'reviewed_at': req.reviewed_at,
             'status': req.status,
-            'rejection_reason': req.rejection_reason,
+            'review_notes': req.review_notes,
             'vat_category_id': req.vat_category_id,
             'vat_category': req.vat_category
         }
