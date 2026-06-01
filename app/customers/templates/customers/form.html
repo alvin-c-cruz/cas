@@ -4,56 +4,490 @@
 {% block page_title %}{{ 'Edit Customer' if customer else 'Create Customer' }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field, render_flash_messages %}
+{% from "macros.html" import render_flash_messages %}
 
 {{ render_flash_messages() }}
 
-<div class="card">
-    <div class="card-body">
-        <form method="POST" novalidate autocomplete="off" data-track-changes="{{ 'true' if customer else 'false' }}">
-            {{ form.hidden_tag() }}
+<div class="customer-form-container">
+    <form method="POST" novalidate autocomplete="off" data-track-changes="{{ 'true' if customer else 'false' }}">
+        {{ form.hidden_tag() }}
 
-            <!-- Hidden decoy fields to prevent browser autocomplete -->
-            <input type="text" name="prevent_autofill" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
-            <input type="password" name="prevent_password" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
+        <!-- Hidden dummy fields to prevent browser autocomplete -->
+        <input type="text" name="prevent_autofill" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
+        <input type="password" name="prevent_password" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
 
-            <div class="form-row-2">
-                {{ render_field(form.code) }}
-                {{ render_field(form.name) }}
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.contact_person) }}
-                {{ render_field(form.phone) }}
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.email) }}
-                {{ render_field(form.tin) }}
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.address) }}
-                {{ render_field(form.postal_code) }}
-            </div>
-
-            <div class="form-row-3">
-                {{ render_field(form.payment_terms) }}
-                {{ render_field(form.default_vat_category) }}
-                {{ render_field(form.is_active) }}
-            </div>
-
+        <!-- Row 1: Customer Code and Name -->
+        <div class="form-row-2col">
             <div class="form-group">
-                {{ render_field(form.default_wt_code) }}
+                <label for="{{ form.code.id }}">{{ form.code.label.text }}</label>
+                {{ form.code(class="form-control form-control-sm", autocomplete="new-password", readonly=(customer is not none), **{'data-lpignore': 'true'}) }}
+                {% if form.code.errors %}
+                    <div class="error-message">{{ form.code.errors[0] }}</div>
+                {% endif %}
             </div>
+            <div class="form-group">
+                <label for="{{ form.name.id }}">{{ form.name.label.text }}</label>
+                {{ form.name(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.name.errors %}
+                    <div class="error-message">{{ form.name.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
 
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">
-                    {{ 'Update Customer' if customer else 'Create Customer' }}
-                </button>
-                <a href="{{ url_for('customers.list_customers') }}" class="btn btn-secondary">Cancel</a>
+        <!-- Row 2: Contact Person and Phone -->
+        <div class="form-row-2col">
+            <div class="form-group">
+                <label for="{{ form.contact_person.id }}">{{ form.contact_person.label.text }}</label>
+                {{ form.contact_person(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.contact_person.errors %}
+                    <div class="error-message">{{ form.contact_person.errors[0] }}</div>
+                {% endif %}
             </div>
-        </form>
-    </div>
+            <div class="form-group">
+                <label for="{{ form.phone.id }}">{{ form.phone.label.text }}</label>
+                {{ form.phone(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.phone.errors %}
+                    <div class="error-message">{{ form.phone.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row 3: Email and TIN -->
+        <div class="form-row-2col">
+            <div class="form-group">
+                <label for="{{ form.email.id }}">{{ form.email.label.text }}</label>
+                {{ form.email(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.email.errors %}
+                    <div class="error-message">{{ form.email.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.tin.id }}">{{ form.tin.label.text }}</label>
+                {{ form.tin(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.tin.errors %}
+                    <div class="error-message">{{ form.tin.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row 4: Address and Postal Code -->
+        <div class="form-row-2col">
+            <div class="form-group">
+                <label for="{{ form.address.id }}">{{ form.address.label.text }}</label>
+                {{ form.address(class="form-control form-control-sm", rows="2", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.address.errors %}
+                    <div class="error-message">{{ form.address.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.postal_code.id }}">{{ form.postal_code.label.text }}</label>
+                {{ form.postal_code(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.postal_code.errors %}
+                    <div class="error-message">{{ form.postal_code.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row 5: Payment Terms, VAT Category, Status -->
+        <div class="form-row-3col">
+            <div class="form-group">
+                <label for="{{ form.payment_terms.id }}">{{ form.payment_terms.label.text }}</label>
+                {{ form.payment_terms(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.payment_terms.errors %}
+                    <div class="error-message">{{ form.payment_terms.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.default_vat_category.id }}">{{ form.default_vat_category.label.text }}</label>
+                <div class="search-select-wrapper">
+                    <input type="text"
+                           class="form-control form-control-sm search-select-input"
+                           id="vat-search-input"
+                           placeholder="Type to search..."
+                           autocomplete="off"
+                           data-lpignore="true"
+                           data-form-type="other"
+                           data-no-track="true"
+                           name="vat_search_random_{{ range(10000, 99999) | random }}"
+                           role="combobox"
+                           aria-autocomplete="none">
+                    <span class="search-select-arrow">▼</span>
+                    <div class="search-select-dropdown" id="vat-dropdown">
+                        <div class="search-select-options">
+                            <!-- Options will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    {{ form.default_vat_category(class="form-control form-control-sm", autocomplete="new-password", style="display:none;", **{'data-lpignore': 'true'}) }}
+                </div>
+                {% if form.default_vat_category.errors %}
+                    <div class="error-message">{{ form.default_vat_category.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.is_active.id }}">{{ form.is_active.label.text }}</label>
+                {{ form.is_active(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {% if form.is_active.errors %}
+                    <div class="error-message">{{ form.is_active.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row 6: Withholding Tax (full width search-select) -->
+        <div class="form-group">
+            <label for="{{ form.default_wt_code.id }}">{{ form.default_wt_code.label.text }}</label>
+            <div class="search-select-wrapper">
+                <input type="text"
+                       class="form-control form-control-sm search-select-input"
+                       id="wt-search-input"
+                       placeholder="Type to search..."
+                       autocomplete="off"
+                       data-lpignore="true"
+                       data-form-type="other"
+                       data-no-track="true"
+                       name="wt_search_random_{{ range(10000, 99999) | random }}"
+                       role="combobox"
+                       aria-autocomplete="none">
+                <span class="search-select-arrow">▼</span>
+                <div class="search-select-dropdown" id="wt-dropdown">
+                    <div class="search-select-options">
+                        <!-- Options will be populated by JavaScript -->
+                    </div>
+                </div>
+                {{ form.default_wt_code(class="form-control form-control-sm", autocomplete="new-password", style="display:none;", **{'data-lpignore': 'true'}) }}
+            </div>
+            {% if form.default_wt_code.errors %}
+                <div class="error-message">{{ form.default_wt_code.errors[0] }}</div>
+            {% endif %}
+        </div>
+
+        <!-- Form Actions -->
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-sm">
+                {{ 'Update Customer' if customer else 'Create Customer' }}
+            </button>
+            <a href="{{ url_for('customers.list_customers') }}" class="btn btn-secondary btn-sm">Cancel</a>
+        </div>
+    </form>
 </div>
+
+<style>
+/* Customer form styling - matching vendor form */
+.customer-form-container {
+    max-width: 100%;
+    padding: 18px;
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.customer-form-container form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 2-column layout */
+.form-row-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* 3-column layout */
+.form-row-3col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+/* Form group styling */
+.form-group {
+    margin-bottom: 0;
+}
+
+.form-group label {
+    display: block;
+    font-size: 16px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 3px;
+}
+
+/* Form controls */
+.form-control-sm {
+    width: 100%;
+    padding: 6px 9px;
+    font-size: 16px;
+    line-height: 1.4;
+    border: 1px solid #d1d5db;
+    border-radius: 5px;
+    transition: border-color 0.15s ease-in-out;
+}
+
+.form-control-sm:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+textarea.form-control-sm {
+    resize: vertical;
+    min-height: 60px;
+}
+
+/* Error messages */
+.error-message {
+    color: #ef4444;
+    font-size: 15px;
+    margin-top: 3px;
+}
+
+/* Form actions */
+.form-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-start;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.btn-sm {
+    padding: 6px 18px;
+    font-size: 16px;
+    line-height: 1.4;
+    border-radius: 5px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s ease-in-out;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-secondary {
+    background: #6b7280;
+    color: white;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-secondary:hover {
+    background: #4b5563;
+}
+
+/* Search-select component */
+.search-select-wrapper {
+    position: relative;
+}
+
+.search-select-input {
+    padding-right: 28px;
+    cursor: pointer;
+}
+
+.search-select-arrow {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    color: #6b7280;
+    pointer-events: none;
+    transition: transform 0.2s;
+}
+
+.search-select-wrapper.open .search-select-arrow {
+    transform: translateY(-50%) rotate(180deg);
+}
+
+.search-select-dropdown {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #3b82f6;
+    border-radius: 5px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+}
+
+.search-select-wrapper.open .search-select-dropdown {
+    display: block;
+}
+
+.search-select-option {
+    padding: 9px 12px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.search-select-option:hover {
+    background: #f1f5f9;
+}
+
+.search-select-option.selected {
+    background: #eff6ff;
+    color: #1e40af;
+    font-weight: 500;
+}
+
+.search-select-option.hidden {
+    display: none;
+}
+
+.search-select-no-results {
+    padding: 12px;
+    font-size: 16px;
+    color: #6b7280;
+    text-align: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .form-row-3col,
+    .form-row-2col {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Function to initialize search-select dropdown
+    function initSearchSelect(inputId, hiddenSelectId, dropdownId, dataList) {
+        const searchInput = document.getElementById(inputId);
+        const hiddenSelect = document.getElementById(hiddenSelectId);
+        const wrapper = searchInput.closest('.search-select-wrapper');
+        const dropdown = document.getElementById(dropdownId);
+        const optionsContainer = dropdown.querySelector('.search-select-options');
+
+        // Get options from the hidden select element
+        const options = Array.from(hiddenSelect.options).map(option => ({
+            value: option.value,
+            text: option.text
+        }));
+
+        // Populate dropdown options
+        function populateOptions(filter = '') {
+            optionsContainer.innerHTML = '';
+            const filterLower = filter.toLowerCase();
+            const filtered = options.filter(opt =>
+                opt.text.toLowerCase().includes(filterLower) && opt.value !== ''
+            );
+
+            if (filtered.length === 0) {
+                optionsContainer.innerHTML = '<div class="search-select-no-results">No results found</div>';
+                return;
+            }
+
+            filtered.forEach(opt => {
+                const optionEl = document.createElement('div');
+                optionEl.className = 'search-select-option';
+                optionEl.textContent = opt.text;
+                optionEl.dataset.value = opt.value;
+
+                if (opt.value === hiddenSelect.value) {
+                    optionEl.classList.add('selected');
+                }
+
+                optionEl.addEventListener('click', function() {
+                    selectOption(opt.value, opt.text);
+                });
+
+                optionsContainer.appendChild(optionEl);
+            });
+        }
+
+        // Select an option
+        function selectOption(value, text) {
+            hiddenSelect.value = value;
+            searchInput.value = text;
+            wrapper.classList.remove('open');
+
+            // Update selected state
+            document.querySelectorAll(`#${dropdownId} .search-select-option`).forEach(el => {
+                el.classList.remove('selected');
+                if (el.dataset.value === value) {
+                    el.classList.add('selected');
+                }
+            });
+
+            // Trigger change event for form tracking
+            hiddenSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Open dropdown
+        searchInput.addEventListener('focus', function() {
+            if (searchInput.value === '-- Select --' || searchInput.value === '') {
+                searchInput.value = '';
+            }
+            wrapper.classList.add('open');
+            populateOptions('');
+        });
+
+        // Search filter
+        searchInput.addEventListener('input', function() {
+            populateOptions(searchInput.value);
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!wrapper.contains(e.target)) {
+                wrapper.classList.remove('open');
+                // Restore selected value or placeholder
+                const selectedOption = options.find(opt => opt.value === hiddenSelect.value);
+                if (selectedOption) {
+                    searchInput.value = selectedOption.text;
+                } else if (searchInput.value === '') {
+                    searchInput.value = '';
+                    searchInput.placeholder = 'Type to search...';
+                }
+            }
+        });
+
+        // Set initial value if exists
+        const selectedOption = options.find(opt => opt.value === hiddenSelect.value);
+        if (selectedOption) {
+            searchInput.value = selectedOption.text;
+        } else {
+            searchInput.value = '';
+            searchInput.placeholder = 'Type to search...';
+        }
+
+        // Prevent form submission on Enter in search input
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const firstVisible = optionsContainer.querySelector('.search-select-option:not(.hidden)');
+                if (firstVisible) {
+                    firstVisible.click();
+                }
+            }
+        });
+    }
+
+    // Initialize VAT Category search-select
+    if (document.getElementById('vat-search-input')) {
+        initSearchSelect('vat-search-input', '{{ form.default_vat_category.id }}', 'vat-dropdown');
+    }
+
+    // Initialize Withholding Tax search-select
+    if (document.getElementById('wt-search-input')) {
+        initSearchSelect('wt-search-input', '{{ form.default_wt_code.id }}', 'wt-dropdown');
+    }
+});
+</script>
 {% endblock %}

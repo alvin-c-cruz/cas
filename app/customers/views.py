@@ -116,7 +116,12 @@ def create():
         form.is_active.data = '1'
         form.payment_terms.data = 'Net 30'
 
-    return render_template('customers/form.html', form=form, customer=None)
+    # Get VAT categories and withholding taxes for dynamic dropdowns
+    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
+    withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+
+    return render_template('customers/form.html', form=form, customer=None,
+                         vat_categories=vat_categories, withholding_taxes=withholding_taxes)
 
 
 @customers_bp.route('/customers/<int:id>/edit', methods=['GET', 'POST'])
@@ -182,7 +187,12 @@ def edit(id):
         form.default_wt_code.data = customer.default_wt_code
         form.is_active.data = '1' if customer.is_active else '0'
 
-    return render_template('customers/form.html', form=form, customer=customer)
+    # Get VAT categories and withholding taxes for dynamic dropdowns
+    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
+    withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+
+    return render_template('customers/form.html', form=form, customer=customer,
+                         vat_categories=vat_categories, withholding_taxes=withholding_taxes)
 
 
 @customers_bp.route('/customers/<int:id>/delete', methods=['POST'])
