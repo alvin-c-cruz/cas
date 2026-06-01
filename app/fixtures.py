@@ -134,7 +134,6 @@ def load_default_branch():
     main_branch = Branch(
         code='MAIN',
         name='Main Office',
-        tin='000-000-000-000',  # Default TIN - should be updated
         address='Main Office Address',
         phone='',
         email='',

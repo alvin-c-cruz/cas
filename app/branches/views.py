@@ -50,7 +50,6 @@ def create():
             branch = Branch(
                 code=form.code.data,
                 name=form.name.data,
-                tin=form.tin.data,
                 address=form.address.data,
                 phone=form.phone.data,
                 email=form.email.data,
@@ -89,7 +88,6 @@ def edit(id):
         try:
             branch.code = form.code.data
             branch.name = form.name.data
-            branch.tin = form.tin.data
             branch.address = form.address.data
             branch.phone = form.phone.data
             branch.email = form.email.data
