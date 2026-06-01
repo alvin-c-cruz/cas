@@ -2,10 +2,84 @@
 
 ## Git Commit Summary
 
-**Commit:** `62f9929`
+**Latest Commit:** `0e1e554`
+**Previous Commits:** `62f9929`
 **Branch:** `main`
 **Remote:** https://github.com/alvin-c-cruz/cas.git
 **Status:** ✅ Pushed successfully
+
+---
+
+## Task 8: Main Branch Deletion Protection ✅
+
+**Objective:** Prevent deletion of the Main Branch (code='MAIN') even by administrators
+
+**Files Modified:**
+- `app/branches/views.py` - Added validation to prevent main branch deletion
+- `app/branches/templates/branches/list.html` - UI updates for disabled delete button
+
+**Implementation:**
+
+**Backend Protection (views.py):**
+```python
+@branches_bp.route('/branches/<int:id>/delete', methods=['POST'])
+@login_required
+@admin_only
+def delete(id):
+    """Delete branch."""
+    branch = Branch.query.get_or_404(id)
+
+    # Prevent deletion of main branch
+    if branch.code == 'MAIN':
+        flash('The Main Branch cannot be deleted.', 'error')
+        return redirect(url_for('branches.list_branches'))
+
+    # ... rest of delete logic
+```
+
+**Frontend Protection (list.html):**
+```jinja2
+{% if branch.code != 'MAIN' %}
+<form method="POST" action="{{ url_for('branches.delete', id=branch.id) }}" ...>
+    <button type="submit" class="btn-action btn-action-delete">Delete</button>
+</form>
+{% else %}
+<button type="button" class="btn-action btn-action-disabled"
+        title="Main Branch cannot be deleted" disabled>Delete</button>
+{% endif %}
+```
+
+**CSS Styling:**
+```css
+.btn-action-disabled {
+    background: #f3f4f6;
+    color: #9ca3af;
+    border: 1px solid #e5e7eb;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+```
+
+**Protection Features:**
+1. Backend validation prevents deletion via POST request
+2. Frontend shows disabled button for visual indication
+3. Tooltip explains why button is disabled
+4. Main branch can still be edited (name, address, etc.) but not deleted
+5. Ensures system integrity - main branch is critical default
+
+**Impact:**
+- Main Branch (MAIN) cannot be deleted by any user
+- Administrators still see the button but it's disabled with tooltip
+- Error message shown if deletion attempted via direct POST
+- System integrity maintained - critical default branch always exists
+
+**Verification:**
+- ✅ Delete button disabled for Main Branch in UI
+- ✅ Backend validation prevents deletion
+- ✅ Other branches can still be deleted normally
+- ✅ Error message displays correctly
+
+**Commit:** `0e1e554`
 
 ---
 
