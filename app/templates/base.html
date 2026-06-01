@@ -1279,16 +1279,6 @@
                     })
                     .catch(error => console.error('Error fetching environment:', error));
 
-                // Poll for environment changes every 5 seconds
-                setInterval(function() {
-                    fetch('/api/environment')
-                        .then(response => response.json())
-                        .then(data => {
-                            updateBadgeDisplay(data.environment);
-                        })
-                        .catch(error => console.error('Error polling environment:', error));
-                }, 5000);
-
                 // Admin can click to cycle through environments
                 if (isAdmin) {
                     envBadge.addEventListener('click', function() {
