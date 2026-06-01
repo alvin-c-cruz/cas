@@ -12,6 +12,7 @@ class Branch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
+    tin = db.Column(db.String(20))  # Tax Identification Number
     address = db.Column(db.Text)
     phone = db.Column(db.String(50))
     email = db.Column(db.String(120))
@@ -31,6 +32,7 @@ class Branch(db.Model):
             'id': self.id,
             'code': self.code,
             'name': self.name,
+            'tin': self.tin,
             'address': self.address,
             'phone': self.phone,
             'email': self.email,

@@ -23,6 +23,7 @@
                 <tr>
                     <th>Code</th>
                     <th>Branch Name</th>
+                    <th>TIN</th>
                     <th>Address</th>
                     <th>Phone</th>
                     <th>Email</th>
@@ -36,6 +37,7 @@
                 <tr>
                     <td><strong>{{ branch.code }}</strong></td>
                     <td>{{ branch.name }}</td>
+                    <td>{{ branch.tin or '—' }}</td>
                     <td>{{ branch.address or '—' }}</td>
                     <td>{{ branch.phone or '—' }}</td>
                     <td>{{ branch.email or '—' }}</td>

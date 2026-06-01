@@ -16,6 +16,10 @@ class BranchForm(FlaskForm):
         DataRequired(message='Branch name is required.'),
         Length(max=200, message='Branch name must be 200 characters or less.')
     ])
+    tin = StringField('Tax Identification Number (TIN)', validators=[
+        Optional(),
+        Length(max=20, message='TIN must be 20 characters or less.')
+    ])
     address = TextAreaField('Address', validators=[Optional()])
     phone = StringField('Phone', validators=[
         Optional(),
