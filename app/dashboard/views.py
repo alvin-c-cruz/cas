@@ -113,10 +113,15 @@ def get_action_items():
         # Chart of Accounts change requests
         coa_requests = AccountChangeRequest.query.filter_by(status='pending').all()
         for req in coa_requests:
+            # For create action, just show the name. For update/delete, show "name — action"
+            if req.action == 'create':
+                desc = req.account_name
+            else:
+                desc = f'{req.account_name} — {req.action}'
             items.append({
                 'type': 'AccountChange',
                 'id': req.account_code,
-                'desc': f'{req.account_name} — {req.action}',
+                'desc': desc,
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
@@ -130,10 +135,15 @@ def get_action_items():
         for req in vat_requests:
             import json
             proposed = json.loads(req.proposed_data) if req.proposed_data else {}
+            # For create action, just show the name. For update/delete, show "name — action"
+            if req.action == 'create':
+                desc = proposed.get('name', 'VAT Category')
+            else:
+                desc = f"{proposed.get('name', 'VAT Category')} — {req.action}"
             items.append({
                 'type': 'VATChange',
                 'id': proposed.get('code', req.id),
-                'desc': f"{proposed.get('name', 'VAT Category')} — {req.action}",
+                'desc': desc,
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
@@ -147,10 +157,15 @@ def get_action_items():
         for req in wt_requests:
             import json
             proposed = json.loads(req.proposed_data) if req.proposed_data else {}
+            # For create action, just show the name. For update/delete, show "name — action"
+            if req.action == 'create':
+                desc = proposed.get('name', 'Withholding Tax')
+            else:
+                desc = f"{proposed.get('name', 'Withholding Tax')} — {req.action}"
             items.append({
                 'type': 'WTChange',
                 'id': proposed.get('code', req.id),
-                'desc': f"{proposed.get('name', 'Withholding Tax')} — {req.action}",
+                'desc': desc,
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
