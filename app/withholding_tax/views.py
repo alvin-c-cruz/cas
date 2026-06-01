@@ -111,6 +111,18 @@ def create():
                     requested_at=ph_now()
                 )
                 db.session.add(change_request)
+                db.session.flush()  # Get the ID before commit
+
+                # Audit log for change request submission
+                log_audit(
+                    module='withholding_tax',
+                    action='create',
+                    record_id=change_request.id,
+                    record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
+                    new_values=change_data,
+                    notes='Pending approval'
+                )
+
                 db.session.commit()
                 flash(f'withholding tax creation request for "{change_data["name"]}" has been submitted for approval.', 'info')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
@@ -184,6 +196,20 @@ def edit(id):
                     requested_at=ph_now()
                 )
                 db.session.add(change_request)
+                db.session.flush()  # Get the ID before commit
+
+                # Audit log for update change request submission
+                old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+                log_audit(
+                    module='withholding_tax',
+                    action='update',
+                    record_id=change_request.id,
+                    record_identifier=f'Change Request: {withholding_tax.code} - {withholding_tax.name}',
+                    old_values=old_values,
+                    new_values=change_data,
+                    notes='Pending approval'
+                )
+
                 db.session.commit()
                 flash(f'withholding tax update request for "{withholding_tax.name}" has been submitted for approval.', 'info')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
@@ -229,6 +255,19 @@ def delete(id):
                 requested_at=ph_now()
             )
             db.session.add(change_request)
+            db.session.flush()  # Get the ID before commit
+
+            # Audit log for delete change request submission
+            old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+            log_audit(
+                module='withholding_tax',
+                action='delete',
+                record_id=change_request.id,
+                record_identifier=f'Change Request: {withholding_tax.code} - {withholding_tax.name}',
+                old_values=old_values,
+                notes='Pending approval'
+            )
+
             db.session.commit()
             flash(f'withholding tax deletion request for "{withholding_tax.name}" has been submitted for approval.', 'info')
 

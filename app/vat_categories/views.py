@@ -111,6 +111,18 @@ def create():
                     requested_at=ph_now()
                 )
                 db.session.add(change_request)
+                db.session.flush()  # Get the ID before commit
+
+                # Audit log for change request submission
+                log_audit(
+                    module='vat_category',
+                    action='create',
+                    record_id=change_request.id,
+                    record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
+                    new_values=change_data,
+                    notes='Pending approval'
+                )
+
                 db.session.commit()
                 flash(f'VAT category creation request for "{change_data["name"]}" has been submitted for approval.', 'info')
                 return redirect(url_for('vat_categories.list_vat_categories'))
@@ -184,6 +196,20 @@ def edit(id):
                     requested_at=ph_now()
                 )
                 db.session.add(change_request)
+                db.session.flush()  # Get the ID before commit
+
+                # Audit log for update change request submission
+                old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+                log_audit(
+                    module='vat_category',
+                    action='update',
+                    record_id=change_request.id,
+                    record_identifier=f'Change Request: {vat_category.code} - {vat_category.name}',
+                    old_values=old_values,
+                    new_values=change_data,
+                    notes='Pending approval'
+                )
+
                 db.session.commit()
                 flash(f'VAT category update request for "{vat_category.name}" has been submitted for approval.', 'info')
                 return redirect(url_for('vat_categories.list_vat_categories'))
@@ -229,6 +255,19 @@ def delete(id):
                 requested_at=ph_now()
             )
             db.session.add(change_request)
+            db.session.flush()  # Get the ID before commit
+
+            # Audit log for delete change request submission
+            old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+            log_audit(
+                module='vat_category',
+                action='delete',
+                record_id=change_request.id,
+                record_identifier=f'Change Request: {vat_category.code} - {vat_category.name}',
+                old_values=old_values,
+                notes='Pending approval'
+            )
+
             db.session.commit()
             flash(f'VAT category deletion request for "{vat_category.name}" has been submitted for approval.', 'info')
 
