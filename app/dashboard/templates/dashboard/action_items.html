@@ -8,46 +8,40 @@
     <div class="card-header">
         <div>
             <div class="card-title">Items Needing Your Action</div>
-            <div class="card-sub" id="actions-page-meta">Loading...</div>
-        </div>
-        <div style="display:flex;gap:8px">
-            <select id="actions-filter-type" class="form-control" style="width:200px" onchange="renderActionsPage()">
-                <option value="">All Types</option>
-                <option value="JournalEntry">Journal Entries</option>
-                <option value="Invoice">Invoices</option>
-                <option value="Bill">Bills</option>
-                <option value="Collection">Collections</option>
-                <option value="Payment">Payments</option>
-                <option value="AccountChange">Chart of Accounts</option>
-                <option value="VATChange">VAT Categories</option>
-                <option value="WTChange">Withholding Tax</option>
-                <option value="CancelRequest">Cancel Requests</option>
-            </select>
-            <select id="actions-filter-state" class="form-control" style="width:150px" onchange="renderActionsPage()">
-                <option value="">All States</option>
-                <option value="Draft">Draft</option>
-                <option value="Submitted">Submitted</option>
-                <option value="Pending">Pending</option>
-            </select>
+            <div class="card-sub">{{ action_items|length }} item{{ 's' if action_items|length != 1 else '' }}</div>
         </div>
     </div>
-</div>
 
-<div id="actions-page-content">
-    <!-- Content will be rendered by JavaScript -->
+    {% if action_items %}
+        {% for item in action_items %}
+        <div class="action-row" style="display:flex;align-items:center;padding:16px;border-bottom:1px solid var(--border)">
+            <div class="action-icon" style="font-size:24px;margin-right:16px">
+                {% if item.type == 'VATChange' %}📊
+                {% elif item.type == 'WTChange' %}💼
+                {% elif item.type == 'AccountChange' %}📋
+                {% else %}•{% endif %}
+            </div>
+            <div class="action-body" style="flex:1">
+                <div class="action-id" style="font-weight:600;color:#0f172a;margin-bottom:4px">
+                    {{ item.type }} · {{ item.id }}
+                </div>
+                <div class="action-desc" style="color:#475569;margin-bottom:4px">
+                    {{ item.desc }}
+                </div>
+                <div class="action-state" style="font-size:12px;color:#64748b">
+                    <span class="badge badge-{{ item.state|lower }}" style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">{{ item.state }}</span>
+                    by {{ item.by }} · {{ item.when }}
+                </div>
+            </div>
+            <div class="action-buttons" style="margin-left:16px">
+                <a href="{{ item.reviewUrl }}" class="btn btn-sm btn-primary">Review</a>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+    <div class="action-empty" style="padding:40px;text-align:center;color:#64748b">
+        🎉 Nothing needs your action right now.
+    </div>
+    {% endif %}
 </div>
-
-<script>
-    // Ensure action items are loaded and rendered
-    document.addEventListener('DOMContentLoaded', async () => {
-        // Fetch backend action items if not already loaded
-        if (typeof fetchBackendActionItems === 'function') {
-            await fetchBackendActionItems();
-        }
-        // Render the page
-        if (typeof renderActionsPage === 'function') {
-            renderActionsPage();
-        }
-    });
-</script>
 {% endblock %}

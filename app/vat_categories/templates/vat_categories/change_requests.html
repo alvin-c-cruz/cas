@@ -35,7 +35,7 @@
             <tbody>
                 {% if requests %}
                     {% for request in requests %}
-                    {% set proposed = request.proposed_data|from_json if request.proposed_data else {} %}
+                    {% set proposed = request.proposed_data %}
                     <tr>
                         <td>
                             {% if request.action == 'create' %}

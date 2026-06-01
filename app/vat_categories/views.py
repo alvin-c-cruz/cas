@@ -244,7 +244,29 @@ def delete(id):
 def change_requests():
     """View all pending change requests"""
     pending_requests = VATCategoryChangeRequest.query.filter_by(status='pending').order_by(VATCategoryChangeRequest.requested_at.desc()).all()
-    return render_template('vat_categories/change_requests.html', requests=pending_requests)
+
+    # Parse JSON data for each request
+    import json
+    requests_with_data = []
+    for req in pending_requests:
+        req_dict = {
+            'id': req.id,
+            'action': req.action,
+            'proposed_data': json.loads(req.proposed_data) if req.proposed_data else {},
+            'requested_by_id': req.requested_by_id,
+            'requested_by': req.requested_by,
+            'requested_at': req.requested_at,
+            'reviewed_by_id': req.reviewed_by_id,
+            'reviewed_by': req.reviewed_by,
+            'reviewed_at': req.reviewed_at,
+            'status': req.status,
+            'rejection_reason': req.rejection_reason,
+            'vat_category_id': req.vat_category_id,
+            'vat_category': req.vat_category
+        }
+        requests_with_data.append(req_dict)
+
+    return render_template('vat_categories/change_requests.html', requests=requests_with_data)
 
 
 @vat_categories_bp.route('/change-requests/<int:id>/review', methods=['GET', 'POST'])
