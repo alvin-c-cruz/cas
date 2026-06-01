@@ -42,6 +42,7 @@ def create_app(config=None):
     from app.accounts.approval_models import AccountChangeRequest
     from app.users.models import User, LoginHistory
     from app.branches.models import Branch
+    from app.vendors.models import Vendor
     from app.settings import AppSettings
 
     # Register blueprints
@@ -50,12 +51,14 @@ def create_app(config=None):
     from app.users.views import users_bp
     from app.api.views import api_bp
     from app.branches.views import branches_bp
+    from app.vendors.views import vendors_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
     app.register_blueprint(users_bp)
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(branches_bp)
+    app.register_blueprint(vendors_bp)
 
 
     migrate.init_app(app, db)

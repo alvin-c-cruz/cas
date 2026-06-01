@@ -168,6 +168,80 @@ def load_default_settings():
     return settings_created
 
 
+def load_sample_vendors():
+    """Create sample vendors for demonstration."""
+    from app.vendors.models import Vendor
+
+    if Vendor.query.count() > 0:
+        print("  [i] Vendors already exist, skipping...")
+        return []
+
+    sample_vendors = [
+        Vendor(
+            code='V001',
+            name='Steel Supply Co.',
+            contact_person='Pedro Dela Cruz',
+            phone='09121234567',
+            tin='123-456-789-000',
+            payment_terms='Net 30',
+            default_vat='VATOG 12%',
+            default_wt='WC158',
+            is_active=True
+        ),
+        Vendor(
+            code='V002',
+            name='Office Depot',
+            contact_person='Linda Santos',
+            phone='09231234567',
+            tin='234-567-890-000',
+            payment_terms='Net 15',
+            default_vat='VATOG 12%',
+            default_wt='WC158',
+            is_active=True
+        ),
+        Vendor(
+            code='V003',
+            name='Power & Light Corp.',
+            contact_person='Ramon Garcia',
+            phone='09341234567',
+            tin='345-678-901-000',
+            payment_terms='Net 30',
+            default_vat='VATSV 12%',
+            default_wt='WC160',
+            is_active=True
+        ),
+        Vendor(
+            code='V004',
+            name='Construction Supplies Inc.',
+            contact_person='Teresa Bautista',
+            phone='09451234567',
+            tin='456-789-012-000',
+            payment_terms='Net 45',
+            default_vat='VATOG 12%',
+            default_wt='WC158',
+            is_active=True
+        ),
+        Vendor(
+            code='V005',
+            name='Maintenance Services',
+            contact_person='Jose Mendoza',
+            phone='09561234567',
+            tin='567-890-123-000',
+            payment_terms='Net 30',
+            default_vat='VATSV 12%',
+            default_wt='WC160',
+            is_active=True
+        ),
+    ]
+
+    for vendor in sample_vendors:
+        db.session.add(vendor)
+
+    db.session.commit()
+    print(f"  [OK] {len(sample_vendors)} sample vendors created")
+    return sample_vendors
+
+
 def load_all_fixtures():
     """
     Load all default fixtures.
@@ -176,7 +250,8 @@ def load_all_fixtures():
     1. Admin user
     2. Main branch
     3. Sample chart of accounts
-    4. Application settings
+    4. Sample vendors
+    5. Application settings
     """
     print("\n" + "="*60)
     print("Loading Default Fixtures")
@@ -191,7 +266,10 @@ def load_all_fixtures():
     print("\n3. Loading sample chart of accounts...")
     load_sample_chart_of_accounts()
 
-    print("\n4. Initializing default settings...")
+    print("\n4. Loading sample vendors...")
+    load_sample_vendors()
+
+    print("\n5. Initializing default settings...")
     load_default_settings()
 
     print("\n" + "="*60)

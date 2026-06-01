@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Vendor Maintenance{% endblock %}
+{% block page_title %}Vendor Maintenance{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Search by name, code, or TIN..." class="search-input">
+    </div>
+    {% if current_user.role in ['accountant', 'admin'] %}
+    <div class="page-actions">
+        <a href="{{ url_for('vendors.create') }}" class="btn btn-primary">
+            + Add Vendor
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table" id="vendorsTable">
+            <thead>
+                <tr>
+                    <th>CODE</th>
+                    <th>NAME</th>
+                    <th>CONTACT PERSON</th>
+                    <th>PHONE</th>
+                    <th>TIN</th>
+                    <th>TERMS</th>
+                    <th>DEFAULT VAT</th>
+                    <th>DEFAULT WT</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vendor in vendors %}
+                <tr>
+                    <td><strong>{{ vendor.code }}</strong></td>
+                    <td>{{ vendor.name }}</td>
+                    <td>{{ vendor.contact_person or '—' }}</td>
+                    <td>{{ vendor.phone or '—' }}</td>
+                    <td>{{ vendor.tin or '—' }}</td>
+                    <td>{{ vendor.payment_terms }}</td>
+                    <td>
+                        {% if vendor.default_vat %}
+                        <span class="badge badge-vat">{{ vendor.default_vat }}</span>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if vendor.default_wt %}
+                        <span class="badge badge-wt">{{ vendor.default_wt }}</span>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if vendor.is_active %}
+                            <span class="badge badge-success">Active</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if current_user.role in ['accountant', 'admin'] %}
+                        <div class="action-buttons">
+                            <a href="{{ url_for('vendors.edit', id=vendor.id) }}" class="btn-action btn-action-edit" title="Edit">
+                                Edit
+                            </a>
+                            <form method="POST" action="{{ url_for('vendors.delete', id=vendor.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete vendor {{ vendor.name }}?');">
+                                <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
+                            </form>
+                        </div>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if not vendors %}
+        <div class="empty-state">
+            <p>No vendors found.</p>
+            {% if current_user.role in ['accountant', 'admin'] %}
+            <p><a href="{{ url_for('vendors.create') }}" class="btn btn-primary">Add your first vendor</a></p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 20px;
+}
+
+.search-box {
+    flex: 1;
+    max-width: 400px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.badge-vat {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.badge-wt {
+    background: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.badge-success {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.badge-inactive {
+    background: #f3f4f6;
+    color: #6b7280;
+    border: 1px solid #e5e7eb;
+}
+
+.badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+</style>
+
+<script>
+// Simple search functionality
+document.getElementById('searchInput')?.addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const table = document.getElementById('vendorsTable');
+    const rows = table.querySelectorAll('tbody tr');
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        if (text.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}
