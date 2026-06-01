@@ -137,7 +137,7 @@
                                     <div class="audit-content">
                                         {% set old_wt_codes = [] %}
                                         {% set new_wt_codes = [] %}
-                                        {% set wt_changed = False %}
+                                        {% set wt_changed = [False] %}  {# Use list to work around Jinja2 scoping #}
                                         {% set all_wt_keys = [] %}
 
 
@@ -159,6 +159,7 @@
                                             {% set new_val = new.get(key) %}
 
                                             {# Check for truthy values - handles boolean true, string 'True', or 1 #}
+                                            {# Note: None and False are both falsy, so we only add codes for True values #}
                                             {% if old_val is sameas true or old_val == 'True' or old_val == 1 or old_val == '1' %}
                                                 {% set _ = old_wt_codes.append(key.replace('wt_', '').upper()) %}
                                             {% endif %}
@@ -168,7 +169,7 @@
                                             {% endif %}
 
                                             {% if old_val != new_val %}
-                                                {% set wt_changed = True %}
+                                                {% set _ = wt_changed.__setitem__(0, True) %}  {# Update list element #}
                                             {% endif %}
                                         {% endfor %}
 
@@ -198,7 +199,7 @@
                                             {% endif %}
                                         {% endfor %}
 
-                                        {% if wt_changed %}
+                                        {% if wt_changed[0] %}
                                         <div class="audit-change">
                                             <div class="change-key">Withholding Tax:</div>
                                             <div class="change-values">
@@ -210,28 +211,16 @@
                                         {% endif %}
 
                                         {# Show a message if there are no visible changes #}
-                                        {% set has_changes = False %}
+                                        {% set has_non_wt_changes = [False] %}
 
-                                        {# Check all keys from both old and new #}
-                                        {% set all_keys = [] %}
-                                        {% for key in old.keys() %}
-                                            {% if key not in all_keys %}
-                                                {% set _ = all_keys.append(key) %}
-                                            {% endif %}
-                                        {% endfor %}
-                                        {% for key in new.keys() %}
-                                            {% if key not in all_keys %}
-                                                {% set _ = all_keys.append(key) %}
-                                            {% endif %}
-                                        {% endfor %}
-
-                                        {% for key in all_keys %}
+                                        {# Check for non-WT changes specifically #}
+                                        {% for key in all_non_wt_keys %}
                                             {% if old.get(key) != new.get(key) %}
-                                                {% set has_changes = True %}
+                                                {% set _ = has_non_wt_changes.__setitem__(0, True) %}
                                             {% endif %}
                                         {% endfor %}
 
-                                        {% if not has_changes and not wt_changed %}
+                                        {% if not has_non_wt_changes[0] and not wt_changed[0] %}
                                         <div class="audit-item">
                                             <span style="color: #6b7280; font-style: italic;">No changes detected in audit data</span>
                                         </div>
