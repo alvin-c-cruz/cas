@@ -10,6 +10,7 @@ from app.vat_categories.forms import VATCategoryForm, VATCategoryChangeReviewFor
 from app.users.models import User
 from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
+from app.notifications.utils import create_notification
 import json
 
 vat_categories_bp = Blueprint('vat_categories', __name__, template_folder='templates')
@@ -395,6 +396,30 @@ def review_change_request(id):
                 )
 
                 flash('Change request has been rejected.', 'info')
+
+            # Notify the requester about the outcome
+            if change_request.requested_by_id:
+                if action == 'approve':
+                    proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
+                    create_notification(
+                        user_id=change_request.requested_by_id,
+                        title='Change Request Approved',
+                        message=f'Your VAT Category change request "{proposed_data.get("name", "N/A")}" ({change_request.action}) has been approved by {current_user.full_name}.',
+                        category='success',
+                        related_type='vat_category_request',
+                        related_id=change_request.id
+                    )
+                else:
+                    proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
+                    reason_text = f' Reason: {change_request.review_notes}' if change_request.review_notes else ''
+                    create_notification(
+                        user_id=change_request.requested_by_id,
+                        title='Change Request Rejected',
+                        message=f'Your VAT Category change request "{proposed_data.get("name", "N/A")}" ({change_request.action}) has been rejected by {current_user.full_name}.{reason_text}',
+                        category='error',
+                        related_type='vat_category_request',
+                        related_id=change_request.id
+                    )
 
             db.session.commit()
             return redirect(url_for('vat_categories.change_requests'))

@@ -3,13 +3,13 @@
 <div class="{{ wrapper_class }}">
     {{ field.label(class=label_class or 'form-label') }}
 
-    {# Render the field based on its type #}
+    {# Render the field based on its type with autocomplete prevention #}
     {% if field.type == 'SelectField' %}
-        {{ field(class=input_class) }}
+        {{ field(class=input_class, autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
     {% elif field.type == 'TextAreaField' %}
-        {{ field(class=input_class) }}
+        {{ field(class=input_class, autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
     {% else %}
-        {{ field(class=input_class) }}
+        {{ field(class=input_class, autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
     {% endif %}
 
     {# Display validation errors #}

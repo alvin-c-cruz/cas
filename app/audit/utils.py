@@ -114,8 +114,16 @@ def get_changes(old_obj, new_data, fields):
 
         # Convert to comparable types
         if old_val != new_val:
-            old_values[field] = str(old_val) if old_val is not None else None
-            new_values[field] = str(new_val) if new_val is not None else None
+            # Keep booleans as booleans, don't convert to string
+            if isinstance(old_val, bool):
+                old_values[field] = old_val
+            else:
+                old_values[field] = str(old_val) if old_val is not None else None
+
+            if isinstance(new_val, bool):
+                new_values[field] = new_val
+            else:
+                new_values[field] = str(new_val) if new_val is not None else None
 
     return old_values, new_values
 
@@ -134,5 +142,9 @@ def model_to_dict(obj, fields):
     result = {}
     for field in fields:
         val = getattr(obj, field, None)
-        result[field] = str(val) if val is not None else None
+        # Keep booleans as booleans, don't convert to string
+        if isinstance(val, bool):
+            result[field] = val
+        else:
+            result[field] = str(val) if val is not None else None
     return result

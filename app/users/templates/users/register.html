@@ -177,12 +177,16 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST" novalidate>
+        <form method="POST" novalidate autocomplete="off">
             {{ form.hidden_tag() }}
+
+            <!-- Hidden decoy fields to prevent browser autocomplete -->
+            <input type="text" name="prevent_autofill" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
+            <input type="password" name="prevent_password" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
 
             <div class="form-group">
                 {{ form.username.label(class='form-label') }}
-                {{ form.username(class='form-control', placeholder='Choose a username', autofocus=true) }}
+                {{ form.username(class='form-control', placeholder='Choose a username', autofocus=true, autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                 {% if form.username.errors %}
                     <div class="error-text">
                         {% for error in form.username.errors %}{{ error }}{% endfor %}
@@ -192,7 +196,7 @@
 
             <div class="form-group">
                 {{ form.email.label(class='form-label') }}
-                {{ form.email(class='form-control', placeholder='your.email@example.com', type='email') }}
+                {{ form.email(class='form-control', placeholder='your.email@example.com', type='email', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                 {% if form.email.errors %}
                     <div class="error-text">
                         {% for error in form.email.errors %}{{ error }}{% endfor %}
@@ -202,7 +206,7 @@
 
             <div class="form-group">
                 {{ form.full_name.label(class='form-label') }}
-                {{ form.full_name(class='form-control', placeholder='Your Full Name') }}
+                {{ form.full_name(class='form-control', placeholder='Your Full Name', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                 {% if form.full_name.errors %}
                     <div class="error-text">
                         {% for error in form.full_name.errors %}{{ error }}{% endfor %}
@@ -212,7 +216,7 @@
 
             <div class="form-group">
                 {{ form.password.label(class='form-label') }}
-                {{ form.password(class='form-control', placeholder='At least 6 characters') }}
+                {{ form.password(class='form-control', placeholder='At least 6 characters', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                 <div class="form-hint">Password must be at least 6 characters long</div>
                 {% if form.password.errors %}
                     <div class="error-text">
@@ -223,7 +227,7 @@
 
             <div class="form-group">
                 {{ form.confirm_password.label(class='form-label') }}
-                {{ form.confirm_password(class='form-control', placeholder='Re-enter your password') }}
+                {{ form.confirm_password(class='form-control', placeholder='Re-enter your password', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                 {% if form.confirm_password.errors %}
                     <div class="error-text">
                         {% for error in form.confirm_password.errors %}{{ error }}{% endfor %}

@@ -194,7 +194,7 @@
 
             <div class="form-group">
                 {{ form.username.label(class='form-label') }}
-                {{ form.username(class='form-control', placeholder='Enter your username', autofocus=true) }}
+                {{ form.username(class='form-control', placeholder='Enter your username', autofocus=true, autocomplete='off') }}
                 {% if form.username.errors %}
                     <div style="color: #ef4444; font-size: 12px; margin-top: 4px;">
                         {% for error in form.username.errors %}{{ error }}{% endfor %}
@@ -204,7 +204,7 @@
 
             <div class="form-group">
                 {{ form.password.label(class='form-label') }}
-                {{ form.password(class='form-control', placeholder='Enter your password') }}
+                {{ form.password(class='form-control', placeholder='Enter your password', autocomplete='off') }}
                 {% if form.password.errors %}
                     <div style="color: #ef4444; font-size: 12px; margin-top: 4px;">
                         {% for error in form.password.errors %}{{ error }}{% endfor %}

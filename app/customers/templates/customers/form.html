@@ -13,6 +13,10 @@
         <form method="POST" novalidate autocomplete="off">
             {{ form.hidden_tag() }}
 
+            <!-- Hidden decoy fields to prevent browser autocomplete -->
+            <input type="text" name="prevent_autofill" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
+            <input type="password" name="prevent_password" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
+
             <div class="form-row-2">
                 {{ render_field(form.code) }}
                 {{ render_field(form.name) }}
