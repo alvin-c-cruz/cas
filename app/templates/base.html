@@ -972,11 +972,13 @@
                 <span class="nav-icon">🏠</span>
                 <span class="nav-text">Dashboard</span>
             </a>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+            {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant', 'staff'] %}
+            <a href="{{ url_for('dashboard.action_items') }}" class="nav-item {% if request.endpoint == 'dashboard.action_items' %}active{% endif %}">
                 <span class="nav-icon">⚡</span>
                 <span class="nav-text">Action Items</span>
-                <span class="nav-badge">3</span>
+                <span class="nav-badge" id="nav-action-badge" style="display:none">0</span>
             </a>
+            {% endif %}
 
             <!-- Ledger Section -->
             <div class="nav-label">Ledger</div>

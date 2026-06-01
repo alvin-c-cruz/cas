@@ -50,6 +50,12 @@ def home():
                          top_customers=top_customers,
                          top_vendors=top_vendors)
 
+@dashboard_bp.route('/action-items')
+@login_required
+def action_items():
+    """Action Items page - shows all items needing user's action"""
+    return render_template('dashboard/action_items.html')
+
 @dashboard_bp.route('/api/action-items')
 @login_required
 def get_action_items():

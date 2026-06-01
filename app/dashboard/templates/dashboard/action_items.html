@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Action Items{% endblock %}
+{% block page_title %}Action Items{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Items Needing Your Action</div>
+            <div class="card-sub" id="actions-page-meta">Loading...</div>
+        </div>
+        <div style="display:flex;gap:8px">
+            <select id="actions-filter-type" class="form-control" style="width:200px" onchange="renderActionsPage()">
+                <option value="">All Types</option>
+                <option value="JournalEntry">Journal Entries</option>
+                <option value="Invoice">Invoices</option>
+                <option value="Bill">Bills</option>
+                <option value="Collection">Collections</option>
+                <option value="Payment">Payments</option>
+                <option value="AccountChange">Chart of Accounts</option>
+                <option value="VATChange">VAT Categories</option>
+                <option value="WTChange">Withholding Tax</option>
+                <option value="CancelRequest">Cancel Requests</option>
+            </select>
+            <select id="actions-filter-state" class="form-control" style="width:150px" onchange="renderActionsPage()">
+                <option value="">All States</option>
+                <option value="Draft">Draft</option>
+                <option value="Submitted">Submitted</option>
+                <option value="Pending">Pending</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div id="actions-page-content">
+    <!-- Content will be rendered by JavaScript -->
+</div>
+
+<script>
+    // Ensure action items are loaded and rendered
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Fetch backend action items if not already loaded
+        if (typeof fetchBackendActionItems === 'function') {
+            await fetchBackendActionItems();
+        }
+        // Render the page
+        if (typeof renderActionsPage === 'function') {
+            renderActionsPage();
+        }
+    });
+</script>
+{% endblock %}
