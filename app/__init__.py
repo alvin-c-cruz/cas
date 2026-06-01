@@ -34,6 +34,15 @@ def create_app(config=None):
 
         return {'action_items_count': count}
 
+    # Add custom Jinja2 filter for JSON parsing
+    @app.template_filter('from_json')
+    def from_json_filter(s):
+        import json
+        try:
+            return json.loads(s) if s else {}
+        except:
+            return {}
+
     # Default configuration
     app.config['SECRET_KEY'] = config.get('SECRET_KEY', 'your-secret-key-here') if config else 'your-secret-key-here'
     app.config['SQLALCHEMY_DATABASE_URI'] = config.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///cas.db') if config else 'sqlite:///cas.db'
@@ -75,6 +84,7 @@ def create_app(config=None):
     from app.vat_categories.views import vat_categories_bp
     from app.withholding_tax.views import withholding_tax_bp
     from app.customers.views import customers_bp
+    from app.audit.views import audit_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -85,6 +95,7 @@ def create_app(config=None):
     app.register_blueprint(vat_categories_bp, url_prefix='/vat-categories')
     app.register_blueprint(withholding_tax_bp, url_prefix='/withholding-tax')
     app.register_blueprint(customers_bp, url_prefix='/customers')
+    app.register_blueprint(audit_bp)
 
 
     migrate.init_app(app, db)

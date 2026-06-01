@@ -96,6 +96,15 @@ def create():
             )
             db.session.add(customer)
             db.session.commit()
+
+            # Audit log
+            log_create(
+                module='customer',
+                record_id=customer.id,
+                record_identifier=f'{customer.code} - {customer.name}',
+                new_values=model_to_dict(customer, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'postal_code', 'default_vat_category', 'default_wt_code', 'is_active'])
+            )
+
             flash(f'Customer "{customer.name}" created successfully!', 'success')
             return redirect(url_for('customers.list_customers'))
         except Exception as e:
@@ -126,6 +135,9 @@ def edit(id):
             return render_template('customers/form.html', form=form, customer=customer)
 
         try:
+            # Capture old values before update
+            old_values = model_to_dict(customer, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'postal_code', 'default_vat_category', 'default_wt_code', 'is_active'])
+
             customer.code = form.code.data
             customer.name = form.name.data
             customer.contact_person = form.contact_person.data
@@ -139,6 +151,17 @@ def edit(id):
             customer.default_wt_code = form.default_wt_code.data if form.default_wt_code.data else None
             customer.is_active = bool(int(form.is_active.data))
             db.session.commit()
+
+            # Audit log
+            new_values = model_to_dict(customer, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'postal_code', 'default_vat_category', 'default_wt_code', 'is_active'])
+            log_update(
+                module='customer',
+                record_id=customer.id,
+                record_identifier=f'{customer.code} - {customer.name}',
+                old_values=old_values,
+                new_values=new_values
+            )
+
             flash(f'Customer "{customer.name}" updated successfully!', 'success')
             return redirect(url_for('customers.list_customers'))
         except Exception as e:
@@ -170,8 +193,21 @@ def delete(id):
     customer = Customer.query.get_or_404(id)
 
     try:
+        # Capture values before delete
+        old_values = model_to_dict(customer, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'postal_code', 'default_vat_category', 'default_wt_code', 'is_active'])
+        customer_identifier = f'{customer.code} - {customer.name}'
+        customer_id = customer.id
+
         db.session.delete(customer)
         db.session.commit()
+
+        # Audit log
+        log_delete(
+            module='customer',
+            record_id=customer_id,
+            record_identifier=customer_identifier,
+            old_values=old_values
+        )
         flash(f'Customer "{customer.name}" deleted successfully!', 'success')
     except Exception as e:
         db.session.rollback()

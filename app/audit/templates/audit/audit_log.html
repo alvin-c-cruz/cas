@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="card mb-4">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Audit Trail</div>
+            <div class="card-sub">{{ pagination.total }} entries found</div>
+        </div>
+        <form method="GET" style="display:flex;gap:8px">
+            <select name="module" class="form-control" style="width:150px">
+                <option value="">All Modules</option>
+                {% for mod in modules %}
+                <option value="{{ mod }}" {% if mod == module_filter %}selected{% endif %}>
+                    {{ mod.replace('_', ' ').title() }}
+                </option>
+                {% endfor %}
+            </select>
+            <select name="action" class="form-control" style="width:120px">
+                <option value="">All Actions</option>
+                {% for act in actions %}
+                <option value="{{ act }}" {% if act == action_filter %}selected{% endif %}>
+                    {{ act.title() }}
+                </option>
+                {% endfor %}
+            </select>
+            <select name="user" class="form-control" style="width:150px">
+                <option value="">All Users</option>
+                {% for u in users %}
+                <option value="{{ u.id }}" {% if u.id|string == user_filter %}selected{% endif %}>
+                    {{ u.username }}
+                </option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary">Filter</button>
+            <a href="{{ url_for('audit.audit_log') }}" class="btn btn-secondary">Clear</a>
+        </form>
+    </div>
+
+    <div style="overflow-x:auto">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>Module</th>
+                    <th>Action</th>
+                    <th>Record</th>
+                    <th>Changes</th>
+                    <th>IP Address</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if logs %}
+                    {% for log in logs %}
+                    <tr>
+                        <td style="white-space:nowrap">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else '—' }}</td>
+                        <td>{{ log.user.username if log.user else '—' }}</td>
+                        <td>
+                            <span class="badge" style="background:#f1f5f9;color:#475569">
+                                {{ log.module.replace('_', ' ').title() }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if log.action == 'create' %}
+                            <span class="badge" style="background:#dcfce7;color:#166534">CREATE</span>
+                            {% elif log.action == 'update' %}
+                            <span class="badge" style="background:#dbeafe;color:#1e40af">UPDATE</span>
+                            {% elif log.action == 'delete' %}
+                            <span class="badge" style="background:#fee2e2;color:#991b1b">DELETE</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ log.record_identifier or f'ID: {log.record_id}' }}</strong>
+                        </td>
+                        <td>
+                            {% set old = log.old_values|from_json if log.old_values else {} %}
+                            {% set new = log.new_values|from_json if log.new_values else {} %}
+
+                            {% if log.action == 'create' %}
+                                <details style="cursor:pointer">
+                                    <summary style="color:#3b82f6;font-weight:600">View created data</summary>
+                                    <div style="margin-top:8px;font-size:12px;background:#f8fafc;padding:8px;border-radius:4px">
+                                        {% for key, value in new.items() %}
+                                        <div><strong>{{ key }}:</strong> {{ value }}</div>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                            {% elif log.action == 'update' %}
+                                <details style="cursor:pointer">
+                                    <summary style="color:#3b82f6;font-weight:600">View changes</summary>
+                                    <div style="margin-top:8px;font-size:12px;background:#f8fafc;padding:8px;border-radius:4px">
+                                        {% for key in new.keys() %}
+                                            {% if old.get(key) != new.get(key) %}
+                                            <div style="margin-bottom:4px">
+                                                <strong>{{ key }}:</strong><br>
+                                                <span style="color:#dc2626;text-decoration:line-through">{{ old.get(key, '—') }}</span> →
+                                                <span style="color:#16a34a">{{ new.get(key, '—') }}</span>
+                                            </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                            {% elif log.action == 'delete' %}
+                                <details style="cursor:pointer">
+                                    <summary style="color:#3b82f6;font-weight:600">View deleted data</summary>
+                                    <div style="margin-top:8px;font-size:12px;background:#f8fafc;padding:8px;border-radius:4px">
+                                        {% for key, value in old.items() %}
+                                        <div><strong>{{ key }}:</strong> {{ value }}</div>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:11px;color:#64748b">{{ log.ip_address or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align:center;padding:40px;color:#64748b">
+                            No audit log entries found
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ min(pagination.page * pagination.per_page, pagination.total) }} of
+            {{ pagination.total }} entries
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('audit.audit_log', page=pagination.prev_num, module=module_filter, action=action_filter, user=user_filter) }}" class="btn btn-secondary btn-sm">← Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('audit.audit_log', page=pagination.next_num, module=module_filter, action=action_filter, user=user_filter) }}" class="btn btn-secondary btn-sm">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
