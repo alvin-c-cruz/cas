@@ -116,9 +116,7 @@
                            data-form-type="other"
                            name="vat_search_random_{{ range(10000, 99999) | random }}"
                            role="combobox"
-                           aria-autocomplete="none"
-                           readonly
-                           onfocus="this.removeAttribute('readonly');">
+                           aria-autocomplete="none">
                     <span class="search-select-arrow">▼</span>
                     <div class="search-select-dropdown" id="vat-dropdown">
                         <div class="search-select-options">
@@ -518,6 +516,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 el.classList.add('selected');
             }
         });
+
+        // Trigger change event for form tracking
+        hiddenSelect.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     // Open dropdown
@@ -569,6 +570,26 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
+
+    // Initialize form change tracking for dynamic withholding tax checkboxes
+    // The FormChangeTracker is auto-initialized, but we need to handle the dynamic checkboxes
+    const form = document.querySelector('form[data-track-changes="true"]');
+    if (form) {
+        // Listen to changes on withholding tax checkboxes
+        const wtCheckboxes = form.querySelectorAll('input[name="withholding_tax_ids"]');
+        wtCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                // Trigger the form's change event to update the tracking
+                form.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
+
+        // Exclude the VAT search input from tracking (it's just for UI, not form data)
+        const vatSearchInput = document.getElementById('vat-search-input');
+        if (vatSearchInput) {
+            vatSearchInput.setAttribute('data-no-track', 'true');
+        }
+    }
 });
 </script>
 {% endblock %}

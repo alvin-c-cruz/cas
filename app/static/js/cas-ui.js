@@ -274,13 +274,25 @@
     storeOriginalValues() {
       const inputs = this.form.querySelectorAll('input, select, textarea');
       inputs.forEach(input => {
-        // Skip hidden fields and CSRF token
-        if (input.name === 'csrf_token' || (input.type === 'hidden' && !input.name.startsWith('wt_'))) {
+        // Skip hidden fields, CSRF token, and inputs marked with data-no-track
+        if (input.name === 'csrf_token' ||
+            (input.type === 'hidden' && !input.name.startsWith('wt_')) ||
+            input.hasAttribute('data-no-track')) {
           return;
         }
 
         if (input.type === 'checkbox' || input.type === 'radio') {
-          this.originalValues[input.name] = input.checked;
+          // For checkboxes with the same name (like withholding_tax_ids), store as array
+          if (input.name === 'withholding_tax_ids') {
+            if (!this.originalValues[input.name]) {
+              this.originalValues[input.name] = [];
+            }
+            if (input.checked) {
+              this.originalValues[input.name].push(input.value);
+            }
+          } else {
+            this.originalValues[input.name] = input.checked;
+          }
         } else {
           this.originalValues[input.name] = input.value;
         }
@@ -303,9 +315,30 @@
       const inputs = this.form.querySelectorAll('input, select, textarea');
       let hasChanges = false;
 
+      // Special handling for withholding_tax_ids checkboxes
+      const wtCheckboxes = this.form.querySelectorAll('input[name="withholding_tax_ids"]');
+      if (wtCheckboxes.length > 0) {
+        const currentWtIds = [];
+        wtCheckboxes.forEach(cb => {
+          if (cb.checked) {
+            currentWtIds.push(cb.value);
+          }
+        });
+
+        const originalWtIds = this.originalValues['withholding_tax_ids'] || [];
+        // Compare arrays
+        if (currentWtIds.length !== originalWtIds.length ||
+            !currentWtIds.every(id => originalWtIds.includes(id))) {
+          hasChanges = true;
+        }
+      }
+
       inputs.forEach(input => {
-        // Skip CSRF token and other hidden fields that shouldn't trigger changes
-        if (input.name === 'csrf_token' || input.type === 'hidden') {
+        // Skip CSRF token, hidden fields, data-no-track inputs, and withholding_tax_ids (handled above)
+        if (input.name === 'csrf_token' ||
+            input.type === 'hidden' ||
+            input.hasAttribute('data-no-track') ||
+            input.name === 'withholding_tax_ids') {
           return;
         }
 
