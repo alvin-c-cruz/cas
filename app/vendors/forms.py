@@ -43,6 +43,22 @@ class VendorForm(FlaskForm):
         ('Advance', 'Advance Payment')
     ])
 
+    default_vat = SelectField('Default VAT', choices=[
+        ('', '-- Select VAT Type --'),
+        ('VATOG 12%', 'VATOG 12% (VAT on Goods)'),
+        ('VATSV 12%', 'VATSV 12% (VAT on Services)'),
+        ('VAT-Exempt', 'VAT-Exempt'),
+        ('Zero-Rated', 'Zero-Rated')
+    ])
+
+    default_wt = SelectField('Default Withholding Tax', choices=[
+        ('', '-- Select WT Type --'),
+        ('WC158', 'WC158 (2% - Goods)'),
+        ('WC160', 'WC160 (1% - Services)'),
+        ('WC100', 'WC100 (5% - Professional Fees)'),
+        ('None', 'No Withholding Tax')
+    ])
+
     address = TextAreaField('Address', validators=[Optional()])
 
     email = StringField('Email', validators=[
@@ -50,30 +66,5 @@ class VendorForm(FlaskForm):
         Email(message='Invalid email address.'),
         Length(max=120, message='Email must be 120 characters or less.')
     ])
-
-    check_payee_name = StringField('Check Payee Name', validators=[
-        Optional(),
-        Length(max=200, message='Check payee name must be 200 characters or less.')
-    ])
-
-    postal_code = StringField('Postal Code', validators=[
-        Optional(),
-        Length(max=20, message='Postal code must be 20 characters or less.')
-    ])
-
-    default_vat_category = SelectField('Default VAT Category', choices=[
-        ('', '-- Select VAT Category --'),
-        ('Other Goods (12%)', 'Other Goods (12%)'),
-        ('Services (12%)', 'Services (12%)'),
-        ('Capital Goods (12%)', 'Capital Goods (12%)'),
-        ('VAT-Exempt', 'VAT-Exempt'),
-        ('Zero-Rated', 'Zero-Rated')
-    ])
-
-    # Withholding Tax checkboxes
-    wt_wc010 = BooleanField('WC010 Prof. Fees - Individuals (10%)')
-    wt_wc011 = BooleanField('WC011 Prof. Fees - Corporations (15%)')
-    wt_wc100 = BooleanField('WC100 Contractors & Subcontractors (2%)')
-    wt_wc158 = BooleanField('WC158 Purchases of Goods (1%)')
 
     is_active = BooleanField('Active')
