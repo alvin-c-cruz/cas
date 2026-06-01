@@ -7,6 +7,7 @@ from functools import wraps
 from app import db
 from app.vendors.models import Vendor
 from app.vat_categories.models import VATCategory
+from app.withholding_tax.models import WithholdingTax
 from app.vendors.forms import VendorForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 
@@ -87,12 +88,26 @@ def create():
                 check_payee_name=form.check_payee_name.data,
                 postal_code=form.postal_code.data,
                 default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
-                wt_wc010=form.wt_wc010.data,
-                wt_wc011=form.wt_wc011.data,
-                wt_wc100=form.wt_wc100.data,
-                wt_wc158=form.wt_wc158.data,
                 is_active=bool(int(form.is_active.data)) if form.is_active.data else True
             )
+
+            # Handle dynamic withholding taxes
+            withholding_tax_ids = request.form.getlist('withholding_tax_ids')
+            if withholding_tax_ids:
+                selected_wts = WithholdingTax.query.filter(WithholdingTax.id.in_(withholding_tax_ids)).all()
+                vendor.withholding_taxes = selected_wts
+
+                # Also set the legacy fields for backward compatibility
+                for wt in selected_wts:
+                    if wt.code == 'WC010':
+                        vendor.wt_wc010 = True
+                    elif wt.code == 'WC011':
+                        vendor.wt_wc011 = True
+                    elif wt.code == 'WC100':
+                        vendor.wt_wc100 = True
+                    elif wt.code == 'WC158':
+                        vendor.wt_wc158 = True
+
             db.session.add(vendor)
             db.session.commit()
 
@@ -116,7 +131,10 @@ def create():
         form.is_active.data = '1'  # Active by default
         form.payment_terms.data = 'Net 30'
 
-    return render_template('vendors/form.html', form=form, vendor=None)
+    # Get active withholding taxes for the form
+    withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+
+    return render_template('vendors/form.html', form=form, vendor=None, withholding_taxes=withholding_taxes)
 
 
 @vendors_bp.route('/vendors/<int:id>/edit', methods=['GET', 'POST'])
@@ -150,11 +168,30 @@ def edit(id):
             vendor.check_payee_name = form.check_payee_name.data
             vendor.postal_code = form.postal_code.data
             vendor.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
-            vendor.wt_wc010 = form.wt_wc010.data
-            vendor.wt_wc011 = form.wt_wc011.data
-            vendor.wt_wc100 = form.wt_wc100.data
-            vendor.wt_wc158 = form.wt_wc158.data
             vendor.is_active = bool(int(form.is_active.data))
+
+            # Handle dynamic withholding taxes
+            withholding_tax_ids = request.form.getlist('withholding_tax_ids')
+            selected_wts = WithholdingTax.query.filter(WithholdingTax.id.in_(withholding_tax_ids)).all() if withholding_tax_ids else []
+            vendor.withholding_taxes = selected_wts
+
+            # Reset legacy fields
+            vendor.wt_wc010 = False
+            vendor.wt_wc011 = False
+            vendor.wt_wc100 = False
+            vendor.wt_wc158 = False
+
+            # Set the legacy fields for backward compatibility
+            for wt in selected_wts:
+                if wt.code == 'WC010':
+                    vendor.wt_wc010 = True
+                elif wt.code == 'WC011':
+                    vendor.wt_wc011 = True
+                elif wt.code == 'WC100':
+                    vendor.wt_wc100 = True
+                elif wt.code == 'WC158':
+                    vendor.wt_wc158 = True
+
             db.session.commit()
 
             # Audit log
@@ -192,7 +229,16 @@ def edit(id):
         form.wt_wc158.data = vendor.wt_wc158
         form.is_active.data = '1' if vendor.is_active else '0'
 
-    return render_template('vendors/form.html', form=form, vendor=vendor)
+    # Get active withholding taxes for the form
+    withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+
+    # Get selected withholding taxes for this vendor (using the new relationship if available)
+    selected_wt_ids = []
+    if hasattr(vendor, 'withholding_taxes'):
+        selected_wt_ids = [wt.id for wt in vendor.withholding_taxes]
+
+    return render_template('vendors/form.html', form=form, vendor=vendor,
+                         withholding_taxes=withholding_taxes, selected_wt_ids=selected_wt_ids)
 
 
 @vendors_bp.route('/vendors/<int:id>/delete', methods=['POST'])

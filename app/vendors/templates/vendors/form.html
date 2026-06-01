@@ -144,33 +144,37 @@
         <div class="form-group">
             <label class="section-label">Default Withholding Tax</label>
             <div class="wt-checkbox-grid">
-                <div class="wt-checkbox-item">
-                    {{ form.wt_wc010(class="form-checkbox") }}
-                    <label for="{{ form.wt_wc010.id }}">
-                        <span>WC010 <span class="wt-badge">10%</span></span>
-                        <span class="wt-description">Professional Fees - Individuals</span>
-                    </label>
-                </div>
-                <div class="wt-checkbox-item">
-                    {{ form.wt_wc011(class="form-checkbox") }}
-                    <label for="{{ form.wt_wc011.id }}">
-                        <span>WC011 <span class="wt-badge">15%</span></span>
-                        <span class="wt-description">Professional Fees - Corporations</span>
-                    </label>
-                </div>
-                <div class="wt-checkbox-item">
-                    {{ form.wt_wc100(class="form-checkbox") }}
-                    <label for="{{ form.wt_wc100.id }}">
-                        <span>WC100 <span class="wt-badge">2%</span></span>
-                        <span class="wt-description">Contractors & Subcontractors</span>
-                    </label>
-                </div>
-                <div class="wt-checkbox-item">
-                    {{ form.wt_wc158(class="form-checkbox") }}
-                    <label for="{{ form.wt_wc158.id }}">
-                        <span>WC158 <span class="wt-badge">1%</span></span>
-                        <span class="wt-description">Purchases of Goods</span>
-                    </label>
+                {% if withholding_taxes %}
+                    {% for wt in withholding_taxes %}
+                    <div class="wt-checkbox-item">
+                        <input type="checkbox"
+                               class="form-checkbox"
+                               id="wt_{{ wt.id }}"
+                               name="withholding_tax_ids"
+                               value="{{ wt.id }}"
+                               {% if vendor and wt.id in selected_wt_ids %}checked{% endif %}
+                               {% if vendor and wt.code == 'WC010' and form.wt_wc010.data %}checked{% endif %}
+                               {% if vendor and wt.code == 'WC011' and form.wt_wc011.data %}checked{% endif %}
+                               {% if vendor and wt.code == 'WC100' and form.wt_wc100.data %}checked{% endif %}
+                               {% if vendor and wt.code == 'WC158' and form.wt_wc158.data %}checked{% endif %}>
+                        <label for="wt_{{ wt.id }}">
+                            <span>{{ wt.code }} <span class="wt-badge">{{ wt.rate }}%</span></span>
+                            <span class="wt-description">{{ wt.name }}</span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="wt-checkbox-item">
+                        <span style="color: #6b7280; font-style: italic;">No withholding taxes configured. Please set up withholding taxes in the maintenance module.</span>
+                    </div>
+                {% endif %}
+
+                <!-- Hidden fields for backward compatibility -->
+                <div style="display:none">
+                    {{ form.wt_wc010 }}
+                    {{ form.wt_wc011 }}
+                    {{ form.wt_wc100 }}
+                    {{ form.wt_wc158 }}
                 </div>
             </div>
         </div>

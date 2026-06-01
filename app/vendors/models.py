@@ -5,6 +5,13 @@ from app import db
 from app.utils import ph_now
 
 
+# Association table for many-to-many relationship between vendors and withholding taxes
+vendor_withholding_taxes = db.Table('vendor_withholding_taxes',
+    db.Column('vendor_id', db.Integer, db.ForeignKey('vendors.id'), primary_key=True),
+    db.Column('withholding_tax_id', db.Integer, db.ForeignKey('withholding_tax.id'), primary_key=True)
+)
+
+
 class Vendor(db.Model):
     """
     Vendor/Supplier model for managing business partners.
@@ -40,11 +47,17 @@ class Vendor(db.Model):
     # Default VAT Category
     default_vat_category = db.Column(db.String(100))
 
-    # Withholding Tax checkboxes (Philippine BIR compliance)
+    # Withholding Tax checkboxes (DEPRECATED - kept for backward compatibility during migration)
+    # These will be removed after migrating to the many-to-many relationship
     wt_wc010 = db.Column(db.Boolean, default=False)  # Prof. Fees - Individuals (10%)
     wt_wc011 = db.Column(db.Boolean, default=False)  # Prof. Fees - Corporations (15%)
     wt_wc100 = db.Column(db.Boolean, default=False)  # Contractors & Subcontractors (2%)
     wt_wc158 = db.Column(db.Boolean, default=False)  # Purchases of Goods (1%)
+
+    # Dynamic withholding tax relationship (many-to-many)
+    withholding_taxes = db.relationship('WithholdingTax',
+                                       secondary=vendor_withholding_taxes,
+                                       backref=db.backref('vendors', lazy='dynamic'))
 
     # Status
     is_active = db.Column(db.Boolean, default=True, nullable=False)
