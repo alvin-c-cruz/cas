@@ -972,7 +972,7 @@
                 <span class="nav-icon">🏠</span>
                 <span class="nav-text">Dashboard</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">⚡</span>
                 <span class="nav-text">Action Items</span>
                 <span class="nav-badge">3</span>
@@ -984,37 +984,37 @@
                 <span class="nav-icon">📋</span>
                 <span class="nav-text">Chart of Accounts</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">📓</span>
                 <span class="nav-text">Journal Entries</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">📖</span>
                 <span class="nav-text">General Ledger</span>
             </a>
 
             <!-- Transactions Section -->
             <div class="nav-label">Transactions</div>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">📄</span>
                 <span class="nav-text">Accounts Receivable</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">💰</span>
                 <span class="nav-text">Collections</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">📋</span>
                 <span class="nav-text">Accounts Payable</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">💸</span>
                 <span class="nav-text">Payments</span>
             </a>
 
             <!-- Maintenance Section -->
             <div class="nav-label">Maintenance</div>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">👥</span>
                 <span class="nav-text">Customers</span>
             </a>
@@ -1022,14 +1022,24 @@
                 <span class="nav-icon">🏢</span>
                 <span class="nav-text">Vendors</span>
             </a>
+            {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
+            <a href="{{ url_for('vat_categories.list_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_categories.') %}active{% endif %}">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">VAT Categories</span>
+            </a>
+            <a href="{{ url_for('withholding_tax.list_withholding_tax') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('withholding_tax.') %}active{% endif %}">
+                <span class="nav-icon">💼</span>
+                <span class="nav-text">Withholding Tax</span>
+            </a>
+            {% endif %}
 
             <!-- Analytics Section -->
             <div class="nav-label">Analytics</div>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">📊</span>
                 <span class="nav-text">Financial Reports</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                 <span class="nav-icon">🏛</span>
                 <span class="nav-text">BIR Reports</span>
             </a>

@@ -43,6 +43,9 @@ def create_app(config=None):
     from app.users.models import User, LoginHistory
     from app.branches.models import Branch
     from app.vendors.models import Vendor
+    from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
+    from app.withholding_tax.models import WithholdingTax, WithholdingTaxChangeRequest
+    from app.customers.models import Customer
     from app.settings import AppSettings
 
     # Register blueprints
@@ -52,6 +55,9 @@ def create_app(config=None):
     from app.api.views import api_bp
     from app.branches.views import branches_bp
     from app.vendors.views import vendors_bp
+    from app.vat_categories.views import vat_categories_bp
+    from app.withholding_tax.views import withholding_tax_bp
+    from app.customers.views import customers_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -59,6 +65,9 @@ def create_app(config=None):
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(branches_bp)
     app.register_blueprint(vendors_bp)
+    app.register_blueprint(vat_categories_bp, url_prefix='/vat-categories')
+    app.register_blueprint(withholding_tax_bp, url_prefix='/withholding-tax')
+    app.register_blueprint(customers_bp, url_prefix='/customers')
 
 
     migrate.init_app(app, db)

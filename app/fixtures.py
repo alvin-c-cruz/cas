@@ -8,6 +8,9 @@ from app import db
 from app.users.models import User
 from app.accounts.models import Account
 from app.branches.models import Branch
+from app.vat_categories.models import VATCategory
+from app.withholding_tax.models import WithholdingTax
+from app.customers.models import Customer
 from app.settings import AppSettings
 
 
@@ -242,6 +245,57 @@ def load_sample_vendors():
     return sample_vendors
 
 
+def load_default_vat_categories():
+    """
+    Create default Philippine VAT categories.
+
+    Standard VAT categories for Philippine BIR compliance.
+    """
+    if VATCategory.query.count() > 0:
+        print("  [i] VAT categories already exist, skipping...")
+        return []
+
+    vat_categories = [
+        VATCategory(code='VAT-12', name='Other Goods (12%)', description='Standard VAT rate for other goods', rate=12.00, is_active=True),
+        VATCategory(code='VAT-SVC', name='Services (12%)', description='Standard VAT rate for services', rate=12.00, is_active=True),
+        VATCategory(code='VAT-CAP', name='Capital Goods (12%)', description='Standard VAT rate for capital goods', rate=12.00, is_active=True),
+        VATCategory(code='VAT-EX', name='VAT-Exempt', description='Transactions exempt from VAT', rate=0.00, is_active=True),
+        VATCategory(code='VAT-ZR', name='Zero-Rated', description='Transactions subject to 0% VAT', rate=0.00, is_active=True),
+    ]
+
+    for vat_category in vat_categories:
+        db.session.add(vat_category)
+
+    db.session.commit()
+    print(f"  [OK] {len(vat_categories)} default VAT categories loaded")
+    return vat_categories
+
+
+def load_default_withholding_tax():
+    """
+    Create default Philippine withholding tax codes.
+
+    Standard withholding tax codes for Philippine BIR compliance.
+    """
+    if WithholdingTax.query.count() > 0:
+        print("  [i] Withholding tax codes already exist, skipping...")
+        return []
+
+    withholding_taxes = [
+        WithholdingTax(code='WC010', name='Professional Fees - Individuals', description='Professional and talent fees paid to individuals', rate=10.00, is_active=True),
+        WithholdingTax(code='WC011', name='Professional Fees - Corporations', description='Professional fees paid to corporations', rate=15.00, is_active=True),
+        WithholdingTax(code='WC100', name='Contractors & Subcontractors', description='Payments to contractors and subcontractors', rate=2.00, is_active=True),
+        WithholdingTax(code='WC158', name='Purchases of Goods', description='Purchases of goods or services from suppliers', rate=1.00, is_active=True),
+    ]
+
+    for wt in withholding_taxes:
+        db.session.add(wt)
+
+    db.session.commit()
+    print(f"  [OK] {len(withholding_taxes)} default withholding tax codes loaded")
+    return withholding_taxes
+
+
 def load_all_fixtures():
     """
     Load all default fixtures.
@@ -251,7 +305,9 @@ def load_all_fixtures():
     2. Main branch
     3. Sample chart of accounts
     4. Sample vendors
-    5. Application settings
+    5. VAT categories
+    6. Withholding tax codes
+    7. Application settings
     """
     print("\n" + "="*60)
     print("Loading Default Fixtures")
@@ -269,7 +325,13 @@ def load_all_fixtures():
     print("\n4. Loading sample vendors...")
     load_sample_vendors()
 
-    print("\n5. Initializing default settings...")
+    print("\n5. Loading default VAT categories...")
+    load_default_vat_categories()
+
+    print("\n6. Loading default withholding tax codes...")
+    load_default_withholding_tax()
+
+    print("\n7. Initializing default settings...")
     load_default_settings()
 
     print("\n" + "="*60)

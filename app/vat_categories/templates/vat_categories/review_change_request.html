@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Review Change Request{% endblock %}
+{% block page_title %}Review VAT Category Change Request{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field, render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="page-header-actions">
+        <div>
+            <h1 class="page-heading">Review Change Request</h1>
+            <p class="page-subheading">Approve or reject this change</p>
+        </div>
+        <div class="page-actions">
+            <a href="{{ url_for('vat_categories.change_requests') }}" class="btn btn-secondary">Back to Requests</a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body" style="padding: 24px;">
+        <div style="margin-bottom: 24px; padding: 16px; background: #f8fafc; border-radius: 8px;">
+            <div style="display: grid; grid-template-columns: 150px 1fr; gap: 12px;">
+                <div style="font-weight: 600; color: #64748b;">Action:</div>
+                <div>
+                    {% if change_request.action == 'create' %}
+                    <span class="badge" style="background: #dcfce7; color: #166534;">CREATE</span>
+                    {% elif change_request.action == 'update' %}
+                    <span class="badge" style="background: #dbeafe; color: #1e40af;">UPDATE</span>
+                    {% elif change_request.action == 'delete' %}
+                    <span class="badge" style="background: #fee2e2; color: #991b1b;">DELETE</span>
+                    {% endif %}
+                </div>
+
+                <div style="font-weight: 600; color: #64748b;">Requested By:</div>
+                <div>{{ change_request.requested_by.full_name if change_request.requested_by else 'N/A' }}</div>
+
+                <div style="font-weight: 600; color: #64748b;">Requested At:</div>
+                <div>{{ change_request.requested_at.strftime('%B %d, %Y at %I:%M %p') if change_request.requested_at else 'N/A' }}</div>
+            </div>
+        </div>
+
+        {% if change_request.action == 'create' %}
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">Proposed New VAT Category</h3>
+        <div style="display: grid; grid-template-columns: 150px 1fr; gap: 12px; margin-bottom: 24px;">
+            <div style="font-weight: 600; color: #64748b;">Code:</div>
+            <div>{{ proposed_data.get('code', 'N/A') }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Name:</div>
+            <div>{{ proposed_data.get('name', 'N/A') }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Description:</div>
+            <div>{{ proposed_data.get('description', '-') }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Rate:</div>
+            <div>{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
+
+            <div style="font-weight: 600; color: #64748b;">Status:</div>
+            <div>
+                {% if proposed_data.get('is_active') %}
+                <span class="badge badge-success">Active</span>
+                {% else %}
+                <span class="badge badge-inactive">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% elif change_request.action == 'update' %}
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">Proposed Changes</h3>
+        <div style="display: grid; grid-template-columns: 150px 1fr 1fr; gap: 12px; margin-bottom: 24px;">
+            <div></div>
+            <div style="font-weight: 600; color: #64748b; text-align: center;">Current</div>
+            <div style="font-weight: 600; color: #3b82f6; text-align: center;">Proposed</div>
+
+            <div style="font-weight: 600; color: #64748b;">Code:</div>
+            <div style="text-align: center;">{{ change_request.vat_category.code if change_request.vat_category else 'N/A' }}</div>
+            <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ proposed_data.get('code', 'N/A') }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Name:</div>
+            <div style="text-align: center;">{{ change_request.vat_category.name if change_request.vat_category else 'N/A' }}</div>
+            <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ proposed_data.get('name', 'N/A') }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Description:</div>
+            <div style="text-align: center;">{{ change_request.vat_category.description if change_request.vat_category and change_request.vat_category.description else '-' }}</div>
+            <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ proposed_data.get('description', '-') }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Rate:</div>
+            <div style="text-align: center;">{{ "%.2f"|format(change_request.vat_category.rate) if change_request.vat_category else 'N/A' }}%</div>
+            <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
+
+            <div style="font-weight: 600; color: #64748b;">Status:</div>
+            <div style="text-align: center;">
+                {% if change_request.vat_category and change_request.vat_category.is_active %}
+                <span class="badge badge-success">Active</span>
+                {% else %}
+                <span class="badge badge-inactive">Inactive</span>
+                {% endif %}
+            </div>
+            <div style="text-align: center;">
+                {% if proposed_data.get('is_active') %}
+                <span class="badge badge-success">Active</span>
+                {% else %}
+                <span class="badge badge-inactive">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% elif change_request.action == 'delete' %}
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ef4444;">Delete VAT Category</h3>
+        {% if change_request.vat_category %}
+        <div style="display: grid; grid-template-columns: 150px 1fr; gap: 12px; margin-bottom: 24px;">
+            <div style="font-weight: 600; color: #64748b;">Code:</div>
+            <div>{{ change_request.vat_category.code }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Name:</div>
+            <div>{{ change_request.vat_category.name }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Description:</div>
+            <div>{{ change_request.vat_category.description or '-' }}</div>
+
+            <div style="font-weight: 600; color: #64748b;">Rate:</div>
+            <div>{{ "%.2f"|format(change_request.vat_category.rate) }}%</div>
+        </div>
+        {% else %}
+        <p style="color: #ef4444;">Warning: VAT category has already been deleted.</p>
+        {% endif %}
+        {% endif %}
+
+        <form method="POST">
+            {{ form.hidden_tag() }}
+
+            {{ render_field(form.action) }}
+            {{ render_field(form.review_notes) }}
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Submit Review</button>
+                <a href="{{ url_for('vat_categories.change_requests') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

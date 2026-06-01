@@ -6,6 +6,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from app import db
 from app.vendors.models import Vendor
+from app.vat_categories.models import VATCategory
 from app.vendors.forms import VendorForm
 
 vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
@@ -32,12 +33,38 @@ def list_vendors():
     return render_template('vendors/list.html', vendors=vendors)
 
 
+def generate_next_vendor_code():
+    """Generate the next vendor code in sequence (V001, V002, etc.)"""
+    # Get the latest vendor by code
+    latest_vendor = Vendor.query.order_by(Vendor.code.desc()).first()
+
+    if not latest_vendor or not latest_vendor.code.startswith('V'):
+        return 'V001'
+
+    # Extract the numeric part from the latest code
+    try:
+        latest_number = int(latest_vendor.code[1:])  # Remove 'V' prefix
+        next_number = latest_number + 1
+        return f'V{next_number:03d}'  # Format as V001, V002, etc.
+    except (ValueError, IndexError):
+        return 'V001'
+
+
+def populate_vat_category_choices(form):
+    """Populate VAT category choices from database"""
+    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.name).all()
+    choices = [('', '-- Select --')]
+    choices.extend([(cat.name, cat.name) for cat in vat_categories])
+    form.default_vat_category.choices = choices
+
+
 @vendors_bp.route('/vendors/create', methods=['GET', 'POST'])
 @login_required
 @accountant_or_admin_required
 def create():
     """Create new vendor"""
     form = VendorForm()
+    populate_vat_category_choices(form)
 
     if form.validate_on_submit():
         # Check for duplicate vendor code
@@ -52,13 +79,18 @@ def create():
                 name=form.name.data,
                 contact_person=form.contact_person.data,
                 phone=form.phone.data,
+                email=form.email.data,
                 tin=form.tin.data,
                 payment_terms=form.payment_terms.data,
-                default_vat=form.default_vat.data if form.default_vat.data else None,
-                default_wt=form.default_wt.data if form.default_wt.data else None,
                 address=form.address.data,
-                email=form.email.data,
-                is_active=form.is_active.data if form.is_active.data is not None else True
+                check_payee_name=form.check_payee_name.data,
+                postal_code=form.postal_code.data,
+                default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
+                wt_wc010=form.wt_wc010.data,
+                wt_wc011=form.wt_wc011.data,
+                wt_wc100=form.wt_wc100.data,
+                wt_wc158=form.wt_wc158.data,
+                is_active=bool(int(form.is_active.data)) if form.is_active.data else True
             )
             db.session.add(vendor)
             db.session.commit()
@@ -68,9 +100,10 @@ def create():
             db.session.rollback()
             flash(f'Error creating vendor: {str(e)}', 'error')
 
-    # Set default for is_active checkbox
+    # Set defaults for new vendor
     if request.method == 'GET':
-        form.is_active.data = True
+        form.code.data = generate_next_vendor_code()  # Auto-generate vendor code
+        form.is_active.data = '1'  # Active by default
         form.payment_terms.data = 'Net 30'
 
     return render_template('vendors/form.html', form=form, vendor=None)
@@ -83,6 +116,7 @@ def edit(id):
     """Edit vendor"""
     vendor = Vendor.query.get_or_404(id)
     form = VendorForm(obj=vendor)
+    populate_vat_category_choices(form)
 
     if form.validate_on_submit():
         # Check for duplicate code (excluding current vendor)
@@ -96,19 +130,43 @@ def edit(id):
             vendor.name = form.name.data
             vendor.contact_person = form.contact_person.data
             vendor.phone = form.phone.data
+            vendor.email = form.email.data
             vendor.tin = form.tin.data
             vendor.payment_terms = form.payment_terms.data
-            vendor.default_vat = form.default_vat.data if form.default_vat.data else None
-            vendor.default_wt = form.default_wt.data if form.default_wt.data else None
             vendor.address = form.address.data
-            vendor.email = form.email.data
-            vendor.is_active = form.is_active.data
+            vendor.check_payee_name = form.check_payee_name.data
+            vendor.postal_code = form.postal_code.data
+            vendor.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
+            vendor.wt_wc010 = form.wt_wc010.data
+            vendor.wt_wc011 = form.wt_wc011.data
+            vendor.wt_wc100 = form.wt_wc100.data
+            vendor.wt_wc158 = form.wt_wc158.data
+            vendor.is_active = bool(int(form.is_active.data))
             db.session.commit()
             flash(f'Vendor "{vendor.name}" updated successfully!', 'success')
             return redirect(url_for('vendors.list_vendors'))
         except Exception as e:
             db.session.rollback()
             flash(f'Error updating vendor: {str(e)}', 'error')
+
+    # Pre-populate form on GET request
+    if request.method == 'GET':
+        form.code.data = vendor.code
+        form.name.data = vendor.name
+        form.contact_person.data = vendor.contact_person
+        form.phone.data = vendor.phone
+        form.email.data = vendor.email
+        form.tin.data = vendor.tin
+        form.payment_terms.data = vendor.payment_terms
+        form.address.data = vendor.address
+        form.check_payee_name.data = vendor.check_payee_name
+        form.postal_code.data = vendor.postal_code
+        form.default_vat_category.data = vendor.default_vat_category
+        form.wt_wc010.data = vendor.wt_wc010
+        form.wt_wc011.data = vendor.wt_wc011
+        form.wt_wc100.data = vendor.wt_wc100
+        form.wt_wc158.data = vendor.wt_wc158
+        form.is_active.data = '1' if vendor.is_active else '0'
 
     return render_template('vendors/form.html', form=form, vendor=vendor)
 

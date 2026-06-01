@@ -432,6 +432,49 @@ For production:
 - WTForms docs: https://wtforms.readthedocs.io/
 - Jinja2 docs: https://jinja.palletsprojects.com/
 
+## Git Workflow
+
+### Commit After Task Completion
+
+**IMPORTANT**: Create a git commit after completing each discrete task or feature.
+
+**When to commit:**
+- After successfully implementing a new module/feature
+- After fixing a bug or error
+- After completing a refactoring task
+- After updating documentation
+- Before switching to a different task
+
+**Commit message format:**
+```
+<Type>: <Short description>
+
+<Detailed description of changes>
+- Bullet point 1
+- Bullet point 2
+```
+
+**Types:**
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `refactor:` - Code refactoring
+- `docs:` - Documentation changes
+- `style:` - Code style/formatting changes
+- `chore:` - Maintenance tasks
+
+**Example:**
+```bash
+git add .
+git commit -m "feat: Add Customer Maintenance CRUD module
+
+Implement complete customer management with:
+- Customer model with VAT and WT fields
+- Dynamic dropdowns for VAT categories and withholding tax codes
+- Auto-generated customer codes (C001, C002, etc.)
+- Role-based access control (accountant/admin only)
+- List and form templates with validation"
+```
+
 ## Notes for Claude
 
 - Always check existing patterns before creating new ones
@@ -443,3 +486,4 @@ For production:
 - Flash messages for user feedback
 - Use `url_for()` for all URLs
 - Follow the established naming conventions
+- **Create a git commit after completing each task**

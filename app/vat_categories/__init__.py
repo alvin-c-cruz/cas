@@ -1,0 +1,1 @@
+# VAT Categories module initialization

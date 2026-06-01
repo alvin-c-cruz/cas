@@ -1,22 +1,22 @@
 """
-Forms for Vendor management
+Forms for Customer management
 """
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, BooleanField, SelectField
+from wtforms import StringField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Length, Email, Optional
 
 
-class VendorForm(FlaskForm):
-    """Form for creating and editing vendors."""
+class CustomerForm(FlaskForm):
+    """Form for creating and editing customers."""
 
-    code = StringField('Vendor Code', validators=[
-        DataRequired(message='Vendor code is required.'),
-        Length(max=20, message='Vendor code must be 20 characters or less.')
+    code = StringField('Customer Code', validators=[
+        DataRequired(message='Customer code is required.'),
+        Length(max=20, message='Customer code must be 20 characters or less.')
     ])
 
     name = StringField('Name', validators=[
-        DataRequired(message='Vendor name is required.'),
-        Length(max=200, message='Vendor name must be 200 characters or less.')
+        DataRequired(message='Customer name is required.'),
+        Length(max=200, message='Customer name must be 200 characters or less.')
     ])
 
     contact_person = StringField('Contact Person', validators=[
@@ -56,11 +56,6 @@ class VendorForm(FlaskForm):
 
     address = TextAreaField('Address', validators=[Optional()])
 
-    check_payee_name = StringField('Check Payee Name', validators=[
-        Optional(),
-        Length(max=200, message='Check payee name must be 200 characters or less.')
-    ])
-
     postal_code = StringField('Postal Code', validators=[
         Optional(),
         Length(max=20, message='Postal code must be 20 characters or less.')
@@ -68,8 +63,4 @@ class VendorForm(FlaskForm):
 
     default_vat_category = SelectField('Default VAT Category', choices=[], validators=[Optional()])
 
-    # Withholding Tax checkboxes
-    wt_wc010 = BooleanField('WC010')
-    wt_wc011 = BooleanField('WC011')
-    wt_wc100 = BooleanField('WC100')
-    wt_wc158 = BooleanField('WC158')
+    default_wt_code = SelectField('Default Withholding Tax', choices=[], validators=[Optional()])

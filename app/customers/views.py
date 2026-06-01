@@ -1,0 +1,179 @@
+"""
+Customer management views (Admin and Accountant only)
+"""
+from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask_login import login_required, current_user
+from functools import wraps
+from app import db
+from app.customers.models import Customer
+from app.vat_categories.models import VATCategory
+from app.withholding_tax.models import WithholdingTax
+from app.customers.forms import CustomerForm
+
+customers_bp = Blueprint('customers', __name__, template_folder='templates')
+
+
+def accountant_or_admin_required(f):
+    """Decorator to require accountant or admin role for customer management."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if current_user.role not in ['accountant', 'admin']:
+            flash('Only Accountants and Administrators can manage customers.', 'error')
+            return redirect(url_for('dashboard.home'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@customers_bp.route('/customers')
+@login_required
+def list_customers():
+    """List all customers"""
+    customers = Customer.query.order_by(Customer.code).all()
+    return render_template('customers/list.html', customers=customers)
+
+
+def generate_next_customer_code():
+    """Generate the next customer code in sequence (C001, C002, etc.)"""
+    latest_customer = Customer.query.order_by(Customer.code.desc()).first()
+
+    if not latest_customer or not latest_customer.code.startswith('C'):
+        return 'C001'
+
+    try:
+        latest_number = int(latest_customer.code[1:])
+        next_number = latest_number + 1
+        return f'C{next_number:03d}'
+    except (ValueError, IndexError):
+        return 'C001'
+
+
+def populate_dropdown_choices(form):
+    """Populate VAT and WT dropdown choices from database"""
+    # VAT Categories
+    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.name).all()
+    vat_choices = [('', '-- Select --')]
+    vat_choices.extend([(cat.name, cat.name) for cat in vat_categories])
+    form.default_vat_category.choices = vat_choices
+
+    # Withholding Tax
+    wt_codes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+    wt_choices = [('', '-- Select --')]
+    wt_choices.extend([(wt.code, f'{wt.code} - {wt.name} ({wt.rate}%)') for wt in wt_codes])
+    form.default_wt_code.choices = wt_choices
+
+
+@customers_bp.route('/customers/create', methods=['GET', 'POST'])
+@login_required
+@accountant_or_admin_required
+def create():
+    """Create new customer"""
+    form = CustomerForm()
+    populate_dropdown_choices(form)
+
+    if form.validate_on_submit():
+        existing = Customer.query.filter_by(code=form.code.data).first()
+        if existing:
+            flash(f'Customer code "{form.code.data}" already exists.', 'error')
+            return render_template('customers/form.html', form=form, customer=None)
+
+        try:
+            customer = Customer(
+                code=form.code.data,
+                name=form.name.data,
+                contact_person=form.contact_person.data,
+                phone=form.phone.data,
+                email=form.email.data,
+                tin=form.tin.data,
+                payment_terms=form.payment_terms.data,
+                address=form.address.data,
+                postal_code=form.postal_code.data,
+                default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
+                default_wt_code=form.default_wt_code.data if form.default_wt_code.data else None,
+                is_active=bool(int(form.is_active.data)) if form.is_active.data else True
+            )
+            db.session.add(customer)
+            db.session.commit()
+            flash(f'Customer "{customer.name}" created successfully!', 'success')
+            return redirect(url_for('customers.list_customers'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating customer: {str(e)}', 'error')
+
+    if request.method == 'GET':
+        form.code.data = generate_next_customer_code()
+        form.is_active.data = '1'
+        form.payment_terms.data = 'Net 30'
+
+    return render_template('customers/form.html', form=form, customer=None)
+
+
+@customers_bp.route('/customers/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@accountant_or_admin_required
+def edit(id):
+    """Edit customer"""
+    customer = Customer.query.get_or_404(id)
+    form = CustomerForm(obj=customer)
+    populate_dropdown_choices(form)
+
+    if form.validate_on_submit():
+        existing = Customer.query.filter(Customer.code == form.code.data, Customer.id != id).first()
+        if existing:
+            flash(f'Customer code "{form.code.data}" already exists.', 'error')
+            return render_template('customers/form.html', form=form, customer=customer)
+
+        try:
+            customer.code = form.code.data
+            customer.name = form.name.data
+            customer.contact_person = form.contact_person.data
+            customer.phone = form.phone.data
+            customer.email = form.email.data
+            customer.tin = form.tin.data
+            customer.payment_terms = form.payment_terms.data
+            customer.address = form.address.data
+            customer.postal_code = form.postal_code.data
+            customer.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
+            customer.default_wt_code = form.default_wt_code.data if form.default_wt_code.data else None
+            customer.is_active = bool(int(form.is_active.data))
+            db.session.commit()
+            flash(f'Customer "{customer.name}" updated successfully!', 'success')
+            return redirect(url_for('customers.list_customers'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating customer: {str(e)}', 'error')
+
+    if request.method == 'GET':
+        form.code.data = customer.code
+        form.name.data = customer.name
+        form.contact_person.data = customer.contact_person
+        form.phone.data = customer.phone
+        form.email.data = customer.email
+        form.tin.data = customer.tin
+        form.payment_terms.data = customer.payment_terms
+        form.address.data = customer.address
+        form.postal_code.data = customer.postal_code
+        form.default_vat_category.data = customer.default_vat_category
+        form.default_wt_code.data = customer.default_wt_code
+        form.is_active.data = '1' if customer.is_active else '0'
+
+    return render_template('customers/form.html', form=form, customer=customer)
+
+
+@customers_bp.route('/customers/<int:id>/delete', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def delete(id):
+    """Delete customer"""
+    customer = Customer.query.get_or_404(id)
+
+    try:
+        db.session.delete(customer)
+        db.session.commit()
+        flash(f'Customer "{customer.name}" deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting customer: {str(e)}', 'error')
+
+    return redirect(url_for('customers.list_customers'))

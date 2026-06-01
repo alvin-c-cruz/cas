@@ -4,63 +4,560 @@
 {% block page_title %}{{ 'Edit Vendor' if vendor else 'Create Vendor' }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field, render_flash_messages %}
+{% from "macros.html" import render_flash_messages %}
 
 {{ render_flash_messages() }}
 
-<div class="card">
-    <div class="card-body">
-        <form method="POST" novalidate>
-            {{ form.hidden_tag() }}
+<div class="vendor-form-container">
+    <form method="POST" novalidate autocomplete="off">
+        {{ form.hidden_tag() }}
 
-            <div class="form-row-2">
-                {{ render_field(form.code) }}
-                {{ render_field(form.name) }}
-            </div>
+        <!-- Hidden dummy fields to prevent browser autocomplete -->
+        <input type="text" name="fake_username" style="display:none;" autocomplete="new-password">
+        <input type="password" name="fake_password" style="display:none;" autocomplete="new-password">
 
-            <div class="form-row-2">
-                {{ render_field(form.contact_person) }}
-                {{ render_field(form.phone) }}
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.tin) }}
-                {{ render_field(form.email) }}
-            </div>
-
-            <div class="form-row-3">
-                {{ render_field(form.payment_terms) }}
-                {{ render_field(form.default_vat) }}
-                {{ render_field(form.default_wt) }}
-            </div>
-
+        <!-- Row 1: Vendor Code, Name, Check Payee Name (3-column layout) -->
+        <div class="form-row-3col">
             <div class="form-group">
-                {{ render_field(form.address) }}
+                <label for="{{ form.code.id }}">{{ form.code.label.text }}</label>
+                {{ form.code(class="form-control form-control-sm", autocomplete="off", readonly=(not vendor)) }}
+                {% if form.code.errors %}
+                    <div class="error-message">{{ form.code.errors[0] }}</div>
+                {% endif %}
             </div>
-
             <div class="form-group">
-                <div class="checkbox-wrapper">
-                    {{ form.is_active() }}
-                    <label for="{{ form.is_active.id }}">{{ form.is_active.label.text }}</label>
+                <label for="{{ form.name.id }}">{{ form.name.label.text }}</label>
+                {{ form.name(class="form-control form-control-sm", autocomplete="off") }}
+                {% if form.name.errors %}
+                    <div class="error-message">{{ form.name.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.check_payee_name.id }}">{{ form.check_payee_name.label.text }}</label>
+                {{ form.check_payee_name(class="form-control form-control-sm", autocomplete="off") }}
+                {% if form.check_payee_name.errors %}
+                    <div class="error-message">{{ form.check_payee_name.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row 2: Contact Person, Phone -->
+        <div class="form-row-2col">
+            <div class="form-group">
+                <label for="{{ form.contact_person.id }}">{{ form.contact_person.label.text }}</label>
+                {{ form.contact_person(class="form-control form-control-sm", autocomplete="off") }}
+                {% if form.contact_person.errors %}
+                    <div class="error-message">{{ form.contact_person.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.phone.id }}">{{ form.phone.label.text }}</label>
+                {{ form.phone(class="form-control form-control-sm", autocomplete="off") }}
+                {% if form.phone.errors %}
+                    <div class="error-message">{{ form.phone.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row 3: Email, TIN -->
+        <div class="form-row-2col">
+            <div class="form-group">
+                <label for="{{ form.email.id }}">{{ form.email.label.text }}</label>
+                {{ form.email(class="form-control form-control-sm", autocomplete="new-password") }}
+                {% if form.email.errors %}
+                    <div class="error-message">{{ form.email.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.tin.id }}">{{ form.tin.label.text }}</label>
+                {{ form.tin(class="form-control form-control-sm", autocomplete="off") }}
+                {% if form.tin.errors %}
+                    <div class="error-message">{{ form.tin.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row 4: Address, Postal Code -->
+        <div class="form-row-2col">
+            <div class="form-group">
+                <label for="{{ form.address.id }}">{{ form.address.label.text }}</label>
+                {{ form.address(class="form-control form-control-sm", rows="2", autocomplete="off") }}
+                {% if form.address.errors %}
+                    <div class="error-message">{{ form.address.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.postal_code.id }}">{{ form.postal_code.label.text }}</label>
+                {{ form.postal_code(class="form-control form-control-sm", autocomplete="off") }}
+                {% if form.postal_code.errors %}
+                    <div class="error-message">{{ form.postal_code.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Row 5: Payment Terms, Default VAT Category, Status -->
+        <div class="form-row-3col">
+            <div class="form-group">
+                <label for="{{ form.payment_terms.id }}">{{ form.payment_terms.label.text }}</label>
+                {{ form.payment_terms(class="form-control form-control-sm", autocomplete="off") }}
+                {% if form.payment_terms.errors %}
+                    <div class="error-message">{{ form.payment_terms.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.default_vat_category.id }}">{{ form.default_vat_category.label.text }}</label>
+                <div class="search-select-wrapper">
+                    <input type="text"
+                           class="form-control form-control-sm search-select-input"
+                           id="vat-search-input"
+                           placeholder="Type to search..."
+                           autocomplete="off">
+                    <span class="search-select-arrow">▼</span>
+                    <div class="search-select-dropdown" id="vat-dropdown">
+                        <div class="search-select-options">
+                            <!-- Options will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    {{ form.default_vat_category(class="form-control form-control-sm", autocomplete="off", style="display:none;") }}
+                </div>
+                {% if form.default_vat_category.errors %}
+                    <div class="error-message">{{ form.default_vat_category.errors[0] }}</div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="{{ form.is_active.id }}">{{ form.is_active.label.text }}</label>
+                {{ form.is_active(class="form-control form-control-sm", autocomplete="off") }}
+                {% if form.is_active.errors %}
+                    <div class="error-message">{{ form.is_active.errors[0] }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Withholding Tax Section -->
+        <div class="form-group">
+            <label class="section-label">Default Withholding Tax</label>
+            <div class="wt-checkbox-grid">
+                <div class="wt-checkbox-item">
+                    {{ form.wt_wc010(class="form-checkbox") }}
+                    <label for="{{ form.wt_wc010.id }}">
+                        <span>WC010 <span class="wt-badge">10%</span></span>
+                        <span class="wt-description">Professional Fees - Individuals</span>
+                    </label>
+                </div>
+                <div class="wt-checkbox-item">
+                    {{ form.wt_wc011(class="form-checkbox") }}
+                    <label for="{{ form.wt_wc011.id }}">
+                        <span>WC011 <span class="wt-badge">15%</span></span>
+                        <span class="wt-description">Professional Fees - Corporations</span>
+                    </label>
+                </div>
+                <div class="wt-checkbox-item">
+                    {{ form.wt_wc100(class="form-checkbox") }}
+                    <label for="{{ form.wt_wc100.id }}">
+                        <span>WC100 <span class="wt-badge">2%</span></span>
+                        <span class="wt-description">Contractors & Subcontractors</span>
+                    </label>
+                </div>
+                <div class="wt-checkbox-item">
+                    {{ form.wt_wc158(class="form-checkbox") }}
+                    <label for="{{ form.wt_wc158.id }}">
+                        <span>WC158 <span class="wt-badge">1%</span></span>
+                        <span class="wt-description">Purchases of Goods</span>
+                    </label>
                 </div>
             </div>
+        </div>
 
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">
-                    {{ 'Update Vendor' if vendor else 'Create Vendor' }}
-                </button>
-                <a href="{{ url_for('vendors.list_vendors') }}" class="btn btn-secondary">Cancel</a>
-            </div>
-        </form>
-    </div>
+        <!-- Form Actions -->
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-sm">
+                {{ 'Update Vendor' if vendor else 'Create Vendor' }}
+            </button>
+            <a href="{{ url_for('vendors.list_vendors') }}" class="btn btn-secondary btn-sm">Cancel</a>
+        </div>
+    </form>
 </div>
 
 <style>
-.form-row-3 {
+/* Ultra-compact vendor form styling */
+.vendor-form-container {
+    max-width: 100%;
+    padding: 12px;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.vendor-form-container form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 3-column layout for first row (vendor code: 100px, name: 1fr, check payee: 1fr) */
+.form-row-3col {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    margin-bottom: 20px;
+    grid-template-columns: 100px 1fr 1fr;
+    gap: 8px;
+}
+
+/* 2-column layout for other rows */
+.form-row-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+/* Form group styling - ultra compact */
+.form-group {
+    margin-bottom: 0;
+}
+
+.form-group label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 2px;
+}
+
+.section-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+/* Ultra-compact form controls */
+.form-control-sm {
+    width: 100%;
+    padding: 4px 6px;
+    font-size: 11px;
+    line-height: 1.4;
+    border: 1px solid #d1d5db;
+    border-radius: 3px;
+    transition: border-color 0.15s ease-in-out;
+}
+
+.form-control-sm:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+textarea.form-control-sm {
+    resize: vertical;
+    min-height: 40px;
+}
+
+/* Withholding Tax checkbox grid */
+.wt-checkbox-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+}
+
+.wt-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    background: white;
+    border-radius: 3px;
+}
+
+.wt-checkbox-item .form-checkbox {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.wt-checkbox-item label {
+    flex: 1;
+    font-size: 11px;
+    color: #374151;
+    cursor: pointer;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.3;
+}
+
+.wt-checkbox-item label > span:first-child {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.wt-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    background: #3b82f6;
+    color: white;
+    font-size: 9px;
+    font-weight: 600;
+    border-radius: 2px;
+    line-height: 1.2;
+}
+
+.wt-description {
+    font-size: 9px;
+    color: #6b7280;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+/* Error messages */
+.error-message {
+    color: #ef4444;
+    font-size: 10px;
+    margin-top: 2px;
+}
+
+/* Form actions - compact buttons */
+.form-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-start;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 3px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s ease-in-out;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-secondary {
+    background: #6b7280;
+    color: white;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-secondary:hover {
+    background: #4b5563;
+}
+
+/* Search-select component */
+.search-select-wrapper {
+    position: relative;
+}
+
+.search-select-input {
+    padding-right: 28px;
+    cursor: pointer;
+}
+
+.search-select-arrow {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 8px;
+    color: #6b7280;
+    pointer-events: none;
+    transition: transform 0.2s;
+}
+
+.search-select-wrapper.open .search-select-arrow {
+    transform: translateY(-50%) rotate(180deg);
+}
+
+.search-select-dropdown {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #3b82f6;
+    border-radius: 3px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+}
+
+.search-select-wrapper.open .search-select-dropdown {
+    display: block;
+}
+
+.search-select-option {
+    padding: 6px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.search-select-option:hover {
+    background: #f1f5f9;
+}
+
+.search-select-option.selected {
+    background: #eff6ff;
+    color: #1e40af;
+    font-weight: 500;
+}
+
+.search-select-option.hidden {
+    display: none;
+}
+
+.search-select-no-results {
+    padding: 8px;
+    font-size: 11px;
+    color: #6b7280;
+    text-align: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .form-row-3col,
+    .form-row-2col {
+        grid-template-columns: 1fr;
+    }
+
+    .wt-checkbox-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // VAT Category Search Select
+    const searchInput = document.getElementById('vat-search-input');
+    const hiddenSelect = document.getElementById('{{ form.default_vat_category.id }}');
+    const wrapper = searchInput.closest('.search-select-wrapper');
+    const dropdown = document.getElementById('vat-dropdown');
+    const optionsContainer = dropdown.querySelector('.search-select-options');
+
+    // Get options from the hidden select element
+    const options = Array.from(hiddenSelect.options).map(option => ({
+        value: option.value,
+        text: option.text
+    }));
+
+    // Populate dropdown options
+    function populateOptions(filter = '') {
+        optionsContainer.innerHTML = '';
+        const filterLower = filter.toLowerCase();
+        const filtered = options.filter(opt =>
+            opt.text.toLowerCase().includes(filterLower) && opt.value !== ''
+        );
+
+        if (filtered.length === 0) {
+            optionsContainer.innerHTML = '<div class="search-select-no-results">No results found</div>';
+            return;
+        }
+
+        filtered.forEach(opt => {
+            const optionEl = document.createElement('div');
+            optionEl.className = 'search-select-option';
+            optionEl.textContent = opt.text;
+            optionEl.dataset.value = opt.value;
+
+            if (opt.value === hiddenSelect.value) {
+                optionEl.classList.add('selected');
+            }
+
+            optionEl.addEventListener('click', function() {
+                selectOption(opt.value, opt.text);
+            });
+
+            optionsContainer.appendChild(optionEl);
+        });
+    }
+
+    // Select an option
+    function selectOption(value, text) {
+        hiddenSelect.value = value;
+        searchInput.value = text;
+        wrapper.classList.remove('open');
+
+        // Update selected state
+        document.querySelectorAll('.search-select-option').forEach(el => {
+            el.classList.remove('selected');
+            if (el.dataset.value === value) {
+                el.classList.add('selected');
+            }
+        });
+    }
+
+    // Open dropdown
+    searchInput.addEventListener('focus', function() {
+        // Clear placeholder text on focus
+        if (searchInput.value === '-- Select --' || searchInput.value === '') {
+            searchInput.value = '';
+        }
+        wrapper.classList.add('open');
+        populateOptions(''); // Show all options when focused
+    });
+
+    // Search filter
+    searchInput.addEventListener('input', function() {
+        populateOptions(searchInput.value);
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!wrapper.contains(e.target)) {
+            wrapper.classList.remove('open');
+            // Restore selected value or placeholder
+            const selectedOption = options.find(opt => opt.value === hiddenSelect.value);
+            if (selectedOption) {
+                searchInput.value = selectedOption.text;
+            } else if (searchInput.value === '') {
+                searchInput.value = '';
+                searchInput.placeholder = 'Type to search...';
+            }
+        }
+    });
+
+    // Set initial value if exists
+    const selectedOption = options.find(opt => opt.value === hiddenSelect.value);
+    if (selectedOption) {
+        searchInput.value = selectedOption.text;
+    } else {
+        searchInput.value = '';
+        searchInput.placeholder = 'Type to search...';
+    }
+
+    // Prevent form submission on Enter in search input
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const firstVisible = optionsContainer.querySelector('.search-select-option:not(.hidden)');
+            if (firstVisible) {
+                firstVisible.click();
+            }
+        }
+    });
+});
+</script>
 {% endblock %}
