@@ -71,10 +71,14 @@
                             <span class="badge" style="background:#dbeafe;color:#1e40af">UPDATE</span>
                             {% elif log.action == 'delete' %}
                             <span class="badge" style="background:#fee2e2;color:#991b1b">DELETE</span>
+                            {% elif log.action == 'approve' %}
+                            <span class="badge" style="background:#d1fae5;color:#065f46">APPROVE</span>
+                            {% elif log.action == 'reject' %}
+                            <span class="badge" style="background:#fef3c7;color:#92400e">REJECT</span>
                             {% endif %}
                         </td>
                         <td>
-                            <strong>{{ log.record_identifier or f'ID: {log.record_id}' }}</strong>
+                            <strong>{{ log.record_identifier or 'ID: ' ~ log.record_id }}</strong>
                         </td>
                         <td>
                             {% set old = log.old_values|from_json if log.old_values else {} %}

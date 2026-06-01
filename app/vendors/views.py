@@ -8,6 +8,7 @@ from app import db
 from app.vendors.models import Vendor
 from app.vat_categories.models import VATCategory
 from app.vendors.forms import VendorForm
+from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 
 vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
 
@@ -94,6 +95,15 @@ def create():
             )
             db.session.add(vendor)
             db.session.commit()
+
+            # Audit log
+            log_create(
+                module='vendor',
+                record_id=vendor.id,
+                record_identifier=f'{vendor.code} - {vendor.name}',
+                new_values=model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'wt_wc010', 'wt_wc011', 'wt_wc100', 'wt_wc158', 'is_active'])
+            )
+
             flash(f'Vendor "{vendor.name}" created successfully!', 'success')
             return redirect(url_for('vendors.list_vendors'))
         except Exception as e:
@@ -126,6 +136,9 @@ def edit(id):
             return render_template('vendors/form.html', form=form, vendor=vendor)
 
         try:
+            # Capture old values before update
+            old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'wt_wc010', 'wt_wc011', 'wt_wc100', 'wt_wc158', 'is_active'])
+
             vendor.code = form.code.data
             vendor.name = form.name.data
             vendor.contact_person = form.contact_person.data
@@ -143,6 +156,17 @@ def edit(id):
             vendor.wt_wc158 = form.wt_wc158.data
             vendor.is_active = bool(int(form.is_active.data))
             db.session.commit()
+
+            # Audit log
+            new_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'wt_wc010', 'wt_wc011', 'wt_wc100', 'wt_wc158', 'is_active'])
+            log_update(
+                module='vendor',
+                record_id=vendor.id,
+                record_identifier=f'{vendor.code} - {vendor.name}',
+                old_values=old_values,
+                new_values=new_values
+            )
+
             flash(f'Vendor "{vendor.name}" updated successfully!', 'success')
             return redirect(url_for('vendors.list_vendors'))
         except Exception as e:
@@ -179,9 +203,23 @@ def delete(id):
     vendor = Vendor.query.get_or_404(id)
 
     try:
+        # Capture values before delete
+        old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'wt_wc010', 'wt_wc011', 'wt_wc100', 'wt_wc158', 'is_active'])
+        vendor_identifier = f'{vendor.code} - {vendor.name}'
+        vendor_id = vendor.id
         vendor_name = vendor.name
+
         db.session.delete(vendor)
         db.session.commit()
+
+        # Audit log
+        log_delete(
+            module='vendor',
+            record_id=vendor_id,
+            record_identifier=vendor_identifier,
+            old_values=old_values
+        )
+
         flash(f'Vendor "{vendor_name}" deleted successfully!', 'success')
     except Exception as e:
         db.session.rollback()

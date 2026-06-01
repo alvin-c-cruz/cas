@@ -9,6 +9,7 @@ from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
 from app.vat_categories.forms import VATCategoryForm, VATCategoryChangeReviewForm
 from app.users.models import User
 from app.utils import ph_now
+from app.audit.utils import log_audit, model_to_dict
 import json
 
 vat_categories_bp = Blueprint('vat_categories', __name__, template_folder='templates')
@@ -312,12 +313,27 @@ def review_change_request(id):
                         updated_by_id=current_user.id
                     )
                     db.session.add(vat_category)
+                    db.session.flush()  # Get the ID before commit
+
+                    # Audit log for approved creation
+                    log_audit(
+                        module='vat_category',
+                        action='create',
+                        record_id=vat_category.id,
+                        record_identifier=f'{vat_category.code} - {vat_category.name}',
+                        new_values=model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active']),
+                        notes=f'Approved by {current_user.username}'
+                    )
+
                     flash(f'VAT category "{vat_category.name}" has been created successfully.', 'success')
 
                 elif change_request.action == 'update':
                     # Update existing VAT category
                     vat_category = change_request.vat_category
                     if vat_category:
+                        # Capture old values before update
+                        old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+
                         vat_category.code = proposed_data['code']
                         vat_category.name = proposed_data['name']
                         vat_category.description = proposed_data.get('description')
@@ -325,14 +341,43 @@ def review_change_request(id):
                         vat_category.is_active = proposed_data.get('is_active', True)
                         vat_category.updated_by_id = current_user.id
                         vat_category.updated_at = ph_now()
+
+                        # Audit log for approved update
+                        new_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+                        log_audit(
+                            module='vat_category',
+                            action='update',
+                            record_id=vat_category.id,
+                            record_identifier=f'{vat_category.code} - {vat_category.name}',
+                            old_values=old_values,
+                            new_values=new_values,
+                            notes=f'Approved by {current_user.username}'
+                        )
+
                         flash(f'VAT category "{vat_category.name}" has been updated successfully.', 'success')
 
                 elif change_request.action == 'delete':
                     # Delete VAT category
                     vat_category = change_request.vat_category
                     if vat_category:
+                        # Capture values before delete
+                        old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+                        vat_identifier = f'{vat_category.code} - {vat_category.name}'
+                        vat_id = vat_category.id
                         vat_name = vat_category.name
+
                         db.session.delete(vat_category)
+
+                        # Audit log for approved deletion
+                        log_audit(
+                            module='vat_category',
+                            action='delete',
+                            record_id=vat_id,
+                            record_identifier=vat_identifier,
+                            old_values=old_values,
+                            notes=f'Approved by {current_user.username}'
+                        )
+
                         flash(f'VAT category "{vat_name}" has been deleted successfully.', 'success')
 
             else:

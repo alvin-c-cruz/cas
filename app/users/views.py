@@ -4,6 +4,7 @@ from app import db
 from app.users.models import User, LoginHistory
 from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
 from app.utils import ph_now
+from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from functools import wraps
 
 
@@ -237,6 +238,14 @@ def create_user():
             db.session.add(user)
             db.session.commit()
 
+            # Audit log
+            log_create(
+                module='user',
+                record_id=user.id,
+                record_identifier=f'{user.username} ({user.full_name})',
+                new_values=model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
+            )
+
             flash(f'User "{user.username}" created successfully!', 'success')
             return redirect(url_for('users.list_users'))
         except Exception as e:
@@ -274,6 +283,9 @@ def edit_user(id):
             return render_template('users/form.html', form=form, user=user)
 
         try:
+            # Capture old values before update
+            old_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
+
             user.username = form.username.data
             user.email = form.email.data
             user.full_name = form.full_name.data
@@ -281,8 +293,10 @@ def edit_user(id):
             user.is_active = form.is_active.data
 
             # Update password if provided
+            password_changed = False
             if form.password.data:
                 user.set_password(form.password.data)
+                password_changed = True
 
             # Update book permissions from form
             book_permissions = {
@@ -295,6 +309,18 @@ def edit_user(id):
             user.set_book_permissions(book_permissions)
 
             db.session.commit()
+
+            # Audit log
+            new_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
+            notes = 'Password changed' if password_changed else None
+            log_update(
+                module='user',
+                record_id=user.id,
+                record_identifier=f'{user.username} ({user.full_name})',
+                old_values=old_values,
+                new_values=new_values,
+                notes=notes
+            )
 
             flash(f'User "{user.username}" updated successfully!', 'success')
             return redirect(url_for('users.list_users'))
@@ -328,9 +354,23 @@ def delete_user(id):
         return redirect(url_for('users.list_users'))
 
     try:
+        # Capture values before delete
+        old_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
+        user_identifier = f'{user.username} ({user.full_name})'
+        user_id = user.id
         username = user.username
+
         db.session.delete(user)
         db.session.commit()
+
+        # Audit log
+        log_delete(
+            module='user',
+            record_id=user_id,
+            record_identifier=user_identifier,
+            old_values=old_values
+        )
+
         flash(f'User "{username}" deleted successfully.', 'success')
     except Exception as e:
         db.session.rollback()

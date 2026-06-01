@@ -9,6 +9,7 @@ from app.withholding_tax.models import WithholdingTax, WithholdingTaxChangeReque
 from app.withholding_tax.forms import WithholdingTaxForm, WithholdingTaxChangeReviewForm
 from app.users.models import User
 from app.utils import ph_now
+from app.audit.utils import log_audit, model_to_dict
 import json
 
 withholding_tax_bp = Blueprint('withholding_tax', __name__, template_folder='templates')
@@ -306,12 +307,27 @@ def review_change_request(id):
                         updated_by_id=current_user.id
                     )
                     db.session.add(withholding_tax)
+                    db.session.flush()  # Get the ID before commit
+
+                    # Audit log for approved creation
+                    log_audit(
+                        module='withholding_tax',
+                        action='create',
+                        record_id=withholding_tax.id,
+                        record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
+                        new_values=model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active']),
+                        notes=f'Approved by {current_user.username}'
+                    )
+
                     flash(f'withholding tax "{withholding_tax.name}" has been created successfully.', 'success')
 
                 elif change_request.action == 'update':
                     # Update existing withholding tax
                     withholding_tax = change_request.withholding_tax
                     if withholding_tax:
+                        # Capture old values before update
+                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+
                         withholding_tax.code = proposed_data['code']
                         withholding_tax.name = proposed_data['name']
                         withholding_tax.description = proposed_data.get('description')
@@ -319,15 +335,44 @@ def review_change_request(id):
                         withholding_tax.is_active = proposed_data.get('is_active', True)
                         withholding_tax.updated_by_id = current_user.id
                         withholding_tax.updated_at = ph_now()
+
+                        # Audit log for approved update
+                        new_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+                        log_audit(
+                            module='withholding_tax',
+                            action='update',
+                            record_id=withholding_tax.id,
+                            record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
+                            old_values=old_values,
+                            new_values=new_values,
+                            notes=f'Approved by {current_user.username}'
+                        )
+
                         flash(f'withholding tax "{withholding_tax.name}" has been updated successfully.', 'success')
 
                 elif change_request.action == 'delete':
                     # Delete withholding tax
                     withholding_tax = change_request.withholding_tax
                     if withholding_tax:
-                        vat_name = withholding_tax.name
+                        # Capture values before delete
+                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+                        wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
+                        wt_id = withholding_tax.id
+                        wt_name = withholding_tax.name
+
                         db.session.delete(withholding_tax)
-                        flash(f'withholding tax "{vat_name}" has been deleted successfully.', 'success')
+
+                        # Audit log for approved deletion
+                        log_audit(
+                            module='withholding_tax',
+                            action='delete',
+                            record_id=wt_id,
+                            record_identifier=wt_identifier,
+                            old_values=old_values,
+                            notes=f'Approved by {current_user.username}'
+                        )
+
+                        flash(f'withholding tax "{wt_name}" has been deleted successfully.', 'success')
 
             else:
                 flash('Change request has been rejected.', 'info')

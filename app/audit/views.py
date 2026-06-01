@@ -59,8 +59,8 @@ def audit_log():
     logs = pagination.items
 
     # Get unique values for filters
-    modules = ['customer', 'vendor', 'vat_category', 'withholding_tax', 'user']
-    actions = ['create', 'update', 'delete']
+    modules = ['customer', 'vendor', 'vat_category', 'withholding_tax', 'user', 'account']
+    actions = ['create', 'update', 'delete', 'approve', 'reject']
     users = User.query.filter(User.role.in_(['accountant', 'admin'])).all()
 
     return render_template('audit/audit_log.html',
