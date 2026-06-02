@@ -67,9 +67,3 @@ class VendorForm(FlaskForm):
     ])
 
     default_vat_category = SelectField('Default VAT Category', choices=[], validators=[Optional()])
-
-    # Withholding Tax checkboxes
-    wt_wc010 = BooleanField('WC010')
-    wt_wc011 = BooleanField('WC011')
-    wt_wc100 = BooleanField('WC100')
-    wt_wc158 = BooleanField('WC158')

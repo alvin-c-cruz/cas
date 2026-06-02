@@ -97,17 +97,6 @@ def create():
                 selected_wts = WithholdingTax.query.filter(WithholdingTax.id.in_(withholding_tax_ids)).all()
                 vendor.withholding_taxes = selected_wts
 
-                # Also set the legacy fields for backward compatibility
-                for wt in selected_wts:
-                    if wt.code == 'WC010':
-                        vendor.wt_wc010 = True
-                    elif wt.code == 'WC011':
-                        vendor.wt_wc011 = True
-                    elif wt.code == 'WC100':
-                        vendor.wt_wc100 = True
-                    elif wt.code == 'WC158':
-                        vendor.wt_wc158 = True
-
             db.session.add(vendor)
             db.session.commit()
 
@@ -116,7 +105,7 @@ def create():
                 module='vendor',
                 record_id=vendor.id,
                 record_identifier=f'{vendor.code} - {vendor.name}',
-                new_values=model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'wt_wc010', 'wt_wc011', 'wt_wc100', 'wt_wc158', 'is_active'])
+                new_values=model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
             )
 
             flash(f'Vendor "{vendor.name}" created successfully!', 'success')
@@ -155,7 +144,7 @@ def edit(id):
 
         try:
             # Capture old values before update
-            old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'wt_wc010', 'wt_wc011', 'wt_wc100', 'wt_wc158', 'is_active'])
+            old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
 
             vendor.code = form.code.data
             vendor.name = form.name.data
@@ -175,27 +164,10 @@ def edit(id):
             selected_wts = WithholdingTax.query.filter(WithholdingTax.id.in_(withholding_tax_ids)).all() if withholding_tax_ids else []
             vendor.withholding_taxes = selected_wts
 
-            # Reset legacy fields
-            vendor.wt_wc010 = False
-            vendor.wt_wc011 = False
-            vendor.wt_wc100 = False
-            vendor.wt_wc158 = False
-
-            # Set the legacy fields for backward compatibility
-            for wt in selected_wts:
-                if wt.code == 'WC010':
-                    vendor.wt_wc010 = True
-                elif wt.code == 'WC011':
-                    vendor.wt_wc011 = True
-                elif wt.code == 'WC100':
-                    vendor.wt_wc100 = True
-                elif wt.code == 'WC158':
-                    vendor.wt_wc158 = True
-
             db.session.commit()
 
             # Audit log
-            new_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'wt_wc010', 'wt_wc011', 'wt_wc100', 'wt_wc158', 'is_active'])
+            new_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
             log_update(
                 module='vendor',
                 record_id=vendor.id,
@@ -223,10 +195,6 @@ def edit(id):
         form.check_payee_name.data = vendor.check_payee_name
         form.postal_code.data = vendor.postal_code
         form.default_vat_category.data = vendor.default_vat_category
-        form.wt_wc010.data = vendor.wt_wc010
-        form.wt_wc011.data = vendor.wt_wc011
-        form.wt_wc100.data = vendor.wt_wc100
-        form.wt_wc158.data = vendor.wt_wc158
         form.is_active.data = '1' if vendor.is_active else '0'
 
     # Get active withholding taxes for the form
@@ -250,7 +218,7 @@ def delete(id):
 
     try:
         # Capture values before delete
-        old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'wt_wc010', 'wt_wc011', 'wt_wc100', 'wt_wc158', 'is_active'])
+        old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
         vendor_identifier = f'{vendor.code} - {vendor.name}'
         vendor_id = vendor.id
         vendor_name = vendor.name

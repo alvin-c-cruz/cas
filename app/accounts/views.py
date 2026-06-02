@@ -7,6 +7,7 @@ from app.accounts.approval_models import AccountChangeRequest
 from app.accounts.forms import AccountForm
 from app.users.models import User
 from app.utils import ph_now
+from app.audit.utils import log_audit
 import json
 
 accounts_bp = Blueprint('accounts', __name__, template_folder='templates')
@@ -125,11 +126,31 @@ def create():
                 db.session.add(change_request)
                 db.session.commit()
 
+                # Audit log for change request submission and approval
+                log_audit(
+                    module='account',
+                    action='create',
+                    record_id=change_request.id,
+                    record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
+                    new_values=change_data,
+                    notes='Auto-approved (single accountant)'
+                )
+
                 flash('Account created successfully! (Auto-approved - you are the only accountant)', 'success')
             else:
                 # Save pending request
                 db.session.add(change_request)
                 db.session.commit()
+
+                # Audit log for change request submission
+                log_audit(
+                    module='account',
+                    action='create',
+                    record_id=change_request.id,
+                    record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
+                    new_values=change_data,
+                    notes='Pending approval'
+                )
 
                 flash('Account creation request submitted for approval by another accountant.', 'info')
 
@@ -233,6 +254,17 @@ def edit(id):
 
             # Check if can auto-approve
             if can_auto_approve():
+                # Capture old values for audit
+                old_values = {
+                    'code': account.code,
+                    'name': account.name,
+                    'account_type': account.account_type,
+                    'classification': account.classification,
+                    'normal_balance': account.normal_balance,
+                    'parent_id': account.parent_id,
+                    'description': account.description
+                }
+
                 # Auto-approve and update account immediately
                 account.code = form.code.data
                 account.name = form.name.data
@@ -249,11 +281,32 @@ def edit(id):
                 db.session.add(change_request)
                 db.session.commit()
 
+                # Audit log for change request submission and approval
+                log_audit(
+                    module='account',
+                    action='update',
+                    record_id=change_request.id,
+                    record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
+                    old_values=old_values,
+                    new_values=change_data,
+                    notes='Auto-approved (single accountant)'
+                )
+
                 flash('Account updated successfully! (Auto-approved - you are the only accountant)', 'success')
             else:
                 # Save pending request
                 db.session.add(change_request)
                 db.session.commit()
+
+                # Audit log for change request submission
+                log_audit(
+                    module='account',
+                    action='update',
+                    record_id=change_request.id,
+                    record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
+                    new_values=change_data,
+                    notes='Pending approval'
+                )
 
                 flash('Account update request submitted for approval by another accountant.', 'info')
 
@@ -307,11 +360,31 @@ def delete(id):
             db.session.add(change_request)
             db.session.commit()
 
+            # Audit log for change request submission and approval
+            log_audit(
+                module='account',
+                action='delete',
+                record_id=change_request.id,
+                record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
+                old_values=change_data,
+                notes='Auto-approved (single accountant)'
+            )
+
             flash('Account deleted successfully! (Auto-approved - you are the only accountant)', 'success')
         else:
             # Save pending request
             db.session.add(change_request)
             db.session.commit()
+
+            # Audit log for change request submission
+            log_audit(
+                module='account',
+                action='delete',
+                record_id=change_request.id,
+                record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
+                old_values=change_data,
+                notes='Pending approval'
+            )
 
             flash('Account deletion request submitted for approval by another accountant.', 'info')
 
@@ -350,6 +423,7 @@ def approve_request(request_id):
 
         # Apply the change
         change_data = json.loads(change_request.change_data)
+        old_values = None
 
         if change_request.change_type == 'create':
             # Create new account
@@ -360,6 +434,16 @@ def approve_request(request_id):
             # Update existing account
             account = Account.query.get(change_request.account_id)
             if account:
+                # Capture old values before update
+                old_values = {
+                    'code': account.code,
+                    'name': account.name,
+                    'account_type': account.account_type,
+                    'classification': account.classification,
+                    'normal_balance': account.normal_balance,
+                    'parent_id': account.parent_id,
+                    'description': account.description
+                }
                 for key, value in change_data.items():
                     setattr(account, key, value)
             else:
@@ -370,6 +454,7 @@ def approve_request(request_id):
             # Delete account
             account = Account.query.get(change_request.account_id)
             if account:
+                old_values = change_data  # Already contains account data
                 db.session.delete(account)
             else:
                 flash('Account already deleted.', 'warning')
@@ -380,6 +465,18 @@ def approve_request(request_id):
         change_request.reviewed_at = ph_now()
 
         db.session.commit()
+
+        # Audit log for approval
+        log_audit(
+            module='account',
+            action=change_request.change_type,
+            record_id=change_request.id,
+            record_identifier=f'Change Request: {change_data.get("code")} - {change_data.get("name")}',
+            old_values=old_values,
+            new_values=change_data if change_request.change_type != 'delete' else None,
+            notes=f'Approved by {current_user.username}'
+        )
+
         flash(f'Account {change_request.change_type} request approved successfully!', 'success')
 
     except Exception as e:
@@ -409,6 +506,9 @@ def reject_request(request_id):
         # Get rejection reason from form
         rejection_reason = request.form.get('rejection_reason', 'No reason provided')
 
+        # Get change data for audit log
+        change_data = json.loads(change_request.change_data)
+
         # Mark request as rejected
         change_request.status = 'rejected'
         change_request.reviewed_by = current_user.username
@@ -416,6 +516,17 @@ def reject_request(request_id):
         change_request.rejection_reason = rejection_reason
 
         db.session.commit()
+
+        # Audit log for rejection
+        log_audit(
+            module='account',
+            action=change_request.change_type,
+            record_id=change_request.id,
+            record_identifier=f'Change Request: {change_data.get("code")} - {change_data.get("name")}',
+            old_values=change_data,
+            notes=f'Rejected by {current_user.username}: {rejection_reason}'
+        )
+
         flash(f'Account {change_request.change_type} request rejected.', 'warning')
 
     except Exception as e:

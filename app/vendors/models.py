@@ -47,13 +47,6 @@ class Vendor(db.Model):
     # Default VAT Category
     default_vat_category = db.Column(db.String(100))
 
-    # Withholding Tax checkboxes (DEPRECATED - kept for backward compatibility during migration)
-    # These will be removed after migrating to the many-to-many relationship
-    wt_wc010 = db.Column(db.Boolean, default=False)  # Prof. Fees - Individuals (10%)
-    wt_wc011 = db.Column(db.Boolean, default=False)  # Prof. Fees - Corporations (15%)
-    wt_wc100 = db.Column(db.Boolean, default=False)  # Contractors & Subcontractors (2%)
-    wt_wc158 = db.Column(db.Boolean, default=False)  # Purchases of Goods (1%)
-
     # Dynamic withholding tax relationship (many-to-many)
     withholding_taxes = db.relationship('WithholdingTax',
                                        secondary=vendor_withholding_taxes,
@@ -84,10 +77,7 @@ class Vendor(db.Model):
             'check_payee_name': self.check_payee_name,
             'postal_code': self.postal_code,
             'default_vat_category': self.default_vat_category,
-            'wt_wc010': self.wt_wc010,
-            'wt_wc011': self.wt_wc011,
-            'wt_wc100': self.wt_wc100,
-            'wt_wc158': self.wt_wc158,
+            'withholding_taxes': [{'id': wt.id, 'code': wt.code, 'name': wt.name, 'rate': wt.rate} for wt in self.withholding_taxes],
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

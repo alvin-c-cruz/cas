@@ -7,6 +7,7 @@ from app import db
 from app.branches.models import Branch
 from app.branches.forms import BranchForm
 from app.users.models import User
+from app.audit.utils import log_create, log_update, log_delete, log_audit, model_to_dict
 from functools import wraps
 
 branches_bp = Blueprint('branches', __name__, template_folder='templates')
@@ -57,6 +58,15 @@ def create():
             )
             db.session.add(branch)
             db.session.commit()
+
+            # Audit log for branch creation
+            log_create(
+                module='branch',
+                record_id=branch.id,
+                record_identifier=f'{branch.code} - {branch.name}',
+                new_values=model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+            )
+
             flash(f'Branch "{branch.name}" created successfully!', 'success')
             return redirect(url_for('branches.list_branches'))
         except Exception as e:
@@ -86,6 +96,10 @@ def edit(id):
             return render_template('branches/form.html', form=form, branch=branch)
 
         try:
+            # Capture old values before update
+            old_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+
+            # Update branch
             branch.code = form.code.data
             branch.name = form.name.data
             branch.address = form.address.data
@@ -93,6 +107,17 @@ def edit(id):
             branch.email = form.email.data
             branch.is_active = form.is_active.data
             db.session.commit()
+
+            # Audit log for branch update
+            new_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+            log_update(
+                module='branch',
+                record_id=branch.id,
+                record_identifier=f'{branch.code} - {branch.name}',
+                old_values=old_values,
+                new_values=new_values
+            )
+
             flash(f'Branch "{branch.name}" updated successfully!', 'success')
             return redirect(url_for('branches.list_branches'))
         except Exception as e:
@@ -121,8 +146,23 @@ def delete(id):
 
     try:
         branch_name = branch.name
+
+        # Capture branch data before deletion
+        old_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+        branch_id = branch.id
+        branch_identifier = f'{branch.code} - {branch.name}'
+
         db.session.delete(branch)
         db.session.commit()
+
+        # Audit log for branch deletion
+        log_delete(
+            module='branch',
+            record_id=branch_id,
+            record_identifier=branch_identifier,
+            old_values=old_values
+        )
+
         flash(f'Branch "{branch_name}" deleted successfully!', 'success')
     except Exception as e:
         db.session.rollback()
@@ -166,6 +206,17 @@ def assign_user(id, user_id):
     try:
         user.branch_id = branch.id
         db.session.commit()
+
+        # Audit log for user assignment
+        log_audit(
+            module='branch',
+            action='assign_user',
+            record_id=branch.id,
+            record_identifier=f'{branch.code} - {branch.name}',
+            new_values={'user_id': user.id, 'user_name': user.full_name},
+            notes=f'Assigned user: {user.full_name}'
+        )
+
         flash(f'{user.full_name} assigned to branch "{branch.name}" successfully!', 'success')
     except Exception as e:
         db.session.rollback()
@@ -185,6 +236,17 @@ def unassign_user(id, user_id):
     try:
         user.branch_id = None
         db.session.commit()
+
+        # Audit log for user unassignment
+        log_audit(
+            module='branch',
+            action='unassign_user',
+            record_id=branch.id,
+            record_identifier=f'{branch.code} - {branch.name}',
+            old_values={'user_id': user.id, 'user_name': user.full_name},
+            notes=f'Unassigned user: {user.full_name}'
+        )
+
         flash(f'{user.full_name} unassigned from branch "{branch.name}" successfully!', 'success')
     except Exception as e:
         db.session.rollback()
