@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Purchase Bills{% endblock %}
+{% block page_title %}Purchase Bills{% endblock %}
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions">
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Create Bill</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if bills %}
+        <table class="table">
+            <thead>
+                <tr><th>Bill #</th><th>Date</th><th>Vendor</th><th>Due Date</th><th style="text-align:right;">Subtotal</th><th style="text-align:right;">VAT</th><th style="text-align:right;">WT</th><th style="text-align:right;">Net Payable</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for bill in bills %}
+                <tr>
+                    <td><a href="{{ url_for('purchase_bills.view', id=bill.id) }}" style="font-weight:600;color:var(--blue);">{{ bill.bill_number }}</a></td>
+                    <td>{{ bill.bill_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ bill.vendor_name }}</td>
+                    <td>{{ bill.due_date.strftime('%b %d, %Y') }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.subtotal) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);color:var(--red);">-₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_amount) }}</td>
+                    <td><span class="badge badge-{{ 'secondary' if bill.status=='draft' else 'info' if bill.status=='posted' else 'success' if bill.status=='paid' else 'danger' }}">{{ bill.status|title }}</span></td>
+                    <td><a href="{{ url_for('purchase_bills.view', id=bill.id) }}" class="btn-action">👁️</a>{% if bill.status=='draft' %}<a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn-action">✏️</a>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state"><p>No purchase bills found.</p><a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Create First Bill</a></div>
+        {% endif %}
+    </div>
+</div>
+<style>.badge{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase;}.badge-secondary{background:var(--text-3);color:white;}.badge-info{background:var(--blue);color:white;}.badge-success{background:var(--green);color:white;}.badge-danger{background:var(--red);color:white;}.btn-action{padding:4px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:14px;}.btn-action:hover{background:var(--border);}</style>
+{% endblock %}
