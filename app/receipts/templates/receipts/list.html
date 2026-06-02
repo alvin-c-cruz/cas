@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Receipts & Payments{% endblock %}
+{% block page_title %}Receipts & Payments{% endblock %}
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions">
+            <a href="{{ url_for('receipts.create', type='collection') }}" class="btn btn-success">💰 New Receipt (Collection)</a>
+            <a href="{{ url_for('receipts.create', type='payment') }}" class="btn btn-danger">💸 New Payment (Disbursement)</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if receipts %}
+        <table class="table">
+            <thead>
+                <tr><th>Number</th><th>Date</th><th>Type</th><th>Customer/Vendor</th><th>Method</th><th>Check #</th><th style="text-align:right;">Amount</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for r in receipts %}
+                <tr>
+                    <td><a href="{{ url_for('receipts.view', id=r.id) }}" style="font-weight:600;color:var(--blue);">{{ r.receipt_number }}</a></td>
+                    <td>{{ r.receipt_date.strftime('%b %d, %Y') }}</td>
+                    <td><span class="badge badge-{{ 'success' if r.transaction_type=='collection' else 'danger' }}">{{ 'Collection' if r.transaction_type=='collection' else 'Payment' }}</span></td>
+                    <td>{{ r.customer_name or r.vendor_name }}</td>
+                    <td>{{ r.payment_method|title }}</td>
+                    <td>{{ r.check_number or '-' }}</td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(r.amount) }}</td>
+                    <td><span class="badge badge-{{ 'secondary' if r.status=='draft' else 'info' if r.status=='posted' else 'warning' if r.status=='cleared' else 'danger' }}">{{ r.status|title }}</span></td>
+                    <td><a href="{{ url_for('receipts.view', id=r.id) }}" class="btn-action">👁️</a>{% if r.status=='draft' %}<a href="{{ url_for('receipts.edit', id=r.id) }}" class="btn-action">✏️</a>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state"><p>No receipts/payments found.</p></div>
+        {% endif %}
+    </div>
+</div>
+<style>.badge{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase;}.badge-secondary{background:var(--text-3);color:white;}.badge-info{background:var(--blue);color:white;}.badge-success{background:var(--green);color:white;}.badge-danger{background:var(--red);color:white;}.badge-warning{background:var(--amber);color:white;}.btn-action{padding:4px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:14px;}.btn-action:hover{background:var(--border);}</style>
+{% endblock %}

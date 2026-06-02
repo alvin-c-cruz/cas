@@ -76,6 +76,7 @@ def create_app(config=None):
     from app.settings import AppSettings
     from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
     from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+    from app.receipts.models import Receipt
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
@@ -90,6 +91,7 @@ def create_app(config=None):
     from app.audit.views import audit_bp
     from app.sales_invoices.views import sales_invoices_bp
     from app.purchase_bills.views import purchase_bills_bp
+    from app.receipts.views import receipts_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -103,6 +105,7 @@ def create_app(config=None):
     app.register_blueprint(audit_bp)
     app.register_blueprint(sales_invoices_bp)
     app.register_blueprint(purchase_bills_bp)
+    app.register_blueprint(receipts_bp)
 
 
     migrate.init_app(app, db)
