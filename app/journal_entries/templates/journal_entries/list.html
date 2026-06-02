@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Journal Entries{% endblock %}
+{% block page_title %}Journal Entries{% endblock %}
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions">
+            <a href="{{ url_for('journal_entries.create') }}" class="btn btn-primary">📝 New Journal Entry</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if entries %}
+        <table class="table">
+            <thead>
+                <tr><th>Entry #</th><th>Date</th><th>Description</th><th>Type</th><th style="text-align:right;">Debit</th><th style="text-align:right;">Credit</th><th>Balanced</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td><a href="{{ url_for('journal_entries.view', id=entry.id) }}" style="font-weight:600;color:var(--blue);">{{ entry.entry_number }}</a></td>
+                    <td>{{ entry.entry_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ entry.description[:50] }}{% if entry.description|length > 50 %}...{% endif %}</td>
+                    <td><span class="badge badge-secondary">{{ entry.entry_type|title }}</span></td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(entry.total_debit) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(entry.total_credit) }}</td>
+                    <td>{% if entry.is_balanced %}<span style="color:var(--green);">✓ Yes</span>{% else %}<span style="color:var(--red);">✗ No</span>{% endif %}</td>
+                    <td><span class="badge badge-{{ 'secondary' if entry.status=='draft' else 'info' if entry.status=='posted' else 'danger' }}">{{ entry.status|title }}</span></td>
+                    <td><a href="{{ url_for('journal_entries.view', id=entry.id) }}" class="btn-action">👁️</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state"><p>No journal entries found.</p><a href="{{ url_for('journal_entries.create') }}" class="btn btn-primary">Create First Entry</a></div>
+        {% endif %}
+    </div>
+</div>
+<style>.badge{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase;}.badge-secondary{background:var(--text-3);color:white;}.badge-info{background:var(--blue);color:white;}.badge-success{background:var(--green);color:white;}.badge-danger{background:var(--red);color:white;}.btn-action{padding:4px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:14px;}.btn-action:hover{background:var(--border);}</style>
+{% endblock %}
