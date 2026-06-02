@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Sales Invoices{% endblock %}
+{% block page_title %}Sales Invoices{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions">
+            <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">
+                <span>➕</span> Create Invoice
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card-body" style="border-bottom: 1px solid var(--border); padding: 16px 20px;">
+        <form method="GET" action="{{ url_for('sales_invoices.list_invoices') }}" style="display: flex; gap: 12px; align-items: flex-end;">
+            <div class="form-group" style="margin: 0; flex: 1; max-width: 200px;">
+                <label class="form-label" style="font-size: 12px; margin-bottom: 4px;">Status</label>
+                <select name="status" class="form-control" onchange="this.form.submit()">
+                    <option value="all" {{ 'selected' if status_filter == 'all' }}>All Statuses</option>
+                    <option value="draft" {{ 'selected' if status_filter == 'draft' }}>Draft</option>
+                    <option value="posted" {{ 'selected' if status_filter == 'posted' }}>Posted</option>
+                    <option value="paid" {{ 'selected' if status_filter == 'paid' }}>Paid</option>
+                    <option value="partially_paid" {{ 'selected' if status_filter == 'partially_paid' }}>Partially Paid</option>
+                    <option value="cancelled" {{ 'selected' if status_filter == 'cancelled' }}>Cancelled</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin: 0; flex: 1; max-width: 300px;">
+                <label class="form-label" style="font-size: 12px; margin-bottom: 4px;">Customer</label>
+                <select name="customer" class="form-control" onchange="this.form.submit()">
+                    <option value="all" {{ 'selected' if customer_filter == 'all' }}>All Customers</option>
+                    {% for customer in customers %}
+                    <option value="{{ customer.id }}" {{ 'selected' if customer_filter == customer.id|string }}>
+                        {{ customer.code }} - {{ customer.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-secondary" style="display: none;">Filter</button>
+        </form>
+    </div>
+
+    <div class="card-body">
+        {% if invoices %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Invoice #</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Due Date</th>
+                    <th style="text-align: right;">Subtotal</th>
+                    <th style="text-align: right;">VAT</th>
+                    <th style="text-align: right;">Total</th>
+                    <th style="text-align: right;">Balance</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invoice in invoices %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" style="font-weight: 600; color: var(--blue);">
+                            {{ invoice.invoice_number }}
+                        </a>
+                    </td>
+                    <td>{{ invoice.invoice_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ invoice.customer_name }}</td>
+                    <td>{{ invoice.due_date.strftime('%b %d, %Y') }}</td>
+                    <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(invoice.subtotal) }}</td>
+                    <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(invoice.vat_amount) }}</td>
+                    <td style="text-align: right; font-family: var(--mono); font-weight: 600;">₱{{ '{:,.2f}'.format(invoice.total_amount) }}</td>
+                    <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(invoice.balance) }}</td>
+                    <td>
+                        {% if invoice.status == 'draft' %}
+                        <span class="badge badge-secondary">Draft</span>
+                        {% elif invoice.status == 'posted' %}
+                        <span class="badge badge-info">Posted</span>
+                        {% elif invoice.status == 'paid' %}
+                        <span class="badge badge-success">Paid</span>
+                        {% elif invoice.status == 'partially_paid' %}
+                        <span class="badge badge-warning">Partially Paid</span>
+                        {% elif invoice.status == 'cancelled' %}
+                        <span class="badge badge-danger">Cancelled</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group">
+                            <a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" class="btn-action" title="View">👁️</a>
+                            {% if invoice.status == 'draft' %}
+                            <a href="{{ url_for('sales_invoices.edit', id=invoice.id) }}" class="btn-action" title="Edit">✏️</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No sales invoices found.</p>
+            <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">Create First Invoice</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.badge-secondary { background: var(--text-3); color: white; }
+.badge-info { background: var(--blue); color: white; }
+.badge-success { background: var(--green); color: white; }
+.badge-warning { background: var(--amber); color: white; }
+.badge-danger { background: var(--red); color: white; }
+
+.btn-group {
+    display: flex;
+    gap: 4px;
+}
+.btn-action {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.15s;
+}
+.btn-action:hover {
+    background: var(--border);
+}
+</style>
+{% endblock %}

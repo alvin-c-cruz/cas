@@ -74,6 +74,7 @@ def create_app(config=None):
     from app.audit.models import AuditLog
     from app.notifications.models import Notification
     from app.settings import AppSettings
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
@@ -86,6 +87,7 @@ def create_app(config=None):
     from app.withholding_tax.views import withholding_tax_bp
     from app.customers.views import customers_bp
     from app.audit.views import audit_bp
+    from app.sales_invoices.views import sales_invoices_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -97,6 +99,7 @@ def create_app(config=None):
     app.register_blueprint(withholding_tax_bp, url_prefix='/withholding-tax')
     app.register_blueprint(customers_bp, url_prefix='/customers')
     app.register_blueprint(audit_bp)
+    app.register_blueprint(sales_invoices_bp)
 
 
     migrate.init_app(app, db)

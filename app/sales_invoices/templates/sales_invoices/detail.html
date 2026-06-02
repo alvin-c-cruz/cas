@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Invoice {{ invoice.invoice_number }}{% endblock %}
+{% block page_title %}Sales Invoice - {{ invoice.invoice_number }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions">
+            {% if invoice.status == 'draft' %}
+            <form method="POST" action="{{ url_for('sales_invoices.post', id=invoice.id) }}" style="display: inline;">
+                <button type="submit" class="btn btn-success" onclick="return confirm('Post this invoice? It will become final and cannot be edited.')">
+                    📮 Post Invoice
+                </button>
+            </form>
+            <a href="{{ url_for('sales_invoices.edit', id=invoice.id) }}" class="btn btn-primary">✏️ Edit</a>
+            {% endif %}
+
+            {% if invoice.status != 'cancelled' and invoice.amount_paid == 0 %}
+            <form method="POST" action="{{ url_for('sales_invoices.cancel', id=invoice.id) }}" style="display: inline;">
+                <button type="submit" class="btn btn-danger" onclick="return confirm('Cancel this invoice?')">
+                    ❌ Cancel
+                </button>
+            </form>
+            {% endif %}
+
+            <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">← Back to List</a>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <!-- Invoice Header -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 32px;">
+            <div>
+                <h3 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px;">Customer Information</h3>
+                <div style="background: var(--bg); padding: 16px; border-radius: 6px;">
+                    <p style="margin: 0 0 8px 0; font-weight: 600; font-size: 15px;">{{ invoice.customer_name }}</p>
+                    {% if invoice.customer_tin %}
+                    <p style="margin: 0 0 4px 0; font-size: 13px; color: var(--text-2);">TIN: {{ invoice.customer_tin }}</p>
+                    {% endif %}
+                    {% if invoice.customer_address %}
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--text-2);">{{ invoice.customer_address }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div>
+                <h3 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px;">Invoice Details</h3>
+                <div style="background: var(--bg); padding: 16px; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-2); font-size: 13px;">Invoice Date:</span>
+                        <span style="font-weight: 600;">{{ invoice.invoice_date.strftime('%b %d, %Y') }}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-2); font-size: 13px;">Due Date:</span>
+                        <span style="font-weight: 600;">{{ invoice.due_date.strftime('%b %d, %Y') }}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-2); font-size: 13px;">Payment Terms:</span>
+                        <span>{{ invoice.payment_terms }}</span>
+                    </div>
+                    {% if invoice.reference %}
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-2); font-size: 13px;">Reference:</span>
+                        <span>{{ invoice.reference }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Line Items -->
+        <h3 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px;">Line Items</h3>
+        <table class="table" style="margin-bottom: 24px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Description</th>
+                    <th style="text-align: right;">Qty</th>
+                    <th style="text-align: right;">Unit Price</th>
+                    <th>VAT</th>
+                    <th style="text-align: right;">Amount</th>
+                    <th style="text-align: right;">VAT Amt</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in invoice.line_items %}
+                <tr>
+                    <td>{{ item.line_number }}</td>
+                    <td>{{ item.description }}</td>
+                    <td style="text-align: right; font-family: var(--mono);">{{ '{:,.4f}'.format(item.quantity) }}</td>
+                    <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(item.unit_price) }}</td>
+                    <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
+                    <td style="text-align: right; font-family: var(--mono); font-weight: 600;">₱{{ '{:,.2f}'.format(item.line_total) }}</td>
+                    <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(item.vat_amount) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Totals -->
+        <div style="display: flex; justify-content: flex-end;">
+            <div style="background: var(--bg); padding: 20px; border-radius: 6px; min-width: 320px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="color: var(--text-2);">Subtotal:</span>
+                    <span style="font-family: var(--mono); font-weight: 600;">₱{{ '{:,.2f}'.format(invoice.subtotal) }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <span style="color: var(--text-2);">VAT:</span>
+                    <span style="font-family: var(--mono); font-weight: 600;">₱{{ '{:,.2f}'.format(invoice.vat_amount) }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding-top: 12px; border-top: 2px solid var(--border); margin-bottom: 12px;">
+                    <span style="font-size: 16px; font-weight: 700;">Total Amount:</span>
+                    <span style="font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--blue);">₱{{ '{:,.2f}'.format(invoice.total_amount) }}</span>
+                </div>
+                {% if invoice.amount_paid > 0 %}
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="color: var(--text-2);">Amount Paid:</span>
+                    <span style="font-family: var(--mono); color: var(--green);">₱{{ '{:,.2f}'.format(invoice.amount_paid) }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--border);">
+                    <span style="font-weight: 600;">Balance Due:</span>
+                    <span style="font-family: var(--mono); font-weight: 700; color: var(--red);">₱{{ '{:,.2f}'.format(invoice.balance) }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if invoice.notes %}
+        <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border);">
+            <h3 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 8px;">Notes</h3>
+            <p style="color: var(--text-2); white-space: pre-wrap;">{{ invoice.notes }}</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

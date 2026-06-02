@@ -1,0 +1,424 @@
+"""
+Sales Invoice views for managing customer billing transactions.
+"""
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask_login import login_required, current_user
+from functools import wraps
+from app import db
+from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+from app.sales_invoices.forms import SalesInvoiceForm
+from app.customers.models import Customer
+from app.vat_categories.models import VATCategory
+from app.accounts.models import Account
+from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
+from app.utils import ph_now
+from datetime import datetime, date, timedelta
+from decimal import Decimal
+import json
+
+sales_invoices_bp = Blueprint('sales_invoices', __name__, template_folder='templates')
+
+
+def accountant_or_admin_required(f):
+    """Decorator to require accountant or admin role."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if current_user.role not in ['accountant', 'admin']:
+            flash('Only Accountants and Administrators can manage sales invoices.', 'error')
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def generate_invoice_number():
+    """
+    Generate next invoice number in format: SI-YYYY-####
+    Example: SI-2024-0001
+    """
+    current_year = datetime.now().year
+    prefix = f'SI-{current_year}-'
+
+    # Get the latest invoice for current year
+    latest_invoice = SalesInvoice.query.filter(
+        SalesInvoice.invoice_number.like(f'{prefix}%')
+    ).order_by(SalesInvoice.invoice_number.desc()).first()
+
+    if latest_invoice:
+        # Extract the sequence number
+        try:
+            last_num = int(latest_invoice.invoice_number.split('-')[-1])
+            next_num = last_num + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    return f'{prefix}{next_num:04d}'
+
+
+@sales_invoices_bp.route('/sales-invoices')
+@login_required
+def list_invoices():
+    """List all sales invoices."""
+    # Get filter parameters
+    status_filter = request.args.get('status', 'all')
+    customer_filter = request.args.get('customer', 'all')
+
+    # Base query
+    query = SalesInvoice.query
+
+    # Apply filters
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+
+    if customer_filter != 'all':
+        try:
+            customer_id = int(customer_filter)
+            query = query.filter_by(customer_id=customer_id)
+        except ValueError:
+            pass
+
+    # Order by invoice date (newest first)
+    invoices = query.order_by(SalesInvoice.invoice_date.desc()).all()
+
+    # Get customers for filter dropdown
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+
+    return render_template('sales_invoices/list.html',
+                         invoices=invoices,
+                         customers=customers,
+                         status_filter=status_filter,
+                         customer_filter=customer_filter)
+
+
+@sales_invoices_bp.route('/sales-invoices/create', methods=['GET', 'POST'])
+@login_required
+@accountant_or_admin_required
+def create():
+    """Create new sales invoice."""
+    form = SalesInvoiceForm()
+
+    # Populate customer choices
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    form.customer_id.choices = [(0, '-- Select Customer --')] + [(c.id, f'{c.code} - {c.name}') for c in customers]
+
+    if form.validate_on_submit():
+        try:
+            # Get customer details
+            customer = Customer.query.get(form.customer_id.data)
+            if not customer:
+                flash('Selected customer not found.', 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=None)
+
+            # Create invoice
+            invoice = SalesInvoice(
+                invoice_number=form.invoice_number.data,
+                invoice_date=form.invoice_date.data,
+                due_date=form.due_date.data,
+                customer_id=customer.id,
+                customer_name=customer.name,
+                customer_tin=customer.tin,
+                customer_address=customer.address,
+                payment_terms=form.payment_terms.data,
+                reference=form.reference.data,
+                notes=form.notes.data,
+                status='draft',
+                created_by_id=current_user.id
+            )
+
+            # Process line items from request
+            line_items_data = request.form.getlist('line_items')
+            if line_items_data:
+                line_items = json.loads(line_items_data[0]) if line_items_data[0] else []
+
+                for idx, item_data in enumerate(line_items, start=1):
+                    # Get VAT rate from category
+                    vat_rate = Decimal('0.00')
+                    vat_category = item_data.get('vat_category')
+                    if vat_category:
+                        vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+                        if vat_cat:
+                            vat_rate = Decimal(str(vat_cat.rate))
+
+                    # Create line item
+                    line_item = SalesInvoiceItem(
+                        line_number=idx,
+                        description=item_data.get('description', ''),
+                        quantity=Decimal(str(item_data.get('quantity', 1))),
+                        unit_price=Decimal(str(item_data.get('unit_price', 0))),
+                        vat_category=vat_category,
+                        vat_rate=vat_rate,
+                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None
+                    )
+
+                    # Calculate amounts
+                    line_item.calculate_amounts()
+                    invoice.line_items.append(line_item)
+
+            # Calculate invoice totals
+            invoice.calculate_totals()
+
+            db.session.add(invoice)
+            db.session.commit()
+
+            # Audit log
+            log_create(
+                module='sales_invoice',
+                record_id=invoice.id,
+                record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+                new_values=model_to_dict(invoice, ['invoice_number', 'invoice_date', 'due_date', 'customer_name', 'subtotal', 'vat_amount', 'total_amount', 'status'])
+            )
+
+            flash(f'Sales Invoice "{invoice.invoice_number}" created successfully!', 'success')
+            return redirect(url_for('sales_invoices.view', id=invoice.id))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating sales invoice: {str(e)}', 'error')
+
+    # Set defaults for new invoice
+    if request.method == 'GET':
+        form.invoice_number.data = generate_invoice_number()
+        form.invoice_date.data = date.today()
+        form.due_date.data = date.today() + timedelta(days=30)
+
+    # Get VAT categories and accounts for line items
+    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
+    revenue_accounts = Account.query.filter_by(account_type='Revenue').order_by(Account.code).all()
+
+    return render_template('sales_invoices/form.html',
+                         form=form,
+                         invoice=None,
+                         vat_categories=vat_categories,
+                         revenue_accounts=revenue_accounts)
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>')
+@login_required
+def view(id):
+    """View sales invoice details."""
+    invoice = SalesInvoice.query.get_or_404(id)
+    return render_template('sales_invoices/detail.html', invoice=invoice)
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@accountant_or_admin_required
+def edit(id):
+    """Edit sales invoice (only drafts can be edited)."""
+    invoice = SalesInvoice.query.get_or_404(id)
+
+    # Only drafts can be edited
+    if invoice.status != 'draft':
+        flash('Only draft invoices can be edited.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    form = SalesInvoiceForm(obj=invoice)
+
+    # Populate customer choices
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
+
+    if form.validate_on_submit():
+        try:
+            # Capture old values
+            old_values = model_to_dict(invoice, ['invoice_number', 'invoice_date', 'due_date', 'customer_name', 'subtotal', 'vat_amount', 'total_amount', 'status'])
+
+            # Get customer details
+            customer = Customer.query.get(form.customer_id.data)
+            if not customer:
+                flash('Selected customer not found.', 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=invoice)
+
+            # Update invoice header
+            invoice.invoice_number = form.invoice_number.data
+            invoice.invoice_date = form.invoice_date.data
+            invoice.due_date = form.due_date.data
+            invoice.customer_id = customer.id
+            invoice.customer_name = customer.name
+            invoice.customer_tin = customer.tin
+            invoice.customer_address = customer.address
+            invoice.payment_terms = form.payment_terms.data
+            invoice.reference = form.reference.data
+            invoice.notes = form.notes.data
+
+            # Delete existing line items
+            SalesInvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
+
+            # Process new line items
+            line_items_data = request.form.getlist('line_items')
+            if line_items_data:
+                line_items = json.loads(line_items_data[0]) if line_items_data[0] else []
+
+                for idx, item_data in enumerate(line_items, start=1):
+                    # Get VAT rate from category
+                    vat_rate = Decimal('0.00')
+                    vat_category = item_data.get('vat_category')
+                    if vat_category:
+                        vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+                        if vat_cat:
+                            vat_rate = Decimal(str(vat_cat.rate))
+
+                    # Create line item
+                    line_item = SalesInvoiceItem(
+                        invoice_id=invoice.id,
+                        line_number=idx,
+                        description=item_data.get('description', ''),
+                        quantity=Decimal(str(item_data.get('quantity', 1))),
+                        unit_price=Decimal(str(item_data.get('unit_price', 0))),
+                        vat_category=vat_category,
+                        vat_rate=vat_rate,
+                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None
+                    )
+
+                    # Calculate amounts
+                    line_item.calculate_amounts()
+                    db.session.add(line_item)
+
+            # Recalculate totals
+            invoice.calculate_totals()
+
+            db.session.commit()
+
+            # Audit log
+            new_values = model_to_dict(invoice, ['invoice_number', 'invoice_date', 'due_date', 'customer_name', 'subtotal', 'vat_amount', 'total_amount', 'status'])
+            log_update(
+                module='sales_invoice',
+                record_id=invoice.id,
+                record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+                old_values=old_values,
+                new_values=new_values
+            )
+
+            flash(f'Sales Invoice "{invoice.invoice_number}" updated successfully!', 'success')
+            return redirect(url_for('sales_invoices.view', id=invoice.id))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating sales invoice: {str(e)}', 'error')
+
+    # Pre-populate form on GET
+    if request.method == 'GET':
+        form.customer_id.data = invoice.customer_id
+
+    # Get VAT categories and accounts for line items
+    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
+    revenue_accounts = Account.query.filter_by(account_type='Revenue').order_by(Account.code).all()
+
+    # Get existing line items
+    line_items = invoice.line_items.all()
+
+    return render_template('sales_invoices/form.html',
+                         form=form,
+                         invoice=invoice,
+                         vat_categories=vat_categories,
+                         revenue_accounts=revenue_accounts,
+                         line_items=line_items)
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def post(id):
+    """Post sales invoice (makes it final and immutable)."""
+    invoice = SalesInvoice.query.get_or_404(id)
+
+    if invoice.status != 'draft':
+        flash('Only draft invoices can be posted.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    try:
+        invoice.status = 'posted'
+        invoice.posted_by_id = current_user.id
+        invoice.posted_at = ph_now()
+        db.session.commit()
+
+        # Audit log
+        log_audit(
+            module='sales_invoice',
+            action='post',
+            record_id=invoice.id,
+            record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+            notes=f'Invoice posted by {current_user.username}'
+        )
+
+        flash(f'Sales Invoice "{invoice.invoice_number}" posted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error posting invoice: {str(e)}', 'error')
+
+    return redirect(url_for('sales_invoices.view', id=id))
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/cancel', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def cancel(id):
+    """Cancel sales invoice."""
+    invoice = SalesInvoice.query.get_or_404(id)
+
+    if invoice.status == 'cancelled':
+        flash('Invoice is already cancelled.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    if invoice.amount_paid > 0:
+        flash('Cannot cancel invoice with payments applied.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    try:
+        invoice.status = 'cancelled'
+        invoice.cancelled_at = ph_now()
+        db.session.commit()
+
+        # Audit log
+        log_audit(
+            module='sales_invoice',
+            action='cancel',
+            record_id=invoice.id,
+            record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+            notes=f'Invoice cancelled by {current_user.username}'
+        )
+
+        flash(f'Sales Invoice "{invoice.invoice_number}" cancelled.', 'warning')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error cancelling invoice: {str(e)}', 'error')
+
+    return redirect(url_for('sales_invoices.view', id=id))
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/delete', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def delete(id):
+    """Delete sales invoice (only drafts can be deleted)."""
+    invoice = SalesInvoice.query.get_or_404(id)
+
+    if invoice.status != 'draft':
+        flash('Only draft invoices can be deleted.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    try:
+        # Capture values before delete
+        old_values = model_to_dict(invoice, ['invoice_number', 'invoice_date', 'customer_name', 'total_amount', 'status'])
+        invoice_number = invoice.invoice_number
+
+        db.session.delete(invoice)
+        db.session.commit()
+
+        # Audit log
+        log_delete(
+            module='sales_invoice',
+            record_id=id,
+            record_identifier=f'{invoice_number}',
+            old_values=old_values
+        )
+
+        flash(f'Sales Invoice "{invoice_number}" deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting invoice: {str(e)}', 'error')
+
+    return redirect(url_for('sales_invoices.list_invoices'))

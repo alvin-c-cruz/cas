@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit Invoice' if invoice else 'Create Invoice' }}{% endblock %}
+{% block page_title %}{{ 'Edit Invoice' if invoice else 'Create Sales Invoice' }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field, render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate id="invoiceForm">
+            {{ form.hidden_tag() }}
+
+            <!-- Invoice Header -->
+            <div class="form-row-3">
+                {{ render_field(form.invoice_number) }}
+                {{ render_field(form.invoice_date) }}
+                {{ render_field(form.due_date) }}
+            </div>
+
+            <div class="form-row-2">
+                {{ render_field(form.customer_id) }}
+                {{ render_field(form.payment_terms) }}
+            </div>
+
+            <div class="form-row-2">
+                {{ render_field(form.reference) }}
+                {{ render_field(form.notes) }}
+            </div>
+
+            <!-- Line Items Section -->
+            <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Line Items</h3>
+
+                <table class="table" id="lineItemsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 40%;">Description</th>
+                            <th style="width: 10%; text-align: right;">Qty</th>
+                            <th style="width: 15%; text-align: right;">Unit Price</th>
+                            <th style="width: 15%;">VAT Category</th>
+                            <th style="width: 15%;">Revenue Account</th>
+                            <th style="width: 5%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="lineItemsBody">
+                        <!-- Line items will be added here via JavaScript -->
+                    </tbody>
+                </table>
+
+                <button type="button" class="btn btn-secondary" onclick="addLineItem()">+ Add Line Item</button>
+
+                <!-- Hidden field to store line items JSON -->
+                <input type="hidden" name="line_items" id="lineItemsData">
+            </div>
+
+            <!-- Totals Display -->
+            <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                <div style="background: var(--bg); padding: 20px; border-radius: 6px; min-width: 320px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span style="color: var(--text-2);">Subtotal:</span>
+                        <span id="subtotalDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span style="color: var(--text-2);">VAT:</span>
+                        <span id="vatDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding-top: 12px; border-top: 2px solid var(--border);">
+                        <span style="font-size: 16px; font-weight: 700;">Total:</span>
+                        <span id="totalDisplay" style="font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--blue);">₱0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions" style="margin-top: 32px;">
+                <button type="submit" class="btn btn-primary">
+                    {{ 'Update Invoice' if invoice else 'Create Invoice' }}
+                </button>
+                <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// VAT categories data
+const vatCategories = {{ vat_categories | tojson }};
+const revenueAccounts = {{ revenue_accounts | tojson }};
+
+// Line items array
+let lineItems = [];
+let lineCounter = 0;
+
+// Load existing line items if editing
+{% if line_items %}
+const existingItems = {{ line_items | tojson }};
+existingItems.forEach(item => {
+    addLineItem(item);
+});
+{% endif %}
+
+function addLineItem(existingItem = null) {
+    lineCounter++;
+    const item = existingItem || {
+        description: '',
+        quantity: 1.0000,
+        unit_price: 0.00,
+        vat_category: '',
+        account_id: null
+    };
+
+    const row = document.createElement('tr');
+    row.id = `line-${lineCounter}`;
+    row.innerHTML = `
+        <td><input type="text" class="form-control" value="${item.description}" onchange="updateLineItem(${lineCounter}, 'description', this.value)"></td>
+        <td><input type="number" class="form-control" value="${item.quantity}" step="0.0001" min="0.0001" style="text-align: right;" onchange="updateLineItem(${lineCounter}, 'quantity', parseFloat(this.value))"></td>
+        <td><input type="number" class="form-control" value="${item.unit_price}" step="0.01" min="0" style="text-align: right;" onchange="updateLineItem(${lineCounter}, 'unit_price', parseFloat(this.value))"></td>
+        <td>
+            <select class="form-control" onchange="updateLineItem(${lineCounter}, 'vat_category', this.value)">
+                <option value="">No VAT</option>
+                ${vatCategories.map(vat => `<option value="${vat.code}" ${item.vat_category === vat.code ? 'selected' : ''}>${vat.code} (${vat.rate}%)</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <select class="form-control" onchange="updateLineItem(${lineCounter}, 'account_id', parseInt(this.value))">
+                <option value="">Select Account</option>
+                ${revenueAccounts.map(acc => `<option value="${acc.id}" ${item.account_id === acc.id ? 'selected' : ''}>${acc.code} - ${acc.name}</option>`).join('')}
+            </select>
+        </td>
+        <td><button type="button" class="btn-action" onclick="removeLineItem(${lineCounter})" title="Remove">🗑️</button></td>
+    `;
+
+    document.getElementById('lineItemsBody').appendChild(row);
+
+    lineItems.push({
+        id: lineCounter,
+        ...item
+    });
+
+    calculateTotals();
+}
+
+function updateLineItem(id, field, value) {
+    const item = lineItems.find(i => i.id === id);
+    if (item) {
+        item[field] = value;
+        calculateTotals();
+    }
+}
+
+function removeLineItem(id) {
+    document.getElementById(`line-${id}`).remove();
+    lineItems = lineItems.filter(i => i.id !== id);
+    calculateTotals();
+}
+
+function calculateTotals() {
+    let subtotal = 0;
+    let vatTotal = 0;
+
+    lineItems.forEach(item => {
+        const lineTotal = (item.quantity || 0) * (item.unit_price || 0);
+        subtotal += lineTotal;
+
+        // Find VAT rate
+        const vat = vatCategories.find(v => v.code === item.vat_category);
+        if (vat) {
+            vatTotal += lineTotal * (vat.rate / 100);
+        }
+    });
+
+    const total = subtotal + vatTotal;
+
+    document.getElementById('subtotalDisplay').textContent = '₱' + subtotal.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('vatDisplay').textContent = '₱' + vatTotal.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('totalDisplay').textContent = '₱' + total.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+// On form submit, serialize line items to hidden field
+document.getElementById('invoiceForm').addEventListener('submit', function(e) {
+    const itemsData = lineItems.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        vat_category: item.vat_category,
+        account_id: item.account_id
+    }));
+    document.getElementById('lineItemsData').value = JSON.stringify(itemsData);
+});
+
+// Add first line item if creating new invoice
+{% if not invoice %}
+addLineItem();
+{% endif %}
+</script>
+
+<style>
+.form-row-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+</style>
+{% endblock %}
