@@ -28,7 +28,24 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard.index'))
 
+    from app.branches.models import Branch
+
     form = LoginForm()
+
+    # Populate branch choices with active branches
+    branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
+
+    if not branches:
+        flash('No active branches available. Please contact the administrator.', 'error')
+        return render_template('users/login.html', form=form, branches=branches)
+
+    form.branch.choices = [(b.id, b.name) for b in branches]
+
+    # If only one branch, auto-select it
+    single_branch = len(branches) == 1
+    if single_branch and request.method == 'GET':
+        form.branch.data = branches[0].id
+
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
 
@@ -68,7 +85,7 @@ def login():
                 db.session.rollback()
 
             flash('Invalid username or password.', 'error')
-            return render_template('users/login.html', form=form)
+            return render_template('users/login.html', form=form, branches=branches)
 
         if not user.is_active:
             # Log failed login due to inactive account
@@ -89,7 +106,7 @@ def login():
                 db.session.rollback()
 
             flash('Your account has been deactivated. Please contact the administrator.', 'error')
-            return render_template('users/login.html', form=form)
+            return render_template('users/login.html', form=form, branches=branches)
 
         # Successful login
         try:
@@ -113,7 +130,17 @@ def login():
             db.session.rollback()
 
         login_user(user, remember=form.remember_me.data)
-        flash(f'Welcome back, {user.full_name}!', 'success')
+
+        # Store selected branch in session
+        from flask import session
+        selected_branch_id = form.branch.data
+        session['selected_branch_id'] = selected_branch_id
+
+        # Get branch name for welcome message
+        selected_branch = Branch.query.get(selected_branch_id)
+        branch_name = selected_branch.name if selected_branch else 'Unknown Branch'
+
+        flash(f'Welcome back, {user.full_name}! Logged into {branch_name}.', 'success')
 
         # Redirect to next page or dashboard
         next_page = request.args.get('next')
@@ -121,7 +148,7 @@ def login():
             return redirect(next_page)
         return redirect(url_for('dashboard.index'))
 
-    return render_template('users/login.html', form=form)
+    return render_template('users/login.html', form=form, branches=branches)
 
 
 @users_bp.route('/login-history')
@@ -139,8 +166,9 @@ def login_history():
 def logout():
     """User logout."""
     from flask import session
-    # Clear all flash messages before logging out
+    # Clear all flash messages and branch selection before logging out
     session.pop('_flashes', None)
+    session.pop('selected_branch_id', None)
     logout_user()
     flash('You have been logged out successfully.', 'info')
     return redirect(url_for('users.login'))

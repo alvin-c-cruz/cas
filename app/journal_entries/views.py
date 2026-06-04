@@ -58,6 +58,14 @@ def list_entries():
     status_filter = request.args.get('status', 'all')
     type_filter = request.args.get('type', 'all')
 
+    # Default to current year (January 1 to December 31)
+    current_year = datetime.now().year
+    default_date_from = f'{current_year}-01-01'
+    default_date_to = f'{current_year}-12-31'
+
+    date_from = request.args.get('date_from', default_date_from)
+    date_to = request.args.get('date_to', default_date_to)
+
     query = JournalEntry.query
 
     if status_filter != 'all':
@@ -66,12 +74,29 @@ def list_entries():
     if type_filter != 'all':
         query = query.filter_by(entry_type=type_filter)
 
+    # Date filtering
+    if date_from:
+        try:
+            from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
+            query = query.filter(JournalEntry.entry_date >= from_date)
+        except ValueError:
+            flash('Invalid date format for "From" date.', 'error')
+
+    if date_to:
+        try:
+            to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
+            query = query.filter(JournalEntry.entry_date <= to_date)
+        except ValueError:
+            flash('Invalid date format for "To" date.', 'error')
+
     entries = query.order_by(JournalEntry.entry_date.desc()).all()
 
     return render_template('journal_entries/list.html',
                          entries=entries,
                          status_filter=status_filter,
-                         type_filter=type_filter)
+                         type_filter=type_filter,
+                         date_from=date_from,
+                         date_to=date_to)
 
 
 @journal_entries_bp.route('/journal-entries/create', methods=['GET', 'POST'])
@@ -170,7 +195,9 @@ def create():
         form.entry_date.data = date.today()
 
     accounts = Account.query.order_by(Account.code).all()
-    return render_template('journal_entries/form.html', form=form, entry=None, accounts=accounts)
+    # Convert accounts to dictionaries for JSON serialization
+    accounts_data = [{'id': acc.id, 'code': acc.code, 'name': acc.name} for acc in accounts]
+    return render_template('journal_entries/form.html', form=form, entry=None, accounts=accounts_data)
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>')

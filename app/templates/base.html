@@ -707,6 +707,51 @@
             resize: vertical;
         }
 
+        /* Sidebar Branch Indicator */
+        .sidebar-branch-indicator {
+            margin: 16px 12px;
+            padding: 12px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+            border: 2px solid #1e40af;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .branch-icon-sidebar {
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+        }
+
+        .branch-details-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .branch-label-sidebar {
+            font-size: 9px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.85);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            line-height: 1;
+        }
+
+        .branch-name-sidebar {
+            font-size: 15px;
+            font-weight: 800;
+            color: white;
+            line-height: 1.2;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
         /* Topbar User Info */
         .topbar-user-info-wrapper {
             position: relative;
@@ -965,6 +1010,17 @@
             </div>
         </div>
 
+        <!-- Branch Indicator -->
+        {% if current_user.is_authenticated and current_branch %}
+        <div class="sidebar-branch-indicator">
+            <div class="branch-icon-sidebar">🏢</div>
+            <div class="branch-details-sidebar">
+                <div class="branch-label-sidebar">Current Branch</div>
+                <div class="branch-name-sidebar">{{ current_branch.name }}</div>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="nav">
             <!-- Main Section -->
             <div class="nav-label">Main</div>
@@ -984,94 +1040,167 @@
             </a>
             {% endif %}
 
-            <!-- Ledger Section -->
-            <div class="nav-label">Ledger</div>
-            <a href="{{ url_for('accounts.list_accounts') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts.') %}active{% endif %}">
-                <span class="nav-icon">📋</span>
-                <span class="nav-text">Chart of Accounts</span>
-            </a>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                <span class="nav-icon">📓</span>
-                <span class="nav-text">Journal Entries</span>
-            </a>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                <span class="nav-icon">📖</span>
-                <span class="nav-text">General Ledger</span>
-            </a>
-
             <!-- Transactions Section -->
-            <div class="nav-label">Transactions</div>
-            <a href="{{ url_for('sales_invoices.list_invoices') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_invoices.') %}active{% endif %}">
-                <span class="nav-icon">📄</span>
-                <span class="nav-text">Sales Invoices</span>
-            </a>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                <span class="nav-icon">💰</span>
-                <span class="nav-text">Collections</span>
-            </a>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                <span class="nav-icon">📋</span>
-                <span class="nav-text">Accounts Payable</span>
-            </a>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                <span class="nav-icon">💸</span>
-                <span class="nav-text">Payments</span>
-            </a>
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="transactions">
+                    <span>Transactions</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-transactions">
+                    <a href="{{ url_for('sales_invoices.list_invoices') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_invoices.') %}active{% endif %}">
+                        <span class="nav-icon">📄</span>
+                        <span class="nav-text">Sales Invoices</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                        <span class="nav-icon">💰</span>
+                        <span class="nav-text">Collections</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-text">Accounts Payable</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                        <span class="nav-icon">💸</span>
+                        <span class="nav-text">Payments</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Ledger Section -->
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="ledger">
+                    <span>Ledger</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-ledger">
+                    <a href="{{ url_for('accounts.list_accounts') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts.') %}active{% endif %}">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-text">Chart of Accounts</span>
+                    </a>
+                    <a href="{{ url_for('journal_entries.list_entries') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('journal_entries.') %}active{% endif %}">
+                        <span class="nav-icon">📓</span>
+                        <span class="nav-text">Journal Entries</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                        <span class="nav-icon">📖</span>
+                        <span class="nav-text">General Ledger</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Financial Reports Section -->
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="financial-reports">
+                    <span>Financial Reports</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-financial-reports">
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">💰</span>
+                        <span class="nav-text">Income Statement</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">📈</span>
+                        <span class="nav-text">Balance Sheet</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">💸</span>
+                        <span class="nav-text">Cash Flow</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">⚖️</span>
+                        <span class="nav-text">Trial Balance</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">📅</span>
+                        <span class="nav-text">Aging of AR</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">📆</span>
+                        <span class="nav-text">Aging of AP</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- BIR Reports Section -->
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="bir-reports">
+                    <span>BIR Reports</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-bir-reports">
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">🏛</span>
+                        <span class="nav-text">VAT Reports</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-text">Withholding Tax</span>
+                    </a>
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                        <span class="nav-icon">📄</span>
+                        <span class="nav-text">Annual ITR</span>
+                    </a>
+                </div>
+            </div>
 
             <!-- Maintenance Section -->
-            <div class="nav-label">Maintenance</div>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                <span class="nav-icon">👥</span>
-                <span class="nav-text">Customers</span>
-            </a>
-            <a href="{{ url_for('vendors.list_vendors') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vendors.') %}active{% endif %}">
-                <span class="nav-icon">🏢</span>
-                <span class="nav-text">Vendors</span>
-            </a>
-            {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
-            <a href="{{ url_for('vat_categories.list_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_categories.') %}active{% endif %}">
-                <span class="nav-icon">📊</span>
-                <span class="nav-text">VAT Categories</span>
-            </a>
-            <a href="{{ url_for('withholding_tax.list_withholding_tax') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('withholding_tax.') %}active{% endif %}">
-                <span class="nav-icon">💼</span>
-                <span class="nav-text">Withholding Tax</span>
-            </a>
-            {% endif %}
-
-            <!-- Analytics Section -->
-            <div class="nav-label">Analytics</div>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                <span class="nav-icon">📊</span>
-                <span class="nav-text">Financial Reports</span>
-            </a>
-            <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                <span class="nav-icon">🏛</span>
-                <span class="nav-text">BIR Reports</span>
-            </a>
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="maintenance">
+                    <span>Maintenance</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-maintenance">
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-text">Customers</span>
+                    </a>
+                    <a href="{{ url_for('vendors.list_vendors') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vendors.') %}active{% endif %}">
+                        <span class="nav-icon">🏢</span>
+                        <span class="nav-text">Vendors</span>
+                    </a>
+                    {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
+                    <a href="{{ url_for('vat_categories.list_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_categories.') %}active{% endif %}">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-text">VAT Categories</span>
+                    </a>
+                    <a href="{{ url_for('withholding_tax.list_withholding_tax') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('withholding_tax.') %}active{% endif %}">
+                        <span class="nav-icon">💼</span>
+                        <span class="nav-text">Withholding Tax</span>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
 
             <!-- Admin Section -->
-            <div class="nav-label">Admin</div>
-            {% if current_user.is_authenticated and current_user.role == 'admin' %}
-            <a href="{{ url_for('branches.list_branches') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('branches.') %}active{% endif %}">
-                <span class="nav-icon">🏪</span>
-                <span class="nav-text">Branch Management</span>
-            </a>
-            {% endif %}
-            {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
-            <a href="{{ url_for('users.list_users') }}" class="nav-item {% if request.endpoint == 'users.list_users' or request.endpoint == 'users.create_user' or request.endpoint == 'users.edit_user' %}active{% endif %}">
-                <span class="nav-icon">👤</span>
-                <span class="nav-text">User Management</span>
-            </a>
-            <a href="{{ url_for('users.login_history') }}" class="nav-item {% if request.endpoint == 'users.login_history' %}active{% endif %}">
-                <span class="nav-icon">🔐</span>
-                <span class="nav-text">Login History</span>
-            </a>
-            <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
-                <span class="nav-icon">📜</span>
-                <span class="nav-text">Audit Log</span>
-            </a>
-            {% endif %}
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="admin">
+                    <span>Admin</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-admin">
+                    {% if current_user.is_authenticated and current_user.role == 'admin' %}
+                    <a href="{{ url_for('branches.list_branches') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('branches.') %}active{% endif %}">
+                        <span class="nav-icon">🏪</span>
+                        <span class="nav-text">Branch Management</span>
+                    </a>
+                    {% endif %}
+                    {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
+                    <a href="{{ url_for('users.list_users') }}" class="nav-item {% if request.endpoint == 'users.list_users' or request.endpoint == 'users.create_user' or request.endpoint == 'users.edit_user' %}active{% endif %}">
+                        <span class="nav-icon">👤</span>
+                        <span class="nav-text">User Management</span>
+                    </a>
+                    <a href="{{ url_for('users.login_history') }}" class="nav-item {% if request.endpoint == 'users.login_history' %}active{% endif %}">
+                        <span class="nav-icon">🔐</span>
+                        <span class="nav-text">Login History</span>
+                    </a>
+                    <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
+                        <span class="nav-icon">📜</span>
+                        <span class="nav-text">Audit Log</span>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
         </div>
 
         <!-- User Switcher -->
@@ -1325,6 +1454,63 @@
                     });
                 }
             }
+
+            // Sidebar section collapse/expand functionality
+            const collapsibleLabels = document.querySelectorAll('.nav-label-collapsible');
+
+            // Load saved expanded section from localStorage (only one section can be expanded)
+            // Default: 'transactions' is expanded
+            let expandedSection = localStorage.getItem('expandedSidebarSection') || 'transactions';
+
+            // Apply initial state - expand only the saved section, collapse all others
+            collapsibleLabels.forEach(label => {
+                const sectionName = label.getAttribute('data-section');
+                const content = document.getElementById('section-' + sectionName);
+
+                if (sectionName === expandedSection) {
+                    // This section is expanded
+                    label.classList.remove('collapsed');
+                    content.classList.remove('collapsed');
+                } else {
+                    // All other sections are collapsed
+                    label.classList.add('collapsed');
+                    content.classList.add('collapsed');
+                }
+            });
+
+            // Add click handlers
+            collapsibleLabels.forEach(label => {
+                label.addEventListener('click', function() {
+                    const sectionName = this.getAttribute('data-section');
+                    const content = document.getElementById('section-' + sectionName);
+                    const isCurrentlyExpanded = !this.classList.contains('collapsed');
+
+                    if (isCurrentlyExpanded) {
+                        // Clicking on the currently expanded section does nothing
+                        // (Keep at least one section expanded at all times)
+                        return;
+                    } else {
+                        // Expand this section and collapse all others
+                        collapsibleLabels.forEach(otherLabel => {
+                            const otherSectionName = otherLabel.getAttribute('data-section');
+                            const otherContent = document.getElementById('section-' + otherSectionName);
+
+                            if (otherSectionName === sectionName) {
+                                // Expand this section
+                                otherLabel.classList.remove('collapsed');
+                                otherContent.classList.remove('collapsed');
+                            } else {
+                                // Collapse all other sections
+                                otherLabel.classList.add('collapsed');
+                                otherContent.classList.add('collapsed');
+                            }
+                        });
+
+                        expandedSection = sectionName;
+                        localStorage.setItem('expandedSidebarSection', sectionName);
+                    }
+                });
+            });
         });
     </script>
     {% block extra_js %}{% endblock %}

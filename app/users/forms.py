@@ -8,6 +8,7 @@ class LoginForm(FlaskForm):
     """User login form."""
     username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)])
     password = PasswordField('Password', validators=[DataRequired()])
+    branch = SelectField('Branch', coerce=int, validators=[DataRequired()])
     remember_me = BooleanField('Remember Me')
 
 

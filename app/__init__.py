@@ -34,6 +34,19 @@ def create_app(config=None):
 
         return {'action_items_count': count}
 
+    # Make current branch available in all templates
+    @app.context_processor
+    def inject_current_branch():
+        from flask_login import current_user
+        from flask import session
+        current_branch = None
+        if current_user.is_authenticated:
+            branch_id = session.get('selected_branch_id')
+            if branch_id:
+                from app.branches.models import Branch
+                current_branch = Branch.query.get(branch_id)
+        return {'current_branch': current_branch}
+
     # Add custom Jinja2 filter for JSON parsing
     @app.template_filter('from_json')
     def from_json_filter(s):
@@ -94,6 +107,7 @@ def create_app(config=None):
     from app.purchase_bills.views import purchase_bills_bp
     from app.receipts.views import receipts_bp
     from app.journal_entries.views import journal_entries_bp
+    from app.reports.views import reports_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -109,6 +123,7 @@ def create_app(config=None):
     app.register_blueprint(purchase_bills_bp)
     app.register_blueprint(receipts_bp)
     app.register_blueprint(journal_entries_bp)
+    app.register_blueprint(reports_bp)
 
 
     migrate.init_app(app, db)

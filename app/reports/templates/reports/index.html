@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Reports{% endblock %}
+{% block page_title %}Financial Reports{% endblock %}
+
+{% block content %}
+<div class="content-card">
+    <div class="card-body">
+        <p class="text-muted mb-4">Access various financial reports and analytics.</p>
+
+        <div class="row" style="gap: 20px;">
+            <!-- AR Aging Report Card -->
+            <div class="col" style="flex: 1; min-width: 300px;">
+                <div class="content-card" style="height: 100%;">
+                    <div class="card-body">
+                        <h3 style="margin-top: 0; color: var(--primary);">
+                            <span style="font-size: 2rem;">📊</span>
+                            AR Aging Report
+                        </h3>
+                        <p class="text-muted" style="margin-bottom: 20px;">
+                            View outstanding customer invoices grouped by age. Track receivables by current, 1-30, 31-60, 61-90, and 90+ days overdue.
+                        </p>
+                        <a href="{{ url_for('reports.ar_aging') }}" class="btn btn-primary">
+                            View AR Aging Report
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AP Aging Report Card -->
+            <div class="col" style="flex: 1; min-width: 300px;">
+                <div class="content-card" style="height: 100%;">
+                    <div class="card-body">
+                        <h3 style="margin-top: 0; color: var(--danger);">
+                            <span style="font-size: 2rem;">📋</span>
+                            AP Aging Report
+                        </h3>
+                        <p class="text-muted" style="margin-bottom: 20px;">
+                            View outstanding vendor bills grouped by age. Track payables by current, 1-30, 31-60, 61-90, and 90+ days overdue.
+                        </p>
+                        <a href="{{ url_for('reports.ap_aging') }}" class="btn btn-primary">
+                            View AP Aging Report
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -74,6 +74,43 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
   color: #334155;
 }
 
+.nav-label-collapsible {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 10px 20px;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.nav-label-collapsible:hover {
+  background: var(--sidebar-hover);
+  color: #475569;
+}
+
+.nav-label-arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+  color: var(--sidebar-text);
+}
+
+.nav-label-collapsible.collapsed .nav-label-arrow {
+  transform: rotate(-90deg);
+}
+
+.nav-section-content {
+  max-height: 1000px;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out, opacity 0.2s;
+  opacity: 1;
+}
+
+.nav-section-content.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
 .nav-item {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 20px;

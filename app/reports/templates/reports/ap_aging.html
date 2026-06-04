@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}AP Aging Report{% endblock %}
+{% block page_title %}Accounts Payable Aging Report{% endblock %}
+
+{% block content %}
+<div class="content-card">
+    <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h2 style="margin: 0;">AP Aging Report</h2>
+                <p class="text-muted" style="margin: 4px 0 0 0;">As of {{ as_of_date.strftime('%B %d, %Y') }}</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="window.print()" class="btn btn-secondary">Print Report</button>
+                <a href="{{ url_for('reports.index') }}" class="btn btn-secondary">Back to Reports</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <!-- Date Filter -->
+        <form method="GET" style="margin-bottom: 20px;">
+            <div class="form-row" style="display: flex; gap: 12px; align-items: flex-end;">
+                <div class="form-group" style="margin: 0;">
+                    <label>As of Date</label>
+                    <input type="date" name="as_of" value="{{ as_of_date.isoformat() }}" class="form-control" style="width: 200px;">
+                </div>
+                <button type="submit" class="btn btn-primary">Update Report</button>
+            </div>
+        </form>
+
+        {% if vendors %}
+        <!-- Summary Totals -->
+        <div class="summary-box" style="background: var(--background); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+            <table class="table" style="margin: 0;">
+                <thead>
+                    <tr>
+                        <th>Vendor</th>
+                        <th class="text-right">Current</th>
+                        <th class="text-right">1-30 Days</th>
+                        <th class="text-right">31-60 Days</th>
+                        <th class="text-right">61-90 Days</th>
+                        <th class="text-right">90+ Days</th>
+                        <th class="text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vendor in vendors %}
+                    <tr style="cursor: pointer;" onclick="toggleVendorDetails('vendor-{{ loop.index }}')">
+                        <td>
+                            <strong>{{ vendor.name }}</strong>
+                            <span id="vendor-{{ loop.index }}-icon" style="margin-left: 8px; color: var(--text-muted);">▶</span>
+                        </td>
+                        <td class="text-right">₱{{ "{:,.2f}".format(vendor.current) }}</td>
+                        <td class="text-right" {% if vendor['1-30'] > 0 %}style="color: var(--warning);"{% endif %}>
+                            ₱{{ "{:,.2f}".format(vendor['1-30']) }}
+                        </td>
+                        <td class="text-right" {% if vendor['31-60'] > 0 %}style="color: var(--warning);"{% endif %}>
+                            ₱{{ "{:,.2f}".format(vendor['31-60']) }}
+                        </td>
+                        <td class="text-right" {% if vendor['61-90'] > 0 %}style="color: var(--danger);"{% endif %}>
+                            ₱{{ "{:,.2f}".format(vendor['61-90']) }}
+                        </td>
+                        <td class="text-right" {% if vendor['90+'] > 0 %}style="color: var(--danger); font-weight: 600;"{% endif %}>
+                            ₱{{ "{:,.2f}".format(vendor['90+']) }}
+                        </td>
+                        <td class="text-right"><strong>₱{{ "{:,.2f}".format(vendor.total) }}</strong></td>
+                    </tr>
+                    <!-- Bill Details (hidden by default) -->
+                    <tr id="vendor-{{ loop.index }}" style="display: none;">
+                        <td colspan="7" style="padding: 0;">
+                            <div style="background: var(--surface); padding: 16px; margin: 8px 0;">
+                                <table class="table" style="margin: 0; font-size: 0.9rem;">
+                                    <thead>
+                                        <tr style="background: var(--background);">
+                                            <th>Bill #</th>
+                                            <th>Bill Date</th>
+                                            <th>Due Date</th>
+                                            <th class="text-right">Days Overdue</th>
+                                            <th class="text-right">Balance</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for bill in vendor.bills %}
+                                        <tr>
+                                            <td>{{ bill.bill_number }}</td>
+                                            <td>{{ bill.bill_date.strftime('%Y-%m-%d') }}</td>
+                                            <td>{{ bill.due_date.strftime('%Y-%m-%d') if bill.due_date else 'N/A' }}</td>
+                                            <td class="text-right">
+                                                {% if bill.days_overdue > 0 %}
+                                                <span class="badge badge-warning">{{ bill.days_overdue }} days</span>
+                                                {% else %}
+                                                <span class="badge badge-success">Current</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-right">₱{{ "{:,.2f}".format(bill.balance_due) }}</td>
+                                            <td>
+                                                {% if bill.bucket == 'current' %}
+                                                <span class="badge badge-success">Current</span>
+                                                {% elif bill.bucket == '1-30' %}
+                                                <span class="badge badge-warning">1-30 Days</span>
+                                                {% elif bill.bucket == '31-60' %}
+                                                <span class="badge badge-warning">31-60 Days</span>
+                                                {% elif bill.bucket == '61-90' %}
+                                                <span class="badge badge-danger">61-90 Days</span>
+                                                {% else %}
+                                                <span class="badge badge-danger">90+ Days</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot style="border-top: 2px solid var(--border); font-weight: 600;">
+                    <tr style="background: var(--background);">
+                        <td><strong>GRAND TOTAL</strong></td>
+                        <td class="text-right">₱{{ "{:,.2f}".format(grand_totals.current) }}</td>
+                        <td class="text-right" {% if grand_totals['1-30'] > 0 %}style="color: var(--warning);"{% endif %}>
+                            ₱{{ "{:,.2f}".format(grand_totals['1-30']) }}
+                        </td>
+                        <td class="text-right" {% if grand_totals['31-60'] > 0 %}style="color: var(--warning);"{% endif %}>
+                            ₱{{ "{:,.2f}".format(grand_totals['31-60']) }}
+                        </td>
+                        <td class="text-right" {% if grand_totals['61-90'] > 0 %}style="color: var(--danger);"{% endif %}>
+                            ₱{{ "{:,.2f}".format(grand_totals['61-90']) }}
+                        </td>
+                        <td class="text-right" {% if grand_totals['90+'] > 0 %}style="color: var(--danger); font-weight: 600;"{% endif %}>
+                            ₱{{ "{:,.2f}".format(grand_totals['90+']) }}
+                        </td>
+                        <td class="text-right"><strong>₱{{ "{:,.2f}".format(grand_totals.total) }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No outstanding payables as of {{ as_of_date.strftime('%B %d, %Y') }}.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function toggleVendorDetails(id) {
+    const row = document.getElementById(id);
+    const icon = document.getElementById(id + '-icon');
+    if (row.style.display === 'none') {
+        row.style.display = '';
+        icon.textContent = '▼';
+    } else {
+        row.style.display = 'none';
+        icon.textContent = '▶';
+    }
+}
+</script>
+
+<style>
+@media print {
+    .btn, .form-row {
+        display: none !important;
+    }
+    .sidebar {
+        display: none !important;
+    }
+    .main-content {
+        margin-left: 0 !important;
+    }
+}
+</style>
+{% endblock %}
