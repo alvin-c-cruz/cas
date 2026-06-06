@@ -161,6 +161,10 @@ def create():
             return redirect(url_for('receipts.view', id=receipt.id))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating receipt/payment", exc_info=True)
+            log_exception(e, severity='ERROR', module='receipts.create')
             db.session.rollback()
             flash(f'Error creating receipt/payment: {str(e)}', 'error')
 
@@ -238,6 +242,10 @@ def edit(id):
             return redirect(url_for('receipts.view', id=receipt.id))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating receipt/payment", exc_info=True)
+            log_exception(e, severity='ERROR', module='receipts.update')
             db.session.rollback()
             flash(f'Error updating receipt/payment: {str(e)}', 'error')
 
@@ -275,6 +283,10 @@ def post(id):
 
         flash(f'{"Receipt" if receipt.transaction_type == "collection" else "Payment"} posted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error posting receipt/payment", exc_info=True)
+        log_exception(e, severity='ERROR', module='receipts.post')
         db.session.rollback()
         flash(f'Error posting: {str(e)}', 'error')
 
@@ -307,6 +319,10 @@ def cancel(id):
 
         flash(f'{"Receipt" if receipt.transaction_type == "collection" else "Payment"} cancelled.', 'warning')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error cancelling receipt/payment", exc_info=True)
+        log_exception(e, severity='ERROR', module='receipts.cancel')
         db.session.rollback()
         flash(f'Error cancelling: {str(e)}', 'error')
 
@@ -340,6 +356,10 @@ def delete(id):
 
         flash(f'{"Receipt" if receipt.transaction_type == "collection" else "Payment"} "{receipt_number}" deleted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting receipt/payment", exc_info=True)
+        log_exception(e, severity='ERROR', module='receipts.delete')
         db.session.rollback()
         flash(f'Error deleting: {str(e)}', 'error')
 

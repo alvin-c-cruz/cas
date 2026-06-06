@@ -128,6 +128,10 @@ def create():
                 return redirect(url_for('vat_categories.list_vat_categories'))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating VAT category", exc_info=True)
+            log_exception(e, severity='ERROR', module='vat_categories.create')
             db.session.rollback()
             flash(f'Error creating VAT category: {str(e)}', 'error')
             return render_template('vat_categories/form.html', form=form, vat_category=None)
@@ -215,6 +219,10 @@ def edit(id):
                 return redirect(url_for('vat_categories.list_vat_categories'))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating VAT category", exc_info=True)
+            log_exception(e, severity='ERROR', module='vat_categories.update')
             db.session.rollback()
             flash(f'Error updating VAT category: {str(e)}', 'error')
             return render_template('vat_categories/form.html', form=form, vat_category=vat_category)
@@ -274,6 +282,10 @@ def delete(id):
         return redirect(url_for('vat_categories.list_vat_categories'))
 
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting VAT category", exc_info=True)
+        log_exception(e, severity='ERROR', module='vat_categories.delete')
         db.session.rollback()
         flash(f'Error deleting VAT category: {str(e)}', 'error')
         return redirect(url_for('vat_categories.list_vat_categories'))
@@ -464,6 +476,10 @@ def review_change_request(id):
             return redirect(url_for('vat_categories.change_requests'))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error reviewing VAT category change request", exc_info=True)
+            log_exception(e, severity='ERROR', module='vat_categories.review_change_request')
             db.session.rollback()
             flash(f'Error processing change request: {str(e)}', 'error')
             return render_template('vat_categories/review_change_request.html',

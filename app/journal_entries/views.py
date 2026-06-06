@@ -243,6 +243,10 @@ def post(id):
 
         flash(f'Journal Entry "{entry.entry_number}" posted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error posting journal entry", exc_info=True)
+        log_exception(e, severity='ERROR', module='journal_entries.post')
         db.session.rollback()
         flash(f'Error posting journal entry: {str(e)}', 'error')
 
@@ -275,6 +279,10 @@ def cancel(id):
 
         flash(f'Journal Entry "{entry.entry_number}" cancelled.', 'warning')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error cancelling journal entry", exc_info=True)
+        log_exception(e, severity='ERROR', module='journal_entries.cancel')
         db.session.rollback()
         flash(f'Error cancelling journal entry: {str(e)}', 'error')
 
@@ -308,6 +316,10 @@ def delete(id):
 
         flash(f'Journal Entry "{entry_number}" deleted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting journal entry", exc_info=True)
+        log_exception(e, severity='ERROR', module='journal_entries.delete')
         db.session.rollback()
         flash(f'Error deleting journal entry: {str(e)}', 'error')
 

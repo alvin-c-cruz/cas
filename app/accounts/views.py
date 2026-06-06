@@ -157,6 +157,10 @@ def create():
             return redirect(url_for('accounts.list_accounts'))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating account request", exc_info=True)
+            log_exception(e, severity='ERROR', module='accounts.create_request')
             db.session.rollback()
             flash(f'Error creating account request: {str(e)}', 'error')
 
@@ -313,6 +317,10 @@ def edit(id):
             return redirect(url_for('accounts.list_accounts'))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating update request", exc_info=True)
+            log_exception(e, severity='ERROR', module='accounts.update_request')
             db.session.rollback()
             flash(f'Error creating update request: {str(e)}', 'error')
 
@@ -389,6 +397,10 @@ def delete(id):
             flash('Account deletion request submitted for approval by another accountant.', 'info')
 
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error creating deletion request", exc_info=True)
+        log_exception(e, severity='ERROR', module='accounts.delete_request')
         db.session.rollback()
         flash(f'Error creating deletion request: {str(e)}', 'error')
 
@@ -480,6 +492,10 @@ def approve_request(request_id):
         flash(f'Account {change_request.change_type} request approved successfully!', 'success')
 
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error approving account change request", exc_info=True)
+        log_exception(e, severity='ERROR', module='accounts.approve')
         db.session.rollback()
         flash(f'Error approving request: {str(e)}', 'error')
 
@@ -530,6 +546,10 @@ def reject_request(request_id):
         flash(f'Account {change_request.change_type} request rejected.', 'warning')
 
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error rejecting account change request", exc_info=True)
+        log_exception(e, severity='ERROR', module='accounts.reject')
         db.session.rollback()
         flash(f'Error rejecting request: {str(e)}', 'error')
 

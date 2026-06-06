@@ -198,6 +198,10 @@ def register():
             flash('Registration successful! Your account is pending admin approval. You will be able to log in once your account is activated.', 'success')
             return redirect(url_for('users.login'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error during user registration", exc_info=True)
+            log_exception(e, severity='ERROR', module='users.register')
             db.session.rollback()
             flash(f'An error occurred during registration: {str(e)}', 'error')
 
@@ -277,6 +281,10 @@ def create_user():
             flash(f'User "{user.username}" created successfully!', 'success')
             return redirect(url_for('users.list_users'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating user", exc_info=True)
+            log_exception(e, severity='ERROR', module='users.create')
             db.session.rollback()
             flash(f'Error creating user: {str(e)}', 'error')
 
@@ -353,6 +361,10 @@ def edit_user(id):
             flash(f'User "{user.username}" updated successfully!', 'success')
             return redirect(url_for('users.list_users'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating user", exc_info=True)
+            log_exception(e, severity='ERROR', module='users.update')
             db.session.rollback()
             flash(f'Error updating user: {str(e)}', 'error')
 
@@ -401,6 +413,10 @@ def delete_user(id):
 
         flash(f'User "{username}" deleted successfully.', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting user", exc_info=True)
+        log_exception(e, severity='ERROR', module='users.delete')
         db.session.rollback()
         flash(f'Error deleting user: {str(e)}', 'error')
 
@@ -431,6 +447,10 @@ def change_password():
             flash('Password changed successfully!', 'success')
             return redirect(url_for('users.profile'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error changing password", exc_info=True)
+            log_exception(e, severity='CRITICAL', module='users.change_password')
             db.session.rollback()
             flash(f'Error changing password: {str(e)}', 'error')
 

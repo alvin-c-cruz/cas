@@ -128,6 +128,10 @@ def create():
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating withholding tax", exc_info=True)
+            log_exception(e, severity='ERROR', module='withholding_tax.create')
             db.session.rollback()
             flash(f'Error creating withholding tax: {str(e)}', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=None)
@@ -215,6 +219,10 @@ def edit(id):
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating withholding tax", exc_info=True)
+            log_exception(e, severity='ERROR', module='withholding_tax.update')
             db.session.rollback()
             flash(f'Error updating withholding tax: {str(e)}', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=withholding_tax)
@@ -274,6 +282,10 @@ def delete(id):
         return redirect(url_for('withholding_tax.list_withholding_tax'))
 
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting withholding tax", exc_info=True)
+        log_exception(e, severity='ERROR', module='withholding_tax.delete')
         db.session.rollback()
         flash(f'Error deleting withholding tax: {str(e)}', 'error')
         return redirect(url_for('withholding_tax.list_withholding_tax'))
@@ -459,6 +471,10 @@ def review_change_request(id):
             return redirect(url_for('withholding_tax.change_requests'))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error reviewing withholding tax change request", exc_info=True)
+            log_exception(e, severity='ERROR', module='withholding_tax.review_change_request')
             db.session.rollback()
             flash(f'Error processing change request: {str(e)}', 'error')
             return render_template('withholding_tax/review_change_request.html',
