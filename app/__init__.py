@@ -3,6 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
 from datetime import datetime
+import logging
+from logging.handlers import RotatingFileHandler
+import os
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -11,6 +14,39 @@ login_manager = LoginManager()
 def create_app(config=None):
     """Application factory pattern"""
     app = Flask(__name__)
+
+    # Configure logging
+    if not app.debug and not app.testing:
+        # Create logs directory if it doesn't exist
+        if not os.path.exists('logs'):
+            os.mkdir('logs')
+
+        # Configure file handler for all logs
+        file_handler = RotatingFileHandler(
+            'logs/cas_app.log',
+            maxBytes=10485760,  # 10MB
+            backupCount=10
+        )
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        ))
+        file_handler.setLevel(logging.INFO)
+        app.logger.addHandler(file_handler)
+
+        # Configure file handler for errors only
+        error_handler = RotatingFileHandler(
+            'logs/cas_errors.log',
+            maxBytes=10485760,  # 10MB
+            backupCount=10
+        )
+        error_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        ))
+        error_handler.setLevel(logging.ERROR)
+        app.logger.addHandler(error_handler)
+
+        app.logger.setLevel(logging.INFO)
+        app.logger.info('CAS application startup')
 
     # Make datetime available in templates (Philippine Standard Time)
     @app.context_processor
@@ -91,6 +127,7 @@ def create_app(config=None):
     from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
     from app.receipts.models import Receipt
     from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.errors.models import ErrorLog
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
@@ -128,5 +165,36 @@ def create_app(config=None):
 
     migrate.init_app(app, db)
 
+    # Global error handlers
+    from flask import render_template
+    from app.errors.utils import log_error_to_db
+
+    @app.errorhandler(404)
+    def not_found_error(error):
+        app.logger.warning(f"404 error: {request.url}")
+        return render_template('errors/404.html'), 404
+
+    @app.errorhandler(403)
+    def forbidden_error(error):
+        from flask_login import current_user
+        app.logger.warning(
+            f"403 error: {request.url} by user {current_user.id if current_user.is_authenticated else 'anonymous'}"
+        )
+        return render_template('errors/403.html'), 403
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        app.logger.critical(f"500 error: {request.url}", exc_info=True)
+        log_error_to_db(error, severity='CRITICAL')
+        db.session.rollback()
+        return render_template('errors/500.html'), 500
+
+    @app.errorhandler(Exception)
+    def unhandled_exception(e):
+        app.logger.critical(f"Unhandled exception: {request.url}", exc_info=True)
+        log_error_to_db(e, severity='CRITICAL')
+        db.session.rollback()
+        # Return 500 error page
+        return render_template('errors/500.html'), 500
 
     return app

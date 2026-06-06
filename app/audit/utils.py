@@ -51,7 +51,8 @@ def log_audit(module, action, record_id, record_identifier=None, old_values=None
 
     except Exception as e:
         # Log the error but don't fail the main operation
-        print(f"Error creating audit log: {str(e)}")
+        from flask import current_app
+        current_app.logger.error(f"Error creating audit log: {str(e)}", exc_info=True)
         db.session.rollback()
         return None
 
