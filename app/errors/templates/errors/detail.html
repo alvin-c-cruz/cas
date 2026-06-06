@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Error #{{ error.id }} - CAS{% endblock %}
+{% block page_title %}Error Details{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Error #{{ error.id }}</h1>
+    <div style="display: flex; gap: 12px;">
+        <a href="{{ url_for('errors.list_errors') }}" class="btn btn-secondary">
+            Back to List
+        </a>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Error Information</h2>
+        <div>
+            {% if error.is_resolved %}
+            <span class="badge" style="background: #10b981; font-size: 14px; padding: 6px 12px;">Resolved</span>
+            {% else %}
+            <span class="badge" style="background: #ef4444; font-size: 14px; padding: 6px 12px;">Unresolved</span>
+            {% endif %}
+            <span class="badge" style="background: {% if error.severity == 'CRITICAL' %}#ef4444{% else %}#f59e0b{% endif %}; font-size: 14px; padding: 6px 12px; margin-left: 8px;">
+                {{ error.severity }}
+            </span>
+        </div>
+    </div>
+
+    <div style="padding: 24px;">
+        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 16px 24px;">
+            <div style="font-weight: 600; color: #374151;">Timestamp:</div>
+            <div>{{ error.timestamp.strftime('%Y-%m-%d %H:%M:%S %Z') }}</div>
+
+            <div style="font-weight: 600; color: #374151;">Error Type:</div>
+            <div><code>{{ error.error_type }}</code></div>
+
+            <div style="font-weight: 600; color: #374151;">Module:</div>
+            <div><code>{{ error.module or 'N/A' }}</code></div>
+
+            <div style="font-weight: 600; color: #374151;">User:</div>
+            <div>{{ error.user.full_name if error.user else 'Anonymous' }} ({{ error.user.username if error.user else 'N/A' }})</div>
+
+            <div style="font-weight: 600; color: #374151;">IP Address:</div>
+            <div>{{ error.ip_address or 'N/A' }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Error Message -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2>Error Message</h2>
+    </div>
+    <div style="padding: 24px;">
+        <pre style="background: #f9fafb; padding: 16px; border-radius: 6px; border: 1px solid #e5e7eb; margin: 0; white-space: pre-wrap; word-wrap: break-word;">{{ error.error_message }}</pre>
+    </div>
+</div>
+
+<!-- Stack Trace -->
+{% if error.stack_trace %}
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2>Stack Trace</h2>
+    </div>
+    <div style="padding: 24px;">
+        <pre style="background: #1f2937; color: #f9fafb; padding: 16px; border-radius: 6px; margin: 0; overflow-x: auto; font-size: 12px; line-height: 1.5;">{{ error.stack_trace }}</pre>
+    </div>
+</div>
+{% endif %}
+
+<!-- Request Context -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2>Request Context</h2>
+    </div>
+    <div style="padding: 24px;">
+        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 16px 24px;">
+            <div style="font-weight: 600; color: #374151;">Request URL:</div>
+            <div style="word-break: break-all;">{{ error.request_url or 'N/A' }}</div>
+
+            <div style="font-weight: 600; color: #374151;">Request Method:</div>
+            <div>{{ error.request_method or 'N/A' }}</div>
+
+            <div style="font-weight: 600; color: #374151;">User Agent:</div>
+            <div style="font-size: 12px; color: #6b7280;">{{ error.user_agent or 'N/A' }}</div>
+        </div>
+
+        {% if error.request_data %}
+        <div style="margin-top: 20px;">
+            <div style="font-weight: 600; color: #374151; margin-bottom: 8px;">Request Data:</div>
+            <pre style="background: #f9fafb; padding: 16px; border-radius: 6px; border: 1px solid #e5e7eb; margin: 0; overflow-x: auto; font-size: 12px;">{{ error.request_data }}</pre>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Resolution -->
+{% if error.is_resolved %}
+<div class="card" style="margin-bottom: 24px; border-left: 4px solid #10b981;">
+    <div class="card-header">
+        <h2>Resolution</h2>
+    </div>
+    <div style="padding: 24px;">
+        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 16px 24px;">
+            <div style="font-weight: 600; color: #374151;">Resolved By:</div>
+            <div>{{ error.resolved_by.full_name if error.resolved_by else 'Unknown' }} ({{ error.resolved_by.username if error.resolved_by else 'N/A' }})</div>
+
+            <div style="font-weight: 600; color: #374151;">Resolved At:</div>
+            <div>{{ error.resolved_at.strftime('%Y-%m-%d %H:%M:%S') if error.resolved_at else 'N/A' }}</div>
+
+            {% if error.resolution_notes %}
+            <div style="font-weight: 600; color: #374151;">Notes:</div>
+            <div style="white-space: pre-wrap;">{{ error.resolution_notes }}</div>
+            {% endif %}
+        </div>
+
+        <form method="POST" action="{{ url_for('errors.unresolve_error', id=error.id) }}" style="margin-top: 16px;">
+            <button type="submit" class="btn btn-secondary" onclick="return confirm('Reopen this error?')">
+                Reopen Error
+            </button>
+        </form>
+    </div>
+</div>
+{% else %}
+<!-- Resolve Form -->
+<div class="card" style="border-left: 4px solid #ef4444;">
+    <div class="card-header">
+        <h2>Mark as Resolved</h2>
+    </div>
+    <div style="padding: 24px;">
+        <form method="POST" action="{{ url_for('errors.resolve_error', id=error.id) }}">
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 500;">Resolution Notes (optional)</label>
+                <textarea name="resolution_notes" class="form-control" rows="4" placeholder="Describe how this error was resolved..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">Mark as Resolved</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

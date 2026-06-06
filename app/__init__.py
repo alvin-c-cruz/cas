@@ -145,6 +145,7 @@ def create_app(config=None):
     from app.receipts.views import receipts_bp
     from app.journal_entries.views import journal_entries_bp
     from app.reports.views import reports_bp
+    from app.errors.views import errors_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -161,9 +162,40 @@ def create_app(config=None):
     app.register_blueprint(receipts_bp)
     app.register_blueprint(journal_entries_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(errors_bp)
 
 
     migrate.init_app(app, db)
+
+    # Request/Response logging middleware
+    @app.before_request
+    def log_request_info():
+        """Log incoming requests for audit and debugging."""
+        from flask_login import current_user
+        from flask import request
+        app.logger.info(
+            f"{request.method} {request.path}",
+            extra={
+                'user': current_user.username if current_user.is_authenticated else 'anonymous',
+                'ip': request.remote_addr,
+                'endpoint': request.endpoint
+            }
+        )
+
+    @app.after_request
+    def log_response_info(response):
+        """Log response status for failed requests."""
+        from flask import request
+        from flask_login import current_user
+        if response.status_code >= 400:
+            app.logger.warning(
+                f"{request.method} {request.path} -> {response.status_code}",
+                extra={
+                    'user': current_user.username if current_user.is_authenticated else 'anonymous',
+                    'ip': request.remote_addr
+                }
+            )
+        return response
 
     # Global error handlers
     from flask import render_template

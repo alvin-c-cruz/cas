@@ -108,6 +108,12 @@ def create():
             flash(f'Customer "{customer.name}" created successfully!', 'success')
             return redirect(url_for('customers.list_customers'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating customer", exc_info=True, extra={
+                'form_data': request.form.to_dict()
+            })
+            log_exception(e, severity='ERROR', module='customers.create')
             db.session.rollback()
             flash(f'Error creating customer: {str(e)}', 'error')
 

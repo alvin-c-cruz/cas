@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Error Logs - CAS{% endblock %}
+{% block page_title %}Error Logs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Error Logs</h1>
+    <div style="display: flex; gap: 12px;">
+        <a href="{{ url_for('errors.dashboard') }}" class="btn btn-secondary">
+            View Dashboard
+        </a>
+    </div>
+</div>
+
+<!-- Summary Statistics -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    <div class="card" style="padding: 20px; background: #eff6ff; border-left: 4px solid #3b82f6;">
+        <div style="font-size: 28px; font-weight: 700; color: #1e40af;">{{ summary.total_errors }}</div>
+        <div style="color: #1e40af; font-size: 14px; margin-top: 4px;">Total Errors</div>
+    </div>
+    <div class="card" style="padding: 20px; background: #fef2f2; border-left: 4px solid #ef4444;">
+        <div style="font-size: 28px; font-weight: 700; color: #991b1b;">{{ summary.unresolved_errors }}</div>
+        <div style="color: #991b1b; font-size: 14px; margin-top: 4px;">Unresolved Errors</div>
+    </div>
+    <div class="card" style="padding: 20px; background: #fef9c3; border-left: 4px solid #f59e0b;">
+        <div style="font-size: 28px; font-weight: 700; color: #92400e;">{{ summary.by_severity.get('CRITICAL', 0) }}</div>
+        <div style="color: #92400e; font-size: 14px; margin-top: 4px;">Critical Errors</div>
+    </div>
+    <div class="card" style="padding: 20px; background: #ecfdf5; border-left: 4px solid #10b981;">
+        <div style="font-size: 28px; font-weight: 700; color: #065f46;">{{ summary.total_errors - summary.unresolved_errors }}</div>
+        <div style="color: #065f46; font-size: 14px; margin-top: 4px;">Resolved Errors</div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="card" style="margin-bottom: 24px; padding: 20px;">
+    <h3 style="margin: 0 0 16px; font-size: 16px; font-weight: 600;">Filters</h3>
+    <form method="GET" action="{{ url_for('errors.list_errors') }}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+            <div>
+                <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Severity</label>
+                <select name="severity" class="form-control">
+                    <option value="">All</option>
+                    <option value="ERROR" {% if filters.severity == 'ERROR' %}selected{% endif %}>ERROR</option>
+                    <option value="CRITICAL" {% if filters.severity == 'CRITICAL' %}selected{% endif %}>CRITICAL</option>
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Module</label>
+                <select name="module" class="form-control">
+                    <option value="">All</option>
+                    {% for module in modules %}
+                    <option value="{{ module }}" {% if filters.module == module %}selected{% endif %}>{{ module }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Status</label>
+                <select name="resolved" class="form-control">
+                    <option value="">All</option>
+                    <option value="0" {% if filters.resolved == '0' %}selected{% endif %}>Unresolved</option>
+                    <option value="1" {% if filters.resolved == '1' %}selected{% endif %}>Resolved</option>
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Time Period</label>
+                <select name="days" class="form-control">
+                    <option value="1" {% if filters.days == 1 %}selected{% endif %}>Last 24 hours</option>
+                    <option value="7" {% if filters.days == 7 %}selected{% endif %}>Last 7 days</option>
+                    <option value="30" {% if filters.days == 30 %}selected{% endif %}>Last 30 days</option>
+                    <option value="90" {% if filters.days == 90 %}selected{% endif %}>Last 90 days</option>
+                    <option value="0">All time</option>
+                </select>
+            </div>
+        </div>
+        <div style="margin-top: 16px; display: flex; gap: 8px;">
+            <button type="submit" class="btn btn-primary">Apply Filters</button>
+            <a href="{{ url_for('errors.list_errors') }}" class="btn btn-secondary">Clear</a>
+        </div>
+    </form>
+</div>
+
+<!-- Error List -->
+<div class="card">
+    <div class="card-header">
+        <h2>Errors ({{ errors.total }} found)</h2>
+    </div>
+
+    {% if errors.items %}
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Timestamp</th>
+                    <th>Severity</th>
+                    <th>Module</th>
+                    <th>Error Type</th>
+                    <th>Message</th>
+                    <th>User</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for error in errors.items %}
+                <tr>
+                    <td>{{ error.id }}</td>
+                    <td>{{ error.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>
+                        <span class="badge" style="background: {% if error.severity == 'CRITICAL' %}#ef4444{% else %}#f59e0b{% endif %};">
+                            {{ error.severity }}
+                        </span>
+                    </td>
+                    <td><code>{{ error.module or 'N/A' }}</code></td>
+                    <td><code>{{ error.error_type }}</code></td>
+                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ error.error_message }}
+                    </td>
+                    <td>{{ error.user.username if error.user else 'Anonymous' }}</td>
+                    <td>
+                        {% if error.is_resolved %}
+                        <span class="badge" style="background: #10b981;">Resolved</span>
+                        {% else %}
+                        <span class="badge" style="background: #ef4444;">Unresolved</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('errors.view_error', id=error.id) }}" class="btn btn-sm btn-primary">
+                            View Details
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if errors.pages > 1 %}
+    <div style="padding: 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: center; gap: 8px;">
+        {% if errors.has_prev %}
+        <a href="{{ url_for('errors.list_errors', page=errors.prev_num, severity=filters.severity, module=filters.module, resolved=filters.resolved, days=filters.days) }}" class="btn btn-secondary">
+            Previous
+        </a>
+        {% endif %}
+
+        <span style="padding: 8px 16px; background: #f3f4f6; border-radius: 6px;">
+            Page {{ errors.page }} of {{ errors.pages }}
+        </span>
+
+        {% if errors.has_next %}
+        <a href="{{ url_for('errors.list_errors', page=errors.next_num, severity=filters.severity, module=filters.module, resolved=filters.resolved, days=filters.days) }}" class="btn btn-secondary">
+            Next
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div style="padding: 60px 20px; text-align: center; color: #6b7280;">
+        <div style="font-size: 48px; margin-bottom: 16px;">✓</div>
+        <p style="font-size: 16px; margin: 0;">No errors found matching the current filters.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
