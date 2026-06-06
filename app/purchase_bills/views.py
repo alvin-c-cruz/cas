@@ -162,6 +162,10 @@ def create():
             return redirect(url_for('purchase_bills.view', id=bill.id))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating purchase bill", exc_info=True)
+            log_exception(e, severity='ERROR', module='purchase_bills.create')
             db.session.rollback()
             flash(f'Error creating purchase bill: {str(e)}', 'error')
 
@@ -272,6 +276,10 @@ def edit(id):
             return redirect(url_for('purchase_bills.view', id=bill.id))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating purchase bill", exc_info=True)
+            log_exception(e, severity='ERROR', module='purchase_bills.update')
             db.session.rollback()
             flash(f'Error updating purchase bill: {str(e)}', 'error')
 
@@ -317,6 +325,10 @@ def post(id):
 
         flash(f'Purchase Bill "{bill.bill_number}" posted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error posting purchase bill", exc_info=True)
+        log_exception(e, severity='ERROR', module='purchase_bills.post')
         db.session.rollback()
         flash(f'Error posting bill: {str(e)}', 'error')
 

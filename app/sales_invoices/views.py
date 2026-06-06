@@ -175,6 +175,10 @@ def create():
             return redirect(url_for('sales_invoices.view', id=invoice.id))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating sales invoice", exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_invoices.create')
             db.session.rollback()
             flash(f'Error creating sales invoice: {str(e)}', 'error')
 
@@ -296,6 +300,10 @@ def edit(id):
             return redirect(url_for('sales_invoices.view', id=invoice.id))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating sales invoice", exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_invoices.update')
             db.session.rollback()
             flash(f'Error updating sales invoice: {str(e)}', 'error')
 
@@ -346,6 +354,10 @@ def post(id):
 
         flash(f'Sales Invoice "{invoice.invoice_number}" posted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error posting sales invoice", exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.post')
         db.session.rollback()
         flash(f'Error posting invoice: {str(e)}', 'error')
 
