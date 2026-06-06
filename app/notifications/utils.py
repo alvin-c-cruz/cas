@@ -33,7 +33,10 @@ def create_notification(user_id, title, message, category='info', related_type=N
         db.session.commit()
         return notification
     except Exception as e:
-        print(f"Error creating notification: {str(e)}")
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error creating notification", exc_info=True)
+        log_exception(e, severity='ERROR', module='notifications.create_notification')
         db.session.rollback()
         return None
 
@@ -50,7 +53,10 @@ def mark_as_read(notification_id):
             return True
         return False
     except Exception as e:
-        print(f"Error marking notification as read: {str(e)}")
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error marking notification as read", exc_info=True)
+        log_exception(e, severity='ERROR', module='notifications.mark_as_read')
         db.session.rollback()
         return False
 

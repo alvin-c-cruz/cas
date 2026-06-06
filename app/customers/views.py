@@ -176,6 +176,10 @@ def edit(id):
             flash(f'Customer "{customer.name}" updated successfully!', 'success')
             return redirect(url_for('customers.list_customers'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating customer", exc_info=True)
+            log_exception(e, severity='ERROR', module='customers.update')
             db.session.rollback()
             flash(f'Error updating customer: {str(e)}', 'error')
 
@@ -226,6 +230,10 @@ def delete(id):
         )
         flash(f'Customer "{customer.name}" deleted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting customer", exc_info=True)
+        log_exception(e, severity='ERROR', module='customers.delete')
         db.session.rollback()
         flash(f'Error deleting customer: {str(e)}', 'error')
 

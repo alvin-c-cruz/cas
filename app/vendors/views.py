@@ -111,6 +111,10 @@ def create():
             flash(f'Vendor "{vendor.name}" created successfully!', 'success')
             return redirect(url_for('vendors.list_vendors'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating vendor", exc_info=True)
+            log_exception(e, severity='ERROR', module='vendors.create')
             db.session.rollback()
             flash(f'Error creating vendor: {str(e)}', 'error')
 
@@ -179,6 +183,10 @@ def edit(id):
             flash(f'Vendor "{vendor.name}" updated successfully!', 'success')
             return redirect(url_for('vendors.list_vendors'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating vendor", exc_info=True)
+            log_exception(e, severity='ERROR', module='vendors.update')
             db.session.rollback()
             flash(f'Error updating vendor: {str(e)}', 'error')
 
@@ -236,6 +244,10 @@ def delete(id):
 
         flash(f'Vendor "{vendor_name}" deleted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting vendor", exc_info=True)
+        log_exception(e, severity='ERROR', module='vendors.delete')
         db.session.rollback()
         flash(f'Error deleting vendor: {str(e)}', 'error')
 

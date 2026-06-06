@@ -365,6 +365,10 @@ def cancel(id):
 
         flash(f'Purchase Bill "{bill.bill_number}" cancelled.', 'warning')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error cancelling purchase bill", exc_info=True)
+        log_exception(e, severity='ERROR', module='purchase_bills.cancel')
         db.session.rollback()
         flash(f'Error cancelling bill: {str(e)}', 'error')
 
@@ -398,6 +402,10 @@ def delete(id):
 
         flash(f'Purchase Bill "{bill_number}" deleted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting purchase bill", exc_info=True)
+        log_exception(e, severity='ERROR', module='purchase_bills.delete')
         db.session.rollback()
         flash(f'Error deleting bill: {str(e)}', 'error')
 

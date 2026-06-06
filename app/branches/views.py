@@ -70,6 +70,10 @@ def create():
             flash(f'Branch "{branch.name}" created successfully!', 'success')
             return redirect(url_for('branches.list_branches'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating branch", exc_info=True)
+            log_exception(e, severity='ERROR', module='branches.create')
             db.session.rollback()
             flash(f'Error creating branch: {str(e)}', 'error')
 
@@ -121,6 +125,10 @@ def edit(id):
             flash(f'Branch "{branch.name}" updated successfully!', 'success')
             return redirect(url_for('branches.list_branches'))
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error updating branch", exc_info=True)
+            log_exception(e, severity='ERROR', module='branches.update')
             db.session.rollback()
             flash(f'Error updating branch: {str(e)}', 'error')
 
@@ -165,6 +173,10 @@ def delete(id):
 
         flash(f'Branch "{branch_name}" deleted successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting branch", exc_info=True)
+        log_exception(e, severity='ERROR', module='branches.delete')
         db.session.rollback()
         flash(f'Error deleting branch: {str(e)}', 'error')
 
@@ -219,6 +231,10 @@ def assign_user(id, user_id):
 
         flash(f'{user.full_name} assigned to branch "{branch.name}" successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error assigning user to branch", exc_info=True)
+        log_exception(e, severity='ERROR', module='branches.assign_user')
         db.session.rollback()
         flash(f'Error assigning user: {str(e)}', 'error')
 
@@ -249,6 +265,10 @@ def unassign_user(id, user_id):
 
         flash(f'{user.full_name} unassigned from branch "{branch.name}" successfully!', 'success')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error unassigning user from branch", exc_info=True)
+        log_exception(e, severity='ERROR', module='branches.unassign_user')
         db.session.rollback()
         flash(f'Error unassigning user: {str(e)}', 'error')
 
