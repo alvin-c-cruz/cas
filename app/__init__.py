@@ -2,6 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
+from flask_wtf.csrf import CSRFProtect
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
@@ -10,10 +11,16 @@ import os
 db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
+csrf = CSRFProtect()
 
-def create_app(config=None):
-    """Application factory pattern"""
+def create_app(config_name=None):
+    """Application factory pattern with secure configuration"""
     app = Flask(__name__)
+
+    # Load configuration from config.py
+    from config import get_config
+    config_obj = get_config(config_name)
+    app.config.from_object(config_obj)
 
     # Configure logging
     if not app.debug and not app.testing:
@@ -92,13 +99,9 @@ def create_app(config=None):
         except:
             return {}
 
-    # Default configuration
-    app.config['SECRET_KEY'] = config.get('SECRET_KEY', 'your-secret-key-here') if config else 'your-secret-key-here'
-    app.config['SQLALCHEMY_DATABASE_URI'] = config.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///cas.db') if config else 'sqlite:///cas.db'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
     # Initialize extensions
     db.init_app(app)
+    csrf.init_app(app)
 
     login_manager.init_app(app)
     login_manager.login_view = 'users.login'
@@ -195,6 +198,39 @@ def create_app(config=None):
                     'ip': request.remote_addr
                 }
             )
+        return response
+
+    @app.after_request
+    def add_security_headers(response):
+        """Add security headers to all responses"""
+        # Prevent clickjacking attacks
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+
+        # Prevent MIME type sniffing
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+
+        # Enable XSS protection (for older browsers)
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+
+        # Referrer policy
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+        # Content Security Policy (basic - adjust as needed)
+        # Allow scripts and styles from self and inline (needed for Flask templates)
+        csp = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'self'"
+        )
+        response.headers['Content-Security-Policy'] = csp
+
+        # Permissions Policy (formerly Feature-Policy)
+        response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+
         return response
 
     # Global error handlers
