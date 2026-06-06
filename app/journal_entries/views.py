@@ -187,6 +187,10 @@ def create():
             return redirect(url_for('journal_entries.view', id=entry.id))
 
         except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error creating journal entry", exc_info=True)
+            log_exception(e, severity='ERROR', module='journal_entries.create')
             db.session.rollback()
             flash(f'Error creating journal entry: {str(e)}', 'error')
 
