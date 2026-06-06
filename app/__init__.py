@@ -234,7 +234,7 @@ def create_app(config_name=None):
         return response
 
     # Global error handlers
-    from flask import render_template
+    from flask import render_template, request
     from app.errors.utils import log_error_to_db
 
     @app.errorhandler(404)
