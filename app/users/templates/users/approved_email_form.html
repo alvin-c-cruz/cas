@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Add Approved Email{% endblock %}
+{% block page_title %}Add Approved Email for Registration{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px;">
+    <div style="font-size: 14px; color: #1e40af;">
+        <strong>ℹ️ About Email Pre-Approval:</strong><br>
+        Add an email address to allow someone to register for an account. After they register, the email will be marked as "used" and cannot be reused.
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('users.add_approved_email') }}">
+            {{ form.hidden_tag() }}
+
+            <div class="form-group">
+                {{ form.email.label(class='form-label') }}
+                {{ form.email(class='form-control', placeholder='user@example.com', autocomplete='off')}}
+                {% if form.email.errors %}
+                    <div class="error-message">
+                        {% for error in form.email.errors %}
+                            {{ error }}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                <div class="form-hint">Enter the email address you want to approve for registration.</div>
+            </div>
+
+            <div class="form-group">
+                {{ form.notes.label(class='form-label') }}
+                {{ form.notes(class='form-control', rows=3, placeholder='Optional notes about this approval (e.g., "New accountant - Maria Santos")') }}
+                {% if form.notes.errors %}
+                    <div class="error-message">
+                        {% for error in form.notes.errors %}
+                            {{ error }}
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                <div class="form-hint">Optional: Add notes to remember why this email was approved.</div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    <span class="btn-icon">✓</span> Approve Email
+                </button>
+                <a href="{{ url_for('users.list_approved_emails') }}" class="btn btn-secondary">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

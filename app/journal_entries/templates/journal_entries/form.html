@@ -111,6 +111,26 @@
     </div>
 </div>
 
+<!-- Validation Error Modal -->
+<div id="validationModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 10000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 12px; padding: 32px; max-width: 450px; width: 90%; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="width: 64px; height: 64px; margin: 0 auto 16px; background: #fef2f2; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+            </div>
+            <h3 style="font-size: 20px; font-weight: 700; color: #1e293b; margin: 0 0 8px 0;">Validation Error</h3>
+            <p id="validationMessage" style="font-size: 14px; color: #64748b; margin: 0;"></p>
+        </div>
+        <button onclick="closeValidationModal()" style="width: 100%; padding: 12px 24px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">
+            OK
+        </button>
+    </div>
+</div>
+
 <style>
     .line-row {
         border-bottom: 1px solid #f1f5f9;
@@ -283,10 +303,36 @@ document.addEventListener('DOMContentLoaded', function() {
         const lines = JSON.parse(linesData.value || '[]');
         if (lines.length < 2) {
             e.preventDefault();
-            alert('Please add at least two journal entry lines.');
+            showValidationModal('Please add at least two journal entry lines.');
             return false;
         }
     });
+});
+
+// Modal functions
+function showValidationModal(message) {
+    document.getElementById('validationMessage').textContent = message;
+    const modal = document.getElementById('validationModal');
+    modal.style.display = 'flex';
+}
+
+function closeValidationModal() {
+    const modal = document.getElementById('validationModal');
+    modal.style.display = 'none';
+}
+
+// Close modal on ESC key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeValidationModal();
+    }
+});
+
+// Close modal on background click
+document.getElementById('validationModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeValidationModal();
+    }
 });
 </script>
 

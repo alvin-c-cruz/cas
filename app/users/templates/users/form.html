@@ -24,7 +24,15 @@
             <div class="form-row-2">
                 <div class="form-group">
                     {{ form.username.label(class='form-label') }}
-                    {{ form.username(class='form-control') }}
+                    {% if user %}
+                        {# Username cannot be changed after account creation #}
+                        {{ form.username(class='form-control', readonly=true, style='background-color: #f1f5f9; cursor: not-allowed;') }}
+                        <div class="form-hint" style="color: #64748b;">
+                            🔒 Username cannot be changed after account creation
+                        </div>
+                    {% else %}
+                        {{ form.username(class='form-control') }}
+                    {% endif %}
                     {% if form.username.errors %}
                         <div class="form-error">
                             {% for error in form.username.errors %}{{ error }}{% endfor %}
@@ -34,7 +42,15 @@
 
                 <div class="form-group">
                     {{ form.email.label(class='form-label') }}
-                    {{ form.email(class='form-control', type='email') }}
+                    {% if user %}
+                        {# Email cannot be changed after account creation #}
+                        {{ form.email(class='form-control', type='email', readonly=true, style='background-color: #f1f5f9; cursor: not-allowed;') }}
+                        <div class="form-hint" style="color: #64748b;">
+                            🔒 Email cannot be changed after account creation
+                        </div>
+                    {% else %}
+                        {{ form.email(class='form-control', type='email') }}
+                    {% endif %}
                     {% if form.email.errors %}
                         <div class="form-error">
                             {% for error in form.email.errors %}{{ error }}{% endfor %}
@@ -56,8 +72,15 @@
             <div class="form-row-2">
                 <div class="form-group">
                     {{ form.role.label(class='form-label') }}
-                    {{ form.role(class='form-control') }}
-                    <div class="form-hint">Select the user's role in the system</div>
+                    {% if user and user.id == current_user.id %}
+                        {{ form.role(class='form-control', disabled=true, style='background-color: #f1f5f9; cursor: not-allowed;') }}
+                        <div class="form-hint" style="color: #ef4444;">
+                            🔒 You cannot change your own role
+                        </div>
+                    {% else %}
+                        {{ form.role(class='form-control') }}
+                        <div class="form-hint">Select the user's role in the system</div>
+                    {% endif %}
                     {% if form.role.errors %}
                         <div class="form-error">
                             {% for error in form.role.errors %}{{ error }}{% endfor %}
@@ -66,12 +89,12 @@
                 </div>
 
                 <div class="form-group">
-                    {{ form.branch_id.label(class='form-label') }}
-                    {{ form.branch_id(class='form-control') }}
-                    <div class="form-hint">Assign user to a branch (required for non-admin users to login)</div>
-                    {% if form.branch_id.errors %}
+                    {{ form.branch_ids.label(class='form-label') }}
+                    {{ form.branch_ids(class='form-control', multiple=true, size=5, style='height: auto;') }}
+                    <div class="form-hint">Hold Ctrl (Cmd on Mac) to select multiple branches. Users can be assigned to multiple branches.</div>
+                    {% if form.branch_ids.errors %}
                         <div class="form-error">
-                            {% for error in form.branch_id.errors %}{{ error }}{% endfor %}
+                            {% for error in form.branch_ids.errors %}{{ error }}{% endfor %}
                         </div>
                     {% endif %}
                 </div>
@@ -81,10 +104,20 @@
                 <div class="form-group">
                     <label class="form-label">Status</label>
                     <div style="padding-top: 8px;">
-                        <label class="checkbox-label">
-                            {{ form.is_active() }}
-                            <span>Account is active</span>
-                        </label>
+                        {% if user and user.id == current_user.id %}
+                            <label class="checkbox-label" style="opacity: 0.6; cursor: not-allowed;">
+                                {{ form.is_active(disabled=true) }}
+                                <span>Account is active</span>
+                            </label>
+                            <div class="form-hint" style="color: #ef4444; margin-top: 8px;">
+                                🔒 You cannot deactivate your own account
+                            </div>
+                        {% else %}
+                            <label class="checkbox-label">
+                                {{ form.is_active() }}
+                                <span>Account is active</span>
+                            </label>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="form-group">

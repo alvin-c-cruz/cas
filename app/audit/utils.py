@@ -3,7 +3,7 @@ Audit Log Utility Functions
 Helper functions for logging changes to the audit trail
 """
 import json
-from flask import request
+from flask import request, session
 from flask_login import current_user
 from app import db
 from app.audit.models import AuditLog
@@ -30,6 +30,9 @@ def log_audit(module, action, record_id, record_identifier=None, old_values=None
         ip_address = request.remote_addr if request else None
         user_agent = request.headers.get('User-Agent') if request else None
 
+        # Get current branch from session (if available)
+        branch_id = session.get('selected_branch_id') if session else None
+
         # Create audit log entry
         audit_log = AuditLog(
             module=module,
@@ -37,6 +40,7 @@ def log_audit(module, action, record_id, record_identifier=None, old_values=None
             record_id=record_id,
             record_identifier=record_identifier,
             user_id=current_user.id if current_user.is_authenticated else None,
+            branch_id=branch_id,
             old_values=json.dumps(old_values) if old_values else None,
             new_values=json.dumps(new_values) if new_values else None,
             ip_address=ip_address,

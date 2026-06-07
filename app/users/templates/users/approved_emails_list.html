@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Approved Emails for Registration{% endblock %}
+{% block page_title %}Approved Emails for Registration{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('users.add_approved_email') }}" class="btn btn-primary">
+            <span class="btn-icon">+</span> Add Approved Email
+        </a>
+        <a href="{{ url_for('users.list_users') }}" class="btn btn-secondary">
+            <span class="btn-icon">←</span> Back to Users
+        </a>
+    </div>
+</div>
+
+<div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px;">
+    <div style="font-size: 14px; color: #1e40af;">
+        <strong>ℹ️ About Email Pre-Approval:</strong><br>
+        Only email addresses added to this list can be used for self-registration. Once an email is used, it cannot be reused.
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Email Address</th>
+                    <th>Status</th>
+                    <th>Approved By</th>
+                    <th>Approved Date</th>
+                    <th>Used By</th>
+                    <th>Used Date</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for email in approved_emails %}
+                <tr {% if email.is_used %}style="background: #f8fafc;"{% endif %}>
+                    <td><strong>{{ email.email }}</strong></td>
+                    <td>
+                        {% if email.is_used %}
+                            <span class="badge badge-inactive">Used</span>
+                        {% else %}
+                            <span class="badge badge-success">Available</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ email.approved_by.username }}</td>
+                    <td>{{ email.approved_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        {% if email.used_by %}
+                            <a href="{{ url_for('users.edit_user', id=email.used_by_user_id) }}">
+                                {{ email.used_by.username }}
+                            </a>
+                        {% else %}
+                            <span style="color: #94a3b8;">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if email.used_at %}
+                            {{ email.used_at.strftime('%Y-%m-%d %H:%M') }}
+                        {% else %}
+                            <span style="color: #94a3b8;">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if email.notes %}
+                            <span title="{{ email.notes }}" style="cursor: help;">{{ email.notes[:30] }}{% if email.notes|length > 30 %}...{% endif %}</span>
+                        {% else %}
+                            <span style="color: #94a3b8;">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            {% if not email.is_used %}
+                            <form method="POST" action="{{ url_for('users.delete_approved_email', id=email.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to remove {{ email.email }} from the approved list?');">
+                                <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
+                            </form>
+                            {% else %}
+                            <span style="color: #94a3b8; font-size: 13px;">-</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if not approved_emails %}
+        <div class="empty-state">
+            <p>No approved emails found.</p>
+            <a href="{{ url_for('users.add_approved_email') }}" class="btn btn-primary">
+                <span class="btn-icon">+</span> Add First Approved Email
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

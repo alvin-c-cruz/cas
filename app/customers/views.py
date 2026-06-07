@@ -10,6 +10,8 @@ from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.customers.forms import CustomerForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
+from app.utils.export import export_to_excel, export_to_csv
+from datetime import datetime
 
 customers_bp = Blueprint('customers', __name__, template_folder='templates')
 
@@ -238,3 +240,92 @@ def delete(id):
         flash(f'Error deleting customer: {str(e)}', 'error')
 
     return redirect(url_for('customers.list_customers'))
+
+
+@customers_bp.route('/customers/export/excel')
+@login_required
+def export_excel():
+    """Export customers to Excel"""
+    customers = Customer.query.order_by(Customer.code).all()
+
+    # Define columns and headers
+    columns = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
+               'payment_terms', 'address', 'postal_code', 'default_vat_category',
+               'default_wt_code', 'is_active']
+
+    headers = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone', 'Email',
+               'TIN', 'Payment Terms', 'Address', 'Postal Code', 'VAT Category',
+               'WT Code', 'Active']
+
+    # Prepare data with proper formatting
+    data = []
+    for customer in customers:
+        data.append({
+            'code': customer.code,
+            'name': customer.name,
+            'contact_person': customer.contact_person or '',
+            'phone': customer.phone or '',
+            'email': customer.email or '',
+            'tin': customer.tin or '',
+            'payment_terms': customer.payment_terms or '',
+            'address': customer.address or '',
+            'postal_code': customer.postal_code or '',
+            'default_vat_category': customer.default_vat_category or '',
+            'default_wt_code': customer.default_wt_code or '',
+            'is_active': 'Yes' if customer.is_active else 'No'
+        })
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'customers_{timestamp}.xlsx'
+
+    return export_to_excel(
+        data=data,
+        columns=columns,
+        headers=headers,
+        filename=filename,
+        title='Customer List'
+    )
+
+
+@customers_bp.route('/customers/export/csv')
+@login_required
+def export_csv_route():
+    """Export customers to CSV"""
+    customers = Customer.query.order_by(Customer.code).all()
+
+    # Define columns and headers
+    columns = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
+               'payment_terms', 'address', 'postal_code', 'default_vat_category',
+               'default_wt_code', 'is_active']
+
+    headers = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone', 'Email',
+               'TIN', 'Payment Terms', 'Address', 'Postal Code', 'VAT Category',
+               'WT Code', 'Active']
+
+    # Prepare data with proper formatting
+    data = []
+    for customer in customers:
+        data.append({
+            'code': customer.code,
+            'name': customer.name,
+            'contact_person': customer.contact_person or '',
+            'phone': customer.phone or '',
+            'email': customer.email or '',
+            'tin': customer.tin or '',
+            'payment_terms': customer.payment_terms or '',
+            'address': customer.address or '',
+            'postal_code': customer.postal_code or '',
+            'default_vat_category': customer.default_vat_category or '',
+            'default_wt_code': customer.default_wt_code or '',
+            'is_active': 'Yes' if customer.is_active else 'No'
+        })
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'customers_{timestamp}.csv'
+
+    return export_to_csv(
+        data=data,
+        columns=columns,
+        headers=headers,
+        filename=filename
+    )

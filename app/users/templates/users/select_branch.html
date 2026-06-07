@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Branch - CAS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .branch-selection-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 500px;
+            padding: 48px 40px;
+        }
+
+        .branch-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .branch-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .branch-icon svg {
+            width: 36px;
+            height: 36px;
+            fill: white;
+        }
+
+        .branch-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 0 0 8px 0;
+        }
+
+        .branch-header p {
+            font-size: 14px;
+            color: #64748b;
+            margin: 0;
+        }
+
+        .branch-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .branch-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 16px 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: white;
+            position: relative;
+        }
+
+        .branch-card:hover {
+            border-color: #667eea;
+            background: #f8fafc;
+            transform: translateX(4px);
+        }
+
+        .branch-card input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+        }
+
+        .branch-card input[type="radio"]:checked + label {
+            background: #eff6ff;
+            border-color: #3b82f6;
+        }
+
+        .branch-card input[type="radio"]:checked + label::after {
+            content: '✓';
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 24px;
+            height: 24px;
+            background: #3b82f6;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .branch-label {
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            padding-right: 50px;
+        }
+
+        .branch-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+
+        .branch-info {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px 24px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Flash messages */
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .alert-error, .alert-danger {
+            background: #fef2f2;
+            color: #991b1b;
+            border-left: 4px solid #ef4444;
+        }
+
+        .alert-success {
+            background: #f0fdf4;
+            color: #166534;
+            border-left: 4px solid #22c55e;
+        }
+
+        .alert-info {
+            background: #eff6ff;
+            color: #1e40af;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .logout-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .logout-link a {
+            font-size: 14px;
+            color: #64748b;
+            text-decoration: none;
+        }
+
+        .logout-link a:hover {
+            color: #3b82f6;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="branch-selection-container">
+        <div class="branch-header">
+            <div class="branch-icon" aria-hidden="true">
+                <!-- Building/Branch icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                </svg>
+            </div>
+            <h1>Select Your Branch</h1>
+            <p>Choose which branch you want to work in</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" id="branchForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="branch_id" id="selectedBranchId" value="">
+            <input type="hidden" name="next" value="{{ next_url }}">
+
+            <div class="branch-list">
+                {% for branch in branches %}
+                <div class="branch-card" onclick="selectBranch({{ branch.id }}, this)">
+                    <input
+                        type="radio"
+                        name="branch_radio"
+                        id="branch_{{ branch.id }}"
+                        value="{{ branch.id }}"
+                    >
+                    <label for="branch_{{ branch.id }}" class="branch-label">
+                        <div class="branch-name">{{ branch.name }}</div>
+                        <div class="branch-info">
+                            {% if branch.description %}
+                                {{ branch.description }}
+                            {% else %}
+                                Branch location
+                            {% endif %}
+                        </div>
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+
+            <button type="submit" class="btn-primary" id="continueBtn" disabled>
+                Continue
+            </button>
+        </form>
+
+        <div class="logout-link">
+            <a href="{{ url_for('users.logout') }}">Logout</a>
+        </div>
+    </div>
+
+    <script>
+        function selectBranch(branchId, card) {
+            // Remove selected class from all cards
+            document.querySelectorAll('.branch-card').forEach(c => {
+                c.style.borderColor = '#e2e8f0';
+                c.style.background = 'white';
+            });
+
+            // Add selected styling
+            card.style.borderColor = '#3b82f6';
+            card.style.background = '#eff6ff';
+
+            // Update hidden input and enable button
+            document.getElementById('selectedBranchId').value = branchId;
+            document.getElementById('continueBtn').disabled = false;
+
+            // Check the radio button
+            document.getElementById('branch_' + branchId).checked = true;
+        }
+
+        // Handle form submission
+        document.getElementById('branchForm').addEventListener('submit', function(e) {
+            const branchId = document.getElementById('selectedBranchId').value;
+            if (!branchId) {
+                e.preventDefault();
+                alert('Please select a branch first.');
+            }
+        });
+
+        // Keyboard navigation
+        document.querySelectorAll('.branch-card').forEach((card, index) => {
+            card.setAttribute('tabindex', '0');
+            card.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const branchId = this.querySelector('input[type="radio"]').value;
+                    selectBranch(branchId, this);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

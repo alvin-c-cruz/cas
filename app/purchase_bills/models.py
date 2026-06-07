@@ -88,7 +88,8 @@ class PurchaseBill(db.Model):
     cancelled_at = db.Column(db.DateTime)
 
     # Relationship to line items
-    line_items = db.relationship('PurchaseBillItem', backref='bill', lazy='dynamic',
+    # Changed from lazy='dynamic' to lazy='select' to support eager loading (selectinload)
+    line_items = db.relationship('PurchaseBillItem', backref='bill', lazy='select',
                                  cascade='all, delete-orphan', order_by='PurchaseBillItem.line_number')
 
     def __repr__(self):

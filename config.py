@@ -65,6 +65,7 @@ class ProductionConfig(Config):
     SESSION_COOKIE_SECURE = True
     REMEMBER_COOKIE_SECURE = True
     WTF_CSRF_SSL_STRICT = True
+    ENFORCE_HTTPS = True  # Redirect HTTP to HTTPS
 
     # Stricter session settings
     SESSION_COOKIE_SAMESITE = 'Strict'

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Close Period {{ period.get_period_name() }}{% endblock %}
+{% block page_title %}Close Accounting Period{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Close {{ period.get_period_name() }}</div>
+        <div class="card-sub">Confirm period closing</div>
+    </div>
+
+    <div class="card-body">
+        <div style="padding: 30px;">
+            <!-- Warning -->
+            <div style="padding: 20px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; margin-bottom: 30px;">
+                <div style="display: flex; align-items: flex-start; gap: 15px;">
+                    <div style="font-size: 32px;">⚠️</div>
+                    <div>
+                        <div style="font-weight: 700; color: #991b1b; font-size: 18px; margin-bottom: 8px;">
+                            Important: Closing This Period
+                        </div>
+                        <div style="color: #991b1b; font-size: 14px; line-height: 1.6;">
+                            Once you close <strong>{{ period.get_period_name() }}</strong>, you will not be able to:
+                            <ul style="margin-top: 10px; margin-bottom: 0;">
+                                <li>Create new transactions dated in this period</li>
+                                <li>Edit existing transactions from this period</li>
+                                <li>Delete transactions from this period</li>
+                            </ul>
+                        </div>
+                        <div style="color: #991b1b; font-size: 14px; margin-top: 12px;">
+                            <strong>Note:</strong> The period can be reopened later by administrators if needed.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Confirmation Form -->
+            <form method="POST" action="{{ url_for('periods.close_period', year=period.year, month=period.month) }}">
+                <div style="margin-bottom: 25px;">
+                    <label for="notes" style="display: block; font-weight: 600; margin-bottom: 10px; font-size: 15px;">
+                        Closing Notes (Optional)
+                    </label>
+                    <textarea id="notes" name="notes" rows="4"
+                              style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 14px;"
+                              placeholder="Enter any notes about this period closing (e.g., 'Month-end closing completed', 'All BIR reports filed', etc.)"></textarea>
+                    <div style="font-size: 13px; color: var(--text-3); margin-top: 6px;">
+                        These notes will be saved with the period closing audit trail.
+                    </div>
+                </div>
+
+                <!-- Checklist Reminder -->
+                <div style="margin-bottom: 30px; padding: 20px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;">
+                    <div style="font-weight: 700; margin-bottom: 15px; color: var(--text-1);">
+                        Before proceeding, please confirm:
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" required style="width: 18px; height: 18px;">
+                            <span style="font-size: 14px;">All journal entries are <strong>posted</strong> (no drafts)</span>
+                        </label>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" required style="width: 18px; height: 18px;">
+                            <span style="font-size: 14px;">Trial Balance is <strong>balanced</strong></span>
+                        </label>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" required style="width: 18px; height: 18px;">
+                            <span style="font-size: 14px;">All required reports have been <strong>generated and reviewed</strong></span>
+                        </label>
+                    </div>
+                    <div>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" required style="width: 18px; height: 18px;">
+                            <span style="font-size: 14px;">I understand that transactions in this period will be <strong>locked</strong></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display: flex; gap: 15px; justify-content: flex-end;">
+                    <a href="{{ url_for('periods.view_period', year=period.year, month=period.month) }}"
+                       class="btn btn-secondary">
+                        Cancel
+                    </a>
+                    <button type="submit" class="btn btn-danger"
+                            onclick="return confirm('Are you absolutely sure you want to close {{ period.get_period_name() }}?');">
+                        🔒 Close Period
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

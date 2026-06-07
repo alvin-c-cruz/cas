@@ -5,6 +5,38 @@
 
 {% block content %}
 
+<!-- Dashboard Header with Date Picker -->
+<div class="card mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; color: white;">
+    <div class="card-body" style="padding: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+                <h2 style="margin: 0 0 8px 0; font-size: 28px; font-weight: 700; color: white;">Financial Dashboard</h2>
+                <p style="margin: 0; font-size: 14px; opacity: 0.9;">Real-time insights into your business performance</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.15); padding: 12px 16px; border-radius: 8px; backdrop-filter: blur(10px);">
+                <div style="display: flex; flex-direction: column; align-items: flex-end; margin-right: 8px;">
+                    <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 4px;">As of Date</label>
+                    <form method="GET" action="{{ url_for('dashboard.home') }}" id="dateForm" style="display: flex; gap: 8px; align-items: center;">
+                        <input type="date"
+                               name="as_of_date"
+                               id="asOfDate"
+                               value="{{ as_of_date }}"
+                               class="form-control"
+                               style="background: white; border: 2px solid rgba(255,255,255,0.3); color: #1e293b; font-weight: 600; padding: 8px 12px; font-size: 13px; width: 160px;"
+                               onchange="this.form.submit()">
+                        <button type="button"
+                                onclick="document.getElementById('asOfDate').value='{{ today }}'; document.getElementById('dateForm').submit();"
+                                class="btn btn-sm"
+                                style="background: rgba(255,255,255,0.25); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 8px 12px; font-size: 12px; font-weight: 600; white-space: nowrap;">
+                            📅 Today
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Stat Cards -->
 <div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
   <div class="stat-card">
@@ -13,13 +45,13 @@
     <div class="stat-periods">
       <div>
         <div class="stat-period-label">MTD</div>
-        <div class="stat-period-val">₱97,500</div>
-        <div class="stat-period-sub stat-up">↑ +12.4% vs last month</div>
+        <div class="stat-period-val">₱{{ '{:,.2f}'.format(stats.revenue_mtd) }}</div>
+        <div class="stat-period-sub">Month-to-Date</div>
       </div>
       <div>
         <div class="stat-period-label">YTD</div>
-        <div class="stat-period-val">₱435,250</div>
-        <div class="stat-period-sub">Jan – May 2026</div>
+        <div class="stat-period-val">₱{{ '{:,.2f}'.format(stats.revenue_ytd) }}</div>
+        <div class="stat-period-sub">Year-to-Date</div>
       </div>
     </div>
   </div>
@@ -29,13 +61,13 @@
     <div class="stat-periods">
       <div>
         <div class="stat-period-label">MTD</div>
-        <div class="stat-period-val">₱89,900</div>
-        <div class="stat-period-sub">Net Income: <strong>₱7,600</strong></div>
+        <div class="stat-period-val">₱{{ '{:,.2f}'.format(stats.expenses_mtd) }}</div>
+        <div class="stat-period-sub">Net Income: <strong>₱{{ '{:,.2f}'.format(stats.revenue_mtd - stats.expenses_mtd) }}</strong></div>
       </div>
       <div>
         <div class="stat-period-label">YTD</div>
-        <div class="stat-period-val">₱391,500</div>
-        <div class="stat-period-sub">Jan – May 2026</div>
+        <div class="stat-period-val">₱{{ '{:,.2f}'.format(stats.expenses_ytd) }}</div>
+        <div class="stat-period-sub">Net Income: <strong>₱{{ '{:,.2f}'.format(stats.revenue_ytd - stats.expenses_ytd) }}</strong></div>
       </div>
     </div>
   </div>
@@ -48,32 +80,309 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">Accounts Receivable</div>
-      <button class="btn btn-secondary btn-sm" onclick="navigate('receivables')">View All →</button>
+      <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary btn-sm">View All →</a>
     </div>
-    <div id="dashboard-ar"></div>
+    <div class="card-body">
+      <div class="ar-ap-summary">
+        <div class="ar-ap-total">
+          <div class="ar-ap-label">Total Outstanding</div>
+          <div class="ar-ap-amount">₱{{ '{:,.2f}'.format(stats.receivables_total) }}</div>
+          <div class="ar-ap-count">{{ stats.receivables_count }} unpaid invoices</div>
+        </div>
+        {% if stats.receivables_overdue > 0 %}
+        <div class="ar-ap-overdue">
+          <div class="ar-ap-overdue-label">⚠️ Overdue</div>
+          <div class="ar-ap-overdue-amount">₱{{ '{:,.2f}'.format(stats.receivables_overdue) }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   <!-- Accounts Payable -->
   <div class="card">
     <div class="card-header">
       <div class="card-title">Accounts Payable</div>
-      <button class="btn btn-secondary btn-sm" onclick="navigate('payables')">View All →</button>
+      <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary btn-sm">View All →</a>
     </div>
-    <div id="dashboard-ap"></div>
+    <div class="card-body">
+      <div class="ar-ap-summary">
+        <div class="ar-ap-total">
+          <div class="ar-ap-label">Total Outstanding</div>
+          <div class="ar-ap-amount">₱{{ '{:,.2f}'.format(stats.payables_total) }}</div>
+          <div class="ar-ap-count">{{ stats.payables_count }} unpaid bills</div>
+        </div>
+        {% if stats.payables_overdue > 0 %}
+        <div class="ar-ap-overdue">
+          <div class="ar-ap-overdue-label">⚠️ Overdue</div>
+          <div class="ar-ap-overdue-amount">₱{{ '{:,.2f}'.format(stats.payables_overdue) }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
 </div>
 
-<!-- Action items widget (hidden for Viewer) -->
-<div class="card mb-4 role-viewer-hide" id="dashboard-actions-card">
-  <div class="card-header">
-    <div>
-      <div class="card-title">Needs Your Action</div>
-      <div class="card-sub" id="dashboard-actions-sub">—</div>
+<!-- Charts -->
+<div class="grid-2 mb-4">
+
+  <!-- Revenue Trend Chart -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Revenue Trend (6 Months)</div>
     </div>
-    <button class="btn btn-primary btn-sm" onclick="navigate('action-items')">View all →</button>
+    <div class="card-body">
+      <canvas id="revenueTrendChart" style="max-height: 300px;"></canvas>
+    </div>
   </div>
-  <div id="dashboard-actions-list"></div>
+
+  <!-- Expense Breakdown Chart -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Expense Breakdown (YTD)</div>
+    </div>
+    <div class="card-body">
+      <canvas id="expenseBreakdownChart" style="max-height: 300px;"></canvas>
+    </div>
+  </div>
+
 </div>
+
+<!-- Top Customers and Vendors -->
+<div class="grid-2 mb-4">
+
+  <!-- Top Customers -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Top Customers</div>
+      <a href="{{ url_for('customers.list_customers') }}" class="btn btn-secondary btn-sm">View All →</a>
+    </div>
+    <div class="card-body">
+      {% if top_customers %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th style="text-align: right;">Total Sales</th>
+            <th style="text-align: center;">Invoices</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for customer in top_customers %}
+          <tr>
+            <td>{{ customer.name }}</td>
+            <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(customer.total_sales) }}</td>
+            <td style="text-align: center;">{{ customer.invoice_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <p>No sales data available</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Top Vendors -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Top Vendors</div>
+      <a href="{{ url_for('vendors.list_vendors') }}" class="btn btn-secondary btn-sm">View All →</a>
+    </div>
+    <div class="card-body">
+      {% if top_vendors %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Vendor</th>
+            <th style="text-align: right;">Total Purchases</th>
+            <th style="text-align: center;">Bills</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for vendor in top_vendors %}
+          <tr>
+            <td>{{ vendor.name }}</td>
+            <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(vendor.total_purchases) }}</td>
+            <td style="text-align: center;">{{ vendor.bill_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <p>No purchase data available</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<style>
+.ar-ap-summary {
+  padding: 20px;
+}
+
+.ar-ap-total {
+  margin-bottom: 20px;
+}
+
+.ar-ap-label {
+  font-size: 14px;
+  color: var(--text-2);
+  margin-bottom: 8px;
+}
+
+.ar-ap-amount {
+  font-size: 32px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text-1);
+  margin-bottom: 4px;
+}
+
+.ar-ap-count {
+  font-size: 14px;
+  color: var(--text-3);
+}
+
+.ar-ap-overdue {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.ar-ap-overdue-label {
+  font-size: 12px;
+  color: #991b1b;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ar-ap-overdue-amount {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: #dc2626;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 768px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+// Revenue Trend Chart
+const revenueTrendCtx = document.getElementById('revenueTrendChart');
+new Chart(revenueTrendCtx, {
+    type: 'line',
+    data: {
+        labels: {{ revenue_trend.labels | tojson }},
+        datasets: [{
+            label: 'Revenue',
+            data: {{ revenue_trend.data | tojson }},
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderWidth: 2,
+            tension: 0.3,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return '₱' + context.parsed.y.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '₱' + value.toLocaleString('en-PH');
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Expense Breakdown Pie Chart
+const expenseBreakdownCtx = document.getElementById('expenseBreakdownChart');
+new Chart(expenseBreakdownCtx, {
+    type: 'doughnut',
+    data: {
+        labels: {{ expense_breakdown.labels | tojson }},
+        datasets: [{
+            data: {{ expense_breakdown.data | tojson }},
+            backgroundColor: [
+                '#3b82f6',
+                '#8b5cf6',
+                '#ec4899',
+                '#f59e0b',
+                '#10b981',
+                '#6366f1',
+                '#14b8a6',
+                '#f97316',
+                '#06b6d4',
+                '#84cc16'
+            ],
+            borderWidth: 0
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: {
+                position: 'right',
+                labels: {
+                    boxWidth: 12,
+                    padding: 10,
+                    font: {
+                        size: 11
+                    }
+                }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        const label = context.label || '';
+                        const value = context.parsed || 0;
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = ((value / total) * 100).toFixed(1);
+                        return label + ': ₱' + value.toLocaleString('en-PH', {minimumFractionDigits: 2}) + ' (' + percentage + '%)';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
 
 {% endblock %}

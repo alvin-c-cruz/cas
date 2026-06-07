@@ -57,6 +57,10 @@ class JournalEntry(db.Model):
     reversed_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'))
     reversed_by_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'))
 
+    # Branch relationship (each branch has its own set of journal entries)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False, index=True)
+    branch = db.relationship('Branch', backref='journal_entries')
+
     # Audit fields
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_journal_entries')

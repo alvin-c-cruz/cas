@@ -476,9 +476,19 @@ function navigate(page) {
 
   document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById(target).classList.add('active');
+
+  // Add null check to prevent error if element doesn't exist
+  const targetElement = document.getElementById(target);
+  if (targetElement) {
+    targetElement.classList.add('active');
+  }
+
   document.querySelectorAll(`[data-page="${page}"]`).forEach(n => n.classList.add('active'));
-  document.getElementById('page-title').textContent = pageTitles[page] || page;
+
+  const pageTitle = document.getElementById('page-title');
+  if (pageTitle) {
+    pageTitle.textContent = pageTitles[page] || page;
+  }
 
   if (alias) {
     document.querySelectorAll(`[data-tab-group="${alias.tabGroup}"]`).forEach(t => t.classList.remove('active'));

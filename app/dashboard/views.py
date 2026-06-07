@@ -1,8 +1,15 @@
 from flask import Blueprint, render_template, redirect, url_for, jsonify
 from flask_login import login_required, current_user
+from datetime import datetime
 from app.accounts.approval_models import AccountChangeRequest
 from app.vat_categories.models import VATCategoryChangeRequest
 from app.withholding_tax.models import WithholdingTaxChangeRequest
+from app.dashboard.dashboard_data import (
+    get_revenue_stats, get_expense_stats,
+    get_receivables_stats, get_payables_stats,
+    get_top_customers, get_top_vendors,
+    get_monthly_revenue_trend, get_expense_breakdown
+)
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder='templates')
 
@@ -15,40 +22,76 @@ def index():
 @dashboard_bp.route('/dashboard')
 @login_required
 def home():
-    """Main dashboard page"""
-    # Mock data for dashboard
+    """Main dashboard page with real business metrics"""
+    from flask import session, request
+
+    # Get "as of" date from query parameter or default to today
+    today = datetime.now().date()
+    as_of_date_str = request.args.get('as_of_date')
+
+    if as_of_date_str:
+        try:
+            as_of_date = datetime.strptime(as_of_date_str, '%Y-%m-%d').date()
+            # Allow any date - past, present, or future
+        except ValueError:
+            as_of_date = today
+    else:
+        as_of_date = today
+
+    # Extract year and month from the as_of_date
+    current_year = as_of_date.year
+    current_month = as_of_date.month
+
+    # Get current branch from session
+    current_branch_id = session.get('selected_branch_id')
+
+    # If no branch selected, try to get user's first assigned branch
+    if not current_branch_id and current_user.branches.count() > 0:
+        first_branch = current_user.branches.first()
+        current_branch_id = first_branch.id
+        session['selected_branch_id'] = current_branch_id
+
+    # Get real financial statistics (filtered by current branch and as_of_date)
+    revenue_stats = get_revenue_stats(current_year, current_month, branch_id=current_branch_id, as_of_date=as_of_date)
+    expense_stats = get_expense_stats(current_year, current_month, branch_id=current_branch_id, as_of_date=as_of_date)
+    receivables_stats = get_receivables_stats(as_of_date=as_of_date)
+    payables_stats = get_payables_stats(as_of_date=as_of_date)
+
+    # Combine into stats dict for template
     stats = {
-        'revenue_mtd': 1250000.00,
-        'revenue_ytd': 8750000.00,
-        'expenses_mtd': 890000.00,
-        'expenses_ytd': 6230000.00
+        'revenue_mtd': revenue_stats['mtd'],
+        'revenue_ytd': revenue_stats['ytd'],
+        'expenses_mtd': expense_stats['mtd'],
+        'expenses_ytd': expense_stats['ytd'],
+        'receivables_total': receivables_stats['total'],
+        'receivables_count': receivables_stats['count'],
+        'receivables_overdue': receivables_stats['overdue'],
+        'payables_total': payables_stats['total'],
+        'payables_count': payables_stats['count'],
+        'payables_overdue': payables_stats['overdue']
     }
 
-    action_items = [
-        {'id': 1, 'type': 'JournalEntry', 'description': 'Monthly depreciation entry', 'state': 'Draft', 'user': 'Maria Santos'},
-        {'id': 2, 'type': 'Invoice', 'description': 'Invoice #INV-2025-042 awaiting approval', 'state': 'Submitted', 'user': 'Juan dela Cruz'},
-        {'id': 3, 'type': 'Bill', 'description': 'Vendor bill from ABC Suppliers', 'state': 'Pending', 'user': 'Maria Santos'},
-    ]
+    # Get top customers and vendors
+    top_customers = get_top_customers(limit=5, as_of_date=as_of_date)
+    top_vendors = get_top_vendors(limit=5, as_of_date=as_of_date)
 
-    top_customers = [
-        {'name': 'ABC Corporation', 'balance': 450000.00, 'invoices': 3},
-        {'name': 'XYZ Enterprises', 'balance': 320000.00, 'invoices': 2},
-        {'name': 'Global Trading Inc.', 'balance': 280000.00, 'invoices': 4},
-        {'name': 'Metro Solutions', 'balance': 175000.00, 'invoices': 1},
-        {'name': 'Pacific Holdings', 'balance': 145000.00, 'invoices': 2},
-    ]
+    # Get chart data
+    revenue_trend = get_monthly_revenue_trend(months=6, as_of_date=as_of_date)
+    expense_breakdown = get_expense_breakdown(as_of_date=as_of_date)
 
-    top_vendors = [
-        {'name': 'Office Depot Philippines', 'balance': 85000.00, 'bills': 2},
-        {'name': 'Tech Solutions Inc.', 'balance': 125000.00, 'bills': 1},
-        {'name': 'ABC Suppliers', 'balance': 65000.00, 'bills': 3},
-    ]
+    # Action items placeholder (can be enhanced later)
+    action_items = []
 
     return render_template('dashboard/index.html',
                          stats=stats,
                          action_items=action_items,
                          top_customers=top_customers,
-                         top_vendors=top_vendors)
+                         top_vendors=top_vendors,
+                         revenue_trend=revenue_trend,
+                         expense_breakdown=expense_breakdown,
+                         current_month=as_of_date.strftime('%B %Y'),
+                         as_of_date=as_of_date.strftime('%Y-%m-%d'),
+                         today=today.strftime('%Y-%m-%d'))
 
 @dashboard_bp.route('/action-items')
 @login_required

@@ -187,8 +187,7 @@ def load_sample_vendors():
             phone='09121234567',
             tin='123-456-789-000',
             payment_terms='Net 30',
-            default_vat='VATOG 12%',
-            default_wt='WC158',
+            default_vat_category='VATOG 12%',
             is_active=True
         ),
         Vendor(
@@ -198,8 +197,7 @@ def load_sample_vendors():
             phone='09231234567',
             tin='234-567-890-000',
             payment_terms='Net 15',
-            default_vat='VATOG 12%',
-            default_wt='WC158',
+            default_vat_category='VATOG 12%',
             is_active=True
         ),
         Vendor(
@@ -209,8 +207,7 @@ def load_sample_vendors():
             phone='09341234567',
             tin='345-678-901-000',
             payment_terms='Net 30',
-            default_vat='VATSV 12%',
-            default_wt='WC160',
+            default_vat_category='VATSV 12%',
             is_active=True
         ),
         Vendor(
@@ -220,8 +217,7 @@ def load_sample_vendors():
             phone='09451234567',
             tin='456-789-012-000',
             payment_terms='Net 45',
-            default_vat='VATOG 12%',
-            default_wt='WC158',
+            default_vat_category='VATOG 12%',
             is_active=True
         ),
         Vendor(
@@ -231,8 +227,7 @@ def load_sample_vendors():
             phone='09561234567',
             tin='567-890-123-000',
             payment_terms='Net 30',
-            default_vat='VATSV 12%',
-            default_wt='WC160',
+            default_vat_category='VATSV 12%',
             is_active=True
         ),
     ]

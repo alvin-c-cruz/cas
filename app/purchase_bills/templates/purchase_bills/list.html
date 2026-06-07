@@ -6,8 +6,18 @@
 {{ render_flash_messages() }}
 <div class="card">
     <div class="card-header">
-        <div class="card-header-actions">
-            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Create Bill</a>
+        <div class="card-header-actions" style="display: flex; gap: 8px;">
+            <a href="{{ url_for('purchase_bills.export_excel', status=status_filter, vendor=vendor_filter) }}"
+               class="btn btn-secondary">
+                📊 Export Excel
+            </a>
+            <a href="{{ url_for('purchase_bills.export_csv_route', status=status_filter, vendor=vendor_filter) }}"
+               class="btn btn-secondary">
+                📄 Export CSV
+            </a>
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">
+                ➕ Create Bill
+            </a>
         </div>
     </div>
     <div class="card-body">
@@ -37,6 +47,24 @@
         <div class="empty-state"><p>No purchase bills found.</p><a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Create First Bill</a></div>
         {% endif %}
     </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ min(pagination.page * pagination.per_page, pagination.total) }} of
+            {{ pagination.total }} bills
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.prev_num, status=status_filter, vendor=vendor_filter) }}" class="btn btn-secondary btn-sm">← Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.next_num, status=status_filter, vendor=vendor_filter) }}" class="btn btn-secondary btn-sm">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 <style>.badge{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase;}.badge-secondary{background:var(--text-3);color:white;}.badge-info{background:var(--blue);color:white;}.badge-success{background:var(--green);color:white;}.badge-danger{background:var(--red);color:white;}.btn-action{padding:4px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:14px;}.btn-action:hover{background:var(--border);}</style>
 {% endblock %}

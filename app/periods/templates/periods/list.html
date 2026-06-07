@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Accounting Periods{% endblock %}
+{% block page_title %}Accounting Period Management{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Accounting Periods</div>
+        <div class="card-sub">Manage month-end closing and period locking</div>
+    </div>
+
+    <div class="card-body">
+        {% if periods %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Period</th>
+                    <th>Year</th>
+                    <th>Month</th>
+                    <th>Status</th>
+                    <th>Closed By</th>
+                    <th>Closed At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for period in periods %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('periods.view_period', year=period.year, month=period.month) }}"
+                           style="font-weight: 600; color: var(--blue);">
+                            {{ period.get_period_name() }}
+                        </a>
+                    </td>
+                    <td>{{ period.year }}</td>
+                    <td>{{ period.month }}</td>
+                    <td>
+                        {% if period.status == 'closed' %}
+                        <span class="badge badge-danger">🔒 CLOSED</span>
+                        {% else %}
+                        <span class="badge badge-success">🔓 OPEN</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ period.closed_by.username if period.closed_by else '—' }}</td>
+                    <td>{{ period.closed_at.strftime('%b %d, %Y %I:%M %p') if period.closed_at else '—' }}</td>
+                    <td>
+                        <a href="{{ url_for('periods.view_period', year=period.year, month=period.month) }}"
+                           class="btn-action">
+                            👁️ View
+                        </a>
+                        {% if period.status == 'open' %}
+                        <a href="{{ url_for('periods.close_period', year=period.year, month=period.month) }}"
+                           class="btn-action" style="color: var(--red);">
+                            🔒 Close
+                        </a>
+                        {% else %}
+                        <form method="POST" action="{{ url_for('periods.reopen_period', year=period.year, month=period.month) }}"
+                              style="display: inline;"
+                              onsubmit="return confirm('Are you sure you want to reopen {{ period.get_period_name() }}? This will allow editing of transactions in this period.');">
+                            <button type="submit" class="btn-action" style="color: var(--green);">
+                                🔓 Reopen
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No accounting periods found.</p>
+            <p style="font-size: 14px; color: var(--text-3); margin-top: 8px;">
+                Periods are created automatically when transactions are posted.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Information Card -->
+<div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+        <div class="card-title">About Period Closing</div>
+    </div>
+    <div class="card-body">
+        <div style="padding: 20px;">
+            <h4 style="margin-top: 0; font-size: 16px; font-weight: 700; color: var(--text-1);">
+                What is Period Closing?
+            </h4>
+            <p style="color: var(--text-2); margin-bottom: 20px;">
+                Period closing locks an accounting period (usually a month) to prevent any further changes
+                to transactions dated in that period. This ensures data integrity and supports audit requirements.
+            </p>
+
+            <h4 style="font-size: 16px; font-weight: 700; color: var(--text-1); margin-bottom: 10px;">
+                Before Closing a Period:
+            </h4>
+            <ul style="color: var(--text-2); margin-bottom: 20px;">
+                <li>✅ All journal entries must be <strong>posted</strong> (no drafts allowed)</li>
+                <li>✅ Trial Balance must be <strong>balanced</strong> (debits = credits)</li>
+                <li>✅ All required reports should be generated and reviewed</li>
+                <li>✅ BIR reports filed (if applicable)</li>
+            </ul>
+
+            <h4 style="font-size: 16px; font-weight: 700; color: var(--text-1); margin-bottom: 10px;">
+                After Closing:
+            </h4>
+            <ul style="color: var(--text-2);">
+                <li>🔒 No transactions can be created, edited, or deleted in the closed period</li>
+                <li>📊 Financial reports remain accurate and unchangeable</li>
+                <li>✅ Data integrity is maintained for audit purposes</li>
+                <li>🔓 Period can be reopened by administrators if needed (with audit trail)</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<style>
+.badge {
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-block;
+}
+
+.badge-success {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.badge-danger {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+.btn-action {
+    padding: 6px 12px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+    text-decoration: none;
+    display: inline-block;
+    margin-right: 4px;
+}
+
+.btn-action:hover {
+    background: var(--border);
+}
+</style>
+
+{% endblock %}

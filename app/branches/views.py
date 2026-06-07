@@ -152,33 +152,34 @@ def delete(id):
         flash(f'Cannot delete branch "{branch.name}" because it has {branch.users.count()} assigned user(s). Please reassign users first.', 'error')
         return redirect(url_for('branches.list_branches'))
 
-    try:
-        branch_name = branch.name
+    # TEMPORARILY DISABLED ERROR HANDLING FOR DEBUGGING - See full stack trace
+    # try:
+    branch_name = branch.name
 
-        # Capture branch data before deletion
-        old_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
-        branch_id = branch.id
-        branch_identifier = f'{branch.code} - {branch.name}'
+    # Capture branch data before deletion
+    old_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+    branch_id = branch.id
+    branch_identifier = f'{branch.code} - {branch.name}'
 
-        db.session.delete(branch)
-        db.session.commit()
+    db.session.delete(branch)
+    db.session.commit()
 
-        # Audit log for branch deletion
-        log_delete(
-            module='branch',
-            record_id=branch_id,
-            record_identifier=branch_identifier,
-            old_values=old_values
-        )
+    # Audit log for branch deletion
+    log_delete(
+        module='branch',
+        record_id=branch_id,
+        record_identifier=branch_identifier,
+        old_values=old_values
+    )
 
-        flash(f'Branch "{branch_name}" deleted successfully!', 'success')
-    except Exception as e:
-        from flask import current_app
-        from app.errors.utils import log_exception
-        current_app.logger.error(f"Error deleting branch", exc_info=True)
-        log_exception(e, severity='ERROR', module='branches.delete')
-        db.session.rollback()
-        flash(f'Error deleting branch: {str(e)}', 'error')
+    flash(f'Branch "{branch_name}" deleted successfully!', 'success')
+    # except Exception as e:
+    #     from flask import current_app
+    #     from app.errors.utils import log_exception
+    #     current_app.logger.error(f"Error deleting branch", exc_info=True)
+    #     log_exception(e, severity='ERROR', module='branches.delete')
+    #     db.session.rollback()
+    #     flash(f'Error deleting branch: {str(e)}', 'error')
 
     return redirect(url_for('branches.list_branches'))
 

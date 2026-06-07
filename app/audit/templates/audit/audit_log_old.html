@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="card mb-4">
+    <div class="card-header" style="flex-direction:column;align-items:stretch;gap:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+                <div class="card-title">Audit Log</div>
+                <div class="card-sub">{{ pagination.total }} entries found</div>
+            </div>
+        </div>
+
+        <!-- Enhanced Filter Form -->
+        <form method="GET" style="display:flex;flex-direction:column;gap:12px;background:#f8fafc;padding:16px;border-radius:8px">
+            <!-- Row 1: Date Range and Search -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <label style="font-size:13px;color:#64748b;white-space:nowrap">From:</label>
+                    <input type="date" name="date_from" value="{{ date_from }}" class="form-control" style="width:150px">
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <label style="font-size:13px;color:#64748b;white-space:nowrap">To:</label>
+                    <input type="date" name="date_to" value="{{ date_to }}" class="form-control" style="width:150px">
+                </div>
+                <input type="text" name="search" value="{{ search_query }}" placeholder="Search records..." class="form-control" style="flex:1;min-width:200px">
+            </div>
+
+            <!-- Row 2: Dropdown Filters -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <select name="branch" class="form-control" style="width:150px">
+                    <option value="">All Branches</option>
+                    {% for br in branches %}
+                    <option value="{{ br.id }}" {% if br.id|string == branch_filter %}selected{% endif %}>
+                        {{ br.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <select name="module" class="form-control" style="width:150px">
+                    <option value="">All Modules</option>
+                    {% for mod in modules %}
+                    <option value="{{ mod }}" {% if mod == module_filter %}selected{% endif %}>
+                        {{ mod.replace('_', ' ').title() }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <select name="action" class="form-control" style="width:130px">
+                    <option value="">All Actions</option>
+                    {% for act in actions %}
+                    <option value="{{ act }}" {% if act == action_filter %}selected{% endif %}>
+                        {{ act.title() }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <select name="user" class="form-control" style="width:150px">
+                    <option value="">All Users</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" {% if u.id|string == user_filter %}selected{% endif %}>
+                        {{ u.username }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary" style="margin-left:auto">Filter</button>
+                <a href="{{ url_for('audit.audit_log') }}" class="btn btn-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+
+    <div style="overflow-x:auto">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Branch</th>
+                    <th>User</th>
+                    <th>Module</th>
+                    <th>Action</th>
+                    <th>Record</th>
+                    <th>Changes</th>
+                    <th>IP Address</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if logs %}
+                    {% for log in logs %}
+                    <tr>
+                        <td style="white-space:nowrap">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else '—' }}</td>
+                        <td>
+                            {% if log.branch %}
+                            <span class="badge" style="background:#eff6ff;color:#1e40af;font-weight:600">
+                                {{ log.branch.name }}
+                            </span>
+                            {% else %}
+                            <span style="color:#94a3b8">—</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.user.username if log.user else '—' }}</td>
+                        <td>
+                            <span class="badge" style="background:#f1f5f9;color:#475569">
+                                {{ log.module.replace('_', ' ').title() }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if log.action == 'create' %}
+                            <span class="badge" style="background:#dcfce7;color:#166534;font-weight:600">CREATE</span>
+                            {% elif log.action == 'update' %}
+                            <span class="badge" style="background:#dbeafe;color:#1e40af;font-weight:600">UPDATE</span>
+                            {% elif log.action == 'delete' %}
+                            <span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:600">DELETE</span>
+                            {% elif log.action == 'post' %}
+                            <span class="badge" style="background:#f3e8ff;color:#6b21a8;font-weight:600">POST</span>
+                            {% elif log.action == 'cancel' %}
+                            <span class="badge" style="background:#fed7aa;color:#9a3412;font-weight:600">CANCEL</span>
+                            {% elif log.action == 'approve' %}
+                            <span class="badge" style="background:#d1fae5;color:#065f46;font-weight:600">APPROVE</span>
+                            {% elif log.action == 'reject' %}
+                            <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:600">REJECT</span>
+                            {% else %}
+                            <span class="badge" style="background:#e2e8f0;color:#475569">{{ log.action.upper() }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ log.record_identifier or 'ID: ' ~ log.record_id }}</strong>
+                        </td>
+                        <td>
+                            {% set old = log.old_values|from_json if log.old_values else {} %}
+                            {% set new = log.new_values|from_json if log.new_values else {} %}
+
+                            {% if log.action == 'create' %}
+                                <details class="audit-details">
+                                    <summary class="audit-summary">
+                                        <span class="summary-text">▶ View created data</span>
+                                    </summary>
+                                    <div class="audit-content">
+                                        {% set wt_codes = [] %}
+                                        {% for key, value in new.items() %}
+                                            {% if key.startswith('wt_') and (value is sameas true or value == 'True' or value == 1) %}
+                                                {% set _ = wt_codes.append(key.replace('wt_', '').upper()) %}
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {# Define the preferred field order #}
+                                        {% set field_order = ['code', 'name', 'tin', 'address', 'postal_code', 'check_payee_name', 'contact_person', 'phone', 'email', 'payment_terms', 'default_vat_category', 'is_active'] %}
+
+                                        {# Display fields in preferred order #}
+                                        {% for field in field_order %}
+                                            {% if field in new and not field.startswith('wt_') %}
+                                                {# Special handling for placement of Withholding Tax before is_active #}
+                                                {% if field == 'is_active' and wt_codes %}
+                                                <div class="audit-item">
+                                                    <span class="audit-key">Withholding Tax:</span>
+                                                    <span class="audit-value">{{ wt_codes|join(', ') }}</span>
+                                                </div>
+                                                {% endif %}
+
+                                                <div class="audit-item">
+                                                    <span class="audit-key">{{ field.replace('_', ' ').title() }}:</span>
+                                                    <span class="audit-value">{{ new[field] if new[field] != None else '—' }}</span>
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {# Display any remaining fields not in the preferred order #}
+                                        {% for key, value in new.items() %}
+                                        {% if not key.startswith('wt_') and key not in field_order %}
+                                        <div class="audit-item">
+                                            <span class="audit-key">{{ key.replace('_', ' ').title() }}:</span>
+                                            <span class="audit-value">{{ value if value != None else '—' }}</span>
+                                        </div>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                            {% elif log.action == 'update' %}
+                                <details class="audit-details">
+                                    <summary class="audit-summary">
+                                        <span class="summary-text">▶ View changes</span>
+                                    </summary>
+                                    <div class="audit-content">
+                                        {% set old_wt_codes = [] %}
+                                        {% set new_wt_codes = [] %}
+                                        {% set wt_changed = [False] %}  {# Use list to work around Jinja2 scoping #}
+                                        {% set all_wt_keys = [] %}
+
+
+                                        {# Collect all WT keys from both old and new #}
+                                        {% for key in old.keys() %}
+                                            {% if key.startswith('wt_') and key not in all_wt_keys %}
+                                                {% set _ = all_wt_keys.append(key) %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% for key in new.keys() %}
+                                            {% if key.startswith('wt_') and key not in all_wt_keys %}
+                                                {% set _ = all_wt_keys.append(key) %}
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {# Check for WT changes and collect codes #}
+                                        {% for key in all_wt_keys %}
+                                            {% set old_val = old.get(key) %}
+                                            {% set new_val = new.get(key) %}
+
+                                            {# Check for truthy values - handles boolean true, string 'True', or 1 #}
+                                            {# Note: None and False are both falsy, so we only add codes for True values #}
+                                            {% if old_val is sameas true or old_val == 'True' or old_val == 1 or old_val == '1' %}
+                                                {% set _ = old_wt_codes.append(key.replace('wt_', '').upper()) %}
+                                            {% endif %}
+
+                                            {% if new_val is sameas true or new_val == 'True' or new_val == 1 or new_val == '1' %}
+                                                {% set _ = new_wt_codes.append(key.replace('wt_', '').upper()) %}
+                                            {% endif %}
+
+                                            {% if old_val != new_val %}
+                                                {% set _ = wt_changed.__setitem__(0, True) %}  {# Update list element #}
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {# Collect all non-WT keys from both old and new #}
+                                        {% set all_non_wt_keys = [] %}
+                                        {% for key in old.keys() %}
+                                            {% if not key.startswith('wt_') and key not in all_non_wt_keys %}
+                                                {% set _ = all_non_wt_keys.append(key) %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% for key in new.keys() %}
+                                            {% if not key.startswith('wt_') and key not in all_non_wt_keys %}
+                                                {% set _ = all_non_wt_keys.append(key) %}
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {% for key in all_non_wt_keys %}
+                                            {% if old.get(key) != new.get(key) %}
+                                            <div class="audit-change">
+                                                <div class="change-key">{{ key.replace('_', ' ').title() }}:</div>
+                                                <div class="change-values">
+                                                    <span class="old-value">{{ old.get(key, '—') if old.get(key) is not none else '—' }}</span>
+                                                    <span class="arrow">→</span>
+                                                    <span class="new-value">{{ new.get(key, '—') if new.get(key) is not none else '—' }}</span>
+                                                </div>
+                                            </div>
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {% if wt_changed[0] %}
+                                        <div class="audit-change">
+                                            <div class="change-key">Withholding Tax:</div>
+                                            <div class="change-values">
+                                                <span class="old-value">{{ old_wt_codes|join(', ') if old_wt_codes else 'None' }}</span>
+                                                <span class="arrow">→</span>
+                                                <span class="new-value">{{ new_wt_codes|join(', ') if new_wt_codes else 'None' }}</span>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+
+                                        {# Show a message if there are no visible changes #}
+                                        {% set has_non_wt_changes = [False] %}
+
+                                        {# Check for non-WT changes specifically #}
+                                        {% for key in all_non_wt_keys %}
+                                            {% if old.get(key) != new.get(key) %}
+                                                {% set _ = has_non_wt_changes.__setitem__(0, True) %}
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {% if not has_non_wt_changes[0] and not wt_changed[0] %}
+                                        <div class="audit-item">
+                                            <span style="color: #6b7280; font-style: italic;">No changes detected in audit data</span>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </details>
+                            {% elif log.action == 'delete' %}
+                                <details class="audit-details">
+                                    <summary class="audit-summary">
+                                        <span class="summary-text">▶ View deleted data</span>
+                                    </summary>
+                                    <div class="audit-content">
+                                        {% set wt_codes = [] %}
+                                        {% for key, value in old.items() %}
+                                            {% if key.startswith('wt_') and (value is sameas true or value == 'True' or value == 1) %}
+                                                {% set _ = wt_codes.append(key.replace('wt_', '').upper()) %}
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {# Define the preferred field order #}
+                                        {% set field_order = ['code', 'name', 'tin', 'address', 'postal_code', 'check_payee_name', 'contact_person', 'phone', 'email', 'payment_terms', 'default_vat_category', 'is_active'] %}
+
+                                        {# Display fields in preferred order #}
+                                        {% for field in field_order %}
+                                            {% if field in old and not field.startswith('wt_') %}
+                                                {# Special handling for placement of Withholding Tax before is_active #}
+                                                {% if field == 'is_active' and wt_codes %}
+                                                <div class="audit-item">
+                                                    <span class="audit-key">Withholding Tax:</span>
+                                                    <span class="audit-value deleted">{{ wt_codes|join(', ') }}</span>
+                                                </div>
+                                                {% endif %}
+
+                                                <div class="audit-item">
+                                                    <span class="audit-key">{{ field.replace('_', ' ').title() }}:</span>
+                                                    <span class="audit-value deleted">{{ old[field] if old[field] != None else '—' }}</span>
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+
+                                        {# Display any remaining fields not in the preferred order #}
+                                        {% for key, value in old.items() %}
+                                        {% if not key.startswith('wt_') and key not in field_order %}
+                                        <div class="audit-item">
+                                            <span class="audit-key">{{ key.replace('_', ' ').title() }}:</span>
+                                            <span class="audit-value deleted">{{ value if value != None else '—' }}</span>
+                                        </div>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:11px;color:#64748b">{{ log.ip_address or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align:center;padding:40px;color:#64748b">
+                            No audit log entries found
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total] | min }} of
+            {{ pagination.total }} entries
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('audit.audit_log', page=pagination.prev_num, module=module_filter, action=action_filter, user=user_filter) }}" class="btn btn-secondary btn-sm">← Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('audit.audit_log', page=pagination.next_num, module=module_filter, action=action_filter, user=user_filter) }}" class="btn btn-secondary btn-sm">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+/* Audit Details Expandable Sections */
+.audit-details {
+    margin: 4px 0;
+}
+
+.audit-summary {
+    cursor: pointer;
+    color: #3b82f6;
+    font-weight: 500;
+    font-size: 13px;
+    padding: 4px 0;
+    list-style: none;
+    user-select: none;
+    transition: color 0.2s;
+}
+
+.audit-summary:hover {
+    color: #2563eb;
+}
+
+.audit-summary::-webkit-details-marker {
+    display: none;
+}
+
+.summary-text::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: 6px;
+    transition: transform 0.2s;
+    font-size: 10px;
+}
+
+details[open] .summary-text::before {
+    transform: rotate(90deg);
+}
+
+.audit-content {
+    margin-top: 12px;
+    padding: 16px;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Individual audit items */
+.audit-item {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 13px;
+}
+
+.audit-item:last-child {
+    border-bottom: none;
+}
+
+.audit-key {
+    font-weight: 600;
+    color: #475569;
+    text-transform: capitalize;
+}
+
+.audit-value {
+    color: #1e293b;
+    word-break: break-word;
+}
+
+.audit-value.deleted {
+    color: #991b1b;
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+/* Change tracking for updates */
+.audit-change {
+    padding: 10px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.audit-change:last-child {
+    border-bottom: none;
+}
+
+.change-key {
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+.change-values {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    flex-wrap: wrap;
+}
+
+.old-value {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-decoration: line-through;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.arrow {
+    color: #64748b;
+    font-weight: bold;
+}
+
+.new-value {
+    background: #dcfce7;
+    color: #166534;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Special formatting for boolean values */
+.audit-value:contains("True"),
+.audit-value:contains("true") {
+    color: #16a34a;
+}
+
+.audit-value:contains("False"),
+.audit-value:contains("false") {
+    color: #dc2626;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .audit-item {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .audit-key {
+        margin-bottom: 2px;
+    }
+
+    .change-values {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .arrow {
+        transform: rotate(90deg);
+        margin: 4px 0;
+    }
+}
+</style>
+{% endblock %}

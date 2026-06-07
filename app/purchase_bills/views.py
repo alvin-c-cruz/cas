@@ -4,6 +4,7 @@ Purchase Bill views for managing supplier invoices and expenses.
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
+from sqlalchemy.orm import selectinload
 from app import db
 from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
 from app.purchase_bills.forms import PurchaseBillForm
@@ -12,6 +13,8 @@ from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
+from app.utils.export import export_to_excel, export_to_csv
+from app.periods.utils import validate_transaction_date_with_flash
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 import json
@@ -60,7 +63,45 @@ def generate_bill_number():
 @purchase_bills_bp.route('/purchase-bills')
 @login_required
 def list_bills():
-    """List all purchase bills."""
+    """List all purchase bills with pagination."""
+    status_filter = request.args.get('status', 'all')
+    vendor_filter = request.args.get('vendor', 'all')
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    query = PurchaseBill.query
+
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+
+    if vendor_filter != 'all':
+        try:
+            vendor_id = int(vendor_filter)
+            query = query.filter_by(vendor_id=vendor_id)
+        except ValueError:
+            pass
+
+    # Eager load line_items to prevent N+1 queries
+    query = query.options(selectinload(PurchaseBill.line_items)).order_by(PurchaseBill.bill_date.desc())
+
+    # Paginate results
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    bills = pagination.items
+
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+
+    return render_template('purchase_bills/list.html',
+                         bills=bills,
+                         pagination=pagination,
+                         vendors=vendors,
+                         status_filter=status_filter,
+                         vendor_filter=vendor_filter)
+
+
+@purchase_bills_bp.route('/purchase-bills/export/excel')
+@login_required
+def export_excel():
+    """Export purchase bills to Excel"""
     status_filter = request.args.get('status', 'all')
     vendor_filter = request.args.get('vendor', 'all')
 
@@ -76,14 +117,114 @@ def list_bills():
         except ValueError:
             pass
 
-    bills = query.order_by(PurchaseBill.bill_date.desc()).all()
-    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    bills = query.options(selectinload(PurchaseBill.line_items)).order_by(PurchaseBill.bill_date.desc()).all()
 
-    return render_template('purchase_bills/list.html',
-                         bills=bills,
-                         vendors=vendors,
-                         status_filter=status_filter,
-                         vendor_filter=vendor_filter)
+    columns = [
+        'bill_number',
+        'bill_date',
+        'due_date',
+        'vendor_name',
+        'vendor_tin',
+        'vendor_invoice_number',
+        'subtotal',
+        'vat_amount',
+        'withholding_tax_amount',
+        'total_amount',
+        'amount_paid',
+        'balance',
+        'status'
+    ]
+
+    headers = [
+        'Bill #',
+        'Bill Date',
+        'Due Date',
+        'Vendor',
+        'TIN',
+        'Vendor Invoice #',
+        'Subtotal',
+        'VAT',
+        'Withholding Tax',
+        'Total',
+        'Paid',
+        'Balance',
+        'Status'
+    ]
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'purchase_bills_{timestamp}.xlsx'
+
+    return export_to_excel(
+        data=bills,
+        columns=columns,
+        headers=headers,
+        filename=filename,
+        title='Purchase Bills Report'
+    )
+
+
+@purchase_bills_bp.route('/purchase-bills/export/csv')
+@login_required
+def export_csv_route():
+    """Export purchase bills to CSV"""
+    status_filter = request.args.get('status', 'all')
+    vendor_filter = request.args.get('vendor', 'all')
+
+    query = PurchaseBill.query
+
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+
+    if vendor_filter != 'all':
+        try:
+            vendor_id = int(vendor_filter)
+            query = query.filter_by(vendor_id=vendor_id)
+        except ValueError:
+            pass
+
+    bills = query.options(selectinload(PurchaseBill.line_items)).order_by(PurchaseBill.bill_date.desc()).all()
+
+    columns = [
+        'bill_number',
+        'bill_date',
+        'due_date',
+        'vendor_name',
+        'vendor_tin',
+        'vendor_invoice_number',
+        'subtotal',
+        'vat_amount',
+        'withholding_tax_amount',
+        'total_amount',
+        'amount_paid',
+        'balance',
+        'status'
+    ]
+
+    headers = [
+        'Bill #',
+        'Bill Date',
+        'Due Date',
+        'Vendor',
+        'TIN',
+        'Vendor Invoice #',
+        'Subtotal',
+        'VAT',
+        'Withholding Tax',
+        'Total',
+        'Paid',
+        'Balance',
+        'Status'
+    ]
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'purchase_bills_{timestamp}.csv'
+
+    return export_to_csv(
+        data=bills,
+        columns=columns,
+        headers=headers,
+        filename=filename
+    )
 
 
 @purchase_bills_bp.route('/purchase-bills/create', methods=['GET', 'POST'])
@@ -97,6 +238,10 @@ def create():
     form.vendor_id.choices = [(0, '-- Select Vendor --')] + [(v.id, f'{v.code} - {v.name}') for v in vendors]
 
     if form.validate_on_submit():
+        # Validate that the bill date is not in a closed period
+        if not validate_transaction_date_with_flash(form.bill_date.data, 'purchase bill'):
+            return render_template('purchase_bills/form.html', form=form, bill=None)
+
         try:
             vendor = Vendor.query.get(form.vendor_id.data)
             if not vendor:
@@ -209,6 +354,10 @@ def edit(id):
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
 
     if form.validate_on_submit():
+        # Validate that the bill date is not in a closed period
+        if not validate_transaction_date_with_flash(form.bill_date.data, 'purchase bill'):
+            return render_template('purchase_bills/form.html', form=form, bill=bill)
+
         try:
             old_values = model_to_dict(bill, ['bill_number', 'bill_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
 
@@ -288,7 +437,7 @@ def edit(id):
 
     vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
     expense_accounts = Account.query.filter_by(account_type='Expense').order_by(Account.code).all()
-    line_items = bill.line_items.all()
+    line_items = bill.line_items  # Now a list, not a dynamic query
 
     return render_template('purchase_bills/form.html',
                          form=form,

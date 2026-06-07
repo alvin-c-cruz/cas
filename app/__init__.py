@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
+from flask_caching import Cache
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
@@ -12,6 +13,7 @@ db = SQLAlchemy()
 migrate = Migrate()
 login_manager = LoginManager()
 csrf = CSRFProtect()
+cache = Cache()
 
 def create_app(config_name=None):
     """Application factory pattern with secure configuration"""
@@ -103,6 +105,12 @@ def create_app(config_name=None):
     db.init_app(app)
     csrf.init_app(app)
 
+    # Initialize caching
+    cache.init_app(app, config={
+        'CACHE_TYPE': 'SimpleCache',  # In-memory cache
+        'CACHE_DEFAULT_TIMEOUT': 3600  # 1 hour default timeout
+    })
+
     login_manager.init_app(app)
     login_manager.login_view = 'users.login'
     login_manager.login_message = 'Please log in to access this page.'
@@ -117,7 +125,8 @@ def create_app(config_name=None):
     # Import models for migrations (must be before migrate.init_app)
     from app.accounts.models import Account
     from app.accounts.approval_models import AccountChangeRequest
-    from app.users.models import User, LoginHistory
+    from app.users.models import User
+    from app.users.approved_emails import ApprovedEmail
     from app.branches.models import Branch
     from app.vendors.models import Vendor
     from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
@@ -131,6 +140,7 @@ def create_app(config_name=None):
     from app.receipts.models import Receipt
     from app.journal_entries.models import JournalEntry, JournalEntryLine
     from app.errors.models import ErrorLog
+    from app.periods.models import AccountingPeriod
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
@@ -149,6 +159,7 @@ def create_app(config_name=None):
     from app.journal_entries.views import journal_entries_bp
     from app.reports.views import reports_bp
     from app.errors.views import errors_bp
+    from app.periods.views import periods_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -166,9 +177,39 @@ def create_app(config_name=None):
     app.register_blueprint(journal_entries_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(errors_bp)
+    app.register_blueprint(periods_bp)
 
 
     migrate.init_app(app, db)
+
+    # Register CLI commands
+    @app.cli.command('seed-db')
+    def seed_database():
+        """Seed database with initial data (admin, branch, chart of accounts, etc.)"""
+        from app.seeds.seed_data import seed_all
+
+        print("\n" + "="*60)
+        print("DATABASE SEEDING")
+        print("="*60)
+
+        results = seed_all(force=False)
+
+        print("\n" + "="*60)
+        print("SEEDING SUMMARY")
+        print("="*60)
+        print(f"Admin User: {'Created' if results['admin_user'] else 'Already exists'}")
+        print(f"Main Branch: {'Created' if results['main_branch'] else 'Already exists'}")
+        print(f"Chart of Accounts: {'Created' if results['chart_of_accounts'] else 'Already exists'}")
+        print(f"VAT Categories: {'Created' if results['vat_categories'] else 'Already exists'}")
+        print(f"Withholding Tax Codes: {'Created' if results['withholding_tax_codes'] else 'Already exists'}")
+        print(f"App Settings: {'Created' if results['app_settings'] else 'Already exists'}")
+        print("="*60)
+        print("\nDatabase seeding complete!")
+        print("\nYou can now:")
+        print("  1. Start the application: python flask_app.py")
+        print("  2. Login with username: admin")
+        print("  3. Password: ac112358321")
+        print("="*60 + "\n")
 
     # Request/Response logging middleware
     @app.before_request
@@ -200,6 +241,19 @@ def create_app(config_name=None):
             )
         return response
 
+    @app.before_request
+    def enforce_https():
+        """Enforce HTTPS in production environments."""
+        from flask import request, redirect, url_for
+
+        # Only enforce HTTPS in production
+        if app.config.get('ENV') == 'production' or app.config.get('ENFORCE_HTTPS'):
+            # Check if request is not secure (not HTTPS)
+            if not request.is_secure and not request.headers.get('X-Forwarded-Proto') == 'https':
+                # Redirect HTTP to HTTPS
+                url = request.url.replace('http://', 'https://', 1)
+                return redirect(url, code=301)
+
     @app.after_request
     def add_security_headers(response):
         """Add security headers to all responses"""
@@ -214,6 +268,13 @@ def create_app(config_name=None):
 
         # Referrer policy
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+        # HTTP Strict Transport Security (HSTS)
+        # Force HTTPS for 1 year (31536000 seconds)
+        # includeSubDomains: Apply to all subdomains
+        # preload: Allow browser HSTS preload list inclusion
+        if app.config.get('ENV') == 'production' or app.config.get('ENFORCE_HTTPS'):
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
 
         # Content Security Policy (basic - adjust as needed)
         # Allow scripts and styles from self and inline (needed for Flask templates)
@@ -233,36 +294,8 @@ def create_app(config_name=None):
 
         return response
 
-    # Global error handlers
-    from flask import render_template, request
-    from app.errors.utils import log_error_to_db
-
-    @app.errorhandler(404)
-    def not_found_error(error):
-        app.logger.warning(f"404 error: {request.url}")
-        return render_template('errors/404.html'), 404
-
-    @app.errorhandler(403)
-    def forbidden_error(error):
-        from flask_login import current_user
-        app.logger.warning(
-            f"403 error: {request.url} by user {current_user.id if current_user.is_authenticated else 'anonymous'}"
-        )
-        return render_template('errors/403.html'), 403
-
-    @app.errorhandler(500)
-    def internal_error(error):
-        app.logger.critical(f"500 error: {request.url}", exc_info=True)
-        log_error_to_db(error, severity='CRITICAL')
-        db.session.rollback()
-        return render_template('errors/500.html'), 500
-
-    @app.errorhandler(Exception)
-    def unhandled_exception(e):
-        app.logger.critical(f"Unhandled exception: {request.url}", exc_info=True)
-        log_error_to_db(e, severity='CRITICAL')
-        db.session.rollback()
-        # Return 500 error page
-        return render_template('errors/500.html'), 500
+    # GLOBAL ERROR HANDLERS DELETED FOR TESTING
+    # This allows full Python tracebacks to show in browser
+    # TODO: Re-enable after testing complete
 
     return app

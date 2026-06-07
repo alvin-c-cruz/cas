@@ -12,13 +12,19 @@
     <div class="search-box">
         <input type="text" id="searchInput" placeholder="Search by name, code, or TIN..." class="search-input">
     </div>
-    {% if current_user.role in ['accountant', 'admin'] %}
-    <div class="page-actions">
+    <div class="page-actions" style="display: flex; gap: 8px;">
+        <a href="{{ url_for('customers.export_excel') }}" class="btn btn-secondary">
+            📊 Export Excel
+        </a>
+        <a href="{{ url_for('customers.export_csv_route') }}" class="btn btn-secondary">
+            📄 Export CSV
+        </a>
+        {% if current_user.role in ['accountant', 'admin'] %}
         <a href="{{ url_for('customers.create') }}" class="btn btn-primary">
             + Add Customer
         </a>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
 <div class="card">

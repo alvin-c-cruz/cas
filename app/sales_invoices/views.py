@@ -12,6 +12,8 @@ from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
+from app.utils.export import export_to_excel, export_to_csv
+from app.periods.utils import validate_transaction_date_with_flash
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 import json
@@ -93,6 +95,139 @@ def list_invoices():
                          customer_filter=customer_filter)
 
 
+@sales_invoices_bp.route('/sales-invoices/export/excel')
+@login_required
+def export_excel():
+    """Export sales invoices to Excel"""
+    # Get filter parameters (same as list view)
+    status_filter = request.args.get('status', 'all')
+    customer_filter = request.args.get('customer', 'all')
+
+    # Build query with same filters
+    query = SalesInvoice.query
+
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+
+    if customer_filter != 'all':
+        try:
+            customer_id = int(customer_filter)
+            query = query.filter_by(customer_id=customer_id)
+        except ValueError:
+            pass
+
+    invoices = query.order_by(SalesInvoice.invoice_date.desc()).all()
+
+    # Define columns and headers
+    columns = [
+        'invoice_number',
+        'invoice_date',
+        'due_date',
+        'customer_name',
+        'customer_tin',
+        'subtotal',
+        'vat_amount',
+        'withholding_tax_amount',
+        'total_amount',
+        'amount_paid',
+        'balance',
+        'status'
+    ]
+
+    headers = [
+        'Invoice #',
+        'Invoice Date',
+        'Due Date',
+        'Customer',
+        'TIN',
+        'Subtotal',
+        'VAT',
+        'Withholding Tax',
+        'Total',
+        'Paid',
+        'Balance',
+        'Status'
+    ]
+
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'sales_invoices_{timestamp}.xlsx'
+
+    return export_to_excel(
+        data=invoices,
+        columns=columns,
+        headers=headers,
+        filename=filename,
+        title='Sales Invoices Report'
+    )
+
+
+@sales_invoices_bp.route('/sales-invoices/export/csv')
+@login_required
+def export_csv_route():
+    """Export sales invoices to CSV"""
+    # Get filter parameters (same as list view)
+    status_filter = request.args.get('status', 'all')
+    customer_filter = request.args.get('customer', 'all')
+
+    # Build query with same filters
+    query = SalesInvoice.query
+
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+
+    if customer_filter != 'all':
+        try:
+            customer_id = int(customer_filter)
+            query = query.filter_by(customer_id=customer_id)
+        except ValueError:
+            pass
+
+    invoices = query.order_by(SalesInvoice.invoice_date.desc()).all()
+
+    # Define columns and headers
+    columns = [
+        'invoice_number',
+        'invoice_date',
+        'due_date',
+        'customer_name',
+        'customer_tin',
+        'subtotal',
+        'vat_amount',
+        'withholding_tax_amount',
+        'total_amount',
+        'amount_paid',
+        'balance',
+        'status'
+    ]
+
+    headers = [
+        'Invoice #',
+        'Invoice Date',
+        'Due Date',
+        'Customer',
+        'TIN',
+        'Subtotal',
+        'VAT',
+        'Withholding Tax',
+        'Total',
+        'Paid',
+        'Balance',
+        'Status'
+    ]
+
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'sales_invoices_{timestamp}.csv'
+
+    return export_to_csv(
+        data=invoices,
+        columns=columns,
+        headers=headers,
+        filename=filename
+    )
+
+
 @sales_invoices_bp.route('/sales-invoices/create', methods=['GET', 'POST'])
 @login_required
 @accountant_or_admin_required
@@ -105,6 +240,10 @@ def create():
     form.customer_id.choices = [(0, '-- Select Customer --')] + [(c.id, f'{c.code} - {c.name}') for c in customers]
 
     if form.validate_on_submit():
+        # Validate that the invoice date is not in a closed period
+        if not validate_transaction_date_with_flash(form.invoice_date.data, 'sales invoice'):
+            return render_template('sales_invoices/form.html', form=form, invoice=None)
+
         try:
             # Get customer details
             customer = Customer.query.get(form.customer_id.data)
@@ -226,6 +365,10 @@ def edit(id):
     form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
 
     if form.validate_on_submit():
+        # Validate that the invoice date is not in a closed period
+        if not validate_transaction_date_with_flash(form.invoice_date.data, 'sales invoice'):
+            return render_template('sales_invoices/form.html', form=form, invoice=invoice)
+
         try:
             # Capture old values
             old_values = model_to_dict(invoice, ['invoice_number', 'invoice_date', 'due_date', 'customer_name', 'subtotal', 'vat_amount', 'total_amount', 'status'])

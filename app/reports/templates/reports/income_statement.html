@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Income Statement{% endblock %}
+{% block page_title %}Income Statement (P&L){% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Income Statement (Profit & Loss)</div>
+            <div class="card-sub">{{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
+        </div>
+        <div class="card-header-actions" style="display: flex; gap: 8px;">
+            <a href="{{ url_for('reports.income_statement_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
+               class="btn btn-secondary">
+                📊 Export Excel
+            </a>
+            <button class="btn btn-secondary" onclick="showPeriodPicker()">
+                📅 Change Period
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <!-- Revenue Section -->
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 18px; font-weight: 700; color: var(--blue); margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid var(--border);">
+                REVENUE
+            </h3>
+            {% if income_statement.revenue %}
+            <table class="table" style="margin-bottom: 0;">
+                <tbody>
+                    {% for item in income_statement.revenue %}
+                    <tr>
+                        <td style="width: 120px; font-family: var(--mono); font-weight: 600; color: var(--text-2);">
+                            {{ item.code }}
+                        </td>
+                        <td>{{ item.name }}</td>
+                        <td style="text-align: right; font-family: var(--mono); width: 180px;">
+                            ₱{{ '{:,.2f}'.format(item.amount) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot style="border-top: 1px solid var(--border); font-weight: 700;">
+                    <tr>
+                        <td colspan="2" style="text-align: right; padding-right: 20px;">Total Revenue:</td>
+                        <td style="text-align: right; font-family: var(--mono); color: var(--green); font-size: 16px;">
+                            ₱{{ '{:,.2f}'.format(income_statement.total_revenue) }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            {% else %}
+            <p style="color: var(--text-3); font-size: 14px; padding: 15px 0;">No revenue recorded for this period.</p>
+            {% endif %}
+        </div>
+
+        <!-- Expenses Section -->
+        <div style="margin-bottom: 30px;">
+            <h3 style="font-size: 18px; font-weight: 700; color: var(--red); margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid var(--border);">
+                EXPENSES
+            </h3>
+            {% if income_statement.expenses %}
+            <table class="table" style="margin-bottom: 0;">
+                <tbody>
+                    {% for item in income_statement.expenses %}
+                    <tr>
+                        <td style="width: 120px; font-family: var(--mono); font-weight: 600; color: var(--text-2);">
+                            {{ item.code }}
+                        </td>
+                        <td>{{ item.name }}</td>
+                        <td style="text-align: right; font-family: var(--mono); width: 180px;">
+                            ₱{{ '{:,.2f}'.format(item.amount) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot style="border-top: 1px solid var(--border); font-weight: 700;">
+                    <tr>
+                        <td colspan="2" style="text-align: right; padding-right: 20px;">Total Expenses:</td>
+                        <td style="text-align: right; font-family: var(--mono); color: var(--red); font-size: 16px;">
+                            ₱{{ '{:,.2f}'.format(income_statement.total_expenses) }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            {% else %}
+            <p style="color: var(--text-3); font-size: 14px; padding: 15px 0;">No expenses recorded for this period.</p>
+            {% endif %}
+        </div>
+
+        <!-- Net Income -->
+        <div style="background: {% if income_statement.net_income >= 0 %}#dcfce7{% else %}#fef2f2{% endif %};
+                    border: 1px solid {% if income_statement.net_income >= 0 %}#bbf7d0{% else %}#fecaca{% endif %};
+                    border-radius: 8px; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 4px;">
+                        NET INCOME
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-3);">
+                        Revenue - Expenses
+                    </div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 32px; font-weight: 700; font-family: var(--mono);
+                                color: {% if income_statement.net_income >= 0 %}#166534{% else %}#991b1b{% endif %};">
+                        ₱{{ '{:,.2f}'.format(income_statement.net_income) }}
+                    </div>
+                    {% if income_statement.total_revenue > 0 %}
+                    <div style="font-size: 14px; font-weight: 600; margin-top: 4px;
+                                color: {% if income_statement.net_income >= 0 %}#166534{% else %}#991b1b{% endif %};">
+                        {{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Period Picker Modal -->
+<div id="periodPicker" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                              background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%;">
+        <h3 style="margin-top: 0;">Select Period</h3>
+        <form action="{{ url_for('reports.income_statement') }}" method="get">
+            <div style="margin-bottom: 20px;">
+                <label for="start_date" style="display: block; margin-bottom: 8px; font-weight: 600;">Start Date:</label>
+                <input type="date" id="start_date" name="start_date" value="{{ start_date.isoformat() }}"
+                       style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 4px; font-family: inherit;">
+            </div>
+            <div style="margin-bottom: 30px;">
+                <label for="end_date" style="display: block; margin-bottom: 8px; font-weight: 600;">End Date:</label>
+                <input type="date" id="end_date" name="end_date" value="{{ end_date.isoformat() }}"
+                       style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 4px; font-family: inherit;">
+            </div>
+
+            <!-- Quick Periods -->
+            <div style="margin-bottom: 20px;">
+                <div style="font-weight: 600; margin-bottom: 10px; font-size: 14px; color: var(--text-2);">Quick Periods:</div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="setCurrentMonth()">This Month</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="setLastMonth()">Last Month</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="setYTD()">Year to Date</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="setLastYear()">Last Year</button>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="hidePeriodPicker()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Generate Report</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function showPeriodPicker() {
+    document.getElementById('periodPicker').style.display = 'flex';
+}
+
+function hidePeriodPicker() {
+    document.getElementById('periodPicker').style.display = 'none';
+}
+
+// Quick period helpers
+function setCurrentMonth() {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    document.getElementById('start_date').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('end_date').value = lastDay.toISOString().split('T')[0];
+}
+
+function setLastMonth() {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    document.getElementById('start_date').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('end_date').value = lastDay.toISOString().split('T')[0];
+}
+
+function setYTD() {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), 0, 1);
+
+    document.getElementById('start_date').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('end_date').value = now.toISOString().split('T')[0];
+}
+
+function setLastYear() {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear() - 1, 0, 1);
+    const lastDay = new Date(now.getFullYear() - 1, 11, 31);
+
+    document.getElementById('start_date').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('end_date').value = lastDay.toISOString().split('T')[0];
+}
+
+// Close modal when clicking outside
+document.getElementById('periodPicker').addEventListener('click', function(e) {
+    if (e.target === this) {
+        hidePeriodPicker();
+    }
+});
+</script>
+
+{% endblock %}

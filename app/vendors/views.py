@@ -10,6 +10,8 @@ from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.vendors.forms import VendorForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
+from app.utils.export import export_to_excel, export_to_csv
+from datetime import datetime
 
 vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
 
@@ -252,3 +254,100 @@ def delete(id):
         flash(f'Error deleting vendor: {str(e)}', 'error')
 
     return redirect(url_for('vendors.list_vendors'))
+
+
+@vendors_bp.route('/vendors/export/excel')
+@login_required
+def export_excel():
+    """Export vendors to Excel"""
+    vendors = Vendor.query.order_by(Vendor.code).all()
+
+    # Define columns and headers
+    columns = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
+               'payment_terms', 'address', 'postal_code', 'check_payee_name',
+               'default_vat_category', 'withholding_taxes_str', 'is_active']
+
+    headers = ['Vendor Code', 'Vendor Name', 'Contact Person', 'Phone', 'Email',
+               'TIN', 'Payment Terms', 'Address', 'Postal Code', 'Check Payee Name',
+               'VAT Category', 'Withholding Taxes', 'Active']
+
+    # Prepare data with proper formatting
+    data = []
+    for vendor in vendors:
+        # Get withholding taxes as comma-separated string
+        wt_codes = ', '.join([wt.code for wt in vendor.withholding_taxes]) if hasattr(vendor, 'withholding_taxes') and vendor.withholding_taxes else ''
+
+        data.append({
+            'code': vendor.code,
+            'name': vendor.name,
+            'contact_person': vendor.contact_person or '',
+            'phone': vendor.phone or '',
+            'email': vendor.email or '',
+            'tin': vendor.tin or '',
+            'payment_terms': vendor.payment_terms or '',
+            'address': vendor.address or '',
+            'postal_code': vendor.postal_code or '',
+            'check_payee_name': vendor.check_payee_name or '',
+            'default_vat_category': vendor.default_vat_category or '',
+            'withholding_taxes_str': wt_codes,
+            'is_active': 'Yes' if vendor.is_active else 'No'
+        })
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'vendors_{timestamp}.xlsx'
+
+    return export_to_excel(
+        data=data,
+        columns=columns,
+        headers=headers,
+        filename=filename,
+        title='Vendor List'
+    )
+
+
+@vendors_bp.route('/vendors/export/csv')
+@login_required
+def export_csv_route():
+    """Export vendors to CSV"""
+    vendors = Vendor.query.order_by(Vendor.code).all()
+
+    # Define columns and headers
+    columns = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
+               'payment_terms', 'address', 'postal_code', 'check_payee_name',
+               'default_vat_category', 'withholding_taxes_str', 'is_active']
+
+    headers = ['Vendor Code', 'Vendor Name', 'Contact Person', 'Phone', 'Email',
+               'TIN', 'Payment Terms', 'Address', 'Postal Code', 'Check Payee Name',
+               'VAT Category', 'Withholding Taxes', 'Active']
+
+    # Prepare data with proper formatting
+    data = []
+    for vendor in vendors:
+        # Get withholding taxes as comma-separated string
+        wt_codes = ', '.join([wt.code for wt in vendor.withholding_taxes]) if hasattr(vendor, 'withholding_taxes') and vendor.withholding_taxes else ''
+
+        data.append({
+            'code': vendor.code,
+            'name': vendor.name,
+            'contact_person': vendor.contact_person or '',
+            'phone': vendor.phone or '',
+            'email': vendor.email or '',
+            'tin': vendor.tin or '',
+            'payment_terms': vendor.payment_terms or '',
+            'address': vendor.address or '',
+            'postal_code': vendor.postal_code or '',
+            'check_payee_name': vendor.check_payee_name or '',
+            'default_vat_category': vendor.default_vat_category or '',
+            'withholding_taxes_str': wt_codes,
+            'is_active': 'Yes' if vendor.is_active else 'No'
+        })
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'vendors_{timestamp}.csv'
+
+    return export_to_csv(
+        data=data,
+        columns=columns,
+        headers=headers,
+        filename=filename
+    )

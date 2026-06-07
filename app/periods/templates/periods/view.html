@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Period {{ period.get_period_name() }}{% endblock %}
+{% block page_title %}{{ period.get_period_name() }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+
+<!-- Period Status Card -->
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Period Status</div>
+            <div class="card-sub">{{ period.get_period_name() }} ({{ period.year }}-{{ '%02d'|format(period.month) }})</div>
+        </div>
+        <div class="card-header-actions">
+            {% if period.status == 'open' %}
+            <a href="{{ url_for('periods.close_period', year=period.year, month=period.month) }}"
+               class="btn btn-danger">
+                🔒 Close Period
+            </a>
+            {% else %}
+            <form method="POST" action="{{ url_for('periods.reopen_period', year=period.year, month=period.month) }}"
+                  style="display: inline;"
+                  onsubmit="return confirm('Are you sure you want to reopen this period?');">
+                <button type="submit" class="btn btn-success">
+                    🔓 Reopen Period
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; padding: 20px;">
+            <!-- Status -->
+            <div>
+                <div style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 8px;">
+                    Status
+                </div>
+                <div style="font-size: 24px; font-weight: 700;">
+                    {% if period.status == 'closed' %}
+                    <span style="color: var(--red);">🔒 CLOSED</span>
+                    {% else %}
+                    <span style="color: var(--green);">🔓 OPEN</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Closed Info -->
+            {% if period.status == 'closed' %}
+            <div>
+                <div style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 8px;">
+                    Closed By
+                </div>
+                <div style="font-size: 16px; font-weight: 700;">
+                    {{ period.closed_by.username if period.closed_by else '—' }}
+                </div>
+                <div style="font-size: 13px; color: var(--text-3); margin-top: 4px;">
+                    {{ period.closed_at.strftime('%B %d, %Y at %I:%M %p') if period.closed_at else '' }}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if period.notes %}
+        <div style="padding: 0 20px 20px 20px;">
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 8px;">
+                Notes
+            </div>
+            <div style="padding: 12px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border);">
+                {{ period.notes }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Period Statistics -->
+<div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+        <div class="card-title">Period Statistics</div>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; padding: 20px;">
+            <!-- Total Entries -->
+            <div style="text-align: center;">
+                <div style="font-size: 14px; color: var(--text-2); margin-bottom: 8px;">Total Entries</div>
+                <div style="font-size: 32px; font-weight: 700; color: var(--blue);">{{ entry_count }}</div>
+            </div>
+
+            <!-- Posted Entries -->
+            <div style="text-align: center;">
+                <div style="font-size: 14px; color: var(--text-2); margin-bottom: 8px;">Posted</div>
+                <div style="font-size: 32px; font-weight: 700; color: var(--green);">{{ posted_count }}</div>
+            </div>
+
+            <!-- Draft Entries -->
+            <div style="text-align: center;">
+                <div style="font-size: 14px; color: var(--text-2); margin-bottom: 8px;">Draft</div>
+                <div style="font-size: 32px; font-weight: 700; color: {% if draft_count > 0 %}var(--red){% else %}var(--text-3){% endif %};">
+                    {{ draft_count }}
+                </div>
+            </div>
+
+            <!-- Trial Balance -->
+            <div style="text-align: center;">
+                <div style="font-size: 14px; color: var(--text-2); margin-bottom: 8px;">Trial Balance</div>
+                <div style="font-size: 32px;">
+                    {% if is_balanced %}
+                    <span style="color: var(--green);">✅</span>
+                    {% else %}
+                    <span style="color: var(--red);">⚠️</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pre-Close Checklist -->
+{% if period.status == 'open' %}
+<div class="card" style="margin-top: 20px;">
+    <div class="card-header">
+        <div class="card-title">Pre-Closing Checklist</div>
+    </div>
+    <div class="card-body">
+        <div style="padding: 20px;">
+            <div style="margin-bottom: 15px;">
+                {% if draft_count == 0 %}
+                <div style="color: var(--green); display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 20px;">✅</span>
+                    <span>All journal entries are posted (no drafts)</span>
+                </div>
+                {% else %}
+                <div style="color: var(--red); display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 20px;">❌</span>
+                    <span><strong>{{ draft_count }}</strong> draft entries must be posted or deleted</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                {% if is_balanced %}
+                <div style="color: var(--green); display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 20px;">✅</span>
+                    <span>Trial Balance is balanced</span>
+                </div>
+                {% else %}
+                <div style="color: var(--red); display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 20px;">❌</span>
+                    <span>Trial Balance is NOT balanced</span>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if can_close %}
+            <div style="margin-top: 30px; padding: 15px; background: #dcfce7; border: 1px solid #bbf7d0; border-radius: 6px;">
+                <div style="font-weight: 700; color: #166534; margin-bottom: 8px;">
+                    ✅ This period is ready to be closed
+                </div>
+                <div style="color: #166534; font-size: 14px;">
+                    All requirements have been met. You can proceed with closing this period.
+                </div>
+            </div>
+            {% else %}
+            <div style="margin-top: 30px; padding: 15px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px;">
+                <div style="font-weight: 700; color: #991b1b; margin-bottom: 8px;">
+                    ⚠️ This period cannot be closed yet
+                </div>
+                <div style="color: #991b1b; font-size: 14px;">
+                    Please address the issues above before closing this period.
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div style="margin-top: 20px;">
+    <a href="{{ url_for('periods.list_periods') }}" class="btn btn-secondary">
+        ← Back to Periods
+    </a>
+</div>
+
+{% endblock %}

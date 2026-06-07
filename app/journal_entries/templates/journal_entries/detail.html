@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Journal Entry {{ entry.entry_number }}{% endblock %}
+{% block page_title %}Journal Entry - {{ entry.entry_number }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions">
+            {% if entry.status == 'draft' %}
+            <form method="POST" action="{{ url_for('journal_entries.post', id=entry.id) }}" style="display: inline;" data-confirm="Post this journal entry? It will become final and cannot be edited.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-success">
+                    📮 Post Entry
+                </button>
+            </form>
+            {% endif %}
+
+            {% if entry.status != 'cancelled' and entry.status != 'reversed' %}
+            <form method="POST" action="{{ url_for('journal_entries.cancel', id=entry.id) }}" style="display: inline;" data-confirm="Cancel this journal entry?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-danger">
+                    ❌ Cancel
+                </button>
+            </form>
+            {% endif %}
+
+            <a href="{{ url_for('journal_entries.list_entries') }}" class="btn btn-secondary">← Back to List</a>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <!-- Entry Header -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 32px;">
+            <div>
+                <h3 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px;">Entry Information</h3>
+                <div style="background: var(--bg); padding: 16px; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-2); font-size: 13px;">Entry Number:</span>
+                        <span style="font-weight: 600;">{{ entry.entry_number }}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-2); font-size: 13px;">Entry Date:</span>
+                        <span style="font-weight: 600;">{{ entry.entry_date.strftime('%b %d, %Y') }}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-2); font-size: 13px;">Entry Type:</span>
+                        <span class="badge badge-secondary">{{ entry.entry_type|title }}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: var(--text-2); font-size: 13px;">Status:</span>
+                        <span class="badge badge-{{ 'secondary' if entry.status=='draft' else 'info' if entry.status=='posted' else 'danger' }}">{{ entry.status|title }}</span>
+                    </div>
+                    {% if entry.reference %}
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-2); font-size: 13px;">Reference:</span>
+                        <span>{{ entry.reference }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div>
+                <h3 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px;">Description</h3>
+                <div style="background: var(--bg); padding: 16px; border-radius: 6px; min-height: 100px;">
+                    <p style="margin: 0; font-size: 14px; line-height: 1.6;">{{ entry.description }}</p>
+                </div>
+
+                {% if entry.is_reversing %}
+                <div style="margin-top: 16px; padding: 12px; background: var(--yellow); border-radius: 6px; border-left: 4px solid #f59e0b;">
+                    <p style="margin: 0; font-size: 13px; color: #92400e;">
+                        <strong>⚠️ Reversing Entry</strong><br>
+                        {% if entry.reversal_date %}
+                        Will be reversed on: {{ entry.reversal_date.strftime('%b %d, %Y') }}
+                        {% endif %}
+                    </p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Journal Entry Lines -->
+        <h3 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px;">Journal Entry Lines</h3>
+        <table class="table" style="margin-bottom: 24px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Account Code</th>
+                    <th>Account Name</th>
+                    <th>Description</th>
+                    <th style="text-align: right;">Debit</th>
+                    <th style="text-align: right;">Credit</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in entry.lines %}
+                <tr>
+                    <td>{{ line.line_number }}</td>
+                    <td style="font-family: var(--mono); font-weight: 600;">{{ line.account.code if line.account else 'N/A' }}</td>
+                    <td>{{ line.account.name if line.account else 'N/A' }}</td>
+                    <td>{{ line.description or '-' }}</td>
+                    <td style="text-align: right; font-family: var(--mono);">
+                        {% if line.debit_amount > 0 %}₱{{ '{:,.2f}'.format(line.debit_amount) }}{% else %}-{% endif %}
+                    </td>
+                    <td style="text-align: right; font-family: var(--mono);">
+                        {% if line.credit_amount > 0 %}₱{{ '{:,.2f}'.format(line.credit_amount) }}{% else %}-{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="border-top: 2px solid var(--border); background: var(--bg);">
+                    <td colspan="4" style="text-align: right; font-weight: 600; padding: 12px;">TOTALS:</td>
+                    <td style="text-align: right; font-family: var(--mono); font-weight: 700; font-size: 15px; padding: 12px;">
+                        ₱{{ '{:,.2f}'.format(entry.total_debit) }}
+                    </td>
+                    <td style="text-align: right; font-family: var(--mono); font-weight: 700; font-size: 15px; padding: 12px;">
+                        ₱{{ '{:,.2f}'.format(entry.total_credit) }}
+                    </td>
+                </tr>
+                <tr style="background: {% if entry.is_balanced %}#d1fae5{% else %}#fee2e2{% endif %};">
+                    <td colspan="4" style="text-align: right; padding: 12px;">
+                        <strong style="color: {% if entry.is_balanced %}var(--green){% else %}var(--red){% endif %};">
+                            {% if entry.is_balanced %}✓ BALANCED{% else %}✗ NOT BALANCED{% endif %}
+                        </strong>
+                    </td>
+                    <td colspan="2" style="text-align: right; font-family: var(--mono); padding: 12px;">
+                        <strong style="color: {% if entry.is_balanced %}var(--green){% else %}var(--red){% endif %};">
+                            Difference: ₱{{ '{:,.2f}'.format(entry.total_debit - entry.total_credit) }}
+                        </strong>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- Audit Information -->
+        <div style="border-top: 1px solid var(--border); padding-top: 20px;">
+            <h3 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px;">Audit Trail</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                <div style="background: var(--bg); padding: 12px; border-radius: 6px;">
+                    <p style="margin: 0 0 4px 0; font-size: 12px; color: var(--text-2);">Created By</p>
+                    <p style="margin: 0; font-weight: 600;">{{ entry.created_by.username if entry.created_by else 'System' }}</p>
+                    <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-2);">{{ entry.created_at.strftime('%b %d, %Y at %I:%M %p') if entry.created_at else 'N/A' }}</p>
+                </div>
+                {% if entry.posted_by %}
+                <div style="background: var(--bg); padding: 12px; border-radius: 6px;">
+                    <p style="margin: 0 0 4px 0; font-size: 12px; color: var(--text-2);">Posted By</p>
+                    <p style="margin: 0; font-weight: 600;">{{ entry.posted_by.username }}</p>
+                    <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-2);">{{ entry.posted_at.strftime('%b %d, %Y at %I:%M %p') if entry.posted_at else 'N/A' }}</p>
+                </div>
+                {% endif %}
+                {% if entry.cancelled_at %}
+                <div style="background: var(--bg); padding: 12px; border-radius: 6px;">
+                    <p style="margin: 0 0 4px 0; font-size: 12px; color: var(--text-2);">Cancelled On</p>
+                    <p style="margin: 0; font-weight: 600;">{{ entry.cancelled_at.strftime('%b %d, %Y at %I:%M %p') }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.badge-secondary {
+    background: var(--text-3);
+    color: white;
+}
+.badge-info {
+    background: var(--blue);
+    color: white;
+}
+.badge-success {
+    background: var(--green);
+    color: white;
+}
+.badge-danger {
+    background: var(--red);
+    color: white;
+}
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.table th,
+.table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+.table th {
+    background: var(--bg);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: var(--text-2);
+}
+.table tbody tr:hover {
+    background: var(--bg);
+}
+</style>
+
+{% block extra_js %}
+<script>
+// Handle forms with data-confirm attribute (custom confirm modal)
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('form[data-confirm]').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const message = this.getAttribute('data-confirm');
+            const formElement = this;
+
+            window.showConfirm(message, function(confirmed) {
+                if (confirmed) {
+                    formElement.submit();
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
+
+{% endblock %}

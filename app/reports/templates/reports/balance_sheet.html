@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Balance Sheet{% endblock %}
+{% block page_title %}Balance Sheet{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Balance Sheet</div>
+            <div class="card-sub">As of {{ as_of_date.strftime('%B %d, %Y') }}</div>
+        </div>
+        <div class="card-header-actions" style="display: flex; gap: 8px;">
+            <a href="{{ url_for('reports.balance_sheet_export_excel', as_of=as_of_date.isoformat()) }}"
+               class="btn btn-secondary">
+                📊 Export Excel
+            </a>
+            <button class="btn btn-secondary" onclick="showDatePicker()">
+                📅 Change Date
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+
+            <!-- ASSETS Section -->
+            <div>
+                <h3 style="font-size: 18px; font-weight: 700; color: var(--blue); margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid var(--border);">
+                    ASSETS
+                </h3>
+                {% if balance_sheet.assets %}
+                <table class="table" style="margin-bottom: 0;">
+                    <tbody>
+                        {% for item in balance_sheet.assets %}
+                        <tr>
+                            <td style="width: 100px; font-family: var(--mono); font-weight: 600; color: var(--text-2); font-size: 13px;">
+                                {{ item.code }}
+                            </td>
+                            <td style="font-size: 14px;">{{ item.name }}</td>
+                            <td style="text-align: right; font-family: var(--mono); width: 140px; font-size: 14px;">
+                                ₱{{ '{:,.2f}'.format(item.amount) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot style="border-top: 2px solid var(--border); font-weight: 700;">
+                        <tr>
+                            <td colspan="2" style="text-align: right; padding-right: 15px; font-size: 15px;">Total Assets:</td>
+                            <td style="text-align: right; font-family: var(--mono); color: var(--blue); font-size: 18px;">
+                                ₱{{ '{:,.2f}'.format(balance_sheet.total_assets) }}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
+                <p style="color: var(--text-3); font-size: 14px; padding: 15px 0;">No assets recorded.</p>
+                {% endif %}
+            </div>
+
+            <!-- LIABILITIES & EQUITY Section -->
+            <div>
+                <!-- Liabilities -->
+                <h3 style="font-size: 18px; font-weight: 700; color: var(--red); margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid var(--border);">
+                    LIABILITIES
+                </h3>
+                {% if balance_sheet.liabilities %}
+                <table class="table" style="margin-bottom: 20px;">
+                    <tbody>
+                        {% for item in balance_sheet.liabilities %}
+                        <tr>
+                            <td style="width: 100px; font-family: var(--mono); font-weight: 600; color: var(--text-2); font-size: 13px;">
+                                {{ item.code }}
+                            </td>
+                            <td style="font-size: 14px;">{{ item.name }}</td>
+                            <td style="text-align: right; font-family: var(--mono); width: 140px; font-size: 14px;">
+                                ₱{{ '{:,.2f}'.format(item.amount) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot style="border-top: 1px solid var(--border); font-weight: 700;">
+                        <tr>
+                            <td colspan="2" style="text-align: right; padding-right: 15px; font-size: 14px;">Total Liabilities:</td>
+                            <td style="text-align: right; font-family: var(--mono); color: var(--red); font-size: 16px;">
+                                ₱{{ '{:,.2f}'.format(balance_sheet.total_liabilities) }}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
+                <p style="color: var(--text-3); font-size: 14px; padding: 15px 0; margin-bottom: 20px;">No liabilities recorded.</p>
+                {% endif %}
+
+                <!-- Equity -->
+                <h3 style="font-size: 18px; font-weight: 700; color: var(--green); margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid var(--border);">
+                    EQUITY
+                </h3>
+                {% if balance_sheet.equity %}
+                <table class="table" style="margin-bottom: 0;">
+                    <tbody>
+                        {% for item in balance_sheet.equity %}
+                        <tr>
+                            <td style="width: 100px; font-family: var(--mono); font-weight: 600; color: var(--text-2); font-size: 13px;">
+                                {{ item.code }}
+                            </td>
+                            <td style="font-size: 14px; {% if item.name == 'Net Income (YTD)' %}font-style: italic;{% endif %}">
+                                {{ item.name }}
+                            </td>
+                            <td style="text-align: right; font-family: var(--mono); width: 140px; font-size: 14px;">
+                                ₱{{ '{:,.2f}'.format(item.amount) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot style="border-top: 1px solid var(--border); font-weight: 700;">
+                        <tr>
+                            <td colspan="2" style="text-align: right; padding-right: 15px; font-size: 14px;">Total Equity:</td>
+                            <td style="text-align: right; font-family: var(--mono); color: var(--green); font-size: 16px;">
+                                ₱{{ '{:,.2f}'.format(balance_sheet.total_equity) }}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+                {% else %}
+                <p style="color: var(--text-3); font-size: 14px; padding: 15px 0;">No equity recorded.</p>
+                {% endif %}
+
+                <!-- Total Liabilities + Equity -->
+                <div style="margin-top: 20px; padding: 15px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-weight: 700;">
+                        <div style="font-size: 15px;">Total Liabilities + Equity:</div>
+                        <div style="font-size: 18px; font-family: var(--mono); color: var(--text-1);">
+                            ₱{{ '{:,.2f}'.format(balance_sheet.total_liabilities_equity) }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Balance Sheet Equation Check -->
+        <div style="margin-top: 30px; padding: 20px; border-radius: 8px;
+                    {% if balance_sheet.is_balanced %}
+                    background: #dcfce7; border: 1px solid #bbf7d0;
+                    {% else %}
+                    background: #fef2f2; border: 1px solid #fecaca;
+                    {% endif %}">
+            {% if balance_sheet.is_balanced %}
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="font-size: 24px;">✅</div>
+                <div>
+                    <div style="font-weight: 700; color: #166534; font-size: 16px;">Balance Sheet is Balanced</div>
+                    <div style="color: #166534; font-size: 14px;">Assets = Liabilities + Equity</div>
+                    <div style="font-family: var(--mono); color: #166534; font-size: 13px; margin-top: 4px;">
+                        ₱{{ '{:,.2f}'.format(balance_sheet.total_assets) }} = ₱{{ '{:,.2f}'.format(balance_sheet.total_liabilities_equity) }}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="font-size: 24px;">⚠️</div>
+                <div>
+                    <div style="font-weight: 700; color: #991b1b; font-size: 16px;">Balance Sheet is NOT Balanced</div>
+                    <div style="color: #991b1b; font-size: 14px;">
+                        Difference: ₱{{ '{:,.2f}'.format(balance_sheet.difference) }}
+                    </div>
+                    <div style="color: #991b1b; font-size: 12px; margin-top: 4px;">
+                        Assets ≠ Liabilities + Equity - Please review journal entries for errors.
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Date Picker Modal -->
+<div id="datePicker" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                              background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 30px; border-radius: 8px; max-width: 400px; width: 90%;">
+        <h3 style="margin-top: 0;">Select Date</h3>
+        <form action="{{ url_for('reports.balance_sheet') }}" method="get">
+            <div style="margin-bottom: 20px;">
+                <label for="as_of" style="display: block; margin-bottom: 8px; font-weight: 600;">As of Date:</label>
+                <input type="date" id="as_of" name="as_of" value="{{ as_of_date.isoformat() }}"
+                       style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 4px; font-family: inherit;">
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="hideDatePicker()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Generate Report</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+@media (max-width: 968px) {
+    .card-body > div {
+        grid-template-columns: 1fr !important;
+    }
+}
+</style>
+
+<script>
+function showDatePicker() {
+    document.getElementById('datePicker').style.display = 'flex';
+}
+
+function hideDatePicker() {
+    document.getElementById('datePicker').style.display = 'none';
+}
+
+// Close modal when clicking outside
+document.getElementById('datePicker').addEventListener('click', function(e) {
+    if (e.target === this) {
+        hideDatePicker();
+    }
+});
+</script>
+
+{% endblock %}

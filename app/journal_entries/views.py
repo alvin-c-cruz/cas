@@ -10,6 +10,7 @@ from app.journal_entries.forms import JournalEntryForm
 from app.accounts.models import Account
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
+from app.periods.utils import validate_transaction_date_with_flash
 from datetime import datetime, date
 from decimal import Decimal
 import json
@@ -30,13 +31,19 @@ def accountant_or_admin_required(f):
     return decorated_function
 
 
-def generate_entry_number():
-    """Generate next journal entry number: JE-YYYY-####"""
+def generate_entry_number(branch_id):
+    """
+    Generate next journal entry number for a specific branch: JE-YYYY-####
+
+    Each branch has its own independent sequence numbering.
+    """
     current_year = datetime.now().year
     prefix = f'JE-{current_year}-'
 
+    # Filter by both prefix AND branch_id to ensure independent sequences per branch
     latest_entry = JournalEntry.query.filter(
-        JournalEntry.entry_number.like(f'{prefix}%')
+        JournalEntry.entry_number.like(f'{prefix}%'),
+        JournalEntry.branch_id == branch_id
     ).order_by(JournalEntry.entry_number.desc()).first()
 
     if latest_entry:
@@ -54,7 +61,17 @@ def generate_entry_number():
 @journal_entries_bp.route('/journal-entries')
 @login_required
 def list_entries():
-    """List all journal entries."""
+    """List all journal entries for the current branch."""
+    # Get current branch from session
+    from flask import session
+    current_branch_id = session.get('selected_branch_id')
+
+    # If no branch selected, try to get user's first assigned branch
+    if not current_branch_id and current_user.branches.count() > 0:
+        first_branch = current_user.branches.first()
+        current_branch_id = first_branch.id
+        session['selected_branch_id'] = current_branch_id
+
     status_filter = request.args.get('status', 'all')
     type_filter = request.args.get('type', 'all')
 
@@ -66,7 +83,12 @@ def list_entries():
     date_from = request.args.get('date_from', default_date_from)
     date_to = request.args.get('date_to', default_date_to)
 
-    query = JournalEntry.query
+    # Filter by current branch (if branch is selected)
+    if current_branch_id:
+        query = JournalEntry.query.filter_by(branch_id=current_branch_id)
+    else:
+        # Show empty list if no branch
+        query = JournalEntry.query.filter_by(branch_id=-1)
 
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
@@ -107,6 +129,12 @@ def create():
     form = JournalEntryForm()
 
     if form.validate_on_submit():
+        # Validate that the entry date is not in a closed period
+        if not validate_transaction_date_with_flash(form.entry_date.data, 'journal entry'):
+            accounts = Account.query.order_by(Account.code).all()
+            accounts_data = [{'id': acc.id, 'code': acc.code, 'name': acc.name} for acc in accounts]
+            return render_template('journal_entries/form.html', form=form, entry=None, accounts=accounts_data)
+
         try:
             # Get lines from form
             lines_data = request.form.getlist('lines')
@@ -133,6 +161,13 @@ def create():
                 flash(f'Entry is not balanced! Debits: ₱{total_debit:,.2f}, Credits: ₱{total_credit:,.2f}. Difference: ₱{abs(total_debit - total_credit):,.2f}', 'error')
                 return render_template('journal_entries/form.html', form=form, entry=None, accounts=Account.query.order_by(Account.code).all())
 
+            # Get current branch from session
+            from flask import session
+            current_branch_id = session.get('selected_branch_id')
+            if not current_branch_id:
+                flash('Please select a branch before creating journal entries.', 'error')
+                return redirect(url_for('users.select_branch', next=request.url))
+
             # Create journal entry
             entry = JournalEntry(
                 entry_number=form.entry_number.data,
@@ -142,6 +177,7 @@ def create():
                 entry_type=form.entry_type.data,
                 is_reversing=form.is_reversing.data,
                 reversal_date=form.reversal_date.data if form.is_reversing.data else None,
+                branch_id=current_branch_id,
                 status='draft',
                 created_by_id=current_user.id
             )
@@ -195,7 +231,21 @@ def create():
             flash(f'Error creating journal entry: {str(e)}', 'error')
 
     if request.method == 'GET':
-        form.entry_number.data = generate_entry_number()
+        # Get current branch from session for entry number generation
+        from flask import session
+        current_branch_id = session.get('selected_branch_id')
+
+        # If no branch selected, try to get user's first assigned branch
+        if not current_branch_id and current_user.branches.count() > 0:
+            first_branch = current_user.branches.first()
+            current_branch_id = first_branch.id
+            session['selected_branch_id'] = current_branch_id
+
+        if not current_branch_id:
+            flash('Please select a branch before creating journal entries.', 'error')
+            return redirect(url_for('users.select_branch', next=request.url))
+
+        form.entry_number.data = generate_entry_number(current_branch_id)
         form.entry_date.data = date.today()
 
     accounts = Account.query.order_by(Account.code).all()

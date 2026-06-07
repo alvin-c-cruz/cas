@@ -12,6 +12,7 @@ from app.vendors.models import Vendor
 from app.accounts.models import Account
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
+from app.periods.utils import validate_transaction_date_with_flash
 from datetime import datetime, date
 from decimal import Decimal
 
@@ -105,6 +106,10 @@ def create():
     form.account_id.choices = [(0, '-- Select Account --')] + [(a.id, f'{a.code} - {a.name}') for a in cash_bank_accounts]
 
     if form.validate_on_submit():
+        # Validate that the receipt date is not in a closed period
+        if not validate_transaction_date_with_flash(form.receipt_date.data, 'receipt'):
+            return render_template('receipts/form.html', form=form, receipt=None)
+
         try:
             # Validate transaction type selection
             if form.transaction_type.data == 'collection':
@@ -212,6 +217,10 @@ def edit(id):
     form.account_id.choices = [(a.id, f'{a.code} - {a.name}') for a in cash_bank_accounts]
 
     if form.validate_on_submit():
+        # Validate that the receipt date is not in a closed period
+        if not validate_transaction_date_with_flash(form.receipt_date.data, 'receipt'):
+            return render_template('receipts/form.html', form=form, receipt=receipt)
+
         try:
             old_values = model_to_dict(receipt, ['receipt_number', 'receipt_date', 'transaction_type', 'payment_method', 'amount', 'status'])
 

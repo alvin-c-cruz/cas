@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SelectField, BooleanField
+from wtforms import StringField, PasswordField, SelectField, SelectMultipleField, BooleanField, TextAreaField
 from wtforms.validators import DataRequired, Email, Length, EqualTo, ValidationError, Optional
 from app.users.models import User
 from app.users.validators import PasswordPolicy
@@ -42,10 +42,16 @@ class RegistrationForm(FlaskForm):
             raise ValidationError('Username already exists. Please choose a different one.')
 
     def validate_email(self, email):
-        """Check if email already exists."""
+        """Check if email already exists and if it's pre-approved."""
+        # Check if email is already registered
         user = User.query.filter_by(email=email.data).first()
         if user:
             raise ValidationError('Email already registered. Please use a different one.')
+
+        # Check if email is pre-approved for registration
+        from app.users.approved_emails import ApprovedEmail
+        if not ApprovedEmail.is_email_approved(email.data):
+            raise ValidationError('This email is not pre-approved for registration. Please contact the administrator to add your email to the approved list.')
 
 
 class UserForm(FlaskForm):
@@ -68,7 +74,7 @@ class UserForm(FlaskForm):
         ('accountant', 'Accountant'),
         ('admin', 'Administrator')
     ], validators=[DataRequired()])
-    branch_id = SelectField('Branch Assignment', coerce=int, validators=[Optional()])
+    branch_ids = SelectMultipleField('Branch Assignments', coerce=int, validators=[Optional()])
     is_active = BooleanField('Active')
     password = PasswordField('Password', validators=[
         Optional(),
@@ -91,3 +97,25 @@ class ChangePasswordForm(FlaskForm):
         DataRequired(),
         EqualTo('new_password', message='Passwords must match.')
     ])
+
+
+class ApprovedEmailForm(FlaskForm):
+    """Form for adding pre-approved email addresses for registration."""
+    email = StringField('Email Address', validators=[
+        DataRequired(),
+        Email(message='Please enter a valid email address.')
+    ])
+    notes = TextAreaField('Notes (Optional)', validators=[
+        Optional(),
+        Length(max=500, message='Notes must not exceed 500 characters.')
+    ])
+
+    def validate_email(self, email):
+        """Check if email is already in approved list."""
+        from app.users.approved_emails import ApprovedEmail
+        approved = ApprovedEmail.query.filter_by(email=email.data.lower()).first()
+        if approved:
+            if approved.is_used:
+                raise ValidationError(f'This email has already been used for registration by {approved.used_by.username}.')
+            else:
+                raise ValidationError('This email is already in the approved list.')

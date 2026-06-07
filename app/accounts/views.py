@@ -197,7 +197,21 @@ def account_json(id):
 def edit(id):
     """Edit existing account - submits for approval"""
     account = Account.query.get_or_404(id)
-    form = AccountForm(obj=account)
+
+    # Initialize form - on GET, populate from account; on POST, use form data
+    if request.method == 'GET':
+        form = AccountForm(obj=account)
+        # Debug: Print account values
+        print(f"DEBUG - Account {account.code}: type={account.account_type}, balance={account.normal_balance}, class={account.classification}, parent={account.parent_id}")
+        # Explicitly set SelectField values for GET requests
+        form.account_type.data = account.account_type
+        form.normal_balance.data = account.normal_balance
+        form.classification.data = account.classification
+        form.parent_id.data = str(account.parent_id) if account.parent_id else ''
+        # Debug: Print form data after setting
+        print(f"DEBUG - Form data set: type={form.account_type.data}, balance={form.normal_balance.data}, class={form.classification.data}, parent={form.parent_id.data}")
+    else:
+        form = AccountForm()
 
     # Populate parent account choices (exclude current account)
     all_accounts = Account.query.filter(Account.id != id).order_by(Account.code).all()

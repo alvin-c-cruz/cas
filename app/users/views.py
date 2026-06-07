@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
 from app import db
-from app.users.models import User, LoginHistory
+from app.users.models import User
 from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
 from app.utils import ph_now
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
@@ -40,21 +40,14 @@ def login():
         # Check if account is locked (if user exists)
         if user and user.is_account_locked():
             # Log failed login due to account lockout
-            login_record = LoginHistory(
-                user_id=user.id,
-                username=user.username,
-                full_name=user.full_name,
-                login_time=ph_now(),
-                ip_address=ip_address,
-                user_agent=user_agent,
-                status='failed',
-                failure_reason='Account locked due to multiple failed login attempts'
+            from app.audit.utils import log_audit
+            log_audit(
+                module='auth',
+                action='login_failed',
+                record_id=user.id,
+                record_identifier=user.username,
+                notes='Account locked due to multiple failed login attempts'
             )
-            try:
-                db.session.add(login_record)
-                db.session.commit()
-            except:
-                db.session.rollback()
 
             from datetime import datetime, timezone, timedelta
             lockout_time = user.account_locked_until
@@ -76,22 +69,15 @@ def login():
                 # Increment failed attempts and check if account should be locked
                 account_locked = user.increment_failed_attempts(max_attempts=5, lockout_minutes=15)
 
-                login_record = LoginHistory(
-                    user_id=user.id,
-                    username=user.username,
-                    full_name=user.full_name,
-                    login_time=ph_now(),
-                    ip_address=ip_address,
-                    user_agent=user_agent,
-                    status='failed',
-                    failure_reason='Invalid password'
+                # Log failed login with invalid password
+                from app.audit.utils import log_audit
+                log_audit(
+                    module='auth',
+                    action='account_locked' if account_locked else 'login_failed',
+                    record_id=user.id,
+                    record_identifier=user.username,
+                    notes='Too many failed attempts - account locked' if account_locked else 'Invalid password'
                 )
-
-                try:
-                    db.session.add(login_record)
-                    db.session.commit()
-                except:
-                    db.session.rollback()
 
                 if account_locked:
                     flash('Too many failed login attempts. Your account has been locked for 15 minutes.', 'error')
@@ -103,21 +89,14 @@ def login():
                         flash('Invalid username or password.', 'error')
             else:
                 # Username not found - still log but without user_id
-                login_record = LoginHistory(
-                    user_id=0,  # Placeholder for non-existent user
-                    username=form.username.data,
-                    full_name='Unknown',
-                    login_time=ph_now(),
-                    ip_address=ip_address,
-                    user_agent=user_agent,
-                    status='failed',
-                    failure_reason='Invalid username'
+                from app.audit.utils import log_audit
+                log_audit(
+                    module='auth',
+                    action='login_failed',
+                    record_id=None,
+                    record_identifier=form.username.data,
+                    notes='Invalid username'
                 )
-                try:
-                    db.session.add(login_record)
-                    db.session.commit()
-                except:
-                    db.session.rollback()
 
                 flash('Invalid username or password.', 'error')
 
@@ -125,21 +104,14 @@ def login():
 
         if not user.is_active:
             # Log failed login due to inactive account
-            login_record = LoginHistory(
-                user_id=user.id,
-                username=user.username,
-                full_name=user.full_name,
-                login_time=ph_now(),
-                ip_address=ip_address,
-                user_agent=user_agent,
-                status='failed',
-                failure_reason='Account inactive'
+            from app.audit.utils import log_audit
+            log_audit(
+                module='auth',
+                action='login_failed',
+                record_id=user.id,
+                record_identifier=user.username,
+                notes='Account inactive'
             )
-            try:
-                db.session.add(login_record)
-                db.session.commit()
-            except:
-                db.session.rollback()
 
             # Differentiate between pending approval and deactivated account
             if user.last_login is None:
@@ -159,17 +131,15 @@ def login():
             user.reset_failed_attempts()
 
             # Log successful login
-            login_record = LoginHistory(
-                user_id=user.id,
-                username=user.username,
-                full_name=user.full_name,
-                login_time=ph_now(),
-                ip_address=ip_address,
-                user_agent=user_agent,
-                status='success',
-                failure_reason=None
+            from app.audit.utils import log_audit
+            log_audit(
+                module='auth',
+                action='login_success',
+                record_id=user.id,
+                record_identifier=user.username,
+                notes=f'Login successful. Remember me: {form.remember_me.data}'
             )
-            db.session.add(login_record)
+
             db.session.commit()
         except:
             db.session.rollback()
@@ -184,11 +154,13 @@ def login():
 
         # Filter branches based on user permissions
         # Admins and accountants see all branches
-        # Other users see only their assigned branch
+        # Other users see only their assigned branches
         if user.role in ['admin', 'accountant']:
             accessible_branches = active_branches
-        elif user.branch_id:
-            accessible_branches = [b for b in active_branches if b.id == user.branch_id]
+        elif user.branches:
+            # Filter user's assigned branches to only show active ones
+            user_branch_ids = user.get_branch_ids()
+            accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
         else:
             accessible_branches = []
 
@@ -223,13 +195,18 @@ def select_branch():
     from app.branches.models import Branch
     from flask import session
 
+    # Get the 'next' URL parameter (where to redirect after branch selection)
+    next_url = request.args.get('next') or request.form.get('next') or url_for('dashboard.index')
+
     # Get accessible branches for current user
     active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
 
     if current_user.role in ['admin', 'accountant']:
         accessible_branches = active_branches
-    elif current_user.branch_id:
-        accessible_branches = [b for b in active_branches if b.id == current_user.branch_id]
+    elif current_user.branches:
+        # Filter user's assigned branches to only show active ones
+        user_branch_ids = current_user.get_branch_ids()
+        accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
     else:
         accessible_branches = []
 
@@ -237,7 +214,7 @@ def select_branch():
     if len(accessible_branches) == 1:
         session['selected_branch_id'] = accessible_branches[0].id
         session.pop('needs_branch_selection', None)
-        return redirect(url_for('dashboard.index'))
+        return redirect(next_url)
 
     # If no branches, error
     if not accessible_branches:
@@ -253,27 +230,28 @@ def select_branch():
         branch_ids = [b.id for b in accessible_branches]
         if branch_id not in branch_ids:
             flash('You do not have access to that branch.', 'error')
-            return render_template('users/select_branch.html', branches=accessible_branches)
+            return render_template('users/select_branch.html', branches=accessible_branches, next_url=next_url)
 
         # Set selected branch
         session['selected_branch_id'] = branch_id
         session.pop('needs_branch_selection', None)
 
         selected_branch = Branch.query.get(branch_id)
+
+        # Log branch selection
+        from app.audit.utils import log_audit
+        log_audit(
+            module='auth',
+            action='branch_selected',
+            record_id=current_user.id,
+            record_identifier=current_user.username,
+            notes=f'Selected branch: {selected_branch.name} (ID: {branch_id})'
+        )
+
         flash(f'You are now working in: {selected_branch.name}', 'success')
-        return redirect(url_for('dashboard.index'))
+        return redirect(next_url)
 
-    return render_template('users/select_branch.html', branches=accessible_branches)
-
-
-@users_bp.route('/login-history')
-@login_required
-@admin_required
-def login_history():
-    """View login history (admin and accountant only)."""
-    # Get all login history, most recent first
-    history = LoginHistory.query.order_by(LoginHistory.login_time.desc()).all()
-    return render_template('users/login_history.html', history=history)
+    return render_template('users/select_branch.html', branches=accessible_branches, next_url=next_url)
 
 
 @users_bp.route('/logout')
@@ -281,6 +259,18 @@ def login_history():
 def logout():
     """User logout."""
     from flask import session
+
+    # Log logout before clearing session
+    from app.audit.utils import log_audit
+    selected_branch = session.get('selected_branch_id')
+    log_audit(
+        module='auth',
+        action='logout',
+        record_id=current_user.id,
+        record_identifier=current_user.username,
+        notes=f'Logout from branch ID: {selected_branch}' if selected_branch else 'Logout'
+    )
+
     # Clear all flash messages and branch selection before logging out
     session.pop('_flashes', None)
     session.pop('selected_branch_id', None)
@@ -309,6 +299,22 @@ def register():
 
             db.session.add(user)
             db.session.commit()
+
+            # Mark the approved email as used
+            from app.users.approved_emails import ApprovedEmail
+            approved_email = ApprovedEmail.get_approved_email(form.email.data)
+            if approved_email:
+                approved_email.mark_as_used(user.id)
+
+            # Log successful registration
+            from app.audit.utils import log_audit
+            log_audit(
+                module='user_registration',
+                action='registration_success',
+                record_id=user.id,
+                record_identifier=f'{user.username} ({user.email})',
+                notes='User registered successfully, pending admin approval'
+            )
 
             flash('Registration successful! Your account is pending admin approval. You will be able to log in once your account is activated.', 'success')
             return redirect(url_for('users.login'))
@@ -345,9 +351,9 @@ def create_user():
 
     form = UserForm()
 
-    # Populate branch choices
+    # Populate branch choices for multi-select
     branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-    form.branch_id.choices = [(0, '-- No Branch --')] + [(b.id, b.name) for b in branches]
+    form.branch_ids.choices = [(b.id, b.name) for b in branches]
 
     if form.validate_on_submit():
         # Check for duplicate username
@@ -368,8 +374,7 @@ def create_user():
                 email=form.email.data,
                 full_name=form.full_name.data,
                 role=form.role.data,
-                is_active=form.is_active.data,
-                branch_id=form.branch_id.data if form.branch_id.data != 0 else None
+                is_active=form.is_active.data
             )
 
             # Set password if provided
@@ -389,7 +394,15 @@ def create_user():
             }
             user.set_book_permissions(book_permissions)
 
+            # Add user first to get an ID
             db.session.add(user)
+            db.session.flush()  # Flush to get the user ID before adding branches
+
+            # Assign branches
+            if form.branch_ids.data:
+                selected_branches = Branch.query.filter(Branch.id.in_(form.branch_ids.data)).all()
+                user.set_branches(selected_branches)
+
             db.session.commit()
 
             # Audit log
@@ -429,9 +442,13 @@ def edit_user(id):
 
     form = UserForm(obj=user)
 
-    # Populate branch choices
+    # Populate branch choices for multi-select
     branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-    form.branch_id.choices = [(0, '-- No Branch --')] + [(b.id, b.name) for b in branches]
+    form.branch_ids.choices = [(b.id, b.name) for b in branches]
+
+    # Pre-populate selected branches for GET request
+    if request.method == 'GET':
+        form.branch_ids.data = user.get_branch_ids()
 
     if form.validate_on_submit():
         # CRITICAL: Prevent admins from deactivating their own account
@@ -444,10 +461,14 @@ def edit_user(id):
             flash('You cannot change your own role.', 'error')
             return render_template('users/form.html', form=form, user=user)
 
-        # Check for duplicate username (excluding current user)
-        existing_username = User.query.filter(User.username == form.username.data, User.id != id).first()
-        if existing_username:
-            flash(f'Username "{form.username.data}" already exists. Please use a different username.', 'error')
+        # CRITICAL: Prevent username changes (username is immutable after account creation)
+        if user.username != form.username.data:
+            flash('Username cannot be changed after account creation.', 'error')
+            return render_template('users/form.html', form=form, user=user)
+
+        # CRITICAL: Prevent email changes (email is immutable after account creation)
+        if user.email != form.email.data:
+            flash('Email cannot be changed after account creation.', 'error')
             return render_template('users/form.html', form=form, user=user)
 
         # Check for duplicate email (excluding current user)
@@ -459,13 +480,24 @@ def edit_user(id):
         try:
             # Capture old values before update
             old_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
+            old_branch_ids = sorted(user.get_branch_ids())
+            old_book_permissions = user.get_book_permissions()
 
-            user.username = form.username.data
-            user.email = form.email.data
+            # Username is immutable - do not update it
+            # user.username = form.username.data  # REMOVED - username cannot be changed
+            # Email is immutable - do not update it
+            # user.email = form.email.data  # REMOVED - email cannot be changed
             user.full_name = form.full_name.data
             user.role = form.role.data
             user.is_active = form.is_active.data
-            user.branch_id = form.branch_id.data if form.branch_id.data != 0 else None
+
+            # Update branch assignments
+            new_branch_ids = sorted(form.branch_ids.data) if form.branch_ids.data else []
+            if form.branch_ids.data:
+                selected_branches = Branch.query.filter(Branch.id.in_(form.branch_ids.data)).all()
+                user.set_branches(selected_branches)
+            else:
+                user.set_branches([])  # Clear all branches if none selected
 
             # Update password if provided
             password_changed = False
@@ -492,22 +524,66 @@ def edit_user(id):
 
             db.session.commit()
 
-            # Audit log
+            # Audit log - Basic user info update
             new_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
-            notes = []
-            if password_changed:
-                notes.append('Password changed')
-            if account_unlocked:
-                notes.append('Account unlocked')
-            notes = '; '.join(notes) if notes else None
             log_update(
                 module='user',
                 record_id=user.id,
                 record_identifier=f'{user.username} ({user.full_name})',
                 old_values=old_values,
-                new_values=new_values,
-                notes=notes
+                new_values=new_values
             )
+
+            # Audit log - Branch assignment changes
+            if old_branch_ids != new_branch_ids:
+                from app.audit.utils import log_audit
+                branch_names = [b.name for b in Branch.query.filter(Branch.id.in_(new_branch_ids)).all()]
+                log_audit(
+                    module='user',
+                    action='branch_assigned' if len(new_branch_ids) > len(old_branch_ids) else 'branch_removed',
+                    record_id=user.id,
+                    record_identifier=f'{user.username} ({user.full_name})',
+                    old_values={'branch_ids': old_branch_ids},
+                    new_values={'branch_ids': new_branch_ids},
+                    notes=f'Branches: {", ".join(branch_names) if branch_names else "None"}'
+                )
+
+            # Audit log - Book permission changes
+            if old_book_permissions != book_permissions:
+                from app.audit.utils import log_audit
+                log_audit(
+                    module='user',
+                    action='permission_granted',
+                    record_id=user.id,
+                    record_identifier=f'{user.username} ({user.full_name})',
+                    old_values={'permissions': old_book_permissions},
+                    new_values={'permissions': book_permissions},
+                    notes='Book permissions updated'
+                )
+
+            # Audit log - Password change
+            if password_changed:
+                from app.audit.utils import log_audit
+                action = 'password_reset' if current_user.id != user.id else 'password_changed'
+                notes = f'Password reset by admin: {current_user.username}' if action == 'password_reset' else 'User changed own password'
+                log_audit(
+                    module='user',
+                    action=action,
+                    record_id=user.id,
+                    record_identifier=f'{user.username} ({user.full_name})',
+                    notes=notes
+                )
+
+            # Audit log - Account unlock
+            if account_unlocked:
+                from app.audit.utils import log_audit
+                log_audit(
+                    module='user',
+                    action='account_unlocked',
+                    record_id=user.id,
+                    record_identifier=f'{user.username} ({user.full_name})',
+                    notes=f'Account manually unlocked by admin: {current_user.username}'
+                )
 
             flash(f'User "{user.username}" updated successfully!', 'success')
             return redirect(url_for('users.list_users'))
@@ -544,32 +620,33 @@ def delete_user(id):
         flash('You cannot delete your own account.', 'error')
         return redirect(url_for('users.list_users'))
 
-    try:
-        # Capture values before delete
-        old_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
-        user_identifier = f'{user.username} ({user.full_name})'
-        user_id = user.id
-        username = user.username
+    # TEMPORARILY DISABLED ERROR HANDLING FOR DEBUGGING - See full stack trace
+    # try:
+    # Capture values before delete
+    old_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
+    user_identifier = f'{user.username} ({user.full_name})'
+    user_id = user.id
+    username = user.username
 
-        db.session.delete(user)
-        db.session.commit()
+    db.session.delete(user)
+    db.session.commit()
 
-        # Audit log
-        log_delete(
-            module='user',
-            record_id=user_id,
-            record_identifier=user_identifier,
-            old_values=old_values
-        )
+    # Audit log
+    log_delete(
+        module='user',
+        record_id=user_id,
+        record_identifier=user_identifier,
+        old_values=old_values
+    )
 
-        flash(f'User "{username}" deleted successfully.', 'success')
-    except Exception as e:
-        from flask import current_app
-        from app.errors.utils import log_exception
-        current_app.logger.error(f"Error deleting user", exc_info=True)
-        log_exception(e, severity='ERROR', module='users.delete')
-        db.session.rollback()
-        flash(f'Error deleting user: {str(e)}', 'error')
+    flash(f'User "{username}" deleted successfully.', 'success')
+    # except Exception as e:
+    #     from flask import current_app
+    #     from app.errors.utils import log_exception
+    #     current_app.logger.error(f"Error deleting user", exc_info=True)
+    #     log_exception(e, severity='ERROR', module='users.delete')
+    #     db.session.rollback()
+    #     flash(f'Error deleting user: {str(e)}', 'error')
 
     return redirect(url_for('users.list_users'))
 
@@ -606,3 +683,88 @@ def change_password():
             flash(f'Error changing password: {str(e)}', 'error')
 
     return render_template('users/change_password.html', form=form)
+
+
+# ============================================================
+# APPROVED EMAILS MANAGEMENT (Admin Only)
+# ============================================================
+
+@users_bp.route('/approved-emails')
+@login_required
+@admin_required
+def list_approved_emails():
+    """List all approved emails for registration (admin only)."""
+    from app.users.approved_emails import ApprovedEmail
+
+    # Get all approved emails, ordered by status (available first, then used)
+    approved_emails = ApprovedEmail.query.order_by(
+        ApprovedEmail.is_used.asc(),
+        ApprovedEmail.approved_at.desc()
+    ).all()
+
+    return render_template('users/approved_emails_list.html', approved_emails=approved_emails)
+
+
+@users_bp.route('/approved-emails/add', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def add_approved_email():
+    """Add a new approved email for registration (admin only)."""
+    from app.users.forms import ApprovedEmailForm
+    from app.users.approved_emails import ApprovedEmail
+
+    form = ApprovedEmailForm()
+
+    if form.validate_on_submit():
+        try:
+            approved_email = ApprovedEmail(
+                email=form.email.data.lower(),
+                approved_by_user_id=current_user.id,
+                notes=form.notes.data
+            )
+
+            db.session.add(approved_email)
+            db.session.commit()
+
+            flash(f'Email "{form.email.data}" has been approved for registration.', 'success')
+            return redirect(url_for('users.list_approved_emails'))
+        except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error adding approved email", exc_info=True)
+            log_exception(e, severity='ERROR', module='users.add_approved_email')
+            db.session.rollback()
+            flash(f'Error adding approved email: {str(e)}', 'error')
+
+    return render_template('users/approved_email_form.html', form=form)
+
+
+@users_bp.route('/approved-emails/<int:id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_approved_email(id):
+    """Delete an approved email (admin only)."""
+    from app.users.approved_emails import ApprovedEmail
+
+    try:
+        approved_email = ApprovedEmail.query.get_or_404(id)
+
+        # Don't allow deleting already used emails
+        if approved_email.is_used:
+            flash('Cannot delete an approved email that has already been used for registration.', 'error')
+            return redirect(url_for('users.list_approved_emails'))
+
+        email_address = approved_email.email
+        db.session.delete(approved_email)
+        db.session.commit()
+
+        flash(f'Approved email "{email_address}" has been removed.', 'success')
+    except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error(f"Error deleting approved email", exc_info=True)
+        log_exception(e, severity='ERROR', module='users.delete_approved_email')
+        db.session.rollback()
+        flash(f'Error deleting approved email: {str(e)}', 'error')
+
+    return redirect(url_for('users.list_approved_emails'))
