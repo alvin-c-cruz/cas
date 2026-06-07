@@ -66,6 +66,19 @@
                 </div>
 
                 <div class="form-group">
+                    {{ form.branch_id.label(class='form-label') }}
+                    {{ form.branch_id(class='form-control') }}
+                    <div class="form-hint">Assign user to a branch (required for non-admin users to login)</div>
+                    {% if form.branch_id.errors %}
+                        <div class="form-error">
+                            {% for error in form.branch_id.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="form-group">
                     <label class="form-label">Status</label>
                     <div style="padding-top: 8px;">
                         <label class="checkbox-label">
@@ -74,7 +87,41 @@
                         </label>
                     </div>
                 </div>
+                <div class="form-group">
+                    <!-- Empty column for layout balance -->
+                </div>
             </div>
+
+            <!-- Account Lockout Status (only show if user exists and is locked) -->
+            {% if user and user.is_account_locked() %}
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Account Lockout</label>
+                    <div style="padding: 12px; background: #fef2f2; border-left: 4px solid #ef4444; border-radius: 4px; margin-top: 8px;">
+                        <div style="font-size: 14px; color: #991b1b; margin-bottom: 8px;">
+                            <strong>⚠️ Account is locked</strong>
+                        </div>
+                        <div style="font-size: 13px; color: #7f1d1d; margin-bottom: 4px;">
+                            Failed attempts: {{ user.failed_login_attempts }}
+                        </div>
+                        {% if user.account_locked_until %}
+                        <div style="font-size: 13px; color: #7f1d1d;">
+                            Locked until: {{ user.account_locked_until.strftime('%Y-%m-%d %H:%M:%S') }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Actions</label>
+                    <div style="padding-top: 8px;">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="unlock_account" id="unlock_account" value="1">
+                            <span>Unlock this account and reset failed login attempts</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Book Permissions (only for Staff and Accountant roles) -->
             <div id="book-permissions-section" style="display: none;">

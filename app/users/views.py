@@ -28,23 +28,7 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard.index'))
 
-    from app.branches.models import Branch
-
     form = LoginForm()
-
-    # Populate branch choices with active branches
-    branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-
-    if not branches:
-        flash('No active branches available. Please contact the administrator.', 'error')
-        return render_template('users/login.html', form=form, branches=branches)
-
-    form.branch.choices = [(b.id, b.name) for b in branches]
-
-    # If only one branch, auto-select it
-    single_branch = len(branches) == 1
-    if single_branch and request.method == 'GET':
-        form.branch.data = branches[0].id
 
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
@@ -53,9 +37,45 @@ def login():
         ip_address = request.remote_addr
         user_agent = request.headers.get('User-Agent', '')[:500]  # Limit to 500 chars
 
+        # Check if account is locked (if user exists)
+        if user and user.is_account_locked():
+            # Log failed login due to account lockout
+            login_record = LoginHistory(
+                user_id=user.id,
+                username=user.username,
+                full_name=user.full_name,
+                login_time=ph_now(),
+                ip_address=ip_address,
+                user_agent=user_agent,
+                status='failed',
+                failure_reason='Account locked due to multiple failed login attempts'
+            )
+            try:
+                db.session.add(login_record)
+                db.session.commit()
+            except:
+                db.session.rollback()
+
+            from datetime import datetime, timezone, timedelta
+            lockout_time = user.account_locked_until
+            if lockout_time:
+                # Make lockout_time timezone-aware if it's naive (same fix as in models.py)
+                if lockout_time.tzinfo is None:
+                    PHT = timezone(timedelta(hours=8))
+                    lockout_time = lockout_time.replace(tzinfo=PHT)
+
+                minutes_remaining = int((lockout_time - ph_now()).total_seconds() / 60)
+                flash(f'Your account is locked due to multiple failed login attempts. Please try again in {minutes_remaining} minutes or contact the administrator.', 'error')
+            else:
+                flash('Your account is locked. Please contact the administrator.', 'error')
+            return render_template('users/login.html', form=form)
+
         if user is None or not user.check_password(form.password.data):
             # Log failed login attempt
             if user:
+                # Increment failed attempts and check if account should be locked
+                account_locked = user.increment_failed_attempts(max_attempts=5, lockout_minutes=15)
+
                 login_record = LoginHistory(
                     user_id=user.id,
                     username=user.username,
@@ -66,6 +86,21 @@ def login():
                     status='failed',
                     failure_reason='Invalid password'
                 )
+
+                try:
+                    db.session.add(login_record)
+                    db.session.commit()
+                except:
+                    db.session.rollback()
+
+                if account_locked:
+                    flash('Too many failed login attempts. Your account has been locked for 15 minutes.', 'error')
+                else:
+                    remaining_attempts = 5 - user.failed_login_attempts
+                    if remaining_attempts <= 2:
+                        flash(f'Invalid username or password. Warning: {remaining_attempts} attempts remaining before account lockout.', 'error')
+                    else:
+                        flash('Invalid username or password.', 'error')
             else:
                 # Username not found - still log but without user_id
                 login_record = LoginHistory(
@@ -78,14 +113,15 @@ def login():
                     status='failed',
                     failure_reason='Invalid username'
                 )
-            try:
-                db.session.add(login_record)
-                db.session.commit()
-            except:
-                db.session.rollback()
+                try:
+                    db.session.add(login_record)
+                    db.session.commit()
+                except:
+                    db.session.rollback()
 
-            flash('Invalid username or password.', 'error')
-            return render_template('users/login.html', form=form, branches=branches)
+                flash('Invalid username or password.', 'error')
+
+            return render_template('users/login.html', form=form)
 
         if not user.is_active:
             # Log failed login due to inactive account
@@ -105,13 +141,22 @@ def login():
             except:
                 db.session.rollback()
 
-            flash('Your account has been deactivated. Please contact the administrator.', 'error')
-            return render_template('users/login.html', form=form, branches=branches)
+            # Differentiate between pending approval and deactivated account
+            if user.last_login is None:
+                # User has never logged in - account is pending approval
+                flash('Your account is pending approval. Please wait for an administrator to activate your account.', 'error')
+            else:
+                # User has logged in before - account was deactivated
+                flash('Your account has been deactivated. Please contact the administrator.', 'error')
+            return render_template('users/login.html', form=form)
 
         # Successful login
         try:
             # Update last login
             user.last_login = ph_now()
+
+            # Reset failed login attempts on successful login
+            user.reset_failed_attempts()
 
             # Log successful login
             login_record = LoginHistory(
@@ -131,24 +176,94 @@ def login():
 
         login_user(user, remember=form.remember_me.data)
 
-        # Store selected branch in session
+        # Get all active branches
+        from app.branches.models import Branch
         from flask import session
-        selected_branch_id = form.branch.data
-        session['selected_branch_id'] = selected_branch_id
 
-        # Get branch name for welcome message
-        selected_branch = Branch.query.get(selected_branch_id)
-        branch_name = selected_branch.name if selected_branch else 'Unknown Branch'
+        active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
 
-        flash(f'Welcome back, {user.full_name}! Logged into {branch_name}.', 'success')
+        # Filter branches based on user permissions
+        # Admins and accountants see all branches
+        # Other users see only their assigned branch
+        if user.role in ['admin', 'accountant']:
+            accessible_branches = active_branches
+        elif user.branch_id:
+            accessible_branches = [b for b in active_branches if b.id == user.branch_id]
+        else:
+            accessible_branches = []
 
-        # Redirect to next page or dashboard
-        next_page = request.args.get('next')
-        if next_page:
-            return redirect(next_page)
+        if not accessible_branches:
+            flash('No branches available. Please contact the administrator.', 'error')
+            logout_user()
+            return redirect(url_for('users.login'))
+
+        # Auto-assign if only one branch accessible
+        if len(accessible_branches) == 1:
+            session['selected_branch_id'] = accessible_branches[0].id
+            flash(f'Welcome back, {user.full_name}!', 'success')
+
+            # Redirect to next page or dashboard
+            next_page = request.args.get('next')
+            if next_page:
+                return redirect(next_page)
+            return redirect(url_for('dashboard.index'))
+
+        # Multiple branches - redirect to branch selection
+        session['needs_branch_selection'] = True
+        flash(f'Welcome back, {user.full_name}! Please select your branch.', 'info')
+        return redirect(url_for('users.select_branch'))
+
+    return render_template('users/login.html', form=form)
+
+
+@users_bp.route('/select-branch', methods=['GET', 'POST'])
+@login_required
+def select_branch():
+    """Branch selection page (for users with access to multiple branches)."""
+    from app.branches.models import Branch
+    from flask import session
+
+    # Get accessible branches for current user
+    active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
+
+    if current_user.role in ['admin', 'accountant']:
+        accessible_branches = active_branches
+    elif current_user.branch_id:
+        accessible_branches = [b for b in active_branches if b.id == current_user.branch_id]
+    else:
+        accessible_branches = []
+
+    # If only one branch, redirect directly
+    if len(accessible_branches) == 1:
+        session['selected_branch_id'] = accessible_branches[0].id
+        session.pop('needs_branch_selection', None)
         return redirect(url_for('dashboard.index'))
 
-    return render_template('users/login.html', form=form, branches=branches)
+    # If no branches, error
+    if not accessible_branches:
+        flash('No branches available. Please contact the administrator.', 'error')
+        logout_user()
+        return redirect(url_for('users.login'))
+
+    # Handle branch selection
+    if request.method == 'POST':
+        branch_id = request.form.get('branch_id', type=int)
+
+        # Verify user has access to selected branch
+        branch_ids = [b.id for b in accessible_branches]
+        if branch_id not in branch_ids:
+            flash('You do not have access to that branch.', 'error')
+            return render_template('users/select_branch.html', branches=accessible_branches)
+
+        # Set selected branch
+        session['selected_branch_id'] = branch_id
+        session.pop('needs_branch_selection', None)
+
+        selected_branch = Branch.query.get(branch_id)
+        flash(f'You are now working in: {selected_branch.name}', 'success')
+        return redirect(url_for('dashboard.index'))
+
+    return render_template('users/select_branch.html', branches=accessible_branches)
 
 
 @users_bp.route('/login-history')
@@ -226,7 +341,13 @@ def list_users():
 @admin_required
 def create_user():
     """Create new user (admin only)."""
+    from app.branches.models import Branch
+
     form = UserForm()
+
+    # Populate branch choices
+    branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
+    form.branch_id.choices = [(0, '-- No Branch --')] + [(b.id, b.name) for b in branches]
 
     if form.validate_on_submit():
         # Check for duplicate username
@@ -247,7 +368,8 @@ def create_user():
                 email=form.email.data,
                 full_name=form.full_name.data,
                 role=form.role.data,
-                is_active=form.is_active.data
+                is_active=form.is_active.data,
+                branch_id=form.branch_id.data if form.branch_id.data != 0 else None
             )
 
             # Set password if provided
@@ -296,6 +418,8 @@ def create_user():
 @admin_required
 def edit_user(id):
     """Edit existing user (admin only)."""
+    from app.branches.models import Branch
+
     user = User.query.get_or_404(id)
 
     # Prevent accountants from editing admin users
@@ -305,7 +429,21 @@ def edit_user(id):
 
     form = UserForm(obj=user)
 
+    # Populate branch choices
+    branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
+    form.branch_id.choices = [(0, '-- No Branch --')] + [(b.id, b.name) for b in branches]
+
     if form.validate_on_submit():
+        # CRITICAL: Prevent admins from deactivating their own account
+        if user.id == current_user.id and not form.is_active.data:
+            flash('You cannot deactivate your own account.', 'error')
+            return render_template('users/form.html', form=form, user=user)
+
+        # CRITICAL: Prevent admins from changing their own role
+        if user.id == current_user.id and user.role != form.role.data:
+            flash('You cannot change your own role.', 'error')
+            return render_template('users/form.html', form=form, user=user)
+
         # Check for duplicate username (excluding current user)
         existing_username = User.query.filter(User.username == form.username.data, User.id != id).first()
         if existing_username:
@@ -327,9 +465,11 @@ def edit_user(id):
             user.full_name = form.full_name.data
             user.role = form.role.data
             user.is_active = form.is_active.data
+            user.branch_id = form.branch_id.data if form.branch_id.data != 0 else None
 
             # Update password if provided
             password_changed = False
+            account_unlocked = False
             if form.password.data:
                 user.set_password(form.password.data)
                 password_changed = True
@@ -344,11 +484,22 @@ def edit_user(id):
             }
             user.set_book_permissions(book_permissions)
 
+            # Handle account unlock if checkbox is checked
+            unlock_account = request.form.get('unlock_account') == '1'
+            if unlock_account and user.is_account_locked():
+                user.reset_failed_attempts()
+                account_unlocked = True
+
             db.session.commit()
 
             # Audit log
             new_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
-            notes = 'Password changed' if password_changed else None
+            notes = []
+            if password_changed:
+                notes.append('Password changed')
+            if account_unlocked:
+                notes.append('Account unlocked')
+            notes = '; '.join(notes) if notes else None
             log_update(
                 module='user',
                 record_id=user.id,

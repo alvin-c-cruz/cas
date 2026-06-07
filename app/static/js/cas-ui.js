@@ -260,15 +260,10 @@
       // Listen for changes
       this.attachListeners();
 
-      // Initially hide the update button if it's an edit form
-      // Unless there are validation errors (indicated by error messages on the page)
-      if (this.updateButton && this.updateButton.textContent.includes('Update')) {
-        const hasErrors = this.form.querySelector('.error-message') ||
-                         document.querySelector('.alert-error');
-        if (!hasErrors) {
-          this.checkForChanges();
-        }
-      }
+      // Don't auto-hide the Update button on page load
+      // Instead, let it show by default so admins can always save changes
+      // The button will still hide/show dynamically based on tracked changes
+      // But we don't want to hide it initially as this breaks admin workflows
     }
 
     storeOriginalValues() {
