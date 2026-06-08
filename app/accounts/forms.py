@@ -36,8 +36,8 @@ class AccountForm(FlaskForm):
                                 validators=[DataRequired()],
                                 choices=[
                                     ('', 'Select'),
-                                    ('Debit', 'Debit'),
-                                    ('Credit', 'Credit')
+                                    ('debit', 'Debit'),
+                                    ('credit', 'Credit')
                                 ])
 
     parent_id = SelectField('Parent Account',

@@ -117,7 +117,7 @@
                         <td class="account-classification">{{ account.classification or '—' }}</td>
                         <td>
                             {% if not row.is_header %}
-                                {% if account.normal_balance == 'Debit' %}
+                                {% if account.normal_balance == 'debit' %}
                                 <span class="balance-debit">Dr</span>
                                 {% else %}
                                 <span class="balance-credit">Cr</span>

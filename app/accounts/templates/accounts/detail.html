@@ -64,7 +64,7 @@
             <div class="detail-item">
                 <label class="detail-label">Normal Balance</label>
                 <div class="detail-value">
-                    {% if account.normal_balance == 'Debit' %}
+                    {% if account.normal_balance == 'debit' %}
                     <span style="color: #dc2626; font-weight: 700;">Debit</span>
                     {% else %}
                     <span style="color: #059669; font-weight: 700;">Credit</span>
@@ -137,7 +137,7 @@
                     <td>{{ child.name }}</td>
                     <td><span class="badge badge-{{ child.account_type.lower() }}">{{ child.account_type }}</span></td>
                     <td>
-                        {% if child.normal_balance == 'Debit' %}
+                        {% if child.normal_balance == 'debit' %}
                         <span style="color: #dc2626; font-weight: 600;">Dr</span>
                         {% else %}
                         <span style="color: #059669; font-weight: 600;">Cr</span>
