@@ -9,6 +9,15 @@
 
 {{ render_flash_messages() }}
 
+{# (label, key, icon, icon-color-class) — order drives cards and tabs #}
+{% set coa_types = [
+    ('Asset', 'asset', '💎', 'ic-blue'),
+    ('Liability', 'liability', '📉', 'ic-red'),
+    ('Equity', 'equity', '🏛️', 'ic-purple'),
+    ('Revenue', 'revenue', '📈', 'ic-green'),
+    ('Expense', 'expense', '💸', 'ic-amber')
+] %}
+
 <!-- Header with Add Button -->
 <div class="page-header-actions">
     <div>
@@ -29,10 +38,37 @@
     {% endif %}
 </div>
 
+<!-- Summary cards (click to filter) -->
+<div class="stat-grid coa-stat-grid">
+    {% for label, key, icon, ic in coa_types %}
+    {% set count = accounts | selectattr('account_type', 'equalto', label) | list | length %}
+    <div class="stat-card clickable coa-card" data-coa-filter="{{ key }}" role="button" tabindex="0"
+         aria-label="Filter by {{ label }}">
+        <div class="stat-icon-wrap {{ ic }}">{{ icon }}</div>
+        <div class="stat-label">{{ label }}</div>
+        <div class="stat-value">{{ count }}</div>
+        <div class="stat-sub">accounts</div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Filter tabs + live search -->
+<div class="coa-toolbar">
+    <div class="tabs coa-tabs">
+        <div class="tab active" data-coa-filter="all">All <span class="coa-tab-count">({{ accounts|length }})</span></div>
+        {% for label, key, icon, ic in coa_types %}
+        {% set count = accounts | selectattr('account_type', 'equalto', label) | list | length %}
+        <div class="tab" data-coa-filter="{{ key }}">{{ label }} <span class="coa-tab-count">({{ count }})</span></div>
+        {% endfor %}
+    </div>
+    <input type="text" id="coaSearch" class="form-control coa-search"
+           placeholder="🔍 Search by code or name..." autocomplete="off">
+</div>
+
 <!-- Accounts Table -->
 <div class="card">
     <div class="table-wrap">
-        <table>
+        <table id="coaTable">
             <thead>
                 <tr>
                     <th style="width: 120px;">Code</th>
@@ -46,7 +82,9 @@
             <tbody>
                 {% if accounts %}
                     {% for account in accounts %}
-                    <tr class="account-row account-type-{{ account.account_type.lower() }} {% if account.parent_id %}account-child{% else %}account-parent{% endif %}">
+                    <tr class="account-row coa-row account-type-{{ account.account_type.lower() }} {% if account.parent_id %}account-child{% else %}account-parent{% endif %}"
+                        data-type="{{ account.account_type.lower() }}"
+                        data-search="{{ (account.code ~ ' ' ~ account.name) | lower }}">
                         <td class="account-code">{{ account.code }}</td>
                         <td>
                             <div class="account-name-wrapper {% if account.parent_id %}account-name-child{% endif %}">
@@ -77,13 +115,15 @@
                             {% endif %}
                         </td>
                         <td style="text-align: center;">
-                            <div class="action-buttons">
+                            <div class="action-buttons" style="justify-content: center;">
                                 <a href="{{ url_for('accounts.view', id=account.id) }}" class="btn-icon" title="View">👁️</a>
                                 {% if current_user.role in ['accountant', 'admin'] %}
                                 <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn-icon" title="Edit">✏️</a>
-                                <form action="{{ url_for('accounts.delete', id=account.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this account?');">
-                                    <button type="submit" class="btn-icon" title="Delete">🗑️</button>
-                                </form>
+                                <button type="button" class="btn-icon" title="Delete"
+                                        data-open-modal="deleteAccountModal"
+                                        data-acct-url="{{ url_for('accounts.delete', id=account.id) }}"
+                                        data-acct-code="{{ account.code }}"
+                                        data-acct-name="{{ account.name }}">🗑️</button>
                                 {% endif %}
                             </div>
                         </td>
@@ -97,9 +137,139 @@
                         </td>
                     </tr>
                 {% endif %}
+                <!-- No-results row (shown by JS when filters match nothing) -->
+                <tr id="coaNoResults" style="display: none;">
+                    <td colspan="6" class="empty-state-cell">
+                        <div class="empty-icon">🔍</div>
+                        <div>No accounts match the current filter.</div>
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
+    <div id="coaCount" class="coa-count"></div>
 </div>
 
+<!-- Delete confirmation modal (no JS confirm(); CSRF-protected) -->
+<div class="overlay" id="deleteAccountModal">
+    <div class="modal modal-sm">
+        <div class="modal-header">
+            <span class="modal-title">Delete Account</span>
+            <button type="button" class="modal-close" data-close-modal="deleteAccountModal" aria-label="Close">×</button>
+        </div>
+        <form id="deleteAccountForm" method="POST" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="modal-body">
+                <p id="deleteAccountMsg">Are you sure you want to delete this account?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-close-modal="deleteAccountModal">Cancel</button>
+                <button type="submit" class="btn btn-danger">Delete Account</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Option A homepage — layout only; colors use design tokens */
+    .coa-stat-grid { grid-template-columns: repeat(5, 1fr); }
+    .stat-card.clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+    .stat-card.clickable:hover { border-color: var(--blue); }
+    .stat-card.clickable.active {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, .12);
+    }
+    .coa-toolbar {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px; margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .coa-tabs { margin-bottom: 0; flex: 1; }
+    .coa-tab-count { color: var(--text-3); font-weight: 600; }
+    .coa-search { min-width: 240px; max-width: 360px; flex: 0 1 320px; }
+    .coa-count { padding: 12px 18px; font-size: 12px; color: var(--text-3); border-top: 1px solid var(--border); }
+
+    @media (max-width: 1100px) { .coa-stat-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 760px)  { .coa-stat-grid { grid-template-columns: repeat(2, 1fr); }
+                                 .coa-search { max-width: none; flex-basis: 100%; } }
+    @media (max-width: 480px)  { .coa-stat-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+    var state = { filter: 'all', search: '' };
+
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#coaTable tbody tr.coa-row'));
+    var cards = Array.prototype.slice.call(document.querySelectorAll('.coa-card'));
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.coa-tabs .tab'));
+    var searchInput = document.getElementById('coaSearch');
+    var countEl = document.getElementById('coaCount');
+    var noResults = document.getElementById('coaNoResults');
+    var total = rows.length;
+
+    function apply() {
+        var shown = 0;
+        rows.forEach(function (row) {
+            var typeOk = state.filter === 'all' || row.dataset.type === state.filter;
+            var searchOk = !state.search || (row.dataset.search || '').indexOf(state.search) !== -1;
+            var visible = typeOk && searchOk;
+            row.style.display = visible ? '' : 'none';
+            if (visible) shown++;
+        });
+        if (noResults) noResults.style.display = shown === 0 ? '' : 'none';
+        if (countEl) {
+            countEl.textContent = 'Showing ' + shown + ' of ' + total + ' account' + (total === 1 ? '' : 's');
+        }
+    }
+
+    function setFilter(filter) {
+        state.filter = filter;
+        tabs.forEach(function (t) { t.classList.toggle('active', t.dataset.coaFilter === filter); });
+        cards.forEach(function (c) { c.classList.toggle('active', c.dataset.coaFilter === filter); });
+        apply();
+    }
+
+    tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () { setFilter(tab.dataset.coaFilter); });
+    });
+
+    cards.forEach(function (card) {
+        function toggle() {
+            // Clicking the active type card resets to "All"
+            setFilter(state.filter === card.dataset.coaFilter ? 'all' : card.dataset.coaFilter);
+        }
+        card.addEventListener('click', toggle);
+        card.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        });
+    });
+
+    if (searchInput) {
+        searchInput.addEventListener('input', function (e) {
+            state.search = e.target.value.trim().toLowerCase();
+            apply();
+        });
+    }
+
+    // Delete modal: populate form action + message from the clicked button.
+    var deleteForm = document.getElementById('deleteAccountForm');
+    var deleteMsg = document.getElementById('deleteAccountMsg');
+    document.querySelectorAll('[data-open-modal="deleteAccountModal"]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (deleteForm) deleteForm.action = btn.dataset.acctUrl;
+            if (deleteMsg) {
+                deleteMsg.textContent = 'Are you sure you want to delete ' +
+                    btn.dataset.acctCode + ' – ' + btn.dataset.acctName + '?';
+            }
+        });
+    });
+
+    apply();
+})();
+</script>
 {% endblock %}
