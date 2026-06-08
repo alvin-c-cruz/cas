@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    async function handleParentChange() {
+    async function handleParentChange(resetValues) {
         const parentId = parentField.value;
         const hasParent = parentId !== '';
 
@@ -139,8 +139,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const response = await fetch(`/accounts/${parentId}/json`);
                 if (response.ok) {
                     const parentData = await response.json();
-
-                    // Inherit account type and normal balance from parent
                     accountTypeField.value = parentData.account_type;
                     normalBalanceField.value = parentData.normal_balance;
                 }
@@ -148,7 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error fetching parent account:', error);
             }
 
-            // Make fields readonly (visual only - values still submit)
+            // Lock fields (visual only - values still submit)
             accountTypeField.style.backgroundColor = '#f1f5f9';
             accountTypeField.style.pointerEvents = 'none';
             accountTypeField.style.cursor = 'not-allowed';
@@ -158,7 +156,7 @@ document.addEventListener('DOMContentLoaded', function() {
             accountTypeHint.style.display = 'block';
             normalBalanceHint.style.display = 'block';
         } else {
-            // Parent account - enable fields and reset
+            // Top-level account - unlock fields
             accountTypeField.style.backgroundColor = 'white';
             accountTypeField.style.pointerEvents = 'auto';
             accountTypeField.style.cursor = 'pointer';
@@ -168,9 +166,12 @@ document.addEventListener('DOMContentLoaded', function() {
             accountTypeHint.style.display = 'none';
             normalBalanceHint.style.display = 'none';
 
-            // Reset to default values when no parent selected
-            accountTypeField.value = '';
-            normalBalanceField.value = '';
+            // Only reset values when the user actively clears the parent,
+            // not on initial page load (server-rendered values must be preserved).
+            if (resetValues) {
+                accountTypeField.value = '';
+                normalBalanceField.value = '';
+            }
         }
 
         toggleClassification();
@@ -180,24 +181,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const accountType = accountTypeField.value;
         const hasParent = parentField.value !== '';
 
-        // Show classification only when:
-        // 1. Parent is "None (Top Level)" (no parent selected)
-        // 2. Account type is Asset or Liability
         if (!hasParent && (accountType === 'Asset' || accountType === 'Liability')) {
             classificationGroup.style.display = 'block';
         } else {
             classificationGroup.style.display = 'none';
-            // Clear classification when hiding it
             classificationField.value = '';
         }
     }
 
-    // Run on page load
-    handleParentChange();
+    // On page load: apply UI state but preserve server-rendered dropdown values.
+    handleParentChange(false);
 
-    // Run when account type or parent account changes
+    // On user interaction: allow value reset when parent is cleared.
     accountTypeField.addEventListener('change', toggleClassification);
-    parentField.addEventListener('change', handleParentChange);
+    parentField.addEventListener('change', () => handleParentChange(true));
 });
 </script>
 
