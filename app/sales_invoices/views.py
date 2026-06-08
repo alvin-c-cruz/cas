@@ -1,7 +1,7 @@
 """
 Sales Invoice views for managing customer billing transactions.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -68,8 +68,9 @@ def list_invoices():
     status_filter = request.args.get('status', 'all')
     customer_filter = request.args.get('customer', 'all')
 
-    # Base query
-    query = SalesInvoice.query
+    # Base query — scope to current branch
+    current_branch_id = session.get('selected_branch_id')
+    query = SalesInvoice.query.filter_by(branch_id=current_branch_id)
 
     # Apply filters
     if status_filter != 'all':
@@ -103,8 +104,9 @@ def export_excel():
     status_filter = request.args.get('status', 'all')
     customer_filter = request.args.get('customer', 'all')
 
-    # Build query with same filters
-    query = SalesInvoice.query
+    # Build query with same filters — scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
+    query = SalesInvoice.query.filter_by(branch_id=current_branch_id)
 
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
@@ -170,8 +172,9 @@ def export_csv_route():
     status_filter = request.args.get('status', 'all')
     customer_filter = request.args.get('customer', 'all')
 
-    # Build query with same filters
-    query = SalesInvoice.query
+    # Build query with same filters — scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
+    query = SalesInvoice.query.filter_by(branch_id=current_branch_id)
 
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
@@ -253,6 +256,7 @@ def create():
 
             # Create invoice
             invoice = SalesInvoice(
+                branch_id=session.get('selected_branch_id'),
                 invoice_number=form.invoice_number.data,
                 invoice_date=form.invoice_date.data,
                 due_date=form.due_date.data,

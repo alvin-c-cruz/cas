@@ -28,6 +28,10 @@ class Receipt(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
+    # Branch association
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)
+    branch = db.relationship('Branch', foreign_keys=[branch_id])
+
     # Receipt identification
     receipt_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
     receipt_date = db.Column(db.Date, nullable=False, index=True)

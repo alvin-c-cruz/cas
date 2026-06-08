@@ -1,7 +1,7 @@
 """
 Purchase Bill views for managing supplier invoices and expenses.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session
 from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy.orm import selectinload
@@ -69,7 +69,9 @@ def list_bills():
     page = request.args.get('page', 1, type=int)
     per_page = 50
 
-    query = PurchaseBill.query
+    # Scope to current branch
+    current_branch_id = session.get('selected_branch_id')
+    query = PurchaseBill.query.filter_by(branch_id=current_branch_id)
 
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
@@ -105,7 +107,9 @@ def export_excel():
     status_filter = request.args.get('status', 'all')
     vendor_filter = request.args.get('vendor', 'all')
 
-    query = PurchaseBill.query
+    # Scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
+    query = PurchaseBill.query.filter_by(branch_id=current_branch_id)
 
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
@@ -170,7 +174,9 @@ def export_csv_route():
     status_filter = request.args.get('status', 'all')
     vendor_filter = request.args.get('vendor', 'all')
 
-    query = PurchaseBill.query
+    # Scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
+    query = PurchaseBill.query.filter_by(branch_id=current_branch_id)
 
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
@@ -249,6 +255,7 @@ def create():
                 return render_template('purchase_bills/form.html', form=form, bill=None)
 
             bill = PurchaseBill(
+                branch_id=session.get('selected_branch_id'),
                 bill_number=form.bill_number.data,
                 bill_date=form.bill_date.data,
                 due_date=form.due_date.data,

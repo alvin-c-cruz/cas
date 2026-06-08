@@ -1,7 +1,7 @@
 """
 Receipt/Payment views for managing cash and bank transactions.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -66,7 +66,9 @@ def list_receipts():
     method_filter = request.args.get('method', 'all')
     status_filter = request.args.get('status', 'all')
 
-    query = Receipt.query
+    # Scope to current branch
+    current_branch_id = session.get('selected_branch_id')
+    query = Receipt.query.filter_by(branch_id=current_branch_id)
 
     if type_filter != 'all':
         query = query.filter_by(transaction_type=type_filter)
@@ -132,6 +134,7 @@ def create():
                 customer_name = None
 
             receipt = Receipt(
+                branch_id=session.get('selected_branch_id'),
                 receipt_number=form.receipt_number.data,
                 receipt_date=form.receipt_date.data,
                 transaction_type=form.transaction_type.data,

@@ -2,7 +2,7 @@
 Reports views for financial reporting.
 Includes AR Aging, AP Aging, BIR compliance reports, and financial statements.
 """
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -82,10 +82,12 @@ def ar_aging():
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
-    # Get all posted invoices that are not fully paid
+    # Get all posted invoices that are not fully paid — scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
     invoices = SalesInvoice.query.filter(
         SalesInvoice.status == 'posted',
-        SalesInvoice.balance_due > 0
+        SalesInvoice.balance > 0,
+        SalesInvoice.branch_id == current_branch_id
     ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
 
     # Group by customer
@@ -113,13 +115,13 @@ def ar_aging():
             'invoice_number': invoice.invoice_number,
             'invoice_date': invoice.invoice_date,
             'due_date': invoice.due_date,
-            'balance_due': invoice.balance_due,
+            'balance_due': invoice.balance,
             'bucket': bucket,
             'days_overdue': (as_of_date - invoice.due_date).days if invoice.due_date else 0
         })
 
-        customers[customer_name][bucket] += invoice.balance_due
-        customers[customer_name]['total'] += invoice.balance_due
+        customers[customer_name][bucket] += invoice.balance
+        customers[customer_name]['total'] += invoice.balance
 
     # Calculate grand totals
     grand_totals = {
@@ -159,10 +161,12 @@ def ap_aging():
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
-    # Get all posted bills that are not fully paid
+    # Get all posted bills that are not fully paid — scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
     bills = PurchaseBill.query.filter(
         PurchaseBill.status == 'posted',
-        PurchaseBill.balance_due > 0
+        PurchaseBill.balance > 0,
+        PurchaseBill.branch_id == current_branch_id
     ).order_by(PurchaseBill.vendor_name, PurchaseBill.due_date).all()
 
     # Group by vendor
@@ -190,13 +194,13 @@ def ap_aging():
             'bill_number': bill.bill_number,
             'bill_date': bill.bill_date,
             'due_date': bill.due_date,
-            'balance_due': bill.balance_due,
+            'balance_due': bill.balance,
             'bucket': bucket,
             'days_overdue': (as_of_date - bill.due_date).days if bill.due_date else 0
         })
 
-        vendors[vendor_name][bucket] += bill.balance_due
-        vendors[vendor_name]['total'] += bill.balance_due
+        vendors[vendor_name][bucket] += bill.balance
+        vendors[vendor_name]['total'] += bill.balance
 
     # Calculate grand totals
     grand_totals = {
@@ -249,8 +253,8 @@ def bir_sales():
     """Summary List of Sales (Annex A) - Monthly VAT Sales"""
     year = request.args.get('year', datetime.now().year, type=int)
     month = request.args.get('month', datetime.now().month, type=int)
-
-    sales_data = get_summary_list_of_sales(year, month)
+    current_branch_id = session.get('selected_branch_id')
+    sales_data = get_summary_list_of_sales(year, month, branch_id=current_branch_id)
 
     return render_template('reports/bir_sales.html',
                          sales_data=sales_data,
@@ -266,8 +270,8 @@ def bir_sales_export_excel():
     """Export Summary List of Sales to Excel"""
     year = request.args.get('year', datetime.now().year, type=int)
     month = request.args.get('month', datetime.now().month, type=int)
-
-    sales_data = get_summary_list_of_sales(year, month)
+    current_branch_id = session.get('selected_branch_id')
+    sales_data = get_summary_list_of_sales(year, month, branch_id=current_branch_id)
 
     columns = ['customer_tin', 'customer_name', 'customer_address', 'vatable_sales',
                'vat_exempt_sales', 'zero_rated_sales', 'vat_amount', 'gross_sales']
@@ -287,8 +291,8 @@ def bir_purchases():
     """Summary List of Purchases (Annex B) - Monthly VAT Purchases"""
     year = request.args.get('year', datetime.now().year, type=int)
     month = request.args.get('month', datetime.now().month, type=int)
-
-    purchases_data = get_summary_list_of_purchases(year, month)
+    current_branch_id = session.get('selected_branch_id')
+    purchases_data = get_summary_list_of_purchases(year, month, branch_id=current_branch_id)
 
     return render_template('reports/bir_purchases.html',
                          purchases_data=purchases_data,
@@ -304,8 +308,8 @@ def bir_purchases_export_excel():
     """Export Summary List of Purchases to Excel"""
     year = request.args.get('year', datetime.now().year, type=int)
     month = request.args.get('month', datetime.now().month, type=int)
-
-    purchases_data = get_summary_list_of_purchases(year, month)
+    current_branch_id = session.get('selected_branch_id')
+    purchases_data = get_summary_list_of_purchases(year, month, branch_id=current_branch_id)
 
     columns = ['vendor_tin', 'vendor_name', 'vendor_address', 'vendor_invoice_number',
                'vatable_purchases', 'vat_exempt_purchases', 'zero_rated_purchases',
@@ -326,8 +330,8 @@ def bir_alphalist():
     """Alphalist of Payees - Quarterly Withholding Tax Report"""
     year = request.args.get('year', datetime.now().year, type=int)
     quarter = request.args.get('quarter', ((datetime.now().month - 1) // 3) + 1, type=int)
-
-    payees_data = get_alphalist_of_payees(year, quarter)
+    current_branch_id = session.get('selected_branch_id')
+    payees_data = get_alphalist_of_payees(year, quarter, branch_id=current_branch_id)
 
     return render_template('reports/bir_alphalist.html',
                          payees_data=payees_data,
@@ -344,8 +348,8 @@ def bir_alphalist_export_excel():
     """Export Alphalist of Payees to Excel"""
     year = request.args.get('year', datetime.now().year, type=int)
     quarter = request.args.get('quarter', ((datetime.now().month - 1) // 3) + 1, type=int)
-
-    payees_data = get_alphalist_of_payees(year, quarter)
+    current_branch_id = session.get('selected_branch_id')
+    payees_data = get_alphalist_of_payees(year, quarter, branch_id=current_branch_id)
 
     columns = ['payee_tin', 'payee_name', 'payee_address', 'atc_code',
                'tax_rate', 'gross_income', 'tax_withheld', 'month_paid']
@@ -371,8 +375,9 @@ def trial_balance():
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
-    # Generate trial balance
-    trial_balance_data = generate_trial_balance(as_of_date)
+    # Generate trial balance — scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=current_branch_id)
 
     return render_template('reports/trial_balance.html',
                          trial_balance=trial_balance_data,
@@ -387,7 +392,8 @@ def trial_balance_export_excel():
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
-    trial_balance_data = generate_trial_balance(as_of_date)
+    current_branch_id = session.get('selected_branch_id')
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=current_branch_id)
 
     columns = ['code', 'name', 'debit_balance', 'credit_balance']
     headers = ['Account Code', 'Account Name', 'Debit', 'Credit']
@@ -411,8 +417,9 @@ def income_statement():
     start_date = date.fromisoformat(start_str)
     end_date = date.fromisoformat(end_str)
 
-    # Generate income statement
-    income_stmt_data = generate_income_statement(start_date, end_date)
+    # Generate income statement — scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
+    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=current_branch_id)
 
     return render_template('reports/income_statement.html',
                          income_statement=income_stmt_data,
@@ -432,7 +439,8 @@ def income_statement_export_excel():
     start_date = date.fromisoformat(start_str)
     end_date = date.fromisoformat(end_str)
 
-    income_stmt_data = generate_income_statement(start_date, end_date)
+    current_branch_id = session.get('selected_branch_id')
+    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=current_branch_id)
 
     # Combine revenue and expenses for export
     data = []
@@ -473,8 +481,9 @@ def balance_sheet():
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
-    # Generate balance sheet
-    balance_sheet_data = generate_balance_sheet(as_of_date)
+    # Generate balance sheet — scoped to current branch
+    current_branch_id = session.get('selected_branch_id')
+    balance_sheet_data = generate_balance_sheet(as_of_date, branch_id=current_branch_id)
 
     return render_template('reports/balance_sheet.html',
                          balance_sheet=balance_sheet_data,
@@ -489,7 +498,8 @@ def balance_sheet_export_excel():
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
-    balance_sheet_data = generate_balance_sheet(as_of_date)
+    current_branch_id = session.get('selected_branch_id')
+    balance_sheet_data = generate_balance_sheet(as_of_date, branch_id=current_branch_id)
 
     # Combine assets, liabilities, and equity for export
     data = []

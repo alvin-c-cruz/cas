@@ -18,7 +18,7 @@ from app.customers.models import Customer
 from app.vendors.models import Vendor
 
 
-def get_summary_list_of_sales(year, month):
+def get_summary_list_of_sales(year, month, branch_id=None):
     """
     Generate Summary List of Sales (Annex A) - VAT Sales Report
 
@@ -27,16 +27,20 @@ def get_summary_list_of_sales(year, month):
     Args:
         year: Year (e.g., 2026)
         month: Month (1-12)
+        branch_id: Branch to filter by (None = all branches)
 
     Returns:
         List of dicts with sales summary by customer
     """
     # Query posted sales invoices for the specified month
-    invoices = SalesInvoice.query.filter(
+    query = SalesInvoice.query.filter(
         extract('year', SalesInvoice.invoice_date) == year,
         extract('month', SalesInvoice.invoice_date) == month,
         SalesInvoice.status.in_(['posted', 'paid', 'partially_paid'])
-    ).all()
+    )
+    if branch_id:
+        query = query.filter(SalesInvoice.branch_id == branch_id)
+    invoices = query.all()
 
     # Group by customer and calculate totals
     customer_totals = {}
@@ -87,7 +91,7 @@ def get_summary_list_of_sales(year, month):
     return summary
 
 
-def get_summary_list_of_purchases(year, month):
+def get_summary_list_of_purchases(year, month, branch_id=None):
     """
     Generate Summary List of Purchases (Annex B) - VAT Purchases Report
 
@@ -96,16 +100,20 @@ def get_summary_list_of_purchases(year, month):
     Args:
         year: Year (e.g., 2026)
         month: Month (1-12)
+        branch_id: Branch to filter by (None = all branches)
 
     Returns:
         List of dicts with purchases summary by vendor
     """
     # Query posted purchase bills for the specified month
-    bills = PurchaseBill.query.filter(
+    query = PurchaseBill.query.filter(
         extract('year', PurchaseBill.bill_date) == year,
         extract('month', PurchaseBill.bill_date) == month,
         PurchaseBill.status.in_(['posted', 'paid', 'partially_paid'])
-    ).all()
+    )
+    if branch_id:
+        query = query.filter(PurchaseBill.branch_id == branch_id)
+    bills = query.all()
 
     # Group by vendor and calculate totals
     vendor_totals = {}
@@ -167,7 +175,7 @@ def get_summary_list_of_purchases(year, month):
     return summary
 
 
-def get_alphalist_of_payees(year, quarter):
+def get_alphalist_of_payees(year, quarter, branch_id=None):
     """
     Generate Alphalist of Payees - Quarterly Withholding Tax Report
 
@@ -176,6 +184,7 @@ def get_alphalist_of_payees(year, quarter):
     Args:
         year: Year (e.g., 2026)
         quarter: Quarter (1-4)
+        branch_id: Branch to filter by (None = all branches)
 
     Returns:
         List of dicts with withholding tax summary by payee
@@ -185,13 +194,16 @@ def get_alphalist_of_payees(year, quarter):
     end_month = start_month + 2
 
     # Query purchase bills with withholding tax
-    bills = PurchaseBill.query.filter(
+    query = PurchaseBill.query.filter(
         extract('year', PurchaseBill.bill_date) == year,
         extract('month', PurchaseBill.bill_date) >= start_month,
         extract('month', PurchaseBill.bill_date) <= end_month,
         PurchaseBill.status.in_(['posted', 'paid', 'partially_paid']),
         PurchaseBill.withholding_tax_amount > 0
-    ).all()
+    )
+    if branch_id:
+        query = query.filter(PurchaseBill.branch_id == branch_id)
+    bills = query.all()
 
     # Group by vendor (payee) and calculate totals
     payee_totals = {}

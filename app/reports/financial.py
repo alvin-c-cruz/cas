@@ -18,7 +18,7 @@ from app.accounts.models import Account
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 
 
-def generate_trial_balance(as_of_date=None):
+def generate_trial_balance(as_of_date=None, branch_id=None):
     """
     Generate Trial Balance as of a specific date
 
@@ -49,12 +49,14 @@ def generate_trial_balance(as_of_date=None):
     for account in accounts:
         # Calculate balance for this account from journal entry lines
         # Get all posted journal entries up to the as_of_date
+        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
         debit_sum = db.session.query(
             func.sum(JournalEntryLine.debit_amount)
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         credit_sum = db.session.query(
@@ -62,7 +64,8 @@ def generate_trial_balance(as_of_date=None):
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         # Calculate net balance
@@ -101,7 +104,7 @@ def generate_trial_balance(as_of_date=None):
     }
 
 
-def generate_income_statement(start_date, end_date):
+def generate_income_statement(start_date, end_date, branch_id=None):
     """
     Generate Income Statement (Profit & Loss) for a period
 
@@ -142,13 +145,15 @@ def generate_income_statement(start_date, end_date):
     for account in revenue_accounts:
         # Revenue accounts have credit normal balance
         # Credit increases revenue, debit decreases
+        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
         debit_sum = db.session.query(
             func.sum(JournalEntryLine.debit_amount)
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         credit_sum = db.session.query(
@@ -157,7 +162,8 @@ def generate_income_statement(start_date, end_date):
             JournalEntry.status == 'posted',
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         # Net revenue = credits - debits
@@ -177,13 +183,15 @@ def generate_income_statement(start_date, end_date):
     for account in expense_accounts:
         # Expense accounts have debit normal balance
         # Debit increases expense, credit decreases
+        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
         debit_sum = db.session.query(
             func.sum(JournalEntryLine.debit_amount)
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         credit_sum = db.session.query(
@@ -192,7 +200,8 @@ def generate_income_statement(start_date, end_date):
             JournalEntry.status == 'posted',
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         # Net expense = debits - credits
@@ -220,7 +229,7 @@ def generate_income_statement(start_date, end_date):
     }
 
 
-def generate_balance_sheet(as_of_date=None):
+def generate_balance_sheet(as_of_date=None, branch_id=None):
     """
     Generate Balance Sheet as of a specific date
 
@@ -273,12 +282,14 @@ def generate_balance_sheet(as_of_date=None):
 
     for account in asset_accounts:
         # Assets have debit normal balance
+        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
         debit_sum = db.session.query(
             func.sum(JournalEntryLine.debit_amount)
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         credit_sum = db.session.query(
@@ -286,7 +297,8 @@ def generate_balance_sheet(as_of_date=None):
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         balance = debit_sum - credit_sum
@@ -305,12 +317,14 @@ def generate_balance_sheet(as_of_date=None):
 
     for account in liability_accounts:
         # Liabilities have credit normal balance
+        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
         debit_sum = db.session.query(
             func.sum(JournalEntryLine.debit_amount)
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         credit_sum = db.session.query(
@@ -318,7 +332,8 @@ def generate_balance_sheet(as_of_date=None):
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         balance = credit_sum - debit_sum
@@ -337,12 +352,14 @@ def generate_balance_sheet(as_of_date=None):
 
     for account in equity_accounts:
         # Equity has credit normal balance
+        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
         debit_sum = db.session.query(
             func.sum(JournalEntryLine.debit_amount)
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         credit_sum = db.session.query(
@@ -350,7 +367,8 @@ def generate_balance_sheet(as_of_date=None):
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id
+            JournalEntryLine.account_id == account.id,
+            *branch_filter
         ).scalar() or Decimal('0.00')
 
         balance = credit_sum - debit_sum
@@ -365,7 +383,7 @@ def generate_balance_sheet(as_of_date=None):
 
     # Calculate net income YTD and add to equity
     year_start = date(as_of_date.year, 1, 1)
-    income_stmt = generate_income_statement(year_start, as_of_date)
+    income_stmt = generate_income_statement(year_start, as_of_date, branch_id=branch_id)
     net_income_ytd = Decimal(str(income_stmt['net_income']))
 
     # Add net income to equity
