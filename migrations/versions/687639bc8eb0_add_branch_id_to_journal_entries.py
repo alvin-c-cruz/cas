@@ -17,15 +17,21 @@ depends_on = None
 
 
 def upgrade():
-    # Get the first branch ID to use as default
+    # Determine a default branch ID to satisfy the NOT NULL column.
     connection = op.get_bind()
-    result = connection.execute(sa.text("SELECT id FROM branches ORDER BY id LIMIT 1"))
-    first_branch = result.fetchone()
+    first_branch = connection.execute(
+        sa.text("SELECT id FROM branches ORDER BY id LIMIT 1")
+    ).fetchone()
 
-    if not first_branch:
-        raise Exception("No branches found in database. Cannot add branch_id to journal_entries.")
-
-    default_branch_id = first_branch[0]
+    if first_branch:
+        default_branch_id = first_branch[0]
+    else:
+        # Fresh database (e.g. new dev setup or CI): no branches exist yet.
+        # journal_entries is necessarily empty too, so the server_default is
+        # only needed to satisfy NOT NULL during the ALTER -- no existing rows
+        # are backfilled, and it is stripped again below. Fall back to a
+        # placeholder so the migration chain runs end-to-end on an empty DB.
+        default_branch_id = 1
 
     # Add branch_id column with default value (SQLite doesn't support ALTER COLUMN)
     # Use the WITH DEFAULT clause to set existing rows
