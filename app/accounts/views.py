@@ -44,12 +44,44 @@ def list_accounts():
     """Chart of Accounts - List all accounts"""
     accounts = Account.query.order_by(Account.code).all()
 
-    # Get pending change requests for display
+    id_to_account = {a.id: a for a in accounts}
+    has_children = {a.parent_id for a in accounts if a.parent_id}
+
+    depth_cache = {}
+
+    def get_depth(account_id):
+        if account_id in depth_cache:
+            return depth_cache[account_id]
+        acct = id_to_account.get(account_id)
+        if not acct or not acct.parent_id:
+            depth_cache[account_id] = 0
+            return 0
+        d = 1 + get_depth(acct.parent_id)
+        depth_cache[account_id] = d
+        return d
+
+    account_rows = [
+        {
+            'account': a,
+            'depth': get_depth(a.id),
+            'is_header': a.id in has_children,
+        }
+        for a in accounts
+    ]
+
+    # Posting account counts per type (for summary cards)
+    type_counts = {}
+    for row in account_rows:
+        if not row['is_header']:
+            t = row['account'].account_type
+            type_counts[t] = type_counts.get(t, 0) + 1
+
     pending_requests = AccountChangeRequest.query.filter_by(status='pending').all()
 
     return render_template('accounts/list.html',
-                         accounts=accounts,
-                         pending_requests=pending_requests)
+                           account_rows=account_rows,
+                           type_counts=type_counts,
+                           pending_requests=pending_requests)
 
 
 @accounts_bp.route('/create', methods=['GET', 'POST'])

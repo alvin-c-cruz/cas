@@ -2,128 +2,141 @@
 {% from "macros.html" import render_flash_messages %}
 
 {% block title %}Chart of Accounts - CAS{% endblock %}
-
 {% block page_title %}Chart of Accounts{% endblock %}
 
 {% block content %}
 
 {{ render_flash_messages() }}
 
-{# (label, key, icon, icon-color-class) — order drives cards and tabs #}
-{% set coa_types = [
-    ('Asset', 'asset', '💎', 'ic-blue'),
-    ('Liability', 'liability', '📉', 'ic-red'),
-    ('Equity', 'equity', '🏛️', 'ic-purple'),
-    ('Revenue', 'revenue', '📈', 'ic-green'),
-    ('Expense', 'expense', '💸', 'ic-amber')
-] %}
-
-<!-- Header with Add Button -->
-<div class="page-header-actions">
+<!-- Page header -->
+<div class="page-header-actions" style="margin-bottom: 20px;">
     <div>
         <h2 class="page-heading">Chart of Accounts</h2>
         <p class="page-subheading">Manage your company's chart of accounts</p>
     </div>
     {% if current_user.role in ['accountant', 'admin'] %}
-    <div style="display: flex; gap: 10px;">
+    <div style="display: flex; gap: 10px; align-items: center;">
         {% if pending_requests %}
         <a href="{{ url_for('accounts.pending_approvals') }}" class="btn btn-warning">
             <span class="btn-icon">⏳</span> Pending Approvals ({{ pending_requests|length }})
         </a>
         {% endif %}
-        <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">
-            ＋ Add Account
-        </a>
+        <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">＋ Add Account</a>
     </div>
     {% endif %}
 </div>
 
-<!-- Summary cards (click to filter) -->
-<div class="stat-grid coa-stat-grid">
-    {% for label, key, icon, ic in coa_types %}
-    {% set count = accounts | selectattr('account_type', 'equalto', label) | list | length %}
-    <div class="stat-card clickable coa-card" data-coa-filter="{{ key }}" role="button" tabindex="0"
-         aria-label="Filter by {{ label }}">
-        <div class="stat-icon-wrap {{ ic }}">{{ icon }}</div>
-        <div class="stat-label">{{ label }}</div>
-        <div class="stat-value">{{ count }}</div>
-        <div class="stat-sub">accounts</div>
+<!-- Summary cards -->
+<div class="coa-cards">
+    {% set card_types = [
+        ('Asset',     'asset',     '🏦', 'Assets'),
+        ('Liability', 'liability', '📋', 'Liabilities'),
+        ('Equity',    'equity',    '🏢', 'Equity'),
+        ('Revenue',   'revenue',   '📈', 'Revenue'),
+        ('Expense',   'expense',   '📉', 'Expenses'),
+    ] %}
+    {% for type_key, css_key, icon, label in card_types %}
+    <div class="coa-card coa-card-{{ css_key }}" onclick="setTab('{{ type_key }}')" role="button" tabindex="0" aria-label="Filter by {{ label }}">
+        <div class="coa-card-icon">{{ icon }}</div>
+        <div class="coa-card-body">
+            <div class="coa-card-count" id="count-{{ type_key }}">{{ type_counts.get(type_key, 0) }}</div>
+            <div class="coa-card-label">{{ label }}</div>
+        </div>
     </div>
     {% endfor %}
 </div>
 
-<!-- Filter tabs + live search -->
-<div class="coa-toolbar">
-    <div class="tabs coa-tabs">
-        <div class="tab active" data-coa-filter="all">All <span class="coa-tab-count">({{ accounts|length }})</span></div>
-        {% for label, key, icon, ic in coa_types %}
-        {% set count = accounts | selectattr('account_type', 'equalto', label) | list | length %}
-        <div class="tab" data-coa-filter="{{ key }}">{{ label }} <span class="coa-tab-count">({{ count }})</span></div>
-        {% endfor %}
+<!-- Filter bar: tabs + search -->
+<div class="coa-filter-bar">
+    <div class="coa-tabs" role="tablist">
+        <button class="coa-tab active" data-type="all"       onclick="setTab('all')"       role="tab">All</button>
+        <button class="coa-tab"        data-type="Asset"     onclick="setTab('Asset')"     role="tab">Assets</button>
+        <button class="coa-tab"        data-type="Liability" onclick="setTab('Liability')" role="tab">Liabilities</button>
+        <button class="coa-tab"        data-type="Equity"    onclick="setTab('Equity')"    role="tab">Equity</button>
+        <button class="coa-tab"        data-type="Revenue"   onclick="setTab('Revenue')"   role="tab">Revenue</button>
+        <button class="coa-tab"        data-type="Expense"   onclick="setTab('Expense')"   role="tab">Expenses</button>
     </div>
-    <input type="text" id="coaSearch" class="form-control coa-search"
-           placeholder="🔍 Search by code or name..." autocomplete="off">
+    <div class="coa-search-wrap">
+        <span class="coa-search-icon">🔍</span>
+        <input type="text" id="coa-search" class="coa-search-input"
+               placeholder="Search by name or code…"
+               oninput="filterAccounts()" autocomplete="off">
+        <button class="coa-search-clear" id="coa-search-clear" onclick="clearSearch()" aria-label="Clear search" style="display:none;">✕</button>
+    </div>
 </div>
 
-<!-- Accounts Table -->
-<div class="card">
-    <div class="table-wrap">
-        <table id="coaTable">
+<!-- Accounts table -->
+<div class="card" style="overflow: hidden;">
+    <div id="coa-no-results" class="coa-empty" style="display: none;">
+        <div style="font-size: 2rem; margin-bottom: 8px;">🔍</div>
+        <div>No accounts match your search.</div>
+    </div>
+    <div class="table-wrap" id="coa-table-wrap">
+        <table id="coa-table">
             <thead>
                 <tr>
-                    <th style="width: 120px;">Code</th>
+                    <th style="width: 110px;">Code</th>
                     <th>Account Name</th>
-                    <th style="width: 140px;">Type</th>
-                    <th style="width: 140px;">Classification</th>
-                    <th style="width: 120px;">Normal Balance</th>
-                    <th style="width: 180px; text-align: center;">Actions</th>
+                    <th style="width: 90px;">Type</th>
+                    <th style="width: 130px;">Classification</th>
+                    <th style="width: 100px;">Normal Balance</th>
+                    <th style="width: 120px; text-align: center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                {% if accounts %}
-                    {% for account in accounts %}
-                    <tr class="account-row coa-row account-type-{{ account.account_type.lower() }} {% if account.parent_id %}account-child{% else %}account-parent{% endif %}"
-                        data-type="{{ account.account_type.lower() }}"
-                        data-search="{{ (account.code ~ ' ' ~ account.name) | lower }}">
-                        <td class="account-code">{{ account.code }}</td>
+                {% if account_rows %}
+                    {% for row in account_rows %}
+                    {% set account = row.account %}
+                    <tr class="account-row {% if row.is_header %}account-group-row{% else %}account-posting-row{% endif %}"
+                        data-type="{{ account.account_type }}"
+                        data-code="{{ account.code }}"
+                        data-name="{{ account.name | lower }}">
+                        <td class="account-code {% if row.is_header %}account-code-group{% endif %}">
+                            {{ account.code }}
+                        </td>
                         <td>
-                            <div class="account-name-wrapper {% if account.parent_id %}account-name-child{% endif %}">
-                                {% if account.parent_id %}
+                            <div class="account-name-wrapper" style="padding-left: {{ row.depth * 18 }}px;">
+                                {% if row.depth > 0 %}
                                 <span class="child-indicator">└─</span>
                                 {% endif %}
-                                <div class="account-name">{{ account.name }}</div>
+                                <div class="account-name {% if row.is_header %}account-name-group{% endif %}">{{ account.name }}</div>
                             </div>
                             {% if account.description %}
-                            <div class="account-desc {% if account.parent_id %}account-desc-child{% endif %}">{{ account.description[:50] }}{% if account.description|length > 50 %}...{% endif %}</div>
+                            <div class="account-desc" style="padding-left: {{ row.depth * 18 + (12 if row.depth > 0 else 0) }}px;">
+                                {{ account.description[:60] }}{% if account.description|length > 60 %}…{% endif %}
+                            </div>
                             {% endif %}
                         </td>
                         <td>
+                            {% if row.is_header %}
+                            <span class="badge badge-group">GROUP</span>
+                            {% else %}
                             <span class="badge badge-{{ account.account_type.lower() }}">{{ account.account_type }}</span>
+                            {% endif %}
                         </td>
-                        <td class="account-classification">
-                            {% if account.classification %}
-                            {{ account.classification }}
+                        <td class="account-classification">{{ account.classification or '—' }}</td>
+                        <td>
+                            {% if not row.is_header %}
+                                {% if account.normal_balance == 'Debit' %}
+                                <span class="balance-debit">Dr</span>
+                                {% else %}
+                                <span class="balance-credit">Cr</span>
+                                {% endif %}
                             {% else %}
                             —
                             {% endif %}
                         </td>
-                        <td>
-                            {% if account.normal_balance == 'Debit' %}
-                            <span class="balance-debit">Dr</span>
-                            {% else %}
-                            <span class="balance-credit">Cr</span>
-                            {% endif %}
-                        </td>
                         <td style="text-align: center;">
-                            <div class="action-buttons" style="justify-content: center;">
+                            <div class="action-buttons">
                                 <a href="{{ url_for('accounts.view', id=account.id) }}" class="btn-icon" title="View">👁️</a>
                                 {% if current_user.role in ['accountant', 'admin'] %}
                                 <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn-icon" title="Edit">✏️</a>
+                                {% if row.is_header %}
+                                <span class="btn-icon btn-icon-disabled" title="Remove all sub-accounts before deleting this group">🗑️</span>
+                                {% else %}
                                 <button type="button" class="btn-icon" title="Delete"
-                                        data-open-modal="deleteAccountModal"
-                                        data-acct-url="{{ url_for('accounts.delete', id=account.id) }}"
-                                        data-acct-code="{{ account.code }}"
-                                        data-acct-name="{{ account.name }}">🗑️</button>
+                                        onclick="showDeleteModal({{ account.id }}, '{{ account.code }}', '{{ account.name | e }}')">🗑️</button>
+                                {% endif %}
                                 {% endif %}
                             </div>
                         </td>
@@ -137,139 +150,271 @@
                         </td>
                     </tr>
                 {% endif %}
-                <!-- No-results row (shown by JS when filters match nothing) -->
-                <tr id="coaNoResults" style="display: none;">
-                    <td colspan="6" class="empty-state-cell">
-                        <div class="empty-icon">🔍</div>
-                        <div>No accounts match the current filter.</div>
-                    </td>
-                </tr>
             </tbody>
         </table>
     </div>
-    <div id="coaCount" class="coa-count"></div>
+    <div id="coa-visible-count" class="coa-row-count"></div>
 </div>
 
-<!-- Delete confirmation modal (no JS confirm(); CSRF-protected) -->
-<div class="overlay" id="deleteAccountModal">
-    <div class="modal modal-sm">
-        <div class="modal-header">
-            <span class="modal-title">Delete Account</span>
-            <button type="button" class="modal-close" data-close-modal="deleteAccountModal" aria-label="Close">×</button>
-        </div>
-        <form id="deleteAccountForm" method="POST" action="">
+<!-- Delete modal -->
+<div id="delete-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Delete Account</h3>
+        <p id="delete-modal-message" style="margin-bottom: 20px; color: #374151;"></p>
+        <form id="delete-form" method="POST" action="">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="modal-body">
-                <p id="deleteAccountMsg">Are you sure you want to delete this account?</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-close-modal="deleteAccountModal">Cancel</button>
-                <button type="submit" class="btn btn-danger">Delete Account</button>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Confirm Delete</button>
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
             </div>
         </form>
     </div>
 </div>
 
-{% endblock %}
-
-{% block extra_css %}
 <style>
-    /* Option A homepage — layout only; colors use design tokens */
-    .coa-stat-grid { grid-template-columns: repeat(5, 1fr); }
-    .stat-card.clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
-    .stat-card.clickable:hover { border-color: var(--blue); }
-    .stat-card.clickable.active {
-        border-color: var(--blue);
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, .12);
-    }
-    .coa-toolbar {
-        display: flex; align-items: center; justify-content: space-between;
-        gap: 16px; margin-bottom: 14px; flex-wrap: wrap;
-    }
-    .coa-tabs { margin-bottom: 0; flex: 1; }
-    .coa-tab-count { color: var(--text-3); font-weight: 600; }
-    .coa-search { min-width: 240px; max-width: 360px; flex: 0 1 320px; }
-    .coa-count { padding: 12px 18px; font-size: 12px; color: var(--text-3); border-top: 1px solid var(--border); }
+/* ── Summary cards ─────────────────────────────────────────── */
+.coa-cards {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.coa-card {
+    flex: 1;
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.12s;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.coa-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.10); }
+.coa-card.tab-active { border-width: 2px; }
 
-    @media (max-width: 1100px) { .coa-stat-grid { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 760px)  { .coa-stat-grid { grid-template-columns: repeat(2, 1fr); }
-                                 .coa-search { max-width: none; flex-basis: 100%; } }
-    @media (max-width: 480px)  { .coa-stat-grid { grid-template-columns: 1fr; } }
+.coa-card-asset     { border-color: #bfdbfe; }
+.coa-card-liability { border-color: #fecaca; }
+.coa-card-equity    { border-color: #ddd6fe; }
+.coa-card-revenue   { border-color: #bbf7d0; }
+.coa-card-expense   { border-color: #fde68a; }
+
+.coa-card-asset.tab-active     { background: #eff6ff; border-color: #3b82f6; }
+.coa-card-liability.tab-active { background: #fef2f2; border-color: #ef4444; }
+.coa-card-equity.tab-active    { background: #f5f3ff; border-color: #8b5cf6; }
+.coa-card-revenue.tab-active   { background: #f0fdf4; border-color: #22c55e; }
+.coa-card-expense.tab-active   { background: #fffbeb; border-color: #f59e0b; }
+
+.coa-card-icon { font-size: 1.6rem; line-height: 1; }
+.coa-card-count {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #111827;
+}
+.coa-card-label {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+}
+
+/* ── Filter bar ────────────────────────────────────────────── */
+.coa-filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.coa-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.coa-tab {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid #e5e7eb;
+    background: white;
+    color: #6b7280;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .15s;
+    font-weight: 500;
+}
+.coa-tab:hover { border-color: #93c5fd; color: #1d4ed8; background: #eff6ff; }
+.coa-tab.active { background: #2563eb; border-color: #2563eb; color: white; }
+
+.coa-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.coa-search-icon {
+    position: absolute;
+    left: 10px;
+    font-size: 14px;
+    pointer-events: none;
+}
+.coa-search-input {
+    padding: 7px 32px 7px 32px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 13px;
+    width: 240px;
+    outline: none;
+    transition: border-color .15s;
+}
+.coa-search-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
+.coa-search-clear {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+.coa-search-clear:hover { color: #374151; background: #f3f4f6; }
+
+/* ── Row count footer ──────────────────────────────────────── */
+.coa-row-count {
+    padding: 8px 16px;
+    font-size: 12px;
+    color: #9ca3af;
+    border-top: 1px solid #f3f4f6;
+    text-align: right;
+}
+
+/* ── Empty state ───────────────────────────────────────────── */
+.coa-empty {
+    padding: 48px 0;
+    text-align: center;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+/* ── Group rows ────────────────────────────────────────────── */
+.account-group-row { background: #f8f9fa; }
+.account-group-row:hover { background: #f1f3f5; }
+.account-code-group { font-weight: 700; }
+.account-name-group { font-weight: 700; color: #1e293b; }
+.badge-group {
+    background: #e2e8f0; color: #475569;
+    font-size: 10px; font-weight: 600;
+    padding: 2px 6px; border-radius: 4px;
+    letter-spacing: .5px;
+}
+.btn-icon-disabled { opacity: .25; cursor: not-allowed; display: inline-flex; align-items: center; justify-content: center; }
+
+/* ── Delete modal ──────────────────────────────────────────── */
+.modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+.modal-content {
+    background: white; padding: 30px; border-radius: 8px;
+    max-width: 480px; width: 90%;
+}
+.modal-content h3 { margin: 0 0 16px; color: #111827; }
+.btn-danger { background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+.btn-danger:hover { background: #b91c1c; }
+
+/* ── Responsive ────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .coa-card { min-width: 120px; padding: 10px 12px; }
+    .coa-card-icon { font-size: 1.3rem; }
+    .coa-card-count { font-size: 1.3rem; }
+    .coa-search-input { width: 180px; }
+    .coa-filter-bar { flex-direction: column; align-items: flex-start; }
+    .coa-search-wrap { width: 100%; }
+    .coa-search-input { width: 100%; }
+}
 </style>
-{% endblock %}
 
-{% block extra_js %}
 <script>
-(function () {
-    'use strict';
-    var state = { filter: 'all', search: '' };
+const allRows = Array.from(document.querySelectorAll('.account-row'));
+let activeType = 'all';
 
-    var rows = Array.prototype.slice.call(document.querySelectorAll('#coaTable tbody tr.coa-row'));
-    var cards = Array.prototype.slice.call(document.querySelectorAll('.coa-card'));
-    var tabs = Array.prototype.slice.call(document.querySelectorAll('.coa-tabs .tab'));
-    var searchInput = document.getElementById('coaSearch');
-    var countEl = document.getElementById('coaCount');
-    var noResults = document.getElementById('coaNoResults');
-    var total = rows.length;
+function setTab(type) {
+    activeType = type;
+    // Update tab buttons
+    document.querySelectorAll('.coa-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === type);
+    });
+    // Update summary cards
+    document.querySelectorAll('.coa-card').forEach(card => {
+        card.classList.toggle('tab-active', card.onclick && card.onclick.toString().includes(`'${type}'`));
+    });
+    filterAccounts();
+}
 
-    function apply() {
-        var shown = 0;
-        rows.forEach(function (row) {
-            var typeOk = state.filter === 'all' || row.dataset.type === state.filter;
-            var searchOk = !state.search || (row.dataset.search || '').indexOf(state.search) !== -1;
-            var visible = typeOk && searchOk;
-            row.style.display = visible ? '' : 'none';
-            if (visible) shown++;
-        });
-        if (noResults) noResults.style.display = shown === 0 ? '' : 'none';
-        if (countEl) {
-            countEl.textContent = 'Showing ' + shown + ' of ' + total + ' account' + (total === 1 ? '' : 's');
-        }
-    }
+function filterAccounts() {
+    const search = document.getElementById('coa-search').value.toLowerCase().trim();
+    const clearBtn = document.getElementById('coa-search-clear');
+    clearBtn.style.display = search ? '' : 'none';
 
-    function setFilter(filter) {
-        state.filter = filter;
-        tabs.forEach(function (t) { t.classList.toggle('active', t.dataset.coaFilter === filter); });
-        cards.forEach(function (c) { c.classList.toggle('active', c.dataset.coaFilter === filter); });
-        apply();
-    }
-
-    tabs.forEach(function (tab) {
-        tab.addEventListener('click', function () { setFilter(tab.dataset.coaFilter); });
+    let visible = 0;
+    allRows.forEach(row => {
+        const matchesType = activeType === 'all' || row.dataset.type === activeType;
+        const matchesSearch = !search ||
+            row.dataset.code.includes(search) ||
+            row.dataset.name.includes(search);
+        const show = matchesType && matchesSearch;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
     });
 
-    cards.forEach(function (card) {
-        function toggle() {
-            // Clicking the active type card resets to "All"
-            setFilter(state.filter === card.dataset.coaFilter ? 'all' : card.dataset.coaFilter);
-        }
-        card.addEventListener('click', toggle);
-        card.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
-        });
-    });
-
-    if (searchInput) {
-        searchInput.addEventListener('input', function (e) {
-            state.search = e.target.value.trim().toLowerCase();
-            apply();
-        });
+    const total = allRows.length;
+    const countEl = document.getElementById('coa-visible-count');
+    if (search || activeType !== 'all') {
+        countEl.textContent = `Showing ${visible} of ${total} accounts`;
+    } else {
+        countEl.textContent = `${total} accounts total`;
     }
 
-    // Delete modal: populate form action + message from the clicked button.
-    var deleteForm = document.getElementById('deleteAccountForm');
-    var deleteMsg = document.getElementById('deleteAccountMsg');
-    document.querySelectorAll('[data-open-modal="deleteAccountModal"]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            if (deleteForm) deleteForm.action = btn.dataset.acctUrl;
-            if (deleteMsg) {
-                deleteMsg.textContent = 'Are you sure you want to delete ' +
-                    btn.dataset.acctCode + ' – ' + btn.dataset.acctName + '?';
-            }
-        });
-    });
+    const noResults = document.getElementById('coa-no-results');
+    const tableWrap = document.getElementById('coa-table-wrap');
+    noResults.style.display = visible === 0 ? '' : 'none';
+    tableWrap.style.display = visible === 0 ? 'none' : '';
+}
 
-    apply();
-})();
+function clearSearch() {
+    document.getElementById('coa-search').value = '';
+    filterAccounts();
+}
+
+// Keyboard: Enter on summary card acts like click
+document.querySelectorAll('.coa-card').forEach(card => {
+    card.addEventListener('keydown', e => { if (e.key === 'Enter') card.click(); });
+});
+
+// Delete modal
+function showDeleteModal(id, code, name) {
+    document.getElementById('delete-form').action = '/accounts/' + id + '/delete';
+    document.getElementById('delete-modal-message').textContent =
+        'Are you sure you want to delete account ' + code + ' - ' + name + '? This will create a deletion request pending approval.';
+    document.getElementById('delete-modal').style.display = 'flex';
+}
+function closeDeleteModal() {
+    document.getElementById('delete-modal').style.display = 'none';
+}
+document.getElementById('delete-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeDeleteModal();
+});
+
+// Init row count on load
+filterAccounts();
 </script>
+
 {% endblock %}
