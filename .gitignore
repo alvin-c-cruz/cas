@@ -60,6 +60,9 @@ logs/
 .coverage
 htmlcov/
 
+# Playwright MCP artifacts (snapshots, console/network logs)
+.playwright-mcp/
+
 # Temporary files
 *.tmp
 *.bak
