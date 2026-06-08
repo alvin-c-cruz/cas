@@ -182,6 +182,15 @@ def create_app(config_name=None):
 
     migrate.init_app(app, db)
 
+    # Serve favicon at the root so the browser's automatic /favicon.ico
+    # request doesn't 404 on every page.
+    @app.route('/favicon.ico')
+    def favicon():
+        from flask import send_from_directory
+        return send_from_directory(
+            app.static_folder, 'favicon.svg', mimetype='image/svg+xml'
+        )
+
     # Register CLI commands
     @app.cli.command('seed-db')
     def seed_database():
@@ -281,9 +290,9 @@ def create_app(config_name=None):
         csp = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data:; "
-            "font-src 'self' data:; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
             "connect-src 'self'; "
             "frame-ancestors 'self'"
         )
