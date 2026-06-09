@@ -11,6 +11,7 @@ from app.purchase_bills.forms import PurchaseBillForm
 from app.vendors.models import Vendor
 from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
+from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
@@ -267,7 +268,7 @@ def create():
                 vendor_invoice_number=form.vendor_invoice_number.data,
                 vendor_invoice_date=form.vendor_invoice_date.data,
                 payment_terms=form.payment_terms.data,
-                withholding_tax_rate=form.withholding_tax_rate.data or Decimal('0.00'),
+                withholding_tax_rate=Decimal('0.00'),
                 reference=form.reference.data,
                 notes=form.notes.data,
                 status='draft',
@@ -288,6 +289,13 @@ def create():
                         if vat_cat:
                             vat_rate = Decimal(str(vat_cat.rate))
 
+                    wt_id = int(item_data['wt_id']) if item_data.get('wt_id') else None
+                    wt_rate = None
+                    if wt_id:
+                        wt_obj = WithholdingTax.query.get(wt_id)
+                        if wt_obj:
+                            wt_rate = wt_obj.rate
+
                     line_item = PurchaseBillItem(
                         line_number=idx,
                         description=item_data.get('description', ''),
@@ -295,9 +303,10 @@ def create():
                         unit_cost=Decimal(str(item_data.get('unit_cost', 0))),
                         vat_category=vat_category,
                         vat_rate=vat_rate,
-                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None
+                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None,
+                        wt_id=wt_id,
+                        wt_rate=wt_rate,
                     )
-
                     line_item.calculate_amounts()
                     bill.line_items.append(line_item)
 
@@ -386,7 +395,7 @@ def edit(id):
             bill.vendor_invoice_number = form.vendor_invoice_number.data
             bill.vendor_invoice_date = form.vendor_invoice_date.data
             bill.payment_terms = form.payment_terms.data
-            bill.withholding_tax_rate = form.withholding_tax_rate.data or Decimal('0.00')
+            bill.withholding_tax_rate = Decimal('0.00')
             bill.reference = form.reference.data
             bill.notes = form.notes.data
 
@@ -404,6 +413,13 @@ def edit(id):
                         if vat_cat:
                             vat_rate = Decimal(str(vat_cat.rate))
 
+                    wt_id = int(item_data['wt_id']) if item_data.get('wt_id') else None
+                    wt_rate = None
+                    if wt_id:
+                        wt_obj = WithholdingTax.query.get(wt_id)
+                        if wt_obj:
+                            wt_rate = wt_obj.rate
+
                     line_item = PurchaseBillItem(
                         bill_id=bill.id,
                         line_number=idx,
@@ -412,9 +428,10 @@ def edit(id):
                         unit_cost=Decimal(str(item_data.get('unit_cost', 0))),
                         vat_category=vat_category,
                         vat_rate=vat_rate,
-                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None
+                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None,
+                        wt_id=wt_id,
+                        wt_rate=wt_rate,
                     )
-
                     line_item.calculate_amounts()
                     db.session.add(line_item)
 
