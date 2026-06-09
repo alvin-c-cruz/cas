@@ -114,8 +114,10 @@ class PurchaseBill(db.Model):
 
         self.total_before_wt = self.subtotal + self.vat_amount
 
-        # Calculate withholding tax on subtotal (before VAT)
-        self.withholding_tax_amount = self.subtotal * Decimal(str(self.withholding_tax_rate)) / Decimal('100')
+        # Sum WHT from all line items (per-line WHT, vendor-driven)
+        self.withholding_tax_amount = sum(
+            (item.wt_amount or Decimal('0.00')) for item in self.line_items
+        )
 
         # Net payable = Total before WT - Withholding Tax
         self.total_amount = self.total_before_wt - self.withholding_tax_amount
@@ -137,7 +139,6 @@ class PurchaseBill(db.Model):
             'subtotal': float(self.subtotal),
             'vat_amount': float(self.vat_amount),
             'total_before_wt': float(self.total_before_wt),
-            'withholding_tax_rate': float(self.withholding_tax_rate),
             'withholding_tax_amount': float(self.withholding_tax_amount),
             'total_amount': float(self.total_amount),
             'amount_paid': float(self.amount_paid),
@@ -185,13 +186,21 @@ class PurchaseBillItem(db.Model):
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'))
     account = db.relationship('Account')
 
+    # Withholding tax (per line, vendor-driven)
+    wt_id = db.Column(db.Integer, db.ForeignKey('withholding_tax.id'), nullable=True)
+    withholding_tax = db.relationship('WithholdingTax', foreign_keys=[wt_id])
+    wt_rate = db.Column(db.Numeric(5, 2), nullable=True)   # snapshot at bill creation time
+    wt_amount = db.Column(db.Numeric(15, 2), default=Decimal('0.00'), nullable=False)
+
     def __repr__(self):
         return f'<PurchaseBillItem {self.bill_id}-{self.line_number}>'
 
     def calculate_amounts(self):
-        """Calculate line totals and VAT amount."""
+        """Calculate line totals, VAT amount, and WHT amount."""
         self.line_total = Decimal(str(self.quantity)) * Decimal(str(self.unit_cost))
         self.vat_amount = self.line_total * Decimal(str(self.vat_rate)) / Decimal('100')
+        wt_rate = self.wt_rate if self.wt_rate is not None else Decimal('0.00')
+        self.wt_amount = self.line_total * Decimal(str(wt_rate)) / Decimal('100')
 
     def to_dict(self):
         """Convert line item to dictionary."""
@@ -205,5 +214,8 @@ class PurchaseBillItem(db.Model):
             'vat_rate': float(self.vat_rate),
             'line_total': float(self.line_total),
             'vat_amount': float(self.vat_amount),
-            'account_id': self.account_id
+            'account_id': self.account_id,
+            'wt_id': self.wt_id,
+            'wt_rate': float(self.wt_rate) if self.wt_rate is not None else None,
+            'wt_amount': float(self.wt_amount),
         }
