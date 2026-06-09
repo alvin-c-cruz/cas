@@ -47,8 +47,8 @@
             <tbody>
                 {% for vendor in vendors %}
                 <tr>
-                    <td><strong>{{ vendor.code }}</strong></td>
-                    <td>{{ vendor.name }}</td>
+                    <td><a href="{{ url_for('vendors.detail', id=vendor.id) }}" class="vendor-link"><strong>{{ vendor.code }}</strong></a></td>
+                    <td><a href="{{ url_for('vendors.detail', id=vendor.id) }}" class="vendor-link">{{ vendor.name }}</a></td>
                     <td>{{ vendor.contact_person or '—' }}</td>
                     <td>{{ vendor.phone or '—' }}</td>
                     <td>{{ vendor.tin or '—' }}</td>
@@ -221,6 +221,15 @@
 }
 .btn.btn-secondary.btn-sm:hover {
     background: #4b5563;
+}
+
+.vendor-link {
+    color: inherit;
+    text-decoration: none;
+}
+.vendor-link:hover {
+    color: #3b82f6;
+    text-decoration: underline;
 }
 </style>
 
