@@ -54,15 +54,17 @@
                     <td>{{ vendor.tin or '—' }}</td>
                     <td>{{ vendor.payment_terms }}</td>
                     <td>
-                        {% if vendor.default_vat %}
-                        <span class="badge badge-vat">{{ vendor.default_vat }}</span>
+                        {% if vendor.default_vat_category %}
+                        <span class="badge badge-vat">{{ vendor.default_vat_category }}</span>
                         {% else %}
                         —
                         {% endif %}
                     </td>
                     <td>
-                        {% if vendor.default_wt %}
-                        <span class="badge badge-wt">{{ vendor.default_wt }}</span>
+                        {% if vendor.withholding_taxes %}
+                        {% for wt in vendor.withholding_taxes %}
+                        <span class="badge badge-wt">{{ wt.code }}</span>
+                        {% endfor %}
                         {% else %}
                         —
                         {% endif %}
