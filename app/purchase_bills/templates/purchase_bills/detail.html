@@ -55,13 +55,41 @@
 </div>
 {% endif %}
 
+{% if bill.status == 'posted' and bill.amount_paid == 0 %}
+<div id="voidModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Void this bill?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;">This will permanently void <strong>{{ bill.bill_number }}</strong> and create a reversal journal entry. This cannot be undone.</p>
+        <form method="POST" action="{{ url_for('purchase_bills.void', id=bill.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reason for voiding <span style="color:var(--red);">*</span></label>
+                <textarea name="void_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%; resize:vertical;"></textarea>
+            </div>
+            <div style="margin-bottom:24px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reversal Date <span style="color:var(--red);">*</span></label>
+                <input type="date" name="reversal_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required style="width:100%;">
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('voidModal').style.display='none'">Cancel</button>
+                <button type="submit" class="btn btn-danger">Void this Record</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <div class="card">
     <div class="card-header">
         <div style="display:flex; align-items:center; gap:12px;">
             <span style="font-size:20px; font-weight:700;">{{ bill.bill_number }}</span>
-            <span class="badge badge-{{ 'secondary' if bill.status=='draft' else 'info' if bill.status=='posted' else 'success' if bill.status=='paid' else 'warning' if bill.status=='partially_paid' else 'danger' }}">
+            <span class="badge badge-{{ 'secondary' if bill.status=='draft' else 'info' if bill.status=='posted' else 'success' if bill.status=='paid' else 'warning' if bill.status=='partially_paid' else 'danger' if bill.status=='cancelled' else 'dark' }}">
                 {{ bill.status | replace('_', ' ') | title }}
             </span>
+            {% set today = now.date() %}
+            {% if bill.status in ('posted', 'partially_paid') and bill.due_date < today %}
+            <span class="badge" style="background:var(--orange, #f97316); color:white;">Overdue</span>
+            {% endif %}
         </div>
         <div class="card-header-actions">
             {% if bill.status == 'draft' %}
@@ -71,6 +99,9 @@
             {% endif %}
             {% if bill.status != 'cancelled' and bill.amount_paid == 0 and bill.status == 'draft' %}
             <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Bill</button>
+            {% endif %}
+            {% if bill.status == 'posted' and bill.amount_paid == 0 %}
+            <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void Bill</button>
             {% endif %}
             <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">← Back to List</a>
         </div>
@@ -206,6 +237,9 @@
             {% if bill.posted_by %}
              &mdash; Posted by {{ bill.posted_by.username }} on {{ bill.posted_at.strftime('%b %d, %Y %H:%M') if bill.posted_at else '—' }}
             {% endif %}
+            {% if bill.voided_by %}
+             &mdash; Voided by {{ bill.voided_by.username }} on {{ bill.voided_at.strftime('%b %d, %Y %H:%M') if bill.voided_at else '—' }} &mdash; <em>{{ bill.void_reason }}</em>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -217,5 +251,6 @@
 .badge-success { background:var(--green); color:white; }
 .badge-warning { background:var(--yellow, #f59e0b); color:white; }
 .badge-danger { background:var(--red); color:white; }
+.badge-dark { background:#374151; color:white; }
 </style>
 {% endblock %}
