@@ -43,6 +43,8 @@ def make_bill(db_session, vendor, branch, bill_number, due_date, status='posted'
         withholding_tax_rate=Decimal('0.00'),
         withholding_tax_amount=Decimal('0.00'),
         total_amount=total_amount,
+        amount_paid=Decimal('0.00'),
+        balance=total_amount,
         payment_terms='Net 30',
     )
     db_session.add(b)
@@ -82,17 +84,16 @@ class TestApAging:
         assert aging['90_plus'] == Decimal('500.00')
         assert aging['total'] == Decimal('1500.00')
 
-    def test_aging_excludes_draft_and_voided(self, db_session, main_branch):
+    def test_aging_only_counts_posted_bills(self, db_session, main_branch):
         from app.vendors.utils import compute_ap_aging
         vendor = make_vendor(db_session, code='TV002')
         today = ph_now().date()
+        overdue = today - timedelta(days=10)
 
-        make_bill(db_session, vendor, main_branch, 'B006',
-                  due_date=today - timedelta(days=10), status='draft',
-                  total_amount=Decimal('999.00'))
-        make_bill(db_session, vendor, main_branch, 'B007',
-                  due_date=today - timedelta(days=10), status='voided',
-                  total_amount=Decimal('999.00'))
+        for i, status in enumerate(['draft', 'voided', 'cancelled', 'paid']):
+            make_bill(db_session, vendor, main_branch, f'B00{6+i}',
+                      due_date=overdue, status=status,
+                      total_amount=Decimal('999.00'))
         db_session.commit()
 
         aging = compute_ap_aging(vendor.id)
@@ -103,6 +104,11 @@ class TestApAging:
         vendor = make_vendor(db_session, code='TV003')
         db_session.commit()
         aging = compute_ap_aging(vendor.id)
+        assert aging['current'] == Decimal('0.00')
+        assert aging['1_30'] == Decimal('0.00')
+        assert aging['31_60'] == Decimal('0.00')
+        assert aging['61_90'] == Decimal('0.00')
+        assert aging['90_plus'] == Decimal('0.00')
         assert aging['total'] == Decimal('0.00')
 
 
@@ -133,16 +139,10 @@ class TestWhtYtd:
         db_session.add(item_current)
 
         # Prior year bill — must be excluded
-        bill_prior = PurchaseBill(
-            bill_number='B011', vendor_id=vendor.id, vendor_name=vendor.name,
-            vendor_tin='', vendor_address='', branch_id=main_branch.id,
-            bill_date=prior_year_date, due_date=prior_year_date,
-            status='posted', subtotal=Decimal('500.00'),
-            vat_amount=Decimal('0.00'), total_before_wt=Decimal('500.00'),
-            withholding_tax_rate=Decimal('0.00'), withholding_tax_amount=Decimal('50.00'),
-            total_amount=Decimal('450.00'), payment_terms='Net 30',
-        )
-        db_session.add(bill_prior)
+        bill_prior = make_bill(db_session, vendor, main_branch, 'B011',
+                               due_date=prior_year_date, status='posted',
+                               total_amount=Decimal('500.00'))
+        bill_prior.bill_date = prior_year_date  # override to prior year
         db_session.flush()
         item_prior = PurchaseBillItem(
             bill_id=bill_prior.id,
@@ -188,5 +188,6 @@ class TestWhtYtd:
 
         result = compute_wht_ytd(vendor.id)
         codes = {r['code']: r['total'] for r in result}
+        assert len(result) == 2
         assert codes['WC010'] == Decimal('100.00')
         assert codes['WC060'] == Decimal('20.00')
