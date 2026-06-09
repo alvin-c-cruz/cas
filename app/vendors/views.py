@@ -11,6 +11,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.vendors.forms import VendorForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.utils.export import export_to_excel, export_to_csv
+from app.purchase_bills.models import PurchaseBill
 from datetime import datetime
 
 vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
@@ -35,6 +36,62 @@ def list_vendors():
     """List all vendors"""
     vendors = Vendor.query.order_by(Vendor.code).all()
     return render_template('vendors/list.html', vendors=vendors)
+
+
+@vendors_bp.route('/vendors/<int:id>')
+@login_required
+def detail(id):
+    vendor = Vendor.query.get_or_404(id)
+    tab = request.args.get('tab', 'overview')
+    total_bills = PurchaseBill.query.filter_by(vendor_id=id).count()
+
+    if tab == 'bills':
+        page = request.args.get('page', 1, type=int)
+        date_from_str = request.args.get('date_from', '')
+        date_to_str = request.args.get('date_to', '')
+        status_filter = request.args.get('status', 'all')
+
+        query = PurchaseBill.query.filter_by(vendor_id=id)
+        if date_from_str:
+            from datetime import date as date_type
+            try:
+                query = query.filter(PurchaseBill.bill_date >= date_type.fromisoformat(date_from_str))
+            except ValueError:
+                pass
+        if date_to_str:
+            from datetime import date as date_type
+            try:
+                query = query.filter(PurchaseBill.bill_date <= date_type.fromisoformat(date_to_str))
+            except ValueError:
+                pass
+        if status_filter and status_filter != 'all':
+            query = query.filter(PurchaseBill.status == status_filter)
+
+        pagination = query.order_by(PurchaseBill.bill_date.desc()).paginate(
+            page=page, per_page=20, error_out=False
+        )
+        return render_template(
+            'vendors/detail.html',
+            vendor=vendor,
+            tab='bills',
+            total_bills=total_bills,
+            pagination=pagination,
+            date_from=date_from_str,
+            date_to=date_to_str,
+            status_filter=status_filter,
+        )
+    else:
+        from app.vendors.utils import compute_ap_aging, compute_wht_ytd
+        aging = compute_ap_aging(vendor.id)
+        wht_ytd = compute_wht_ytd(vendor.id)
+        return render_template(
+            'vendors/detail.html',
+            vendor=vendor,
+            tab='overview',
+            total_bills=total_bills,
+            aging=aging,
+            wht_ytd=wht_ytd,
+        )
 
 
 def generate_next_vendor_code():
