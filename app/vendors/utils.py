@@ -18,7 +18,7 @@ def compute_ap_aging(vendor_id):
         if bill.due_date is None:
             continue
         days_overdue = (today - bill.due_date).days
-        amount = bill.total_amount or Decimal('0.00')
+        amount = bill.balance or Decimal('0.00')
         if days_overdue <= 0:
             buckets['current'] += amount
         elif days_overdue <= 30:
@@ -55,9 +55,11 @@ def compute_wht_ytd(vendor_id):
         .group_by(PurchaseBillItem.wt_id)
         .all()
     )
+    wt_ids = [row.wt_id for row in rows]
+    wt_map = {wt.id: wt for wt in WithholdingTax.query.filter(WithholdingTax.id.in_(wt_ids)).all()}
     result = []
     for row in rows:
-        wt = WithholdingTax.query.get(row.wt_id)
+        wt = wt_map.get(row.wt_id)
         if wt:
             result.append({'code': wt.code, 'name': wt.name, 'total': row.total or Decimal('0.00')})
     return result
