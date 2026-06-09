@@ -51,15 +51,14 @@ def detail(id):
         date_to_str = request.args.get('date_to', '')
         status_filter = request.args.get('status', 'all')
 
+        from datetime import date as date_type
         query = PurchaseBill.query.filter_by(vendor_id=id)
         if date_from_str:
-            from datetime import date as date_type
             try:
                 query = query.filter(PurchaseBill.bill_date >= date_type.fromisoformat(date_from_str))
             except ValueError:
                 pass
         if date_to_str:
-            from datetime import date as date_type
             try:
                 query = query.filter(PurchaseBill.bill_date <= date_type.fromisoformat(date_to_str))
             except ValueError:
