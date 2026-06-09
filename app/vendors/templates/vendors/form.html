@@ -19,8 +19,16 @@
         <!-- Row 1: Vendor Code, Name, Check Payee Name (3-column layout) -->
         <div class="form-row-3col">
             <div class="form-group">
-                <label for="{{ form.code.id }}">{{ form.code.label.text }}</label>
-                {{ form.code(class="form-control form-control-sm", autocomplete="new-password", readonly=(not vendor), **{'data-lpignore': 'true'}) }}
+                <label for="{{ form.code.id }}">
+                    {{ form.code.label.text }}
+                    {% if vendor %}<span class="field-locked-label">(locked)</span>{% endif %}
+                </label>
+                {{ form.code(
+                    class="form-control form-control-sm" + (" field-locked" if vendor else ""),
+                    autocomplete="new-password",
+                    readonly=(vendor is not none),
+                    **{'data-lpignore': 'true'}
+                ) }}
                 {% if form.code.errors %}
                     <div class="error-message">{{ form.code.errors[0] }}</div>
                 {% endif %}
@@ -431,6 +439,18 @@ textarea.form-control-sm {
     font-size: 16px;
     color: #6b7280;
     text-align: center;
+}
+
+.field-locked {
+    background: #f3f4f6;
+    cursor: not-allowed;
+    color: #6b7280;
+}
+.field-locked-label {
+    font-size: 12px;
+    font-weight: 400;
+    color: #9ca3af;
+    margin-left: 4px;
 }
 
 /* Responsive adjustments */
