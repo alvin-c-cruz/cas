@@ -1,5 +1,10 @@
 """
 CAS (Computerized Accounting System) - Flask Application Entry Point
+
+CAS is a general-purpose, industry-agnostic accounting system for
+Philippine SMEs (BIR-compliant), used by multiple companies across
+different industries. Sample/demo data may use industry-flavored names
+(e.g., construction suppliers), but these are illustrative only.
 """
 import os
 from dotenv import load_dotenv

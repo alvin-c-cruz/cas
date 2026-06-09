@@ -3,6 +3,10 @@ Default data fixtures for database initialization
 
 This module contains all default data that should be loaded when
 initializing a fresh database.
+
+Note: sample company names (e.g., 'Construction Supplies Inc.') are
+illustrative demo data only — CAS itself is industry-agnostic and is
+used by multiple companies across different industries.
 """
 from app import db
 from app.users.models import User

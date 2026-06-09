@@ -1,3 +1,10 @@
+"""
+Application factory for CAS — a general-purpose, BIR-compliant
+computerized accounting system for Philippine SMEs. Industry-agnostic
+and used by multiple companies across different industries: trading,
+services, retail, construction, and any other line of business that
+needs double-entry books.
+"""
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
