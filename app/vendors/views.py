@@ -1,7 +1,7 @@
 """
 Vendor management views (Admin and Accountant only)
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -351,3 +351,23 @@ def export_csv_route():
         headers=headers,
         filename=filename
     )
+
+
+@vendors_bp.route('/vendors/<int:id>/defaults')
+@login_required
+def vendor_defaults(id):
+    """Return vendor's WHT codes and default VAT category for AJAX."""
+    vendor = Vendor.query.get_or_404(id)
+    return jsonify({
+        'withholding_taxes': [
+            {
+                'id': wt.id,
+                'code': wt.code,
+                'name': wt.name,
+                'rate': float(wt.rate),
+            }
+            for wt in vendor.withholding_taxes
+            if wt.is_active
+        ],
+        'default_vat_category': vendor.default_vat_category,
+    })
