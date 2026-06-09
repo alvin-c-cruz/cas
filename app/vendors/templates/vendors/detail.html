@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}{{ vendor.name }} — Vendor{% endblock %}
+{% block page_title %}{{ vendor.name }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+{{ render_flash_messages() }}
+
+<!-- Header: code/status + Edit button -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <span style="color:var(--text-2); font-size:14px; font-weight:500;">{{ vendor.code }}</span>
+        <span class="badge {% if vendor.is_active %}badge-success{% else %}badge-inactive{% endif %}">
+            {{ 'Active' if vendor.is_active else 'Inactive' }}
+        </span>
+    </div>
+    {% if current_user.role in ['accountant', 'admin'] %}
+    <a href="{{ url_for('vendors.edit', id=vendor.id) }}" class="btn btn-primary btn-sm">Edit Vendor</a>
+    {% endif %}
+</div>
+
+<!-- Tab bar -->
+<div class="vendor-tab-bar">
+    <a href="{{ url_for('vendors.detail', id=vendor.id, tab='overview') }}"
+       class="vendor-tab {% if tab == 'overview' %}active{% endif %}">Overview</a>
+    <a href="{{ url_for('vendors.detail', id=vendor.id, tab='bills') }}"
+       class="vendor-tab {% if tab == 'bills' %}active{% endif %}">Bills ({{ total_bills }})</a>
+</div>
+
+{% if tab == 'overview' %}
+<!-- ── OVERVIEW TAB ── -->
+<div class="vendor-overview-grid">
+
+    <!-- Left: Vendor Info -->
+    <div class="card">
+        <div class="card-body">
+            <h4 style="margin:0 0 16px 0; font-size:15px; font-weight:600;">Vendor Information</h4>
+            <table class="vendor-info-table">
+                <tr><td>Code</td><td><strong>{{ vendor.code }}</strong></td></tr>
+                <tr><td>Name</td><td>{{ vendor.name }}</td></tr>
+                <tr><td>Check Payee</td><td>{{ vendor.check_payee_name or '—' }}</td></tr>
+                <tr><td>TIN</td><td>{{ vendor.tin or '—' }}</td></tr>
+                <tr><td>Contact</td><td>{{ vendor.contact_person or '—' }}</td></tr>
+                <tr><td>Phone</td><td>{{ vendor.phone or '—' }}</td></tr>
+                <tr><td>Email</td><td>{{ vendor.email or '—' }}</td></tr>
+                <tr><td>Address</td><td>{{ vendor.address or '—' }}</td></tr>
+                <tr><td>Postal Code</td><td>{{ vendor.postal_code or '—' }}</td></tr>
+                <tr><td>Payment Terms</td><td>{{ vendor.payment_terms }}</td></tr>
+                <tr>
+                    <td>Default VAT</td>
+                    <td>
+                        {% if vendor.default_vat_category %}
+                        <span class="badge badge-vat">{{ vendor.default_vat_category }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Default WHT</td>
+                    <td>
+                        {% for wt in vendor.withholding_taxes %}
+                        <span class="badge badge-wt">{{ wt.code }}</span>
+                        {% else %}—{% endfor %}
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Right: AP Aging + WHT YTD -->
+    <div style="display:flex; flex-direction:column; gap:20px;">
+
+        <div class="card">
+            <div class="card-body">
+                <h4 style="margin:0 0 16px 0; font-size:15px; font-weight:600;">AP Aging (Posted Bills)</h4>
+                <table class="vendor-info-table">
+                    <tr><td>Current (not yet due)</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['current']) }}</td></tr>
+                    <tr><td>1–30 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['1_30']) }}</td></tr>
+                    <tr><td>31–60 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['31_60']) }}</td></tr>
+                    <tr><td>61–90 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['61_90']) }}</td></tr>
+                    <tr><td>90+ days overdue</td><td class="amount-cell" style="color:#ef4444;">₱{{ '{:,.2f}'.format(aging['90_plus']) }}</td></tr>
+                    <tr class="aging-total-row">
+                        <td><strong>Total Outstanding</strong></td>
+                        <td class="amount-cell"><strong>₱{{ '{:,.2f}'.format(aging['total']) }}</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h4 style="margin:0 0 16px 0; font-size:15px; font-weight:600;">WHT Withheld YTD</h4>
+                {% if wht_ytd %}
+                <table class="vendor-info-table">
+                    {% for row in wht_ytd %}
+                    <tr>
+                        <td>{{ row.code }} — {{ row.name }}</td>
+                        <td class="amount-cell">₱{{ '{:,.2f}'.format(row.total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% else %}
+                <p style="color:var(--text-2); font-style:italic; margin:0;">No WHT recorded this calendar year.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- ── BILLS TAB ── -->
+<div style="margin-top:16px;">
+    <form method="GET" action="{{ url_for('vendors.detail', id=vendor.id) }}"
+          style="display:flex; gap:12px; align-items:flex-end; margin-bottom:16px; flex-wrap:wrap;">
+        <input type="hidden" name="tab" value="bills">
+        <div>
+            <label style="font-size:13px; font-weight:500; display:block; margin-bottom:4px;">Date From</label>
+            <input type="date" name="date_from" value="{{ date_from }}"
+                   class="form-control form-control-sm" style="width:160px;">
+        </div>
+        <div>
+            <label style="font-size:13px; font-weight:500; display:block; margin-bottom:4px;">Date To</label>
+            <input type="date" name="date_to" value="{{ date_to }}"
+                   class="form-control form-control-sm" style="width:160px;">
+        </div>
+        <div>
+            <label style="font-size:13px; font-weight:500; display:block; margin-bottom:4px;">Status</label>
+            <select name="status" class="form-control form-control-sm" style="width:150px;">
+                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+                <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+                <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+                <option value="partially_paid" {% if status_filter == 'partially_paid' %}selected{% endif %}>Partially Paid</option>
+                <option value="paid" {% if status_filter == 'paid' %}selected{% endif %}>Paid</option>
+                <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
+                <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-end;">Filter</button>
+        <a href="{{ url_for('vendors.detail', id=vendor.id, tab='bills') }}"
+           class="btn btn-secondary btn-sm" style="align-self:flex-end;">Clear</a>
+    </form>
+
+    <div class="card">
+        <div class="card-body" style="padding:0;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>BILL #</th>
+                        <th>BILL DATE</th>
+                        <th>DUE DATE</th>
+                        <th style="text-align:right;">SUBTOTAL</th>
+                        <th style="text-align:right;">INPUT VAT</th>
+                        <th style="text-align:right;">WHT</th>
+                        <th style="text-align:right;">NET AMOUNT</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bill in pagination.items %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('purchase_bills.view', id=bill.id) }}"
+                               style="color:#3b82f6; text-decoration:none;">
+                                {{ bill.bill_number }}
+                            </a>
+                        </td>
+                        <td>{{ bill.bill_date.strftime('%b %d, %Y') }}</td>
+                        <td>{{ bill.due_date.strftime('%b %d, %Y') }}</td>
+                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.subtotal) }}</td>
+                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</td>
+                        <td style="text-align:right; color:#ef4444;">
+                            {% if bill.withholding_tax_amount > 0 %}
+                            -₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td style="text-align:right; font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_amount) }}</td>
+                        <td>
+                            <span class="badge bill-status-{{ bill.status }}">{{ bill.status | replace('_', ' ') | title }}</span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align:center; color:var(--text-2); padding:32px; font-style:italic;">
+                            No bills found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if pagination.pages > 1 %}
+    <div style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px;">
+        {% if pagination.has_prev %}
+        <a href="{{ url_for('vendors.detail', id=vendor.id, tab='bills', page=pagination.prev_num,
+                            date_from=date_from, date_to=date_to, status=status_filter) }}"
+           class="btn btn-secondary btn-sm">← Previous</a>
+        {% endif %}
+        <span style="font-size:14px; color:var(--text-2);">
+            Page {{ pagination.page }} of {{ pagination.pages }} ({{ pagination.total }} bills)
+        </span>
+        {% if pagination.has_next %}
+        <a href="{{ url_for('vendors.detail', id=vendor.id, tab='bills', page=pagination.next_num,
+                            date_from=date_from, date_to=date_to, status=status_filter) }}"
+           class="btn btn-primary btn-sm">Next →</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<style>
+.vendor-tab-bar {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 20px;
+}
+.vendor-tab {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-2);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+}
+.vendor-tab:hover { color: var(--text); }
+.vendor-tab.active {
+    color: #3b82f6;
+    border-bottom-color: #3b82f6;
+    font-weight: 600;
+}
+.vendor-overview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+.vendor-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.vendor-info-table td { padding: 6px 8px; vertical-align: top; }
+.vendor-info-table td:first-child { color: var(--text-2); width: 40%; white-space: nowrap; }
+.vendor-info-table tr + tr td { border-top: 1px solid var(--border); }
+.amount-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.aging-total-row td { border-top: 2px solid var(--border) !important; padding-top: 10px !important; }
+.bill-status-draft        { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
+.bill-status-posted       { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+.bill-status-partially_paid { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+.bill-status-paid         { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.bill-status-voided       { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+.bill-status-cancelled    { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
+.badge-vat  { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.badge-wt   { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+.badge-success  { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.badge-inactive { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
+.badge { padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; display:inline-block; }
+.btn-sm { padding:6px 16px; font-size:14px; border-radius:5px; font-weight:500; cursor:pointer;
+          border:none; text-decoration:none; display:inline-block; line-height:1.4; }
+.btn-primary { background:#3b82f6; color:white; }
+.btn-primary:hover { background:#2563eb; }
+.btn-secondary { background:#6b7280; color:white; }
+.btn-secondary:hover { background:#4b5563; }
+@media (max-width: 768px) {
+    .vendor-overview-grid { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}

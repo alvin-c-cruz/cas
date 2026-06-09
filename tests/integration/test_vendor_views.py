@@ -113,6 +113,8 @@ class TestVendorDetail:
         assert b'PB-OLD' not in resp.data
 
     def test_staff_can_view_detail(self, client, db_session, staff_user, main_branch):
+        staff_user.set_branches([main_branch])
+        db_session.commit()
         login(client, username='staff', password='staff123')
         vendor = make_vendor(db_session, code='DV006', name='Staff View Vendor')
         resp = client.get(f'/vendors/{vendor.id}')
