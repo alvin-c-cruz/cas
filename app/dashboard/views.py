@@ -54,8 +54,8 @@ def home():
     # Get real financial statistics (filtered by current branch and as_of_date)
     revenue_stats = get_revenue_stats(current_year, current_month, branch_id=current_branch_id, as_of_date=as_of_date)
     expense_stats = get_expense_stats(current_year, current_month, branch_id=current_branch_id, as_of_date=as_of_date)
-    receivables_stats = get_receivables_stats(as_of_date=as_of_date)
-    payables_stats = get_payables_stats(as_of_date=as_of_date)
+    receivables_stats = get_receivables_stats(as_of_date=as_of_date, branch_id=current_branch_id)
+    payables_stats = get_payables_stats(as_of_date=as_of_date, branch_id=current_branch_id)
 
     # Combine into stats dict for template
     stats = {
@@ -72,12 +72,12 @@ def home():
     }
 
     # Get top customers and vendors
-    top_customers = get_top_customers(limit=5, as_of_date=as_of_date)
-    top_vendors = get_top_vendors(limit=5, as_of_date=as_of_date)
+    top_customers = get_top_customers(limit=5, as_of_date=as_of_date, branch_id=current_branch_id)
+    top_vendors = get_top_vendors(limit=5, as_of_date=as_of_date, branch_id=current_branch_id)
 
     # Get chart data
-    revenue_trend = get_monthly_revenue_trend(months=6, as_of_date=as_of_date)
-    expense_breakdown = get_expense_breakdown(as_of_date=as_of_date)
+    revenue_trend = get_monthly_revenue_trend(months=6, as_of_date=as_of_date, branch_id=current_branch_id)
+    expense_breakdown = get_expense_breakdown(as_of_date=as_of_date, branch_id=current_branch_id)
 
     # Action items placeholder (can be enhanced later)
     action_items = []

@@ -150,12 +150,13 @@ def get_expense_stats(year, month, branch_id=None, as_of_date=None):
     }
 
 
-def get_receivables_stats(as_of_date=None):
+def get_receivables_stats(as_of_date=None, branch_id=None):
     """
     Get accounts receivable statistics from sales invoices
 
     Args:
         as_of_date: date - Calculate receivables as of this date (optional, defaults to today)
+        branch_id: int - Branch ID to filter by (optional)
 
     Returns:
         dict with:
@@ -166,11 +167,13 @@ def get_receivables_stats(as_of_date=None):
     if as_of_date is None:
         as_of_date = date.today()
 
-    # Get all unpaid or partially paid invoices created on or before as_of_date
-    unpaid_invoices = SalesInvoice.query.filter(
+    query = SalesInvoice.query.filter(
         SalesInvoice.status.in_(['posted', 'partially_paid']),
         SalesInvoice.invoice_date <= as_of_date
-    ).all()
+    )
+    if branch_id is not None:
+        query = query.filter(SalesInvoice.branch_id == branch_id)
+    unpaid_invoices = query.all()
 
     total_receivable = Decimal('0.00')
     overdue_amount = Decimal('0.00')
@@ -190,12 +193,13 @@ def get_receivables_stats(as_of_date=None):
     }
 
 
-def get_payables_stats(as_of_date=None):
+def get_payables_stats(as_of_date=None, branch_id=None):
     """
     Get accounts payable statistics from purchase bills
 
     Args:
         as_of_date: date - Calculate payables as of this date (optional, defaults to today)
+        branch_id: int - Branch ID to filter by (optional)
 
     Returns:
         dict with:
@@ -206,11 +210,13 @@ def get_payables_stats(as_of_date=None):
     if as_of_date is None:
         as_of_date = date.today()
 
-    # Get all unpaid or partially paid bills created on or before as_of_date
-    unpaid_bills = PurchaseBill.query.filter(
+    query = PurchaseBill.query.filter(
         PurchaseBill.status.in_(['posted', 'partially_paid']),
         PurchaseBill.bill_date <= as_of_date
-    ).all()
+    )
+    if branch_id is not None:
+        query = query.filter(PurchaseBill.branch_id == branch_id)
+    unpaid_bills = query.all()
 
     total_payable = Decimal('0.00')
     overdue_amount = Decimal('0.00')
@@ -230,13 +236,14 @@ def get_payables_stats(as_of_date=None):
     }
 
 
-def get_top_customers(limit=5, as_of_date=None):
+def get_top_customers(limit=5, as_of_date=None, branch_id=None):
     """
     Get top customers by total sales amount
 
     Args:
         limit: Maximum number of customers to return
         as_of_date: date - Consider invoices up to this date (optional, defaults to today)
+        branch_id: int - Branch ID to filter by (optional)
 
     Returns:
         List of dicts with customer info and sales totals
@@ -244,15 +251,17 @@ def get_top_customers(limit=5, as_of_date=None):
     if as_of_date is None:
         as_of_date = date.today()
 
-    # Query sales invoices grouped by customer
-    top_customers_data = db.session.query(
+    query = db.session.query(
         SalesInvoice.customer_name,
         func.sum(SalesInvoice.total_amount).label('total_sales'),
         func.count(SalesInvoice.id).label('invoice_count')
     ).filter(
         SalesInvoice.status.in_(['posted', 'paid', 'partially_paid']),
         SalesInvoice.invoice_date <= as_of_date
-    ).group_by(
+    )
+    if branch_id is not None:
+        query = query.filter(SalesInvoice.branch_id == branch_id)
+    top_customers_data = query.group_by(
         SalesInvoice.customer_name
     ).order_by(
         func.sum(SalesInvoice.total_amount).desc()
@@ -269,13 +278,14 @@ def get_top_customers(limit=5, as_of_date=None):
     return customers
 
 
-def get_top_vendors(limit=5, as_of_date=None):
+def get_top_vendors(limit=5, as_of_date=None, branch_id=None):
     """
     Get top vendors by total purchase amount
 
     Args:
         limit: Maximum number of vendors to return
         as_of_date: date - Consider bills up to this date (optional, defaults to today)
+        branch_id: int - Branch ID to filter by (optional)
 
     Returns:
         List of dicts with vendor info and purchase totals
@@ -283,15 +293,17 @@ def get_top_vendors(limit=5, as_of_date=None):
     if as_of_date is None:
         as_of_date = date.today()
 
-    # Query purchase bills grouped by vendor
-    top_vendors_data = db.session.query(
+    query = db.session.query(
         PurchaseBill.vendor_name,
         func.sum(PurchaseBill.total_amount).label('total_purchases'),
         func.count(PurchaseBill.id).label('bill_count')
     ).filter(
         PurchaseBill.status.in_(['posted', 'paid', 'partially_paid']),
         PurchaseBill.bill_date <= as_of_date
-    ).group_by(
+    )
+    if branch_id is not None:
+        query = query.filter(PurchaseBill.branch_id == branch_id)
+    top_vendors_data = query.group_by(
         PurchaseBill.vendor_name
     ).order_by(
         func.sum(PurchaseBill.total_amount).desc()
@@ -308,13 +320,14 @@ def get_top_vendors(limit=5, as_of_date=None):
     return vendors
 
 
-def get_monthly_revenue_trend(months=6, as_of_date=None):
+def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None):
     """
     Get revenue trend for the last N months
 
     Args:
         months: Number of months to include (default 6)
         as_of_date: date - End date for the trend (optional, defaults to today)
+        branch_id: int - Branch ID to filter by (optional)
 
     Returns:
         dict with labels and data for Chart.js line chart
@@ -351,6 +364,9 @@ def get_monthly_revenue_trend(months=6, as_of_date=None):
             extract('month', JournalEntry.entry_date) == target_month
         )
 
+        if branch_id is not None:
+            month_revenue_query = month_revenue_query.filter(JournalEntry.branch_id == branch_id)
+
         # If this is the month of as_of_date, only include entries up to that date
         if target_year == as_of_date.year and target_month == as_of_date.month:
             month_revenue_query = month_revenue_query.filter(JournalEntry.entry_date <= as_of_date)
@@ -371,12 +387,13 @@ def get_monthly_revenue_trend(months=6, as_of_date=None):
     }
 
 
-def get_expense_breakdown(as_of_date=None):
+def get_expense_breakdown(as_of_date=None, branch_id=None):
     """
     Get expense breakdown by category for pie chart
 
     Args:
         as_of_date: date - Calculate expenses up to this date (optional, defaults to today)
+        branch_id: int - Branch ID to filter by (optional)
 
     Returns:
         dict with labels and data for Chart.js pie chart
@@ -396,15 +413,17 @@ def get_expense_breakdown(as_of_date=None):
         category_code = account.code[:2] + 'xxx'
         category_name = _get_expense_category_name(category_code)
 
-        # Get total for this account (YTD up to as_of_date)
-        account_total = db.session.query(
+        account_total_query = db.session.query(
             func.sum(JournalEntryLine.debit_amount - JournalEntryLine.credit_amount)
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntryLine.account_id == account.id,
             extract('year', JournalEntry.entry_date) == as_of_date.year,
             JournalEntry.entry_date <= as_of_date
-        ).scalar() or Decimal('0.00')
+        )
+        if branch_id is not None:
+            account_total_query = account_total_query.filter(JournalEntry.branch_id == branch_id)
+        account_total = account_total_query.scalar() or Decimal('0.00')
 
         if category_name not in categories:
             categories[category_name] = Decimal('0.00')
