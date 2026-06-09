@@ -71,7 +71,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
   padding: 10px 20px 4px;
   font-size: 10px; font-weight: 700;
   letter-spacing: 1px; text-transform: uppercase;
-  color: #334155;
+  color: #64748b;
 }
 
 .nav-label-collapsible {
@@ -82,11 +82,12 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
   padding: 10px 20px;
   transition: all 0.2s;
   user-select: none;
+  color: #64748b;
 }
 
 .nav-label-collapsible:hover {
   background: var(--sidebar-hover);
-  color: #475569;
+  color: #94a3b8;
 }
 
 .nav-label-arrow {
