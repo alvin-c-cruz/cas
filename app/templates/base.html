@@ -1064,17 +1064,13 @@
                         <span class="nav-icon">📄</span>
                         <span class="nav-text">Sales Invoices</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
-                        <span class="nav-icon">💰</span>
-                        <span class="nav-text">Collections</span>
-                    </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                    <a href="{{ url_for('purchase_bills.list_bills') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('purchase_bills.') %}active{% endif %}">
                         <span class="nav-icon">📋</span>
-                        <span class="nav-text">Accounts Payable</span>
+                        <span class="nav-text">Purchase Bills</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                    <a href="{{ url_for('receipts.list_receipts') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') %}active{% endif %}">
                         <span class="nav-icon">💸</span>
-                        <span class="nav-text">Payments</span>
+                        <span class="nav-text">Receipts & Payments</span>
                     </a>
                 </div>
             </div>
