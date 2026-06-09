@@ -79,12 +79,31 @@
                     <td>
                         {% if current_user.role in ['accountant', 'admin'] %}
                         <div class="action-buttons">
-                            <a href="{{ url_for('vendors.edit', id=vendor.id) }}" class="btn-action btn-action-edit" title="Edit">
-                                Edit
-                            </a>
-                            <form method="POST" action="{{ url_for('vendors.delete', id=vendor.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete vendor {{ vendor.name }}?');">
-                                <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
-                            </form>
+                            <a href="{{ url_for('vendors.edit', id=vendor.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                            <button type="button" class="btn-action btn-action-delete"
+                                    onclick="document.getElementById('delete-modal-{{ vendor.id }}').style.display='flex'">
+                                Delete
+                            </button>
+                        </div>
+                        <!-- Delete confirmation modal -->
+                        <div id="delete-modal-{{ vendor.id }}"
+                             style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+                            <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%; box-shadow:0 8px 24px rgba(0,0,0,0.2);">
+                                <h3 style="margin:0 0 12px 0;">Delete Vendor</h3>
+                                <p style="color:var(--text-2); margin-bottom:24px;">
+                                    Delete <strong>{{ vendor.code }} — {{ vendor.name }}</strong>? This cannot be undone.
+                                </p>
+                                <div style="display:flex; gap:12px; justify-content:flex-end;">
+                                    <button type="button" class="btn btn-secondary btn-sm"
+                                            onclick="document.getElementById('delete-modal-{{ vendor.id }}').style.display='none'">
+                                        Cancel
+                                    </button>
+                                    <form method="POST" action="{{ url_for('vendors.delete', id=vendor.id) }}" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
                         {% else %}
                         —
@@ -175,6 +194,33 @@
     font-size: 12px;
     font-weight: 600;
     display: inline-block;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 6px 18px;
+    font-size: 14px;
+    border-radius: 5px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn-danger:hover {
+    background: #dc2626;
+}
+.btn.btn-secondary.btn-sm {
+    background: #6b7280;
+    color: white;
+    border: none;
+    padding: 6px 18px;
+    font-size: 14px;
+    border-radius: 5px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn.btn-secondary.btn-sm:hover {
+    background: #4b5563;
 }
 </style>
 
