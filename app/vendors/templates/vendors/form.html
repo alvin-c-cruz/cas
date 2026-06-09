@@ -150,11 +150,7 @@
                                id="wt_{{ wt.id }}"
                                name="withholding_tax_ids"
                                value="{{ wt.id }}"
-                               {% if vendor and wt.id in selected_wt_ids %}checked{% endif %}
-                               {% if vendor and wt.code == 'WC010' and form.wt_wc010.data %}checked{% endif %}
-                               {% if vendor and wt.code == 'WC011' and form.wt_wc011.data %}checked{% endif %}
-                               {% if vendor and wt.code == 'WC100' and form.wt_wc100.data %}checked{% endif %}
-                               {% if vendor and wt.code == 'WC158' and form.wt_wc158.data %}checked{% endif %}>
+                               {% if vendor and wt.id in selected_wt_ids %}checked{% endif %}>
                         <label for="wt_{{ wt.id }}">
                             <span>{{ wt.code }} <span class="wt-badge">{{ wt.rate }}%</span></span>
                             <span class="wt-description">{{ wt.name }}</span>
@@ -167,13 +163,6 @@
                     </div>
                 {% endif %}
 
-                <!-- Hidden fields for backward compatibility -->
-                <div style="display:none">
-                    {{ form.wt_wc010 }}
-                    {{ form.wt_wc011 }}
-                    {{ form.wt_wc100 }}
-                    {{ form.wt_wc158 }}
-                </div>
             </div>
         </div>
 
