@@ -30,11 +30,9 @@
             </div>
 
             <div class="form-row-2">
-                {{ render_field(form.withholding_tax_rate) }}
                 {{ render_field(form.reference) }}
+                {{ render_field(form.notes) }}
             </div>
-
-            {{ render_field(form.notes) }}
 
             <!-- Line Items Section -->
             <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);">
@@ -43,11 +41,12 @@
                 <table class="table" id="lineItemsTable">
                     <thead>
                         <tr>
-                            <th style="width: 38%;">Description</th>
-                            <th style="width: 10%; text-align: right;">Qty</th>
-                            <th style="width: 15%; text-align: right;">Unit Cost</th>
-                            <th style="width: 15%;">VAT Category</th>
-                            <th style="width: 17%;">Expense Account</th>
+                            <th style="width: 30%;">Description</th>
+                            <th style="width: 8%; text-align: right;">Qty</th>
+                            <th style="width: 12%; text-align: right;">Unit Cost</th>
+                            <th style="width: 12%;">VAT Category</th>
+                            <th style="width: 18%;">WHT</th>
+                            <th style="width: 15%;">Expense Account</th>
                             <th style="width: 5%;"></th>
                         </tr>
                     </thead>
@@ -98,28 +97,86 @@
 const vatCategories = {{ vat_categories | tojson }};
 const expenseAccounts = {{ expense_accounts | tojson }};
 
+let currentVendorWHTs = [];
+let currentVendorVatCategory = '';
 let lineItems = [];
 let lineCounter = 0;
 
-{% if line_items %}
-const existingItems = {{ line_items | tojson }};
-existingItems.forEach(item => addLineItem(item));
-{% endif %}
+function buildWhtOptions(selectedId) {
+    if (currentVendorWHTs.length === 0) {
+        return '<option value="">None</option>';
+    }
+    return '<option value="">None</option>' +
+        currentVendorWHTs.map(wt =>
+            `<option value="${wt.id}" data-rate="${wt.rate}" ${selectedId == wt.id ? 'selected' : ''}>${wt.code} — ${wt.name} (${wt.rate}%)</option>`
+        ).join('');
+}
 
-function addLineItem(existingItem = null) {
+function rebuildAllWhtSelects() {
+    lineItems.forEach(item => {
+        const sel = document.querySelector(`#line-${item.id} .wht-select`);
+        if (!sel) return;
+        const prev = item.wt_id;
+        sel.innerHTML = buildWhtOptions(prev);
+        const stillValid = currentVendorWHTs.some(wt => wt.id == prev);
+        if (!stillValid) {
+            item.wt_id = null;
+            item.wt_rate = null;
+            sel.value = '';
+        }
+    });
+}
+
+function rebuildAllVatSelects() {
+    if (!currentVendorVatCategory) return;
+    lineItems.forEach(item => {
+        const sel = document.querySelector(`#line-${item.id} .vat-select`);
+        if (!sel) return;
+        sel.value = currentVendorVatCategory;
+        item.vat_category = currentVendorVatCategory;
+    });
+    calculateTotals();
+}
+
+document.getElementById('vendor_id').addEventListener('change', function () {
+    const vendorId = this.value;
+    if (!vendorId || vendorId == '0') return;
+    fetch(`/vendors/${vendorId}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentVendorWHTs = data.withholding_taxes || [];
+            currentVendorVatCategory = data.default_vat_category || '';
+            rebuildAllWhtSelects();
+            rebuildAllVatSelects();
+            calculateTotals();
+        });
+});
+
+function addLineItem(existingItem) {
     lineCounter++;
-    const item = existingItem || { description: '', quantity: 1.0, unit_cost: 0.00, vat_category: '', account_id: null };
+    const item = existingItem
+        ? { ...existingItem, id: lineCounter }
+        : {
+            id: lineCounter, description: '', quantity: 1.0, unit_cost: 0.00,
+            vat_category: currentVendorVatCategory || '', account_id: null,
+            wt_id: null, wt_rate: null, wt_amount: 0,
+          };
 
     const row = document.createElement('tr');
     row.id = `line-${lineCounter}`;
     row.innerHTML = `
-        <td><input type="text" class="form-control" value="${item.description}" onchange="updateLineItem(${lineCounter}, 'description', this.value)"></td>
+        <td><input type="text" class="form-control" value="${(item.description || '').replace(/"/g, '&quot;')}" onchange="updateLineItem(${lineCounter}, 'description', this.value)"></td>
         <td><input type="number" class="form-control" value="${item.quantity}" step="0.0001" min="0.0001" style="text-align:right;" onchange="updateLineItem(${lineCounter}, 'quantity', parseFloat(this.value))"></td>
         <td><input type="number" class="form-control" value="${item.unit_cost}" step="0.01" min="0" style="text-align:right;" onchange="updateLineItem(${lineCounter}, 'unit_cost', parseFloat(this.value))"></td>
         <td>
-            <select class="form-control" onchange="updateLineItem(${lineCounter}, 'vat_category', this.value)">
+            <select class="form-control vat-select" onchange="updateLineItem(${lineCounter}, 'vat_category', this.value)">
                 <option value="">No VAT</option>
                 ${vatCategories.map(v => `<option value="${v.code}" ${item.vat_category === v.code ? 'selected' : ''}>${v.code} (${v.rate}%)</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <select class="form-control wht-select" onchange="updateWht(${lineCounter}, this)">
+                ${buildWhtOptions(item.wt_id)}
             </select>
         </td>
         <td>
@@ -130,9 +187,17 @@ function addLineItem(existingItem = null) {
         </td>
         <td><button type="button" class="btn-action" onclick="removeLineItem(${lineCounter})" title="Remove">🗑️</button></td>
     `;
-
     document.getElementById('lineItemsBody').appendChild(row);
-    lineItems.push({ id: lineCounter, ...item });
+    lineItems.push(item);
+    calculateTotals();
+}
+
+function updateWht(id, sel) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    const opt = sel.options[sel.selectedIndex];
+    item.wt_id = sel.value ? parseInt(sel.value) : null;
+    item.wt_rate = sel.value ? parseFloat(opt.dataset.rate) : null;
     calculateTotals();
 }
 
@@ -148,41 +213,61 @@ function removeLineItem(id) {
 }
 
 function calculateTotals() {
-    let subtotal = 0, vatTotal = 0;
+    let subtotal = 0, vatTotal = 0, wtTotal = 0;
     lineItems.forEach(item => {
         const lineTotal = (item.quantity || 0) * (item.unit_cost || 0);
         subtotal += lineTotal;
         const vat = vatCategories.find(v => v.code === item.vat_category);
         if (vat) vatTotal += lineTotal * (vat.rate / 100);
+        if (item.wt_rate) wtTotal += lineTotal * (item.wt_rate / 100);
     });
-
     const totalBeforeWt = subtotal + vatTotal;
-    const wtRate = parseFloat(document.querySelector('[name="withholding_tax_rate"]')?.value || 0);
-    const wtAmount = subtotal * wtRate / 100;
-    const netPayable = totalBeforeWt - wtAmount;
-
+    const netPayable = totalBeforeWt - wtTotal;
     const fmt = n => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     document.getElementById('subtotalDisplay').textContent = fmt(subtotal);
     document.getElementById('vatDisplay').textContent = fmt(vatTotal);
     document.getElementById('totalBeforeWtDisplay').textContent = fmt(totalBeforeWt);
-    document.getElementById('wtDisplay').textContent = '-' + fmt(wtAmount);
+    document.getElementById('wtDisplay').textContent = '-' + fmt(wtTotal);
     document.getElementById('totalDisplay').textContent = fmt(netPayable);
 }
 
-document.querySelector('[name="withholding_tax_rate"]')?.addEventListener('input', calculateTotals);
-
-document.getElementById('billForm').addEventListener('submit', function() {
+document.getElementById('billForm').addEventListener('submit', function () {
     document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(item => ({
         description: item.description,
         quantity: item.quantity,
         unit_cost: item.unit_cost,
         vat_category: item.vat_category,
-        account_id: item.account_id
+        account_id: item.account_id,
+        wt_id: item.wt_id,
+        wt_rate: item.wt_rate,
     })));
 });
 
-{% if not bill %}
-addLineItem();
+function initItems() {
+    {% if bill and line_items %}
+    const existingItems = {{ line_items | tojson }};
+    existingItems.forEach(item => addLineItem(item));
+    {% elif not bill %}
+    addLineItem();
+    {% endif %}
+}
+
+{% if bill %}
+const initVendorId = document.getElementById('vendor_id').value;
+if (initVendorId && initVendorId !== '0') {
+    fetch(`/vendors/${initVendorId}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentVendorWHTs = data.withholding_taxes || [];
+            currentVendorVatCategory = data.default_vat_category || '';
+            initItems();
+        })
+        .catch(() => initItems());
+} else {
+    initItems();
+}
+{% else %}
+initItems();
 {% endif %}
 </script>
 
