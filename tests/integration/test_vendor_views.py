@@ -71,6 +71,7 @@ class TestVendorDetail:
         assert resp.status_code == 200
         assert b'Detail Test Vendor' in resp.data
         assert b'AP Aging' in resp.data
+        assert b'WHT Withheld' in resp.data
 
     def test_detail_shows_vendor_info(self, client, db_session, admin_user, main_branch):
         login(client)

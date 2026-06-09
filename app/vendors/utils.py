@@ -3,10 +3,13 @@ from app.utils import ph_now
 
 
 def compute_ap_aging(vendor_id):
-    """Return AP aging buckets for a vendor (posted bills only)."""
+    """Return AP aging buckets for a vendor (posted and partially-paid bills)."""
     from app.purchase_bills.models import PurchaseBill
     today = ph_now().date()
-    bills = PurchaseBill.query.filter_by(vendor_id=vendor_id, status='posted').all()
+    bills = PurchaseBill.query.filter(
+        PurchaseBill.vendor_id == vendor_id,
+        PurchaseBill.status.in_(['posted', 'partially_paid'])
+    ).all()
     buckets = {
         'current': Decimal('0.00'),
         '1_30': Decimal('0.00'),

@@ -84,7 +84,7 @@ class TestApAging:
         assert aging['90_plus'] == Decimal('500.00')
         assert aging['total'] == Decimal('1500.00')
 
-    def test_aging_only_counts_posted_bills(self, db_session, main_branch):
+    def test_aging_excludes_closed_statuses(self, db_session, main_branch):
         from app.vendors.utils import compute_ap_aging
         vendor = make_vendor(db_session, code='TV002')
         today = ph_now().date()
@@ -98,6 +98,23 @@ class TestApAging:
 
         aging = compute_ap_aging(vendor.id)
         assert aging['total'] == Decimal('0.00')
+
+    def test_aging_includes_partially_paid_bills(self, db_session, main_branch):
+        from app.vendors.utils import compute_ap_aging
+        vendor = make_vendor(db_session, code='TV006')
+        today = ph_now().date()
+        overdue = today - timedelta(days=10)
+
+        # partially_paid bill with remaining balance of 400
+        b = make_bill(db_session, vendor, main_branch, 'B100',
+                      due_date=overdue, status='partially_paid',
+                      total_amount=Decimal('1000.00'))
+        b.balance = Decimal('400.00')
+        db_session.commit()
+
+        aging = compute_ap_aging(vendor.id)
+        assert aging['1_30'] == Decimal('400.00')
+        assert aging['total'] == Decimal('400.00')
 
     def test_aging_empty_vendor(self, db_session, main_branch):
         from app.vendors.utils import compute_ap_aging

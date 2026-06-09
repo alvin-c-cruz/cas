@@ -78,7 +78,7 @@
                     <tr><td>1–30 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['1_30']) }}</td></tr>
                     <tr><td>31–60 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['31_60']) }}</td></tr>
                     <tr><td>61–90 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['61_90']) }}</td></tr>
-                    <tr><td>90+ days overdue</td><td class="amount-cell" style="color:#ef4444;">₱{{ '{:,.2f}'.format(aging['90_plus']) }}</td></tr>
+                    <tr><td>90+ days overdue</td><td class="amount-cell" style="color:var(--red);">₱{{ '{:,.2f}'.format(aging['90_plus']) }}</td></tr>
                     <tr class="aging-total-row">
                         <td><strong>Total Outstanding</strong></td>
                         <td class="amount-cell"><strong>₱{{ '{:,.2f}'.format(aging['total']) }}</strong></td>
@@ -168,14 +168,15 @@
                         <td>{{ bill.due_date.strftime('%b %d, %Y') }}</td>
                         <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.subtotal) }}</td>
                         <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</td>
-                        <td style="text-align:right; color:#ef4444;">
+                        <td style="text-align:right; color:var(--red);">
                             {% if bill.withholding_tax_amount > 0 %}
                             -₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}
                             {% else %}—{% endif %}
                         </td>
                         <td style="text-align:right; font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_amount) }}</td>
                         <td>
-                            <span class="badge bill-status-{{ bill.status }}">{{ bill.status | replace('_', ' ') | title }}</span>
+                            {% set bill_badge = {'partially_paid': 'partial', 'voided': 'void'} %}
+                            <span class="badge badge-{{ bill_badge.get(bill.status, bill.status) }}">{{ bill.status | replace('_', ' ') | title }}</span>
                         </td>
                     </tr>
                     {% else %}
@@ -228,8 +229,8 @@
 }
 .vendor-tab:hover { color: var(--text); }
 .vendor-tab.active {
-    color: #3b82f6;
-    border-bottom-color: #3b82f6;
+    color: var(--blue);
+    border-bottom-color: var(--blue);
     font-weight: 600;
 }
 .vendor-overview-grid {
@@ -247,16 +248,8 @@
 .vendor-info-table tr + tr td { border-top: 1px solid var(--border); }
 .amount-cell { text-align: right; font-variant-numeric: tabular-nums; }
 .aging-total-row td { border-top: 2px solid var(--border) !important; padding-top: 10px !important; }
-.bill-status-draft        { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
-.bill-status-posted       { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
-.bill-status-partially_paid { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
-.bill-status-paid         { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
-.bill-status-voided       { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
-.bill-status-cancelled    { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
 .badge-vat  { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
 .badge-wt   { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
-.badge-success  { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
-.badge-inactive { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
 @media (max-width: 768px) {
     .vendor-overview-grid { grid-template-columns: 1fr; }
 }
