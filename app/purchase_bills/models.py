@@ -73,7 +73,7 @@ class PurchaseBill(db.Model):
 
     # Status tracking
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
-    # Statuses: draft, posted, paid, partially_paid, cancelled
+    # Statuses: draft, posted, partially_paid, paid, cancelled, voided
 
     # Payment tracking
     amount_paid = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
@@ -90,6 +90,10 @@ class PurchaseBill(db.Model):
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
     posted_at = db.Column(db.DateTime)
     cancelled_at = db.Column(db.DateTime)
+    voided_at = db.Column(db.DateTime)
+    voided_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    voided_by = db.relationship('User', foreign_keys=[voided_by_id], backref='voided_purchase_bills')
+    void_reason = db.Column(db.String(255))
 
     # Relationship to line items
     # Changed from lazy='dynamic' to lazy='select' to support eager loading (selectinload)

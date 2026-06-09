@@ -60,7 +60,7 @@ class SalesInvoice(db.Model):
 
     # Status tracking
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
-    # Statuses: draft, posted, paid, partially_paid, cancelled
+    # Statuses: draft, sent, posted, partially_paid, paid, cancelled, voided
 
     # Payment tracking
     amount_paid = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
@@ -77,6 +77,13 @@ class SalesInvoice(db.Model):
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
     posted_at = db.Column(db.DateTime)
     cancelled_at = db.Column(db.DateTime)
+    sent_at = db.Column(db.DateTime)
+    sent_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    sent_by = db.relationship('User', foreign_keys=[sent_by_id], backref='sent_sales_invoices')
+    voided_at = db.Column(db.DateTime)
+    voided_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    voided_by = db.relationship('User', foreign_keys=[voided_by_id], backref='voided_sales_invoices')
+    void_reason = db.Column(db.String(255))
 
     # Relationship to line items
     line_items = db.relationship('SalesInvoiceItem', backref='invoice', lazy='dynamic',
