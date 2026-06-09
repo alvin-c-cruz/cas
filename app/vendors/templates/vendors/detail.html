@@ -160,7 +160,7 @@
                     <tr>
                         <td>
                             <a href="{{ url_for('purchase_bills.view', id=bill.id) }}"
-                               style="color:#3b82f6; text-decoration:none;">
+                               style="color:var(--blue); text-decoration:none;">
                                 {{ bill.bill_number }}
                             </a>
                         </td>
@@ -257,13 +257,6 @@
 .badge-wt   { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
 .badge-success  { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
 .badge-inactive { background:#f3f4f6; color:#6b7280; border:1px solid #e5e7eb; }
-.badge { padding:3px 10px; border-radius:12px; font-size:12px; font-weight:600; display:inline-block; }
-.btn-sm { padding:6px 16px; font-size:14px; border-radius:5px; font-weight:500; cursor:pointer;
-          border:none; text-decoration:none; display:inline-block; line-height:1.4; }
-.btn-primary { background:#3b82f6; color:white; }
-.btn-primary:hover { background:#2563eb; }
-.btn-secondary { background:#6b7280; color:white; }
-.btn-secondary:hover { background:#4b5563; }
 @media (max-width: 768px) {
     .vendor-overview-grid { grid-template-columns: 1fr; }
 }
