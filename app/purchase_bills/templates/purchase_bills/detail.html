@@ -168,9 +168,11 @@
                     <th style="text-align:right;">Qty</th>
                     <th style="text-align:right;">Unit Cost</th>
                     <th>VAT</th>
+                    <th>WHT</th>
                     <th>Account</th>
                     <th style="text-align:right;">Amount</th>
                     <th style="text-align:right;">VAT Amt</th>
+                    <th style="text-align:right;">WHT Amt</th>
                 </tr>
             </thead>
             <tbody>
@@ -181,9 +183,15 @@
                     <td style="text-align:right; font-family:var(--mono);">{{ '{:,.4f}'.format(item.quantity) }}</td>
                     <td style="text-align:right; font-family:var(--mono);">₱{{ '{:,.2f}'.format(item.unit_cost) }}</td>
                     <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
+                    <td style="font-size:12px;">
+                        {% if item.withholding_tax %}{{ item.withholding_tax.code }} ({{ '{:.2f}'.format(item.wt_rate) }}%){% else %}—{% endif %}
+                    </td>
                     <td style="font-size:12px; color:var(--text-2);">{{ item.account.code ~ ' - ' ~ item.account.name if item.account else '—' }}</td>
                     <td style="text-align:right; font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(item.line_total) }}</td>
                     <td style="text-align:right; font-family:var(--mono);">₱{{ '{:,.2f}'.format(item.vat_amount) }}</td>
+                    <td style="text-align:right; font-family:var(--mono); color:var(--red);">
+                        {% if item.wt_amount and item.wt_amount > 0 %}-₱{{ '{:,.2f}'.format(item.wt_amount) }}{% else %}—{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -205,7 +213,7 @@
                     <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_before_wt) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
-                    <span style="color:var(--text-2);">Withholding Tax ({{ bill.withholding_tax_rate }}%):</span>
+                    <span style="color:var(--text-2);">Withholding Tax:</span>
                     <span style="font-family:var(--mono); font-weight:600; color:var(--red);">-₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; padding-top:12px; border-top:2px solid var(--border); margin-bottom:12px;">
