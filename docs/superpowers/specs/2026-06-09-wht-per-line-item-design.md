@@ -147,6 +147,84 @@ Add WHT column showing `{wt.code} ({wt_rate}%)` and `wt_amount` per line. Show `
 
 No new audit actions. Existing `create` / `update` audit entries capture the bill snapshot, which now implicitly includes line-level WHT via `total_amount` and `withholding_tax_amount`.
 
+`PurchaseBillItem.to_dict()` must be updated to include `wt_id`, `wt_rate`, and `wt_amount` so audit snapshots of edits capture per-line WHT changes.
+
+---
+
+## Serialisation Changes
+
+### `PurchaseBill.to_dict()`
+
+`withholding_tax_rate` is no longer meaningful (always `0.00`). Remove it from the output or keep it as a static `0.00` — either is acceptable since `to_dict()` is only used in audit snapshots.
+
+### `PurchaseBillItem.to_dict()`
+
+Add:
+```python
+'wt_id': self.wt_id,
+'wt_rate': str(self.wt_rate) if self.wt_rate is not None else None,
+'wt_amount': str(self.wt_amount),
+```
+
+---
+
+## BIR Report Changes (`app/reports/bir.py`)
+
+The BIR 2307 query currently groups by vendor and reads `bill.withholding_tax_rate` for `tax_rate`. After this change, `withholding_tax_rate` is always `0.00`, and a single bill may carry multiple WHT codes.
+
+**Decision:** Split each bill into one report row per distinct WHT code.
+
+### New grouping key
+
+Replace `vendor_key = bill.vendor_id` with `(vendor_id, wt_id)` as the key:
+
+```python
+for bill in bills:
+    # Group line items by wt_id
+    from collections import defaultdict
+    wt_groups = defaultdict(list)
+    for item in bill.line_items:
+        if item.wt_id and item.wt_amount > 0:
+            wt_groups[item.wt_id].append(item)
+
+    for wt_id, items in wt_groups.items():
+        wt = items[0].withholding_tax  # relationship
+        row_key = (bill.vendor_id, wt_id)
+        if row_key not in payee_totals:
+            payee_totals[row_key] = {
+                'payee_name': bill.vendor_name,
+                'payee_tin': bill.vendor_tin or '',
+                'payee_address': bill.vendor_address or '',
+                'atc_code': wt.code,
+                'tax_rate': wt.rate,
+                'gross_income': Decimal('0.00'),
+                'tax_withheld': Decimal('0.00'),
+                'month_paid': []
+            }
+        payee_totals[row_key]['gross_income'] += sum(i.line_total for i in items)
+        payee_totals[row_key]['tax_withheld'] += sum(i.wt_amount for i in items)
+        month = bill.bill_date.month
+        if month not in payee_totals[row_key]['month_paid']:
+            payee_totals[row_key]['month_paid'].append(month)
+```
+
+This requires `PurchaseBillItem` to have a `withholding_tax` relationship (backref from `WithholdingTax`).
+
+Bills with no WHT line items (all `wt_id=None`) are excluded from the report — same as before (filter `withholding_tax_amount > 0` still applies at the bill level).
+
+---
+
+## Detail Template — Header Display Fix
+
+`detail.html` line 208 currently shows:
+```html
+<span>Withholding Tax ({{ bill.withholding_tax_rate }}%):</span>
+```
+After this change `withholding_tax_rate` is always `0.00`. Remove the `(rate%)` label — the rate is visible per line in the line items table:
+```html
+<span>Withholding Tax:</span>
+```
+
 ---
 
 ## Out of Scope
