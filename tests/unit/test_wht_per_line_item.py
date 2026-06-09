@@ -4,13 +4,8 @@ from decimal import Decimal
 from app.purchase_bills.models import PurchaseBillItem
 
 
+@pytest.mark.usefixtures("app")
 class TestPurchaseBillItemWht:
-    @pytest.fixture(autouse=True)
-    def setup_app_context(self, app):
-        """Ensure the Flask app context is active so SQLAlchemy can resolve mappers."""
-        with app.app_context():
-            yield
-
     def _make_item(self, **kwargs):
         defaults = dict(
             line_number=1,

@@ -116,7 +116,8 @@ class PurchaseBill(db.Model):
 
         # Sum WHT from all line items (per-line WHT, vendor-driven)
         self.withholding_tax_amount = sum(
-            (item.wt_amount or Decimal('0.00')) for item in self.line_items
+            ((item.wt_amount or Decimal('0.00')) for item in self.line_items),
+            Decimal('0.00')
         )
 
         # Net payable = Total before WT - Withholding Tax
@@ -190,7 +191,7 @@ class PurchaseBillItem(db.Model):
     wt_id = db.Column(db.Integer, db.ForeignKey('withholding_tax.id'), nullable=True)
     withholding_tax = db.relationship('WithholdingTax', foreign_keys=[wt_id])
     wt_rate = db.Column(db.Numeric(5, 2), nullable=True)   # snapshot at bill creation time
-    wt_amount = db.Column(db.Numeric(15, 2), default=Decimal('0.00'), nullable=False)
+    wt_amount = db.Column(db.Numeric(15, 2), default=Decimal('0.00'), server_default='0.00', nullable=False)
 
     def __repr__(self):
         return f'<PurchaseBillItem {self.bill_id}-{self.line_number}>'
