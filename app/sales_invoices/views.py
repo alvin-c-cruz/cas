@@ -332,8 +332,8 @@ def create():
         form.due_date.data = date.today() + timedelta(days=30)
 
     # Get VAT categories and accounts for line items
-    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
-    revenue_accounts = Account.query.filter_by(account_type='Revenue').order_by(Account.code).all()
+    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+    revenue_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Revenue').order_by(Account.code).all()]
 
     return render_template('sales_invoices/form.html',
                          form=form,
@@ -459,11 +459,11 @@ def edit(id):
         form.customer_id.data = invoice.customer_id
 
     # Get VAT categories and accounts for line items
-    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
-    revenue_accounts = Account.query.filter_by(account_type='Revenue').order_by(Account.code).all()
+    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+    revenue_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Revenue').order_by(Account.code).all()]
 
     # Get existing line items
-    line_items = invoice.line_items.all()
+    line_items = [item.to_dict() for item in invoice.line_items.all()]
 
     return render_template('sales_invoices/form.html',
                          form=form,

@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Bill {{ bill.bill_number }}{% endblock %}
+{% block page_title %}Purchase Bill - {{ bill.bill_number }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<!-- Post confirmation modal -->
+{% if bill.status == 'draft' %}
+<div id="postModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Post this bill?</h3>
+        <p style="color:var(--text-2); margin-bottom:24px;">This will make the bill final and it cannot be edited afterwards.</p>
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('postModal').style.display='none'">Cancel</button>
+            <form method="POST" action="{{ url_for('purchase_bills.post', id=bill.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-success">Post Bill</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div id="deleteModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Delete this bill?</h3>
+        <p style="color:var(--text-2); margin-bottom:24px;">This will permanently delete <strong>{{ bill.bill_number }}</strong>. This action cannot be undone.</p>
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('deleteModal').style.display='none'">Cancel</button>
+            <form method="POST" action="{{ url_for('purchase_bills.delete', id=bill.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-danger">Delete</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if bill.status != 'cancelled' and bill.amount_paid == 0 and bill.status == 'draft' %}
+<div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Cancel this bill?</h3>
+        <p style="color:var(--text-2); margin-bottom:24px;">Are you sure you want to cancel <strong>{{ bill.bill_number }}</strong>?</p>
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">No, keep it</button>
+            <form method="POST" action="{{ url_for('purchase_bills.cancel', id=bill.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-danger">Yes, Cancel</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:20px; font-weight:700;">{{ bill.bill_number }}</span>
+            <span class="badge badge-{{ 'secondary' if bill.status=='draft' else 'info' if bill.status=='posted' else 'success' if bill.status=='paid' else 'warning' if bill.status=='partially_paid' else 'danger' }}">
+                {{ bill.status | replace('_', ' ') | title }}
+            </span>
+        </div>
+        <div class="card-header-actions">
+            {% if bill.status == 'draft' %}
+            <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post Bill</button>
+            <a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn btn-primary">Edit</a>
+            <button type="button" class="btn btn-danger" onclick="document.getElementById('deleteModal').style.display='flex'">Delete</button>
+            {% endif %}
+            {% if bill.status != 'cancelled' and bill.amount_paid == 0 and bill.status == 'draft' %}
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Bill</button>
+            {% endif %}
+            <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">← Back to List</a>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-bottom:32px;">
+            <div>
+                <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:12px;">Vendor Information</h3>
+                <div style="background:var(--bg); padding:16px; border-radius:6px;">
+                    <p style="margin:0 0 8px 0; font-weight:600; font-size:15px;">{{ bill.vendor_name }}</p>
+                    {% if bill.vendor_tin %}
+                    <p style="margin:0 0 4px 0; font-size:13px; color:var(--text-2);">TIN: {{ bill.vendor_tin }}</p>
+                    {% endif %}
+                    {% if bill.vendor_address %}
+                    <p style="margin:4px 0 0 0; font-size:13px; color:var(--text-2);">{{ bill.vendor_address }}</p>
+                    {% endif %}
+                    {% if bill.vendor_invoice_number %}
+                    <p style="margin:8px 0 0 0; font-size:13px; color:var(--text-2);">Vendor Invoice #: <strong>{{ bill.vendor_invoice_number }}</strong>
+                        {% if bill.vendor_invoice_date %} &mdash; {{ bill.vendor_invoice_date.strftime('%b %d, %Y') }}{% endif %}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div>
+                <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:12px;">Bill Details</h3>
+                <div style="background:var(--bg); padding:16px; border-radius:6px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                        <span style="color:var(--text-2); font-size:13px;">Bill Date:</span>
+                        <span style="font-weight:600;">{{ bill.bill_date.strftime('%b %d, %Y') }}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                        <span style="color:var(--text-2); font-size:13px;">Due Date:</span>
+                        <span style="font-weight:600;">{{ bill.due_date.strftime('%b %d, %Y') }}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                        <span style="color:var(--text-2); font-size:13px;">Payment Terms:</span>
+                        <span>{{ bill.payment_terms }}</span>
+                    </div>
+                    {% if bill.reference %}
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                        <span style="color:var(--text-2); font-size:13px;">Reference/PO:</span>
+                        <span>{{ bill.reference }}</span>
+                    </div>
+                    {% endif %}
+                    {% if bill.branch %}
+                    <div style="display:flex; justify-content:space-between;">
+                        <span style="color:var(--text-2); font-size:13px;">Branch:</span>
+                        <span>{{ bill.branch.name }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Line Items -->
+        <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:12px;">Line Items</h3>
+        <table class="table" style="margin-bottom:24px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Description</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th style="text-align:right;">Unit Cost</th>
+                    <th>VAT</th>
+                    <th>Account</th>
+                    <th style="text-align:right;">Amount</th>
+                    <th style="text-align:right;">VAT Amt</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in bill.line_items %}
+                <tr>
+                    <td>{{ item.line_number }}</td>
+                    <td>{{ item.description }}</td>
+                    <td style="text-align:right; font-family:var(--mono);">{{ '{:,.4f}'.format(item.quantity) }}</td>
+                    <td style="text-align:right; font-family:var(--mono);">₱{{ '{:,.2f}'.format(item.unit_cost) }}</td>
+                    <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
+                    <td style="font-size:12px; color:var(--text-2);">{{ item.account.code ~ ' - ' ~ item.account.name if item.account else '—' }}</td>
+                    <td style="text-align:right; font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(item.line_total) }}</td>
+                    <td style="text-align:right; font-family:var(--mono);">₱{{ '{:,.2f}'.format(item.vat_amount) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Totals -->
+        <div style="display:flex; justify-content:flex-end;">
+            <div style="background:var(--bg); padding:20px; border-radius:6px; min-width:340px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                    <span style="color:var(--text-2);">Subtotal:</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.subtotal) }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                    <span style="color:var(--text-2);">Input VAT:</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:12px; padding-top:8px; border-top:1px solid var(--border);">
+                    <span style="color:var(--text-2);">Total before WT:</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_before_wt) }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                    <span style="color:var(--text-2);">Withholding Tax ({{ bill.withholding_tax_rate }}%):</span>
+                    <span style="font-family:var(--mono); font-weight:600; color:var(--red);">-₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding-top:12px; border-top:2px solid var(--border); margin-bottom:12px;">
+                    <span style="font-size:16px; font-weight:700;">Net Payable:</span>
+                    <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--blue);">₱{{ '{:,.2f}'.format(bill.total_amount) }}</span>
+                </div>
+                {% if bill.amount_paid > 0 %}
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:var(--text-2);">Amount Paid:</span>
+                    <span style="font-family:var(--mono); color:var(--green);">₱{{ '{:,.2f}'.format(bill.amount_paid) }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding-top:8px; border-top:1px solid var(--border);">
+                    <span style="font-weight:600;">Balance Due:</span>
+                    <span style="font-family:var(--mono); font-weight:700; color:var(--red);">₱{{ '{:,.2f}'.format(bill.balance) }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if bill.notes %}
+        <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border);">
+            <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:8px;">Notes</h3>
+            <p style="color:var(--text-2); white-space:pre-wrap;">{{ bill.notes }}</p>
+        </div>
+        {% endif %}
+
+        <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">
+            Created by {{ bill.created_by.username if bill.created_by else '—' }} on {{ bill.created_at.strftime('%b %d, %Y %H:%M') if bill.created_at else '—' }}
+            {% if bill.posted_by %}
+             &mdash; Posted by {{ bill.posted_by.username }} on {{ bill.posted_at.strftime('%b %d, %Y %H:%M') if bill.posted_at else '—' }}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.badge { padding:4px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; }
+.badge-secondary { background:var(--text-3); color:white; }
+.badge-info { background:var(--blue); color:white; }
+.badge-success { background:var(--green); color:white; }
+.badge-warning { background:var(--yellow, #f59e0b); color:white; }
+.badge-danger { background:var(--red); color:white; }
+</style>
+{% endblock %}

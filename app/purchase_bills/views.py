@@ -270,6 +270,8 @@ def create():
                 reference=form.reference.data,
                 notes=form.notes.data,
                 status='draft',
+                amount_paid=Decimal('0.00'),
+                balance=Decimal('0.00'),
                 created_by_id=current_user.id
             )
 
@@ -326,8 +328,8 @@ def create():
         form.bill_date.data = date.today()
         form.due_date.data = date.today() + timedelta(days=30)
 
-    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
-    expense_accounts = Account.query.filter_by(account_type='Expense').order_by(Account.code).all()
+    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+    expense_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Expense').order_by(Account.code).all()]
 
     return render_template('purchase_bills/form.html',
                          form=form,
@@ -442,9 +444,9 @@ def edit(id):
     if request.method == 'GET':
         form.vendor_id.data = bill.vendor_id
 
-    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
-    expense_accounts = Account.query.filter_by(account_type='Expense').order_by(Account.code).all()
-    line_items = bill.line_items  # Now a list, not a dynamic query
+    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+    expense_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Expense').order_by(Account.code).all()]
+    line_items = [item.to_dict() for item in bill.line_items]
 
     return render_template('purchase_bills/form.html',
                          form=form,

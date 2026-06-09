@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit Bill' if bill else 'Create Purchase Bill' }}{% endblock %}
+{% block page_title %}{{ 'Edit Bill' if bill else 'Create Purchase Bill' }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field, render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate id="billForm">
+            {{ form.hidden_tag() }}
+
+            <div class="form-row-3">
+                {{ render_field(form.bill_number) }}
+                {{ render_field(form.bill_date) }}
+                {{ render_field(form.due_date) }}
+            </div>
+
+            <div class="form-row-2">
+                {{ render_field(form.vendor_id) }}
+                {{ render_field(form.payment_terms) }}
+            </div>
+
+            <div class="form-row-2">
+                {{ render_field(form.vendor_invoice_number) }}
+                {{ render_field(form.vendor_invoice_date) }}
+            </div>
+
+            <div class="form-row-2">
+                {{ render_field(form.withholding_tax_rate) }}
+                {{ render_field(form.reference) }}
+            </div>
+
+            {{ render_field(form.notes) }}
+
+            <!-- Line Items Section -->
+            <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Line Items</h3>
+
+                <table class="table" id="lineItemsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 38%;">Description</th>
+                            <th style="width: 10%; text-align: right;">Qty</th>
+                            <th style="width: 15%; text-align: right;">Unit Cost</th>
+                            <th style="width: 15%;">VAT Category</th>
+                            <th style="width: 17%;">Expense Account</th>
+                            <th style="width: 5%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="lineItemsBody"></tbody>
+                </table>
+
+                <button type="button" class="btn btn-secondary" onclick="addLineItem()">+ Add Line Item</button>
+                <input type="hidden" name="line_items" id="lineItemsData">
+            </div>
+
+            <!-- Totals -->
+            <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                <div style="background: var(--bg); padding: 20px; border-radius: 6px; min-width: 320px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span style="color: var(--text-2);">Subtotal:</span>
+                        <span id="subtotalDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span style="color: var(--text-2);">Input VAT:</span>
+                        <span id="vatDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-top: 8px; border-top: 1px solid var(--border);">
+                        <span style="color: var(--text-2);">Total before WT:</span>
+                        <span id="totalBeforeWtDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span style="color: var(--text-2);">Withholding Tax:</span>
+                        <span id="wtDisplay" style="font-family: var(--mono); font-weight: 600; color: var(--red);">-₱0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding-top: 12px; border-top: 2px solid var(--border);">
+                        <span style="font-size: 16px; font-weight: 700;">Net Payable:</span>
+                        <span id="totalDisplay" style="font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--blue);">₱0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions" style="margin-top: 32px;">
+                <button type="submit" class="btn btn-primary">
+                    {{ 'Update Bill' if bill else 'Create Bill' }}
+                </button>
+                <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const vatCategories = {{ vat_categories | tojson }};
+const expenseAccounts = {{ expense_accounts | tojson }};
+
+let lineItems = [];
+let lineCounter = 0;
+
+{% if line_items %}
+const existingItems = {{ line_items | tojson }};
+existingItems.forEach(item => addLineItem(item));
+{% endif %}
+
+function addLineItem(existingItem = null) {
+    lineCounter++;
+    const item = existingItem || { description: '', quantity: 1.0, unit_cost: 0.00, vat_category: '', account_id: null };
+
+    const row = document.createElement('tr');
+    row.id = `line-${lineCounter}`;
+    row.innerHTML = `
+        <td><input type="text" class="form-control" value="${item.description}" onchange="updateLineItem(${lineCounter}, 'description', this.value)"></td>
+        <td><input type="number" class="form-control" value="${item.quantity}" step="0.0001" min="0.0001" style="text-align:right;" onchange="updateLineItem(${lineCounter}, 'quantity', parseFloat(this.value))"></td>
+        <td><input type="number" class="form-control" value="${item.unit_cost}" step="0.01" min="0" style="text-align:right;" onchange="updateLineItem(${lineCounter}, 'unit_cost', parseFloat(this.value))"></td>
+        <td>
+            <select class="form-control" onchange="updateLineItem(${lineCounter}, 'vat_category', this.value)">
+                <option value="">No VAT</option>
+                ${vatCategories.map(v => `<option value="${v.code}" ${item.vat_category === v.code ? 'selected' : ''}>${v.code} (${v.rate}%)</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <select class="form-control" onchange="updateLineItem(${lineCounter}, 'account_id', parseInt(this.value) || null)">
+                <option value="">Select Account</option>
+                ${expenseAccounts.map(a => `<option value="${a.id}" ${item.account_id === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
+            </select>
+        </td>
+        <td><button type="button" class="btn-action" onclick="removeLineItem(${lineCounter})" title="Remove">🗑️</button></td>
+    `;
+
+    document.getElementById('lineItemsBody').appendChild(row);
+    lineItems.push({ id: lineCounter, ...item });
+    calculateTotals();
+}
+
+function updateLineItem(id, field, value) {
+    const item = lineItems.find(i => i.id === id);
+    if (item) { item[field] = value; calculateTotals(); }
+}
+
+function removeLineItem(id) {
+    document.getElementById(`line-${id}`).remove();
+    lineItems = lineItems.filter(i => i.id !== id);
+    calculateTotals();
+}
+
+function calculateTotals() {
+    let subtotal = 0, vatTotal = 0;
+    lineItems.forEach(item => {
+        const lineTotal = (item.quantity || 0) * (item.unit_cost || 0);
+        subtotal += lineTotal;
+        const vat = vatCategories.find(v => v.code === item.vat_category);
+        if (vat) vatTotal += lineTotal * (vat.rate / 100);
+    });
+
+    const totalBeforeWt = subtotal + vatTotal;
+    const wtRate = parseFloat(document.querySelector('[name="withholding_tax_rate"]')?.value || 0);
+    const wtAmount = subtotal * wtRate / 100;
+    const netPayable = totalBeforeWt - wtAmount;
+
+    const fmt = n => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById('subtotalDisplay').textContent = fmt(subtotal);
+    document.getElementById('vatDisplay').textContent = fmt(vatTotal);
+    document.getElementById('totalBeforeWtDisplay').textContent = fmt(totalBeforeWt);
+    document.getElementById('wtDisplay').textContent = '-' + fmt(wtAmount);
+    document.getElementById('totalDisplay').textContent = fmt(netPayable);
+}
+
+document.querySelector('[name="withholding_tax_rate"]')?.addEventListener('input', calculateTotals);
+
+document.getElementById('billForm').addEventListener('submit', function() {
+    document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        unit_cost: item.unit_cost,
+        vat_category: item.vat_category,
+        account_id: item.account_id
+    })));
+});
+
+{% if not bill %}
+addLineItem();
+{% endif %}
+</script>
+
+<style>
+.form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+.btn-action { padding: 4px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 14px; }
+.btn-action:hover { background: var(--border); }
+</style>
+{% endblock %}
