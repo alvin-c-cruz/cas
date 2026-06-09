@@ -2,8 +2,8 @@
 Forms for Purchase Bill management.
 """
 from flask_wtf import FlaskForm
-from wtforms import StringField, DateField, TextAreaField, SelectField, DecimalField
-from wtforms.validators import DataRequired, Length, Optional, NumberRange
+from wtforms import StringField, DateField, TextAreaField, SelectField
+from wtforms.validators import DataRequired, Length, Optional
 from datetime import date
 
 
@@ -44,11 +44,6 @@ class PurchaseBillForm(FlaskForm):
         ('COD', 'Cash on Delivery'),
         ('Advance', 'Advance Payment')
     ], default='Net 30')
-
-    withholding_tax_rate = DecimalField('Withholding Tax Rate (%)', validators=[
-        Optional(),
-        NumberRange(min=0, max=100, message='Withholding tax rate must be between 0 and 100.')
-    ], places=2, default=0.00)
 
     reference = StringField('Reference/PO Number', validators=[
         Optional(),
