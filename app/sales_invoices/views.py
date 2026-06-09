@@ -14,6 +14,7 @@ from app.audit.utils import log_create, log_update, log_delete, model_to_dict, l
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.periods.utils import validate_transaction_date_with_flash
+from app.journal_entries.utils import generate_entry_number
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 import json
@@ -480,8 +481,8 @@ def post(id):
     """Post sales invoice (makes it final and immutable)."""
     invoice = SalesInvoice.query.get_or_404(id)
 
-    if invoice.status != 'draft':
-        flash('Only draft invoices can be posted.', 'error')
+    if invoice.status not in ('draft', 'sent'):
+        flash('Only draft or sent invoices can be posted.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
 
     try:
@@ -507,6 +508,166 @@ def post(id):
         log_exception(e, severity='ERROR', module='sales_invoices.post')
         db.session.rollback()
         flash(f'Error posting invoice: {str(e)}', 'error')
+
+    return redirect(url_for('sales_invoices.view', id=id))
+
+
+def _create_invoice_void_je(invoice, reversal_date, user_id):
+    """Create reversal JE when voiding a sales invoice. Raises ValueError if required accounts missing."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    ar_account = Account.query.filter_by(code='10201').first()
+    if not ar_account:
+        raise ValueError("Accounts Receivable - Trade (10201) not found in COA. Cannot void.")
+
+    output_vat_account = None
+    if invoice.vat_amount > 0:
+        output_vat_account = Account.query.filter_by(code='20201').first()
+        if not output_vat_account:
+            raise ValueError("Output VAT - Sales (20201) not found in COA. Cannot void.")
+
+    entry_number = generate_entry_number(invoice.branch_id)
+    je = JournalEntry(
+        entry_number=entry_number,
+        entry_date=reversal_date,
+        description=f'Sales Invoice Void — {invoice.invoice_number} (reversal)',
+        reference=f'VOID-{invoice.invoice_number}',
+        entry_type='reversal',
+        is_reversing=True,
+        branch_id=invoice.branch_id,
+        created_by_id=user_id,
+        status='posted',
+        posted_by_id=user_id,
+        posted_at=ph_now(),
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00')
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    line_num = 1
+    for item in invoice.line_items:
+        if item.account_id and item.line_total > 0:
+            db.session.add(JournalEntryLine(
+                entry_id=je.id, line_number=line_num,
+                account_id=item.account_id,
+                description=item.description,
+                debit_amount=item.line_total,
+                credit_amount=Decimal('0.00')
+            ))
+            line_num += 1
+
+    if output_vat_account:
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=output_vat_account.id,
+            description=f'Void Output VAT: {invoice.invoice_number}',
+            debit_amount=invoice.vat_amount,
+            credit_amount=Decimal('0.00')
+        ))
+        line_num += 1
+
+    db.session.add(JournalEntryLine(
+        entry_id=je.id, line_number=line_num,
+        account_id=ar_account.id,
+        description=f'Void AR: {invoice.invoice_number}',
+        debit_amount=Decimal('0.00'),
+        credit_amount=invoice.total_amount
+    ))
+
+    je.calculate_totals()
+    return je
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/send', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def send(id):
+    """Mark a draft invoice as sent to customer."""
+    invoice = SalesInvoice.query.get_or_404(id)
+
+    if invoice.status != 'draft':
+        flash('Only draft invoices can be marked as sent.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    try:
+        invoice.status = 'sent'
+        invoice.sent_at = ph_now()
+        invoice.sent_by_id = current_user.id
+        db.session.commit()
+
+        log_audit(
+            module='sales_invoice',
+            action='send',
+            record_id=invoice.id,
+            record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+            notes=f'Marked as sent by {current_user.username}'
+        )
+
+        flash(f'Invoice "{invoice.invoice_number}" marked as sent.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error marking invoice as sent: {str(e)}', 'error')
+
+    return redirect(url_for('sales_invoices.view', id=id))
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/void', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def void(id):
+    """Void a posted sales invoice and create reversal journal entry."""
+    from flask import current_app
+    from app.errors.utils import log_exception
+    invoice = SalesInvoice.query.get_or_404(id)
+
+    if invoice.status != 'posted':
+        flash('Only posted invoices with no payments can be voided.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    if invoice.amount_paid > 0:
+        flash('Cannot void an invoice with payments applied. Reverse the payments first.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
+    try:
+        _create_invoice_void_je(invoice, reversal_date, current_user.id)
+
+        invoice.status = 'voided'
+        invoice.voided_at = ph_now()
+        invoice.voided_by_id = current_user.id
+        invoice.void_reason = void_reason
+        db.session.commit()
+
+        log_audit(
+            module='sales_invoice',
+            action='void',
+            record_id=invoice.id,
+            record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+            notes=f'Voided by {current_user.username}. Reason: {void_reason}'
+        )
+
+        flash(f'Sales Invoice "{invoice.invoice_number}" voided. Reversal journal entry created.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error("Error voiding sales invoice", exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.void')
+        flash(f'Error voiding invoice: {str(e)}', 'error')
 
     return redirect(url_for('sales_invoices.view', id=id))
 

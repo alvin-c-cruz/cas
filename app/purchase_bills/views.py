@@ -15,6 +15,7 @@ from app.audit.utils import log_create, log_update, log_delete, model_to_dict, l
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.periods.utils import validate_transaction_date_with_flash
+from app.journal_entries.utils import generate_entry_number
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 import json
@@ -529,6 +530,149 @@ def cancel(id):
         log_exception(e, severity='ERROR', module='purchase_bills.cancel')
         db.session.rollback()
         flash(f'Error cancelling bill: {str(e)}', 'error')
+
+    return redirect(url_for('purchase_bills.view', id=id))
+
+
+def _create_bill_void_je(bill, reversal_date, user_id):
+    """Create reversal JE when voiding a purchase bill. Raises ValueError if required accounts missing."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    ap_account = Account.query.filter_by(code='20101').first()
+    if not ap_account:
+        raise ValueError("Accounts Payable - Trade (20101) not found in COA. Cannot void.")
+
+    input_vat_account = None
+    if bill.vat_amount > 0:
+        input_vat_account = Account.query.filter_by(code='10501').first()
+        if not input_vat_account:
+            raise ValueError("Input VAT - Current (10501) not found in COA. Cannot void.")
+
+    wt_account = None
+    if bill.withholding_tax_amount > 0:
+        wt_account = Account.query.filter_by(code='20301').first()
+        if not wt_account:
+            raise ValueError("Withholding Tax Payable - Expanded (20301) not found in COA. Cannot void.")
+
+    entry_number = generate_entry_number(bill.branch_id)
+    je = JournalEntry(
+        entry_number=entry_number,
+        entry_date=reversal_date,
+        description=f'Purchase Bill Void — {bill.bill_number} (reversal)',
+        reference=f'VOID-{bill.bill_number}',
+        entry_type='reversal',
+        is_reversing=True,
+        branch_id=bill.branch_id,
+        created_by_id=user_id,
+        status='posted',
+        posted_by_id=user_id,
+        posted_at=ph_now(),
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00')
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    line_num = 1
+    db.session.add(JournalEntryLine(
+        entry_id=je.id, line_number=line_num,
+        account_id=ap_account.id,
+        description=f'Void AP: {bill.bill_number}',
+        debit_amount=bill.total_amount,
+        credit_amount=Decimal('0.00')
+    ))
+    line_num += 1
+
+    if wt_account:
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=wt_account.id,
+            description=f'Void WT: {bill.bill_number}',
+            debit_amount=bill.withholding_tax_amount,
+            credit_amount=Decimal('0.00')
+        ))
+        line_num += 1
+
+    for item in bill.line_items:
+        if item.account_id and item.line_total > 0:
+            db.session.add(JournalEntryLine(
+                entry_id=je.id, line_number=line_num,
+                account_id=item.account_id,
+                description=item.description,
+                debit_amount=Decimal('0.00'),
+                credit_amount=item.line_total
+            ))
+            line_num += 1
+
+    if input_vat_account:
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=input_vat_account.id,
+            description=f'Void Input VAT: {bill.bill_number}',
+            debit_amount=Decimal('0.00'),
+            credit_amount=bill.vat_amount
+        ))
+
+    je.calculate_totals()
+    return je
+
+
+@purchase_bills_bp.route('/purchase-bills/<int:id>/void', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def void(id):
+    """Void a posted purchase bill and create reversal journal entry."""
+    from flask import current_app
+    from app.errors.utils import log_exception
+    bill = PurchaseBill.query.get_or_404(id)
+
+    if bill.status != 'posted':
+        flash('Only posted bills with no payments can be voided.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    if bill.amount_paid > 0:
+        flash('Cannot void a bill with payments applied. Reverse the payments first.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    try:
+        _create_bill_void_je(bill, reversal_date, current_user.id)
+
+        bill.status = 'voided'
+        bill.voided_at = ph_now()
+        bill.voided_by_id = current_user.id
+        bill.void_reason = void_reason
+        db.session.commit()
+
+        log_audit(
+            module='purchase_bill',
+            action='void',
+            record_id=bill.id,
+            record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
+            notes=f'Voided by {current_user.username}. Reason: {void_reason}'
+        )
+
+        flash(f'Purchase Bill "{bill.bill_number}" voided. Reversal journal entry created.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error("Error voiding purchase bill", exc_info=True)
+        log_exception(e, severity='ERROR', module='purchase_bills.void')
+        flash(f'Error voiding bill: {str(e)}', 'error')
 
     return redirect(url_for('purchase_bills.view', id=id))
 
