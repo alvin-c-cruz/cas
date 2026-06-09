@@ -11,6 +11,7 @@ from app.accounts.models import Account
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.periods.utils import validate_transaction_date_with_flash
+from app.journal_entries.utils import generate_entry_number
 from datetime import datetime, date
 from decimal import Decimal
 import json
@@ -29,33 +30,6 @@ def accountant_or_admin_required(f):
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
-
-
-def generate_entry_number(branch_id):
-    """
-    Generate next journal entry number for a specific branch: JE-YYYY-####
-
-    Each branch has its own independent sequence numbering.
-    """
-    current_year = datetime.now().year
-    prefix = f'JE-{current_year}-'
-
-    # Filter by both prefix AND branch_id to ensure independent sequences per branch
-    latest_entry = JournalEntry.query.filter(
-        JournalEntry.entry_number.like(f'{prefix}%'),
-        JournalEntry.branch_id == branch_id
-    ).order_by(JournalEntry.entry_number.desc()).first()
-
-    if latest_entry:
-        try:
-            last_num = int(latest_entry.entry_number.split('-')[-1])
-            next_num = last_num + 1
-        except (ValueError, IndexError):
-            next_num = 1
-    else:
-        next_num = 1
-
-    return f'{prefix}{next_num:04d}'
 
 
 @journal_entries_bp.route('/journal-entries')
