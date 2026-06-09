@@ -11,9 +11,10 @@ These reports follow BIR format requirements for Philippine businesses.
 from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy import func, extract
+from sqlalchemy.orm import selectinload
 from app import db
 from app.sales_invoices.models import SalesInvoice
-from app.purchase_bills.models import PurchaseBill
+from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
 from app.customers.models import Customer
 from app.vendors.models import Vendor
 
@@ -203,34 +204,41 @@ def get_alphalist_of_payees(year, quarter, branch_id=None):
     )
     if branch_id:
         query = query.filter(PurchaseBill.branch_id == branch_id)
-    bills = query.all()
+    bills = query.options(selectinload(PurchaseBill.line_items)).all()
 
     # Group by vendor (payee) and calculate totals
     payee_totals = {}
 
+    from collections import defaultdict
+
     for bill in bills:
-        vendor_key = bill.vendor_id
+        wt_groups = defaultdict(list)
+        for item in bill.line_items:
+            if item.wt_id and item.wt_amount and item.wt_amount > 0:
+                wt_groups[item.wt_id].append(item)
 
-        if vendor_key not in payee_totals:
-            payee_totals[vendor_key] = {
-                'payee_name': bill.vendor_name,
-                'payee_tin': bill.vendor_tin or '',
-                'payee_address': bill.vendor_address or '',
-                'atc_code': 'WI010',  # Default ATC code (can be enhanced)
-                'tax_rate': bill.withholding_tax_rate,
-                'gross_income': Decimal('0.00'),
-                'tax_withheld': Decimal('0.00'),
-                'month_paid': []
-            }
+        for wt_id, items in wt_groups.items():
+            wt = items[0].withholding_tax
+            row_key = (bill.vendor_id, wt_id)
 
-        # Add to totals
-        payee_totals[vendor_key]['gross_income'] += bill.subtotal
-        payee_totals[vendor_key]['tax_withheld'] += bill.withholding_tax_amount
+            if row_key not in payee_totals:
+                payee_totals[row_key] = {
+                    'payee_name': bill.vendor_name,
+                    'payee_tin': bill.vendor_tin or '',
+                    'payee_address': bill.vendor_address or '',
+                    'atc_code': wt.code if wt else '',
+                    'tax_rate': float(wt.rate) if wt else 0.0,
+                    'gross_income': Decimal('0.00'),
+                    'tax_withheld': Decimal('0.00'),
+                    'month_paid': [],
+                }
 
-        # Track months with payments
-        month = bill.bill_date.month
-        if month not in payee_totals[vendor_key]['month_paid']:
-            payee_totals[vendor_key]['month_paid'].append(month)
+            payee_totals[row_key]['gross_income'] += sum(i.line_total for i in items)
+            payee_totals[row_key]['tax_withheld'] += sum(i.wt_amount for i in items)
+
+            month = bill.bill_date.month
+            if month not in payee_totals[row_key]['month_paid']:
+                payee_totals[row_key]['month_paid'].append(month)
 
     # Convert month list to string
     for payee_key, totals in payee_totals.items():
