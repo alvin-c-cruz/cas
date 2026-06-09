@@ -45,8 +45,8 @@ class CustomerForm(FlaskForm):
         ('Net 30', 'Net 30'),
         ('Net 45', 'Net 45'),
         ('Net 60', 'Net 60'),
-        ('COD', 'Cash on Delivery'),
-        ('Advance', 'Advance Payment')
+        ('Cash on Delivery', 'Cash on Delivery'),
+        ('Advance Payment', 'Advance Payment')
     ])
 
     is_active = SelectField('Status', choices=[

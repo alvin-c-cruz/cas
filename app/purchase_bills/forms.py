@@ -41,8 +41,8 @@ class PurchaseBillForm(FlaskForm):
         ('Net 30', 'Net 30'),
         ('Net 45', 'Net 45'),
         ('Net 60', 'Net 60'),
-        ('COD', 'Cash on Delivery'),
-        ('Advance', 'Advance Payment')
+        ('Cash on Delivery', 'Cash on Delivery'),
+        ('Advance Payment', 'Advance Payment')
     ], default='Net 30')
 
     reference = StringField('Reference/PO Number', validators=[
