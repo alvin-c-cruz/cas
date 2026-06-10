@@ -81,6 +81,7 @@ class TestUserModel:
             full_name='Active User',
             role='staff'
         )
+        user.set_password('TestPass1!')
         db_session.add(user)
         db_session.commit()
 

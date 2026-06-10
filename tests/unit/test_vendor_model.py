@@ -147,7 +147,7 @@ class TestWhtYtd:
         item_current = PurchaseBillItem(
             bill_id=bill_current.id,
             line_number=1,
-            description='Service', quantity=1, unit_cost=Decimal('1000.00'),
+            description='Service', amount=Decimal('1000.00'),
             vat_rate=Decimal('0.00'), vat_amount=Decimal('0.00'),
             line_total=Decimal('1000.00'),
             wt_id=wt.id, wt_rate=wt.rate,
@@ -164,7 +164,7 @@ class TestWhtYtd:
         item_prior = PurchaseBillItem(
             bill_id=bill_prior.id,
             line_number=1,
-            description='Old Service', quantity=1, unit_cost=Decimal('500.00'),
+            description='Old Service', amount=Decimal('500.00'),
             vat_rate=Decimal('0.00'), vat_amount=Decimal('0.00'),
             line_total=Decimal('500.00'),
             wt_id=wt.id, wt_rate=wt.rate,
@@ -190,14 +190,14 @@ class TestWhtYtd:
                          due_date=today, status='posted',
                          total_amount=Decimal('2000.00'))
         db_session.add(PurchaseBillItem(
-            bill_id=bill.id, line_number=1, description='Prof Fees', quantity=1,
-            unit_cost=Decimal('1000.00'), vat_rate=Decimal('0.00'),
+            bill_id=bill.id, line_number=1, description='Prof Fees',
+            amount=Decimal('1000.00'), vat_rate=Decimal('0.00'),
             vat_amount=Decimal('0.00'), line_total=Decimal('1000.00'),
             wt_id=wt010.id, wt_rate=wt010.rate, wt_amount=Decimal('100.00'),
         ))
         db_session.add(PurchaseBillItem(
-            bill_id=bill.id, line_number=2, description='Contractor', quantity=1,
-            unit_cost=Decimal('1000.00'), vat_rate=Decimal('0.00'),
+            bill_id=bill.id, line_number=2, description='Contractor',
+            amount=Decimal('1000.00'), vat_rate=Decimal('0.00'),
             vat_amount=Decimal('0.00'), line_total=Decimal('1000.00'),
             wt_id=wt060.id, wt_rate=wt060.rate, wt_amount=Decimal('20.00'),
         ))

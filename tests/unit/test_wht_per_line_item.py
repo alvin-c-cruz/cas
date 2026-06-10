@@ -1,4 +1,9 @@
-"""Unit tests for WHT per line item on PurchaseBillItem."""
+"""Unit tests for WHT per line item on PurchaseBillItem.
+
+Model redesign: PurchaseBillItem now uses a single VAT-inclusive `amount` field
+(replacing the old quantity × unit_cost approach).  WHT is computed on the
+net (ex-VAT) base per BIR EWT standard.
+"""
 import pytest
 from decimal import Decimal
 from datetime import date, timedelta
@@ -8,11 +13,12 @@ from app.purchase_bills.models import PurchaseBillItem
 @pytest.mark.usefixtures("app")
 class TestPurchaseBillItemWht:
     def _make_item(self, **kwargs):
+        # amount=1120 is VAT-inclusive at 12%:
+        #   net_base = 1120 / 1.12 = 1000, vat = 120
         defaults = dict(
             line_number=1,
             description='Office supplies',
-            quantity=Decimal('2.0000'),
-            unit_cost=Decimal('500.00'),
+            amount=Decimal('1120.00'),   # VAT-inclusive (was qty=2 × unit_cost=500 × 1.12)
             vat_rate=Decimal('12.00'),
             wt_id=None,
             wt_rate=None,
@@ -25,18 +31,18 @@ class TestPurchaseBillItemWht:
         item.calculate_amounts()
         assert item.wt_amount == Decimal('0.00')
 
-    def test_wt_amount_computed_from_line_total(self):
-        # line_total = 2 * 500 = 1000; wt = 1000 * 10 / 100 = 100
+    def test_wt_amount_computed_from_net_base(self):
+        # amount=1120 at 12% VAT → net_base=1000; wt at 10% = 100
         item = self._make_item(wt_rate=Decimal('10.00'))
         item.calculate_amounts()
-        assert item.line_total == Decimal('1000.00')
+        assert item.line_total == Decimal('1120.00')
         assert item.wt_amount == Decimal('100.00')
 
     def test_calculate_amounts_still_sets_line_total_and_vat(self):
         item = self._make_item(wt_rate=Decimal('2.00'))
         item.calculate_amounts()
-        assert item.line_total == Decimal('1000.00')
-        assert item.vat_amount == Decimal('120.00')  # 1000 * 12%
+        assert item.line_total == Decimal('1120.00')
+        assert item.vat_amount == Decimal('120.00')  # extracted from 1120 at 12%
 
     def test_to_dict_includes_wt_fields(self):
         item = self._make_item(wt_id=3, wt_rate=Decimal('10.00'))
@@ -117,17 +123,19 @@ class TestPurchaseBillWhtIntegration:
         db_session.add(bill)
         db_session.flush()
 
+        # item1: 5600 VAT-inclusive at 12% → net_base=5000; WHT at 10% = 500
         item1 = PurchaseBillItem(
             bill_id=bill.id, line_number=1, description='Consultancy',
-            quantity=Decimal('1.0000'), unit_cost=Decimal('5000.00'),
+            amount=Decimal('5600.00'),
             vat_rate=Decimal('12.00'), vat_category='VATABLE',
             account_id=gl_accounts_wht['50999'].id,
             wt_id=wht_codes['WC010'].id,
             wt_rate=Decimal('10.00'),
         )
+        # item2: 11200 VAT-inclusive at 12% → net_base=10000; WHT at 2% = 200
         item2 = PurchaseBillItem(
             bill_id=bill.id, line_number=2, description='Construction',
-            quantity=Decimal('1.0000'), unit_cost=Decimal('10000.00'),
+            amount=Decimal('11200.00'),
             vat_rate=Decimal('12.00'), vat_category='VATABLE',
             account_id=gl_accounts_wht['50999'].id,
             wt_id=wht_codes['WC060'].id,
@@ -146,9 +154,9 @@ class TestPurchaseBillWhtIntegration:
         bill = self._make_bill(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         items = sorted(bill.line_items, key=lambda i: i.line_number)
-        # item1: 5000 * 10% = 500
+        # item1: net_base = 5600/1.12 = 5000; wt = 5000 * 10% = 500
         assert items[0].wt_amount == Decimal('500.00')
-        # item2: 10000 * 2% = 200
+        # item2: net_base = 11200/1.12 = 10000; wt = 10000 * 2% = 200
         assert items[1].wt_amount == Decimal('200.00')
 
     def test_bill_withholding_tax_amount_sums_lines(self, db_session, admin_user, main_branch,
@@ -162,8 +170,12 @@ class TestPurchaseBillWhtIntegration:
                                                 test_vendor_with_wht, gl_accounts_wht, wht_codes):
         bill = self._make_bill(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
-        # subtotal=15000, vat=1800, total_before_wt=16800, wt=700, total=16100
-        assert bill.subtotal == Decimal('15000.00')
+        # subtotal = 5600 + 11200 = 16800 (VAT-inclusive)
+        # vat_amount = 600 + 1200 = 1800 (extracted from amounts)
+        # total_before_wt = 16800 (equals subtotal — VAT is inside, not added on top)
+        # withholding_tax_amount = 700
+        # total_amount = 16800 - 700 = 16100
+        assert bill.subtotal == Decimal('16800.00')
         assert bill.vat_amount == Decimal('1800.00')
         assert bill.total_before_wt == Decimal('16800.00')
         assert bill.total_amount == Decimal('16100.00')
@@ -192,8 +204,8 @@ class TestPurchaseBillWhtIntegration:
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         bill.status = 'posted'
         db_session.commit()
-        from app.purchase_bills.views import _create_bill_void_je
-        je = _create_bill_void_je(bill, date.today(), admin_user.id)
+        from app.purchase_bills.views import _create_reversal_je
+        je = _create_reversal_je(bill, date.today(), admin_user.id)
         total_debit = sum(l.debit_amount for l in je.lines)
         total_credit = sum(l.credit_amount for l in je.lines)
         assert total_debit == total_credit  # JE must balance

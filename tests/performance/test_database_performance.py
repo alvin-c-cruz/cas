@@ -212,8 +212,7 @@ class TestN1QueryPrevention:
                     bill_id=bill.id,
                     line_number=j + 1,
                     description=f'Item {j}',
-                    quantity=1,
-                    unit_cost=100.00,
+                    amount=100.00,
                     vat_rate=0.00
                 )
                 item.calculate_amounts()

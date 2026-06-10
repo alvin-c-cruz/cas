@@ -81,10 +81,10 @@ def posted_bill(db_session, admin_user, main_branch, gl_accounts, test_vendor):
 
     item = PurchaseBillItem(
         bill_id=bill.id, line_number=1,
-        description='Office Supplies', quantity=Decimal('1.0000'),
-        unit_cost=Decimal('1000.00'), vat_category='VATABLE',
-        vat_rate=Decimal('12.00'), line_total=Decimal('1000.00'),
-        vat_amount=Decimal('120.00'), account_id=gl_accounts['expense'].id
+        description='Office Supplies', amount=Decimal('1120.00'),
+        vat_category='VATABLE', vat_rate=Decimal('12.00'),
+        line_total=Decimal('1120.00'), vat_amount=Decimal('120.00'),
+        account_id=gl_accounts['expense'].id
     )
     db_session.add(item)
     db_session.commit()
@@ -150,7 +150,7 @@ def test_sales_invoice_has_sent_and_void_fields(db_session, posted_invoice):
 
 def test_create_bill_void_je_balanced(app, db_session, posted_bill, admin_user, gl_accounts):
     """Void JE must have total_debit == total_credit."""
-    from app.purchase_bills.views import _create_bill_void_je
+    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
     je = _create_bill_void_je(posted_bill, date.today(), admin_user.id)
     db_session.flush()
     assert je.is_balanced, f"JE not balanced: DR={je.total_debit} CR={je.total_credit}"
@@ -159,7 +159,7 @@ def test_create_bill_void_je_balanced(app, db_session, posted_bill, admin_user, 
 
 
 def test_create_bill_void_je_reference_format(app, db_session, posted_bill, admin_user, gl_accounts):
-    from app.purchase_bills.views import _create_bill_void_je
+    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
     je = _create_bill_void_je(posted_bill, date.today(), admin_user.id)
     assert je.reference == 'VOID-PB-TEST-0001'
     assert je.entry_type == 'reversal'
@@ -169,7 +169,7 @@ def test_create_bill_void_je_reference_format(app, db_session, posted_bill, admi
 
 def test_create_bill_void_je_missing_ap_raises(app, db_session, posted_bill, admin_user, gl_accounts):
     """Void must fail clearly if AP account is missing."""
-    from app.purchase_bills.views import _create_bill_void_je
+    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
     # Remove the AP account so the helper can't find it
     db_session.delete(gl_accounts['ap'])
     db_session.commit()
@@ -179,7 +179,7 @@ def test_create_bill_void_je_missing_ap_raises(app, db_session, posted_bill, adm
 
 def test_bill_void_sets_status_and_fields(app, db_session, posted_bill, admin_user, gl_accounts):
     """After voiding, bill fields are updated correctly."""
-    from app.purchase_bills.views import _create_bill_void_je
+    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
     from app.utils import ph_now
     _create_bill_void_je(posted_bill, date.today(), admin_user.id)
     posted_bill.status = 'voided'
@@ -197,7 +197,7 @@ def test_bill_void_sets_status_and_fields(app, db_session, posted_bill, admin_us
 
 def test_bill_void_creates_audit_entry(app, db_session, client, posted_bill, admin_user, gl_accounts):
     """Void route creates an audit log entry."""
-    from app.purchase_bills.views import _create_bill_void_je
+    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
     from app.audit.utils import log_audit
     from app.audit.models import AuditLog
 
