@@ -42,16 +42,16 @@
             </div>
 
             <!-- ② Remaining header fields (dimmed until vendor selected) -->
-            <div id="headerFields" class="header-fields{% if bill %} header-fields--active{% endif %}">
-                <div class="form-row-4">
+            <div id="headerFields" class="header-fields secondary-header-row{% if bill %} header-fields--active{% endif %}">
+                <div class="secondary-fields">
                     {{ render_field(form.payment_terms) }}
                     {{ render_field(form.vendor_invoice_number) }}
                     {{ render_field(form.vendor_invoice_date) }}
                     {{ render_field(form.reference) }}
                 </div>
-                <div class="form-group" style="margin-bottom: 12px;">
+                <div class="notes-col">
                     {{ form.notes.label(class='form-label') }}
-                    {{ form.notes(class='form-control', rows=2, style='max-height:56px;resize:vertical', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                    {{ form.notes(class='form-control', style='resize:vertical;min-height:108px', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                     {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
                 </div>
             </div>
@@ -440,6 +440,14 @@ initItems();
 
 /* Grid helpers */
 .vendor-header-row { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+.secondary-header-row { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+.secondary-fields { display: flex; flex-direction: column; gap: 10px; }
+.secondary-fields .form-group { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
+.secondary-fields .form-group .form-label { white-space: nowrap; margin-bottom: 0; min-width: 130px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
+.secondary-fields .form-group .form-control { flex: 1; }
+.notes-col { display: flex; flex-direction: column; }
+.notes-col .form-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); margin-bottom: 6px; }
+.notes-col .form-control { flex: 1; }
 .bill-id-fields { display: flex; flex-direction: column; gap: 10px; }
 .bill-id-fields .form-group { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
 .bill-id-fields .form-group .form-label { white-space: nowrap; margin-bottom: 0; min-width: 90px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
