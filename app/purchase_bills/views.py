@@ -798,6 +798,12 @@ def _post_bill_je(bill, user_id):
     ))
 
     je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(
+            f"Purchase bill JE is not balanced "
+            f"(debit={je.total_debit}, credit={je.total_credit}). "
+            "Ensure every line item has an expense account assigned."
+        )
     return je
 
 
@@ -922,6 +928,15 @@ def void(id):
         return redirect(url_for('purchase_bills.view', id=id))
 
     try:
+        # Delete the linked JE if it exists (JE was auto-created on save, even for drafts)
+        if bill.journal_entry_id:
+            from app.journal_entries.models import JournalEntry as _JE
+            je_to_delete = db.session.get(_JE, bill.journal_entry_id)
+            if je_to_delete:
+                db.session.delete(je_to_delete)
+            bill.journal_entry_id = None
+            bill.journal_entry = None
+
         bill.status = 'voided'
         bill.voided_at = ph_now()
         bill.voided_by_id = current_user.id
