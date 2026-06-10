@@ -68,7 +68,7 @@
 
             <!-- ④ Line Items Section (hidden on create, visible on edit) -->
             <div id="lineItemsSection"{% if not bill %} style="display:none"{% endif %}>
-                <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border);">
+                <div style="margin-top: 16px;">
                     <table class="table" id="lineItemsTable">
                         <thead>
                             <tr>
@@ -138,7 +138,7 @@
                         </div>
 
                         <!-- Row 3: Net of VAT -->
-                        <div class="bsr">
+                        <div class="bsr bsr--sep">
                             <span class="bsr-label">Net of VAT</span>
                             <span id="netOfVatDisplay" class="bsr-amt">0.00</span>
                         </div>
@@ -150,14 +150,14 @@
                         </div>
 
                         <!-- Row 5: Less: Withholding Tax -->
-                        <div id="wtDisplayMode" class="bsr bsr--sep">
+                        <div id="wtDisplayMode" class="bsr">
                             <span class="bsr-label">Less: Withholding Tax</span>
                             <div class="bsr-amt-wrap">
                                 <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button>
                                 <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
                             </div>
                         </div>
-                        <div id="wtEditMode" class="bsr bsr--sep" style="display:none">
+                        <div id="wtEditMode" class="bsr" style="display:none">
                             <span class="bsr-label">Less: Withholding Tax <span id="wtAutoHint" class="bsr-hint"></span></span>
                             <div class="bsr-amt-wrap">
                                 <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">↺</button>
