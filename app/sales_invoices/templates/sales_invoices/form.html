@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ 'Edit Invoice' if invoice else 'Create Invoice' }}{% endblock %}
+{% block title %}{{ 'Edit Invoice' if invoice else 'Enter Invoice' }}{% endblock %}
 {% block page_title %}{{ 'Edit Invoice' if invoice else 'Create Sales Invoice' }}{% endblock %}
 
 {% block content %}
@@ -76,7 +76,7 @@
 
             <div class="form-actions" style="margin-top: 32px;">
                 <button type="submit" class="btn btn-primary">
-                    {{ 'Update Invoice' if invoice else 'Create Invoice' }}
+                    {{ 'Update Invoice' if invoice else 'Enter Invoice' }}
                 </button>
                 <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">Cancel</a>
             </div>

@@ -63,7 +63,7 @@
                class="btn btn-secondary pb-export-link">📊 Export Excel</a>
             <a href="{{ url_for('purchase_bills.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary pb-export-link">📄 Export CSV</a>
-            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Create Bill</a>
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Enter Bill</a>
         </div>
     </div>
     <div class="card-body">
@@ -120,7 +120,7 @@
             <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Clear Filters</a>
             {% else %}
             <p>No purchase bills found.</p>
-            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Create First Bill</a>
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Enter First Bill</a>
             {% endif %}
         </div>
         {% endif %}

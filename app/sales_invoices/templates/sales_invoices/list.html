@@ -18,7 +18,7 @@
                 📄 Export CSV
             </a>
             <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">
-                <span>➕</span> Create Invoice
+                <span>➕</span> Enter Invoice
             </a>
         </div>
     </div>
@@ -114,7 +114,7 @@
         {% else %}
         <div class="empty-state">
             <p>No sales invoices found.</p>
-            <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">Create First Invoice</a>
+            <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">Enter First Invoice</a>
         </div>
         {% endif %}
     </div>
