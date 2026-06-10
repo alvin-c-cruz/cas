@@ -82,7 +82,7 @@
             </span>
             {% set today = now.date() %}
             {% if bill.status in ('posted', 'partially_paid') and bill.due_date < today %}
-            <span class="badge" style="background:var(--orange, #f97316); color:white;">Overdue</span>
+            <span class="badge" style="background:var(--amber); color:white;">Overdue</span>
             {% endif %}
         </div>
         <div class="card-header-actions">
@@ -251,6 +251,6 @@
 .badge-success { background:var(--green); color:white; }
 .badge-warning { background:var(--yellow, #f59e0b); color:white; }
 .badge-danger { background:var(--red); color:white; }
-.badge-dark { background:#374151; color:white; }
+.badge-dark { background:var(--text-1, #374151); color:white; }
 </style>
 {% endblock %}
