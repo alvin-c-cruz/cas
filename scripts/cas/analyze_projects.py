@@ -175,6 +175,43 @@ class ProjectAnalyzer:
             "total": len(set(python_deps)) + len(set(node_deps))
         }
 
+    def count_tests(self) -> Dict:
+        """Count test files and lines of test code."""
+        test_files = 0
+        test_loc = 0
+
+        for root, dirs, files in os.walk(self.project_path):
+            dirs[:] = [d for d in dirs if d not in self.EXCLUDE_DIRS]
+
+            for file in files:
+                is_test = (
+                    file.startswith("test_") or
+                    file.endswith("_test.py") or
+                    file.endswith(".test.js") or
+                    file.endswith(".spec.js")
+                )
+
+                if not is_test:
+                    continue
+
+                test_files += 1
+                file_path = Path(root) / file
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        test_loc += sum(1 for _ in f)
+                except Exception:
+                    pass
+
+        # Calculate test ratio
+        total_lines = self.count_loc()["total_lines"]
+        test_ratio = round(test_loc / (total_lines + 1) * 100, 1) if test_loc > 0 else 0
+
+        return {
+            "test_files": test_files,
+            "test_loc": test_loc,
+            "test_ratio": test_ratio
+        }
+
     def analyze(self) -> Dict:
         """Run full analysis on project."""
         return {
@@ -185,6 +222,7 @@ class ProjectAnalyzer:
             "loc": self.count_loc(),
             "routes": self.find_routes(),
             "dependencies": self.parse_dependencies(),
+            "tests": self.count_tests(),
         }
 
 
@@ -207,6 +245,7 @@ def main():
         loc = result["loc"]
         routes = result["routes"]
         deps = result["dependencies"]
+        tests = result["tests"]
 
         print(f"{result['name']} ({result['type']})")
         print(f"  Files: {files['total']} total, {files['source']} source")
@@ -215,6 +254,7 @@ def main():
         if routes:
             print(f"    Sample: {', '.join(routes[:3])}")
         print(f"  Dependencies: {deps['total']} total ({len(deps['python'])} Python, {len(deps['node'])} Node)")
+        print(f"  Tests: {tests['test_files']} files, {tests['test_loc']} LOC, {tests['test_ratio']}% ratio")
         print()
 
 

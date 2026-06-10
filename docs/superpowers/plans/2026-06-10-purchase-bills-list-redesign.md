@@ -110,15 +110,19 @@ class TestBillsSummary:
         make_bill(db_session, vendor, main_branch, 'S004',
                   due_date=today, status='draft',
                   total_amount=Decimal('999.00'))
+        # Due today (boundary: inclusive lower bound of due-soon window)
+        make_bill(db_session, vendor, main_branch, 'S005',
+                  due_date=today,
+                  total_amount=Decimal('50.00'))
         db_session.commit()
 
         s = compute_bills_summary(main_branch.id)
-        assert s['outstanding_total'] == Decimal('700.00')
-        assert s['outstanding_count'] == 3
+        assert s['outstanding_total'] == Decimal('750.00')
+        assert s['outstanding_count'] == 4
         assert s['overdue_total'] == Decimal('100.00')
         assert s['overdue_count'] == 1
-        assert s['due_soon_total'] == Decimal('200.00')
-        assert s['due_soon_count'] == 1
+        assert s['due_soon_total'] == Decimal('250.00')
+        assert s['due_soon_count'] == 2
         assert s['draft_count'] == 1
 
     def test_partially_paid_included_with_balance(self, db_session, main_branch):
@@ -134,6 +138,7 @@ class TestBillsSummary:
         s = compute_bills_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('400.00')
         assert s['overdue_total'] == Decimal('400.00')
+        assert s['outstanding_count'] == 1
 
     def test_closed_statuses_excluded(self, db_session, main_branch):
         from app.purchase_bills.utils import compute_bills_summary
@@ -167,19 +172,6 @@ class TestBillsSummary:
         assert s['outstanding_total'] == Decimal('100.00')
         assert s['outstanding_count'] == 1
 
-    def test_null_due_date_outstanding_only(self, db_session, main_branch):
-        from app.purchase_bills.utils import compute_bills_summary
-        vendor = make_vendor(db_session, code='SV005')
-
-        make_bill(db_session, vendor, main_branch, 'S040',
-                  due_date=None, total_amount=Decimal('300.00'))
-        db_session.commit()
-
-        s = compute_bills_summary(main_branch.id)
-        assert s['outstanding_total'] == Decimal('300.00')
-        assert s['overdue_count'] == 0
-        assert s['due_soon_count'] == 0
-
     def test_empty_branch_returns_zeros(self, db_session, main_branch):
         from app.purchase_bills.utils import compute_bills_summary
         s = compute_bills_summary(main_branch.id)
@@ -193,7 +185,7 @@ class TestBillsSummary:
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/unit/test_purchase_bills_utils.py -v`
-Expected: All 6 tests FAIL with `ModuleNotFoundError: No module named 'app.purchase_bills.utils'` (or ImportError).
+Expected: All 5 tests FAIL with `ModuleNotFoundError: No module named 'app.purchase_bills.utils'` (or ImportError).
 
 - [ ] **Step 3: Commit**
 
@@ -274,7 +266,7 @@ def compute_bills_summary(branch_id):
 - [ ] **Step 2: Run unit tests to verify they pass**
 
 Run: `python -m pytest tests/unit/test_purchase_bills_utils.py -v`
-Expected: 6 passed.
+Expected: 5 passed.
 
 - [ ] **Step 3: Commit**
 
@@ -809,7 +801,7 @@ git commit -m "feat: filters, search, date range, summary, export ids for purcha
     <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
         <div>
             Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
-            {{ min(pagination.page * pagination.per_page, pagination.total) }} of
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
             {{ pagination.total }} bills
         </div>
         <div style="display:flex;gap:8px">
@@ -932,7 +924,7 @@ git commit -m "feat: purchase bills list redesign - summary cards, filter bar, s
 - [ ] **Step 1: Run the full test suite**
 
 Run: `python -m pytest`
-Expected: All tests pass except the known pre-existing failure `test_user_is_active_default` (unrelated to this work). The new files add 6 unit + 14 integration tests.
+Expected: All tests pass except the known pre-existing failure `test_user_is_active_default` (unrelated to this work). The new files add 5 unit + 14 integration tests.
 
 - [ ] **Step 2: If anything else fails, fix before declaring done**
 

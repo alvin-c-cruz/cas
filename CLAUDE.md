@@ -59,6 +59,7 @@ These come from `PROJECT_FOUNDATIONS.md` — read it for the full rationale and 
 - **No hardcoded styling in templates.** Use design tokens / CSS variables.
 - **Responsive on all UI** (desktop, tablet, mobile).
 - **Verify the audit log in CRUD tests** — after every write, assert an audit entry exists with the correct action, record reference, and actor.
+- **Transaction buttons say "Enter"; master data says "Create".** Documents that post to the books (purchase bills, sales invoices, receipts, journal entries) use "Enter Bill" / "Enter First Bill" etc.; reference records (vendors, customers, accounts, branches, users) keep "Create".
 
 ## Testing Notes
 

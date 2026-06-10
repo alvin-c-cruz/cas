@@ -46,7 +46,7 @@ def compute_bills_summary(branch_id):
 
 - Uses `ph_now().date()` for today.
 - One aggregate query per metric, all filtered by `branch_id`.
-- Bills with `due_date IS NULL` count toward Outstanding but not Overdue/Due-soon.
+- `due_date` is `nullable=False` on the model, so no NULL handling is required; the helper still guards with `due_date.isnot(None)` defensively.
 - Returns `Decimal('0.00')` / `0` values when there are no bills.
 
 ### 2. Filter bar
@@ -104,10 +104,9 @@ Columns: **☐ | Bill # | Date | Vendor | Due Date | Subtotal | VAT | WT | Net P
 ### 8. Testing (TDD — tests written first)
 
 **Unit (`tests/unit/test_purchase_bills_utils.py`):**
-- `compute_bills_summary` bucket math: outstanding/overdue/due-soon totals and counts, draft count.
+- `compute_bills_summary` bucket math: outstanding/overdue/due-soon totals and counts, draft count, due-today boundary (in due-soon, not overdue).
 - Status exclusions: `draft`/`paid`/`voided`/`cancelled` excluded from outstanding; `partially_paid` included with its `balance`.
 - Branch scoping: bills in another branch excluded.
-- Null `due_date`: in Outstanding, not in Overdue/Due-soon.
 - Empty branch returns zeros.
 
 **Integration (`tests/integration/test_purchase_bill_views.py`):**
