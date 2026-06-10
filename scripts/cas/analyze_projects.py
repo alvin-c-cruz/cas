@@ -356,7 +356,7 @@ class HTMLReporter:
 
     def render(self, output_path: str = "projects_metrics.html"):
         """Generate complete HTML report."""
-        html = f"""<!DOCTYPE html>
+        html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -677,11 +677,11 @@ class HTMLReporter:
 
         table_html = self.generate_table_html()
         charts_data = self.generate_charts_data()
-        html = html.replace('TABLE_PLACEHOLDER', table_html)
-        html = html.replace('CHARTS_DATA_PLACEHOLDER', charts_data)
+        html_content = html_content.replace('TABLE_PLACEHOLDER', table_html)
+        html_content = html_content.replace('CHARTS_DATA_PLACEHOLDER', charts_data)
 
         with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(html)
+            f.write(html_content)
 
         print(f"[OK] Report generated: {output_path}")
 
