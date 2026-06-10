@@ -73,11 +73,11 @@
                     <table class="table" id="lineItemsTable">
                         <thead>
                             <tr>
-                                <th style="width: 32%;">Description</th>
-                                <th style="width: 14%; text-align: right;">Amount (VAT-incl.)</th>
-                                <th style="width: 12%;">VT</th>
-                                <th style="width: 18%;">WT</th>
-                                <th style="width: 19%;">Account Title</th>
+                                <th style="width: 35%;">Description</th>
+                                <th style="width: 13%; text-align: right;">Amount (VAT-incl.)</th>
+                                <th style="width: 9%;">VT</th>
+                                <th style="width: 15%;">WT</th>
+                                <th style="width: 23%;">Account Title</th>
                                 <th style="width: 5%;"></th>
                             </tr>
                         </thead>
@@ -231,9 +231,22 @@ function buildWhtOptions(selectedId) {
         return '<option value="">None</option>';
     }
     return '<option value="">None</option>' +
-        currentVendorWHTs.map(wt =>
-            `<option value="${wt.id}" data-rate="${wt.rate}" ${selectedId == wt.id ? 'selected' : ''}>${escHtml(wt.code)} — ${escHtml(wt.name)} (${wt.rate}%)</option>`
-        ).join('');
+        currentVendorWHTs.map(wt => {
+            const short = escHtml(wt.code);
+            const long = `${escHtml(wt.code)} — ${escHtml(wt.name)} (${wt.rate}%)`;
+            return `<option value="${wt.id}" data-rate="${wt.rate}" data-short="${short}" data-long="${long}" ${selectedId == wt.id ? 'selected' : ''}>${long}</option>`;
+        }).join('');
+}
+
+function collapseSelect(sel) {
+    const opt = sel && sel.options[sel.selectedIndex];
+    if (opt && opt.dataset.short) opt.textContent = opt.dataset.short;
+}
+
+function expandSelect(sel) {
+    Array.from(sel.options).forEach(opt => {
+        if (opt.dataset.long) opt.textContent = opt.dataset.long;
+    });
 }
 
 function rebuildAllWhtSelects() {
@@ -249,6 +262,7 @@ function rebuildAllWhtSelects() {
         }
         sel.innerHTML = buildWhtOptions(item.wt_id);
         sel.value = item.wt_id || '';
+        collapseSelect(sel);
     });
 }
 
@@ -259,6 +273,7 @@ function rebuildAllVatSelects() {
         if (!sel) return;
         sel.value = currentVendorVatCategory;
         item.vat_category = currentVendorVatCategory;
+        collapseSelect(sel);
     });
     calculateTotals();
 }
@@ -302,13 +317,17 @@ function addLineItem(existingItem) {
         <td><input type="number" class="form-control" value="${item.amount || 0}" step="0.01" min="0"
                    style="text-align:right; font-family: var(--mono);" onchange="updateLineItem(${id}, 'amount', parseFloat(this.value)||0)"></td>
         <td>
-            <select class="form-control vat-select" onchange="updateLineItem(${id}, 'vat_category', this.value)">
+            <select class="form-control vat-select" onchange="updateLineItem(${id}, 'vat_category', this.value)" onfocus="expandSelect(this)" onblur="collapseSelect(this)">
                 <option value="">No VAT</option>
-                ${vatCategories.map(v => `<option value="${escHtml(v.code)}" ${item.vat_category === v.code ? 'selected' : ''}>${escHtml(v.code)} (${v.rate}%)</option>`).join('')}
+                ${vatCategories.map(v => {
+                    const short = escHtml(v.code);
+                    const long = `${escHtml(v.code)} — ${escHtml(v.name)} (${v.rate}%)`;
+                    return `<option value="${short}" data-short="${short}" data-long="${long}" ${item.vat_category === v.code ? 'selected' : ''}>${long}</option>`;
+                }).join('')}
             </select>
         </td>
         <td>
-            <select class="form-control wht-select" onchange="updateWht(${id}, this)">
+            <select class="form-control wht-select" onchange="updateWht(${id}, this)" onfocus="expandSelect(this)" onblur="collapseSelect(this)">
                 ${buildWhtOptions(item.wt_id)}
             </select>
         </td>
@@ -321,6 +340,9 @@ function addLineItem(existingItem) {
         <td><button type="button" class="btn-action" onclick="removeLineItem(${id})" title="Remove">🗑️</button></td>
     `;
     document.getElementById('lineItemsBody').appendChild(row);
+    const newRow = document.getElementById(`line-${id}`);
+    collapseSelect(newRow.querySelector('.vat-select'));
+    collapseSelect(newRow.querySelector('.wht-select'));
     lineItems.push(item);
     calculateTotals();
 }
@@ -755,5 +777,40 @@ initItems();
     color: var(--text-2);
 }
 .totals-revert:hover { background: var(--border); }
+
+/* Compact grid-style line items table */
+#lineItemsTable { border-collapse: collapse; }
+#lineItemsTable thead th {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 5px 6px;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-2);
+    background: var(--bg);
+}
+#lineItemsTable tbody tr { border-bottom: 1px solid var(--border); }
+#lineItemsTable tbody td {
+    padding: 2px 3px;
+    vertical-align: middle;
+}
+#lineItemsTable tbody td .form-control {
+    padding: 3px 6px;
+    height: 28px;
+    font-size: 13px;
+    border-color: transparent;
+    background: transparent;
+    border-radius: 2px;
+}
+#lineItemsTable tbody td .form-control:hover {
+    border-color: var(--border);
+    background: var(--card);
+}
+#lineItemsTable tbody td .form-control:focus {
+    border-color: var(--blue);
+    background: var(--card);
+    border-radius: 3px;
+}
 </style>
 {% endblock %}
