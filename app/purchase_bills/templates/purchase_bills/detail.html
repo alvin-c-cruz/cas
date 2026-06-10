@@ -8,8 +8,8 @@
 
 {{ render_flash_messages() }}
 
-<!-- Post confirmation modal -->
 {% if bill.status == 'draft' %}
+<!-- Post modal -->
 <div id="postModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Post this bill?</h3>
@@ -24,55 +24,49 @@
     </div>
 </div>
 
-<div id="deleteModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
-        <h3 style="margin:0 0 12px 0;">Delete this bill?</h3>
-        <p style="color:var(--text-2); margin-bottom:24px;">This will permanently delete <strong>{{ bill.bill_number }}</strong>. This action cannot be undone.</p>
-        <div style="display:flex; gap:12px; justify-content:flex-end;">
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('deleteModal').style.display='none'">Cancel</button>
-            <form method="POST" action="{{ url_for('purchase_bills.delete', id=bill.id) }}" style="display:inline;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <button type="submit" class="btn btn-danger">Delete</button>
-            </form>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-{% if bill.status != 'cancelled' and bill.amount_paid == 0 and bill.status == 'draft' %}
-<div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
-        <h3 style="margin:0 0 12px 0;">Cancel this bill?</h3>
-        <p style="color:var(--text-2); margin-bottom:24px;">Are you sure you want to cancel <strong>{{ bill.bill_number }}</strong>?</p>
-        <div style="display:flex; gap:12px; justify-content:flex-end;">
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">No, keep it</button>
-            <form method="POST" action="{{ url_for('purchase_bills.cancel', id=bill.id) }}" style="display:inline;">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <button type="submit" class="btn btn-danger">Yes, Cancel</button>
-            </form>
-        </div>
+<!-- Void draft modal -->
+<div id="voidModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Void this draft?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;"><strong>{{ bill.bill_number }}</strong> will be marked as voided. No journal entry will be created since this bill has not been posted. The bill number may be reused.</p>
+        <form method="POST" action="{{ url_for('purchase_bills.void', id=bill.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+                <textarea name="void_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%; resize:vertical;"></textarea>
+            </div>
+            <div style="margin-bottom:24px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Void Date <span style="color:var(--red);">*</span></label>
+                <input type="date" name="reversal_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required style="width:100%;">
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('voidModal').style.display='none'">Keep Draft</button>
+                <button type="submit" class="btn btn-danger">Void Draft</button>
+            </div>
+        </form>
     </div>
 </div>
 {% endif %}
 
 {% if bill.status == 'posted' and bill.amount_paid == 0 %}
-<div id="voidModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+<!-- Cancel posted bill modal -->
+<div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
-        <h3 style="margin:0 0 12px 0;">Void this bill?</h3>
-        <p style="color:var(--text-2); margin-bottom:20px;">This will permanently void <strong>{{ bill.bill_number }}</strong> and create a reversal journal entry. This cannot be undone.</p>
-        <form method="POST" action="{{ url_for('purchase_bills.void', id=bill.id) }}">
+        <h3 style="margin:0 0 12px 0;">Cancel this bill?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;">Cancelling <strong>{{ bill.bill_number }}</strong> will create a reversal journal entry. This cannot be undone.</p>
+        <form method="POST" action="{{ url_for('purchase_bills.cancel', id=bill.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div style="margin-bottom:16px;">
-                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reason for voiding <span style="color:var(--red);">*</span></label>
-                <textarea name="void_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%; resize:vertical;"></textarea>
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+                <textarea name="cancel_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%; resize:vertical;"></textarea>
             </div>
             <div style="margin-bottom:24px;">
                 <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reversal Date <span style="color:var(--red);">*</span></label>
                 <input type="date" name="reversal_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required style="width:100%;">
             </div>
             <div style="display:flex; gap:12px; justify-content:flex-end;">
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('voidModal').style.display='none'">Cancel</button>
-                <button type="submit" class="btn btn-danger">Void this Record</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">Keep Bill</button>
+                <button type="submit" class="btn btn-danger">Cancel Bill</button>
             </div>
         </form>
     </div>
@@ -95,13 +89,10 @@
             {% if bill.status == 'draft' %}
             <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post Bill</button>
             <a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn btn-primary">Edit</a>
-            <button type="button" class="btn btn-danger" onclick="document.getElementById('deleteModal').style.display='flex'">Delete</button>
-            {% endif %}
-            {% if bill.status != 'cancelled' and bill.amount_paid == 0 and bill.status == 'draft' %}
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Bill</button>
+            <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void Draft</button>
             {% endif %}
             {% if bill.status == 'posted' and bill.amount_paid == 0 %}
-            <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void Bill</button>
+            <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Bill</button>
             {% endif %}
             <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">← Back to List</a>
         </div>
@@ -247,6 +238,9 @@
             {% endif %}
             {% if bill.voided_by %}
              &mdash; Voided by {{ bill.voided_by.username }} on {{ bill.voided_at.strftime('%b %d, %Y %H:%M') if bill.voided_at else '—' }} &mdash; <em>{{ bill.void_reason }}</em>
+            {% endif %}
+            {% if bill.cancel_reason %}
+             &mdash; Cancelled on {{ bill.cancelled_at.strftime('%b %d, %Y %H:%M') if bill.cancelled_at else '—' }} &mdash; <em>{{ bill.cancel_reason }}</em>
             {% endif %}
         </div>
     </div>

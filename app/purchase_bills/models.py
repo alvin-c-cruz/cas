@@ -94,6 +94,7 @@ class PurchaseBill(db.Model):
     voided_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     voided_by = db.relationship('User', foreign_keys=[voided_by_id], backref='voided_purchase_bills')
     void_reason = db.Column(db.String(255))
+    cancel_reason = db.Column(db.String(500), nullable=True)
 
     # Relationship to line items
     # Changed from lazy='dynamic' to lazy='select' to support eager loading (selectinload)

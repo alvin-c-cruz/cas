@@ -239,3 +239,68 @@ class TestBranchScoping:
 
         resp = client.get(f'/purchase-bills/{other_bill.id}/edit')
         assert resp.status_code == 404
+
+
+class TestVoidCancelDelete:
+    def test_void_draft_changes_status(self, client, db_session, admin_user, main_branch):
+        vendor = make_vendor(db_session, code='PVV-001', name='Void Vendor')
+        bill = make_bill(db_session, vendor, main_branch, 'PBV-001', status='draft')
+        login(client)
+        resp = client.post(f'/purchase-bills/{bill.id}/void', data={
+            'void_reason': 'Created by mistake during testing',
+            'reversal_date': str(ph_now().date()),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        db_session.refresh(bill)
+        assert bill.status == 'voided'
+
+    def test_void_posted_bill_rejected(self, client, db_session, admin_user, main_branch):
+        vendor = make_vendor(db_session, code='PVV-002', name='Void Vendor 2')
+        bill = make_bill(db_session, vendor, main_branch, 'PBV-002', status='posted')
+        login(client)
+        resp = client.post(f'/purchase-bills/{bill.id}/void', data={
+            'void_reason': 'Trying to void a posted bill',
+            'reversal_date': str(ph_now().date()),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        db_session.refresh(bill)
+        assert bill.status == 'posted'  # unchanged
+
+    def test_draft_cannot_be_cancelled(self, client, db_session, admin_user, main_branch):
+        vendor = make_vendor(db_session, code='PVV-003', name='Cancel Vendor')
+        bill = make_bill(db_session, vendor, main_branch, 'PBV-003', status='draft')
+        login(client)
+        resp = client.post(f'/purchase-bills/{bill.id}/cancel', data={
+            'cancel_reason': 'Trying to cancel a draft bill',
+            'reversal_date': str(ph_now().date()),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        db_session.refresh(bill)
+        assert bill.status == 'draft'  # unchanged
+
+    def test_voided_number_excluded_from_sequence(self, client, db_session, admin_user, main_branch):
+        from app.purchase_bills.views import generate_bill_number
+        vendor = make_vendor(db_session, code='PVV-004', name='Seq Vendor')
+        # Create a non-voided bill at 0050, then a voided one at 0100
+        make_bill(db_session, vendor, main_branch, 'PB-2026-0050', status='posted')
+        bill = make_bill(db_session, vendor, main_branch, 'PB-2026-0100', status='voided')
+        # voided bill should not count; max non-voided is 0050 → next is 0051
+        with client.application.app_context():
+            next_num = generate_bill_number()
+        assert next_num == 'PB-2026-0051'
+
+    def test_cancelled_number_included_in_sequence(self, client, db_session, admin_user, main_branch):
+        from app.purchase_bills.views import generate_bill_number
+        vendor = make_vendor(db_session, code='PVV-005', name='Seq Vendor 2')
+        # Create a cancelled bill — its number should count in the sequence
+        bill = make_bill(db_session, vendor, main_branch, 'PB-2026-0200', status='cancelled')
+        with client.application.app_context():
+            next_num = generate_bill_number()
+        assert next_num == 'PB-2026-0201'
+
+    def test_delete_route_gone(self, client, db_session, admin_user, main_branch):
+        vendor = make_vendor(db_session, code='PVV-006', name='Del Vendor')
+        bill = make_bill(db_session, vendor, main_branch, 'PBV-006', status='draft')
+        login(client)
+        resp = client.post(f'/purchase-bills/{bill.id}/delete')
+        assert resp.status_code == 404

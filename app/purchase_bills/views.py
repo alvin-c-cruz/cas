@@ -12,7 +12,7 @@ from app.vendors.models import Vendor
 from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
-from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
+from app.audit.utils import log_create, log_update, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.periods.utils import validate_transaction_date_with_flash
@@ -57,7 +57,8 @@ def generate_bill_number():
 
     # Get the latest bill for current year
     latest_bill = PurchaseBill.query.filter(
-        PurchaseBill.bill_number.like(f'{prefix}%')
+        PurchaseBill.bill_number.like(f'{prefix}%'),
+        PurchaseBill.status != 'voided'
     ).order_by(PurchaseBill.bill_number.desc()).first()
 
     if latest_bill:
@@ -542,20 +543,37 @@ def post(id):
 @login_required
 @accountant_or_admin_required
 def cancel(id):
-    """Cancel purchase bill."""
+    """Cancel a posted purchase bill and create a reversal journal entry."""
+    from flask import current_app
+    from app.errors.utils import log_exception
     bill = _get_bill_or_404(id)
 
-    if bill.status == 'cancelled':
-        flash('Bill is already cancelled.', 'error')
+    if bill.status != 'posted':
+        flash('Only posted bills can be cancelled.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     if bill.amount_paid > 0:
-        flash('Cannot cancel bill with payments applied.', 'error')
+        flash('Cannot cancel a bill with payments applied. Reverse the payments first.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Cancellation reason must be at least 10 characters.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     try:
+        _create_reversal_je(bill, reversal_date, current_user.id, label='Cancel')
+
         bill.status = 'cancelled'
         bill.cancelled_at = ph_now()
+        bill.cancel_reason = cancel_reason
         db.session.commit()
 
         log_audit(
@@ -563,47 +581,48 @@ def cancel(id):
             action='cancel',
             record_id=bill.id,
             record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
-            notes=f'Bill cancelled by {current_user.username}'
+            notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}'
         )
 
-        flash(f'Purchase Bill "{bill.bill_number}" cancelled.', 'warning')
-    except Exception as e:
-        from flask import current_app
-        from app.errors.utils import log_exception
-        current_app.logger.error(f"Error cancelling purchase bill", exc_info=True)
-        log_exception(e, severity='ERROR', module='purchase_bills.cancel')
+        flash(f'Purchase Bill "{bill.bill_number}" cancelled. Reversal journal entry created.', 'success')
+    except ValueError as e:
         db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error cancelling purchase bill', exc_info=True)
+        log_exception(e, severity='ERROR', module='purchase_bills.cancel')
         flash(f'Error cancelling bill: {str(e)}', 'error')
 
     return redirect(url_for('purchase_bills.view', id=id))
 
 
-def _create_bill_void_je(bill, reversal_date, user_id):
-    """Create reversal JE when voiding a purchase bill. Raises ValueError if required accounts missing."""
+def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
+    """Create reversal JE when voiding or cancelling a purchase bill. Raises ValueError if required accounts missing."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
     ap_account = Account.query.filter_by(code='20101').first()
     if not ap_account:
-        raise ValueError("Accounts Payable - Trade (20101) not found in COA. Cannot void.")
+        raise ValueError(f"Accounts Payable - Trade (20101) not found in COA. Cannot {label.lower()}.")
 
     input_vat_account = None
     if bill.vat_amount > 0:
         input_vat_account = Account.query.filter_by(code='10501').first()
         if not input_vat_account:
-            raise ValueError("Input VAT - Current (10501) not found in COA. Cannot void.")
+            raise ValueError(f"Input VAT - Current (10501) not found in COA. Cannot {label.lower()}.")
 
     wt_account = None
     if bill.withholding_tax_amount > 0:
         wt_account = Account.query.filter_by(code='20301').first()
         if not wt_account:
-            raise ValueError("Withholding Tax Payable - Expanded (20301) not found in COA. Cannot void.")
+            raise ValueError(f"Withholding Tax Payable - Expanded (20301) not found in COA. Cannot {label.lower()}.")
 
     entry_number = generate_entry_number(bill.branch_id)
     je = JournalEntry(
         entry_number=entry_number,
         entry_date=reversal_date,
-        description=f'Purchase Bill Void — {bill.bill_number} (reversal)',
-        reference=f'VOID-{bill.bill_number}',
+        description=f'Purchase Bill {label} — {bill.bill_number} (reversal)',
+        reference=f'{label.upper()[:6]}-{bill.bill_number}',
         entry_type='reversal',
         is_reversing=True,
         branch_id=bill.branch_id,
@@ -622,7 +641,7 @@ def _create_bill_void_je(bill, reversal_date, user_id):
     db.session.add(JournalEntryLine(
         entry_id=je.id, line_number=line_num,
         account_id=ap_account.id,
-        description=f'Void AP: {bill.bill_number}',
+        description=f'{label} AP: {bill.bill_number}',
         debit_amount=bill.total_amount,
         credit_amount=Decimal('0.00')
     ))
@@ -632,7 +651,7 @@ def _create_bill_void_je(bill, reversal_date, user_id):
         db.session.add(JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=wt_account.id,
-            description=f'Void WT: {bill.bill_number}',
+            description=f'{label} WT: {bill.bill_number}',
             debit_amount=bill.withholding_tax_amount,
             credit_amount=Decimal('0.00')
         ))
@@ -653,7 +672,7 @@ def _create_bill_void_je(bill, reversal_date, user_id):
         db.session.add(JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=input_vat_account.id,
-            description=f'Void Input VAT: {bill.bill_number}',
+            description=f'{label} Input VAT: {bill.bill_number}',
             debit_amount=Decimal('0.00'),
             credit_amount=bill.vat_amount
         ))
@@ -666,17 +685,11 @@ def _create_bill_void_je(bill, reversal_date, user_id):
 @login_required
 @accountant_or_admin_required
 def void(id):
-    """Void a posted purchase bill and create reversal journal entry."""
-    from flask import current_app
-    from app.errors.utils import log_exception
+    """Void a draft purchase bill (no journal entry — bill was never posted)."""
     bill = _get_bill_or_404(id)
 
-    if bill.status != 'posted':
-        flash('Only posted bills with no payments can be voided.', 'error')
-        return redirect(url_for('purchase_bills.view', id=id))
-
-    if bill.amount_paid > 0:
-        flash('Cannot void a bill with payments applied. Reverse the payments first.', 'error')
+    if bill.status != 'draft':
+        flash('Only draft bills can be voided.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     void_reason = request.form.get('void_reason', '').strip()
@@ -688,12 +701,10 @@ def void(id):
     try:
         reversal_date = date.fromisoformat(reversal_date_str)
     except ValueError:
-        flash('Invalid reversal date.', 'error')
+        flash('Invalid void date.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     try:
-        _create_bill_void_je(bill, reversal_date, current_user.id)
-
         bill.status = 'voided'
         bill.voided_at = ph_now()
         bill.voided_by_id = current_user.id
@@ -705,54 +716,18 @@ def void(id):
             action='void',
             record_id=bill.id,
             record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
-            notes=f'Voided by {current_user.username}. Reason: {void_reason}'
+            notes=f'Draft voided by {current_user.username} on {reversal_date}. Reason: {void_reason}'
         )
 
-        flash(f'Purchase Bill "{bill.bill_number}" voided. Reversal journal entry created.', 'success')
-    except ValueError as e:
-        db.session.rollback()
-        flash(str(e), 'error')
+        flash(f'Purchase Bill "{bill.bill_number}" voided.', 'warning')
     except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
         db.session.rollback()
-        current_app.logger.error("Error voiding purchase bill", exc_info=True)
+        current_app.logger.error('Error voiding purchase bill', exc_info=True)
         log_exception(e, severity='ERROR', module='purchase_bills.void')
         flash(f'Error voiding bill: {str(e)}', 'error')
 
     return redirect(url_for('purchase_bills.view', id=id))
 
 
-@purchase_bills_bp.route('/purchase-bills/<int:id>/delete', methods=['POST'])
-@login_required
-@accountant_or_admin_required
-def delete(id):
-    """Delete purchase bill (only drafts can be deleted)."""
-    bill = _get_bill_or_404(id)
-
-    if bill.status != 'draft':
-        flash('Only draft bills can be deleted.', 'error')
-        return redirect(url_for('purchase_bills.view', id=id))
-
-    try:
-        old_values = model_to_dict(bill, ['bill_number', 'bill_date', 'vendor_name', 'total_amount', 'status'])
-        bill_number = bill.bill_number
-
-        db.session.delete(bill)
-        db.session.commit()
-
-        log_delete(
-            module='purchase_bill',
-            record_id=id,
-            record_identifier=f'{bill_number}',
-            old_values=old_values
-        )
-
-        flash(f'Purchase Bill "{bill_number}" deleted successfully!', 'success')
-    except Exception as e:
-        from flask import current_app
-        from app.errors.utils import log_exception
-        current_app.logger.error(f"Error deleting purchase bill", exc_info=True)
-        log_exception(e, severity='ERROR', module='purchase_bills.delete')
-        db.session.rollback()
-        flash(f'Error deleting bill: {str(e)}', 'error')
-
-    return redirect(url_for('purchase_bills.list_bills'))
