@@ -110,15 +110,16 @@
 
                     <!-- Totals Panel -->
                     <div style="background: var(--bg); padding: 20px; border-radius: 6px; min-width: 320px;">
+                        <!-- Row 1: Gross Amount -->
                         <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                            <span style="color: var(--text-2);">Subtotal:</span>
+                            <span style="color: var(--text-2);">Gross Amount:</span>
                             <span id="subtotalDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
                         </div>
 
-                        <!-- Input VAT — pencil-click override -->
+                        <!-- Row 2: Less: Input VAT — pencil-click override -->
                         <div style="margin-bottom: 12px;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="color: var(--text-2);">Input VAT:</span>
+                                <span style="color: var(--text-2);">Less: Input VAT:</span>
                                 <div id="vatDisplayMode" style="display: flex; align-items: center; gap: 6px;">
                                     <span id="vatDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
                                     <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">✏️</button>
@@ -135,9 +136,22 @@
                             </div>
                         </div>
 
+                        <!-- Row 3: Net of VAT -->
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="color: var(--text-2);">Net of VAT:</span>
+                            <span id="netOfVatDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                        </div>
+
+                        <!-- Row 4: Add: Input VAT (mirrors row 2, no edit) -->
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="color: var(--text-2);">Add: Input VAT:</span>
+                            <span id="vatAddBackDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                        </div>
+
+                        <!-- Row 5: Less: Withholding Tax -->
                         <div style="margin-bottom: 12px; padding-top: 8px; border-top: 1px solid var(--border);">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="color: var(--text-2);">Withholding Tax:</span>
+                                <span style="color: var(--text-2);">Less: Withholding Tax:</span>
                                 <div id="wtDisplayMode" style="display: flex; align-items: center; gap: 6px;">
                                     <span id="wtDisplay" style="font-family: var(--mono); font-weight: 600; color: var(--red);">-₱0.00</span>
                                     <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button>
@@ -154,8 +168,9 @@
                             </div>
                         </div>
 
+                        <!-- Row 6: Net Amount Payable -->
                         <div style="display: flex; justify-content: space-between; padding-top: 12px; border-top: 2px solid var(--border);">
-                            <span style="font-size: 16px; font-weight: 700;">Net Payable:</span>
+                            <span style="font-size: 16px; font-weight: 700;">Net Amount Payable:</span>
                             <span id="totalDisplay" style="font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--blue);">₱0.00</span>
                         </div>
                     </div>
