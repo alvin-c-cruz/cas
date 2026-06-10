@@ -286,6 +286,12 @@ document.getElementById('billForm').addEventListener('submit', function () {
     })));
 });
 
+// Endpoint stores VAT category name; resolve to code for the line-item select.
+function resolveVatCode(nameOrCode) {
+    const match = vatCategories.find(v => v.code === nameOrCode || v.name === nameOrCode);
+    return match ? match.code : nameOrCode;
+}
+
 // ── Vendor card state management ──────────────────────────────────────────────
 
 function setVendorDone(vendorName, defaults) {
@@ -326,7 +332,7 @@ document.getElementById('vendor_id').addEventListener('change', function () {
         .then(r => r.json())
         .then(data => {
             currentVendorWHTs = data.withholding_taxes || [];
-            currentVendorVatCategory = data.default_vat_category || '';
+            currentVendorVatCategory = resolveVatCode(data.default_vat_category || '');
             applyVendorTerms(data.payment_terms || 'Net 30');
 
             const hadItems = lineItems.length > 0;
@@ -364,7 +370,7 @@ if (initVendorId && initVendorId !== '0') {
         .then(r => r.json())
         .then(data => {
             currentVendorWHTs = data.withholding_taxes || [];
-            currentVendorVatCategory = data.default_vat_category || '';
+            currentVendorVatCategory = resolveVatCode(data.default_vat_category || '');
             setVendorDone(initVendorName, data);
             initItems();
         })
