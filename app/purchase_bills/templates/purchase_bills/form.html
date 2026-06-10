@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}{{ 'Update Bill' if bill else 'Enter Bill' }}{% endblock %}
-{% block page_title %}{{ 'Update Bill' if bill else 'Enter Bill' }}{% endblock %}
+{% block title %}{{ 'Update Draft' if bill else 'Save Draft' }}{% endblock %}
+{% block page_title %}{{ 'Update Draft' if bill else 'Save Draft' }}{% endblock %}
 
 {% block content %}
 {% from "macros.html" import render_field, render_flash_messages %}
@@ -180,9 +180,9 @@
 
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" class="btn btn-primary">
-                        {{ 'Update Bill' if bill else 'Enter Bill' }}
+                        {{ 'Update Draft' if bill else 'Save Draft' }}
                     </button>
-                    <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Cancel</a>
+                    <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Back</a>
                 </div>
             </div>
 
@@ -208,6 +208,7 @@ let lineCounter = 0;
 let lineChoices = {};
 let autoVat = 0;
 let autoWt = 0;
+let currentVendorLastAccountId = null;
 let vatOverrideActive = false;
 let wtOverrideActive = false;
 
@@ -289,6 +290,52 @@ function rebuildAllVatSelects() {
     calculateTotals();
 }
 
+// ── WHT picker modal ──────────────────────────────────────────────────────────
+
+let _whtPickerResolve = null;
+
+function showWhtPicker() {
+    return new Promise(resolve => {
+        _whtPickerResolve = resolve;
+        const opts = document.getElementById('whtPickerOptions');
+        opts.innerHTML = currentVendorWHTs.map((wt, i) =>
+            `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:7px 10px;border-radius:5px;border:1px solid var(--border);">
+                <input type="radio" name="whtPickerRadio" value="${wt.id}" ${i === 0 ? 'checked' : ''}>
+                <span><strong>${escHtml(wt.code)}</strong> — ${escHtml(wt.name)} <span style="color:var(--text-2);">(${wt.rate}%)</span></span>
+            </label>`
+        ).join('');
+        document.getElementById('whtPickerModal').style.display = 'flex';
+    });
+}
+
+function whtPickerConfirm() {
+    const checked = document.querySelector('input[name="whtPickerRadio"]:checked');
+    const wtId = checked ? parseInt(checked.value) : null;
+    const wt = wtId ? currentVendorWHTs.find(w => w.id === wtId) : null;
+    document.getElementById('whtPickerModal').style.display = 'none';
+    if (_whtPickerResolve) _whtPickerResolve({ wt_id: wtId, wt_rate: wt ? wt.rate : null });
+    _whtPickerResolve = null;
+}
+
+function whtPickerSkip() {
+    document.getElementById('whtPickerModal').style.display = 'none';
+    if (_whtPickerResolve) _whtPickerResolve({ wt_id: null, wt_rate: null });
+    _whtPickerResolve = null;
+}
+
+async function addFirstLineItem() {
+    let wt_id = null, wt_rate = null;
+    if (currentVendorWHTs.length === 1) {
+        wt_id = currentVendorWHTs[0].id;
+        wt_rate = currentVendorWHTs[0].rate;
+    } else if (currentVendorWHTs.length > 1) {
+        const chosen = await showWhtPicker();
+        wt_id = chosen.wt_id;
+        wt_rate = chosen.wt_rate;
+    }
+    addLineItem(null, { wt_id, wt_rate, account_id: currentVendorLastAccountId });
+}
+
 function applyVendorTerms(terms) {
     const termsField = document.getElementById('payment_terms');
     if (termsField) termsField.value = terms;
@@ -304,13 +351,25 @@ function applyVendorTerms(terms) {
     if (dueDateField) dueDateField.value = due.toISOString().split('T')[0];
 }
 
-function addLineItem(existingItem) {
+function addLineItem(existingItem, firstDefaults) {
     lineCounter++;
     const id = lineCounter;
-    const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
-    const item = existingItem
-        ? { ...existingItem, id }
-        : {
+    let item;
+    if (existingItem) {
+        item = { ...existingItem, id };
+    } else if (firstDefaults) {
+        item = {
+            id,
+            description: '',
+            amount: 0.00,
+            vat_category: currentVendorVatCategory || '',
+            account_id: firstDefaults.account_id || null,
+            wt_id: firstDefaults.wt_id || null,
+            wt_rate: firstDefaults.wt_rate || null,
+        };
+    } else {
+        const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
+        item = {
             id,
             description: '',
             amount: 0.00,
@@ -318,7 +377,8 @@ function addLineItem(existingItem) {
             account_id: null,
             wt_id: autoWht ? autoWht.id : null,
             wt_rate: autoWht ? autoWht.rate : null,
-          };
+        };
+    }
 
     const row = document.createElement('tr');
     row.id = `line-${id}`;
@@ -647,6 +707,7 @@ document.getElementById('vendor_id').addEventListener('change', function () {
         .then(data => {
             currentVendorWHTs = data.withholding_taxes || [];
             currentVendorVatCategory = resolveVatCode(data.default_vat_category || '');
+            currentVendorLastAccountId = data.last_account_id || null;
             applyVendorTerms(data.payment_terms || 'Net 30');
 
             const hadItems = lineItems.length > 0;
@@ -657,7 +718,7 @@ document.getElementById('vendor_id').addEventListener('change', function () {
                 rebuildAllVatSelects();
                 calculateTotals();
             } else {
-                addLineItem();
+                addFirstLineItem();
             }
         });
 });
@@ -711,6 +772,7 @@ if (initVendorId && initVendorId !== '0') {
         .then(data => {
             currentVendorWHTs = data.withholding_taxes || [];
             currentVendorVatCategory = resolveVatCode(data.default_vat_category || '');
+            currentVendorLastAccountId = data.last_account_id || null;
             setVendorDone(initVendorName, data);
             initItems();
             initOverrides();
@@ -910,6 +972,10 @@ initItems();
     padding: 3px 7px;
 }
 
+/* Remove Choices.js dropdown arrow from line item selects */
+#lineItemsTable .choices[data-type*=select-one]::after { display: none !important; }
+#lineItemsTable .choices[data-type*=select-one] .choices__inner { padding-right: 6px !important; }
+
 /* Compact grid-style line items table */
 #lineItemsTable { border-collapse: collapse; }
 #lineItemsTable thead th {
@@ -944,4 +1010,18 @@ initItems();
     border-radius: 3px;
 }
 </style>
+
+<!-- WHT Picker Modal -->
+<div id="whtPickerModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:24px; max-width:440px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.2);">
+        <div style="font-size:14px; font-weight:700; margin-bottom:6px;">Select Withholding Tax</div>
+        <div style="font-size:12px; color:var(--text-2); margin-bottom:16px;">This vendor has multiple WHT codes. Choose which one to apply to the first line item:</div>
+        <div id="whtPickerOptions" style="display:flex; flex-direction:column; gap:8px;"></div>
+        <div style="display:flex; gap:8px; margin-top:20px; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="whtPickerSkip()">None</button>
+            <button type="button" class="btn btn-primary" onclick="whtPickerConfirm()">Apply</button>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

@@ -11,7 +11,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.vendors.forms import VendorForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.utils.export import export_to_excel, export_to_csv
-from app.purchase_bills.models import PurchaseBill
+from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
 from datetime import datetime
 
 vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
@@ -414,6 +414,13 @@ def export_csv_route():
 def vendor_defaults(id):
     """Return vendor's WHT codes and default VAT category for AJAX."""
     vendor = Vendor.query.get_or_404(id)
+    last_item = (
+        PurchaseBillItem.query
+        .join(PurchaseBill)
+        .filter(PurchaseBill.vendor_id == id, PurchaseBill.status != 'voided')
+        .order_by(PurchaseBill.created_at.desc(), PurchaseBillItem.line_number.asc())
+        .first()
+    )
     return jsonify({
         'withholding_taxes': [
             {
@@ -427,4 +434,5 @@ def vendor_defaults(id):
         ],
         'default_vat_category': vendor.default_vat_category,
         'payment_terms': vendor.payment_terms or 'Net 30',
+        'last_account_id': last_item.account_id if last_item else None,
     })
