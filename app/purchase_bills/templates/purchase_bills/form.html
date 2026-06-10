@@ -440,7 +440,10 @@ initItems();
 
 /* Grid helpers */
 .vendor-header-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
-.bill-id-fields { display: flex; flex-direction: column; gap: 12px; }
+.bill-id-fields { display: flex; flex-direction: column; gap: 10px; }
+.bill-id-fields .form-group { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
+.bill-id-fields .form-group .form-label { white-space: nowrap; margin-bottom: 0; min-width: 90px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
+.bill-id-fields .form-group .form-control { flex: 1; }
 .form-row-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
 .form-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
 .form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
