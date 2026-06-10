@@ -303,41 +303,41 @@ class HTMLReporter:
 
     def generate_table_html(self) -> str:
         """Generate sortable HTML table of metrics."""
-        html = '<table id="metrics-table" class="metrics-table">\n'
-        html += '  <thead>\n'
-        html += '    <tr>\n'
-        html += '      <th>Project</th>\n'
-        html += '      <th>Type</th>\n'
-        html += '      <th>Files</th>\n'
-        html += '      <th>LOC</th>\n'
-        html += '      <th>Routes</th>\n'
-        html += '      <th>Dependencies</th>\n'
-        html += '      <th>Tests</th>\n'
-        html += '      <th>Complexity</th>\n'
-        html += '      <th>Est. Cost (₱)</th>\n'
-        html += '    </tr>\n'
-        html += '  </thead>\n'
-        html += '  <tbody>\n'
+        table = '<table id="metrics-table" class="metrics-table">\n'
+        table += '  <thead>\n'
+        table += '    <tr>\n'
+        table += '      <th>Project</th>\n'
+        table += '      <th>Type</th>\n'
+        table += '      <th>Files</th>\n'
+        table += '      <th>LOC</th>\n'
+        table += '      <th>Routes</th>\n'
+        table += '      <th>Dependencies</th>\n'
+        table += '      <th>Tests</th>\n'
+        table += '      <th>Complexity</th>\n'
+        table += '      <th>Est. Cost (₱)</th>\n'
+        table += '    </tr>\n'
+        table += '  </thead>\n'
+        table += '  <tbody>\n'
 
         for metric in sorted(self.metrics, key=lambda x: x['cost']['total_cost_pesos'], reverse=True):
             cost_fmt = f"₱{metric['cost']['total_cost_pesos']:,}"
             complexity = metric['cost']['complexity_score']
             project_name_safe = html.escape(metric["name"])
-            html += f'    <tr onclick="expandDetails({json.dumps(project_name_safe)})">\n'
-            html += f'      <td><strong>{project_name_safe}</strong></td>\n'
-            html += f'      <td>{metric["type"]}</td>\n'
-            html += f'      <td>{metric["files"]["source"]}</td>\n'
-            html += f'      <td>{metric["loc"]["loc"]:,}</td>\n'
-            html += f'      <td>{len(metric["routes"])}</td>\n'
-            html += f'      <td>{metric["dependencies"]["total"]}</td>\n'
-            html += f'      <td>{metric["tests"]["test_files"]}</td>\n'
-            html += f'      <td><span class="complexity-{int(complexity)}">{complexity}/10</span></td>\n'
-            html += f'      <td class="cost-cell">₱{metric["cost"]["total_cost_pesos"]:,}</td>\n'
-            html += '    </tr>\n'
+            table += f'    <tr onclick="expandDetails({json.dumps(project_name_safe)})">\n'
+            table += f'      <td><strong>{project_name_safe}</strong></td>\n'
+            table += f'      <td>{metric["type"]}</td>\n'
+            table += f'      <td>{metric["files"]["source"]}</td>\n'
+            table += f'      <td>{metric["loc"]["loc"]:,}</td>\n'
+            table += f'      <td>{len(metric["routes"])}</td>\n'
+            table += f'      <td>{metric["dependencies"]["total"]}</td>\n'
+            table += f'      <td>{metric["tests"]["test_files"]}</td>\n'
+            table += f'      <td><span class="complexity-{int(complexity)}">{complexity}/10</span></td>\n'
+            table += f'      <td class="cost-cell">₱{metric["cost"]["total_cost_pesos"]:,}</td>\n'
+            table += '    </tr>\n'
 
-        html += '  </tbody>\n'
-        html += '</table>\n'
-        return html
+        table += '  </tbody>\n'
+        table += '</table>\n'
+        return table
 
     def generate_charts_data(self) -> str:
         """Generate JavaScript data for charts."""
