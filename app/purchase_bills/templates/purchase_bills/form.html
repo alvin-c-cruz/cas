@@ -327,7 +327,7 @@ function addLineItem(existingItem) {
             </select>
         </td>
         <td>
-            <select class="form-control" onchange="updateLineItem(${id}, 'account_id', parseInt(this.value)||null)">
+            <select class="form-control acct-select">
                 <option value="">Select Account</option>
                 ${expenseAccounts.map(a => `<option value="${a.id}" ${item.account_id === a.id ? 'selected' : ''}>${escHtml(a.code)} - ${escHtml(a.name)}</option>`).join('')}
             </select>
@@ -338,7 +338,8 @@ function addLineItem(existingItem) {
     const newRow = document.getElementById(`line-${id}`);
     const vatSel = newRow.querySelector('.vat-select');
     const whtSel = newRow.querySelector('.wht-select');
-    const choicesOpts = {
+    const acctSel = newRow.querySelector('.acct-select');
+    const codeOnlyOpts = {
         searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
         allowHTML: false,
         callbackOnCreateTemplates: function(tmpl) {
@@ -351,11 +352,14 @@ function addLineItem(existingItem) {
             };
         }
     };
-    const vatC = new Choices(vatSel, choicesOpts);
-    const whtC = new Choices(whtSel, choicesOpts);
+    const acctOpts = { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 100, allowHTML: false };
+    const vatC = new Choices(vatSel, codeOnlyOpts);
+    const whtC = new Choices(whtSel, codeOnlyOpts);
+    const acctC = new Choices(acctSel, acctOpts);
     vatSel.addEventListener('change', () => updateLineItem(id, 'vat_category', vatSel.value));
     whtSel.addEventListener('change', () => updateWht(id, whtSel));
-    lineChoices[id] = { vat: vatC, wht: whtC };
+    acctSel.addEventListener('change', () => updateLineItem(id, 'account_id', parseInt(acctSel.value) || null));
+    lineChoices[id] = { vat: vatC, wht: whtC, acct: acctC };
     lineItems.push(item);
     calculateTotals();
 }
@@ -382,6 +386,7 @@ function removeLineItem(id) {
     if (lineChoices[id]) {
         lineChoices[id].vat.destroy();
         lineChoices[id].wht.destroy();
+        lineChoices[id].acct.destroy();
         delete lineChoices[id];
     }
     document.getElementById(`line-${id}`).remove();
