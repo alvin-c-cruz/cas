@@ -293,7 +293,7 @@ function setVendorDone(vendorName, defaults) {
     const label = document.getElementById('vendorCardLabel');
     const badges = document.getElementById('vendorBadges');
 
-    card.classList.add('vendor-step-card' + '--done');
+    card.classList.add('vendor-step-card--done');
     label.textContent = '✓ ' + vendorName;
 
     const badgeHtml = [];
@@ -305,8 +305,8 @@ function setVendorDone(vendorName, defaults) {
     }
     badges.innerHTML = badgeHtml.join('');
 
-    document.getElementById('headerFields').classList.add('header-fields' + '--active');
-    document.getElementById('lineItemsLocked').classList.add('line-items-locked' + '--hidden');
+    document.getElementById('headerFields').classList.add('header-fields--active');
+    document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
     document.getElementById('lineItemsSection').style.display = '';
 }
 

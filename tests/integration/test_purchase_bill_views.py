@@ -1,4 +1,5 @@
 """Integration tests for the purchase bills list page redesign."""
+import re
 import pytest
 from datetime import timedelta
 from decimal import Decimal
@@ -304,3 +305,54 @@ class TestVoidCancelDelete:
         login(client)
         resp = client.post(f'/purchase-bills/{bill.id}/delete')
         assert resp.status_code == 404
+
+
+class TestFormLayout:
+    """Tests for the bill entry form initial render state."""
+
+    def test_create_mode_initial_render(self, client, db_session, admin_user, main_branch):
+        """Create mode: vendor card amber, header dimmed, line items locked and totals hidden (inside lineItemsSection)."""
+        login(client)
+        resp = client.get('/purchase-bills/create')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        # Vendor step card present in amber (not done) state
+        assert 'id="vendorCard"' in html
+        assert 'vendor-step-card' in html
+        assert not re.search(r'id="vendorCard"[^>]*vendor-step-card--done', html)
+
+        # Header fields wrapper present but NOT active (dimmed)
+        assert 'id="headerFields"' in html
+        assert not re.search(r'id="headerFields"[^>]*header-fields--active', html)
+
+        # Locked placeholder visible
+        assert 'id="lineItemsLocked"' in html
+        assert not re.search(r'id="lineItemsLocked"[^>]*line-items-locked--hidden', html)
+
+        # Line items section hidden
+        assert 'id="lineItemsSection"' in html
+        assert 'id="lineItemsSection" style="display:none"' in html
+
+    def test_edit_mode_initial_render(self, client, db_session, admin_user, main_branch):
+        """Edit mode: vendor card green, header active, line items visible immediately."""
+        vendor = make_vendor(db_session, code='EDIT-V1', name='Edit Vendor')
+        bill = make_bill(db_session, vendor, main_branch, 'PB-TEST-EDIT', status='draft')
+        login(client)
+
+        resp = client.get(f'/purchase-bills/{bill.id}/edit')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+
+        # Vendor card in done/green state
+        assert re.search(r'id="vendorCard"[^>]*vendor-step-card--done', html)
+
+        # Header fields active (not dimmed)
+        assert re.search(r'id="headerFields"[^>]*header-fields--active', html)
+
+        # Locked placeholder hidden
+        assert re.search(r'id="lineItemsLocked"[^>]*line-items-locked--hidden', html)
+
+        # Line items section visible (no display:none)
+        assert 'id="lineItemsSection"' in html
+        assert 'id="lineItemsSection" style="display:none"' not in html
