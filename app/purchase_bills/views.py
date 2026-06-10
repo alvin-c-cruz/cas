@@ -61,13 +61,12 @@ def require_branch_selection():
 
 def generate_bill_number():
     """
-    Generate next bill number in format: PB-YYYY-####
-    Example: PB-2024-0001
+    Generate next bill number in format: AP-YYYY-MM-NNNN
+    Example: AP-2026-06-0001 (resets each month)
     """
-    current_year = ph_now().year
-    prefix = f'PB-{current_year}-'
+    now = ph_now()
+    prefix = f'AP-{now.year}-{now.month:02d}-'
 
-    # Get the latest bill for current year
     latest_bill = PurchaseBill.query.filter(
         PurchaseBill.bill_number.like(f'{prefix}%'),
         PurchaseBill.status != 'voided'
@@ -740,13 +739,11 @@ def _post_bill_je(bill, user_id):
     db.session.add(je)
     db.session.flush()
 
-    # Compute VAT adjustment for override case
-    vat_auto = sum((item.vat_amount for item in bill.line_items if item.account_id), Decimal('0.00'))
     vat_used = Decimal(str(bill.vat_amount))
-    vat_diff = vat_used - vat_auto  # non-zero only when VAT was overridden
 
     line_num = 1
     first_expense_line = None
+    all_lines = []
 
     for item in bill.line_items:
         if not item.account_id:
@@ -761,41 +758,54 @@ def _post_bill_je(bill, user_id):
             credit_amount=Decimal('0.00')
         )
         db.session.add(entry_line)
+        all_lines.append(entry_line)
         if first_expense_line is None:
             first_expense_line = entry_line
         line_num += 1
 
-    # Absorb any VAT override rounding difference into the first expense line
-    if first_expense_line is not None and vat_diff != Decimal('0.00'):
-        first_expense_line.debit_amount -= vat_diff
-
     if input_vat_account:
-        db.session.add(JournalEntryLine(
+        vat_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=input_vat_account.id,
             description=f'Input VAT: {bill.bill_number}',
             debit_amount=vat_used,
             credit_amount=Decimal('0.00')
-        ))
+        )
+        db.session.add(vat_line)
+        all_lines.append(vat_line)
         line_num += 1
 
     if wt_account:
-        db.session.add(JournalEntryLine(
+        wt_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=wt_account.id,
             description=f'WHT Payable: {bill.bill_number}',
             debit_amount=Decimal('0.00'),
             credit_amount=Decimal(str(bill.withholding_tax_amount))
-        ))
+        )
+        db.session.add(wt_line)
+        all_lines.append(wt_line)
         line_num += 1
 
-    db.session.add(JournalEntryLine(
+    ap_line = JournalEntryLine(
         entry_id=je.id, line_number=line_num,
         account_id=ap_account.id,
         description=f'AP: {bill.bill_number} — {bill.vendor_name}',
         debit_amount=Decimal('0.00'),
         credit_amount=Decimal(str(bill.total_amount))
-    ))
+    )
+    db.session.add(ap_line)
+    all_lines.append(ap_line)
+
+    # Absorb rounding residual (and any VAT override difference) into the first
+    # expense line so the JE always balances exactly
+    sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
+    sum_credits = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
+    residual = sum_credits - sum_debits
+    if residual != Decimal('0.00') and first_expense_line is not None:
+        first_expense_line.debit_amount += residual
+
+    db.session.flush()
 
     je.calculate_totals()
     if not je.is_balanced:
@@ -848,31 +858,30 @@ def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
     db.session.flush()
 
     line_num = 1
-    db.session.add(JournalEntryLine(
+    all_lines = []
+    ap_line = JournalEntryLine(
         entry_id=je.id, line_number=line_num,
         account_id=ap_account.id,
         description=f'{label} AP: {bill.bill_number}',
         debit_amount=bill.total_amount,
         credit_amount=Decimal('0.00')
-    ))
+    )
+    db.session.add(ap_line)
+    all_lines.append(ap_line)
     line_num += 1
 
     if wt_account:
-        db.session.add(JournalEntryLine(
+        wt_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=wt_account.id,
             description=f'{label} WT: {bill.bill_number}',
             debit_amount=bill.withholding_tax_amount,
             credit_amount=Decimal('0.00')
-        ))
+        )
+        db.session.add(wt_line)
+        all_lines.append(wt_line)
         line_num += 1
 
-    # Compute net_base per line; absorb vat_diff into first expense credit
-    vat_auto_rev = sum(
-        (Decimal(str(item.vat_amount)) for item in bill.line_items if item.account_id),
-        Decimal('0.00')
-    )
-    vat_diff_rev = Decimal(str(bill.vat_amount)) - vat_auto_rev
     first_expense_reversal = None
     for item in bill.line_items:
         if item.account_id and item.line_total > 0:
@@ -885,20 +894,31 @@ def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
                 credit_amount=net_base
             )
             db.session.add(entry_line)
+            all_lines.append(entry_line)
             if first_expense_reversal is None:
                 first_expense_reversal = entry_line
             line_num += 1
-    if first_expense_reversal is not None and vat_diff_rev != Decimal('0.00'):
-        first_expense_reversal.credit_amount -= vat_diff_rev
 
     if input_vat_account:
-        db.session.add(JournalEntryLine(
+        vat_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=input_vat_account.id,
             description=f'{label} Input VAT: {bill.bill_number}',
             debit_amount=Decimal('0.00'),
             credit_amount=bill.vat_amount
-        ))
+        )
+        db.session.add(vat_line)
+        all_lines.append(vat_line)
+
+    # Absorb rounding residual (and any VAT override difference) into the first
+    # expense line so the reversal JE always balances exactly
+    sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
+    sum_credits = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
+    residual = sum_debits - sum_credits
+    if residual != Decimal('0.00') and first_expense_reversal is not None:
+        first_expense_reversal.credit_amount += residual
+
+    db.session.flush()
 
     je.calculate_totals()
     return je
