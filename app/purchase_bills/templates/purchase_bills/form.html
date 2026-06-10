@@ -340,12 +340,13 @@ function addLineItem(existingItem) {
     const whtSel = newRow.querySelector('.wht-select');
     const choicesOpts = {
         searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
+        allowHTML: false,
         callbackOnCreateTemplates: function(tmpl) {
             return {
                 item: function(cfg, data) {
                     const cn = cfg.classNames;
                     const code = (data.customProperties && data.customProperties.code) || data.value || '—';
-                    return tmpl(`<div class="${cn.item} ${data.highlighted ? cn.highlightedState : cn.itemSelectable}" data-item data-id="${data.id}" data-value="${data.value}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${code}</div>`);
+                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(code))}</div>`);
                 }
             };
         }
