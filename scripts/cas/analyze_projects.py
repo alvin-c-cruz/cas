@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import html
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Tuple
@@ -321,8 +322,9 @@ class HTMLReporter:
         for metric in sorted(self.metrics, key=lambda x: x['cost']['total_cost_pesos'], reverse=True):
             cost_fmt = f"₱{metric['cost']['total_cost_pesos']:,}"
             complexity = metric['cost']['complexity_score']
-            html += f'    <tr onclick="expandDetails(\'{metric["name"]}\'">\n'
-            html += f'      <td><strong>{metric["name"]}</strong></td>\n'
+            project_name_safe = html.escape(metric["name"])
+            html += f'    <tr onclick="expandDetails({json.dumps(project_name_safe)})">\n'
+            html += f'      <td><strong>{project_name_safe}</strong></td>\n'
             html += f'      <td>{metric["type"]}</td>\n'
             html += f'      <td>{metric["files"]["source"]}</td>\n'
             html += f'      <td>{metric["loc"]["loc"]:,}</td>\n'
@@ -529,7 +531,7 @@ class HTMLReporter:
         </div>
 
         <h2>Project Metrics & Valuation</h2>
-        {self.generate_table_html()}
+        TABLE_PLACEHOLDER
 
         <div class="charts-section">
             <div class="chart-container">
@@ -557,7 +559,7 @@ class HTMLReporter:
     </div>
 
     <script>
-        {self.generate_charts_data()}
+        CHARTS_DATA_PLACEHOLDER
 
         // Cost Chart
         var ctx = document.getElementById('costChart').getContext('2d');
@@ -672,6 +674,11 @@ class HTMLReporter:
 </body>
 </html>
 """
+
+        table_html = self.generate_table_html()
+        charts_data = self.generate_charts_data()
+        html = html.replace('TABLE_PLACEHOLDER', table_html)
+        html = html.replace('CHARTS_DATA_PLACEHOLDER', charts_data)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html)
