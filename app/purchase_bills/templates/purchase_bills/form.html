@@ -378,6 +378,7 @@ function calculateTotals() {
         ? (parseFloat(document.getElementById('wtOverrideInput').value) || 0)
         : autoWt;
     const netPayable = subtotal - wtUsed;
+    const netOfVat = subtotal - vatUsed;
 
     document.getElementById('subtotalDisplay').textContent = fmt(subtotal);
 
@@ -388,6 +389,8 @@ function calculateTotals() {
         document.getElementById('wtDisplay').textContent = '-' + fmt(autoWt);
     }
     document.getElementById('totalDisplay').textContent = fmt(netPayable);
+    document.getElementById('netOfVatDisplay').textContent = fmt(netOfVat);
+    document.getElementById('vatAddBackDisplay').textContent = fmt(vatUsed);
 
     renderJEPreview(subtotal, vatUsed, wtUsed);
 }
