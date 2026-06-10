@@ -4,47 +4,123 @@
 {% block content %}
 {% from "macros.html" import render_flash_messages %}
 {{ render_flash_messages() }}
+
+<!-- Summary cards -->
+<div class="pb-summary-grid">
+    <div class="pb-card">
+        <div class="pb-card-label">Outstanding AP</div>
+        <div class="pb-card-value">₱{{ '{:,.2f}'.format(summary.outstanding_total) }}</div>
+        <div class="pb-card-detail">{{ summary.outstanding_count }} open bill{{ 's' if summary.outstanding_count != 1 else '' }}</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label" style="color:var(--red);">Overdue</div>
+        <div class="pb-card-value" style="color:var(--red);">₱{{ '{:,.2f}'.format(summary.overdue_total) }}</div>
+        <div class="pb-card-detail">{{ summary.overdue_count }} bill{{ 's' if summary.overdue_count != 1 else '' }}</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label" style="color:var(--amber);">Due in 7 Days</div>
+        <div class="pb-card-value">₱{{ '{:,.2f}'.format(summary.due_soon_total) }}</div>
+        <div class="pb-card-detail">{{ summary.due_soon_count }} bill{{ 's' if summary.due_soon_count != 1 else '' }}</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label">Drafts</div>
+        <div class="pb-card-value">{{ summary.draft_count }}</div>
+        <div class="pb-card-detail">to finish</div>
+    </div>
+</div>
+
+<!-- Filter bar -->
+<form method="GET" action="{{ url_for('purchase_bills.list_bills') }}" class="pb-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search bill # or vendor"
+           class="form-control form-control-sm pb-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+        <option value="partially_paid" {% if status_filter == 'partially_paid' %}selected{% endif %}>Partially Paid</option>
+        <option value="paid" {% if status_filter == 'paid' %}selected{% endif %}>Paid</option>
+        <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+    <select name="vendor" class="form-control form-control-sm">
+        <option value="all">All Vendors</option>
+        {% for v in vendors %}
+        <option value="{{ v.id }}" {% if vendor_filter == v.id|string %}selected{% endif %}>{{ v.name }}</option>
+        {% endfor %}
+    </select>
+    <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
+
 <div class="card">
     <div class="card-header">
-        <div class="card-header-actions" style="display: flex; gap: 8px;">
-            <a href="{{ url_for('purchase_bills.export_excel', status=status_filter, vendor=vendor_filter) }}"
-               class="btn btn-secondary">
-                📊 Export Excel
-            </a>
-            <a href="{{ url_for('purchase_bills.export_csv_route', status=status_filter, vendor=vendor_filter) }}"
-               class="btn btn-secondary">
-                📄 Export CSV
-            </a>
-            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">
-                ➕ Create Bill
-            </a>
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
+            <span id="pb-selected-count" class="pb-selected-count"></span>
+            <!-- Future: "Pay selected" button (payment voucher project) renders here -->
+            <a href="{{ url_for('purchase_bills.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary pb-export-link">📊 Export Excel</a>
+            <a href="{{ url_for('purchase_bills.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary pb-export-link">📄 Export CSV</a>
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Create Bill</a>
         </div>
     </div>
     <div class="card-body">
         {% if bills %}
+        {% set badge_map = {'draft':'draft','posted':'posted','partially_paid':'partial','paid':'paid','voided':'void','cancelled':'cancelled'} %}
         <table class="table">
             <thead>
-                <tr><th>Bill #</th><th>Date</th><th>Vendor</th><th>Due Date</th><th style="text-align:right;">Subtotal</th><th style="text-align:right;">VAT</th><th style="text-align:right;">WT</th><th style="text-align:right;">Net Payable</th><th>Status</th><th>Actions</th></tr>
+                <tr>
+                    <th style="width:28px;"><input type="checkbox" id="pb-check-all" aria-label="Select all bills"></th>
+                    <th>Bill #</th><th>Date</th><th>Vendor</th><th>Due Date</th>
+                    <th style="text-align:right;">Subtotal</th>
+                    <th style="text-align:right;">VAT</th>
+                    <th style="text-align:right;">WT</th>
+                    <th style="text-align:right;">Net Payable</th>
+                    <th style="text-align:right;">Balance</th>
+                    <th>Status</th><th>Actions</th>
+                </tr>
             </thead>
             <tbody>
                 {% for bill in bills %}
                 <tr>
+                    <td><input type="checkbox" class="pb-row-check" value="{{ bill.id }}" aria-label="Select {{ bill.bill_number }}"></td>
                     <td><a href="{{ url_for('purchase_bills.view', id=bill.id) }}" style="font-weight:600;color:var(--blue);">{{ bill.bill_number }}</a></td>
                     <td>{{ bill.bill_date.strftime('%b %d, %Y') }}</td>
                     <td>{{ bill.vendor_name }}</td>
-                    <td>{{ bill.due_date.strftime('%b %d, %Y') }}</td>
+                    <td {% if bill.due_date and bill.due_date < today and bill.status in ['posted', 'partially_paid'] %}style="color:var(--red);font-weight:600;"{% endif %}>
+                        {{ bill.due_date.strftime('%b %d, %Y') if bill.due_date else '—' }}
+                    </td>
                     <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.subtotal) }}</td>
                     <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</td>
-                    <td style="text-align:right;font-family:var(--mono);color:var(--red);">-₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);{% if bill.withholding_tax_amount > 0 %}color:var(--red);{% endif %}">
+                        {% if bill.withholding_tax_amount > 0 %}-₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}{% else %}—{% endif %}
+                    </td>
                     <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_amount) }}</td>
-                    <td><span class="badge badge-{{ 'secondary' if bill.status=='draft' else 'info' if bill.status=='posted' else 'success' if bill.status=='paid' else 'danger' }}">{{ bill.status|title }}</span></td>
-                    <td><a href="{{ url_for('purchase_bills.view', id=bill.id) }}" class="btn-action">👁️</a>{% if bill.status=='draft' %}<a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn-action">✏️</a>{% endif %}</td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">
+                        {% if bill.status in ['paid', 'voided', 'cancelled'] %}—{% else %}₱{{ '{:,.2f}'.format(bill.balance) }}{% endif %}
+                    </td>
+                    <td><span class="badge badge-{{ badge_map.get(bill.status, 'draft') }}">{{ bill.status|replace('_', ' ')|title }}</span></td>
+                    <td>
+                        <a href="{{ url_for('purchase_bills.view', id=bill.id) }}" class="btn-action">👁️</a>
+                        {% if bill.status == 'draft' %}<a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn-action">✏️</a>{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <div class="empty-state"><p>No purchase bills found.</p><a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Create First Bill</a></div>
+        {% set filters_active = q or status_filter != 'all' or vendor_filter != 'all' or date_from or date_to %}
+        <div class="empty-state">
+            {% if filters_active %}
+            <p>No bills match your filters.</p>
+            <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Clear Filters</a>
+            {% else %}
+            <p>No purchase bills found.</p>
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Create First Bill</a>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
 
@@ -52,19 +128,101 @@
     <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
         <div>
             Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
-            {{ min(pagination.page * pagination.per_page, pagination.total) }} of
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
             {{ pagination.total }} bills
         </div>
         <div style="display:flex;gap:8px">
             {% if pagination.has_prev %}
-            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.prev_num, status=status_filter, vendor=vendor_filter) }}" class="btn btn-secondary btn-sm">← Previous</a>
+            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.prev_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">← Previous</a>
             {% endif %}
             {% if pagination.has_next %}
-            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.next_num, status=status_filter, vendor=vendor_filter) }}" class="btn btn-secondary btn-sm">Next →</a>
+            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.next_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next →</a>
             {% endif %}
         </div>
     </div>
     {% endif %}
 </div>
-<style>.badge{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase;}.badge-secondary{background:var(--text-3);color:white;}.badge-info{background:var(--blue);color:white;}.badge-success{background:var(--green);color:white;}.badge-danger{background:var(--red);color:white;}.btn-action{padding:4px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);cursor:pointer;font-size:14px;}.btn-action:hover{background:var(--border);}</style>
+
+<style>
+.pb-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.pb-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
+}
+.pb-card-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+}
+.pb-card-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--mono);
+    margin: 4px 0 2px;
+}
+.pb-card-detail { font-size: 12px; color: var(--text-3); }
+.pb-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+.pb-filter-search { flex: 1; min-width: 180px; }
+.pb-selected-count { font-size: 13px; color: var(--text-2); }
+.btn-action {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 14px;
+}
+.btn-action:hover { background: var(--border); }
+@media (max-width: 1024px) { .pb-summary-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .pb-summary-grid { grid-template-columns: 1fr; } }
+</style>
+
+<script>
+(function () {
+    const checkAll = document.getElementById('pb-check-all');
+    const rowChecks = document.querySelectorAll('.pb-row-check');
+    const counter = document.getElementById('pb-selected-count');
+    const exportLinks = document.querySelectorAll('.pb-export-link');
+
+    function updateSelection() {
+        const selected = Array.from(rowChecks).filter(cb => cb.checked).map(cb => cb.value);
+        counter.textContent = selected.length ? selected.length + ' selected' : '';
+        exportLinks.forEach(link => {
+            const url = new URL(link.href, window.location.origin);
+            if (selected.length) {
+                url.searchParams.set('ids', selected.join(','));
+            } else {
+                url.searchParams.delete('ids');
+            }
+            link.href = url.pathname + '?' + url.searchParams.toString();
+        });
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', function () {
+            rowChecks.forEach(cb => { cb.checked = checkAll.checked; });
+            updateSelection();
+        });
+    }
+    rowChecks.forEach(cb => cb.addEventListener('change', updateSelection));
+})();
+</script>
 {% endblock %}
