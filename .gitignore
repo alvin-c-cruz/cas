@@ -63,6 +63,9 @@ htmlcov/
 # Playwright MCP artifacts (snapshots, console/network logs)
 .playwright-mcp/
 
+# Personal local settings (hooks, overrides — not for team)
+.claude/settings.local.json
+
 # Temporary files
 *.tmp
 *.bak
@@ -86,3 +89,4 @@ htmlcov/
 /verify_*.py
 /generate_*.py
 nul
+.superpowers/
