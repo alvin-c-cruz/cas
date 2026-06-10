@@ -406,7 +406,7 @@ function addLineItem(existingItem, firstDefaults) {
             <select class="form-control acct-select">
                 <option value="">Select Account</option>
                 ${allAccounts.map(a => {
-                    const label = escHtml(a.code) + ' - ' + escHtml(a.name);
+                    const label = escHtml(a.code) + ' : ' + escHtml(a.name);
                     if (a.is_group) return `<option disabled value="${a.id}">${label}</option>`;
                     return `<option value="${a.id}" ${item.account_id === a.id ? 'selected' : ''}>${label}</option>`;
                 }).join('')}
