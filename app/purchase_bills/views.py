@@ -62,66 +62,95 @@ def generate_bill_number():
     return f'{prefix}{next_num:04d}'
 
 
-@purchase_bills_bp.route('/purchase-bills')
-@login_required
-def list_bills():
-    """List all purchase bills with pagination."""
-    status_filter = request.args.get('status', 'all')
-    vendor_filter = request.args.get('vendor', 'all')
-    page = request.args.get('page', 1, type=int)
-    per_page = 50
+def _filtered_bills_query(include_ids=False):
+    """Build a branch-scoped PurchaseBill query from request filter args.
 
-    # Scope to current branch
+    Args read: status, vendor, q, date_from, date_to — and ids when
+    include_ids=True (exports only); a valid ids list overrides all
+    other filters but stays branch-scoped. Invalid values are ignored.
+    """
     current_branch_id = session.get('selected_branch_id')
     query = PurchaseBill.query.filter_by(branch_id=current_branch_id)
 
+    if include_ids:
+        ids_param = request.args.get('ids', '')
+        if ids_param:
+            try:
+                ids = [int(x) for x in ids_param.split(',') if x.strip()]
+            except ValueError:
+                ids = []
+            if ids:
+                return query.filter(PurchaseBill.id.in_(ids))
+
+    status_filter = request.args.get('status', 'all')
     if status_filter != 'all':
         query = query.filter_by(status=status_filter)
 
+    vendor_filter = request.args.get('vendor', 'all')
     if vendor_filter != 'all':
         try:
-            vendor_id = int(vendor_filter)
-            query = query.filter_by(vendor_id=vendor_id)
+            query = query.filter_by(vendor_id=int(vendor_filter))
         except ValueError:
             pass
 
-    # Eager load line_items to prevent N+1 queries
-    query = query.options(selectinload(PurchaseBill.line_items)).order_by(PurchaseBill.bill_date.desc())
+    q = request.args.get('q', '').strip()
+    if q:
+        like = f'%{q}%'
+        query = query.filter(db.or_(PurchaseBill.bill_number.ilike(like),
+                                    PurchaseBill.vendor_name.ilike(like)))
 
-    # Paginate results
+    date_from = request.args.get('date_from', '')
+    if date_from:
+        try:
+            query = query.filter(PurchaseBill.bill_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', '')
+    if date_to:
+        try:
+            query = query.filter(PurchaseBill.bill_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    return query
+
+
+@purchase_bills_bp.route('/purchase-bills')
+@login_required
+def list_bills():
+    """List purchase bills with summary cards, filters, search, pagination."""
+    from app.purchase_bills.utils import compute_bills_summary
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    query = (_filtered_bills_query()
+             .options(selectinload(PurchaseBill.line_items))
+             .order_by(PurchaseBill.bill_date.desc()))
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    bills = pagination.items
 
+    summary = compute_bills_summary(session.get('selected_branch_id'))
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
 
     return render_template('purchase_bills/list.html',
-                         bills=bills,
-                         pagination=pagination,
-                         vendors=vendors,
-                         status_filter=status_filter,
-                         vendor_filter=vendor_filter)
+                           bills=pagination.items,
+                           pagination=pagination,
+                           vendors=vendors,
+                           summary=summary,
+                           today=ph_now().date(),
+                           status_filter=request.args.get('status', 'all'),
+                           vendor_filter=request.args.get('vendor', 'all'),
+                           q=request.args.get('q', ''),
+                           date_from=request.args.get('date_from', ''),
+                           date_to=request.args.get('date_to', ''))
 
 
 @purchase_bills_bp.route('/purchase-bills/export/excel')
 @login_required
 def export_excel():
     """Export purchase bills to Excel"""
-    status_filter = request.args.get('status', 'all')
-    vendor_filter = request.args.get('vendor', 'all')
-
-    # Scoped to current branch
-    current_branch_id = session.get('selected_branch_id')
-    query = PurchaseBill.query.filter_by(branch_id=current_branch_id)
-
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
-
-    if vendor_filter != 'all':
-        try:
-            vendor_id = int(vendor_filter)
-            query = query.filter_by(vendor_id=vendor_id)
-        except ValueError:
-            pass
+    query = _filtered_bills_query(include_ids=True)
 
     bills = query.options(selectinload(PurchaseBill.line_items)).order_by(PurchaseBill.bill_date.desc()).all()
 
@@ -173,22 +202,7 @@ def export_excel():
 @login_required
 def export_csv_route():
     """Export purchase bills to CSV"""
-    status_filter = request.args.get('status', 'all')
-    vendor_filter = request.args.get('vendor', 'all')
-
-    # Scoped to current branch
-    current_branch_id = session.get('selected_branch_id')
-    query = PurchaseBill.query.filter_by(branch_id=current_branch_id)
-
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
-
-    if vendor_filter != 'all':
-        try:
-            vendor_id = int(vendor_filter)
-            query = query.filter_by(vendor_id=vendor_id)
-        except ValueError:
-            pass
+    query = _filtered_bills_query(include_ids=True)
 
     bills = query.options(selectinload(PurchaseBill.line_items)).order_by(PurchaseBill.bill_date.desc()).all()
 
