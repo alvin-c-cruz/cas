@@ -1178,3 +1178,23 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
         grid-template-columns: 1fr;
     }
 }
+
+/* ── Purchase Bill Form: Vendor Step Card ─────────────────────────────────── */
+.vendor-step-card--done {
+    border-color: #22c55e !important;
+    background: #f0fdf4 !important;
+}
+.vendor-step-card--done .vendor-step-label {
+    color: #166534;
+}
+
+/* Header fields active state */
+.header-fields--active {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+/* Line items locked hidden state */
+.line-items-locked--hidden {
+    display: none !important;
+}

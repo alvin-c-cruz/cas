@@ -13,82 +13,116 @@
         <form method="POST" novalidate id="billForm">
             {{ form.hidden_tag() }}
 
-            <div class="form-row-3">
-                {{ render_field(form.bill_number) }}
-                {{ render_field(form.bill_date) }}
-                {{ render_field(form.due_date) }}
+            <!-- ① Vendor Step Card -->
+            <div id="vendorCard" class="vendor-step-card{% if bill %} vendor-step-card--done{% endif %}">
+                <div class="vendor-step-label" id="vendorCardLabel">
+                    {% if bill %}✓ {{ bill.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
+                </div>
+                <div id="vendorBadges" class="vendor-badges"></div>
+                <select name="vendor_id" id="vendor_id" class="form-control" required
+                        {% if not bill %}autofocus{% endif %}>
+                    <option value="">Search or select a vendor…</option>
+                    {% for choice in form.vendor_id.choices %}
+                    <option value="{{ choice[0] }}"
+                        {% if bill and bill.vendor_id == choice[0] %}selected{% endif %}>
+                        {{ choice[1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if form.vendor_id.errors %}
+                <div class="form-error">{{ form.vendor_id.errors[0] }}</div>
+                {% endif %}
             </div>
 
-            <div class="form-row-2">
-                {{ render_field(form.vendor_id) }}
-                {{ render_field(form.payment_terms) }}
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.vendor_invoice_number) }}
-                {{ render_field(form.vendor_invoice_date) }}
-            </div>
-
-            <div class="form-row-2">
-                {{ render_field(form.reference) }}
-                {{ render_field(form.notes) }}
-            </div>
-
-            <!-- Line Items Section -->
-            <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);">
-                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Line Items</h3>
-
-                <table class="table" id="lineItemsTable">
-                    <thead>
-                        <tr>
-                            <th style="width: 30%;">Description</th>
-                            <th style="width: 8%; text-align: right;">Qty</th>
-                            <th style="width: 12%; text-align: right;">Unit Cost</th>
-                            <th style="width: 12%;">VAT Category</th>
-                            <th style="width: 18%;">WHT</th>
-                            <th style="width: 15%;">Expense Account</th>
-                            <th style="width: 5%;"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="lineItemsBody"></tbody>
-                </table>
-
-                <button type="button" class="btn btn-secondary" onclick="addLineItem()">+ Add Line Item</button>
-                <input type="hidden" name="line_items" id="lineItemsData">
-            </div>
-
-            <!-- Totals -->
-            <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
-                <div style="background: var(--bg); padding: 20px; border-radius: 6px; min-width: 320px;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                        <span style="color: var(--text-2);">Subtotal:</span>
-                        <span id="subtotalDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                        <span style="color: var(--text-2);">Input VAT:</span>
-                        <span id="vatDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-top: 8px; border-top: 1px solid var(--border);">
-                        <span style="color: var(--text-2);">Total before WT:</span>
-                        <span id="totalBeforeWtDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                        <span style="color: var(--text-2);">Withholding Tax:</span>
-                        <span id="wtDisplay" style="font-family: var(--mono); font-weight: 600; color: var(--red);">-₱0.00</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; padding-top: 12px; border-top: 2px solid var(--border);">
-                        <span style="font-size: 16px; font-weight: 700;">Net Payable:</span>
-                        <span id="totalDisplay" style="font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--blue);">₱0.00</span>
-                    </div>
+            <!-- ② Header Fields (dimmed until vendor selected) -->
+            <div id="headerFields" class="header-fields{% if bill %} header-fields--active{% endif %}">
+                <div class="form-row-3">
+                    {{ render_field(form.bill_number) }}
+                    {{ render_field(form.bill_date) }}
+                    {{ render_field(form.due_date) }}
+                </div>
+                <div class="form-row-2">
+                    {{ render_field(form.payment_terms) }}
+                    {{ render_field(form.vendor_invoice_number) }}
+                </div>
+                <div class="form-row-2">
+                    {{ render_field(form.vendor_invoice_date) }}
+                    {{ render_field(form.reference) }}
+                </div>
+                <div style="margin-bottom: 16px;">
+                    {{ render_field(form.notes) }}
                 </div>
             </div>
 
-            <div class="form-actions" style="margin-top: 32px;">
-                <button type="submit" class="btn btn-primary">
-                    {{ 'Update Bill' if bill else 'Enter Bill' }}
-                </button>
-                <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Cancel</a>
+            <!-- ③ Line Items Locked Placeholder -->
+            <div id="lineItemsLocked" class="line-items-locked{% if bill %} line-items-locked--hidden{% endif %}">
+                <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
+                <div style="font-size: 14px; font-weight: 600; color: #92400e;">
+                    Select a vendor above to add line items
+                </div>
+                <div style="font-size: 12px; color: var(--text-2); margin-top: 6px;">
+                    WHT codes and VAT defaults will load from the vendor.
+                </div>
             </div>
+
+            <!-- ④ Line Items Section (hidden on create, visible on edit) -->
+            <div id="lineItemsSection"{% if not bill %} style="display:none"{% endif %}>
+                <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border);">
+                    <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Line Items</h3>
+
+                    <table class="table" id="lineItemsTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 30%;">Description</th>
+                                <th style="width: 8%; text-align: right;">Qty</th>
+                                <th style="width: 12%; text-align: right;">Unit Cost</th>
+                                <th style="width: 12%;">VAT Category</th>
+                                <th style="width: 18%;">WHT</th>
+                                <th style="width: 15%;">Expense Account</th>
+                                <th style="width: 5%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="lineItemsBody"></tbody>
+                    </table>
+
+                    <button type="button" class="btn btn-secondary" onclick="addLineItem()">+ Add Line Item</button>
+                    <input type="hidden" name="line_items" id="lineItemsData">
+                </div>
+
+                <!-- ⑤ Totals Panel -->
+                <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                    <div style="background: var(--bg); padding: 20px; border-radius: 6px; min-width: 320px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="color: var(--text-2);">Subtotal:</span>
+                            <span id="subtotalDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="color: var(--text-2);">Input VAT:</span>
+                            <span id="vatDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-top: 8px; border-top: 1px solid var(--border);">
+                            <span style="color: var(--text-2);">Total before WT:</span>
+                            <span id="totalBeforeWtDisplay" style="font-family: var(--mono); font-weight: 600;">₱0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                            <span style="color: var(--text-2);">Withholding Tax:</span>
+                            <span id="wtDisplay" style="font-family: var(--mono); font-weight: 600; color: var(--red);">-₱0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding-top: 12px; border-top: 2px solid var(--border);">
+                            <span style="font-size: 16px; font-weight: 700;">Net Payable:</span>
+                            <span id="totalDisplay" style="font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--blue);">₱0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 32px;">
+                    <button type="submit" class="btn btn-primary">
+                        {{ 'Update Bill' if bill else 'Enter Bill' }}
+                    </button>
+                    <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </div>
+
         </form>
     </div>
 </div>
@@ -101,6 +135,8 @@ let currentVendorWHTs = [];
 let currentVendorVatCategory = '';
 let lineItems = [];
 let lineCounter = 0;
+
+// ── Unchanged helper functions ────────────────────────────────────────────────
 
 function buildWhtOptions(selectedId) {
     if (currentVendorWHTs.length === 0) {
@@ -142,7 +178,6 @@ function rebuildAllVatSelects() {
 function applyVendorTerms(terms) {
     const termsField = document.getElementById('payment_terms');
     if (termsField) termsField.value = terms;
-
     const match = terms.match(/Net (\d+)/);
     if (!match) return;
     const days = parseInt(match[1]);
@@ -154,21 +189,6 @@ function applyVendorTerms(terms) {
     const dueDateField = document.getElementById('due_date');
     if (dueDateField) dueDateField.value = due.toISOString().split('T')[0];
 }
-
-document.getElementById('vendor_id').addEventListener('change', function () {
-    const vendorId = this.value;
-    if (!vendorId || vendorId == '0') return;
-    fetch(`/vendors/${vendorId}/defaults`)
-        .then(r => r.json())
-        .then(data => {
-            currentVendorWHTs = data.withholding_taxes || [];
-            currentVendorVatCategory = data.default_vat_category || '';
-            applyVendorTerms(data.payment_terms || 'Net 30');
-            rebuildAllWhtSelects();
-            rebuildAllVatSelects();
-            calculateTotals();
-        });
-});
 
 function addLineItem(existingItem) {
     lineCounter++;
@@ -266,23 +286,81 @@ document.getElementById('billForm').addEventListener('submit', function () {
     })));
 });
 
+// ── Vendor card state management ──────────────────────────────────────────────
+
+function setVendorDone(vendorName, defaults) {
+    const card = document.getElementById('vendorCard');
+    const label = document.getElementById('vendorCardLabel');
+    const badges = document.getElementById('vendorBadges');
+
+    card.classList.add('vendor-step-card' + '--done');
+    label.textContent = '✓ ' + vendorName;
+
+    const badgeHtml = [];
+    (defaults.withholding_taxes || []).forEach(wt => {
+        badgeHtml.push(`<span class="vendor-badge">${wt.code}</span>`);
+    });
+    if (defaults.default_vat_category) {
+        badgeHtml.push(`<span class="vendor-badge">VAT: ${defaults.default_vat_category}</span>`);
+    }
+    badges.innerHTML = badgeHtml.join('');
+
+    document.getElementById('headerFields').classList.add('header-fields' + '--active');
+    document.getElementById('lineItemsLocked').classList.add('line-items-locked' + '--hidden');
+    document.getElementById('lineItemsSection').style.display = '';
+}
+
+// ── Vendor change handler ─────────────────────────────────────────────────────
+
+document.getElementById('vendor_id').addEventListener('change', function () {
+    const vendorId = this.value;
+    const vendorName = this.options[this.selectedIndex].text;
+    if (!vendorId || vendorId == '0') return;
+
+    fetch(`/vendors/${vendorId}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentVendorWHTs = data.withholding_taxes || [];
+            currentVendorVatCategory = data.default_vat_category || '';
+            applyVendorTerms(data.payment_terms || 'Net 30');
+
+            const hadItems = lineItems.length > 0;
+            setVendorDone(vendorName, data);
+
+            if (hadItems) {
+                rebuildAllWhtSelects();
+                rebuildAllVatSelects();
+                calculateTotals();
+            } else {
+                addLineItem();
+            }
+        });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
 function initItems() {
     {% if bill and line_items %}
     const existingItems = {{ line_items | tojson }};
     existingItems.forEach(item => addLineItem(item));
-    {% elif not bill %}
-    addLineItem();
     {% endif %}
+    // Create mode: no auto-add — first row added when vendor is selected
 }
 
 {% if bill %}
 const initVendorId = document.getElementById('vendor_id').value;
+const initVendorSel = document.getElementById('vendor_id');
+const initVendorName = initVendorSel.options[initVendorSel.selectedIndex]
+    ? initVendorSel.options[initVendorSel.selectedIndex].text
+    : '{{ bill.vendor_name | e }}';
+
 if (initVendorId && initVendorId !== '0') {
     fetch(`/vendors/${initVendorId}/defaults`)
         .then(r => r.json())
         .then(data => {
             currentVendorWHTs = data.withholding_taxes || [];
             currentVendorVatCategory = data.default_vat_category || '';
+            setVendorDone(initVendorName, data);
             initItems();
         })
         .catch(() => initItems());
@@ -295,7 +373,61 @@ initItems();
 </script>
 
 <style>
+/* Vendor Step Card */
+.vendor-step-card {
+    border: 2px solid var(--amber, #f59e0b);
+    background: #fffbeb;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+.vendor-step-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #92400e;
+    margin-bottom: 10px;
+    transition: color 0.2s ease;
+}
+.vendor-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    min-height: 0;
+}
+.vendor-badge {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* Header fields dimming */
+.header-fields {
+    opacity: 0.65;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+/* Line items locked placeholder */
+.line-items-locked {
+    border: 2px dashed var(--amber, #f59e0b);
+    background: #fffbeb;
+    border-radius: 8px;
+    padding: 40px 24px;
+    text-align: center;
+    margin-top: 24px;
+}
+
+/* Grid helpers */
 .form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+.form-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px; }
 .btn-action { padding: 4px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 14px; }
 .btn-action:hover { background: var(--border); }
 </style>
