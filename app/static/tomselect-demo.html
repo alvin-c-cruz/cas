@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tom Select Demo — CAS Line Items</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="/static/choices.min.css" rel="stylesheet">
+<script src="/static/choices.min.js"></script>
+<style>
+  :root {
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text-1: #1e293b;
+    --text-2: #64748b;
+    --blue: #3b82f6;
+    --mono: 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text-1); padding: 32px; font-size: 14px; }
+  h2 { font-size: 15px; font-weight: 700; margin-bottom: 16px; color: var(--text-2); text-transform: uppercase; letter-spacing: .05em; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 5px 6px;
+    border-bottom: 2px solid var(--border); color: var(--text-2);
+    background: var(--bg);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody td { padding: 3px 4px; vertical-align: middle; }
+  .col-desc  { width: 35%; }
+  .col-amt   { width: 13%; }
+  .col-vt    { width: 9%; }
+  .col-wt    { width: 15%; }
+  .col-acct  { width: 23%; }
+  .col-del   { width: 5%; }
+
+  /* Plain text input for description/amount */
+  input[type=text], input[type=number] {
+    width: 100%; padding: 3px 6px; height: 28px; font-size: 13px;
+    border: 1px solid transparent; border-radius: 2px; background: transparent;
+    font-family: inherit; color: var(--text-1);
+  }
+  input[type=text]:hover, input[type=number]:hover { border-color: var(--border); background: var(--card); }
+  input[type=text]:focus, input[type=number]:focus { border-color: var(--blue); background: var(--card); outline: none; border-radius: 3px; }
+  input[type=number] { text-align: right; font-family: var(--mono); }
+
+  /* Choices.js — compact table-cell sizing */
+  .choices { margin-bottom: 0; }
+  .choices__inner {
+    min-height: 0 !important; height: 28px; padding: 3px 6px 3px 6px !important;
+    font-size: 13px !important; border: 1px solid transparent !important;
+    border-radius: 2px !important; background: transparent !important;
+    display: flex; align-items: center;
+  }
+  .choices:hover .choices__inner { border-color: var(--border) !important; background: var(--card) !important; }
+  .choices.is-focused .choices__inner, .choices.is-open .choices__inner {
+    border-color: var(--blue) !important; background: var(--card) !important;
+    border-radius: 3px !important; box-shadow: none !important;
+  }
+  .choices__input { font-size: 13px !important; font-family: inherit !important; background: transparent !important; }
+  .choices[data-type*=select-one] .choices__inner { padding-right: 20px !important; }
+  .choices[data-type*=select-one]::after { border-color: var(--text-2) transparent transparent !important; right: 8px; top: 11px; }
+  .choices__list--dropdown {
+    font-size: 13px; border: 1px solid var(--border) !important;
+    border-radius: 6px !important; box-shadow: 0 4px 16px rgba(0,0,0,.1) !important;
+    margin-top: 2px; z-index: 999;
+  }
+  .choices__list--dropdown .choices__item { padding: 6px 10px; }
+  .choices__list--dropdown .choices__item--selectable.is-highlighted { background: #eff6ff !important; color: var(--blue) !important; }
+  .choices__list--single { padding: 0; }
+  .choices__list--single .choices__item { font-size: 13px; }
+
+  .btn-del { padding: 3px 7px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+  .label { font-size: 11px; color: var(--text-2); margin-top: 16px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h2>Purchase Bill — Line Items (Choices.js demo)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="col-desc">Description</th>
+        <th class="col-amt" style="text-align:right">Amount (VAT-incl.)</th>
+        <th class="col-vt">VT</th>
+        <th class="col-wt">WT</th>
+        <th class="col-acct">Account Title</th>
+        <th class="col-del"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><input type="text" value="Office supplies"></td>
+        <td><input type="number" value="1120.00"></td>
+        <td id="vt-cell-1"></td>
+        <td id="wt-cell-1"></td>
+        <td id="acct-cell-1"></td>
+        <td><button class="btn-del">🗑️</button></td>
+      </tr>
+      <tr>
+        <td><input type="text" value="Janitorial services"></td>
+        <td><input type="number" value="5600.00"></td>
+        <td id="vt-cell-2"></td>
+        <td id="wt-cell-2"></td>
+        <td id="acct-cell-2"></td>
+        <td><button class="btn-del">🗑️</button></td>
+      </tr>
+      <tr>
+        <td><input type="text" placeholder="Description…"></td>
+        <td><input type="number" value="0.00"></td>
+        <td id="vt-cell-3"></td>
+        <td id="wt-cell-3"></td>
+        <td id="acct-cell-3"></td>
+        <td><button class="btn-del">🗑️</button></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="label">↑ Click VT, WT, or Account Title cells and start typing to search</p>
+</div>
+
+<script>
+const vatOptions = [
+  { value: '', text: 'No VAT' },
+  { value: 'VAT-REG', text: 'VAT-REG — VAT-Registered (12%)' },
+  { value: 'VAT-ZERO', text: 'VAT-ZERO — Zero-Rated VAT (0%)' },
+  { value: 'VAT-EXEMPT', text: 'VAT-EXEMPT — VAT Exempt (0%)' },
+  { value: 'VAT-IMP', text: 'VAT-IMP — Importation VAT (12%)' },
+];
+
+const whtOptions = [
+  { value: '', text: 'None' },
+  { value: 'EWT-PROF', text: 'EWT-PROF — Professional Fees (10%)' },
+  { value: 'EWT-RENT', text: 'EWT-RENT — Rent (5%)' },
+  { value: 'EWT-SUPP', text: 'EWT-SUPP — Suppliers of Goods (1%)' },
+  { value: 'EWT-SERV', text: 'EWT-SERV — Suppliers of Services (2%)' },
+  { value: 'EWT-CONT', text: 'EWT-CONT — Contractors (2%)' },
+];
+
+const acctOptions = [
+  { value: '', text: 'Select Account' },
+  { value: '60101', text: '60101 - Office Supplies Expense' },
+  { value: '60102', text: '60102 - Janitorial Supplies' },
+  { value: '60201', text: '60201 - Salaries Expense' },
+  { value: '60301', text: '60301 - Rent Expense' },
+  { value: '60401', text: '60401 - Utilities Expense - Electricity' },
+  { value: '60402', text: '60402 - Utilities Expense - Water' },
+  { value: '60501', text: '60501 - Repairs and Maintenance' },
+  { value: '60601', text: '60601 - Transportation Expense' },
+  { value: '60701', text: '60701 - Communication Expense' },
+  { value: '60801', text: '60801 - Depreciation Expense' },
+  { value: '60901', text: '60901 - Professional Fees' },
+  { value: '61001', text: '61001 - Insurance Expense' },
+  { value: '61101', text: '61101 - Advertising Expense' },
+  { value: '61201', text: '61201 - Miscellaneous Expense' },
+];
+
+function buildSelect(options, defaultValue) {
+  const sel = document.createElement('select');
+  options.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o.value; opt.textContent = o.text;
+    if (o.value === defaultValue) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  return sel;
+}
+
+[1, 2, 3].forEach(n => {
+  // VT
+  const vtDef = n <= 2 ? 'VAT-REG' : '';
+  const vtSel = buildSelect(vatOptions, vtDef);
+  document.getElementById(`vt-cell-${n}`).appendChild(vtSel);
+  new Choices(vtSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
+
+  // WT
+  const wtDef = n === 2 ? 'EWT-SERV' : '';
+  const wtSel = buildSelect(whtOptions, wtDef);
+  document.getElementById(`wt-cell-${n}`).appendChild(wtSel);
+  new Choices(wtSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
+
+  // Account
+  const acctDef = n === 1 ? '60101' : (n === 2 ? '60901' : '');
+  const acctSel = buildSelect(acctOptions, acctDef);
+  document.getElementById(`acct-cell-${n}`).appendChild(acctSel);
+  new Choices(acctSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
+});
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
 
 {% block content %}
 {% from "macros.html" import render_field, render_flash_messages %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 
 {{ render_flash_messages() }}
 
@@ -191,6 +192,7 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script>
 const vatCategories = {{ vat_categories | tojson }};
 const expenseAccounts = {{ expense_accounts | tojson }};
@@ -201,6 +203,7 @@ let currentVendorVatCategory = '';
 let currentVendorName = '';
 let lineItems = [];
 let lineCounter = 0;
+let lineChoices = {};
 let autoVat = 0;
 let autoWt = 0;
 let vatOverrideActive = false;
@@ -230,48 +233,43 @@ function buildWhtOptions(selectedId) {
     }
     return '<option value="">None</option>' +
         currentVendorWHTs.map(wt => {
-            const short = escHtml(wt.code);
             const long = `${escHtml(wt.code)} — ${escHtml(wt.name)} (${wt.rate}%)`;
-            return `<option value="${wt.id}" data-rate="${wt.rate}" data-short="${short}" data-long="${long}" ${selectedId == wt.id ? 'selected' : ''}>${long}</option>`;
+            const cp = escHtml(JSON.stringify({ code: wt.code }));
+            return `<option value="${wt.id}" data-rate="${wt.rate}" data-custom-properties="${cp}" ${selectedId == wt.id ? 'selected' : ''}>${long}</option>`;
         }).join('');
-}
-
-function collapseSelect(sel) {
-    const opt = sel && sel.options[sel.selectedIndex];
-    if (opt && opt.dataset.short) opt.textContent = opt.dataset.short;
-}
-
-function expandSelect(sel) {
-    Array.from(sel.options).forEach(opt => {
-        if (opt.dataset.long) opt.textContent = opt.dataset.long;
-    });
 }
 
 function rebuildAllWhtSelects() {
     const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
     lineItems.forEach(item => {
-        const sel = document.querySelector(`#line-${item.id} .wht-select`);
-        if (!sel) return;
+        const lc = lineChoices[item.id];
+        if (!lc) return;
         const prev = item.wt_id;
         const stillValid = prev && currentVendorWHTs.some(wt => wt.id == prev);
         if (!stillValid) {
             item.wt_id = autoWht ? autoWht.id : null;
             item.wt_rate = autoWht ? autoWht.rate : null;
         }
-        sel.innerHTML = buildWhtOptions(item.wt_id);
-        sel.value = item.wt_id || '';
-        collapseSelect(sel);
+        const choices = [{ value: '', label: 'None', customProperties: { code: '' } }].concat(
+            currentVendorWHTs.map(wt => ({
+                value: String(wt.id),
+                label: `${wt.code} — ${wt.name} (${wt.rate}%)`,
+                customProperties: { code: wt.code }
+            }))
+        );
+        lc.wht.clearChoices();
+        lc.wht.setChoices(choices, 'value', 'label', false);
+        lc.wht.setChoiceByValue(item.wt_id ? String(item.wt_id) : '');
     });
 }
 
 function rebuildAllVatSelects() {
     if (!currentVendorVatCategory) return;
     lineItems.forEach(item => {
-        const sel = document.querySelector(`#line-${item.id} .vat-select`);
-        if (!sel) return;
-        sel.value = currentVendorVatCategory;
+        const lc = lineChoices[item.id];
+        if (!lc) return;
+        lc.vat.setChoiceByValue(currentVendorVatCategory);
         item.vat_category = currentVendorVatCategory;
-        collapseSelect(sel);
     });
     calculateTotals();
 }
@@ -315,17 +313,16 @@ function addLineItem(existingItem) {
         <td><input type="number" class="form-control" value="${item.amount || 0}" step="0.01" min="0"
                    style="text-align:right; font-family: var(--mono);" onchange="updateLineItem(${id}, 'amount', parseFloat(this.value)||0)"></td>
         <td>
-            <select class="form-control vat-select" onchange="updateLineItem(${id}, 'vat_category', this.value)" onfocus="expandSelect(this)" onblur="collapseSelect(this)">
+            <select class="form-control vat-select">
                 <option value="">No VAT</option>
                 ${vatCategories.map(v => {
-                    const short = escHtml(v.code);
-                    const long = `${escHtml(v.code)} — ${escHtml(v.name)} (${v.rate}%)`;
-                    return `<option value="${short}" data-short="${short}" data-long="${long}" ${item.vat_category === v.code ? 'selected' : ''}>${long}</option>`;
+                    const long = `${escHtml(v.code)} — ${escHtml(v.name)}`;
+                    return `<option value="${escHtml(v.code)}" ${item.vat_category === v.code ? 'selected' : ''}>${long}</option>`;
                 }).join('')}
             </select>
         </td>
         <td>
-            <select class="form-control wht-select" onchange="updateWht(${id}, this)" onfocus="expandSelect(this)" onblur="collapseSelect(this)">
+            <select class="form-control wht-select">
                 ${buildWhtOptions(item.wt_id)}
             </select>
         </td>
@@ -339,8 +336,25 @@ function addLineItem(existingItem) {
     `;
     document.getElementById('lineItemsBody').appendChild(row);
     const newRow = document.getElementById(`line-${id}`);
-    collapseSelect(newRow.querySelector('.vat-select'));
-    collapseSelect(newRow.querySelector('.wht-select'));
+    const vatSel = newRow.querySelector('.vat-select');
+    const whtSel = newRow.querySelector('.wht-select');
+    const choicesOpts = {
+        searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
+        callbackOnCreateTemplates: function(tmpl) {
+            return {
+                item: function(cfg, data) {
+                    const cn = cfg.classNames;
+                    const code = (data.customProperties && data.customProperties.code) || data.value || '—';
+                    return tmpl(`<div class="${cn.item} ${data.highlighted ? cn.highlightedState : cn.itemSelectable}" data-item data-id="${data.id}" data-value="${data.value}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${code}</div>`);
+                }
+            };
+        }
+    };
+    const vatC = new Choices(vatSel, choicesOpts);
+    const whtC = new Choices(whtSel, choicesOpts);
+    vatSel.addEventListener('change', () => updateLineItem(id, 'vat_category', vatSel.value));
+    whtSel.addEventListener('change', () => updateWht(id, whtSel));
+    lineChoices[id] = { vat: vatC, wht: whtC };
     lineItems.push(item);
     calculateTotals();
 }
@@ -348,9 +362,9 @@ function addLineItem(existingItem) {
 function updateWht(id, sel) {
     const item = lineItems.find(i => i.id === id);
     if (!item) return;
-    const opt = sel.options[sel.selectedIndex];
     item.wt_id = sel.value ? parseInt(sel.value) : null;
-    item.wt_rate = sel.value ? parseFloat(opt.dataset.rate) : null;
+    const whtData = currentVendorWHTs.find(wt => wt.id == sel.value);
+    item.wt_rate = whtData ? whtData.rate : null;
     if (wtOverrideActive) revertWtOverride();
     calculateTotals();
 }
@@ -364,6 +378,11 @@ function updateLineItem(id, field, value) {
 }
 
 function removeLineItem(id) {
+    if (lineChoices[id]) {
+        lineChoices[id].vat.destroy();
+        lineChoices[id].wht.destroy();
+        delete lineChoices[id];
+    }
     document.getElementById(`line-${id}`).remove();
     lineItems = lineItems.filter(i => i.id !== id);
     calculateTotals();
@@ -776,6 +795,52 @@ initItems();
 }
 .totals-revert:hover { background: var(--border); }
 
+/* Choices.js compact table-cell styling */
+.choices { margin-bottom: 0; }
+.choices__inner {
+    min-height: 0 !important; height: 28px;
+    padding: 3px 6px !important;
+    font-size: 13px !important;
+    border: 1px solid transparent !important;
+    border-radius: 2px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    display: flex; align-items: center;
+}
+.choices:hover .choices__inner { border-color: var(--border) !important; background: var(--card) !important; }
+.choices.is-focused .choices__inner,
+.choices.is-open .choices__inner {
+    border-color: var(--blue) !important;
+    background: var(--card) !important;
+    border-radius: 3px !important;
+}
+.choices__input {
+    font-size: 13px !important; font-family: inherit !important;
+    background: transparent !important; margin-bottom: 0 !important;
+}
+.choices[data-type*=select-one] .choices__inner { padding-right: 20px !important; }
+.choices[data-type*=select-one]::after {
+    border-color: var(--text-2) transparent transparent !important;
+    right: 8px; top: 11px;
+}
+.choices__list--dropdown {
+    font-size: 13px;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,.1) !important;
+    margin-top: 2px; z-index: 999;
+    min-width: 260px;
+}
+.choices__list--dropdown .choices__item { padding: 6px 10px; white-space: nowrap; }
+.choices__list--dropdown .choices__item--selectable.is-highlighted {
+    background: #eff6ff !important; color: var(--blue) !important;
+}
+.choices__list--single { padding: 0; overflow: hidden; }
+.choices__list--single .choices__item {
+    font-size: 13px; line-height: 1.3;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* Compact grid-style line items table */
 #lineItemsTable { border-collapse: collapse; }
 #lineItemsTable thead th {
@@ -784,7 +849,6 @@ initItems();
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 5px 6px;
-    border-bottom: 2px solid var(--border);
     color: var(--text-2);
     background: var(--bg);
 }

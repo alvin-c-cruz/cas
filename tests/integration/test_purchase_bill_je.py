@@ -139,6 +139,57 @@ class TestBillCreatePostsJE:
         total_cr = sum(l.credit_amount for l in lines)
         assert total_dr == total_cr
 
+    def test_multi_line_rounding_residual_je_balances(
+            self, client, db_session, accountant_user, main_branch):
+        """3 lines at 100.01 with 12% VAT — per-line rounding must not unbalance the JE."""
+        login(client)
+        vendor = make_vendor(db_session, code='JEV004')
+
+        ap = get_or_create_account(db_session, '20101', 'Accounts Payable - Trade', 'Liability')
+        vat_acct = get_or_create_account(db_session, '10501', 'Input VAT - Current', 'Asset')
+        exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
+
+        vat_cat = VATCategory(code='VAT12R', name='VAT 12%', rate=Decimal('12'), is_active=True)
+        db_session.add(vat_cat)
+        db_session.commit()
+
+        line_items = json.dumps([
+            {'description': f'Rounding line {i}', 'amount': 100.01,
+             'vat_category': 'VAT12R', 'account_id': exp.id,
+             'wt_id': None, 'wt_rate': None}
+            for i in range(1, 4)
+        ])
+
+        resp = client.post('/purchase-bills/create', data={
+            'bill_number': 'PBJ-004',
+            'bill_date': date.today().isoformat(),
+            'due_date': date.today().isoformat(),
+            'vendor_id': vendor.id,
+            'payment_terms': 'Net 30',
+            'line_items': line_items,
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '0', 'wt_override_value': '0',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        bill = PurchaseBill.query.filter_by(bill_number='PBJ-004').first()
+        assert bill is not None, "Bill PBJ-004 not created (JE likely failed to balance)"
+        assert bill.journal_entry_id is not None
+
+        je = db_session.get(JournalEntry, bill.journal_entry_id)
+        assert je is not None
+        assert je.is_balanced is True
+        assert je.total_debit == je.total_credit
+
+        lines = JournalEntryLine.query.filter_by(entry_id=je.id).all()
+        total_dr = sum(l.debit_amount for l in lines)
+        total_cr = sum(l.credit_amount for l in lines)
+        assert total_dr == total_cr
+        # Cr AP must equal the bill total (3 x 100.01, no WHT)
+        ap_line = next((l for l in lines if l.account_id == ap.id), None)
+        assert ap_line is not None
+        assert ap_line.credit_amount == Decimal('300.03')
+
     def test_edit_bill_recreates_je(
             self, client, db_session, accountant_user, main_branch):
         login(client)
