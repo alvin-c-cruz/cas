@@ -913,11 +913,8 @@ initItems();
     font-size: 13px !important; font-family: inherit !important;
     background: transparent !important; margin-bottom: 0 !important;
 }
-.choices[data-type*=select-one] .choices__inner { padding-right: 20px !important; }
-.choices[data-type*=select-one]::after {
-    border-color: var(--text-2) transparent transparent !important;
-    right: 8px; top: 11px;
-}
+.choices[data-type*=select-one] .choices__inner { padding-right: 6px !important; }
+.choices[data-type*=select-one]::after { display: none !important; }
 .choices__list--dropdown {
     font-size: 13px;
     border: 1px solid var(--border) !important;
@@ -980,9 +977,7 @@ initItems();
     padding: 3px 7px;
 }
 
-/* Remove Choices.js dropdown arrow from line item selects */
-#lineItemsTable .choices[data-type*=select-one]::after { display: none !important; }
-#lineItemsTable .choices[data-type*=select-one] .choices__inner { padding-right: 6px !important; }
+
 
 /* Compact grid-style line items table */
 #lineItemsTable { border-collapse: collapse; }
