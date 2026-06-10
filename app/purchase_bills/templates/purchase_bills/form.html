@@ -36,21 +36,21 @@
 
             <!-- ② Header Fields (dimmed until vendor selected) -->
             <div id="headerFields" class="header-fields{% if bill %} header-fields--active{% endif %}">
-                <div class="form-row-3">
+                <div class="form-row-4">
                     {{ render_field(form.bill_number) }}
                     {{ render_field(form.bill_date) }}
                     {{ render_field(form.due_date) }}
-                </div>
-                <div class="form-row-2">
                     {{ render_field(form.payment_terms) }}
-                    {{ render_field(form.vendor_invoice_number) }}
                 </div>
-                <div class="form-row-2">
+                <div class="form-row-3">
+                    {{ render_field(form.vendor_invoice_number) }}
                     {{ render_field(form.vendor_invoice_date) }}
                     {{ render_field(form.reference) }}
                 </div>
-                <div style="margin-bottom: 16px;">
-                    {{ render_field(form.notes) }}
+                <div class="form-group" style="margin-bottom: 12px;">
+                    {{ form.notes.label(class='form-label') }}
+                    {{ form.notes(class='form-control', rows=2, autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                    {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
                 </div>
             </div>
 
@@ -437,8 +437,9 @@ initItems();
 }
 
 /* Grid helpers */
-.form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
-.form-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px; }
+.form-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+.form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+.form-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
 .btn-action { padding: 4px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 14px; }
 .btn-action:hover { background: var(--border); }
 </style>
