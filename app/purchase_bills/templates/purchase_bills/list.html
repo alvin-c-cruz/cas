@@ -69,6 +69,7 @@
     <div class="card-body">
         {% if bills %}
         {% set badge_map = {'draft':'draft','posted':'posted','partially_paid':'partial','paid':'paid','voided':'void','cancelled':'cancelled'} %}
+        <div class="table-wrap">
         <table class="table">
             <thead>
                 <tr>
@@ -110,6 +111,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
         {% set filters_active = q or status_filter != 'all' or vendor_filter != 'all' or date_from or date_to %}
         <div class="empty-state">
@@ -212,7 +214,8 @@
             } else {
                 url.searchParams.delete('ids');
             }
-            link.href = url.pathname + '?' + url.searchParams.toString();
+            const qs = url.searchParams.toString();
+            link.href = url.pathname + (qs ? '?' + qs : '');
         });
     }
 
