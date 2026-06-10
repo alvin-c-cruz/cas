@@ -138,6 +138,43 @@ class ProjectAnalyzer:
 
         return sorted(list(set(routes)))  # Deduplicate and sort
 
+    def parse_dependencies(self) -> Dict:
+        """Parse dependencies from requirements.txt and package.json."""
+        python_deps = []
+        node_deps = []
+
+        # Parse requirements.txt
+        req_file = self.project_path / "requirements.txt"
+        if req_file.exists():
+            try:
+                with open(req_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            # Extract package name (before any version specifiers)
+                            pkg = re.split(r'[<>=!]', line)[0].strip()
+                            if pkg:
+                                python_deps.append(pkg)
+            except Exception:
+                pass
+
+        # Parse package.json
+        pkg_json = self.project_path / "package.json"
+        if pkg_json.exists():
+            try:
+                with open(pkg_json, 'r', encoding='utf-8', errors='ignore') as f:
+                    data = json.load(f)
+                    node_deps.extend(data.get("dependencies", {}).keys())
+                    node_deps.extend(data.get("devDependencies", {}).keys())
+            except Exception:
+                pass
+
+        return {
+            "python": sorted(list(set(python_deps))),
+            "node": sorted(list(set(node_deps))),
+            "total": len(set(python_deps)) + len(set(node_deps))
+        }
+
     def analyze(self) -> Dict:
         """Run full analysis on project."""
         return {
@@ -147,6 +184,7 @@ class ProjectAnalyzer:
             "files": self.count_files(),
             "loc": self.count_loc(),
             "routes": self.find_routes(),
+            "dependencies": self.parse_dependencies(),
         }
 
 
@@ -168,6 +206,7 @@ def main():
         files = result["files"]
         loc = result["loc"]
         routes = result["routes"]
+        deps = result["dependencies"]
 
         print(f"{result['name']} ({result['type']})")
         print(f"  Files: {files['total']} total, {files['source']} source")
@@ -175,6 +214,7 @@ def main():
         print(f"  Routes: {len(routes)} found")
         if routes:
             print(f"    Sample: {', '.join(routes[:3])}")
+        print(f"  Dependencies: {deps['total']} total ({len(deps['python'])} Python, {len(deps['node'])} Node)")
         print()
 
 
