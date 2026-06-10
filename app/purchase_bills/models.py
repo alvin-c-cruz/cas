@@ -60,9 +60,9 @@ class PurchaseBill(db.Model):
     notes = db.Column(db.Text)
 
     # Financial totals (computed from line items)
-    subtotal = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # Before VAT
+    subtotal = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # VAT-inclusive sum of all line amounts
     vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # Input VAT
-    total_before_wt = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # Subtotal + VAT
+    total_before_wt = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # Equals subtotal (VAT extracted from amounts, not added)
 
     # Withholding tax calculation
     withholding_tax_rate = db.Column(db.Numeric(5, 2), default=0.00, nullable=False)
@@ -160,8 +160,7 @@ class PurchaseBillItem(db.Model):
     Purchase Bill line item model.
 
     Each line represents an expense/purchase with:
-    - Description and quantity
-    - Unit cost
+    - Description and amount (VAT-inclusive)
     - VAT category and calculation
     - Line total
     """
@@ -208,9 +207,9 @@ class PurchaseBillItem(db.Model):
         else:
             net_base = Decimal(str(self.amount))
         self.line_total = Decimal(str(self.amount))
-        self.vat_amount = round(Decimal(str(self.amount)) - net_base, 2)
+        self.vat_amount = (Decimal(str(self.amount)) - net_base).quantize(Decimal('0.01'), rounding='ROUND_HALF_UP')
         wt_rate = Decimal(str(self.wt_rate)) if self.wt_rate else Decimal('0')
-        self.wt_amount = round(net_base * wt_rate / Decimal('100'), 2)
+        self.wt_amount = (net_base * wt_rate / Decimal('100')).quantize(Decimal('0.01'), rounding='ROUND_HALF_UP')
 
     def to_dict(self):
         """Convert line item to dictionary."""
