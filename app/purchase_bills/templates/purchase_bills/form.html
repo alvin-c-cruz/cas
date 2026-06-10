@@ -130,8 +130,10 @@
                             <span class="bsr-label">Less: Input VAT <span id="vatAutoHint" class="bsr-hint"></span></span>
                             <div class="bsr-amt-wrap">
                                 <button type="button" class="totals-revert" onclick="revertVatOverride()" title="Revert to auto">↺</button>
-                                <input type="number" id="vatOverrideInput" step="0.01" min="0" class="bsr-input"
-                                       oninput="onVatOverrideInput(this.value)">
+                                <input type="text" id="vatOverrideInput" class="bsr-input"
+                                       onfocus="amtFocus(this)"
+                                       oninput="onVatOverrideInput(this.value)"
+                                       onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
                             </div>
                         </div>
 
@@ -159,8 +161,10 @@
                             <span class="bsr-label">Less: Withholding Tax <span id="wtAutoHint" class="bsr-hint"></span></span>
                             <div class="bsr-amt-wrap">
                                 <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">↺</button>
-                                <input type="number" id="wtOverrideInput" step="0.01" min="0" class="bsr-input"
-                                       oninput="onWtOverrideInput(this.value)">
+                                <input type="text" id="wtOverrideInput" class="bsr-input"
+                                       onfocus="amtFocus(this)"
+                                       oninput="onWtOverrideInput(this.value)"
+                                       onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
                             </div>
                         </div>
 
@@ -433,10 +437,10 @@ function calculateTotals() {
     autoWt = Math.round(autoWt * 100) / 100;
 
     const vatUsed = vatOverrideActive
-        ? (parseFloat(document.getElementById('vatOverrideInput').value) || 0)
+        ? (parseFloat(document.getElementById('vatOverrideInput').value.replace(/,/g, '')) || 0)
         : autoVat;
     const wtUsed = wtOverrideActive
-        ? (parseFloat(document.getElementById('wtOverrideInput').value) || 0)
+        ? (parseFloat(document.getElementById('wtOverrideInput').value.replace(/,/g, '')) || 0)
         : autoWt;
     const netPayable = subtotal - wtUsed;
     const netOfVat = subtotal - vatUsed;
@@ -473,7 +477,7 @@ function startVatOverride() {
 }
 
 function onVatOverrideInput(val) {
-    const v = parseFloat(val) || 0;
+    const v = parseFloat(String(val).replace(/,/g, '')) || 0;
     document.getElementById('vatOverrideFlag').value = '1';
     document.getElementById('vatOverrideValue').value = v.toFixed(2);
     document.getElementById('vatDisplay').textContent = fmt(v);
@@ -507,7 +511,7 @@ function startWtOverride() {
 }
 
 function onWtOverrideInput(val) {
-    const v = parseFloat(val) || 0;
+    const v = parseFloat(String(val).replace(/,/g, '')) || 0;
     document.getElementById('wtOverrideFlag').value = '1';
     document.getElementById('wtOverrideValue').value = v.toFixed(2);
     document.getElementById('wtDisplay').textContent = '-' + fmt(v);
