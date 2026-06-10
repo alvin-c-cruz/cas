@@ -291,50 +291,13 @@ function rebuildAllVatSelects() {
     calculateTotals();
 }
 
-// ── WHT picker modal ──────────────────────────────────────────────────────────
-
-let _whtPickerResolve = null;
-
-function showWhtPicker() {
-    return new Promise(resolve => {
-        _whtPickerResolve = resolve;
-        const opts = document.getElementById('whtPickerOptions');
-        opts.innerHTML = currentVendorWHTs.map((wt, i) =>
-            `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:7px 10px;border-radius:5px;border:1px solid var(--border);">
-                <input type="radio" name="whtPickerRadio" value="${wt.id}" ${i === 0 ? 'checked' : ''}>
-                <span><strong>${escHtml(wt.code)}</strong> — ${escHtml(wt.name)} <span style="color:var(--text-2);">(${wt.rate}%)</span></span>
-            </label>`
-        ).join('');
-        document.getElementById('whtPickerModal').style.display = 'flex';
+function addFirstLineItem() {
+    const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
+    addLineItem(null, {
+        wt_id: autoWht ? autoWht.id : null,
+        wt_rate: autoWht ? autoWht.rate : null,
+        account_id: currentVendorLastAccountId,
     });
-}
-
-function whtPickerConfirm() {
-    const checked = document.querySelector('input[name="whtPickerRadio"]:checked');
-    const wtId = checked ? parseInt(checked.value) : null;
-    const wt = wtId ? currentVendorWHTs.find(w => w.id === wtId) : null;
-    document.getElementById('whtPickerModal').style.display = 'none';
-    if (_whtPickerResolve) _whtPickerResolve({ wt_id: wtId, wt_rate: wt ? wt.rate : null });
-    _whtPickerResolve = null;
-}
-
-function whtPickerSkip() {
-    document.getElementById('whtPickerModal').style.display = 'none';
-    if (_whtPickerResolve) _whtPickerResolve({ wt_id: null, wt_rate: null });
-    _whtPickerResolve = null;
-}
-
-async function addFirstLineItem() {
-    let wt_id = null, wt_rate = null;
-    if (currentVendorWHTs.length === 1) {
-        wt_id = currentVendorWHTs[0].id;
-        wt_rate = currentVendorWHTs[0].rate;
-    } else if (currentVendorWHTs.length > 1) {
-        const chosen = await showWhtPicker();
-        wt_id = chosen.wt_id;
-        wt_rate = chosen.wt_rate;
-    }
-    addLineItem(null, { wt_id, wt_rate, account_id: currentVendorLastAccountId });
 }
 
 function applyVendorTerms(terms) {
@@ -1014,17 +977,5 @@ initItems();
 }
 </style>
 
-<!-- WHT Picker Modal -->
-<div id="whtPickerModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
-    <div style="background:var(--card); border-radius:8px; padding:24px; max-width:440px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.2);">
-        <div style="font-size:14px; font-weight:700; margin-bottom:6px;">Select Withholding Tax</div>
-        <div style="font-size:12px; color:var(--text-2); margin-bottom:16px;">This vendor has multiple WHT codes. Choose which one to apply to the first line item:</div>
-        <div id="whtPickerOptions" style="display:flex; flex-direction:column; gap:8px;"></div>
-        <div style="display:flex; gap:8px; margin-top:20px; justify-content:flex-end;">
-            <button type="button" class="btn btn-secondary" onclick="whtPickerSkip()">None</button>
-            <button type="button" class="btn btn-primary" onclick="whtPickerConfirm()">Apply</button>
-        </div>
-    </div>
-</div>
 
 {% endblock %}
