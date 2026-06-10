@@ -10,12 +10,12 @@ from datetime import date
 class PurchaseBillForm(FlaskForm):
     """Form for creating and editing purchase bills."""
 
-    bill_number = StringField('Bill Number', validators=[
+    bill_number = StringField('AP Number', validators=[
         DataRequired(message='Bill number is required.'),
         Length(max=50, message='Bill number must be 50 characters or less.')
     ])
 
-    bill_date = DateField('Bill Date', validators=[
+    bill_date = DateField('Voucher Date', validators=[
         DataRequired(message='Bill date is required.')
     ], format='%Y-%m-%d', default=date.today)
 
