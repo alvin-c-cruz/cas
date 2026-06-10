@@ -36,7 +36,7 @@ class JournalEntry(db.Model):
     description = db.Column(db.String(500), nullable=False)
     reference = db.Column(db.String(100))
 
-    # Entry type: 'adjustment', 'closing', 'opening', 'reversal', 'reclassification'
+    # Entry type: 'adjustment', 'closing', 'opening', 'purchase', 'reversal', 'reclassification'
     entry_type = db.Column(db.String(20), default='adjustment', nullable=False)
 
     # Reversing entry support

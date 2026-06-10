@@ -33,6 +33,7 @@ class JournalEntryForm(FlaskForm):
         ('adjustment', 'Adjustment'),
         ('closing', 'Closing Entry'),
         ('opening', 'Opening Entry'),
+        ('purchase', 'Purchase Bill'),
         ('reversal', 'Reversal'),
         ('reclassification', 'Reclassification')
     ], default='adjustment')

@@ -68,6 +68,14 @@ class PurchaseBill(db.Model):
     withholding_tax_rate = db.Column(db.Numeric(5, 2), default=0.00, nullable=False)
     withholding_tax_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
+    # Override flags — when True, vat_amount / withholding_tax_amount were manually set
+    vat_override = db.Column(db.Boolean, default=False, nullable=False)
+    wt_override = db.Column(db.Boolean, default=False, nullable=False)
+
+    # Linked journal entry (posted on save; recreated on edit)
+    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
+    journal_entry = db.relationship('JournalEntry', foreign_keys=[journal_entry_id])
+
     # Net payable (Total - WT)
     total_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
@@ -105,24 +113,20 @@ class PurchaseBill(db.Model):
         return f'<PurchaseBill {self.bill_number}>'
 
     def calculate_totals(self):
-        """Calculate bill totals from line items and apply withholding tax."""
+        """Compute bill totals from VAT-inclusive line amounts."""
         self.subtotal = Decimal('0.00')
-        self.vat_amount = Decimal('0.00')
+        auto_vat = Decimal('0.00')
+        auto_wt = Decimal('0.00')
 
         for item in self.line_items:
             self.subtotal += item.line_total
-            self.vat_amount += item.vat_amount
+            auto_vat += item.vat_amount
+            auto_wt += (item.wt_amount or Decimal('0.00'))
 
-        self.total_before_wt = self.subtotal + self.vat_amount
-
-        # Sum WHT from all line items (per-line WHT, vendor-driven)
-        self.withholding_tax_amount = sum(
-            ((item.wt_amount or Decimal('0.00')) for item in self.line_items),
-            Decimal('0.00')
-        )
-
-        # Net payable = Total before WT - Withholding Tax
-        self.total_amount = self.total_before_wt - self.withholding_tax_amount
+        self.vat_amount = auto_vat
+        self.withholding_tax_amount = auto_wt
+        self.total_before_wt = self.subtotal   # VAT is extracted from subtotal, not added
+        self.total_amount = self.subtotal - self.withholding_tax_amount
         self.balance = self.total_amount - self.amount_paid
 
     def to_dict(self):
@@ -173,16 +177,15 @@ class PurchaseBillItem(db.Model):
 
     # Item details
     description = db.Column(db.String(500), nullable=False)
-    quantity = db.Column(db.Numeric(15, 4), default=1.0000, nullable=False)
-    unit_cost = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
+    amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
     # VAT information (input VAT)
     vat_category = db.Column(db.String(100))  # Reference to VAT category
     vat_rate = db.Column(db.Numeric(5, 2), default=0.00, nullable=False)  # Snapshot of rate
 
     # Calculated amounts
-    line_total = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # qty * cost
-    vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # line_total * vat_rate / 100
+    line_total = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # equals amount (VAT-inclusive)
+    vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # extracted from amount
 
     # Account reference (for posting to GL)
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'))
@@ -198,11 +201,16 @@ class PurchaseBillItem(db.Model):
         return f'<PurchaseBillItem {self.bill_id}-{self.line_number}>'
 
     def calculate_amounts(self):
-        """Calculate line totals, VAT amount, and WHT amount."""
-        self.line_total = Decimal(str(self.quantity)) * Decimal(str(self.unit_cost))
-        self.vat_amount = self.line_total * Decimal(str(self.vat_rate)) / Decimal('100')
-        wt_rate = self.wt_rate if self.wt_rate is not None else Decimal('0.00')
-        self.wt_amount = self.line_total * Decimal(str(wt_rate)) / Decimal('100')
+        """Calculate line total, extracted VAT, and WHT on net base (BIR EWT standard)."""
+        vat_rate = Decimal(str(self.vat_rate)) if self.vat_rate else Decimal('0')
+        if vat_rate > 0:
+            net_base = Decimal(str(self.amount)) / (1 + vat_rate / Decimal('100'))
+        else:
+            net_base = Decimal(str(self.amount))
+        self.line_total = Decimal(str(self.amount))
+        self.vat_amount = round(Decimal(str(self.amount)) - net_base, 2)
+        wt_rate = Decimal(str(self.wt_rate)) if self.wt_rate else Decimal('0')
+        self.wt_amount = round(net_base * wt_rate / Decimal('100'), 2)
 
     def to_dict(self):
         """Convert line item to dictionary."""
@@ -210,8 +218,7 @@ class PurchaseBillItem(db.Model):
             'id': self.id,
             'line_number': self.line_number,
             'description': self.description,
-            'quantity': float(self.quantity),
-            'unit_cost': float(self.unit_cost),
+            'amount': float(self.amount),
             'vat_category': self.vat_category,
             'vat_rate': float(self.vat_rate),
             'line_total': float(self.line_total),
