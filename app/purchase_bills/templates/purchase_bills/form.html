@@ -92,7 +92,7 @@
 
                     <!-- JE Preview -->
                     <div id="jePreviewSection">
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Journal Entry Preview</div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Journal Entry</div>
                         <table class="table" style="font-size: 12px;" id="jePreviewTable">
                             <thead>
                                 <tr>
@@ -108,8 +108,9 @@
                     </div>
 
                     <!-- Bill Summary Panel -->
-                    <div class="bill-summary-panel">
-                        <div class="bill-summary-heading">Bill Summary</div>
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Bill Summary</div>
+                        <div class="bill-summary-panel">
 
                         <!-- Row 1: Gross Amount -->
                         <div class="bsr">
@@ -168,7 +169,8 @@
                             <span class="bsr-label bsr-label--total">Net Amount Payable</span>
                             <span id="totalDisplay" class="bsr-amt bsr-amt--total">₱0.00</span>
                         </div>
-                    </div>
+                        </div><!-- end .bill-summary-panel -->
+                    </div><!-- end wrapper -->
 
                 </div>
 
@@ -327,7 +329,7 @@ function addLineItem(existingItem) {
                 <option value="">Select Account</option>
                 ${allAccounts.map(a => {
                     const label = escHtml(a.code) + ' - ' + escHtml(a.name);
-                    if (a.is_group) return `<option disabled value="">${label}</option>`;
+                    if (a.is_group) return `<option disabled value="${a.id}">${label}</option>`;
                     return `<option value="${a.id}" ${item.account_id === a.id ? 'selected' : ''}>${label}</option>`;
                 }).join('')}
             </select>
@@ -852,14 +854,6 @@ initItems();
     padding: 20px;
     border-radius: 6px;
     min-width: 320px;
-}
-.bill-summary-heading {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    color: var(--text-2);
-    margin-bottom: 14px;
 }
 .bsr {
     display: grid;
