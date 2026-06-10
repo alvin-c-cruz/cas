@@ -183,11 +183,29 @@ class TestExportSelection:
         assert resp.status_code == 200
         assert b'PBX-010' in resp.data  # falls back to unfiltered export
 
+    def test_export_csv_without_ids_respects_status_filter(self, client, db_session,
+                                                           admin_user, main_branch):
+        vendor = make_vendor(db_session)
+        make_bill(db_session, vendor, main_branch, 'PBX-020', status='posted')
+        make_bill(db_session, vendor, main_branch, 'PBX-021', status='draft')
+        login(client)
+        resp = client.get('/purchase-bills/export/csv?status=posted')
+        assert resp.status_code == 200
+        assert b'PBX-020' in resp.data
+        assert b'PBX-021' not in resp.data
+
 
 class TestAccess:
     def test_staff_can_view_list(self, client, db_session, staff_user, main_branch):
         staff_user.set_branches([main_branch])
         db_session.commit()
         login(client, username='staff', password='staff123')
+        resp = client.get('/purchase-bills')
+        assert resp.status_code == 200
+
+    def test_viewer_can_view_list(self, client, db_session, viewer_user, main_branch):
+        viewer_user.set_branches([main_branch])
+        db_session.commit()
+        login(client, username='viewer', password='viewer123')
         resp = client.get('/purchase-bills')
         assert resp.status_code == 200
