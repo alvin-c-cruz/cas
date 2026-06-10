@@ -457,7 +457,8 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         const vat = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
         const amt = item.amount || 0;
-        const netBase = vatRate > 0 ? amt / (1 + vatRate / 100) : amt;
+        const vatAmt = vatRate > 0 ? Math.round((amt - amt / (1 + vatRate / 100)) * 100) / 100 : 0;
+        const netBase = amt - vatAmt;
         if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
         rows.push({
             code: acct ? acct.code : '—',
@@ -497,8 +498,8 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
     document.getElementById('jePreviewFoot').innerHTML = `
         <tr style="border-top: 2px solid var(--border); font-weight: 700;">
             <td colspan="2" style="font-size: 11px; color: var(--text-2);">Total</td>
-            <td style="text-align: right; font-family: var(--mono);">${totalDebit.toLocaleString('en-PH', {minimumFractionDigits: 2})}</td>
-            <td style="text-align: right; font-family: var(--mono);">${totalCredit.toLocaleString('en-PH', {minimumFractionDigits: 2})}</td>
+            <td style="text-align: right; font-family: var(--mono);">${totalDebit.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+            <td style="text-align: right; font-family: var(--mono);">${totalCredit.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
         </tr>`;
 }
 
