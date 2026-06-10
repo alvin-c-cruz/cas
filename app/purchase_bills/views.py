@@ -327,8 +327,7 @@ def create():
                     line_item = PurchaseBillItem(
                         line_number=idx,
                         description=item_data.get('description', ''),
-                        quantity=Decimal(str(item_data.get('quantity', 1))),
-                        unit_cost=Decimal(str(item_data.get('unit_cost', 0))),
+                        amount=Decimal(str(item_data.get('amount', 0))),
                         vat_category=vat_category,
                         vat_rate=vat_rate,
                         account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None,
@@ -340,7 +339,24 @@ def create():
 
             bill.calculate_totals()
 
+            # Apply manual overrides
+            vat_override = request.form.get('vat_override') == '1'
+            wt_override = request.form.get('wt_override') == '1'
+            bill.vat_override = vat_override
+            bill.wt_override = wt_override
+            if vat_override:
+                bill.vat_amount = Decimal(request.form.get('vat_override_value', '0') or '0')
+            if wt_override:
+                bill.withholding_tax_amount = Decimal(request.form.get('wt_override_value', '0') or '0')
+            # Recompute net payable after potential overrides
+            bill.total_amount = bill.subtotal - bill.withholding_tax_amount
+            bill.balance = bill.total_amount - bill.amount_paid
+
             db.session.add(bill)
+            db.session.flush()  # need bill.id before creating JE
+
+            je = _post_bill_je(bill, current_user.id)
+            bill.journal_entry_id = je.id
             db.session.commit()
 
             log_create(
@@ -369,11 +385,20 @@ def create():
     vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
     expense_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Expense').order_by(Account.code).all()]
 
+    ap_acct = Account.query.filter_by(code='20101').first()
+    input_vat_acct = Account.query.filter_by(code='10501').first()
+    wt_gl_acct = Account.query.filter_by(code='20301').first()
+    gl_accounts = {
+        'ap': {'code': ap_acct.code, 'name': ap_acct.name} if ap_acct else None,
+        'input_vat': {'code': input_vat_acct.code, 'name': input_vat_acct.name} if input_vat_acct else None,
+        'wt': {'code': wt_gl_acct.code, 'name': wt_gl_acct.name} if wt_gl_acct else None,
+    }
     return render_template('purchase_bills/form.html',
                          form=form,
                          bill=None,
                          vat_categories=vat_categories,
-                         expense_accounts=expense_accounts)
+                         expense_accounts=expense_accounts,
+                         gl_accounts=gl_accounts)
 
 
 @purchase_bills_bp.route('/purchase-bills/<int:id>')
@@ -452,8 +477,7 @@ def edit(id):
                         bill_id=bill.id,
                         line_number=idx,
                         description=item_data.get('description', ''),
-                        quantity=Decimal(str(item_data.get('quantity', 1))),
-                        unit_cost=Decimal(str(item_data.get('unit_cost', 0))),
+                        amount=Decimal(str(item_data.get('amount', 0))),
                         vat_category=vat_category,
                         vat_rate=vat_rate,
                         account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None,
@@ -465,6 +489,30 @@ def edit(id):
 
             bill.calculate_totals()
 
+            # Apply manual overrides
+            vat_override = request.form.get('vat_override') == '1'
+            wt_override = request.form.get('wt_override') == '1'
+            bill.vat_override = vat_override
+            bill.wt_override = wt_override
+            if vat_override:
+                bill.vat_amount = Decimal(request.form.get('vat_override_value', '0') or '0')
+            if wt_override:
+                bill.withholding_tax_amount = Decimal(request.form.get('wt_override_value', '0') or '0')
+            bill.total_amount = bill.subtotal - bill.withholding_tax_amount
+            bill.balance = bill.total_amount - bill.amount_paid
+
+            # Delete old JE and create a fresh one
+            if bill.journal_entry_id:
+                from app.journal_entries.models import JournalEntry as _JE
+                old_je = db.session.get(_JE, bill.journal_entry_id)
+                if old_je:
+                    db.session.delete(old_je)
+                bill.journal_entry_id = None
+
+            db.session.flush()
+
+            je = _post_bill_je(bill, current_user.id)
+            bill.journal_entry_id = je.id
             db.session.commit()
 
             new_values = model_to_dict(bill, ['bill_number', 'bill_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
@@ -494,12 +542,21 @@ def edit(id):
     expense_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Expense').order_by(Account.code).all()]
     line_items = [item.to_dict() for item in bill.line_items]
 
+    ap_acct = Account.query.filter_by(code='20101').first()
+    input_vat_acct = Account.query.filter_by(code='10501').first()
+    wt_gl_acct = Account.query.filter_by(code='20301').first()
+    gl_accounts = {
+        'ap': {'code': ap_acct.code, 'name': ap_acct.name} if ap_acct else None,
+        'input_vat': {'code': input_vat_acct.code, 'name': input_vat_acct.name} if input_vat_acct else None,
+        'wt': {'code': wt_gl_acct.code, 'name': wt_gl_acct.name} if wt_gl_acct else None,
+    }
     return render_template('purchase_bills/form.html',
                          form=form,
                          bill=bill,
                          vat_categories=vat_categories,
                          expense_accounts=expense_accounts,
-                         line_items=line_items)
+                         line_items=line_items,
+                         gl_accounts=gl_accounts)
 
 
 @purchase_bills_bp.route('/purchase-bills/<int:id>/post', methods=['POST'])
@@ -597,6 +654,106 @@ def cancel(id):
     return redirect(url_for('purchase_bills.view', id=id))
 
 
+def _post_bill_je(bill, user_id):
+    """Create and immediately post a purchase JE for a bill. Raises ValueError if required accounts missing."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    ap_account = Account.query.filter_by(code='20101').first()
+    if not ap_account:
+        raise ValueError("Accounts Payable - Trade (20101) not found in COA.")
+
+    input_vat_account = None
+    if bill.vat_amount and bill.vat_amount > 0:
+        input_vat_account = Account.query.filter_by(code='10501').first()
+        if not input_vat_account:
+            raise ValueError("Input VAT - Current (10501) not found in COA.")
+
+    wt_account = None
+    if bill.withholding_tax_amount and bill.withholding_tax_amount > 0:
+        wt_account = Account.query.filter_by(code='20301').first()
+        if not wt_account:
+            raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
+
+    entry_number = generate_entry_number(bill.branch_id)
+    je = JournalEntry(
+        entry_number=entry_number,
+        entry_date=bill.bill_date,
+        description=f'Purchase Bill {bill.bill_number} — {bill.vendor_name}',
+        reference=bill.bill_number,
+        entry_type='purchase',
+        branch_id=bill.branch_id,
+        created_by_id=user_id,
+        status='posted',
+        posted_by_id=user_id,
+        posted_at=ph_now(),
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00')
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    # Compute VAT adjustment for override case
+    vat_auto = sum((item.vat_amount for item in bill.line_items), Decimal('0.00'))
+    vat_used = Decimal(str(bill.vat_amount))
+    vat_diff = vat_used - vat_auto  # non-zero only when VAT was overridden
+
+    line_num = 1
+    first_expense_line = None
+
+    for item in bill.line_items:
+        if not item.account_id:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entry_line = JournalEntryLine(
+            entry_id=je.id,
+            line_number=line_num,
+            account_id=item.account_id,
+            description=item.description or '',
+            debit_amount=net_base,
+            credit_amount=Decimal('0.00')
+        )
+        db.session.add(entry_line)
+        if first_expense_line is None:
+            first_expense_line = entry_line
+        line_num += 1
+
+    # Absorb any VAT override rounding difference into the first expense line
+    if first_expense_line is not None and vat_diff != Decimal('0.00'):
+        first_expense_line.debit_amount -= vat_diff
+
+    if input_vat_account:
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=input_vat_account.id,
+            description=f'Input VAT: {bill.bill_number}',
+            debit_amount=vat_used,
+            credit_amount=Decimal('0.00')
+        ))
+        line_num += 1
+
+    if wt_account:
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=wt_account.id,
+            description=f'WHT Payable: {bill.bill_number}',
+            debit_amount=Decimal('0.00'),
+            credit_amount=Decimal(str(bill.withholding_tax_amount))
+        ))
+        line_num += 1
+
+    db.session.add(JournalEntryLine(
+        entry_id=je.id, line_number=line_num,
+        account_id=ap_account.id,
+        description=f'AP: {bill.bill_number} — {bill.vendor_name}',
+        debit_amount=Decimal('0.00'),
+        credit_amount=Decimal(str(bill.total_amount))
+    ))
+
+    je.calculate_totals()
+    return je
+
+
 def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
     """Create reversal JE when voiding or cancelling a purchase bill. Raises ValueError if required accounts missing."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
@@ -657,16 +814,29 @@ def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
         ))
         line_num += 1
 
+    # Compute net_base per line; absorb vat_diff into first expense credit
+    vat_auto_rev = sum(
+        (Decimal(str(item.vat_amount)) for item in bill.line_items if item.account_id),
+        Decimal('0.00')
+    )
+    vat_diff_rev = Decimal(str(bill.vat_amount)) - vat_auto_rev
+    first_expense_reversal = None
     for item in bill.line_items:
         if item.account_id and item.line_total > 0:
-            db.session.add(JournalEntryLine(
+            net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+            entry_line = JournalEntryLine(
                 entry_id=je.id, line_number=line_num,
                 account_id=item.account_id,
                 description=item.description,
                 debit_amount=Decimal('0.00'),
-                credit_amount=item.line_total
-            ))
+                credit_amount=net_base
+            )
+            db.session.add(entry_line)
+            if first_expense_reversal is None:
+                first_expense_reversal = entry_line
             line_num += 1
+    if first_expense_reversal is not None and vat_diff_rev != Decimal('0.00'):
+        first_expense_reversal.credit_amount -= vat_diff_rev
 
     if input_vat_account:
         db.session.add(JournalEntryLine(

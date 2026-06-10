@@ -156,8 +156,6 @@
                 <tr>
                     <th>#</th>
                     <th>Description</th>
-                    <th style="text-align:right;">Qty</th>
-                    <th style="text-align:right;">Unit Cost</th>
                     <th>VAT</th>
                     <th>WHT</th>
                     <th>Account</th>
@@ -171,8 +169,6 @@
                 <tr>
                     <td>{{ item.line_number }}</td>
                     <td>{{ item.description }}</td>
-                    <td style="text-align:right; font-family:var(--mono);">{{ '{:,.4f}'.format(item.quantity) }}</td>
-                    <td style="text-align:right; font-family:var(--mono);">₱{{ '{:,.2f}'.format(item.unit_cost) }}</td>
                     <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
                     <td style="font-size:12px;">
                         {% if item.withholding_tax %}{{ item.withholding_tax.code }} ({{ '{:.2f}'.format(item.wt_rate) }}%){% else %}—{% endif %}
