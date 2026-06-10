@@ -37,6 +37,9 @@ def accountant_or_admin_required(f):
     return decorated_function
 
 
+VALID_BILL_STATUSES = {'draft', 'posted', 'partially_paid', 'paid', 'voided', 'cancelled'}
+
+
 def generate_bill_number():
     """
     Generate next bill number in format: PB-YYYY-####
@@ -75,15 +78,12 @@ def _filtered_bills_query(include_ids=False):
     if include_ids:
         ids_param = request.args.get('ids', '')
         if ids_param:
-            try:
-                ids = [int(x) for x in ids_param.split(',') if x.strip()]
-            except ValueError:
-                ids = []
+            ids = [int(x) for x in ids_param.split(',') if x.strip().isdigit()]
             if ids:
                 return query.filter(PurchaseBill.id.in_(ids))
 
     status_filter = request.args.get('status', 'all')
-    if status_filter != 'all':
+    if status_filter in VALID_BILL_STATUSES:
         query = query.filter_by(status=status_filter)
 
     vendor_filter = request.args.get('vendor', 'all')
@@ -126,7 +126,6 @@ def list_bills():
     per_page = 50
 
     query = (_filtered_bills_query()
-             .options(selectinload(PurchaseBill.line_items))
              .order_by(PurchaseBill.bill_date.desc()))
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
