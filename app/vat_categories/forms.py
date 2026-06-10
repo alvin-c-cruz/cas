@@ -3,7 +3,7 @@ VAT Category forms
 """
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, DecimalField, SelectField
-from wtforms.validators import DataRequired, Length, NumberRange, Optional
+from wtforms.validators import DataRequired, InputRequired, Length, NumberRange, Optional
 
 
 class VATCategoryForm(FlaskForm):
@@ -21,7 +21,7 @@ class VATCategoryForm(FlaskForm):
         Length(max=500, message='Description must be 500 characters or less')
     ])
     rate = DecimalField('VAT Rate (%)', validators=[
-        DataRequired(message='VAT rate is required'),
+        InputRequired(message='VAT rate is required'),
         NumberRange(min=0, max=100, message='VAT rate must be between 0 and 100')
     ], places=2)
     is_active = SelectField('Status', choices=[

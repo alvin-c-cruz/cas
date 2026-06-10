@@ -281,23 +281,29 @@ class TestVoidCancelDelete:
 
     def test_voided_number_excluded_from_sequence(self, client, db_session, admin_user, main_branch):
         from app.purchase_bills.views import generate_bill_number
+        from app.utils import ph_now
         vendor = make_vendor(db_session, code='PVV-004', name='Seq Vendor')
+        now = ph_now()
+        prefix = f'AP-{now.year}-{now.month:02d}-'
         # Create a non-voided bill at 0050, then a voided one at 0100
-        make_bill(db_session, vendor, main_branch, 'PB-2026-0050', status='posted')
-        bill = make_bill(db_session, vendor, main_branch, 'PB-2026-0100', status='voided')
+        make_bill(db_session, vendor, main_branch, f'{prefix}0050', status='posted')
+        make_bill(db_session, vendor, main_branch, f'{prefix}0100', status='voided')
         # voided bill should not count; max non-voided is 0050 → next is 0051
         with client.application.app_context():
             next_num = generate_bill_number()
-        assert next_num == 'PB-2026-0051'
+        assert next_num == f'{prefix}0051'
 
     def test_cancelled_number_included_in_sequence(self, client, db_session, admin_user, main_branch):
         from app.purchase_bills.views import generate_bill_number
+        from app.utils import ph_now
         vendor = make_vendor(db_session, code='PVV-005', name='Seq Vendor 2')
+        now = ph_now()
+        prefix = f'AP-{now.year}-{now.month:02d}-'
         # Create a cancelled bill — its number should count in the sequence
-        bill = make_bill(db_session, vendor, main_branch, 'PB-2026-0200', status='cancelled')
+        make_bill(db_session, vendor, main_branch, f'{prefix}0200', status='cancelled')
         with client.application.app_context():
             next_num = generate_bill_number()
-        assert next_num == 'PB-2026-0201'
+        assert next_num == f'{prefix}0201'
 
     def test_delete_route_gone(self, client, db_session, admin_user, main_branch):
         vendor = make_vendor(db_session, code='PVV-006', name='Del Vendor')
