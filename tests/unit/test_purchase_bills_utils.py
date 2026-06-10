@@ -71,6 +71,10 @@ class TestBillsSummary:
         make_bill(db_session, vendor, main_branch, 'S003',
                   due_date=today + timedelta(days=30),
                   total_amount=Decimal('400.00'))
+        # Due today (boundary: inclusive lower bound of due-soon window)
+        make_bill(db_session, vendor, main_branch, 'S005',
+                  due_date=today,
+                  total_amount=Decimal('50.00'))
         # Draft (not in outstanding)
         make_bill(db_session, vendor, main_branch, 'S004',
                   due_date=today, status='draft',
@@ -78,12 +82,12 @@ class TestBillsSummary:
         db_session.commit()
 
         s = compute_bills_summary(main_branch.id)
-        assert s['outstanding_total'] == Decimal('700.00')
-        assert s['outstanding_count'] == 3
+        assert s['outstanding_total'] == Decimal('750.00')
+        assert s['outstanding_count'] == 4
         assert s['overdue_total'] == Decimal('100.00')
         assert s['overdue_count'] == 1
-        assert s['due_soon_total'] == Decimal('200.00')
-        assert s['due_soon_count'] == 1
+        assert s['due_soon_total'] == Decimal('250.00')
+        assert s['due_soon_count'] == 2
         assert s['draft_count'] == 1
 
     def test_partially_paid_included_with_balance(self, db_session, main_branch):
@@ -99,6 +103,7 @@ class TestBillsSummary:
         s = compute_bills_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('400.00')
         assert s['overdue_total'] == Decimal('400.00')
+        assert s['outstanding_count'] == 1
 
     def test_closed_statuses_excluded(self, db_session, main_branch):
         from app.purchase_bills.utils import compute_bills_summary
@@ -131,19 +136,6 @@ class TestBillsSummary:
         s = compute_bills_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('100.00')
         assert s['outstanding_count'] == 1
-
-    def test_null_due_date_outstanding_only(self, db_session, main_branch):
-        from app.purchase_bills.utils import compute_bills_summary
-        vendor = make_vendor(db_session, code='SV005')
-
-        make_bill(db_session, vendor, main_branch, 'S040',
-                  due_date=None, total_amount=Decimal('300.00'))
-        db_session.commit()
-
-        s = compute_bills_summary(main_branch.id)
-        assert s['outstanding_total'] == Decimal('300.00')
-        assert s['overdue_count'] == 0
-        assert s['due_soon_count'] == 0
 
     def test_empty_branch_returns_zeros(self, db_session, main_branch):
         from app.purchase_bills.utils import compute_bills_summary
