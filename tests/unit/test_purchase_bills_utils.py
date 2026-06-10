@@ -142,6 +142,8 @@ class TestBillsSummary:
         s = compute_bills_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('0.00')
         assert s['outstanding_count'] == 0
+        assert s['overdue_count'] == 0
+        assert s['due_soon_count'] == 0
         assert s['overdue_total'] == Decimal('0.00')
         assert s['due_soon_total'] == Decimal('0.00')
         assert s['draft_count'] == 0

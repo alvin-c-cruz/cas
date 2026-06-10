@@ -42,8 +42,14 @@ def compute_bills_summary(branch_id):
         PurchaseBill.due_date >= today,
         PurchaseBill.due_date <= today + timedelta(days=7),
     )
-    draft_count = PurchaseBill.query.filter_by(
-        branch_id=branch_id, status='draft').count()
+    draft_count = (
+        db.session.query(db.func.count(PurchaseBill.id))
+        .filter(
+            PurchaseBill.branch_id == branch_id,
+            PurchaseBill.status == 'draft',
+        )
+        .scalar()
+    )
 
     return {
         'outstanding_total': outstanding_total,
