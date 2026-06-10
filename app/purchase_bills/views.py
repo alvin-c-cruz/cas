@@ -17,7 +17,7 @@ from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number
-from datetime import datetime, date, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 import json
 
@@ -42,7 +42,7 @@ def generate_bill_number():
     Generate next bill number in format: PB-YYYY-####
     Example: PB-2024-0001
     """
-    current_year = datetime.now().year
+    current_year = ph_now().year
     prefix = f'PB-{current_year}-'
 
     # Get the latest bill for current year
@@ -157,7 +157,7 @@ def export_excel():
         'Status'
     ]
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     filename = f'purchase_bills_{timestamp}.xlsx'
 
     return export_to_excel(
@@ -224,7 +224,7 @@ def export_csv_route():
         'Status'
     ]
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     filename = f'purchase_bills_{timestamp}.csv'
 
     return export_to_csv(
