@@ -209,6 +209,7 @@ let lineChoices = {};
 let autoVat = 0;
 let autoWt = 0;
 let currentVendorLastAccountId = null;
+let paymentTermsChoices = null;
 let vatOverrideActive = false;
 let wtOverrideActive = false;
 
@@ -337,8 +338,7 @@ async function addFirstLineItem() {
 }
 
 function applyVendorTerms(terms) {
-    const termsField = document.getElementById('payment_terms');
-    if (termsField) termsField.value = terms;
+    if (paymentTermsChoices) paymentTermsChoices.setChoiceByValue(terms);
     const match = terms.match(/Net (\d+)/);
     if (!match) return;
     const days = parseInt(match[1]);
@@ -755,6 +755,14 @@ function initOverrides() {
     document.getElementById('wtOverrideInput').value = savedWt.toFixed(2);
     {% endif %}
     calculateTotals();
+}
+
+// ── Payment Terms search-select ───────────────────────────────────────────────
+const ptSel = document.getElementById('payment_terms');
+if (ptSel) {
+    paymentTermsChoices = new Choices(ptSel, {
+        searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false
+    });
 }
 
 {% if bill %}
