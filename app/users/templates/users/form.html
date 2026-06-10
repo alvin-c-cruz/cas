@@ -200,7 +200,7 @@
                 <div class="form-group">
                     {{ form.password.label(class='form-label') }}
                     {{ form.password(class='form-control') }}
-                    <div class="form-hint">Required for new users (minimum 6 characters)</div>
+                    <div class="form-hint">Required for new users. Minimum 12 characters with uppercase letter and special character.</div>
                     {% if form.password.errors %}
                         <div class="form-error">
                             {% for error in form.password.errors %}{{ error }}{% endfor %}

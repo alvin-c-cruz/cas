@@ -26,7 +26,7 @@ def seed_admin_user():
 
     Credentials:
         Username: admin
-        Password: ac112358321
+        Password: ac1123581321
         Role: admin
     """
     # Check if admin already exists
@@ -39,17 +39,17 @@ def seed_admin_user():
     # Create admin user
     admin = User(
         username='admin',
-        email='admin@cas.local',
+        email='admin@cascorp.ph',
         full_name='System Administrator',
         role='admin',
         is_active=True
     )
-    admin.set_password('ac112358321')
+    admin.set_password('ac1123581321')
 
     db.session.add(admin)
     db.session.commit()
 
-    print("  [OK] Admin user created (username: admin, password: ac112358321)")
+    print("  [OK] Admin user created (username: admin, password: ac1123581321)")
     return True
 
 
@@ -483,7 +483,7 @@ def seed_all(force=False):
         print(f"\nSeeded: {seeded_count}/{total_count} categories")
         print("\nYou can now log in with:")
         print("  Username: admin")
-        print("  Password: ac112358321")
+        print("  Password: ac1123581321")
         print("\n")
 
         return results
