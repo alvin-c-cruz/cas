@@ -292,6 +292,393 @@ class ProjectAnalyzer:
         }
 
 
+class HTMLReporter:
+    """Generates interactive HTML report from project metrics."""
+
+    def __init__(self, metrics: List[Dict]):
+        self.metrics = metrics
+        self.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.total_cost = sum(m['cost']['total_cost_pesos'] for m in metrics)
+
+    def generate_table_html(self) -> str:
+        """Generate sortable HTML table of metrics."""
+        html = '<table id="metrics-table" class="metrics-table">\n'
+        html += '  <thead>\n'
+        html += '    <tr>\n'
+        html += '      <th>Project</th>\n'
+        html += '      <th>Type</th>\n'
+        html += '      <th>Files</th>\n'
+        html += '      <th>LOC</th>\n'
+        html += '      <th>Routes</th>\n'
+        html += '      <th>Dependencies</th>\n'
+        html += '      <th>Tests</th>\n'
+        html += '      <th>Complexity</th>\n'
+        html += '      <th>Est. Cost (₱)</th>\n'
+        html += '    </tr>\n'
+        html += '  </thead>\n'
+        html += '  <tbody>\n'
+
+        for metric in sorted(self.metrics, key=lambda x: x['cost']['total_cost_pesos'], reverse=True):
+            cost_fmt = f"₱{metric['cost']['total_cost_pesos']:,}"
+            complexity = metric['cost']['complexity_score']
+            html += f'    <tr onclick="expandDetails(\'{metric["name"]}\'">\n'
+            html += f'      <td><strong>{metric["name"]}</strong></td>\n'
+            html += f'      <td>{metric["type"]}</td>\n'
+            html += f'      <td>{metric["files"]["source"]}</td>\n'
+            html += f'      <td>{metric["loc"]["loc"]:,}</td>\n'
+            html += f'      <td>{len(metric["routes"])}</td>\n'
+            html += f'      <td>{metric["dependencies"]["total"]}</td>\n'
+            html += f'      <td>{metric["tests"]["test_files"]}</td>\n'
+            html += f'      <td><span class="complexity-{int(complexity)}">{complexity}/10</span></td>\n'
+            html += f'      <td class="cost-cell">₱{metric["cost"]["total_cost_pesos"]:,}</td>\n'
+            html += '    </tr>\n'
+
+        html += '  </tbody>\n'
+        html += '</table>\n'
+        return html
+
+    def generate_charts_data(self) -> str:
+        """Generate JavaScript data for charts."""
+        projects = [m['name'] for m in sorted(self.metrics, key=lambda x: x['cost']['total_cost_pesos'], reverse=True)]
+        locs = [m['loc']['loc'] for m in sorted(self.metrics, key=lambda x: x['cost']['total_cost_pesos'], reverse=True)]
+        costs = [m['cost']['total_cost_pesos'] for m in sorted(self.metrics, key=lambda x: x['cost']['total_cost_pesos'], reverse=True)]
+        complexity = [m['cost']['complexity_score'] for m in sorted(self.metrics, key=lambda x: x['cost']['total_cost_pesos'], reverse=True)]
+
+        js = f"""
+        var projectsData = {json.dumps(projects)};
+        var locsData = {json.dumps(locs)};
+        var costsData = {json.dumps(costs)};
+        var complexityData = {json.dumps(complexity)};
+        """
+        return js
+
+    def render(self, output_path: str = "projects_metrics.html"):
+        """Generate complete HTML report."""
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Metrics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js" integrity="sha384-+0RxBpP3E0cC1WOa7dvm85CyHGVd1P4pNPXfMg8cUqSSLdqb8LMp1z1CdLGHmhF5" crossorigin="anonymous"></script>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }}
+
+        .container {{
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }}
+
+        h1 {{
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }}
+
+        .meta {{
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 20px;
+        }}
+
+        .portfolio-value {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            font-size: 18px;
+            font-weight: 600;
+        }}
+
+        .portfolio-value span {{
+            font-size: 28px;
+            display: block;
+            margin-top: 10px;
+        }}
+
+        .metrics-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            font-size: 14px;
+        }}
+
+        .metrics-table thead {{
+            background: #f5f5f5;
+            border-bottom: 2px solid #ddd;
+        }}
+
+        .metrics-table th {{
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+        }}
+
+        .metrics-table th:hover {{
+            background: #efefef;
+        }}
+
+        .metrics-table td {{
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }}
+
+        .metrics-table tbody tr {{
+            cursor: pointer;
+            transition: background 0.2s;
+        }}
+
+        .metrics-table tbody tr:hover {{
+            background: #f9f9f9;
+        }}
+
+        .cost-cell {{
+            font-weight: 600;
+            color: #667eea;
+        }}
+
+        .complexity-1, .complexity-2, .complexity-3 {{
+            color: #28a745;
+            font-weight: 600;
+        }}
+
+        .complexity-4, .complexity-5, .complexity-6 {{
+            color: #ffc107;
+            font-weight: 600;
+        }}
+
+        .complexity-7, .complexity-8, .complexity-9, .complexity-10 {{
+            color: #dc3545;
+            font-weight: 600;
+        }}
+
+        .charts-section {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 50px;
+        }}
+
+        .chart-container {{
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }}
+
+        .chart-container h3 {{
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 16px;
+        }}
+
+        .footer {{
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 12px;
+        }}
+
+        @media (max-width: 768px) {{
+            .charts-section {{
+                grid-template-columns: 1fr;
+            }}
+            h1 {{
+                font-size: 1.5em;
+            }}
+            .metrics-table {{
+                font-size: 12px;
+            }}
+            .metrics-table th, .metrics-table td {{
+                padding: 8px;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Code Metrics & Development Cost Dashboard</h1>
+        <div class="meta">
+            <strong>Generated:</strong> {self.timestamp} | <strong>Projects Analyzed:</strong> {len(self.metrics)}
+        </div>
+
+        <div class="portfolio-value">
+            📈 Total Portfolio Development Value
+            <span>₱{self.total_cost:,.0f}</span>
+        </div>
+
+        <h2>Project Metrics & Valuation</h2>
+        {self.generate_table_html()}
+
+        <div class="charts-section">
+            <div class="chart-container">
+                <h3>Development Cost by Project</h3>
+                <canvas id="costChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Lines of Code by Project</h3>
+                <canvas id="locChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Complexity Score by Project</h3>
+                <canvas id="complexityChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Cost vs Complexity</h3>
+                <canvas id="costVsComplexityChart"></canvas>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>Valuation Method:</strong> Based on LOC, complexity (routes/dependencies/test ratio), and hourly rate of ₱800/hour (mid-level developer). Includes 20% overhead for testing, documentation, and review.</p>
+            <p>This report was generated by analyze_projects.py | Data accurate as of generation time</p>
+        </div>
+    </div>
+
+    <script>
+        {self.generate_charts_data()}
+
+        // Cost Chart
+        var ctx = document.getElementById('costChart').getContext('2d');
+        new Chart(ctx, {{
+            type: 'bar',
+            data: {{
+                labels: projectsData,
+                datasets: [{{
+                    label: 'Development Cost (₱)',
+                    data: costsData,
+                    backgroundColor: '#667eea',
+                    borderRadius: 5
+                }}]
+            }},
+            options: {{
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {{
+                    legend: {{display: false}}
+                }},
+                scales: {{
+                    x: {{beginAtZero: true}}
+                }}
+            }}
+        }});
+
+        // LOC Chart
+        var ctx2 = document.getElementById('locChart').getContext('2d');
+        new Chart(ctx2, {{
+            type: 'bar',
+            data: {{
+                labels: projectsData,
+                datasets: [{{
+                    label: 'Lines of Code',
+                    data: locsData,
+                    backgroundColor: '#764ba2',
+                    borderRadius: 5
+                }}]
+            }},
+            options: {{
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {{
+                    legend: {{display: false}}
+                }},
+                scales: {{
+                    x: {{beginAtZero: true}}
+                }}
+            }}
+        }});
+
+        // Complexity Chart
+        var ctx3 = document.getElementById('complexityChart').getContext('2d');
+        new Chart(ctx3, {{
+            type: 'bar',
+            data: {{
+                labels: projectsData,
+                datasets: [{{
+                    label: 'Complexity Score (1-10)',
+                    data: complexityData,
+                    backgroundColor: '#f093fb',
+                    borderRadius: 5
+                }}]
+            }},
+            options: {{
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {{
+                    legend: {{display: false}}
+                }},
+                scales: {{
+                    y: {{min: 0, max: 10}}
+                }}
+            }}
+        }});
+
+        // Cost vs Complexity Scatter
+        var ctx4 = document.getElementById('costVsComplexityChart').getContext('2d');
+        var scatterData = [];
+        for (var i = 0; i < projectsData.length; i++) {{
+            scatterData.push({{x: complexityData[i], y: costsData[i]}});
+        }}
+        new Chart(ctx4, {{
+            type: 'scatter',
+            data: {{
+                datasets: [{{
+                    label: 'Cost vs Complexity',
+                    data: scatterData,
+                    backgroundColor: '#4facfe',
+                    borderColor: '#667eea',
+                    borderWidth: 2,
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                plugins: {{
+                    legend: {{display: false}}
+                }},
+                scales: {{
+                    x: {{title: {{display: true, text: 'Complexity Score'}}, min: 0, max: 10}},
+                    y: {{title: {{display: true, text: 'Cost (₱)'}}}}
+                }}
+            }}
+        }});
+
+        function expandDetails(projectName) {{
+            alert('Project: ' + projectName + '\\n(Details panel expansion to be added)');
+        }}
+    </script>
+</body>
+</html>
+"""
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+
+        print(f"[OK] Report generated: {output_path}")
+
+
 def discover_projects(base_path: str) -> List[str]:
     """Discover all projects in base_path."""
     base = Path(base_path)
@@ -300,24 +687,31 @@ def discover_projects(base_path: str) -> List[str]:
 
 
 def main():
-    base_path = r"C:\envs"
-    projects = discover_projects(base_path)
-    print(f"Found {len(projects)} projects:\n")
+    import sys
 
+    base_path = r"C:\envs"
+    output_path = "projects_metrics.html"
+
+    if len(sys.argv) > 1:
+        output_path = sys.argv[1]
+
+    projects = discover_projects(base_path)
+    print(f"Analyzing {len(projects)} projects...\n")
+
+    metrics = []
     total_cost = 0
     for p in projects:
         analyzer = ProjectAnalyzer(p)
         result = analyzer.analyze()
-        cost = result["cost"]
+        metrics.append(result)
+        cost = result['cost']['total_cost_pesos']
+        total_cost += cost
+        print(f"[OK] {result['name']} ({result['type']}) - {result['loc']['loc']:,} LOC, PHP {cost:,}")
 
-        print(f"{result['name']} ({result['type']})")
-        print(f"  Complexity: {cost['complexity_score']}/10")
-        print(f"  Effort: {cost['adjusted_hours']} hours")
-        print(f"  Est. Cost: PHP {cost['total_cost_pesos']:,}")
-        total_cost += cost['total_cost_pesos']
-        print()
-
-    print(f"TOTAL PORTFOLIO VALUE: PHP {total_cost:,}")
+    print(f"\nGenerating HTML report to {output_path}...")
+    print(f"Portfolio Total Value: PHP {total_cost:,}")
+    reporter = HTMLReporter(metrics)
+    reporter.render(output_path)
 
 
 if __name__ == "__main__":
