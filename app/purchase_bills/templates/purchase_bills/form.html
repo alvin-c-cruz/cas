@@ -115,7 +115,7 @@
                         <!-- Row 1: Gross Amount -->
                         <div class="bsr">
                             <span class="bsr-label">Gross Amount</span>
-                            <span id="subtotalDisplay" class="bsr-amt">₱0.00</span>
+                            <span id="subtotalDisplay" class="bsr-amt">0.00</span>
                         </div>
 
                         <!-- Row 2: Less: Input VAT — pencil-click override -->
@@ -123,7 +123,7 @@
                             <span class="bsr-label">Less: Input VAT</span>
                             <div class="bsr-amt-wrap">
                                 <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">✏️</button>
-                                <span id="vatDisplay" class="bsr-amt">₱0.00</span>
+                                <span id="vatDisplay" class="bsr-amt">0.00</span>
                             </div>
                         </div>
                         <div id="vatEditMode" class="bsr" style="display:none">
@@ -140,13 +140,13 @@
                         <!-- Row 3: Net of VAT -->
                         <div class="bsr">
                             <span class="bsr-label">Net of VAT</span>
-                            <span id="netOfVatDisplay" class="bsr-amt">₱0.00</span>
+                            <span id="netOfVatDisplay" class="bsr-amt">0.00</span>
                         </div>
 
                         <!-- Row 4: Add: Input VAT (mirrors row 2, no edit) -->
                         <div class="bsr">
                             <span class="bsr-label">Add: Input VAT</span>
-                            <span id="vatAddBackDisplay" class="bsr-amt">₱0.00</span>
+                            <span id="vatAddBackDisplay" class="bsr-amt">0.00</span>
                         </div>
 
                         <!-- Row 5: Less: Withholding Tax -->
@@ -154,7 +154,7 @@
                             <span class="bsr-label">Less: Withholding Tax</span>
                             <div class="bsr-amt-wrap">
                                 <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button>
-                                <span id="wtDisplay" class="bsr-amt bsr-amt--red">-₱0.00</span>
+                                <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
                             </div>
                         </div>
                         <div id="wtEditMode" class="bsr bsr--sep" style="display:none">
@@ -171,7 +171,7 @@
                         <!-- Row 6: Net Amount Payable -->
                         <div class="bsr bsr--total">
                             <span class="bsr-label bsr-label--total">Net Amount Payable</span>
-                            <span id="totalDisplay" class="bsr-amt bsr-amt--total">₱0.00</span>
+                            <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
                         </div>
                         </div><!-- end .bill-summary-panel -->
                     </div><!-- end wrapper -->
@@ -211,7 +211,7 @@ let autoWt = 0;
 let vatOverrideActive = false;
 let wtOverrideActive = false;
 
-const fmt = n => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = n => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtNum = n => n > 0
     ? n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : '—';
