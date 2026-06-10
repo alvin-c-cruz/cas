@@ -24,6 +24,18 @@ import json
 purchase_bills_bp = Blueprint('purchase_bills', __name__, template_folder='templates')
 
 
+def _get_gl_accounts():
+    """Return the three GL accounts used for purchase bill journal entries."""
+    ap_acct = Account.query.filter_by(code='20101').first()
+    input_vat_acct = Account.query.filter_by(code='10501').first()
+    wt_gl_acct = Account.query.filter_by(code='20301').first()
+    return {
+        'ap': ap_acct,
+        'input_vat': input_vat_acct,
+        'wt': wt_gl_acct,
+    }
+
+
 def accountant_or_admin_required(f):
     """Decorator to require accountant or admin role."""
     @wraps(f)
@@ -340,14 +352,31 @@ def create():
             bill.calculate_totals()
 
             # Apply manual overrides
+            import decimal as _decimal
             vat_override = request.form.get('vat_override') == '1'
             wt_override = request.form.get('wt_override') == '1'
             bill.vat_override = vat_override
             bill.wt_override = wt_override
             if vat_override:
-                bill.vat_amount = Decimal(request.form.get('vat_override_value', '0') or '0')
+                try:
+                    vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
+                    if vat_val < 0 or vat_val > bill.subtotal:
+                        raise ValueError('out of range')
+                except (_decimal.InvalidOperation, ValueError):
+                    db.session.rollback()
+                    flash('Invalid VAT override value.', 'danger')
+                    return redirect(url_for('purchase_bills.list_bills'))
+                bill.vat_amount = vat_val
             if wt_override:
-                bill.withholding_tax_amount = Decimal(request.form.get('wt_override_value', '0') or '0')
+                try:
+                    wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
+                    if wt_val < 0 or wt_val > bill.subtotal:
+                        raise ValueError('out of range')
+                except (_decimal.InvalidOperation, ValueError):
+                    db.session.rollback()
+                    flash('Invalid withholding tax override value.', 'danger')
+                    return redirect(url_for('purchase_bills.list_bills'))
+                bill.withholding_tax_amount = wt_val
             # Recompute net payable after potential overrides
             bill.total_amount = bill.subtotal - bill.withholding_tax_amount
             bill.balance = bill.total_amount - bill.amount_paid
@@ -385,13 +414,11 @@ def create():
     vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
     expense_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Expense').order_by(Account.code).all()]
 
-    ap_acct = Account.query.filter_by(code='20101').first()
-    input_vat_acct = Account.query.filter_by(code='10501').first()
-    wt_gl_acct = Account.query.filter_by(code='20301').first()
+    _accts = _get_gl_accounts()
     gl_accounts = {
-        'ap': {'code': ap_acct.code, 'name': ap_acct.name} if ap_acct else None,
-        'input_vat': {'code': input_vat_acct.code, 'name': input_vat_acct.name} if input_vat_acct else None,
-        'wt': {'code': wt_gl_acct.code, 'name': wt_gl_acct.name} if wt_gl_acct else None,
+        'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
+        'input_vat': {'code': _accts['input_vat'].code, 'name': _accts['input_vat'].name} if _accts['input_vat'] else None,
+        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
     return render_template('purchase_bills/form.html',
                          form=form,
@@ -490,24 +517,44 @@ def edit(id):
             bill.calculate_totals()
 
             # Apply manual overrides
+            import decimal as _decimal
             vat_override = request.form.get('vat_override') == '1'
             wt_override = request.form.get('wt_override') == '1'
             bill.vat_override = vat_override
             bill.wt_override = wt_override
             if vat_override:
-                bill.vat_amount = Decimal(request.form.get('vat_override_value', '0') or '0')
+                try:
+                    vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
+                    if vat_val < 0 or vat_val > bill.subtotal:
+                        raise ValueError('out of range')
+                except (_decimal.InvalidOperation, ValueError):
+                    db.session.rollback()
+                    flash('Invalid VAT override value.', 'danger')
+                    return redirect(url_for('purchase_bills.list_bills'))
+                bill.vat_amount = vat_val
             if wt_override:
-                bill.withholding_tax_amount = Decimal(request.form.get('wt_override_value', '0') or '0')
+                try:
+                    wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
+                    if wt_val < 0 or wt_val > bill.subtotal:
+                        raise ValueError('out of range')
+                except (_decimal.InvalidOperation, ValueError):
+                    db.session.rollback()
+                    flash('Invalid withholding tax override value.', 'danger')
+                    return redirect(url_for('purchase_bills.list_bills'))
+                bill.withholding_tax_amount = wt_val
             bill.total_amount = bill.subtotal - bill.withholding_tax_amount
             bill.balance = bill.total_amount - bill.amount_paid
 
             # Delete old JE and create a fresh one
             if bill.journal_entry_id:
                 from app.journal_entries.models import JournalEntry as _JE
-                old_je = db.session.get(_JE, bill.journal_entry_id)
+                old_je_id_to_delete = bill.journal_entry_id
+                bill.journal_entry_id = None
+                bill.journal_entry = None
+                db.session.flush()  # commit FK null before deleting the JE row
+                old_je = db.session.get(_JE, old_je_id_to_delete)
                 if old_je:
                     db.session.delete(old_je)
-                bill.journal_entry_id = None
 
             db.session.flush()
 
@@ -542,13 +589,11 @@ def edit(id):
     expense_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Expense').order_by(Account.code).all()]
     line_items = [item.to_dict() for item in bill.line_items]
 
-    ap_acct = Account.query.filter_by(code='20101').first()
-    input_vat_acct = Account.query.filter_by(code='10501').first()
-    wt_gl_acct = Account.query.filter_by(code='20301').first()
+    _accts = _get_gl_accounts()
     gl_accounts = {
-        'ap': {'code': ap_acct.code, 'name': ap_acct.name} if ap_acct else None,
-        'input_vat': {'code': input_vat_acct.code, 'name': input_vat_acct.name} if input_vat_acct else None,
-        'wt': {'code': wt_gl_acct.code, 'name': wt_gl_acct.name} if wt_gl_acct else None,
+        'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
+        'input_vat': {'code': _accts['input_vat'].code, 'name': _accts['input_vat'].name} if _accts['input_vat'] else None,
+        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
     return render_template('purchase_bills/form.html',
                          form=form,
@@ -658,19 +703,21 @@ def _post_bill_je(bill, user_id):
     """Create and immediately post a purchase JE for a bill. Raises ValueError if required accounts missing."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
-    ap_account = Account.query.filter_by(code='20101').first()
+    _accts = _get_gl_accounts()
+
+    ap_account = _accts['ap']
     if not ap_account:
         raise ValueError("Accounts Payable - Trade (20101) not found in COA.")
 
     input_vat_account = None
     if bill.vat_amount and bill.vat_amount > 0:
-        input_vat_account = Account.query.filter_by(code='10501').first()
+        input_vat_account = _accts['input_vat']
         if not input_vat_account:
             raise ValueError("Input VAT - Current (10501) not found in COA.")
 
     wt_account = None
     if bill.withholding_tax_amount and bill.withholding_tax_amount > 0:
-        wt_account = Account.query.filter_by(code='20301').first()
+        wt_account = _accts['wt']
         if not wt_account:
             raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
 
@@ -694,7 +741,7 @@ def _post_bill_je(bill, user_id):
     db.session.flush()
 
     # Compute VAT adjustment for override case
-    vat_auto = sum((item.vat_amount for item in bill.line_items), Decimal('0.00'))
+    vat_auto = sum((item.vat_amount for item in bill.line_items if item.account_id), Decimal('0.00'))
     vat_used = Decimal(str(bill.vat_amount))
     vat_diff = vat_used - vat_auto  # non-zero only when VAT was overridden
 

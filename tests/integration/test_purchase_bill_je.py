@@ -47,7 +47,6 @@ def make_line_items_payload(amount=11200.00, vat_code='', account_id=None,
     }])
 
 
-@pytest.mark.usefixtures("app")
 class TestBillCreatePostsJE:
     def test_create_bill_posts_je_with_purchase_type(
             self, client, db_session, accountant_user, main_branch):
@@ -82,7 +81,7 @@ class TestBillCreatePostsJE:
         assert bill is not None
         assert bill.journal_entry_id is not None
 
-        je = JournalEntry.query.get(bill.journal_entry_id)
+        je = db_session.get(JournalEntry, bill.journal_entry_id)
         assert je is not None
         assert je.entry_type == 'purchase'
         assert je.status == 'posted'
@@ -117,7 +116,7 @@ class TestBillCreatePostsJE:
 
         bill = PurchaseBill.query.filter_by(bill_number='PBJ-002').first()
         assert bill is not None, "Bill PBJ-002 not created"
-        je = JournalEntry.query.get(bill.journal_entry_id)
+        je = db_session.get(JournalEntry, bill.journal_entry_id)
         lines = JournalEntryLine.query.filter_by(entry_id=je.id).all()
 
         # Dr Expense (net_base = 11200/1.12 = 10000)
@@ -180,9 +179,15 @@ class TestBillCreatePostsJE:
 
         db_session.expire_all()
         bill = PurchaseBill.query.filter_by(bill_number='PBJ-003').first()
-        assert bill.journal_entry_id is not None
+        new_je_id = bill.journal_entry_id
+        assert new_je_id is not None
 
-        new_je = JournalEntry.query.get(bill.journal_entry_id)
+        # There must be exactly one JE in the DB (old was deleted, new was created).
+        # SQLite may reuse the same integer ID, so we assert count rather than ID inequality.
+        je_count = JournalEntry.query.count()
+        assert je_count == 1, f"Expected 1 JE after edit, found {je_count}"
+
+        new_je = db_session.get(JournalEntry, new_je_id)
         assert new_je is not None
         # Verify the JE reflects the edited amount (6000, not 5000)
         ap_line = next((l for l in new_je.lines if l.account_id == ap.id), None)
