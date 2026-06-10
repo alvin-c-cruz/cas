@@ -72,6 +72,40 @@ class ProjectAnalyzer:
             "by_extension": by_extension
         }
 
+    def count_loc(self) -> Dict:
+        """Count lines of code, blank lines, comment lines."""
+        loc = 0
+        blank = 0
+        comment = 0
+
+        for root, dirs, files in os.walk(self.project_path):
+            dirs[:] = [d for d in dirs if d not in self.EXCLUDE_DIRS]
+
+            for file in files:
+                if any(file.endswith(ext) for ext in self.EXCLUDE_EXTENSIONS):
+                    continue
+
+                file_path = Path(root) / file
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        for line in f:
+                            stripped = line.strip()
+                            if not stripped:
+                                blank += 1
+                            elif stripped.startswith("#") or stripped.startswith("//"):
+                                comment += 1
+                            else:
+                                loc += 1
+                except Exception:
+                    pass
+
+        return {
+            "loc": loc,
+            "blank": blank,
+            "comment": comment,
+            "total_lines": loc + blank + comment
+        }
+
     def analyze(self) -> Dict:
         """Run full analysis on project."""
         return {
@@ -79,6 +113,7 @@ class ProjectAnalyzer:
             "path": str(self.project_path),
             "type": self.detect_type(),
             "files": self.count_files(),
+            "loc": self.count_loc(),
         }
 
 
@@ -98,9 +133,11 @@ def main():
         analyzer = ProjectAnalyzer(p)
         result = analyzer.analyze()
         files = result["files"]
+        loc = result["loc"]
+
         print(f"{result['name']} ({result['type']})")
         print(f"  Files: {files['total']} total, {files['source']} source")
-        print(f"  Extensions: {dict(list(files['by_extension'].items())[:5])}")
+        print(f"  LOC: {loc['loc']} lines, {loc['blank']} blank, {loc['comment']} comment")
         print()
 
 
