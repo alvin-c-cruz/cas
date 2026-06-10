@@ -182,7 +182,17 @@
     align-items: center;
     margin-bottom: 16px;
 }
-.pb-filter-search { flex: 1; min-width: 180px; }
+/* Global .form-control is width:100%; constrain inside the filter bar so
+   the controls share one row instead of stacking full-width. */
+.pb-filter-bar .form-control { width: auto; }
+.pb-filter-bar select.form-control { width: 160px; }
+.pb-filter-bar input[type="date"].form-control { width: 150px; }
+.pb-filter-search { flex: 1 1 200px; min-width: 180px; }
+@media (max-width: 640px) {
+    .pb-filter-bar .form-control,
+    .pb-filter-bar select.form-control,
+    .pb-filter-bar input[type="date"].form-control { width: 100%; }
+}
 .pb-selected-count { font-size: 13px; color: var(--text-2); }
 .btn-action {
     padding: 4px 8px;
