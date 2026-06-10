@@ -13,46 +13,44 @@
         <form method="POST" novalidate id="billForm">
             {{ form.hidden_tag() }}
 
-            <!-- ① AP# / Voucher Date (1/3) + Vendor (2/3) -->
-            <div class="vendor-header-row">
+            <!-- Header: 7 fields (1/3) + Vendor + Notes (2/3) -->
+            <div class="form-main-grid">
+                <!-- Left 1/3: all 7 inline fields -->
                 <div class="left-col-fields header-fields{% if bill %} header-fields--active{% endif %}">
                     {{ render_field(form.bill_number) }}
                     {{ render_field(form.bill_date) }}
                     {{ render_field(form.due_date) }}
-                </div>
-                <div id="vendorCard" class="vendor-step-card{% if bill %} vendor-step-card--done{% endif %}">
-                    <div class="vendor-step-label" id="vendorCardLabel">
-                        {% if bill %}✓ {{ bill.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
-                    </div>
-                    <div id="vendorBadges" class="vendor-badges"></div>
-                    <select name="vendor_id" id="vendor_id" class="form-control" required
-                            {% if not bill %}autofocus{% endif %}>
-                        <option value="">Search or select a vendor…</option>
-                        {% for choice in form.vendor_id.choices %}
-                        <option value="{{ choice[0] }}"
-                            {% if bill and bill.vendor_id == choice[0] %}selected{% endif %}>
-                            {{ choice[1] }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                    {% if form.vendor_id.errors %}
-                    <div class="form-error">{{ form.vendor_id.errors[0] }}</div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- ② Remaining header fields (dimmed until vendor selected) -->
-            <div id="headerFields" class="header-fields secondary-header-row{% if bill %} header-fields--active{% endif %}">
-                <div class="left-col-fields">
                     {{ render_field(form.payment_terms) }}
                     {{ render_field(form.vendor_invoice_number) }}
                     {{ render_field(form.vendor_invoice_date) }}
                     {{ render_field(form.reference) }}
                 </div>
-                <div class="notes-col">
-                    {{ form.notes.label(class='form-label') }}
-                    {{ form.notes(class='form-control', style='resize:vertical;min-height:108px', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
-                    {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
+                <!-- Right 2/3: vendor card + notes -->
+                <div class="right-col">
+                    <div id="vendorCard" class="vendor-step-card{% if bill %} vendor-step-card--done{% endif %}">
+                        <div class="vendor-step-label" id="vendorCardLabel">
+                            {% if bill %}✓ {{ bill.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
+                        </div>
+                        <div id="vendorBadges" class="vendor-badges"></div>
+                        <select name="vendor_id" id="vendor_id" class="form-control" required
+                                {% if not bill %}autofocus{% endif %}>
+                            <option value="">Search or select a vendor…</option>
+                            {% for choice in form.vendor_id.choices %}
+                            <option value="{{ choice[0] }}"
+                                {% if bill and bill.vendor_id == choice[0] %}selected{% endif %}>
+                                {{ choice[1] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% if form.vendor_id.errors %}
+                        <div class="form-error">{{ form.vendor_id.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="notes-col header-fields{% if bill %} header-fields--active{% endif %}">
+                        {{ form.notes.label(class='form-label') }}
+                        {{ form.notes(class='form-control', style='resize:vertical', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                        {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
+                    </div>
                 </div>
             </div>
 
@@ -439,15 +437,16 @@ initItems();
 }
 
 /* Grid helpers */
-.vendor-header-row { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; margin-bottom: 16px; }
-.secondary-header-row { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+.form-main-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: stretch; margin-bottom: 24px; }
+.right-col { display: flex; flex-direction: column; gap: 12px; }
+.right-col .vendor-step-card { margin-bottom: 0; }
 .left-col-fields { display: flex; flex-direction: column; gap: 10px; }
 .left-col-fields .form-group { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
 .left-col-fields .form-group .form-label { white-space: nowrap; margin-bottom: 0; min-width: 150px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
 .left-col-fields .form-group .form-control { flex: 1; }
-.notes-col { display: flex; flex-direction: column; }
+.notes-col { display: flex; flex-direction: column; flex: 1; }
 .notes-col .form-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); margin-bottom: 6px; }
-.notes-col .form-control { flex: 1; }
+.notes-col .form-control { flex: 1; min-height: 60px; }
 .form-row-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
 .form-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
 .form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
