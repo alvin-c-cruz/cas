@@ -37,12 +37,48 @@ class ProjectAnalyzer:
 
         return "Unknown"
 
+    EXCLUDE_DIRS = {
+        ".git", ".github", ".venv", "venv", "node_modules", "__pycache__",
+        ".pytest_cache", "dist", "build", ".vscode", ".idea", "coverage",
+        ".DS_Store", ".egg-info"
+    }
+
+    EXCLUDE_EXTENSIONS = {".pyc", ".o", ".exe", ".zip", ".tar.gz", ".log"}
+
+    def count_files(self) -> Dict:
+        """Count total files, source files, files by extension."""
+        total = 0
+        source = 0
+        by_extension = {}
+
+        for root, dirs, files in os.walk(self.project_path):
+            # Exclude certain directories
+            dirs[:] = [d for d in dirs if d not in self.EXCLUDE_DIRS]
+
+            for file in files:
+                total += 1
+
+                # Skip excluded extensions
+                if any(file.endswith(ext) for ext in self.EXCLUDE_EXTENSIONS):
+                    continue
+
+                source += 1
+                ext = Path(file).suffix or "no_extension"
+                by_extension[ext] = by_extension.get(ext, 0) + 1
+
+        return {
+            "total": total,
+            "source": source,
+            "by_extension": by_extension
+        }
+
     def analyze(self) -> Dict:
         """Run full analysis on project."""
         return {
             "name": self.project_name,
             "path": str(self.project_path),
             "type": self.detect_type(),
+            "files": self.count_files(),
         }
 
 
@@ -56,11 +92,16 @@ def discover_projects(base_path: str) -> List[str]:
 def main():
     base_path = r"C:\envs"
     projects = discover_projects(base_path)
-    print(f"Found {len(projects)} projects:")
+    print(f"Found {len(projects)} projects:\n")
+
     for p in projects:
         analyzer = ProjectAnalyzer(p)
         result = analyzer.analyze()
-        print(f"  - {result['name']} ({result['type']})")
+        files = result["files"]
+        print(f"{result['name']} ({result['type']})")
+        print(f"  Files: {files['total']} total, {files['source']} source")
+        print(f"  Extensions: {dict(list(files['by_extension'].items())[:5])}")
+        print()
 
 
 if __name__ == "__main__":
