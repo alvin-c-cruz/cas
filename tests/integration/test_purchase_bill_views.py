@@ -323,8 +323,11 @@ class TestFormLayout:
         assert not re.search(r'id="vendorCard"[^>]*vendor-step-card--done', html)
 
         # Header fields wrapper present but NOT active (dimmed)
-        assert 'id="headerFields"' in html
-        assert not re.search(r'id="headerFields"[^>]*header-fields--active', html)
+        # The class "header-fields" exists on elements; "header-fields--active" is only
+        # added to elements when bill is set (edit mode). The JS source always contains
+        # the string literal 'header-fields--active', so we must check via element regex.
+        assert re.search(r'class="[^"]*header-fields[^"]*"', html)
+        assert not re.search(r'class="[^"]*header-fields--active[^"]*"', html)
 
         # Locked placeholder visible
         assert 'id="lineItemsLocked"' in html
@@ -348,7 +351,7 @@ class TestFormLayout:
         assert re.search(r'id="vendorCard"[^>]*vendor-step-card--done', html)
 
         # Header fields active (not dimmed)
-        assert re.search(r'id="headerFields"[^>]*header-fields--active', html)
+        assert re.search(r'class="[^"]*header-fields--active[^"]*"', html)
 
         # Locked placeholder hidden
         assert re.search(r'id="lineItemsLocked"[^>]*line-items-locked--hidden', html)
