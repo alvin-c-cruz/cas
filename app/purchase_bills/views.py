@@ -36,6 +36,30 @@ def _get_gl_accounts():
     }
 
 
+def _get_all_accounts_for_select():
+    """Return all active accounts with is_group and depth flags for the account picker.
+    Group accounts (those with children) are shown but non-selectable per hierarchy rules.
+    """
+    all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    parent_ids = {a.parent_id for a in all_accts if a.parent_id is not None}
+    id_map = {a.id: a for a in all_accts}
+
+    def _depth(acct):
+        d, p = 0, acct.parent_id
+        while p and p in id_map:
+            d += 1
+            p = id_map[p].parent_id
+        return d
+
+    result = []
+    for a in all_accts:
+        d = a.to_dict()
+        d['is_group'] = a.id in parent_ids
+        d['depth'] = _depth(a)
+        result.append(d)
+    return result
+
+
 def accountant_or_admin_required(f):
     """Decorator to require accountant or admin role."""
     @wraps(f)
@@ -411,7 +435,7 @@ def create():
         form.due_date.data = date.today() + timedelta(days=30)
 
     vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
-    expense_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Expense').order_by(Account.code).all()]
+    all_accounts = _get_all_accounts_for_select()
 
     _accts = _get_gl_accounts()
     gl_accounts = {
@@ -423,7 +447,7 @@ def create():
                          form=form,
                          bill=None,
                          vat_categories=vat_categories,
-                         expense_accounts=expense_accounts,
+                         all_accounts=all_accounts,
                          gl_accounts=gl_accounts)
 
 
@@ -585,7 +609,7 @@ def edit(id):
         form.vendor_id.data = bill.vendor_id
 
     vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
-    expense_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Expense').order_by(Account.code).all()]
+    all_accounts = _get_all_accounts_for_select()
     line_items = [item.to_dict() for item in bill.line_items]
 
     _accts = _get_gl_accounts()
@@ -598,7 +622,7 @@ def edit(id):
                          form=form,
                          bill=bill,
                          vat_categories=vat_categories,
-                         expense_accounts=expense_accounts,
+                         all_accounts=all_accounts,
                          line_items=line_items,
                          gl_accounts=gl_accounts)
 
