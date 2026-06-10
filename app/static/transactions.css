@@ -1,0 +1,130 @@
+/* transactions.css — shared styles for all transaction forms (purchase bills, sales invoices, receipts) */
+
+/* ── Header layout grid ────────────────────────────────────────────────────── */
+.form-main-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 16px;
+    align-items: stretch;
+    margin-bottom: 24px;
+}
+.right-col { display: flex; flex-direction: column; gap: 12px; }
+.left-col-fields { display: flex; flex-direction: column; gap: 10px; }
+.left-col-fields .form-group { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
+.left-col-fields .form-group .form-label {
+    white-space: nowrap; margin-bottom: 0; min-width: 150px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-2);
+}
+.left-col-fields .form-group .form-control { flex: 1; }
+.notes-col { display: flex; flex-direction: column; flex: 1; }
+.notes-col .form-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-2); margin-bottom: 6px;
+}
+.notes-col .form-control { flex: 1; min-height: 60px; }
+
+/* ── Generic form row helpers ─────────────────────────────────────────────── */
+.form-row-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
+.form-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+.form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+.form-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
+
+/* ── Line item action button ─────────────────────────────────────────────── */
+.btn-action { padding: 4px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 14px; }
+.btn-action:hover { background: var(--border); }
+
+/* ── Summary panel (.bsr rows) ───────────────────────────────────────────── */
+.bsr { display: grid; grid-template-columns: 1fr 130px; align-items: center; margin-bottom: 10px; gap: 8px; }
+.bsr--sep { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.bsr--total { margin-top: 4px; padding-top: 12px; border-top: 2px solid var(--border); margin-bottom: 0; }
+.bsr-label { color: var(--text-2); font-size: 13px; }
+.bsr-label--total { font-size: 15px; font-weight: 700; color: var(--text-1); }
+.bsr-hint { font-size: 11px; color: var(--text-2); margin-left: 4px; }
+.bsr-amt { font-family: var(--mono); font-weight: 600; font-size: 13px; text-align: right; display: block; }
+.bsr-amt--red { color: var(--red); }
+.bsr-amt--total { font-size: 18px; font-weight: 700; color: var(--blue); }
+.bsr-amt-wrap { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+
+/* ── Choices.js compact overrides ────────────────────────────────────────── */
+.choices { margin-bottom: 0; }
+.choices__inner {
+    min-height: 0 !important; height: 28px;
+    padding: 3px 6px !important;
+    font-size: 13px !important;
+    border: 1px solid transparent !important;
+    border-radius: 2px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    display: flex; align-items: center;
+}
+.choices:hover .choices__inner { border-color: var(--border) !important; background: var(--card) !important; }
+.choices.is-focused .choices__inner,
+.choices.is-open .choices__inner {
+    border-color: var(--blue) !important;
+    background: var(--card) !important;
+    border-radius: 3px !important;
+}
+.choices__input {
+    font-size: 13px !important; font-family: inherit !important;
+    background: transparent !important; margin-bottom: 0 !important;
+}
+.choices[data-type*=select-one] .choices__inner { padding-right: 6px !important; }
+.choices[data-type*=select-one]::after { display: none !important; }
+.choices__list--dropdown {
+    font-size: 13px;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,.1) !important;
+    margin-top: 2px; z-index: 999;
+    min-width: 260px;
+}
+.choices__list--dropdown .choices__item { padding: 6px 10px; white-space: nowrap; }
+.choices__list--dropdown .choices__item--selectable.is-highlighted {
+    background: #eff6ff !important; color: var(--blue) !important;
+}
+.choices__list--single { padding: 0; overflow: hidden; }
+.choices__list--single .choices__item {
+    font-size: 13px; line-height: 1.3;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Responsive — tablet ─────────────────────────────────────────────────── */
+@media (max-width: 1023px) {
+    .form-main-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    /* Vendor card (right-col) stacks above header fields (left-col-fields) */
+    .left-col-fields { order: 2; }
+    .right-col       { order: 1; }
+
+    /* JE preview + Bill Summary stack vertically */
+    #jePreviewSection,
+    #jePreviewSection + div {
+        width: 100%;
+    }
+}
+
+/* ── Responsive — mobile ─────────────────────────────────────────────────── */
+@media (max-width: 639px) {
+    .form-main-grid { gap: 10px; }
+
+    /* Label above input instead of side-by-side */
+    .left-col-fields .form-group {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .left-col-fields .form-group .form-label {
+        min-width: unset;
+        margin-bottom: 2px;
+    }
+    .left-col-fields .form-group .form-control {
+        width: 100%;
+    }
+
+    /* Line items table: horizontal scroll */
+    #lineItemsSection > div {
+        overflow-x: auto;
+    }
+}
