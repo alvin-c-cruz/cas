@@ -296,14 +296,19 @@ function setVendorDone(vendorName, defaults) {
     card.classList.add('vendor-step-card--done');
     label.textContent = '✓ ' + vendorName;
 
-    const badgeHtml = [];
+    badges.textContent = '';
     (defaults.withholding_taxes || []).forEach(wt => {
-        badgeHtml.push(`<span class="vendor-badge">${wt.code}</span>`);
+        const span = document.createElement('span');
+        span.className = 'vendor-badge';
+        span.textContent = wt.code;
+        badges.appendChild(span);
     });
     if (defaults.default_vat_category) {
-        badgeHtml.push(`<span class="vendor-badge">VAT: ${defaults.default_vat_category}</span>`);
+        const span = document.createElement('span');
+        span.className = 'vendor-badge';
+        span.textContent = 'VAT: ' + defaults.default_vat_category;
+        badges.appendChild(span);
     }
-    badges.innerHTML = badgeHtml.join('');
 
     document.getElementById('headerFields').classList.add('header-fields--active');
     document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
