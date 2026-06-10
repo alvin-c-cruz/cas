@@ -212,6 +212,71 @@ class ProjectAnalyzer:
             "test_ratio": test_ratio
         }
 
+    def calculate_complexity_score(self) -> float:
+        """Calculate complexity score (1-10) based on routes, dependencies, test ratio."""
+        routes_count = len(self.find_routes())
+        deps_count = self.parse_dependencies()["total"]
+        tests = self.count_tests()
+        test_ratio = tests["test_ratio"]
+
+        # Base score from routes (each route adds complexity)
+        route_score = min(routes_count / 10, 3)  # Max 3 points from routes
+
+        # Dependencies add complexity
+        dep_score = min(deps_count / 20, 2)  # Max 2 points from deps
+
+        # Test coverage reduces complexity (well-tested = lower risk)
+        test_score = min(test_ratio / 50, 2)  # Max 2 points from tests
+
+        # File/LOC complexity
+        files = self.count_files()
+        loc = self.count_loc()
+        size_score = min((files["source"] / 200) + (loc["loc"] / 5000), 3)  # Max 3 points from size
+
+        # Complexity = base + adjustments, clamped to 1-10
+        complexity = 2 + route_score + dep_score + size_score - (test_score * 0.5)
+        return round(max(1, min(10, complexity)), 1)
+
+    def estimate_development_cost(self, hourly_rate_pesos: float = 800) -> Dict:
+        """
+        Estimate development cost in pesos.
+
+        Assumptions:
+        - Base: ~10 LOC per hour (simplified, excludes design/testing)
+        - Complexity multiplier: 1.0 (simple) to 1.8 (complex)
+        - Junior dev rate: 400 PHP/hour
+        - Mid-level dev rate: 800 PHP/hour (default)
+        - Senior dev rate: 1500 PHP/hour
+
+        Formula: (LOC / 10) * complexity_multiplier * hourly_rate
+        """
+        loc = self.count_loc()["loc"]
+        complexity = self.calculate_complexity_score()
+
+        # Complexity multiplier (1.0 to 1.8)
+        complexity_multiplier = 1.0 + (complexity - 1) * 0.1
+
+        # Effort estimation: hours needed
+        base_hours = loc / 10  # Simple baseline
+        adjusted_hours = base_hours * complexity_multiplier
+
+        # Development cost
+        dev_cost = adjusted_hours * hourly_rate_pesos
+
+        # Add testing, documentation, review overhead (20%)
+        total_cost = dev_cost * 1.2
+
+        return {
+            "loc": loc,
+            "complexity_score": complexity,
+            "complexity_multiplier": round(complexity_multiplier, 2),
+            "base_hours": round(base_hours, 1),
+            "adjusted_hours": round(adjusted_hours, 1),
+            "hourly_rate_pesos": hourly_rate_pesos,
+            "dev_cost_pesos": round(dev_cost, 0),
+            "total_cost_pesos": round(total_cost, 0),
+        }
+
     def analyze(self) -> Dict:
         """Run full analysis on project."""
         return {
@@ -223,6 +288,7 @@ class ProjectAnalyzer:
             "routes": self.find_routes(),
             "dependencies": self.parse_dependencies(),
             "tests": self.count_tests(),
+            "cost": self.estimate_development_cost(),
         }
 
 
@@ -238,24 +304,20 @@ def main():
     projects = discover_projects(base_path)
     print(f"Found {len(projects)} projects:\n")
 
+    total_cost = 0
     for p in projects:
         analyzer = ProjectAnalyzer(p)
         result = analyzer.analyze()
-        files = result["files"]
-        loc = result["loc"]
-        routes = result["routes"]
-        deps = result["dependencies"]
-        tests = result["tests"]
+        cost = result["cost"]
 
         print(f"{result['name']} ({result['type']})")
-        print(f"  Files: {files['total']} total, {files['source']} source")
-        print(f"  LOC: {loc['loc']} lines")
-        print(f"  Routes: {len(routes)} found")
-        if routes:
-            print(f"    Sample: {', '.join(routes[:3])}")
-        print(f"  Dependencies: {deps['total']} total ({len(deps['python'])} Python, {len(deps['node'])} Node)")
-        print(f"  Tests: {tests['test_files']} files, {tests['test_loc']} LOC, {tests['test_ratio']}% ratio")
+        print(f"  Complexity: {cost['complexity_score']}/10")
+        print(f"  Effort: {cost['adjusted_hours']} hours")
+        print(f"  Est. Cost: PHP {cost['total_cost_pesos']:,}")
+        total_cost += cost['total_cost_pesos']
         print()
+
+    print(f"TOTAL PORTFOLIO VALUE: PHP {total_cost:,}")
 
 
 if __name__ == "__main__":
