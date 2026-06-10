@@ -1,7 +1,7 @@
 """
 Sales Invoice views for managing customer billing transactions.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -33,6 +33,20 @@ def accountant_or_admin_required(f):
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+@sales_invoices_bp.before_request
+def require_branch_selection():
+    if current_user.is_authenticated and not session.get('selected_branch_id'):
+        flash('Please select a branch to continue.', 'warning')
+        return redirect(url_for('users.select_branch'))
+
+
+def _get_invoice_or_404(id):
+    invoice = SalesInvoice.query.get_or_404(id)
+    if invoice.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    return invoice
 
 
 def generate_invoice_number():
@@ -347,7 +361,7 @@ def create():
 @login_required
 def view(id):
     """View sales invoice details."""
-    invoice = SalesInvoice.query.get_or_404(id)
+    invoice = _get_invoice_or_404(id)
     return render_template('sales_invoices/detail.html', invoice=invoice)
 
 
@@ -356,7 +370,7 @@ def view(id):
 @accountant_or_admin_required
 def edit(id):
     """Edit sales invoice (only drafts can be edited)."""
-    invoice = SalesInvoice.query.get_or_404(id)
+    invoice = _get_invoice_or_404(id)
 
     # Only drafts can be edited
     if invoice.status != 'draft':
@@ -479,7 +493,7 @@ def edit(id):
 @accountant_or_admin_required
 def post(id):
     """Post sales invoice (makes it final and immutable)."""
-    invoice = SalesInvoice.query.get_or_404(id)
+    invoice = _get_invoice_or_404(id)
 
     if invoice.status not in ('draft', 'sent'):
         flash('Only draft or sent invoices can be posted.', 'error')
@@ -585,7 +599,7 @@ def _create_invoice_void_je(invoice, reversal_date, user_id):
 @accountant_or_admin_required
 def send(id):
     """Mark a draft invoice as sent to customer."""
-    invoice = SalesInvoice.query.get_or_404(id)
+    invoice = _get_invoice_or_404(id)
 
     if invoice.status != 'draft':
         flash('Only draft invoices can be marked as sent.', 'error')
@@ -620,7 +634,7 @@ def void(id):
     """Void a posted sales invoice and create reversal journal entry."""
     from flask import current_app
     from app.errors.utils import log_exception
-    invoice = SalesInvoice.query.get_or_404(id)
+    invoice = _get_invoice_or_404(id)
 
     if invoice.status != 'posted':
         flash('Only posted invoices with no payments can be voided.', 'error')
@@ -677,7 +691,7 @@ def void(id):
 @accountant_or_admin_required
 def cancel(id):
     """Cancel sales invoice."""
-    invoice = SalesInvoice.query.get_or_404(id)
+    invoice = _get_invoice_or_404(id)
 
     if invoice.status == 'cancelled':
         flash('Invoice is already cancelled.', 'error')
@@ -714,7 +728,7 @@ def cancel(id):
 @accountant_or_admin_required
 def delete(id):
     """Delete sales invoice (only drafts can be deleted)."""
-    invoice = SalesInvoice.query.get_or_404(id)
+    invoice = _get_invoice_or_404(id)
 
     if invoice.status != 'draft':
         flash('Only draft invoices can be deleted.', 'error')

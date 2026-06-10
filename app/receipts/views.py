@@ -1,7 +1,7 @@
 """
 Receipt/Payment views for managing cash and bank transactions.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -30,6 +30,20 @@ def accountant_or_admin_required(f):
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+@receipts_bp.before_request
+def require_branch_selection():
+    if current_user.is_authenticated and not session.get('selected_branch_id'):
+        flash('Please select a branch to continue.', 'warning')
+        return redirect(url_for('users.select_branch'))
+
+
+def _get_receipt_or_404(id):
+    receipt = Receipt.query.get_or_404(id)
+    if receipt.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    return receipt
 
 
 def generate_receipt_number(transaction_type):
@@ -190,7 +204,7 @@ def create():
 @login_required
 def view(id):
     """View receipt/payment details."""
-    receipt = Receipt.query.get_or_404(id)
+    receipt = _get_receipt_or_404(id)
     return render_template('receipts/detail.html', receipt=receipt)
 
 
@@ -199,7 +213,7 @@ def view(id):
 @accountant_or_admin_required
 def edit(id):
     """Edit receipt/payment (only drafts can be edited)."""
-    receipt = Receipt.query.get_or_404(id)
+    receipt = _get_receipt_or_404(id)
 
     if receipt.status != 'draft':
         flash('Only draft receipts/payments can be edited.', 'error')
@@ -273,7 +287,7 @@ def edit(id):
 @accountant_or_admin_required
 def post(id):
     """Post receipt/payment (makes it final)."""
-    receipt = Receipt.query.get_or_404(id)
+    receipt = _get_receipt_or_404(id)
 
     if receipt.status != 'draft':
         flash('Only draft receipts/payments can be posted.', 'error')
@@ -310,7 +324,7 @@ def post(id):
 @accountant_or_admin_required
 def cancel(id):
     """Cancel receipt/payment."""
-    receipt = Receipt.query.get_or_404(id)
+    receipt = _get_receipt_or_404(id)
 
     if receipt.status == 'cancelled':
         flash('Receipt/payment is already cancelled.', 'error')
@@ -346,7 +360,7 @@ def cancel(id):
 @accountant_or_admin_required
 def delete(id):
     """Delete receipt/payment (only drafts can be deleted)."""
-    receipt = Receipt.query.get_or_404(id)
+    receipt = _get_receipt_or_404(id)
 
     if receipt.status != 'draft':
         flash('Only draft receipts/payments can be deleted.', 'error')
