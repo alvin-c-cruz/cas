@@ -426,4 +426,5 @@ def vendor_defaults(id):
             if wt.is_active
         ],
         'default_vat_category': vendor.default_vat_category,
+        'payment_terms': vendor.payment_terms or 'Net 30',
     })

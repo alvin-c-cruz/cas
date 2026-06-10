@@ -113,17 +113,18 @@ function buildWhtOptions(selectedId) {
 }
 
 function rebuildAllWhtSelects() {
+    const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
     lineItems.forEach(item => {
         const sel = document.querySelector(`#line-${item.id} .wht-select`);
         if (!sel) return;
         const prev = item.wt_id;
-        sel.innerHTML = buildWhtOptions(prev);
-        const stillValid = currentVendorWHTs.some(wt => wt.id == prev);
+        const stillValid = prev && currentVendorWHTs.some(wt => wt.id == prev);
         if (!stillValid) {
-            item.wt_id = null;
-            item.wt_rate = null;
-            sel.value = '';
+            item.wt_id = autoWht ? autoWht.id : null;
+            item.wt_rate = autoWht ? autoWht.rate : null;
         }
+        sel.innerHTML = buildWhtOptions(item.wt_id);
+        sel.value = item.wt_id || '';
     });
 }
 
@@ -138,6 +139,22 @@ function rebuildAllVatSelects() {
     calculateTotals();
 }
 
+function applyVendorTerms(terms) {
+    const termsField = document.getElementById('payment_terms');
+    if (termsField) termsField.value = terms;
+
+    const match = terms.match(/Net (\d+)/);
+    if (!match) return;
+    const days = parseInt(match[1]);
+    const billDateVal = document.getElementById('bill_date').value;
+    if (!billDateVal) return;
+    const due = new Date(billDateVal);
+    if (isNaN(due.getTime())) return;
+    due.setDate(due.getDate() + days);
+    const dueDateField = document.getElementById('due_date');
+    if (dueDateField) dueDateField.value = due.toISOString().split('T')[0];
+}
+
 document.getElementById('vendor_id').addEventListener('change', function () {
     const vendorId = this.value;
     if (!vendorId || vendorId == '0') return;
@@ -146,6 +163,7 @@ document.getElementById('vendor_id').addEventListener('change', function () {
         .then(data => {
             currentVendorWHTs = data.withholding_taxes || [];
             currentVendorVatCategory = data.default_vat_category || '';
+            applyVendorTerms(data.payment_terms || 'Net 30');
             rebuildAllWhtSelects();
             rebuildAllVatSelects();
             calculateTotals();
@@ -156,11 +174,16 @@ function addLineItem(existingItem) {
     lineCounter++;
     const item = existingItem
         ? { ...existingItem, id: lineCounter }
-        : {
-            id: lineCounter, description: '', quantity: 1.0, unit_cost: 0.00,
-            vat_category: currentVendorVatCategory || '', account_id: null,
-            wt_id: null, wt_rate: null, wt_amount: 0,
-          };
+        : (() => {
+            const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
+            return {
+                id: lineCounter, description: '', quantity: 1.0, unit_cost: 0.00,
+                vat_category: currentVendorVatCategory || '', account_id: null,
+                wt_id: autoWht ? autoWht.id : null,
+                wt_rate: autoWht ? autoWht.rate : null,
+                wt_amount: 0,
+            };
+          })();
 
     const row = document.createElement('tr');
     row.id = `line-${lineCounter}`;
