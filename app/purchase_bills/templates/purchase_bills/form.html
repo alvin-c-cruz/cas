@@ -13,8 +13,13 @@
         <form method="POST" novalidate id="billForm">
             {{ form.hidden_tag() }}
 
-            <!-- ① Vendor (2/3) + AP# / Voucher Date (1/3) -->
+            <!-- ① AP# / Voucher Date (1/3) + Vendor (2/3) -->
             <div class="vendor-header-row">
+                <div class="bill-id-fields header-fields{% if bill %} header-fields--active{% endif %}">
+                    {{ render_field(form.bill_number) }}
+                    {{ render_field(form.bill_date) }}
+                    {{ render_field(form.due_date) }}
+                </div>
                 <div id="vendorCard" class="vendor-step-card{% if bill %} vendor-step-card--done{% endif %}">
                     <div class="vendor-step-label" id="vendorCardLabel">
                         {% if bill %}✓ {{ bill.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
@@ -33,11 +38,6 @@
                     {% if form.vendor_id.errors %}
                     <div class="form-error">{{ form.vendor_id.errors[0] }}</div>
                     {% endif %}
-                </div>
-                <div class="bill-id-fields header-fields{% if bill %} header-fields--active{% endif %}">
-                    {{ render_field(form.bill_number) }}
-                    {{ render_field(form.bill_date) }}
-                    {{ render_field(form.due_date) }}
                 </div>
             </div>
 
@@ -439,7 +439,7 @@ initItems();
 }
 
 /* Grid helpers */
-.vendor-header-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+.vendor-header-row { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; align-items: start; margin-bottom: 16px; }
 .bill-id-fields { display: flex; flex-direction: column; gap: 10px; }
 .bill-id-fields .form-group { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
 .bill-id-fields .form-group .form-label { white-space: nowrap; margin-bottom: 0; min-width: 90px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
