@@ -209,3 +209,33 @@ class TestAccess:
         login(client, username='viewer', password='viewer123')
         resp = client.get('/purchase-bills')
         assert resp.status_code == 200
+
+
+class TestBranchScoping:
+    def test_cross_branch_detail_returns_404(self, client, db_session,
+                                             viewer_user, main_branch, branch_manila):
+        vendor = make_vendor(db_session, code='PVS-001', name='Scoping Vendor')
+        main_bill = make_bill(db_session, vendor, main_branch, 'PBS-001')
+        other_bill = make_bill(db_session, vendor, branch_manila, 'PBS-002')
+
+        viewer_user.set_branches([main_branch])
+        db_session.commit()
+        login(client, username='viewer', password='viewer123')
+
+        resp = client.get(f'/purchase-bills/{main_bill.id}')
+        assert resp.status_code == 200
+
+        resp = client.get(f'/purchase-bills/{other_bill.id}')
+        assert resp.status_code == 404
+
+    def test_cross_branch_edit_returns_404(self, client, db_session,
+                                           accountant_user, main_branch, branch_manila):
+        vendor = make_vendor(db_session, code='PVS-002', name='Scoping Vendor 2')
+        other_bill = make_bill(db_session, vendor, branch_manila, 'PBS-011', status='draft')
+
+        login(client, username='accountant', password='accountant123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+
+        resp = client.get(f'/purchase-bills/{other_bill.id}/edit')
+        assert resp.status_code == 404

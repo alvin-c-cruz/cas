@@ -1,7 +1,7 @@
 """
 Purchase Bill views for managing supplier invoices and expenses.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort
 from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy.orm import selectinload
@@ -40,6 +40,13 @@ def accountant_or_admin_required(f):
 VALID_BILL_STATUSES = {'draft', 'posted', 'partially_paid', 'paid', 'voided', 'cancelled'}
 
 
+@purchase_bills_bp.before_request
+def require_branch_selection():
+    if current_user.is_authenticated and not session.get('selected_branch_id'):
+        flash('Please select a branch to continue.', 'warning')
+        return redirect(url_for('users.select_branch'))
+
+
 def generate_bill_number():
     """
     Generate next bill number in format: PB-YYYY-####
@@ -63,6 +70,13 @@ def generate_bill_number():
         next_num = 1
 
     return f'{prefix}{next_num:04d}'
+
+
+def _get_bill_or_404(id):
+    bill = PurchaseBill.query.get_or_404(id)
+    if bill.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    return bill
 
 
 def _filtered_bills_query(include_ids=False):
@@ -365,7 +379,7 @@ def create():
 @login_required
 def view(id):
     """View purchase bill details."""
-    bill = PurchaseBill.query.get_or_404(id)
+    bill = _get_bill_or_404(id)
     return render_template('purchase_bills/detail.html', bill=bill)
 
 
@@ -374,7 +388,7 @@ def view(id):
 @accountant_or_admin_required
 def edit(id):
     """Edit purchase bill (only drafts can be edited)."""
-    bill = PurchaseBill.query.get_or_404(id)
+    bill = _get_bill_or_404(id)
 
     if bill.status != 'draft':
         flash('Only draft bills can be edited.', 'error')
@@ -492,7 +506,7 @@ def edit(id):
 @accountant_or_admin_required
 def post(id):
     """Post purchase bill (makes it final)."""
-    bill = PurchaseBill.query.get_or_404(id)
+    bill = _get_bill_or_404(id)
 
     if bill.status != 'draft':
         flash('Only draft bills can be posted.', 'error')
@@ -529,7 +543,7 @@ def post(id):
 @accountant_or_admin_required
 def cancel(id):
     """Cancel purchase bill."""
-    bill = PurchaseBill.query.get_or_404(id)
+    bill = _get_bill_or_404(id)
 
     if bill.status == 'cancelled':
         flash('Bill is already cancelled.', 'error')
@@ -655,7 +669,7 @@ def void(id):
     """Void a posted purchase bill and create reversal journal entry."""
     from flask import current_app
     from app.errors.utils import log_exception
-    bill = PurchaseBill.query.get_or_404(id)
+    bill = _get_bill_or_404(id)
 
     if bill.status != 'posted':
         flash('Only posted bills with no payments can be voided.', 'error')
@@ -712,7 +726,7 @@ def void(id):
 @accountant_or_admin_required
 def delete(id):
     """Delete purchase bill (only drafts can be deleted)."""
-    bill = PurchaseBill.query.get_or_404(id)
+    bill = _get_bill_or_404(id)
 
     if bill.status != 'draft':
         flash('Only draft bills can be deleted.', 'error')
