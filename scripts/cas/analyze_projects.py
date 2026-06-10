@@ -106,6 +106,38 @@ class ProjectAnalyzer:
             "total_lines": loc + blank + comment
         }
 
+    def find_routes(self) -> List[str]:
+        """Find routes/endpoints by grepping for Flask, Express, Django patterns."""
+        routes = []
+
+        for root, dirs, files in os.walk(self.project_path):
+            dirs[:] = [d for d in dirs if d not in self.EXCLUDE_DIRS]
+
+            for file in files:
+                if not (file.endswith(".py") or file.endswith(".js")):
+                    continue
+
+                file_path = Path(root) / file
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+
+                        # Flask patterns: @app.route, @bp.route, @[name].route
+                        flask_routes = re.findall(r'@[\w.]+\.route\(["\']([^"\']+)', content)
+                        routes.extend(flask_routes)
+
+                        # Express patterns: app.get, app.post, router.get, etc.
+                        express_routes = re.findall(r'(?:app|router)\.(?:get|post|put|delete|patch)\(["\']([^"\']+)', content)
+                        routes.extend(express_routes)
+
+                        # Django patterns: path(...), url(...)
+                        django_routes = re.findall(r'(?:path|url)\(["\']([^"\']+)', content)
+                        routes.extend(django_routes)
+                except Exception:
+                    pass
+
+        return sorted(list(set(routes)))  # Deduplicate and sort
+
     def analyze(self) -> Dict:
         """Run full analysis on project."""
         return {
@@ -114,6 +146,7 @@ class ProjectAnalyzer:
             "type": self.detect_type(),
             "files": self.count_files(),
             "loc": self.count_loc(),
+            "routes": self.find_routes(),
         }
 
 
@@ -134,10 +167,14 @@ def main():
         result = analyzer.analyze()
         files = result["files"]
         loc = result["loc"]
+        routes = result["routes"]
 
         print(f"{result['name']} ({result['type']})")
         print(f"  Files: {files['total']} total, {files['source']} source")
-        print(f"  LOC: {loc['loc']} lines, {loc['blank']} blank, {loc['comment']} comment")
+        print(f"  LOC: {loc['loc']} lines")
+        print(f"  Routes: {len(routes)} found")
+        if routes:
+            print(f"    Sample: {', '.join(routes[:3])}")
         print()
 
 
