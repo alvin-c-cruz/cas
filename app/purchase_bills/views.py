@@ -510,7 +510,6 @@ def create():
             return redirect(url_for('purchase_bills.view', id=bill.id))
 
         except Exception as e:
-            from flask import current_app
             from app.errors.utils import log_exception
             current_app.logger.error(f"Error creating purchase bill", exc_info=True)
             log_exception(e, severity='ERROR', module='purchase_bills.create')
@@ -688,7 +687,6 @@ def edit(id):
             return redirect(url_for('purchase_bills.view', id=bill.id))
 
         except Exception as e:
-            from flask import current_app
             from app.errors.utils import log_exception
             current_app.logger.error(f"Error updating purchase bill", exc_info=True)
             log_exception(e, severity='ERROR', module='purchase_bills.update')
@@ -753,7 +751,6 @@ def post(id):
 
         flash(f'AP Voucher "{bill.bill_number}" posted successfully!', 'success')
     except Exception as e:
-        from flask import current_app
         from app.errors.utils import log_exception
         current_app.logger.error(f"Error posting purchase bill", exc_info=True)
         log_exception(e, severity='ERROR', module='purchase_bills.post')
@@ -768,7 +765,6 @@ def post(id):
 @accountant_or_admin_required
 def cancel(id):
     """Cancel a posted purchase bill and create a reversal journal entry."""
-    from flask import current_app
     from app.errors.utils import log_exception
     bill = _get_bill_or_404(id)
 
@@ -1116,7 +1112,6 @@ def void(id):
 
         flash(f'AP Voucher "{bill.bill_number}" voided.', 'warning')
     except Exception as e:
-        from flask import current_app
         from app.errors.utils import log_exception
         db.session.rollback()
         current_app.logger.error('Error voiding purchase bill', exc_info=True)
