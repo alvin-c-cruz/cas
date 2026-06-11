@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | Claude + Alvin | In progress | First run. **Phases 0–2 complete**; ⏸ gates signed off 2026-06-12 (9 COA accounts w/ hierarchy, 4 VAT categories incl. INV, 3 WHT codes, vendor MOS). **Phase 3:** scenario 19 PASS — AP-2026-06-0001 draft (numbering ✓, computations exact ✓, picker groups disabled ✓, attachment upload/preview/download ✓, negatives ✓ after B-013 fix). B-014 logged (input VAT hardcoded to 10501 — design). Resume at: scenario 20 (attachment security negatives). Open: B-004, B-005, B-011, B-014. |
+| 2026-06-11 | Claude + Alvin | In progress | First run. **Phases 0–2 complete**; ⏸ gates signed off 2026-06-12 (9 COA accounts w/ hierarchy, 4 VAT categories incl. INV, 3 WHT codes, vendor MOS). **Phase 3:** 19 PASS (AP-2026-06-0001 draft; computations exact; B-013 found+fixed; B-014 logged — input VAT hardcoded to 10501). 20 PASS (.svg/.exe rejected with flash; 17 MB → 413; anonymous → login redirect; cross-branch → 404 incl. scenario-10 deferred re-verify). Resume at: scenario 21 (edit APV as msantos). Open: B-004, B-005, B-011, B-014. |
 
 ## 3. Preconditions
 
@@ -1178,7 +1178,7 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 | Filename | Type | Size | Used in | Outcome |
 |----------|------|------|---------|---------|
 | test-vendor-invoice.png | image (.png) | 1.0 KB (1,064 bytes) | Scenario 19 | Deleted on void (22) |
-| | .svg | | Scenario 20 | Rejected |
-| | .exe | | Scenario 20 | Rejected |
-| | > 16 MB | | Scenario 20 | Rejected |
+| bad-test.svg | .svg | 76 B | Scenario 20 | Rejected — 'File type ".svg" is not allowed' flash |
+| bad-test.exe | .exe | 204 B | Scenario 20 | Rejected — 'File type ".exe" is not allowed' flash |
+| big-test.png | .png, 17 MB | 17,825,792 B | Scenario 20 | Rejected — HTTP 413 (16 MB `MAX_CONTENT_LENGTH`); raw error page in dev because global error handlers are disabled |
 | | image | | Scenario 23/24b | Retained on cancel |
