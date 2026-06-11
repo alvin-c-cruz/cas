@@ -581,7 +581,7 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 1. Queue up pending requests: have one accountant submit 1 COA request (`/accounts/create`), 1 VAT request (`/vat-categories/create` — ⏸ gate, see scenario 16; you may reuse its approved data and submit it here), and 1 WHT request (`/withholding-tax/create` — ⏸ gate, see scenario 17). (If you prefer, run 16/17 first and return here while their requests are pending.)
 2. As the other accountant (or `admin`), verify the sidebar **badge count equals the number of pending requests** and updates after each approve/reject (page reload acceptable).
 3. Open `http://127.0.0.1:5000/action-items`. For **each** item verify: request type (AccountChange / VATChange / WTChange), change type (create/update/delete), record identifier (code), proposed values/description, requester username, timestamp, and a working **review link**.
-   > **Note (code reality):** the COA item's review link points to `/accounts/review-change-request/<id>`, but no such route exists in `app/accounts/views.py` (review actions live at `/accounts/pending-approvals`). If the link 404s, log a bug. VAT/WHT links (`/vat-categories/change-requests/<id>/review`, `/withholding-tax/change-requests/<id>/review`) should work.
+   > **Note (updated 2026-06-11, B-007):** the COA review link previously pointed to a dead route; fixed in `724dcad` — COA items now link to `/accounts/pending-approvals`. VAT/WHT links (`/vat-categories/change-requests/<id>/review`, `/withholding-tax/change-requests/<id>/review`) work. Each item must also show the **reason for change** (B-006c).
 4. Approve one item and reject another **with notes** from their review pages.
 5. As the `viewer`-style negative: confirm a non-accountant cannot reach the pending content (already covered in scenario 9 — re-verify quickly).
 6. Clarity question to answer explicitly: **could a reviewer decide from this page alone**, without opening other modules?
@@ -614,14 +614,14 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 3. Confirm flash "Account update request rejected." and that the underlying account is **unchanged**.
 4. As the requester, verify they can see the rejection and the notes (pending-approvals/history list, and notification if present).
 5. Check `/audit-log` for the rejection entry.
-   > **Note (code reality):** the documented convention is rejections log `action='reject'`. The **accounts** module instead logs `action=<change_type>` (e.g., `update`) with notes "Rejected by <user>: <reason>" (`app/accounts/views.py:551-602`); VAT and WHT reviews do log `action='reject'`. Verify the entry exists either way and log the convention mismatch as a bug.
+   > **Note (updated 2026-06-11):** the accounts module previously logged rejections as `action=<change_type>`; fixed in `d5f1913` — all three modules now log `action='reject'` per convention. Expect `action='reject'` everywhere.
 
 **Expected Result:** Request → rejected with notes; record untouched; audit entry present; requester informed.
 
 **Pass Criteria:**
 - [ ] Reject requires/accepts notes; status becomes `rejected`
 - [ ] Target account unchanged after rejection
-- [ ] Audit entry for the rejection exists (record actual `action` value; mismatch vs `reject` → Bug Log)
+- [ ] Audit entry for the rejection exists with `action='reject'`
 - [ ] Requester can see rejection + notes
 
 **UX Review:**
@@ -1070,7 +1070,8 @@ Fill in during the run (verdicts: Clear / Needs hint / Confusing).
 | B-003 | 3 | High | No Company Settings UI existed; `set_setting()` wrote no audit entry. Feature built at `/settings` with audit logging, sidebar branding, logo upload (commits `68e729b`, `766161d`). | Fixed 2026-06-11 |
 | B-004 | 1 | Low | `login_success` audit rows have `user_id = NULL` (identifier recorded, FK not set). | Open |
 | B-005 | Baseline | Medium | Sidebar report links (Income Statement, Balance Sheet, Cash Flow, Trial Balance, Aging AR/AP, VAT Reports, WHT, Annual ITR, General Ledger, Customers) all point to placeholder `/customers/customers`. | Open |
-| B-006 | 16 (user-reported) | High | Master-data change requests (COA/VAT/WHT): (a) no clear feedback that a change request was submitted — user unknowingly submitted the same VAT change **twice**, both queued in Action Items; (b) no duplicate-pending-request guard; (c) no "reason for change" field for the reviewer. | Open |
+| B-006 | 16 (user-reported) | High | Master-data change requests (COA/VAT/WHT): (a) no clear feedback that a change request was submitted — user unknowingly submitted the same VAT change **twice**, both queued in Action Items; (b) no duplicate-pending-request guard; (c) no "reason for change" field for the reviewer. Fixed: required reason field (+`request_reason` column, migration `ec961ef9cd13`), duplicate-pending block, standard "pending review" flash, pending badges on lists, reason shown to reviewers (commits `724dcad`, `d5f1913`). | Fixed 2026-06-11 |
+| B-007 | 14 (found during B-006) | Medium | Dashboard COA action items referenced nonexistent model attributes and a dead review route (`/accounts/review-change-request/<id>`); VAT/WHT auto-approve paths wrote no audit entries; COA approve used `confirm()`; COA reject modal lacked CSRF. All fixed in `724dcad`. | Fixed 2026-06-11 |
 
 ## 10. Appendix: Test Data
 
