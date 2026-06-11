@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | | In progress | First run |
+| 2026-06-11 | Claude + Alvin | In progress | First run. Done: Baseline, 1, 2, 3, 3b, 4, 5, 6, 6b (all PASS after fixes B-001..B-008). Resume at: 6b final check (msantos logs in after unlock), then scenario 7 (Branch CRUD). Test data so far in Appendix; user `msantos` active, viewer, no branch yet. |
 
 ## 3. Preconditions
 
@@ -1082,9 +1082,22 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 
 | Username | Email | Role (final) | Notes |
 |----------|-------|--------------|-------|
-| admin | | admin | Seeded |
-| | | accountant | Registered scenario 5, promoted 10b |
+| admin | admin@cas.local | admin | Seeded |
+| msantos | maria.santos@alvincruzaccounting.ph | accountant | Full name "Maria L. Santos". Registered scenario 5, promoted 10b |
 | | | accountant | Registered scenario 13 |
+
+### Company Settings (scenario 3)
+
+| Key | Value |
+|-----|-------|
+| Company name | Alvin Cruz Accounting Services |
+| Trade name | ACAS |
+| TIN / branch code / RDO | 123-456-789 / 000 / 049 → changed to 050 in 3b |
+| VAT registration | VAT |
+| Address | Unit 5, 123 Rizal Street, Poblacion, Makati City, Metro Manila |
+| Postal / phone / email | 1210 / (02) 8123-4567 → changed to (02) 8765-4321 in 3b / info@alvincruzaccounting.ph |
+| Officers | Pres: Alvin C. Cruz; Treas: Maria L. Santos; Sec: Jose P. Dela Cruz |
+| Fiscal year start | January (01) |
 
 ### Branches
 
