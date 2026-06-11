@@ -1,0 +1,113 @@
+/* purchase_bills_form.css — styles specific to the purchase bill create/edit form */
+
+/* ── Vendor step card ────────────────────────────────────────────────────── */
+.vendor-step-card {
+    border: 2px solid var(--amber, #f59e0b);
+    background: #fffbeb;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+.vendor-step-card--done {
+    border-color: var(--green, #22c55e);
+    background: var(--card);
+}
+.right-col .vendor-step-card { margin-bottom: 0; }
+.vendor-step-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #92400e;
+    margin-bottom: 10px;
+    transition: color 0.2s ease;
+}
+.vendor-step-card--done .vendor-step-label { color: var(--text-2); }
+.vendor-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 0; }
+.vendor-badge {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* ── Header field dimming ─────────────────────────────────────────────────── */
+.header-fields {
+    opacity: 0.65;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+.header-fields--active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* ── Line items locked placeholder ───────────────────────────────────────── */
+.line-items-locked {
+    border: 2px dashed var(--amber, #f59e0b);
+    background: #fffbeb;
+    border-radius: 8px;
+    padding: 40px 24px;
+    text-align: center;
+    margin-top: 24px;
+}
+.line-items-locked--hidden { display: none; }
+
+/* ── Totals override buttons ─────────────────────────────────────────────── */
+.totals-pencil {
+    background: none; border: none; cursor: pointer;
+    font-size: 12px; opacity: 0.35; padding: 0; transition: opacity 0.15s;
+}
+.totals-pencil:hover { opacity: 0.9; }
+.totals-pencil:focus-visible { opacity: 0.9; outline: 2px solid var(--blue); outline-offset: 2px; }
+.totals-revert {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 3px;
+    cursor: pointer; font-size: 11px; padding: 1px 5px; color: var(--text-2);
+}
+.totals-revert:hover { background: var(--border); }
+
+/* ── VAT/WT override input ───────────────────────────────────────────────── */
+.bsr-input {
+    width: 110px; text-align: right; font-family: var(--mono);
+    font-size: 13px; border: 1px solid var(--blue); border-radius: 4px; padding: 3px 7px;
+}
+
+/* ── Bill Summary panel ──────────────────────────────────────────────────── */
+.bill-summary-panel {
+    background: var(--bg);
+    padding: 20px;
+    border-radius: 6px;
+    min-width: 320px;
+}
+
+/* ── Line items table ────────────────────────────────────────────────────── */
+#lineItemsTable { border-collapse: collapse; }
+#lineItemsTable thead th {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 5px 6px;
+    color: var(--text-2); background: var(--bg);
+}
+#lineItemsTable tbody tr { border-bottom: 1px solid var(--border); }
+#lineItemsTable tbody td { padding: 2px 3px; vertical-align: middle; }
+#lineItemsTable tbody td .form-control {
+    padding: 3px 6px; height: 28px; font-size: 13px;
+    border-color: transparent; background: transparent; border-radius: 2px;
+}
+#lineItemsTable tbody td .form-control:hover {
+    border-color: var(--border); background: var(--card);
+}
+#lineItemsTable tbody td .form-control:focus {
+    border-color: var(--blue); background: var(--card); border-radius: 3px;
+}
+
+/* ── Save Draft hint ─────────────────────────────────────────────────────── */
+#saveHint {
+    font-size: 12px;
+    color: var(--red, #ef4444);
+    margin: 6px 0 0;
+    min-height: 18px;
+}
