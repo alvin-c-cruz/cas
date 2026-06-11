@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | Claude + Alvin | In progress | First run. **Phases 0–2 complete**; ⏸ gates signed off 2026-06-12 (9 COA accounts w/ hierarchy, 4 VAT categories incl. INV, 3 WHT codes, vendor MOS). **Phase 3:** 19 PASS (AP-2026-06-0001 draft; computations exact; B-013 found+fixed; B-014 logged). 20 PASS (.svg/.exe/413 rejected; anonymous → login; cross-branch → 404). 21 PASS (edit audited old→new; attachment delete removes disk file + re-upload; hints visible). 22 PASS after B-015 fix. 23 PASS after B-016 fix (numbering reissued voided 0001 → unique collision; now burned); post blocked without vendor invoice #/date then posts. 24 PASS (immutability: no edit/void/post buttons when posted; direct /edit + attachment upload blocked; "Approve" N/A — no approve flow exists). B-017 + B-018 found & fixed (dashboard used hardcoded 4%/5% code prefixes; draft APV JEs were status=posted → drafts polluted GL). Resume at: 24b (cancel APV-0003, attachment retention). Open: B-004, B-005, B-011, B-014. |
+| 2026-06-11 | Claude + Alvin | In progress | First run. **Phases 0–2 complete**; ⏸ gates signed off 2026-06-12 (9 COA accounts w/ hierarchy, 4 VAT categories incl. INV, 3 WHT codes, vendor MOS). **Phase 3:** 19 PASS (AP-2026-06-0001 draft; computations exact; B-013 found+fixed; B-014 logged). 20 PASS (.svg/.exe/413 rejected; anonymous → login; cross-branch → 404). 21 PASS (edit audited old→new; attachment delete removes disk file + re-upload; hints visible). 22 PASS after B-015 fix. 23 PASS after B-016 fix. 24 PASS (immutability; "Approve" N/A — no approve flow). B-017+B-018 found & fixed. 24b PASS (cancel: reversal JE CANCEL-AP-…-0003, attachments RETAINED on disk, audited with reason). 25 PASS (QC: payables ₱5,550/1 bill — cancelled excluded; expenses ₱5,000 net of reversal; Main branch all zeros; matches empty baseline + B-001 charts working). 26 PASS (audit UI filters work; **full reconciliation exact** — accounts 13 CRs ↔ 25 create + 1 reject rows; VAT 4↔8; WHT 3↔6; bills 3 ↔ create3/update3/post2/void1/cancel1; JE writes covered via parent bill events — noted). **RUN 1 COMPLETE: 30/30 scenarios PASS** after fixes B-001..B-018. Open: B-004, B-005, B-011, B-014 (input-VAT mapping deferred per owner 2026-06-12). |
 
 ## 3. Preconditions
 
@@ -1174,8 +1174,8 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 | Number | Date | Lines (desc / amount / VAT / WHT) | VAT amt | WHT amt | Net payable | Final status |
 |--------|------|-----------------------------------|---------|---------|-------------|--------------|
 | AP-2026-06-0001 | 2026-06-12 (due 2026-06-27, Net 15) | L1 "Bond paper and toner cartridges" / 2,240.00 VAT-incl / V12 / WC158 → 60101; L2 "Delivery fee" / 560.00 VAT-incl / V12 / none → 60101 | 300.00 | 20.00 | 2,780.00 (gross 2,800.00, net of VAT 2,500.00) | Voided (scenario 22) |
-| AP-____-__-0002 | | | | | | Posted (scenarios 23–25) |
-| AP-____-__-0003 | | | | | | Cancelled (scenario 24b) |
+| AP-2026-06-0002 | 2026-06-12 | "A4 copier paper, 50 reams" / 5,600.00 VAT-incl / V12 / WC158 → 60101. Vendor invoice SI-78421 dated 2026-06-10 | 600.00 | 50.00 | 5,550.00 | Posted (scenarios 23–25) |
+| AP-2026-06-0003 | 2026-06-12 | "Toner cartridges bulk order" / 1,120.00 VAT-incl / V12 / WC158 → 60101. Vendor invoice SI-78502 dated 2026-06-11 | 120.00 | 10.00 | 1,110.00 | Cancelled (scenario 24b); reversal JE-2026-0003; attachment retained |
 
 ### Attachment Files
 
@@ -1185,4 +1185,4 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 | bad-test.svg | .svg | 76 B | Scenario 20 | Rejected — 'File type ".svg" is not allowed' flash |
 | bad-test.exe | .exe | 204 B | Scenario 20 | Rejected — 'File type ".exe" is not allowed' flash |
 | big-test.png | .png, 17 MB | 17,825,792 B | Scenario 20 | Rejected — HTTP 413 (16 MB `MAX_CONTENT_LENGTH`); raw error page in dev because global error handlers are disabled |
-| | image | | Scenario 23/24b | Retained on cancel |
+| test-vendor-invoice.png (re-used) | image (.png) | 1,064 B | Scenario 24b (on AP-2026-06-0003) | Retained on cancel — verified on disk after cancellation |
