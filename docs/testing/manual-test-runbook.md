@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | Claude + Alvin | In progress | First run. Phases 0–1 complete; Phase 2: 11–15 PASS (B-006 regressions pass; B-011 confirmed/logged; B-012 found+fixed). Users: msantos (accountant, QC), jreyes (accountant, Main). Accounts: 20101, 60101, 10101 approved; 10102 rejected (reject-flow test). ⏸ PAUSED at gates: gated COA hierarchy accounts (10500/10501, 20300/20301) + scenario 16 VAT + 17 WHT await product-owner sign-off; then 18 (vendor) and Phase 3. |
+| 2026-06-11 | Claude + Alvin | In progress | First run. **Phases 0–2 complete** (Baseline, 1–18 all PASS after fixes B-001..B-012; B-004/B-005/B-011 open). ⏸ gates signed off 2026-06-12: 9 COA accounts (hierarchy verified: groups non-postable + excluded from counts, children indented; screenshot coa-hierarchy-final.png), 3 VAT categories, 3 WHT codes — all via change-request workflow (jreyes/msantos cross-approving). Vendor MOS created+edited (scenario 18). Resume at: **Phase 3 scenario 19** (Enter APV draft as msantos in QC). |
 
 ## 3. Preconditions
 
@@ -1127,29 +1127,37 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 | 60101 | Office Supplies Expense | Expense | Scenario 12 (sole-accountant path; went pending per B-011, approved by admin) |
 | 10101 | Cash on Hand | Asset | Scenario 13 (multi-accountant path; msantos requested, jreyes approved; self-approval blocked at UI) |
 | 10102 | Petty Cash Fund | Asset (NOT created) | Scenario 15 reject-flow test: msantos requested, jreyes REJECTED with notes; account intentionally does not exist |
-| 10500 | Input VAT | Asset (group) | Scenario 11–13 (⏸ gated). Parent of 10501 — hierarchy test |
-| 10501 | Input VAT - Current | Asset (leaf, child of 10500) | Scenario 11–13 (⏸ gated) |
-| 20300 | WHT Payable | Liability (group) | Scenario 11–13 (⏸ gated). Parent of 20301 — hierarchy test |
-| 20301 | WHT Payable - Expanded | Liability (leaf, child of 20300) | Scenario 11–13 (⏸ gated) |
+| 10500 | Input VAT | Asset (group) | ⏸ approved 2026-06-12. Parent group — hierarchy test |
+| 10501 | Input VAT - Capital Goods | Asset (child of 10500) | ⏸ approved 2026-06-12. (EOPT Act: capital-goods input VAT now claimable outright) |
+| 10502 | Input VAT - Domestic Goods | Asset (child of 10500) | ⏸ approved 2026-06-12 |
+| 10503 | Input VAT - Services | Asset (child of 10500) | ⏸ approved 2026-06-12 |
+| 10504 | Input VAT - Importation | Asset (child of 10500) | ⏸ approved 2026-06-12 |
+| 10505 | Excess Input Tax Carry-Over | Asset (child of 10500) | ⏸ approved 2026-06-12. Deductible against future VAT payable |
+| 10506 | Deferred Input Tax | Asset (child of 10500) | ⏸ approved 2026-06-12. Legacy balances from pre-EOPT >₱1M capital assets |
+| 20300 | Withholding Tax Payable | Liability (group) | ⏸ approved 2026-06-12. Parent group — hierarchy test. Name spelled out per sign-off |
+| 20301 | Withholding Tax Payable - Expanded | Liability (child of 20300) | ⏸ approved 2026-06-12 |
 
 ### VAT Categories
 
 | Code | Name | Rate % | Created in |
 |------|------|--------|-----------|
-| | | | Scenario 16 (⏸ gated) |
-| | | | |
+| V12 | VAT 12% | 12.00 | Scenario 16 (⏸ approved 2026-06-12) |
+| V0 | VAT Zero-Rated | 0.00 | Scenario 16 (⏸ approved 2026-06-12) |
+| VEX | VAT Exempt | 0.00 | Scenario 16 (⏸ approved 2026-06-12) |
 
 ### WHT Codes
 
 | Code | Name | Rate % | Created in |
 |------|------|--------|-----------|
-| | | | Scenario 17 (⏸ gated) |
+| WC158 | Withholding Tax - Goods | 1.00 | Scenario 17 (⏸ approved 2026-06-12; names spell out "Withholding Tax" per sign-off) |
+| WC160 | Withholding Tax - Services | 2.00 | Scenario 17 (⏸ approved 2026-06-12) |
+| WC100 | Withholding Tax - Rentals | 5.00 | Scenario 17 (⏸ approved 2026-06-12) |
 
 ### Vendor
 
 | Code | Name | TIN | Terms | Created in |
 |------|------|-----|-------|-----------|
-| | | | | Scenario 18 |
+| MOS | Mega Office Supplies Co. | 987-654-321-000 | Net 30 → edited to Net 15 | Scenario 18. Contact Liza Manalo, (02) 8455-7788, sales@megaofficesupplies.ph, 17 Kamias Road QC 1102; default VAT "VAT 12%"; WHT WC158 (Goods 1%) |
 
 ### APV Documents
 
