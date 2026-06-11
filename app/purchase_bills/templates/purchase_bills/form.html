@@ -24,8 +24,20 @@
                     {{ render_field(form.bill_date) }}
                     {{ render_field(form.due_date) }}
                     {{ render_field(form.payment_terms) }}
-                    {{ render_field(form.vendor_invoice_number) }}
-                    {{ render_field(form.vendor_invoice_date) }}
+                    <div class="form-group">
+                        {{ form.vendor_invoice_number.label(class='form-label') }}
+                        <div style="flex:1; display:flex; flex-direction:column;">
+                            {{ form.vendor_invoice_number(id='vendor_invoice_number', class='form-control', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                            <p id="invNumHint" style="font-size:11px; margin:2px 0 0; color:var(--yellow, #d97706);">Required to post</p>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        {{ form.vendor_invoice_date.label(class='form-label') }}
+                        <div style="flex:1; display:flex; flex-direction:column;">
+                            {{ form.vendor_invoice_date(id='vendor_invoice_date', class='form-control', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                            <p id="invDateHint" style="font-size:11px; margin:2px 0 0; color:var(--yellow, #d97706);">Required to post</p>
+                        </div>
+                    </div>
                     {{ render_field(form.reference) }}
                 </div>
                 <!-- Right 2/3: vendor card + notes -->
@@ -579,16 +591,24 @@ function calculateTotals() {
 
 // ── Form validation gate ──────────────────────────────────────────────────────
 
+function updateInvoiceHints() {
+    const num  = document.getElementById('vendor_invoice_number');
+    const date = document.getElementById('vendor_invoice_date');
+    const numHint  = document.getElementById('invNumHint');
+    const dateHint = document.getElementById('invDateHint');
+    if (numHint)  numHint.style.visibility  = (num  && num.value.trim()) ? 'hidden' : 'visible';
+    if (dateHint) dateHint.style.visibility = (date && date.value)       ? 'hidden' : 'visible';
+}
+
 function validateForm() {
     const btn = document.getElementById('submitBtn');
     const hint = document.getElementById('saveHint');
     if (!btn || !hint) return;
 
+    updateInvoiceHints();
+
     function block(msg) { btn.disabled = true; hint.textContent = msg; }
     function allow()     { btn.disabled = false; hint.textContent = ''; }
-
-    const inv = document.getElementById('vendor_invoice_number');
-    if (!inv || !inv.value.trim()) { block('Enter the vendor invoice number.'); return; }
 
     if (lineItems.length === 0) { block('Add at least one line item.'); return; }
 
@@ -850,9 +870,11 @@ if (ptSel) {
     });
 }
 
-// Vendor invoice # triggers validation
+// Vendor invoice fields update hints live
 const _invInput = document.getElementById('vendor_invoice_number');
 if (_invInput) _invInput.addEventListener('input', validateForm);
+const _invDate = document.getElementById('vendor_invoice_date');
+if (_invDate) _invDate.addEventListener('change', validateForm);
 
 {% if bill %}
 const initVendorId = document.getElementById('vendor_id').value;
