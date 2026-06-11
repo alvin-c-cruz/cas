@@ -62,6 +62,7 @@ Each scenario ends with two qualitative checks. They are explained once here; th
 - Readable labels (clear field names, no truncation, sensible casing)
 - Sensible empty states (helpful message + call-to-action, not a bare table)
 - No broken styling (missing CSS, unstyled buttons, broken icons)
+- **Regression (B-002):** every flash message appears **exactly once** (the app previously double-rendered flashes on ~42 pages)
 - UX notes: ___ (free text)
 
 **Workflow Clarity** — could a **first-time user** figure out the next action without help? Consider visible buttons, hints, flash messages, and sidebar badges.
@@ -78,6 +79,7 @@ Right after the first login (scenario 1), open `http://127.0.0.1:5000/dashboard`
 - [ ] Payables total / count / overdue = 0
 - [ ] Top Customers and Top Vendors panels show a sensible empty state (no errors, no broken charts)
 - [ ] Revenue trend / expense breakdown charts render without errors on zero data
+- [ ] **Regression (B-001):** browser console shows no CSP/script-loading errors; Chart.js loads from `/static/chart.umd.min.js`, not a CDN
 - [ ] Screenshot saved as `dashboard-baseline.png` (or values recorded here): ___
 
 ## 7. Test Scenarios
@@ -144,7 +146,7 @@ Right after the first login (scenario 1), open `http://127.0.0.1:5000/dashboard`
 
 #### Scenario 3 — App Settings — initial setup
 
-> **Note (code reality):** No settings UI route currently exists in the codebase. `AppSettings` rows (`company_name`, `company_tin`, `company_address`, `fiscal_year_start`) are only created by `flask seed-db`, and the sole runtime setter is the JSON API `POST /api/environment` (admin-only, `environment` key only). There is also **no audit logging** on `AppSettings.set_setting()` (it records `updated_by`/`updated_at` on the row itself, but writes no `audit_log` entry). If no settings page exists at run time, log this scenario as a **bug/missing feature** in the Bug Log and record N/A for the steps below.
+> **Note (updated 2026-06-11):** The Company Settings page was built during the first run (Bug B-003). It lives at `/settings` (sidebar: Admin → Company Settings), admin-only, with sections: Company Identity (name, trade name), BIR Registration (TIN, branch code, RDO, VAT type), Address & Contact (address, postal code, phone, email), Company Officers (president, treasurer, secretary), Accounting (fiscal year start), and Logo upload. Saving writes **one** audit entry per save (`module='settings'`, `action='update'`) containing only the changed keys; the sidebar shows the saved company name and logo.
 
 **Goal:** Set initial company settings — company name, TIN, address, fiscal year start — and verify persistence + audit per setting.
 
@@ -160,8 +162,9 @@ Right after the first login (scenario 1), open `http://127.0.0.1:5000/dashboard`
 **Pass Criteria:**
 - [ ] Settings page reachable from navigation (or Bug logged)
 - [ ] All values persist after reload
-- [ ] Audit entry per setting write
+- [ ] One audit entry per save (`module='settings'`) listing only the changed keys
 - [ ] `updated_by` on each `app_settings` row = `admin`
+- [ ] Sidebar brand shows the saved company name
 
 **UX Review:**
 - [ ] Form layout, responsive, tokens, labels, validation messages
@@ -173,7 +176,7 @@ Right after the first login (scenario 1), open `http://127.0.0.1:5000/dashboard`
 
 #### Scenario 3b — App Settings — change
 
-> **Note (code reality):** Same gap as scenario 3 — execute only if a settings UI exists; otherwise N/A + Bug Log reference.
+> **Note (updated 2026-06-11):** Settings UI exists at `/settings` — see scenario 3 note. The audit entry for a change must contain **old → new values for only the changed keys**.
 
 **Goal:** Edit existing settings to new values; new values appear everywhere displayed; audit records old → new.
 
@@ -474,6 +477,8 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 > - A **sole accountant** auto-approves their own submissions instantly.
 > - With **≥2 accountants**, requests go pending and **self-approval is blocked** (`can_be_approved_by` rejects the requester).
 >
+> **B-006 checks apply to every change-request submission in this phase (COA, VAT, WHT):** (a) clear "submitted for approval" feedback, (b) duplicate-pending-submission guard, (c) reason-for-change captured and shown to the reviewer.
+>
 > **Note (code reality):** all three `can_auto_approve()` implementations (`app/accounts/views.py:29`, `app/vat_categories/views.py:32`, `app/withholding_tax/views.py:32`) return True when the count of active users with role **accountant OR admin** equals 1. Because the `admin` account is always active, the count is ≥2 throughout this run, so **auto-approval can never trigger** and **admins are not specially excluded**. This contradicts the documented rule ("sole accountant auto-approves; admins always pending"). Scenario 12 verifies this discrepancy explicitly.
 
 ---
@@ -645,6 +650,9 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 **Pass Criteria:**
 - [ ] ⏸ Sign-off recorded before any DB write
 - [ ] Submission produces pending request (no instant create)
+- [ ] **(B-006a)** Submission shows a clear confirmation that a change request is now pending review
+- [ ] **(B-006b)** Re-submitting the same change while one is pending is blocked or warned (no duplicate requests in Action Items)
+- [ ] **(B-006c)** Submission captures a "reason for change" visible to the reviewer
 - [ ] Peer approval creates the category with correct code/name/rate
 - [ ] Requester cannot review own request ("You cannot review your own change request.")
 - [ ] Audit entries for submission and approval
@@ -1057,7 +1065,12 @@ Fill in during the run (verdicts: Clear / Needs hint / Confusing).
 
 | # | Scenario | Severity | Description | Status |
 |---|----------|----------|-------------|--------|
-| | | | | |
+| B-001 | Baseline | High | Dashboard charts blank: CSP `script-src 'self'` blocked Chart.js CDN (`Chart is not defined`). Fixed by bundling `chart.umd.min.js` in `app/static/` (commit `e9ae7e1`). | Fixed 2026-06-11 |
+| B-002 | 3 (found) | Medium | Flash messages rendered **twice** on ~42 pages — feature templates called `render_flash_messages()` while `base.html` also renders globally. Per-template calls removed (commit `6d90996`). | Fixed 2026-06-11 |
+| B-003 | 3 | High | No Company Settings UI existed; `set_setting()` wrote no audit entry. Feature built at `/settings` with audit logging, sidebar branding, logo upload (commits `68e729b`, `766161d`). | Fixed 2026-06-11 |
+| B-004 | 1 | Low | `login_success` audit rows have `user_id = NULL` (identifier recorded, FK not set). | Open |
+| B-005 | Baseline | Medium | Sidebar report links (Income Statement, Balance Sheet, Cash Flow, Trial Balance, Aging AR/AP, VAT Reports, WHT, Annual ITR, General Ledger, Customers) all point to placeholder `/customers/customers`. | Open |
+| B-006 | 16 (user-reported) | High | Master-data change requests (COA/VAT/WHT): (a) no clear feedback that a change request was submitted — user unknowingly submitted the same VAT change **twice**, both queued in Action Items; (b) no duplicate-pending-request guard; (c) no "reason for change" field for the reviewer. | Open |
 
 ## 10. Appendix: Test Data
 
