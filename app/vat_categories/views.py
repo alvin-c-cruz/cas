@@ -56,7 +56,10 @@ def find_pending_request(vat_category_id=None, code=None):
     if vat_category_id is not None:
         return pending.filter(VATCategoryChangeRequest.vat_category_id == vat_category_id).first()
     if code is not None:
-        for req in pending.filter(VATCategoryChangeRequest.vat_category_id.is_(None)).all():
+        create_requests = pending.filter(
+            VATCategoryChangeRequest.vat_category_id.is_(None),
+            VATCategoryChangeRequest.action == 'create')
+        for req in create_requests.all():
             proposed = json.loads(req.proposed_data) if req.proposed_data else {}
             if proposed.get('code') == code:
                 return req

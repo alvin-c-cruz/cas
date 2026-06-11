@@ -415,6 +415,33 @@ class TestAccountChangeRequests:
         assert resp.status_code == 200
         assert b'Pending change' in resp.data
 
+    def test_reject_writes_audit_with_reject_action(self, client, db_session, two_reviewers):
+        # Request submitted by the accountant; admin rejects it
+        login(client)
+        account = make_account(db_session)
+        cr = AccountChangeRequest(
+            change_type='update', account_id=account.id,
+            change_data=json.dumps({'code': account.code, 'name': 'Renamed',
+                                    'account_type': 'Asset', 'normal_balance': 'debit'}),
+            requested_by=two_reviewers[1].username, requested_at=ph_now(),
+            status='pending', request_reason='test')
+        db_session.add(cr)
+        db_session.commit()
+
+        resp = client.post(f'/accounts/reject/{cr.id}',
+                           data={'rejection_reason': 'Not justified'},
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        assert cr.status == 'rejected'
+        assert cr.reviewed_by == two_reviewers[0].username
+
+        audit = AuditLog.query.filter_by(module='account', action='reject',
+                                         record_id=cr.id).first()
+        assert audit is not None
+        assert account.code in audit.record_identifier
+        assert audit.user_id == two_reviewers[0].id
+        assert 'Not justified' in audit.notes
+
     def test_pending_approvals_page_shows_reason(self, client, db_session, two_reviewers):
         login(client)
         account = make_account(db_session)

@@ -53,7 +53,10 @@ def find_pending_request(account_id=None, code=None):
     if account_id is not None:
         return pending.filter(AccountChangeRequest.account_id == account_id).first()
     if code is not None:
-        for req in pending.filter(AccountChangeRequest.account_id.is_(None)).all():
+        create_requests = pending.filter(
+            AccountChangeRequest.account_id.is_(None),
+            AccountChangeRequest.change_type == 'create')
+        for req in create_requests.all():
             if req.get_change_data().get('code') == code:
                 return req
     return None
@@ -646,7 +649,7 @@ def reject_request(request_id):
         # Audit log for rejection
         log_audit(
             module='account',
-            action=change_request.change_type,
+            action='reject',
             record_id=change_request.id,
             record_identifier=f'Change Request: {change_data.get("code")} - {change_data.get("name")}',
             old_values=change_data,

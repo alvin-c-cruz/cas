@@ -56,7 +56,10 @@ def find_pending_request(withholding_tax_id=None, code=None):
     if withholding_tax_id is not None:
         return pending.filter(WithholdingTaxChangeRequest.withholding_tax_id == withholding_tax_id).first()
     if code is not None:
-        for req in pending.filter(WithholdingTaxChangeRequest.withholding_tax_id.is_(None)).all():
+        create_requests = pending.filter(
+            WithholdingTaxChangeRequest.withholding_tax_id.is_(None),
+            WithholdingTaxChangeRequest.action == 'create')
+        for req in create_requests.all():
             proposed = json.loads(req.proposed_data) if req.proposed_data else {}
             if proposed.get('code') == code:
                 return req
