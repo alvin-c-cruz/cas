@@ -36,6 +36,66 @@ def _get_gl_accounts():
     }
 
 
+def _build_je_preview(bill):
+    """Return list of {code, name, debit, credit} dicts for the JE section.
+
+    For posted bills reads from the stored JournalEntry. For drafts,
+    computes the same entries the post route would create.
+    """
+    if bill.journal_entry:
+        return [
+            {
+                'code': line.account.code if line.account else '—',
+                'name': line.account.name if line.account else '—',
+                'debit': line.debit_amount,
+                'credit': line.credit_amount,
+            }
+            for line in bill.journal_entry.lines.all()
+        ]
+
+    accts = _get_gl_accounts()
+    entries = []
+
+    for item in bill.line_items:
+        if not item.account_id or not item.account:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entries.append({
+            'code': item.account.code if item.account else '—',
+            'name': item.account.name if item.account else '—',
+            'debit': net_base,
+            'credit': Decimal('0.00'),
+        })
+
+    vat_amount = Decimal(str(bill.vat_amount))
+    if vat_amount > 0 and accts['input_vat']:
+        entries.append({
+            'code': accts['input_vat'].code,
+            'name': accts['input_vat'].name,
+            'debit': vat_amount,
+            'credit': Decimal('0.00'),
+        })
+
+    wt_amount = Decimal(str(bill.withholding_tax_amount))
+    if wt_amount > 0 and accts['wt']:
+        entries.append({
+            'code': accts['wt'].code,
+            'name': accts['wt'].name,
+            'debit': Decimal('0.00'),
+            'credit': wt_amount,
+        })
+
+    if accts['ap']:
+        entries.append({
+            'code': accts['ap'].code,
+            'name': accts['ap'].name,
+            'debit': Decimal('0.00'),
+            'credit': Decimal(str(bill.total_amount)),
+        })
+
+    return entries
+
+
 def _get_all_accounts_for_select():
     """Return all active accounts with is_group and depth flags for the account picker.
     Group accounts (those with children) are shown but non-selectable per hierarchy rules.
@@ -456,7 +516,9 @@ def create():
 def view(id):
     """View purchase bill details."""
     bill = _get_bill_or_404(id)
-    return render_template('purchase_bills/detail.html', bill=bill)
+    je_entries = _build_je_preview(bill)
+    return render_template('purchase_bills/detail.html', bill=bill,
+                           je_entries=je_entries)
 
 
 @purchase_bills_bp.route('/purchase-bills/<int:id>/edit', methods=['GET', 'POST'])
