@@ -4,9 +4,6 @@
 {% block page_title %}AP Voucher - {{ bill.bill_number }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_flash_messages %}
-
-{{ render_flash_messages() }}
 
 {% for att in bill.attachments %}{% if att.is_image %}
 <div id="previewModal-{{ att.id }}"

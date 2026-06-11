@@ -4,9 +4,7 @@
 {% block page_title %}{% if user %}Edit User{% else %}Create User{% endif %}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field, render_flash_messages %}
-
-{{ render_flash_messages() }}
+{% from "macros.html" import render_field %}
 
 <div class="content-header">
     <div class="page-actions">

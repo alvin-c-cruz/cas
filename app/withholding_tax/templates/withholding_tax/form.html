@@ -4,9 +4,7 @@
 {% block page_title %}{{ 'Edit Withholding Tax' if withholding_tax else 'Create Withholding Tax' }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field, render_flash_messages %}
-
-{{ render_flash_messages() }}
+{% from "macros.html" import render_field %}
 
 <div class="card">
     <div class="card-body">

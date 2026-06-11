@@ -4,9 +4,6 @@
 {% block page_title %}{{ 'Edit Vendor' if vendor else 'Create Vendor' }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_flash_messages %}
-
-{{ render_flash_messages() }}
 
 <div class="vendor-form-container">
     <form method="POST" novalidate autocomplete="off" data-track-changes="{{ 'true' if vendor else 'false' }}">

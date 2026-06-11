@@ -4,9 +4,6 @@
 {% block page_title %}Sales Invoice - {{ invoice.invoice_number }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_flash_messages %}
-
-{{ render_flash_messages() }}
 
 {% if invoice.status in ('draft', 'sent') %}
 <div id="postModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">

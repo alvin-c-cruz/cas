@@ -4,12 +4,10 @@
 {% block page_title %}{{ 'Update Draft' if bill else 'Save Draft' }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field, render_flash_messages %}
+{% from "macros.html" import render_field %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_bills_form.css') }}">
-
-{{ render_flash_messages() }}
 
 <div class="card page-purchase-bill">
     <div class="card-body">

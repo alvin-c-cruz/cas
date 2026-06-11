@@ -1,13 +1,10 @@
 {% extends "base.html" %}
-{% from "macros.html" import render_flash_messages %}
 
 {% block title %}{% if account %}Edit Account{% else %}New Account{% endif %} - CAS{% endblock %}
 
 {% block page_title %}{% if account %}Edit Account{% else %}New Account{% endif %}{% endblock %}
 
 {% block content %}
-
-{{ render_flash_messages() }}
 
 <!-- Form Card -->
 <div class="card" style="max-width: 800px;">
