@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Request History - Chart of Accounts{% endblock %}
+{% block page_title %}Request History - Chart of Accounts{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-secondary">
+            <span class="btn-icon">←</span> Back to Chart of Accounts
+        </a>
+        <a href="{{ url_for('accounts.pending_approvals') }}" class="btn btn-secondary">
+            <span class="btn-icon">⏳</span> Pending Approvals
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if requests %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Account</th>
+                    <th>Reason for Change</th>
+                    <th>Requested By</th>
+                    <th>Requested At</th>
+                    <th>Status</th>
+                    <th>Reviewed By</th>
+                    <th>Review Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for request in requests %}
+                {% set change_data = request.get_change_data() %}
+                <tr>
+                    <td>
+                        {% if request.change_type == 'create' %}
+                            <span class="badge badge-success">Create</span>
+                        {% elif request.change_type == 'update' %}
+                            <span class="badge badge-info">Update</span>
+                        {% elif request.change_type == 'delete' %}
+                            <span class="badge badge-danger">Delete</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ change_data.code }}</strong> — {{ change_data.name }}</td>
+                    <td class="cell-secondary">{{ request.request_reason or '—' }}</td>
+                    <td>{{ request.requested_by }}</td>
+                    <td>{{ request.requested_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
+                    <td>
+                        {% if request.status == 'pending' %}
+                            <span class="badge badge-warning">Pending</span>
+                        {% elif request.status == 'approved' %}
+                            <span class="badge badge-success">Approved</span>
+                        {% elif request.status == 'rejected' %}
+                            <span class="badge badge-danger">Rejected</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ request.reviewed_by or '—' }}
+                        {% if request.reviewed_at %}
+                        <br><span class="cell-secondary">{{ request.reviewed_at.strftime('%Y-%m-%d %I:%M %p') }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="cell-secondary">{{ request.rejection_reason or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No change requests yet.</p>
+            <p><a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-primary">Go to Chart of Accounts</a></p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.badge-success {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.badge-info {
+    background: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+
+.badge-warning {
+    background: #fef9c3;
+    color: #854d0e;
+    border: 1px solid #fef08a;
+}
+
+.badge-danger {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+.cell-secondary {
+    font-size: 13px;
+    color: #64748b;
+    max-width: 240px;
+}
+</style>
+{% endblock %}

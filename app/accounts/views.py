@@ -529,6 +529,16 @@ def pending_approvals():
     return render_template('accounts/pending_approvals.html', pending_requests=pending_requests)
 
 
+@accounts_bp.route('/change-requests')
+@login_required
+@accountant_or_admin_required
+def change_requests():
+    """Request history: all account change requests with status, reviewer, and
+    review notes — lets a requester see why a request was rejected."""
+    all_requests = AccountChangeRequest.query.order_by(AccountChangeRequest.requested_at.desc()).all()
+    return render_template('accounts/change_requests.html', requests=all_requests)
+
+
 @accounts_bp.route('/approve/<int:request_id>', methods=['POST'])
 @login_required
 @accountant_or_admin_required

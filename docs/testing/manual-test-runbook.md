@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | Claude + Alvin | In progress | First run. Phases 0–1 complete; Phase 2: 11, 12 PASS (B-006 regression checks pass; B-011 discrepancy confirmed and logged). Accounts 20101, 60101 created (both top-level — COA hierarchy testing under discussion). Resume at: scenario 13 (2nd accountant + self-approval block). Cross-branch record denial deferred to Phase 3 re-verify. |
+| 2026-06-11 | Claude + Alvin | In progress | First run. Phases 0–1 complete; Phase 2: 11–15 PASS (B-006 regressions pass; B-011 confirmed/logged; B-012 found+fixed). Users: msantos (accountant, QC), jreyes (accountant, Main). Accounts: 20101, 60101, 10101 approved; 10102 rejected (reject-flow test). ⏸ PAUSED at gates: gated COA hierarchy accounts (10500/10501, 20300/20301) + scenario 16 VAT + 17 WHT await product-owner sign-off; then 18 (vendor) and Phase 3. |
 
 ## 3. Preconditions
 
@@ -495,6 +495,8 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 
 **⏸ Gate:** before creating Input VAT (10501), WHT Payable (20301), or any VAT/WHT-related account in scenarios 11–13, present the proposed codes/names/types to the product owner and wait for sign-off.
 
+> **COA hierarchy (decided 2026-06-12):** the gated VAT/WHT accounts are created as **parent group + leaf child** to exercise the derived hierarchy: `10500 Input VAT` (Asset, group) → `10501 Input VAT - Current` (leaf); `20300 WHT Payable` (Liability, group) → `20301 WHT Payable - Expanded` (leaf). Create and approve the parent first; the child's Parent selector must then offer it. **Hierarchy pass criteria** (check after creation): children indented under parents in `/accounts/`; parent rows render as group headers (non-postable) and are excluded from the postable type counts; re-verify in scenario 19 that the APV account picker shows group accounts **disabled** (only leaves selectable).
+
 **Steps:**
 1. As `admin`, open **Ledger → Chart of Accounts** (`http://127.0.0.1:5000/accounts/`). Confirm sensible empty state.
 2. Click create (`/accounts/create`). Propose the account set needed for APVs (present at the ⏸ gate): at minimum `20101 Accounts Payable - Trade` (Liability), one expense account for line items, plus the gated `10501 Input VAT - Current` (Asset) and `20301 WHT Payable - Expanded` (Liability). Create the **first** account here (e.g., 20101); remaining accounts may be created in scenarios 12–13 (still honoring the gate).
@@ -745,6 +747,7 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 3. Verify the **AP Number** is pre-filled as `AP-<current year>-<current month>-0001` (first APV of the period).
 4. Select the vendor; set Voucher Date = today, Due Date per terms. Leave **Vendor Invoice #** and **Vendor Invoice Date** **empty** (allowed for drafts).
 5. Add 2 line items: each with description, amount, an expense account from the picker, a VAT category (12%), and a WHT code on at least one line. Record exact values in the Appendix.
+   - **Hierarchy check (from scenario 11 decision):** the account picker must list **group accounts disabled** (e.g. 10500 Input VAT, 20300 WHT Payable) — only leaf accounts selectable.
 6. **Computation check:** manually recompute from the entered amounts: VAT amount, WHT amount, gross, and net payable. Compare against the totals panel — must match **exactly** (to the centavo).
 7. Save the draft. Expect flash `AP Voucher "AP-…" entered successfully!` and redirect to `/purchase-bills/<id>`.
 8. Open `/purchase-bills/<id>/edit`, upload a vendor invoice **image** (`.png`/`.jpg`) via the attachment control (POST `/purchase-bills/<id>/attachments/upload`).
@@ -1082,6 +1085,7 @@ Fill in during the run (verdicts: Clear / Needs hint / Confusing).
 | B-009 | 8 | High | Branch-users page (`/branches/<id>/users`) operated on the **deprecated `User.branch_id` column** instead of the canonical `user_branches` many-to-many: **Assign** flashed success but granted no real access (login + `has_branch_access()` read only the M2M); **Unassign** silently revoked nothing; the Available list excluded **viewers** entirely (who can't log in without a branch) and showed a misleading "all eligible users already assigned" message. Fixed: assign/unassign now use `add_branch()`/`remove_branch()`, viewers assignable, admins blocked with explanation, audit rows carry old→new `branch_ids`, warning flash when a user loses their last branch. Tests: `tests/integration/test_branch_assignment.py`. | Fixed 2026-06-12 |
 | B-010 | 9 | Medium | Write CTAs rendered for **viewers** (server routes were gated, but the buttons showed): topbar "+ New" quick-create menu (JE/Collection/Payment — all dead `href="#"` placeholders, see also B-005) on every page, "Enter APV"/"Enter First APV" on `/purchase-bills`, "Enter Invoice"/"Enter First Invoice" on `/sales-invoices`, receipt/payment buttons on `/receipts`, "New Journal Entry"/"Create First Entry" on `/journal-entries`. Fixed: all gated to accountant/admin; JE/receipt buttons also renamed to the "Enter" verb per convention. Tests: `tests/integration/test_viewer_readonly_ui.py`. | Fixed 2026-06-12 |
 | B-011 | 12 | Medium (design) | **Sole-accountant auto-approval is unreachable.** Documented rule: a sole accountant's COA/VAT/WHT changes auto-approve. Implemented: `can_auto_approve()` counts active users with role accountant **or admin**; since `admin` is always active the count is ≥2 and every request goes pending (confirmed live: msantos, the only accountant, got "pending review" for 60101). Design clarification needed: exclude admins from the count, or drop the auto-approve rule from the docs. | Open (design) |
+| B-012 | 15 | Medium | **Rejected COA change requests were invisible to the requester** — accounts module had no request-history view (VAT/WHT have `/change-requests`; accounts only had `/pending-approvals`, which empties on rejection). The rejection reason existed only in the audit log. Fixed: new `/accounts/change-requests` "Request History" page (status, reviewer, review notes; linked from the COA header), tests in `tests/integration/test_account_request_history.py`. Related UX note: the **VAT** `/change-requests` page lists all requests but shows **no status column or review notes** and offers Review on already-reviewed rows — check in scenario 16. | Fixed 2026-06-12 |
 
 ## 10. Appendix: Test Data
 
@@ -1092,8 +1096,8 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 | Username | Email | Role (final) | Notes |
 |----------|-------|--------------|-------|
 | admin | admin@cas.local | admin | Seeded |
-| msantos | maria.santos@alvincruzaccounting.ph | accountant | Full name "Maria L. Santos". Registered scenario 5, promoted 10b |
-| | | accountant | Registered scenario 13 |
+| msantos | maria.santos@alvincruzaccounting.ph | accountant | Full name "Maria L. Santos". Registered scenario 5, promoted 10b. Branch: QC |
+| jreyes | jose.reyes@alvincruzaccounting.ph | accountant | Full name "Jose A. Reyes". Registered scenario 13, activated + promoted same day. Branch: Main |
 
 ### Company Settings (scenario 3)
 
@@ -1121,8 +1125,12 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 |------|-------|------|-----------|
 | 20101 | Accounts Payable - Trade | Liability | Scenario 11 (admin path; approved by msantos). Reason: "Initial COA setup: needed to record vendor bills (AP vouchers)" |
 | 60101 | Office Supplies Expense | Expense | Scenario 12 (sole-accountant path; went pending per B-011, approved by admin) |
-| 10501 | Input VAT - Current | Asset | Scenario 11–13 (⏸ gated) |
-| 20301 | WHT Payable - Expanded | Liability | Scenario 11–13 (⏸ gated) |
+| 10101 | Cash on Hand | Asset | Scenario 13 (multi-accountant path; msantos requested, jreyes approved; self-approval blocked at UI) |
+| 10102 | Petty Cash Fund | Asset (NOT created) | Scenario 15 reject-flow test: msantos requested, jreyes REJECTED with notes; account intentionally does not exist |
+| 10500 | Input VAT | Asset (group) | Scenario 11–13 (⏸ gated). Parent of 10501 — hierarchy test |
+| 10501 | Input VAT - Current | Asset (leaf, child of 10500) | Scenario 11–13 (⏸ gated) |
+| 20300 | WHT Payable | Liability (group) | Scenario 11–13 (⏸ gated). Parent of 20301 — hierarchy test |
+| 20301 | WHT Payable - Expanded | Liability (leaf, child of 20300) | Scenario 11–13 (⏸ gated) |
 
 ### VAT Categories
 

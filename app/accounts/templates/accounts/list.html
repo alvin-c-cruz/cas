@@ -18,6 +18,9 @@
             <span class="btn-icon">⏳</span> Pending Approvals ({{ pending_requests|length }})
         </a>
         {% endif %}
+        <a href="{{ url_for('accounts.change_requests') }}" class="btn btn-secondary">
+            <span class="btn-icon">🕘</span> Request History
+        </a>
         <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">＋ Add Account</a>
     </div>
     {% endif %}
