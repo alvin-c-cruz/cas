@@ -3,7 +3,7 @@ Forms for Purchase Bill management.
 """
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField
-from wtforms.validators import DataRequired, Length, Optional
+from wtforms.validators import DataRequired, Length, Optional, ValidationError
 from datetime import date
 
 
@@ -22,6 +22,10 @@ class PurchaseBillForm(FlaskForm):
     due_date = DateField('Due Date', validators=[
         DataRequired(message='Due date is required.')
     ], format='%Y-%m-%d')
+
+    def validate_due_date(self, field):
+        if self.bill_date.data and field.data and field.data < self.bill_date.data:
+            raise ValidationError('Due date cannot be earlier than the voucher date.')
 
     vendor_id = SelectField('Vendor', validators=[
         DataRequired(message='Vendor is required.')

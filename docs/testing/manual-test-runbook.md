@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | Claude + Alvin | In progress | First run. **Phases 0–2 complete** (Baseline, 1–18 all PASS after fixes B-001..B-012; B-004/B-005/B-011 open). ⏸ gates signed off 2026-06-12: 9 COA accounts (hierarchy verified: groups non-postable + excluded from counts, children indented; screenshot coa-hierarchy-final.png), 3 VAT categories, 3 WHT codes — all via change-request workflow (jreyes/msantos cross-approving). Vendor MOS created+edited (scenario 18). Resume at: **Phase 3 scenario 19** (Enter APV draft as msantos in QC). |
+| 2026-06-11 | Claude + Alvin | In progress | First run. **Phases 0–2 complete**; ⏸ gates signed off 2026-06-12 (9 COA accounts w/ hierarchy, 4 VAT categories incl. INV, 3 WHT codes, vendor MOS). **Phase 3:** scenario 19 PASS — AP-2026-06-0001 draft (numbering ✓, computations exact ✓, picker groups disabled ✓, attachment upload/preview/download ✓, negatives ✓ after B-013 fix). B-014 logged (input VAT hardcoded to 10501 — design). Resume at: scenario 20 (attachment security negatives). Open: B-004, B-005, B-011, B-014. |
 
 ## 3. Preconditions
 
@@ -760,6 +760,9 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 
 **Expected Result:** Draft saved without vendor invoice fields; number `AP-YYYY-MM-0001`; totals exact; attachment preview/download work; invalid inputs blocked.
 
+> **Note (code reality, found run 1):** creating a DRAFT APV already writes a journal entry with `status='posted'` (`_post_bill_je` is called in the create route). Verify at scenarios 23/25 whether draft APVs leak into GL-based dashboard stats before the voucher is actually posted.
+> **UX note (run 1):** the edit form's JE preview shows the line *description* in the "Account Title" column; the detail page correctly shows account names.
+
 **Pass Criteria:**
 - [ ] Number follows `AP-YYYY-MM-NNNN` for the current period (0001)
 - [ ] Draft saves without Vendor Invoice #/Date
@@ -1086,6 +1089,8 @@ Fill in during the run (verdicts: Clear / Needs hint / Confusing).
 | B-010 | 9 | Medium | Write CTAs rendered for **viewers** (server routes were gated, but the buttons showed): topbar "+ New" quick-create menu (JE/Collection/Payment — all dead `href="#"` placeholders, see also B-005) on every page, "Enter APV"/"Enter First APV" on `/purchase-bills`, "Enter Invoice"/"Enter First Invoice" on `/sales-invoices`, receipt/payment buttons on `/receipts`, "New Journal Entry"/"Create First Entry" on `/journal-entries`. Fixed: all gated to accountant/admin; JE/receipt buttons also renamed to the "Enter" verb per convention. Tests: `tests/integration/test_viewer_readonly_ui.py`. | Fixed 2026-06-12 |
 | B-011 | 12 | Medium (design) | **Sole-accountant auto-approval is unreachable.** Documented rule: a sole accountant's COA/VAT/WHT changes auto-approve. Implemented: `can_auto_approve()` counts active users with role accountant **or admin**; since `admin` is always active the count is ≥2 and every request goes pending (confirmed live: msantos, the only accountant, got "pending review" for 60101). Design clarification needed: exclude admins from the count, or drop the auto-approve rule from the docs. | Open (design) |
 | B-012 | 15 | Medium | **Rejected COA change requests were invisible to the requester** — accounts module had no request-history view (VAT/WHT have `/change-requests`; accounts only had `/pending-approvals`, which empties on rejection). The rejection reason existed only in the audit log. Fixed: new `/accounts/change-requests` "Request History" page (status, reviewer, review notes; linked from the COA header), tests in `tests/integration/test_account_request_history.py`. Related UX note: the **VAT** `/change-requests` page lists all requests but shows **no status column or review notes** and offers Review on already-reviewed rows — check in scenario 16. | Fixed 2026-06-12 |
+| B-013 | 19 | Medium | **Due date before voucher date was accepted** — no validation client-side (the `validateForm()` gate) or server-side (`PurchaseBillForm`). Fixed: form `validate_due_date` + client gate block with "Due date cannot be earlier than the voucher date."; date fields now re-validate on change. Tests: `tests/integration/test_purchase_bill_dates.py`. | Fixed 2026-06-12 |
+| B-014 | 19 | Medium (design) | **Purchase JE input-VAT account is hardcoded to `10501`** (`_get_gl_accounts()` in `app/purchase_bills/views.py`; 20101/20301 also hardcoded). After the 2026-06-12 COA restructure, 10501 = "Input VAT - **Capital Goods**", so ALL purchase input VAT (goods, services, importation) books there; error messages still say "Input VAT - Current". Needs design: per-line or per-voucher input-VAT sub-account selection, or a settings-level default mapping. | Open (design) |
 
 ## 10. Appendix: Test Data
 
@@ -1164,7 +1169,7 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 
 | Number | Date | Lines (desc / amount / VAT / WHT) | VAT amt | WHT amt | Net payable | Final status |
 |--------|------|-----------------------------------|---------|---------|-------------|--------------|
-| AP-____-__-0001 | | | | | | Voided (scenario 22) |
+| AP-2026-06-0001 | 2026-06-12 (due 2026-06-27, Net 15) | L1 "Bond paper and toner cartridges" / 2,240.00 VAT-incl / V12 / WC158 → 60101; L2 "Delivery fee" / 560.00 VAT-incl / V12 / none → 60101 | 300.00 | 20.00 | 2,780.00 (gross 2,800.00, net of VAT 2,500.00) | Voided (scenario 22) |
 | AP-____-__-0002 | | | | | | Posted (scenarios 23–25) |
 | AP-____-__-0003 | | | | | | Cancelled (scenario 24b) |
 
@@ -1172,7 +1177,7 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 
 | Filename | Type | Size | Used in | Outcome |
 |----------|------|------|---------|---------|
-| | image (.png/.jpg) | | Scenario 19 | Deleted on void (22) |
+| test-vendor-invoice.png | image (.png) | 1.0 KB (1,064 bytes) | Scenario 19 | Deleted on void (22) |
 | | .svg | | Scenario 20 | Rejected |
 | | .exe | | Scenario 20 | Rejected |
 | | > 16 MB | | Scenario 20 | Rejected |

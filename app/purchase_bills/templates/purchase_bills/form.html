@@ -589,6 +589,12 @@ function calculateTotals() {
 
 // ── Form validation gate ──────────────────────────────────────────────────────
 
+document.addEventListener('DOMContentLoaded', function() {
+    for (const id of ['bill_date', 'due_date']) {
+        document.getElementById(id)?.addEventListener('change', validateForm);
+    }
+});
+
 function updateInvoiceHints() {
     const num  = document.getElementById('vendor_invoice_number');
     const date = document.getElementById('vendor_invoice_date');
@@ -609,6 +615,12 @@ function validateForm() {
     function allow()     { btn.disabled = false; hint.textContent = ''; }
 
     if (lineItems.length === 0) { block('Add at least one line item.'); return; }
+
+    const billDateVal = document.getElementById('bill_date')?.value;
+    const dueDateVal = document.getElementById('due_date')?.value;
+    if (billDateVal && dueDateVal && dueDateVal < billDateVal) {
+        block('Due date cannot be earlier than the voucher date.'); return;
+    }
 
     for (let i = 0; i < lineItems.length; i++) {
         const item = lineItems[i];
