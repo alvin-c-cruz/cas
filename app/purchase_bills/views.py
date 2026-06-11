@@ -22,7 +22,6 @@ from decimal import Decimal
 import json
 import os
 import uuid
-import mimetypes
 from werkzeug.utils import secure_filename
 
 purchase_bills_bp = Blueprint('purchase_bills', __name__, template_folder='templates')
@@ -184,6 +183,24 @@ def _bill_upload_dir(bill_id):
     path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'purchase_bills', str(bill_id))
     os.makedirs(path, exist_ok=True)
     return path
+
+
+# Server-side allowlist: extension → canonical MIME type.
+# SVG is intentionally excluded — it executes JS when served inline.
+_ATTACHMENT_ALLOWED = {
+    '.png':  'image/png',
+    '.jpg':  'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif':  'image/gif',
+    '.webp': 'image/webp',
+    '.pdf':  'application/pdf',
+    '.doc':  'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls':  'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.csv':  'text/csv',
+    '.txt':  'text/plain',
+}
 
 
 def _filtered_bills_query(include_ids=False):
@@ -1122,8 +1139,13 @@ def upload_attachment(id):
         return redirect(url_for('purchase_bills.view', id=id))
 
     _, ext = os.path.splitext(original_name)
-    stored_name = uuid.uuid4().hex + ext.lower()
-    mime_type = uploaded_file.mimetype or mimetypes.guess_type(original_name)[0] or 'application/octet-stream'
+    ext = ext.lower()
+    mime_type = _ATTACHMENT_ALLOWED.get(ext)
+    if mime_type is None:
+        allowed = ', '.join(sorted(_ATTACHMENT_ALLOWED))
+        flash(f'File type "{ext or "unknown"}" is not allowed. Accepted: {allowed}', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+    stored_name = uuid.uuid4().hex + ext
 
     upload_dir = _bill_upload_dir(id)
     file_path = os.path.join(upload_dir, stored_name)
@@ -1186,12 +1208,14 @@ def download_attachment(attachment_id):
         flash('File not found on disk.', 'error')
         return redirect(url_for('purchase_bills.view', id=bill.id))
 
-    return send_file(
+    response = send_file(
         file_path,
         mimetype=attachment.mime_type,
         as_attachment=True,
         download_name=attachment.original_filename
     )
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 
 @purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/preview')
@@ -1215,7 +1239,10 @@ def preview_attachment(attachment_id):
     if not os.path.isfile(file_path):
         abort(404)
 
-    return send_file(file_path, mimetype=attachment.mime_type, as_attachment=False)
+    response = send_file(file_path, mimetype=attachment.mime_type, as_attachment=False)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
 
 
 @purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/delete', methods=['POST'])
