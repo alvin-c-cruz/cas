@@ -25,8 +25,8 @@
 .notes-col .form-control { flex: 1; min-height: 60px; }
 
 /* ── Line item action button ─────────────────────────────────────────────── */
-.btn-action { padding: 4px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 14px; }
-.btn-action:hover { background: var(--border); }
+.li-btn-action { padding: 4px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 14px; }
+.li-btn-action:hover { background: var(--border); }
 
 /* ── Summary panel (.bsr rows) ───────────────────────────────────────────── */
 .bsr { display: grid; grid-template-columns: 1fr 130px; align-items: center; margin-bottom: 10px; gap: 8px; }

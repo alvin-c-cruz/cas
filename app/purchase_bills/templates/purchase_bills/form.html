@@ -350,7 +350,7 @@ function addLineItem(existingItem, firstDefaults) {
                 }).join('')}
             </select>
         </td>
-        <td><button type="button" class="btn-action" onclick="removeLineItem(${id})" title="Remove">🗑️</button></td>
+        <td><button type="button" class="li-btn-action" onclick="removeLineItem(${id})" title="Remove">🗑️</button></td>
     `;
     document.getElementById('lineItemsBody').appendChild(row);
     const newRow = document.getElementById(`line-${id}`);

@@ -28,7 +28,7 @@ class PurchaseBillForm(FlaskForm):
     ], coerce=int)
 
     vendor_invoice_number = StringField('Vendor Invoice #', validators=[
-        Optional(),
+        DataRequired(message='Vendor invoice number is required.'),
         Length(max=100, message='Vendor invoice number must be 100 characters or less.')
     ])
 
