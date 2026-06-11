@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | Claude + Alvin | In progress | First run. Done: Baseline, 1, 2, 3, 3b, 4, 5, 6, 6b, 7, 8, 9 (all PASS after fixes B-001..B-010). Resume at: scenario 10 (branch scope test as msantos, BEFORE promotion). Test data in Appendix; `msantos` active, viewer, assigned to QC branch only. |
+| 2026-06-11 | Claude + Alvin | In progress | First run. Phases 0–1 complete; Phase 2: 11, 12 PASS (B-006 regression checks pass; B-011 discrepancy confirmed and logged). Accounts 20101, 60101 created (both top-level — COA hierarchy testing under discussion). Resume at: scenario 13 (2nd accountant + self-approval block). Cross-branch record denial deferred to Phase 3 re-verify. |
 
 ## 3. Preconditions
 
@@ -431,6 +431,8 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
    > **Note (code reality):** cross-branch purchase-bill access returns **404 Not Found** (`_get_bill_or_404`), not 403. Treat 404 as a pass for "denied"; record the 403-vs-404 mismatch in notes.
 5. As `admin`, go to `/select-branch`, switch to the second branch, and confirm the dashboard/lists now show second-branch data; switch back to Main Branch.
 6. Check `/audit-log`: module `auth`, action `branch_selected` entries for each admin switch.
+   > **Note (code reality):** only *manual* branch selection is audited. A single-branch user's **auto-selection at login writes no `branch_selected` row** (the subsequent logout still records the branch ID). Session-only state, so not an audit-reconciliation failure — but note the asymmetry.
+   > **UX note:** the `/select-branch` option cards show the literal placeholder text "Branch location" instead of each branch's address.
 
 **Expected Result:** Scoped user sees only their branch; direct URLs to other-branch records are denied; admin switching works and is audited.
 
@@ -1079,6 +1081,7 @@ Fill in during the run (verdicts: Clear / Needs hint / Confusing).
 | B-008 | 4 | Critical | Approved-email **delete was completely broken**: JS `confirm()` popup (rule violation) + missing CSRF token → 400 Bad Request. Sweep found 8 `confirm()` popups and **9 POST forms missing CSRF** (customer delete, branch assign/unassign, period close/reopen ×3, error resolve/unresolve) — all would 400 in production. All replaced with the custom-modal pattern + CSRF (commit `c668444`). Also: `add_approved_email`/`delete_approved_email` wrote no audit entries — fixed in `00a362c`. | Fixed 2026-06-11 |
 | B-009 | 8 | High | Branch-users page (`/branches/<id>/users`) operated on the **deprecated `User.branch_id` column** instead of the canonical `user_branches` many-to-many: **Assign** flashed success but granted no real access (login + `has_branch_access()` read only the M2M); **Unassign** silently revoked nothing; the Available list excluded **viewers** entirely (who can't log in without a branch) and showed a misleading "all eligible users already assigned" message. Fixed: assign/unassign now use `add_branch()`/`remove_branch()`, viewers assignable, admins blocked with explanation, audit rows carry old→new `branch_ids`, warning flash when a user loses their last branch. Tests: `tests/integration/test_branch_assignment.py`. | Fixed 2026-06-12 |
 | B-010 | 9 | Medium | Write CTAs rendered for **viewers** (server routes were gated, but the buttons showed): topbar "+ New" quick-create menu (JE/Collection/Payment — all dead `href="#"` placeholders, see also B-005) on every page, "Enter APV"/"Enter First APV" on `/purchase-bills`, "Enter Invoice"/"Enter First Invoice" on `/sales-invoices`, receipt/payment buttons on `/receipts`, "New Journal Entry"/"Create First Entry" on `/journal-entries`. Fixed: all gated to accountant/admin; JE/receipt buttons also renamed to the "Enter" verb per convention. Tests: `tests/integration/test_viewer_readonly_ui.py`. | Fixed 2026-06-12 |
+| B-011 | 12 | Medium (design) | **Sole-accountant auto-approval is unreachable.** Documented rule: a sole accountant's COA/VAT/WHT changes auto-approve. Implemented: `can_auto_approve()` counts active users with role accountant **or admin**; since `admin` is always active the count is ≥2 and every request goes pending (confirmed live: msantos, the only accountant, got "pending review" for 60101). Design clarification needed: exclude admins from the count, or drop the auto-approve rule from the docs. | Open (design) |
 
 ## 10. Appendix: Test Data
 
@@ -1116,10 +1119,10 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 
 | Code | Title | Type | Created in |
 |------|-------|------|-----------|
-| 20101 | Accounts Payable - Trade | Liability | Scenario 11 |
+| 20101 | Accounts Payable - Trade | Liability | Scenario 11 (admin path; approved by msantos). Reason: "Initial COA setup: needed to record vendor bills (AP vouchers)" |
+| 60101 | Office Supplies Expense | Expense | Scenario 12 (sole-accountant path; went pending per B-011, approved by admin) |
 | 10501 | Input VAT - Current | Asset | Scenario 11–13 (⏸ gated) |
 | 20301 | WHT Payable - Expanded | Liability | Scenario 11–13 (⏸ gated) |
-| | | Expense | Scenario 12/13 |
 
 ### VAT Categories
 
