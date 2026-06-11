@@ -231,6 +231,10 @@
             {% endif %}
         {% endwith %}
 
+        <div id="branchError" class="alert alert-error" style="display: none;" role="alert">
+            Please select a branch first.
+        </div>
+
         <form method="POST" id="branchForm">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="branch_id" id="selectedBranchId" value="">
@@ -271,6 +275,9 @@
 
     <script>
         function selectBranch(branchId, card) {
+            // Hide the "select a branch" inline error, if visible
+            document.getElementById('branchError').style.display = 'none';
+
             // Remove selected class from all cards
             document.querySelectorAll('.branch-card').forEach(c => {
                 c.style.borderColor = '#e2e8f0';
@@ -294,7 +301,7 @@
             const branchId = document.getElementById('selectedBranchId').value;
             if (!branchId) {
                 e.preventDefault();
-                alert('Please select a branch first.');
+                document.getElementById('branchError').style.display = 'block';
             }
         });
 

@@ -74,7 +74,8 @@
                         {% endif %}
                     </td>
                     <td>
-                        <form method="POST" action="{{ url_for('branches.unassign_user', id=branch.id, user_id=user.id) }}" style="display: inline;" onsubmit="return confirm('Unassign {{ user.full_name }} from this branch?');">
+                        <form method="POST" action="{{ url_for('branches.unassign_user', id=branch.id, user_id=user.id) }}" style="display: inline;" data-confirm="Unassign {{ user.full_name }} from this branch?">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <button type="submit" class="btn-action btn-action-delete" title="Unassign">Unassign</button>
                         </form>
                     </td>
@@ -130,6 +131,7 @@
                     </td>
                     <td>
                         <form method="POST" action="{{ url_for('branches.assign_user', id=branch.id, user_id=user.id) }}" style="display: inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <button type="submit" class="btn-action btn-action-primary" title="Assign">Assign</button>
                         </form>
                     </td>

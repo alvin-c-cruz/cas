@@ -1466,12 +1466,12 @@
                             if (data.success) {
                                 updateBadgeDisplay(nextEnv);
                             } else {
-                                alert(data.error || 'Failed to update environment');
+                                window.showFlashMessage(data.error || 'Failed to update environment', 'error');
                             }
                         })
                         .catch(error => {
                             console.error('Error updating environment:', error);
-                            alert('Failed to update environment');
+                            window.showFlashMessage('Failed to update environment', 'error');
                         });
                     });
                 }
@@ -1533,7 +1533,49 @@
                     }
                 });
             });
+
+            // Global handler: forms with data-confirm use the custom confirm modal (no native JS popups)
+            document.querySelectorAll('form[data-confirm]').forEach(function(form) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const message = this.getAttribute('data-confirm');
+                    const formElement = this;
+
+                    window.showConfirm(message, function(confirmed) {
+                        if (confirmed) {
+                            formElement.submit();
+                        }
+                    });
+                });
+            });
         });
+
+        // Inline flash-style message (non-blocking replacement for native popups)
+        window.showFlashMessage = function(message, category) {
+            category = category || 'error';
+            const content = document.querySelector('.content');
+            if (!content) return;
+            let container = content.querySelector('.flash-messages');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'flash-messages';
+                content.insertBefore(container, content.firstChild);
+            }
+            const alertEl = document.createElement('div');
+            alertEl.className = 'alert alert-' + category;
+            const messageEl = document.createElement('span');
+            messageEl.className = 'alert-message';
+            messageEl.textContent = message;
+            const closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.className = 'alert-close';
+            closeBtn.setAttribute('aria-label', 'Close');
+            closeBtn.innerHTML = '&times;';
+            closeBtn.addEventListener('click', function() { alertEl.remove(); });
+            alertEl.appendChild(messageEl);
+            alertEl.appendChild(closeBtn);
+            container.appendChild(alertEl);
+        };
 
         // Custom confirm modal for Claude browser extension compatibility
         window.showConfirm = function(message, callback) {

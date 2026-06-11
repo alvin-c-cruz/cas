@@ -39,32 +39,6 @@
 {% endwith %}
 {% endmacro %}
 
-{# Macro for rendering action buttons #}
-{% macro action_buttons(view_url=None, edit_url=None, delete_url=None, delete_confirm='Are you sure?') %}
-<div class="action-buttons">
-    {% if view_url %}
-    <a href="{{ view_url }}" class="btn-icon" title="View">
-        👁️
-    </a>
-    {% endif %}
-
-    {% if edit_url %}
-    <a href="{{ edit_url }}" class="btn-icon" title="Edit">
-        ✏️
-    </a>
-    {% endif %}
-
-    {% if delete_url %}
-    <form action="{{ delete_url }}" method="POST" style="display: inline;" onsubmit="return confirm('{{ delete_confirm }}');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <button type="submit" class="btn-icon" title="Delete">
-            🗑️
-        </button>
-    </form>
-    {% endif %}
-</div>
-{% endmacro %}
-
 {# Macro for rendering account type badge #}
 {% macro account_type_badge(account_type) %}
 <span class="badge badge-{{ account_type.lower() }}">{{ account_type }}</span>

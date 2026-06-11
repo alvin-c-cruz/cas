@@ -37,7 +37,9 @@
             </div>
 
             <!-- Confirmation Form -->
-            <form method="POST" action="{{ url_for('periods.close_period', year=period.year, month=period.month) }}">
+            <form method="POST" action="{{ url_for('periods.close_period', year=period.year, month=period.month) }}"
+                  data-confirm="Are you absolutely sure you want to close {{ period.get_period_name() }}?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div style="margin-bottom: 25px;">
                     <label for="notes" style="display: block; font-weight: 600; margin-bottom: 10px; font-size: 15px;">
                         Closing Notes (Optional)
@@ -87,8 +89,7 @@
                        class="btn btn-secondary">
                         Cancel
                     </a>
-                    <button type="submit" class="btn btn-danger"
-                            onclick="return confirm('Are you absolutely sure you want to close {{ period.get_period_name() }}?');">
+                    <button type="submit" class="btn btn-danger">
                         🔒 Close Period
                     </button>
                 </div>

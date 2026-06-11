@@ -52,6 +52,23 @@ class TestApprovedEmails:
         assert audit.record_identifier == 'temp@example.com'
         assert audit.user_id == admin_user.id
 
+    def test_list_delete_form_has_csrf_and_no_js_confirm(self, client, db_session, admin_user, main_branch):
+        """The delete form must carry a CSRF token and use the custom modal
+        (data-confirm), never JS confirm() — without the token the POST 400s
+        in production where CSRF is enforced."""
+        login(client)
+        client.post('/approved-emails/add', data={'email': 'csrf.check@example.com', 'notes': ''},
+                    follow_redirects=True)
+
+        resp = client.get('/approved-emails')
+        assert resp.status_code == 200
+        html = resp.data.decode('utf-8')
+        assert 'name="csrf_token"' in html
+        assert 'data-confirm=' in html
+        assert 'onsubmit="return confirm' not in html
+        assert 'onclick="return confirm' not in html
+        assert 'window.confirm(' not in html
+
     def test_non_admin_blocked(self, client, db_session, accountant_user, staff_user, main_branch):
         login(client, username='staff', password='staff123')
         resp = client.post('/approved-emails/add', data={

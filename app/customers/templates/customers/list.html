@@ -77,7 +77,8 @@
                             <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn-action btn-action-edit" title="Edit">
                                 Edit
                             </a>
-                            <form method="POST" action="{{ url_for('customers.delete', id=customer.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete customer {{ customer.name }}?');">
+                            <form method="POST" action="{{ url_for('customers.delete', id=customer.id) }}" style="display: inline;" data-confirm="Are you sure you want to delete customer {{ customer.name }}?">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
                             </form>
                         </div>

@@ -58,7 +58,8 @@
                         {% else %}
                         <form method="POST" action="{{ url_for('periods.reopen_period', year=period.year, month=period.month) }}"
                               style="display: inline;"
-                              onsubmit="return confirm('Are you sure you want to reopen {{ period.get_period_name() }}? This will allow editing of transactions in this period.');">
+                              data-confirm="Are you sure you want to reopen {{ period.get_period_name() }}? This will allow editing of transactions in this period.">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <button type="submit" class="btn-action" style="color: var(--green);">
                                 🔓 Reopen
                             </button>

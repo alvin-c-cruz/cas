@@ -296,7 +296,10 @@
                     required=true,
                     **{'aria-label': 'Password', 'aria-required': 'true', 'aria-invalid': 'true' if form.password.errors else 'false', 'data-lpignore': 'true', 'data-form-type': 'other', 'data-1p-ignore': 'true'}
                 ) }}
-                <a href="#" class="forgot-password" onclick="alert('Please contact your system administrator to reset your password.'); return false;">Forgot password?</a>
+                <a href="#" class="forgot-password" id="forgotPasswordLink">Forgot password?</a>
+                <div id="forgotPasswordNote" class="alert alert-info" style="display: none;" role="note">
+                    Please contact your system administrator to reset your password.
+                </div>
                 {% if form.password.errors %}
                     <div class="form-error" role="alert">
                         <span>⚠</span>
@@ -342,6 +345,14 @@
 
             password.addEventListener('blur', function() {
                 this.setAttribute('readonly', 'true');
+            });
+
+            // Forgot password: show inline note instead of a JS popup
+            const forgotLink = document.getElementById('forgotPasswordLink');
+            const forgotNote = document.getElementById('forgotPasswordNote');
+            forgotLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                forgotNote.style.display = (forgotNote.style.display === 'none') ? 'block' : 'none';
             });
         });
     </script>

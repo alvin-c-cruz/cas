@@ -116,8 +116,9 @@
             {% endif %}
         </div>
 
-        <form method="POST" action="{{ url_for('errors.unresolve_error', id=error.id) }}" style="margin-top: 16px;">
-            <button type="submit" class="btn btn-secondary" onclick="return confirm('Reopen this error?')">
+        <form method="POST" action="{{ url_for('errors.unresolve_error', id=error.id) }}" style="margin-top: 16px;" data-confirm="Reopen this error?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-secondary">
                 Reopen Error
             </button>
         </form>
@@ -131,6 +132,7 @@
     </div>
     <div style="padding: 24px;">
         <form method="POST" action="{{ url_for('errors.resolve_error', id=error.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div style="margin-bottom: 16px;">
                 <label style="display: block; margin-bottom: 8px; font-weight: 500;">Resolution Notes (optional)</label>
                 <textarea name="resolution_notes" class="form-control" rows="4" placeholder="Describe how this error was resolved..."></textarea>
