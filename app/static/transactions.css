@@ -24,12 +24,6 @@
 }
 .notes-col .form-control { flex: 1; min-height: 60px; }
 
-/* ── Generic form row helpers ─────────────────────────────────────────────── */
-.form-row-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
-.form-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
-.form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
-.form-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
-
 /* ── Line item action button ─────────────────────────────────────────────── */
 .btn-action { padding: 4px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; font-size: 14px; }
 .btn-action:hover { background: var(--border); }
