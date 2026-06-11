@@ -1,10 +1,30 @@
 """Integration tests for Company Settings views — access control, save + audit, logo route."""
+import io
 import json
+import os
+import struct
+import zlib
 
 import pytest
 
 from app.settings import AppSettings
 from app.audit.models import AuditLog
+
+
+def make_minimal_png():
+    """Build a real, valid 1x1 transparent PNG (passes the magic-number check)."""
+    def chunk(tag, data):
+        return (struct.pack('>I', len(data)) + tag + data
+                + struct.pack('>I', zlib.crc32(tag + data) & 0xffffffff))
+
+    ihdr = struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0)  # 1x1, 8-bit RGBA
+    idat = zlib.compress(b'\x00\x00\x00\x00\x00')  # filter byte + 1 RGBA pixel
+    return (b'\x89PNG\r\n\x1a\n'
+            + chunk(b'IHDR', ihdr) + chunk(b'IDAT', idat) + chunk(b'IEND', b''))
+
+
+def _logo_disk_path(app, stored_name):
+    return os.path.join(app.config['UPLOAD_FOLDER'], 'company', stored_name)
 
 
 def login(client, username='admin', password='admin123'):
@@ -149,7 +169,6 @@ class TestCompanyLogo:
         assert resp.status_code == 404
 
     def test_logo_upload_rejects_bad_extension(self, client, db_session, admin_user, main_branch):
-        import io
         login(client)
         resp = client.post(
             '/settings/logo/upload',
@@ -160,7 +179,90 @@ class TestCompanyLogo:
         assert b'is not allowed' in resp.data
         assert AppSettings.get_setting('company_logo') is None
 
+    def test_logo_upload_rejects_content_not_matching_extension(
+            self, client, db_session, admin_user, main_branch):
+        login(client)
+        # .png extension but not PNG content — magic-number check must reject it
+        resp = client.post(
+            '/settings/logo/upload',
+            data={'logo': (io.BytesIO(b'GIF89a not really a png'), 'logo.png')},
+            content_type='multipart/form-data',
+            follow_redirects=True
+        )
+        assert b'does not match' in resp.data
+        assert AppSettings.get_setting('company_logo') is None
+
     def test_logo_remove_blocked_for_accountant(self, client, db_session, accountant_user, main_branch):
         login(client, username='accountant', password='accountant123')
         resp = client.post('/settings/logo/remove')
         assert resp.status_code == 302
+
+    def test_admin_uploads_logo_persists_audits_and_serves(
+            self, client, app, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.post(
+            '/settings/logo/upload',
+            data={'logo': (io.BytesIO(make_minimal_png()), 'logo.png')},
+            content_type='multipart/form-data',
+            follow_redirects=True
+        )
+        assert resp.status_code == 200
+        assert b'uploaded successfully' in resp.data
+
+        # Setting persisted with the stored (UUID) filename
+        stored = AppSettings.get_setting('company_logo')
+        assert stored is not None
+        assert stored.endswith('.png')
+
+        # Audit entry written with correct module, action, and actor
+        entry = AuditLog.query.filter_by(
+            module='settings', action='update',
+            record_identifier='company_logo'
+        ).order_by(AuditLog.id.desc()).first()
+        assert entry is not None
+        assert entry.user_id == admin_user.id
+        assert json.loads(entry.new_values)['company_logo'] == stored
+
+        # Logo is served to authenticated users with PNG content
+        resp = client.get('/settings/logo')
+        assert resp.status_code == 200
+        assert resp.data.startswith(b'\x89PNG\r\n\x1a\n')
+        resp.close()  # release the file handle (Windows) before cleanup
+
+        # Clean up the uploaded file
+        file_path = _logo_disk_path(app, stored)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+    def test_admin_removes_logo_deletes_setting_and_audits_delete(
+            self, client, app, db_session, admin_user, main_branch):
+        login(client)
+        client.post(
+            '/settings/logo/upload',
+            data={'logo': (io.BytesIO(make_minimal_png()), 'logo.png')},
+            content_type='multipart/form-data',
+            follow_redirects=True
+        )
+        stored = AppSettings.get_setting('company_logo')
+        assert stored is not None
+
+        resp = client.post('/settings/logo/remove', follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'Company logo removed' in resp.data
+
+        # Setting row gone and file deleted from disk
+        assert AppSettings.get_setting('company_logo') is None
+        assert not os.path.isfile(_logo_disk_path(app, stored))
+
+        # Removal audited as a delete (project convention)
+        entry = AuditLog.query.filter_by(
+            module='settings', action='delete',
+            record_identifier='company_logo'
+        ).order_by(AuditLog.id.desc()).first()
+        assert entry is not None
+        assert entry.user_id == admin_user.id
+        assert json.loads(entry.old_values)['company_logo'] == stored
+
+        # Serving route now 404s
+        resp = client.get('/settings/logo')
+        assert resp.status_code == 404

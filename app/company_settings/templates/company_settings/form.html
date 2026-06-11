@@ -13,6 +13,9 @@
         color: var(--text-2);
         margin: 0 0 12px 0;
     }
+    .settings-section-label--spaced {
+        margin-top: 24px;
+    }
     .settings-card {
         margin-bottom: 24px;
     }
@@ -108,9 +111,7 @@
 {% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field, render_flash_messages %}
-
-{{ render_flash_messages() }}
+{% from "macros.html" import render_field %}
 
 <form method="POST" action="{{ url_for('company_settings.edit_settings') }}" novalidate>
     {{ form.hidden_tag() }}
@@ -177,7 +178,7 @@
     </div>
 </form>
 
-<h3 class="settings-section-label" style="margin-top: 24px;">Logo</h3>
+<h3 class="settings-section-label settings-section-label--spaced">Logo</h3>
 <div class="card settings-card">
     <div class="card-body">
         <div class="logo-preview-row">

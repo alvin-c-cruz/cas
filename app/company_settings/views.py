@@ -171,12 +171,6 @@ def upload_logo():
         flash(f'File type "{ext or "unknown"}" is not allowed. Accepted: {allowed}', 'error')
         return redirect(url_for('company_settings.edit_settings'))
 
-    # MIME allowlist (browser-declared type must also match an allowed image type)
-    declared_mime = (uploaded_file.mimetype or '').lower()
-    if declared_mime not in set(_LOGO_ALLOWED.values()):
-        flash('Uploaded file is not a recognized PNG or JPEG image.', 'error')
-        return redirect(url_for('company_settings.edit_settings'))
-
     # Size check (~2 MB max) without trusting Content-Length
     uploaded_file.stream.seek(0, os.SEEK_END)
     file_size = uploaded_file.stream.tell()
@@ -185,14 +179,32 @@ def upload_logo():
         flash('Logo file is too large. Maximum size is 2 MB.', 'error')
         return redirect(url_for('company_settings.edit_settings'))
 
+    # Magic-number check: file content must match the declared extension.
+    # The browser-supplied Content-Type is attacker-controlled, so we verify
+    # the actual file signature instead.
+    header = uploaded_file.stream.read(12)
+    uploaded_file.stream.seek(0)
+    if ext == '.png':
+        signature_ok = header.startswith(b'\x89PNG\r\n\x1a\n')
+    else:  # .jpg / .jpeg
+        signature_ok = header.startswith(b'\xff\xd8\xff')
+    if not signature_ok:
+        flash(
+            f'File content does not match a valid {ext} image. '
+            'Please upload a genuine PNG or JPEG file.', 'error'
+        )
+        return redirect(url_for('company_settings.edit_settings'))
+
     stored_name = uuid.uuid4().hex + ext
     file_path = os.path.join(_logo_upload_dir(), stored_name)
 
     old_logo = _current_logo_filename()
+    setting_committed = False
 
     try:
         uploaded_file.save(file_path)
         AppSettings.set_setting(LOGO_SETTING_KEY, stored_name, updated_by=current_user.username)
+        setting_committed = True
 
         # Replacing a logo deletes the old file
         if old_logo and old_logo != stored_name:
@@ -211,6 +223,23 @@ def upload_logo():
         flash('Company logo uploaded successfully!', 'success')
     except Exception as e:
         db.session.rollback()
+        if setting_committed:
+            # set_setting already committed the new filename; restore the
+            # previous value so the DB never references a missing file.
+            try:
+                if old_logo:
+                    AppSettings.set_setting(
+                        LOGO_SETTING_KEY, old_logo, updated_by=current_user.username
+                    )
+                else:
+                    AppSettings.query.filter_by(key=LOGO_SETTING_KEY).delete()
+                    db.session.commit()
+            except Exception:
+                db.session.rollback()
+                current_app.logger.error(
+                    'Failed to restore previous logo setting after upload error',
+                    exc_info=True
+                )
         if os.path.exists(file_path):
             os.remove(file_path)
         current_app.logger.error('Error uploading company logo', exc_info=True)
@@ -236,7 +265,7 @@ def remove_logo():
 
         log_audit(
             module='settings',
-            action='update',
+            action='delete',
             record_id=None,
             record_identifier='company_logo',
             old_values={LOGO_SETTING_KEY: old_logo},
