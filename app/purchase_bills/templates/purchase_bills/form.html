@@ -456,6 +456,34 @@ function calculateTotals() {
     document.getElementById('vatAddBackDisplay').textContent = fmt(vatUsed);
 
     renderJEPreview(subtotal, vatUsed, wtUsed);
+    validateForm();
+}
+
+// ── Form validation gate ──────────────────────────────────────────────────────
+
+function validateForm() {
+    const btn = document.getElementById('submitBtn');
+    const hint = document.getElementById('saveHint');
+
+    function block(msg) { btn.disabled = true; hint.textContent = msg; }
+    function allow()     { btn.disabled = false; hint.textContent = ''; }
+
+    const inv = document.getElementById('vendor_invoice_number');
+    if (!inv || !inv.value.trim()) { block('Enter the vendor invoice number.'); return; }
+
+    if (lineItems.length === 0) { block('Add at least one line item.'); return; }
+
+    for (let i = 0; i < lineItems.length; i++) {
+        const item = lineItems[i];
+        const n = i + 1;
+        if (!item.account_id)                    { block(`Line ${n}: select an account title.`); return; }
+        if (!item.amount || item.amount <= 0)     { block(`Line ${n}: enter an amount greater than zero.`); return; }
+        if (lineItems.length > 1 && !(item.description || '').trim()) {
+            block(`Line ${n}: enter a description.`); return;
+        }
+    }
+
+    allow();
 }
 
 // ── VAT override UX ───────────────────────────────────────────────────────────
@@ -702,6 +730,10 @@ if (ptSel) {
         searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false
     });
 }
+
+// Vendor invoice # triggers validation
+const _invInput = document.getElementById('vendor_invoice_number');
+if (_invInput) _invInput.addEventListener('input', validateForm);
 
 {% if bill %}
 const initVendorId = document.getElementById('vendor_id').value;

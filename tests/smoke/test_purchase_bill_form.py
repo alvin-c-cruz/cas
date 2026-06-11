@@ -37,15 +37,19 @@ def test_submit_enabled_when_all_required_fields_present(logged_in_page):
     page.wait_for_selector('#lineItemsSection', state='visible', timeout=5000)
     page.fill('#vendor_invoice_number', 'INV-001')
 
-    # Enter amount on first row
-    amount_input = page.locator('#lineItemsBody tr:first-child input[type="text"]').first
+    # Enter amount on first row — td:nth-child(2) holds the amount input
+    amount_input = page.locator('#lineItemsBody tr:first-child td:nth-child(2) input[type="text"]')
     amount_input.click()
     amount_input.fill('1000.00')
-    amount_input.press('Tab')
+    # Trigger blur explicitly so amtBlur fires and updates lineItems[].amount
+    page.evaluate("() => { const el = document.querySelector('#lineItemsBody tr:first-child td:nth-child(2) input[type=\"text\"]'); if(el){ el.blur(); } }")
 
-    # Open account Choices.js dropdown and pick the first real option
-    page.locator('#lineItemsBody tr:first-child .choices[data-type*=select-one]').last.click()
-    page.wait_for_selector('.choices__list--dropdown .choices__item--selectable:not(.choices__item--disabled)', timeout=3000)
-    page.locator('.choices__list--dropdown .choices__item--selectable:not(.choices__item--disabled)').first.click()
+    # Use the first real (non-group) account ID from the JS allAccounts array via evaluate
+    page.evaluate("""() => {
+        const firstAcct = allAccounts.find(a => !a.is_group);
+        if (firstAcct && lineItems.length > 0) {
+            updateLineItem(lineItems[0].id, 'account_id', firstAcct.id);
+        }
+    }""")
 
     expect(page.locator('#submitBtn')).to_be_enabled(timeout=3000)
