@@ -1,0 +1,273 @@
+"""
+Company Settings views (Admin only).
+
+All values are stored as key-value rows in app_settings (AppSettings model) —
+no dedicated model or migration.
+"""
+import os
+import uuid
+from functools import wraps
+
+from flask import (
+    Blueprint, render_template, redirect, url_for, flash, request,
+    current_app, send_file, abort
+)
+from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
+
+from app import db
+from app.settings import AppSettings
+from app.company_settings.forms import CompanySettingsForm
+from app.audit.utils import log_audit
+
+company_settings_bp = Blueprint('company_settings', __name__, template_folder='templates')
+
+
+def admin_only(f):
+    """Decorator to require admin role for company settings."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or current_user.role != 'admin':
+            flash('Only administrators can access Company Settings.', 'error')
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# Settings keys managed by the form, in display order.
+# Form field names match the app_settings keys exactly.
+SETTINGS_KEYS = [
+    'company_name',
+    'trade_name',
+    'company_tin',
+    'tin_branch_code',
+    'rdo_code',
+    'vat_registration_type',
+    'company_address',
+    'postal_code',
+    'phone',
+    'email',
+    'fiscal_year_start',
+    'officer_president',
+    'officer_treasurer',
+    'officer_secretary',
+]
+
+LOGO_SETTING_KEY = 'company_logo'
+
+# Server-side allowlist: extension → canonical MIME type.
+# SVG is intentionally excluded — it executes JS when served inline.
+_LOGO_ALLOWED = {
+    '.png':  'image/png',
+    '.jpg':  'image/jpeg',
+    '.jpeg': 'image/jpeg',
+}
+
+_LOGO_MAX_BYTES = 2 * 1024 * 1024  # ~2 MB
+
+
+def _logo_upload_dir():
+    """Return (and create if needed) the company logo upload directory."""
+    path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'company')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _current_logo_filename():
+    """Return the stored logo filename, or None when unset."""
+    return AppSettings.get_setting(LOGO_SETTING_KEY) or None
+
+
+def _delete_logo_file(stored_filename):
+    """Remove a logo file from disk; never raise."""
+    if not stored_filename:
+        return
+    file_path = os.path.join(_logo_upload_dir(), stored_filename)
+    try:
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+    except OSError:
+        current_app.logger.warning(
+            f'Could not delete company logo file: {file_path}', exc_info=True
+        )
+
+
+@company_settings_bp.route('', methods=['GET', 'POST'])
+@login_required
+@admin_only
+def edit_settings():
+    """View and update company-wide settings."""
+    form = CompanySettingsForm()
+
+    if form.validate_on_submit():
+        try:
+            old_values = {}
+            new_values = {}
+
+            for key in SETTINGS_KEYS:
+                old_val = AppSettings.get_setting(key)
+                new_val = (getattr(form, key).data or '').strip()
+
+                if (old_val or '') == new_val:
+                    continue
+
+                AppSettings.set_setting(key, new_val, updated_by=current_user.username)
+                old_values[key] = old_val
+                new_values[key] = new_val
+
+            if new_values:
+                log_audit(
+                    module='settings',
+                    action='update',
+                    record_id=None,
+                    record_identifier='company_settings',
+                    old_values=old_values,
+                    new_values=new_values
+                )
+                flash('Company settings saved successfully!', 'success')
+            else:
+                flash('No changes to save.', 'info')
+
+            return redirect(url_for('company_settings.edit_settings'))
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error('Error saving company settings', exc_info=True)
+            flash(f'Error saving settings: {str(e)}', 'error')
+
+    elif request.method == 'GET':
+        # Populate form from stored settings
+        for key in SETTINGS_KEYS:
+            value = AppSettings.get_setting(key)
+            if value:
+                getattr(form, key).data = value
+
+    return render_template(
+        'company_settings/form.html',
+        form=form,
+        logo_filename=_current_logo_filename()
+    )
+
+
+@company_settings_bp.route('/logo/upload', methods=['POST'])
+@login_required
+@admin_only
+def upload_logo():
+    """Upload (or replace) the company logo."""
+    uploaded_file = request.files.get('logo')
+    if not uploaded_file or uploaded_file.filename == '':
+        flash('No file selected.', 'error')
+        return redirect(url_for('company_settings.edit_settings'))
+
+    original_name = secure_filename(uploaded_file.filename)
+    if not original_name:
+        flash('Invalid filename.', 'error')
+        return redirect(url_for('company_settings.edit_settings'))
+
+    _, ext = os.path.splitext(original_name)
+    ext = ext.lower()
+    mime_type = _LOGO_ALLOWED.get(ext)
+    if mime_type is None:
+        allowed = ', '.join(sorted(_LOGO_ALLOWED))
+        flash(f'File type "{ext or "unknown"}" is not allowed. Accepted: {allowed}', 'error')
+        return redirect(url_for('company_settings.edit_settings'))
+
+    # MIME allowlist (browser-declared type must also match an allowed image type)
+    declared_mime = (uploaded_file.mimetype or '').lower()
+    if declared_mime not in set(_LOGO_ALLOWED.values()):
+        flash('Uploaded file is not a recognized PNG or JPEG image.', 'error')
+        return redirect(url_for('company_settings.edit_settings'))
+
+    # Size check (~2 MB max) without trusting Content-Length
+    uploaded_file.stream.seek(0, os.SEEK_END)
+    file_size = uploaded_file.stream.tell()
+    uploaded_file.stream.seek(0)
+    if file_size > _LOGO_MAX_BYTES:
+        flash('Logo file is too large. Maximum size is 2 MB.', 'error')
+        return redirect(url_for('company_settings.edit_settings'))
+
+    stored_name = uuid.uuid4().hex + ext
+    file_path = os.path.join(_logo_upload_dir(), stored_name)
+
+    old_logo = _current_logo_filename()
+
+    try:
+        uploaded_file.save(file_path)
+        AppSettings.set_setting(LOGO_SETTING_KEY, stored_name, updated_by=current_user.username)
+
+        # Replacing a logo deletes the old file
+        if old_logo and old_logo != stored_name:
+            _delete_logo_file(old_logo)
+
+        log_audit(
+            module='settings',
+            action='update',
+            record_id=None,
+            record_identifier='company_logo',
+            old_values={LOGO_SETTING_KEY: old_logo},
+            new_values={LOGO_SETTING_KEY: stored_name},
+            notes=f'Logo uploaded: {original_name} ({file_size} bytes)'
+        )
+
+        flash('Company logo uploaded successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        current_app.logger.error('Error uploading company logo', exc_info=True)
+        flash(f'Error uploading logo: {str(e)}', 'error')
+
+    return redirect(url_for('company_settings.edit_settings'))
+
+
+@company_settings_bp.route('/logo/remove', methods=['POST'])
+@login_required
+@admin_only
+def remove_logo():
+    """Remove the company logo (file + setting row)."""
+    old_logo = _current_logo_filename()
+    if not old_logo:
+        flash('No company logo to remove.', 'info')
+        return redirect(url_for('company_settings.edit_settings'))
+
+    try:
+        AppSettings.query.filter_by(key=LOGO_SETTING_KEY).delete()
+        db.session.commit()
+        _delete_logo_file(old_logo)
+
+        log_audit(
+            module='settings',
+            action='update',
+            record_id=None,
+            record_identifier='company_logo',
+            old_values={LOGO_SETTING_KEY: old_logo},
+            new_values={LOGO_SETTING_KEY: None},
+            notes='Logo removed'
+        )
+
+        flash('Company logo removed.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error removing company logo', exc_info=True)
+        flash(f'Error removing logo: {str(e)}', 'error')
+
+    return redirect(url_for('company_settings.edit_settings'))
+
+
+@company_settings_bp.route('/logo')
+@login_required
+def logo():
+    """Serve the company logo to any authenticated user (used by the sidebar)."""
+    stored_name = _current_logo_filename()
+    if not stored_name:
+        abort(404)
+
+    file_path = os.path.join(_logo_upload_dir(), stored_name)
+    if not os.path.isfile(file_path):
+        abort(404)
+
+    _, ext = os.path.splitext(stored_name)
+    mime_type = _LOGO_ALLOWED.get(ext.lower(), 'application/octet-stream')
+
+    response = send_file(file_path, mimetype=mime_type, as_attachment=False)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response

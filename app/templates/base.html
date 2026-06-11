@@ -1015,9 +1015,13 @@
     <nav class="sidebar">
         <div class="brand">
             <div class="brand-logo">
+                {% if company_logo %}
+                <img src="{{ url_for('company_settings.logo') }}" alt="{{ company_name }} logo" class="brand-img">
+                {% else %}
                 <div class="brand-icon">⚖</div>
+                {% endif %}
                 <div>
-                    <h4>Company Name</h4>
+                    <h4>{{ company_name }}</h4>
                     <p>Computerized Accounting System</p>
                 </div>
             </div>
@@ -1189,6 +1193,10 @@
                 </div>
                 <div class="nav-section-content" id="section-admin">
                     {% if current_user.is_authenticated and current_user.role == 'admin' %}
+                    <a href="{{ url_for('company_settings.edit_settings') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('company_settings.') %}active{% endif %}">
+                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-text">Company Settings</span>
+                    </a>
                     <a href="{{ url_for('branches.list_branches') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('branches.') %}active{% endif %}">
                         <span class="nav-icon">🏪</span>
                         <span class="nav-text">Branch Management</span>

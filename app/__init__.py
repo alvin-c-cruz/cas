@@ -99,6 +99,18 @@ def create_app(config_name=None):
                 current_branch = Branch.query.get(branch_id)
         return {'current_branch': current_branch}
 
+    # Make company name and logo available in all templates (sidebar brand)
+    @app.context_processor
+    def inject_company_info():
+        try:
+            from app.settings import AppSettings
+            company_name = AppSettings.get_setting('company_name') or 'Company Name'
+            company_logo = AppSettings.get_setting('company_logo') or None
+        except Exception:
+            company_name = 'Company Name'
+            company_logo = None
+        return {'company_name': company_name, 'company_logo': company_logo}
+
     # Add custom Jinja2 filter for JSON parsing
     @app.template_filter('from_json')
     def from_json_filter(s):
@@ -115,6 +127,7 @@ def create_app(config_name=None):
     # Ensure upload directories exist at startup
     import os as _os
     _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'purchase_bills'), exist_ok=True)
+    _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'company'), exist_ok=True)
 
     # Initialize caching
     cache.init_app(app, config={
@@ -171,6 +184,7 @@ def create_app(config_name=None):
     from app.reports.views import reports_bp
     from app.errors.views import errors_bp
     from app.periods.views import periods_bp
+    from app.company_settings.views import company_settings_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -189,6 +203,7 @@ def create_app(config_name=None):
     app.register_blueprint(reports_bp)
     app.register_blueprint(errors_bp)
     app.register_blueprint(periods_bp)
+    app.register_blueprint(company_settings_bp, url_prefix='/settings')
 
 
     migrate.init_app(app, db)

@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Company Settings{% endblock %}
+{% block page_title %}Company Settings{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-section-label {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-2);
+        margin: 0 0 12px 0;
+    }
+    .settings-card {
+        margin-bottom: 24px;
+    }
+    .settings-grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0 20px;
+    }
+    .settings-grid-3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 0 20px;
+    }
+    @media (max-width: 768px) {
+        .settings-grid-2,
+        .settings-grid-3 {
+            grid-template-columns: 1fr;
+        }
+    }
+    .logo-preview-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+    }
+    .logo-preview {
+        width: 72px;
+        height: 72px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--bg);
+        object-fit: contain;
+    }
+    .logo-placeholder {
+        width: 72px;
+        height: 72px;
+        border-radius: var(--radius);
+        border: 1px dashed var(--border);
+        background: var(--bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-3);
+        font-size: 24px;
+    }
+    .logo-hint {
+        color: var(--text-3);
+        font-size: 12px;
+        margin-top: 4px;
+    }
+    .logo-upload-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-box {
+        background: var(--card);
+        border-radius: var(--radius);
+        padding: 32px;
+        max-width: 440px;
+        width: 90%;
+        box-shadow: var(--shadow-md);
+    }
+    .modal-box h3 {
+        margin: 0 0 12px 0;
+        color: var(--text);
+    }
+    .modal-box p {
+        color: var(--text-2);
+        margin-bottom: 24px;
+    }
+    .modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+    }
+    .btn-danger {
+        background: var(--red);
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field, render_flash_messages %}
+
+{{ render_flash_messages() }}
+
+<form method="POST" action="{{ url_for('company_settings.edit_settings') }}" novalidate>
+    {{ form.hidden_tag() }}
+
+    <h3 class="settings-section-label">Company Identity</h3>
+    <div class="card settings-card">
+        <div class="card-body">
+            <div class="settings-grid-2">
+                {{ render_field(form.company_name) }}
+                {{ render_field(form.trade_name) }}
+            </div>
+        </div>
+    </div>
+
+    <h3 class="settings-section-label">BIR Registration</h3>
+    <div class="card settings-card">
+        <div class="card-body">
+            <div class="settings-grid-3">
+                {{ render_field(form.company_tin) }}
+                {{ render_field(form.tin_branch_code) }}
+                {{ render_field(form.rdo_code) }}
+            </div>
+            <div class="settings-grid-3">
+                {{ render_field(form.vat_registration_type) }}
+            </div>
+        </div>
+    </div>
+
+    <h3 class="settings-section-label">Address &amp; Contact</h3>
+    <div class="card settings-card">
+        <div class="card-body">
+            {{ render_field(form.company_address) }}
+            <div class="settings-grid-3">
+                {{ render_field(form.postal_code) }}
+                {{ render_field(form.phone) }}
+                {{ render_field(form.email) }}
+            </div>
+        </div>
+    </div>
+
+    <h3 class="settings-section-label">Company Officers</h3>
+    <div class="card settings-card">
+        <div class="card-body">
+            <div class="settings-grid-3">
+                {{ render_field(form.officer_president) }}
+                {{ render_field(form.officer_treasurer) }}
+                {{ render_field(form.officer_secretary) }}
+            </div>
+        </div>
+    </div>
+
+    <h3 class="settings-section-label">Accounting</h3>
+    <div class="card settings-card">
+        <div class="card-body">
+            <div class="settings-grid-3">
+                {{ render_field(form.fiscal_year_start) }}
+            </div>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <a href="{{ url_for('dashboard.home') }}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </div>
+</form>
+
+<h3 class="settings-section-label" style="margin-top: 24px;">Logo</h3>
+<div class="card settings-card">
+    <div class="card-body">
+        <div class="logo-preview-row">
+            {% if logo_filename %}
+            <img src="{{ url_for('company_settings.logo') }}" alt="Company logo" class="logo-preview">
+            {% else %}
+            <div class="logo-placeholder">🏢</div>
+            {% endif %}
+            <div>
+                <div class="form-label">Company Logo</div>
+                <div class="logo-hint">PNG or JPEG, up to 2 MB. Shown in the sidebar.</div>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('company_settings.upload_logo') }}"
+              enctype="multipart/form-data" class="logo-upload-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="logo" accept=".png,.jpg,.jpeg" class="form-control" required>
+            <button type="submit" class="btn btn-primary">
+                {{ 'Replace Logo' if logo_filename else 'Upload Logo' }}
+            </button>
+            {% if logo_filename %}
+            <button type="button" class="btn btn-secondary"
+                    onclick="document.getElementById('remove-logo-modal').style.display='flex'">
+                Remove Logo
+            </button>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{% if logo_filename %}
+<!-- Remove logo confirmation modal -->
+<div id="remove-logo-modal" class="modal-overlay">
+    <div class="modal-box">
+        <h3>Remove Company Logo</h3>
+        <p>Remove the current company logo? The sidebar will revert to the default icon.</p>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary"
+                    onclick="document.getElementById('remove-logo-modal').style.display='none'">
+                Cancel
+            </button>
+            <form method="POST" action="{{ url_for('company_settings.remove_logo') }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger">Remove</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
