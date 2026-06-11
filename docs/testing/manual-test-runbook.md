@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | Claude + Alvin | In progress | First run. Done: Baseline, 1, 2, 3, 3b, 4, 5, 6, 6b (all PASS after fixes B-001..B-008). Resume at: 6b final check (msantos logs in after unlock), then scenario 7 (Branch CRUD). Test data so far in Appendix; user `msantos` active, viewer, no branch yet. |
+| 2026-06-11 | Claude + Alvin | In progress | First run. Done: Baseline, 1, 2, 3, 3b, 4, 5, 6, 6b, 7, 8 (all PASS after fixes B-001..B-009). Resume at: scenario 9 (viewer scope test as msantos). Test data in Appendix; `msantos` active, viewer, assigned to QC branch only. |
 
 ## 3. Preconditions
 
@@ -372,6 +372,9 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 - [ ] User assigned to second branch only
 - [ ] Main Branch user list does not include the new user
 - [ ] Audit entry for the assignment exists
+- [ ] **Regression (B-009):** the Available Users list on `/branches/<id>/users` includes **viewers**; Assign actually grants access (`user_branches` row exists; user can log in / `has_branch_access()` true) — not just a success flash
+- [ ] **Regression (B-009):** Unassign actually revokes access (M2M row removed); unassigning a user's **last** branch shows the "cannot log in until reassigned" warning flash
+- [ ] **Regression (B-009):** audit `branch`/`assign_user` and `unassign_user` rows carry old → new `branch_ids`; assigning an **admin** is rejected with "Administrators automatically have access to all branches."
 
 **UX Review:**
 - [ ] Assignment UI obvious; current assignments visible at a glance
@@ -1073,6 +1076,7 @@ Fill in during the run (verdicts: Clear / Needs hint / Confusing).
 | B-006 | 16 (user-reported) | High | Master-data change requests (COA/VAT/WHT): (a) no clear feedback that a change request was submitted — user unknowingly submitted the same VAT change **twice**, both queued in Action Items; (b) no duplicate-pending-request guard; (c) no "reason for change" field for the reviewer. Fixed: required reason field (+`request_reason` column, migration `ec961ef9cd13`), duplicate-pending block, standard "pending review" flash, pending badges on lists, reason shown to reviewers (commits `724dcad`, `d5f1913`). | Fixed 2026-06-11 |
 | B-007 | 14 (found during B-006) | Medium | Dashboard COA action items referenced nonexistent model attributes and a dead review route (`/accounts/review-change-request/<id>`); VAT/WHT auto-approve paths wrote no audit entries; COA approve used `confirm()`; COA reject modal lacked CSRF. All fixed in `724dcad`. | Fixed 2026-06-11 |
 | B-008 | 4 | Critical | Approved-email **delete was completely broken**: JS `confirm()` popup (rule violation) + missing CSRF token → 400 Bad Request. Sweep found 8 `confirm()` popups and **9 POST forms missing CSRF** (customer delete, branch assign/unassign, period close/reopen ×3, error resolve/unresolve) — all would 400 in production. All replaced with the custom-modal pattern + CSRF (commit `c668444`). Also: `add_approved_email`/`delete_approved_email` wrote no audit entries — fixed in `00a362c`. | Fixed 2026-06-11 |
+| B-009 | 8 | High | Branch-users page (`/branches/<id>/users`) operated on the **deprecated `User.branch_id` column** instead of the canonical `user_branches` many-to-many: **Assign** flashed success but granted no real access (login + `has_branch_access()` read only the M2M); **Unassign** silently revoked nothing; the Available list excluded **viewers** entirely (who can't log in without a branch) and showed a misleading "all eligible users already assigned" message. Fixed: assign/unassign now use `add_branch()`/`remove_branch()`, viewers assignable, admins blocked with explanation, audit rows carry old→new `branch_ids`, warning flash when a user loses their last branch. Tests: `tests/integration/test_branch_assignment.py`. | Fixed 2026-06-12 |
 
 ## 10. Appendix: Test Data
 
@@ -1103,8 +1107,8 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 
 | Code | Name | Notes |
 |------|------|-------|
-| | Main Branch | Seeded |
-| | | Created scenario 7 |
+| MAIN | Main Branch | Seeded |
+| QC | Quezon City Branch | Created scenario 7. Address "Unit 5, 88 Timog Avenue, Quezon City" → edited to "3F Crescent Building, 120 Tomas Morato Avenue, Quezon City"; phone (02) 8921-4567; email qc@alvincruzaccounting.ph. msantos assigned here (scenario 8) |
 
 ### Accounts (Chart of Accounts)
 

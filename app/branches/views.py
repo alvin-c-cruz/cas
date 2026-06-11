@@ -194,10 +194,14 @@ def branch_users(id):
     # Get users assigned to this branch
     assigned_users = branch.users.all()
 
-    # Get users that can be assigned (accountant and staff only, not yet assigned)
+    # Users that can be assigned: non-admins (admins automatically have access
+    # to all branches) not already assigned to THIS branch. Users may belong to
+    # several branches, so assignment elsewhere does not exclude them here.
+    assigned_ids = [u.id for u in assigned_users]
     available_users = User.query.filter(
-        User.role.in_(['accountant', 'staff']),
-        User.branch_id == None
+        User.role.in_(['accountant', 'staff', 'viewer']),
+        User.is_active == True,
+        ~User.id.in_(assigned_ids)
     ).order_by(User.full_name).all()
 
     return render_template('branches/users.html', branch=branch, assigned_users=assigned_users, available_users=available_users)
@@ -211,13 +215,14 @@ def assign_user(id, user_id):
     branch = Branch.query.get_or_404(id)
     user = User.query.get_or_404(user_id)
 
-    # Only accountant and staff can be assigned to branches
-    if user.role not in ['accountant', 'staff']:
-        flash(f'Only Accountants and Staff can be assigned to branches.', 'error')
+    # Admins automatically have access to all branches and cannot be assigned
+    if user.role == 'admin':
+        flash('Administrators automatically have access to all branches.', 'error')
         return redirect(url_for('branches.branch_users', id=id))
 
     try:
-        user.branch_id = branch.id
+        old_branch_ids = user.get_branch_ids()
+        user.add_branch(branch)
         db.session.commit()
 
         # Audit log for user assignment
@@ -226,7 +231,9 @@ def assign_user(id, user_id):
             action='assign_user',
             record_id=branch.id,
             record_identifier=f'{branch.code} - {branch.name}',
-            new_values={'user_id': user.id, 'user_name': user.full_name},
+            old_values={'user_id': user.id, 'branch_ids': old_branch_ids},
+            new_values={'user_id': user.id, 'user_name': user.full_name,
+                        'branch_ids': user.get_branch_ids()},
             notes=f'Assigned user: {user.full_name}'
         )
 
@@ -251,7 +258,8 @@ def unassign_user(id, user_id):
     user = User.query.get_or_404(user_id)
 
     try:
-        user.branch_id = None
+        old_branch_ids = user.get_branch_ids()
+        user.remove_branch(branch)
         db.session.commit()
 
         # Audit log for user unassignment
@@ -260,11 +268,15 @@ def unassign_user(id, user_id):
             action='unassign_user',
             record_id=branch.id,
             record_identifier=f'{branch.code} - {branch.name}',
-            old_values={'user_id': user.id, 'user_name': user.full_name},
+            old_values={'user_id': user.id, 'user_name': user.full_name,
+                        'branch_ids': old_branch_ids},
+            new_values={'user_id': user.id, 'branch_ids': user.get_branch_ids()},
             notes=f'Unassigned user: {user.full_name}'
         )
 
         flash(f'{user.full_name} unassigned from branch "{branch.name}" successfully!', 'success')
+        if not user.get_branch_ids():
+            flash(f'{user.full_name} now has no branch assignments and cannot log in until reassigned.', 'warning')
     except Exception as e:
         from flask import current_app
         from app.errors.utils import log_exception
