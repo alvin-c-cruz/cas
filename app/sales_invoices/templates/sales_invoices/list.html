@@ -14,9 +14,11 @@
             <a href="{{ url_for('sales_invoices.export_csv_route', status=status_filter, customer=customer_filter) }}" class="btn btn-secondary">
                 📄 Export CSV
             </a>
+            {% if current_user.role in ['accountant', 'admin'] %}
             <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">
                 <span>➕</span> Enter Invoice
             </a>
+            {% endif %}
         </div>
     </div>
 
@@ -111,7 +113,9 @@
         {% else %}
         <div class="empty-state">
             <p>No sales invoices found.</p>
+            {% if current_user.role in ['accountant', 'admin'] %}
             <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">Enter First Invoice</a>
+            {% endif %}
         </div>
         {% endif %}
     </div>

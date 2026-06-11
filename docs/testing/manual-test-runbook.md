@@ -20,7 +20,7 @@ How to use it:
 
 | Date | Tester | Result | Notes |
 |------|--------|--------|-------|
-| 2026-06-11 | Claude + Alvin | In progress | First run. Done: Baseline, 1, 2, 3, 3b, 4, 5, 6, 6b, 7, 8 (all PASS after fixes B-001..B-009). Resume at: scenario 9 (viewer scope test as msantos). Test data in Appendix; `msantos` active, viewer, assigned to QC branch only. |
+| 2026-06-11 | Claude + Alvin | In progress | First run. Done: Baseline, 1, 2, 3, 3b, 4, 5, 6, 6b, 7, 8, 9 (all PASS after fixes B-001..B-010). Resume at: scenario 10 (branch scope test as msantos, BEFORE promotion). Test data in Appendix; `msantos` active, viewer, assigned to QC branch only. |
 
 ## 3. Preconditions
 
@@ -407,6 +407,7 @@ Password policy under test: **≥12 chars, at least one uppercase, one lowercase
 - [ ] All admin URLs redirect with explanatory flash (no 500s, no blank pages)
 - [ ] Transaction pages read-only; write URLs blocked with flash
 - [ ] No write buttons (Enter APV / Create / Edit / Delete) visible to the viewer
+- [ ] **Regression (B-010):** topbar "+ New" menu absent for viewers; no Enter/Create buttons on `/purchase-bills`, `/sales-invoices`, `/receipts`, `/journal-entries` (including empty-state buttons); accountant/admin still see them
 
 **UX Review:**
 - [ ] Read-only states look intentional, not broken; flashes explain *why*
@@ -1077,6 +1078,7 @@ Fill in during the run (verdicts: Clear / Needs hint / Confusing).
 | B-007 | 14 (found during B-006) | Medium | Dashboard COA action items referenced nonexistent model attributes and a dead review route (`/accounts/review-change-request/<id>`); VAT/WHT auto-approve paths wrote no audit entries; COA approve used `confirm()`; COA reject modal lacked CSRF. All fixed in `724dcad`. | Fixed 2026-06-11 |
 | B-008 | 4 | Critical | Approved-email **delete was completely broken**: JS `confirm()` popup (rule violation) + missing CSRF token → 400 Bad Request. Sweep found 8 `confirm()` popups and **9 POST forms missing CSRF** (customer delete, branch assign/unassign, period close/reopen ×3, error resolve/unresolve) — all would 400 in production. All replaced with the custom-modal pattern + CSRF (commit `c668444`). Also: `add_approved_email`/`delete_approved_email` wrote no audit entries — fixed in `00a362c`. | Fixed 2026-06-11 |
 | B-009 | 8 | High | Branch-users page (`/branches/<id>/users`) operated on the **deprecated `User.branch_id` column** instead of the canonical `user_branches` many-to-many: **Assign** flashed success but granted no real access (login + `has_branch_access()` read only the M2M); **Unassign** silently revoked nothing; the Available list excluded **viewers** entirely (who can't log in without a branch) and showed a misleading "all eligible users already assigned" message. Fixed: assign/unassign now use `add_branch()`/`remove_branch()`, viewers assignable, admins blocked with explanation, audit rows carry old→new `branch_ids`, warning flash when a user loses their last branch. Tests: `tests/integration/test_branch_assignment.py`. | Fixed 2026-06-12 |
+| B-010 | 9 | Medium | Write CTAs rendered for **viewers** (server routes were gated, but the buttons showed): topbar "+ New" quick-create menu (JE/Collection/Payment — all dead `href="#"` placeholders, see also B-005) on every page, "Enter APV"/"Enter First APV" on `/purchase-bills`, "Enter Invoice"/"Enter First Invoice" on `/sales-invoices`, receipt/payment buttons on `/receipts`, "New Journal Entry"/"Create First Entry" on `/journal-entries`. Fixed: all gated to accountant/admin; JE/receipt buttons also renamed to the "Enter" verb per convention. Tests: `tests/integration/test_viewer_readonly_ui.py`. | Fixed 2026-06-12 |
 
 ## 10. Appendix: Test Data
 

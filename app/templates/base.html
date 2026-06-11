@@ -1285,7 +1285,8 @@
                     </div>
                 </div>
 
-                <!-- New Button -->
+                <!-- New Button (write actions — hidden from read-only viewers) -->
+                {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant', 'staff'] %}
                 <div class="topbar-new-btn-wrapper">
                     <button class="topbar-new-btn" id="topbarNewBtn">
                         <span>+</span> New <span style="margin-left: 2px;">▼</span>
@@ -1302,6 +1303,7 @@
                         </a>
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- Current Date -->
                 <div class="topbar-date">

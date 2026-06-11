@@ -5,8 +5,10 @@
 <div class="card">
     <div class="card-header">
         <div class="card-header-actions">
-            <a href="{{ url_for('receipts.create', type='collection') }}" class="btn btn-success">💰 New Receipt (Collection)</a>
-            <a href="{{ url_for('receipts.create', type='payment') }}" class="btn btn-danger">💸 New Payment (Disbursement)</a>
+            {% if current_user.role in ['accountant', 'admin'] %}
+            <a href="{{ url_for('receipts.create', type='collection') }}" class="btn btn-success">💰 Enter Receipt (Collection)</a>
+            <a href="{{ url_for('receipts.create', type='payment') }}" class="btn btn-danger">💸 Enter Payment (Disbursement)</a>
+            {% endif %}
         </div>
     </div>
     <div class="card-body">
