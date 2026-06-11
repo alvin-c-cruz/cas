@@ -8,6 +8,55 @@
 
 {{ render_flash_messages() }}
 
+{% for att in bill.attachments %}{% if att.is_image %}
+<div id="previewModal-{{ att.id }}"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+            z-index:1100; align-items:center; justify-content:center; overflow:auto;">
+  <div style="background:var(--card); border-radius:8px; padding:24px;
+              max-width:90vw; max-height:90vh; display:flex; flex-direction:column; gap:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:600; font-size:14px;">{{ att.original_filename }}</span>
+      <button type="button"
+              onclick="document.getElementById('previewModal-{{ att.id }}').style.display='none'"
+              style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-1);">&times;</button>
+    </div>
+    <img src="{{ url_for('purchase_bills.preview_attachment', attachment_id=att.id) }}"
+         alt="{{ att.original_filename }}"
+         style="max-width:80vw; max-height:70vh; object-fit:contain; border-radius:4px;">
+    <div style="text-align:right;">
+      <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
+         class="btn btn-secondary" style="font-size:13px;">Download</a>
+    </div>
+  </div>
+</div>
+{% endif %}{% endfor %}
+
+{% if bill.status == 'draft' %}
+{% for att in bill.attachments %}
+<div id="deleteAttModal-{{ att.id }}"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+            z-index:1100; align-items:center; justify-content:center;">
+  <div style="background:var(--card); border-radius:8px; padding:32px; max-width:400px; width:90%;">
+    <h3 style="margin:0 0 12px 0;">Delete attachment?</h3>
+    <p style="color:var(--text-2); margin-bottom:24px;">
+      <strong>{{ att.original_filename }}</strong> will be permanently deleted.
+    </p>
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary"
+              onclick="document.getElementById('deleteAttModal-{{ att.id }}').style.display='none'">
+        Cancel</button>
+      <form method="POST"
+            action="{{ url_for('purchase_bills.delete_attachment', attachment_id=att.id) }}"
+            style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit" class="btn btn-danger">Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
 {% if bill.status == 'draft' %}
 <!-- Post modal -->
 <div id="postModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
@@ -28,7 +77,8 @@
 <div id="voidModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Void this APV?</h3>
-        <p style="color:var(--text-2); margin-bottom:20px;"><strong>{{ bill.bill_number }}</strong> will be marked as voided. No journal entry will be created since this APV has not been posted. The APV number may be reused.</p>
+        <p style="color:var(--text-2); margin-bottom:12px;"><strong>{{ bill.bill_number }}</strong> will be marked as voided. No journal entry will be created since this APV has not been posted. The APV number may be reused.</p>
+        <p style="color:var(--text-2); margin-bottom:20px;">All attachments will also be permanently deleted.</p>
         <form method="POST" action="{{ url_for('purchase_bills.void', id=bill.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div style="margin-bottom:16px;">
@@ -279,6 +329,85 @@
                 </div>
                 {% endif %}
             </div>
+        </div>
+
+        <!-- ── Attachments ────────────────────────────────────────────────── -->
+        <div style="margin-top:32px; padding-top:24px; border-top:1px solid var(--border);">
+            <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
+                Attachments
+                <span style="font-weight:400; color:var(--text-3);">({{ bill.attachments|length }} file{{ 's' if bill.attachments|length != 1 else '' }})</span>
+            </h3>
+
+            {% if bill.status == 'draft' %}
+            <form method="POST" enctype="multipart/form-data"
+                  action="{{ url_for('purchase_bills.upload_attachment', id=bill.id) }}"
+                  style="display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+              <input type="file" name="attachment" style="flex:1; min-width:200px;"
+                     accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt">
+              <button type="submit" class="btn btn-secondary" style="white-space:nowrap;">Upload File</button>
+            </form>
+            {% elif bill.status in ['posted', 'partially_paid', 'paid'] %}
+            <p style="color:var(--text-2); font-size:13px; margin-bottom:12px;">
+              Files are locked once the APV is posted.
+            </p>
+            {% elif bill.status == 'cancelled' %}
+            <p style="color:var(--text-2); font-size:13px; margin-bottom:12px;">
+              This APV has been cancelled. Attached files are preserved for reference.
+            </p>
+            {% endif %}
+
+            {% if bill.attachments %}
+            <div style="overflow-x:auto;">
+              <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                  <tr style="border-bottom:2px solid var(--border);">
+                    <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Filename</th>
+                    <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Type</th>
+                    <th style="text-align:right; padding:8px 12px; color:var(--text-2); font-weight:600;">Size</th>
+                    <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Uploaded By</th>
+                    <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Date</th>
+                    <th style="padding:8px 12px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for att in bill.attachments %}
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:8px 12px;">{{ att.original_filename }}</td>
+                    <td style="padding:8px 12px;">
+                      {% if att.is_image %}
+                      <span style="background:#dbeafe; color:#1d4ed8; padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600;">IMAGE</span>
+                      {% else %}
+                      <span style="background:var(--surface); color:var(--text-2); padding:2px 8px; border-radius:4px; font-size:12px;">{{ att.mime_type.split('/')[-1]|upper }}</span>
+                      {% endif %}
+                    </td>
+                    <td style="padding:8px 12px; text-align:right;">{{ att.file_size_human }}</td>
+                    <td style="padding:8px 12px;">{{ att.uploaded_by.username }}</td>
+                    <td style="padding:8px 12px;">{{ att.uploaded_at.strftime('%b %d, %Y %H:%M') }}</td>
+                    <td style="padding:8px 12px; text-align:right; white-space:nowrap;">
+                      {% if att.is_image %}
+                      <button type="button" class="btn btn-secondary" style="font-size:12px; padding:4px 10px; margin-right:4px;"
+                              onclick="document.getElementById('previewModal-{{ att.id }}').style.display='flex'">
+                        Preview
+                      </button>
+                      {% endif %}
+                      <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
+                         class="btn btn-secondary" style="font-size:12px; padding:4px 10px;">Download</a>
+                      {% if bill.status == 'draft' %}
+                      <button type="button" class="btn btn-danger" style="font-size:12px; padding:4px 10px; margin-left:4px;"
+                              onclick="document.getElementById('deleteAttModal-{{ att.id }}').style.display='flex'">
+                        Delete
+                      </button>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p style="color:var(--text-2); font-size:13px; font-style:italic;">No attachments.</p>
+            {% endif %}
         </div>
 
         <!-- ── Audit Trail ─────────────────────────────────────────────────── -->

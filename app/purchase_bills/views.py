@@ -1,18 +1,18 @@
 """
 Purchase Bill views for managing supplier invoices and expenses.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort, current_app, send_file
 from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy.orm import selectinload
 from app import db
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.purchase_bills.models import PurchaseBill, PurchaseBillItem, PurchaseBillAttachment
 from app.purchase_bills.forms import PurchaseBillForm
 from app.vendors.models import Vendor
 from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
-from app.audit.utils import log_create, log_update, model_to_dict, log_audit
+from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.periods.utils import validate_transaction_date_with_flash
@@ -20,6 +20,10 @@ from app.journal_entries.utils import generate_entry_number
 from datetime import date, timedelta
 from decimal import Decimal
 import json
+import os
+import uuid
+import mimetypes
+from werkzeug.utils import secure_filename
 
 purchase_bills_bp = Blueprint('purchase_bills', __name__, template_folder='templates')
 
@@ -173,6 +177,13 @@ def _get_bill_or_404(id):
     if bill.branch_id != session.get('selected_branch_id'):
         abort(404)
     return bill
+
+
+def _bill_upload_dir(bill_id):
+    """Return (and create if needed) the upload directory for a bill's attachments."""
+    path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'purchase_bills', str(bill_id))
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def _filtered_bills_query(include_ids=False):
@@ -1043,18 +1054,38 @@ def void(id):
             bill.journal_entry_id = None
             bill.journal_entry = None
 
+        # Collect attachment file paths before deleting DB rows
+        attachment_paths = []
+        for att in list(bill.attachments):
+            fp = os.path.join(
+                current_app.config['UPLOAD_FOLDER'],
+                'purchase_bills',
+                str(bill.id),
+                att.stored_filename
+            )
+            attachment_paths.append(fp)
+            db.session.delete(att)
+
         bill.status = 'voided'
         bill.voided_at = ph_now()
         bill.voided_by_id = current_user.id
         bill.void_reason = void_reason
         db.session.commit()
 
+        # Delete attachment files from disk after successful DB commit
+        for fp in attachment_paths:
+            if os.path.isfile(fp):
+                try:
+                    os.remove(fp)
+                except OSError:
+                    current_app.logger.warning(f'Could not remove attachment file during void: {fp}')
+
         log_audit(
             module='purchase_bill',
             action='void',
             record_id=bill.id,
             record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
-            notes=f'Draft voided by {current_user.username} on {reversal_date}. Reason: {void_reason}'
+            notes=f'Draft voided by {current_user.username} on {reversal_date}. Reason: {void_reason}. {len(attachment_paths)} attachment(s) deleted.'
         )
 
         flash(f'AP Voucher "{bill.bill_number}" voided.', 'warning')
@@ -1069,3 +1100,171 @@ def void(id):
     return redirect(url_for('purchase_bills.view', id=id))
 
 
+@purchase_bills_bp.route('/purchase-bills/<int:id>/attachments/upload', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def upload_attachment(id):
+    """Upload a file attachment to a draft AP Voucher."""
+    bill = _get_bill_or_404(id)
+
+    if bill.status != 'draft':
+        flash('Attachments can only be uploaded while the APV is in draft status.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    uploaded_file = request.files.get('attachment')
+    if not uploaded_file or uploaded_file.filename == '':
+        flash('No file selected.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    original_name = secure_filename(uploaded_file.filename)
+    if not original_name:
+        flash('Invalid filename.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    _, ext = os.path.splitext(original_name)
+    stored_name = uuid.uuid4().hex + ext.lower()
+    mime_type = uploaded_file.mimetype or mimetypes.guess_type(original_name)[0] or 'application/octet-stream'
+
+    upload_dir = _bill_upload_dir(id)
+    file_path = os.path.join(upload_dir, stored_name)
+
+    try:
+        uploaded_file.save(file_path)
+        file_size = os.path.getsize(file_path)
+
+        attachment = PurchaseBillAttachment(
+            bill_id=bill.id,
+            original_filename=original_name,
+            stored_filename=stored_name,
+            mime_type=mime_type,
+            file_size=file_size,
+            uploaded_by_id=current_user.id,
+        )
+        db.session.add(attachment)
+        db.session.commit()
+
+        log_create(
+            module='purchase_bill_attachment',
+            record_id=attachment.id,
+            record_identifier=f'{bill.bill_number} / {original_name}',
+            new_values={
+                'bill_id': bill.id,
+                'original_filename': original_name,
+                'stored_filename': stored_name,
+                'mime_type': mime_type,
+                'file_size': file_size,
+            }
+        )
+
+        flash(f'File "{original_name}" uploaded successfully.', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        current_app.logger.error(f'Error uploading attachment: {e}', exc_info=True)
+        flash(f'Error uploading file: {str(e)}', 'error')
+
+    return redirect(url_for('purchase_bills.view', id=id))
+
+
+@purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/download')
+@login_required
+def download_attachment(attachment_id):
+    """Download a file attachment (all non-voided bill statuses)."""
+    attachment = PurchaseBillAttachment.query.get_or_404(attachment_id)
+    bill = _get_bill_or_404(attachment.bill_id)
+
+    file_path = os.path.join(
+        current_app.config['UPLOAD_FOLDER'],
+        'purchase_bills',
+        str(bill.id),
+        attachment.stored_filename
+    )
+
+    if not os.path.isfile(file_path):
+        flash('File not found on disk.', 'error')
+        return redirect(url_for('purchase_bills.view', id=bill.id))
+
+    return send_file(
+        file_path,
+        mimetype=attachment.mime_type,
+        as_attachment=True,
+        download_name=attachment.original_filename
+    )
+
+
+@purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/preview')
+@login_required
+def preview_attachment(attachment_id):
+    """Serve an image attachment inline (for the popup modal img tag)."""
+    attachment = PurchaseBillAttachment.query.get_or_404(attachment_id)
+
+    if not attachment.is_image:
+        abort(404)
+
+    bill = _get_bill_or_404(attachment.bill_id)
+
+    file_path = os.path.join(
+        current_app.config['UPLOAD_FOLDER'],
+        'purchase_bills',
+        str(bill.id),
+        attachment.stored_filename
+    )
+
+    if not os.path.isfile(file_path):
+        abort(404)
+
+    return send_file(file_path, mimetype=attachment.mime_type, as_attachment=False)
+
+
+@purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/delete', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def delete_attachment(attachment_id):
+    """Delete a file attachment (draft status only)."""
+    attachment = PurchaseBillAttachment.query.get_or_404(attachment_id)
+    bill = _get_bill_or_404(attachment.bill_id)
+
+    if bill.status != 'draft':
+        flash('Attachments can only be deleted while the APV is in draft status.', 'error')
+        return redirect(url_for('purchase_bills.view', id=bill.id))
+
+    file_path = os.path.join(
+        current_app.config['UPLOAD_FOLDER'],
+        'purchase_bills',
+        str(bill.id),
+        attachment.stored_filename
+    )
+
+    old_values = {
+        'bill_id': bill.id,
+        'original_filename': attachment.original_filename,
+        'stored_filename': attachment.stored_filename,
+        'mime_type': attachment.mime_type,
+        'file_size': attachment.file_size,
+    }
+    original_name = attachment.original_filename
+
+    try:
+        db.session.delete(attachment)
+        db.session.commit()
+
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+        log_delete(
+            module='purchase_bill_attachment',
+            record_id=attachment_id,
+            record_identifier=f'{bill.bill_number} / {original_name}',
+            old_values=old_values
+        )
+
+        flash(f'File "{original_name}" deleted.', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting attachment: {e}', exc_info=True)
+        flash(f'Error deleting file: {str(e)}', 'error')
+
+    return redirect(url_for('purchase_bills.view', id=bill.id))

@@ -33,6 +33,10 @@ class Config:
 
     # Upload Security
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', str(16 * 1024 * 1024)))  # 16MB default
+    UPLOAD_FOLDER = os.environ.get(
+        'UPLOAD_FOLDER',
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'uploads')
+    )
 
     # WTForms CSRF Protection
     WTF_CSRF_ENABLED = True

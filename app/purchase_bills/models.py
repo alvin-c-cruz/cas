@@ -109,6 +109,14 @@ class PurchaseBill(db.Model):
     line_items = db.relationship('PurchaseBillItem', backref='bill', lazy='select',
                                  cascade='all, delete-orphan', order_by='PurchaseBillItem.line_number')
 
+    attachments = db.relationship(
+        'PurchaseBillAttachment',
+        backref='bill',
+        lazy='select',
+        cascade='all, delete-orphan',
+        order_by='PurchaseBillAttachment.uploaded_at'
+    )
+
     def __repr__(self):
         return f'<PurchaseBill {self.bill_number}>'
 
@@ -227,3 +235,40 @@ class PurchaseBillItem(db.Model):
             'wt_rate': float(self.wt_rate) if self.wt_rate is not None else None,
             'wt_amount': float(self.wt_amount),
         }
+
+
+class PurchaseBillAttachment(db.Model):
+    """File attachment for a Purchase Bill (AP Voucher).
+
+    Stored at: instance/uploads/purchase_bills/<bill_id>/<stored_filename>
+    Images (mime_type starting with 'image/') can be previewed in the UI.
+    Files are locked when the bill is posted and deleted when the bill is voided.
+    """
+    __tablename__ = 'purchase_bill_attachments'
+
+    id                = db.Column(db.Integer, primary_key=True)
+    bill_id           = db.Column(db.Integer, db.ForeignKey('purchase_bills.id'),
+                                  nullable=False, index=True)
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename   = db.Column(db.String(255), nullable=False, unique=True)  # uuid4 hex + ext
+    mime_type         = db.Column(db.String(100), nullable=False)
+    file_size         = db.Column(db.Integer, nullable=False)   # bytes
+    uploaded_by_id    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    uploaded_by       = db.relationship('User', foreign_keys=[uploaded_by_id],
+                                         backref='uploaded_bill_attachments')
+    uploaded_at       = db.Column(db.DateTime, default=ph_now, nullable=False)
+
+    def __repr__(self):
+        return f'<PurchaseBillAttachment {self.original_filename} bill={self.bill_id}>'
+
+    @property
+    def is_image(self):
+        return self.mime_type.startswith('image/')
+
+    @property
+    def file_size_human(self):
+        if self.file_size < 1024:
+            return f'{self.file_size} B'
+        if self.file_size < 1024 * 1024:
+            return f'{self.file_size / 1024:.1f} KB'
+        return f'{self.file_size / (1024 * 1024):.1f} MB'

@@ -112,6 +112,10 @@ def create_app(config_name=None):
     db.init_app(app)
     csrf.init_app(app)
 
+    # Ensure upload directories exist at startup
+    import os as _os
+    _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'purchase_bills'), exist_ok=True)
+
     # Initialize caching
     cache.init_app(app, config={
         'CACHE_TYPE': 'SimpleCache',  # In-memory cache
@@ -143,7 +147,7 @@ def create_app(config_name=None):
     from app.notifications.models import Notification
     from app.settings import AppSettings
     from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
-    from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+    from app.purchase_bills.models import PurchaseBill, PurchaseBillItem, PurchaseBillAttachment
     from app.receipts.models import Receipt
     from app.journal_entries.models import JournalEntry, JournalEntryLine
     from app.errors.models import ErrorLog
