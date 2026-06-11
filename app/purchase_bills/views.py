@@ -1126,17 +1126,17 @@ def upload_attachment(id):
 
     if bill.status != 'draft':
         flash('Attachments can only be uploaded while the APV is in draft status.', 'error')
-        return redirect(url_for('purchase_bills.view', id=id))
+        return redirect(url_for('purchase_bills.edit', id=id))
 
     uploaded_file = request.files.get('attachment')
     if not uploaded_file or uploaded_file.filename == '':
         flash('No file selected.', 'error')
-        return redirect(url_for('purchase_bills.view', id=id))
+        return redirect(url_for('purchase_bills.edit', id=id))
 
     original_name = secure_filename(uploaded_file.filename)
     if not original_name:
         flash('Invalid filename.', 'error')
-        return redirect(url_for('purchase_bills.view', id=id))
+        return redirect(url_for('purchase_bills.edit', id=id))
 
     _, ext = os.path.splitext(original_name)
     ext = ext.lower()
@@ -1144,7 +1144,7 @@ def upload_attachment(id):
     if mime_type is None:
         allowed = ', '.join(sorted(_ATTACHMENT_ALLOWED))
         flash(f'File type "{ext or "unknown"}" is not allowed. Accepted: {allowed}', 'error')
-        return redirect(url_for('purchase_bills.view', id=id))
+        return redirect(url_for('purchase_bills.edit', id=id))
     stored_name = uuid.uuid4().hex + ext
 
     upload_dir = _bill_upload_dir(id)
@@ -1187,7 +1187,7 @@ def upload_attachment(id):
         current_app.logger.error(f'Error uploading attachment: {e}', exc_info=True)
         flash(f'Error uploading file: {str(e)}', 'error')
 
-    return redirect(url_for('purchase_bills.view', id=id))
+    return redirect(url_for('purchase_bills.edit', id=id))
 
 
 @purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/download')
@@ -1255,7 +1255,7 @@ def delete_attachment(attachment_id):
 
     if bill.status != 'draft':
         flash('Attachments can only be deleted while the APV is in draft status.', 'error')
-        return redirect(url_for('purchase_bills.view', id=bill.id))
+        return redirect(url_for('purchase_bills.edit', id=bill.id))
 
     file_path = os.path.join(
         current_app.config['UPLOAD_FOLDER'],
@@ -1294,4 +1294,4 @@ def delete_attachment(attachment_id):
         current_app.logger.error(f'Error deleting attachment: {e}', exc_info=True)
         flash(f'Error deleting file: {str(e)}', 'error')
 
-    return redirect(url_for('purchase_bills.view', id=bill.id))
+    return redirect(url_for('purchase_bills.edit', id=bill.id))

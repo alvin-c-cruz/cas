@@ -31,31 +31,6 @@
 </div>
 {% endif %}{% endfor %}
 
-{% if bill.status == 'draft' %}
-{% for att in bill.attachments %}
-<div id="deleteAttModal-{{ att.id }}"
-     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
-            z-index:1100; align-items:center; justify-content:center;">
-  <div style="background:var(--card); border-radius:8px; padding:32px; max-width:400px; width:90%;">
-    <h3 style="margin:0 0 12px 0;">Delete attachment?</h3>
-    <p style="color:var(--text-2); margin-bottom:24px;">
-      <strong>{{ att.original_filename }}</strong> will be permanently deleted.
-    </p>
-    <div style="display:flex; gap:12px; justify-content:flex-end;">
-      <button type="button" class="btn btn-secondary"
-              onclick="document.getElementById('deleteAttModal-{{ att.id }}').style.display='none'">
-        Cancel</button>
-      <form method="POST"
-            action="{{ url_for('purchase_bills.delete_attachment', attachment_id=att.id) }}"
-            style="display:inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        <button type="submit" class="btn btn-danger">Delete</button>
-      </form>
-    </div>
-  </div>
-</div>
-{% endfor %}
-{% endif %}
 
 {% if bill.status == 'draft' %}
 <!-- Post modal -->
@@ -338,25 +313,6 @@
                 <span style="font-weight:400; color:var(--text-3);">({{ bill.attachments|length }} file{{ 's' if bill.attachments|length != 1 else '' }})</span>
             </h3>
 
-            {% if bill.status == 'draft' %}
-            <form method="POST" enctype="multipart/form-data"
-                  action="{{ url_for('purchase_bills.upload_attachment', id=bill.id) }}"
-                  style="display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-              <input type="file" name="attachment" style="flex:1; min-width:200px;"
-                     accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt">
-              <button type="submit" class="btn btn-secondary" style="white-space:nowrap;">Upload File</button>
-            </form>
-            {% elif bill.status in ['posted', 'partially_paid', 'paid'] %}
-            <p style="color:var(--text-2); font-size:13px; margin-bottom:12px;">
-              Files are locked once the APV is posted.
-            </p>
-            {% elif bill.status == 'cancelled' %}
-            <p style="color:var(--text-2); font-size:13px; margin-bottom:12px;">
-              This APV has been cancelled. Attached files are preserved for reference.
-            </p>
-            {% endif %}
-
             {% if bill.attachments %}
             <div style="overflow-x:auto;">
               <table style="width:100%; border-collapse:collapse; font-size:13px;">
@@ -393,12 +349,6 @@
                       {% endif %}
                       <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
                          class="btn btn-secondary" style="font-size:12px; padding:4px 10px;">Download</a>
-                      {% if bill.status == 'draft' %}
-                      <button type="button" class="btn btn-danger" style="font-size:12px; padding:4px 10px; margin-left:4px;"
-                              onclick="document.getElementById('deleteAttModal-{{ att.id }}').style.display='flex'">
-                        Delete
-                      </button>
-                      {% endif %}
                     </td>
                   </tr>
                   {% endfor %}
