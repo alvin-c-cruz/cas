@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Bill {{ bill.bill_number }}{% endblock %}
-{% block page_title %}Purchase Bill - {{ bill.bill_number }}{% endblock %}
+{% block title %}APV {{ bill.bill_number }}{% endblock %}
+{% block page_title %}AP Voucher - {{ bill.bill_number }}{% endblock %}
 
 {% block content %}
 {% from "macros.html" import render_flash_messages %}
@@ -12,13 +12,13 @@
 <!-- Post modal -->
 <div id="postModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
-        <h3 style="margin:0 0 12px 0;">Post this bill?</h3>
-        <p style="color:var(--text-2); margin-bottom:24px;">This will make the bill final and it cannot be edited afterwards.</p>
+        <h3 style="margin:0 0 12px 0;">Post this APV?</h3>
+        <p style="color:var(--text-2); margin-bottom:24px;">This will make the APV final and it cannot be edited afterwards.</p>
         <div style="display:flex; gap:12px; justify-content:flex-end;">
             <button type="button" class="btn btn-secondary" onclick="document.getElementById('postModal').style.display='none'">Cancel</button>
             <form method="POST" action="{{ url_for('purchase_bills.post', id=bill.id) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                <button type="submit" class="btn btn-success">Post Bill</button>
+                <button type="submit" class="btn btn-success">Post APV</button>
             </form>
         </div>
     </div>
@@ -27,8 +27,8 @@
 <!-- Void draft modal -->
 <div id="voidModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
-        <h3 style="margin:0 0 12px 0;">Void this draft?</h3>
-        <p style="color:var(--text-2); margin-bottom:20px;"><strong>{{ bill.bill_number }}</strong> will be marked as voided. No journal entry will be created since this bill has not been posted. The bill number may be reused.</p>
+        <h3 style="margin:0 0 12px 0;">Void this APV?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;"><strong>{{ bill.bill_number }}</strong> will be marked as voided. No journal entry will be created since this APV has not been posted. The APV number may be reused.</p>
         <form method="POST" action="{{ url_for('purchase_bills.void', id=bill.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div style="margin-bottom:16px;">
@@ -40,8 +40,8 @@
                 <input type="date" name="reversal_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required style="width:100%;">
             </div>
             <div style="display:flex; gap:12px; justify-content:flex-end;">
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('voidModal').style.display='none'">Keep Draft</button>
-                <button type="submit" class="btn btn-danger">Void Draft</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('voidModal').style.display='none'">Keep APV</button>
+                <button type="submit" class="btn btn-danger">Void APV</button>
             </div>
         </form>
     </div>
@@ -49,10 +49,10 @@
 {% endif %}
 
 {% if bill.status == 'posted' and bill.amount_paid == 0 %}
-<!-- Cancel posted bill modal -->
+<!-- Cancel posted APV modal -->
 <div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
-        <h3 style="margin:0 0 12px 0;">Cancel this bill?</h3>
+        <h3 style="margin:0 0 12px 0;">Cancel this APV?</h3>
         <p style="color:var(--text-2); margin-bottom:20px;">Cancelling <strong>{{ bill.bill_number }}</strong> will create a reversal journal entry. This cannot be undone.</p>
         <form method="POST" action="{{ url_for('purchase_bills.cancel', id=bill.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -65,8 +65,8 @@
                 <input type="date" name="reversal_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required style="width:100%;">
             </div>
             <div style="display:flex; gap:12px; justify-content:flex-end;">
-                <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">Keep Bill</button>
-                <button type="submit" class="btn btn-danger">Cancel Bill</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">Keep APV</button>
+                <button type="submit" class="btn btn-danger">Cancel APV</button>
             </div>
         </form>
     </div>
@@ -87,12 +87,12 @@
         </div>
         <div class="card-header-actions">
             {% if bill.status == 'draft' %}
-            <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post Bill</button>
+            <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post APV</button>
             <a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn btn-primary">Edit</a>
-            <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void Draft</button>
+            <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void APV</button>
             {% endif %}
             {% if bill.status == 'posted' and bill.amount_paid == 0 %}
-            <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Bill</button>
+            <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel APV</button>
             {% endif %}
             <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">← Back to List</a>
         </div>
@@ -193,7 +193,7 @@
             </tbody>
         </table>
 
-        <!-- ── Journal Entry + Bill Summary ───────────────────────────────── -->
+        <!-- ── Journal Entry + AP Voucher Summary ───────────────────────────────── -->
         <div style="display:grid; grid-template-columns:1fr 340px; gap:24px;">
 
             <!-- Journal Entry -->
@@ -233,9 +233,9 @@
                 </table>
             </div>
 
-            <!-- Bill Summary -->
+            <!-- AP Voucher Summary -->
             <div style="background:var(--bg); padding:20px; border-radius:6px;">
-                <h3 style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin:0 0 14px;">Bill Summary</h3>
+                <h3 style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin:0 0 14px;">AP Voucher Summary</h3>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">Gross Amount:</span>
                     <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.subtotal) }}</span>

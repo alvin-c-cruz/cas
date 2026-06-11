@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Purchase Bills{% endblock %}
-{% block page_title %}Purchase Bills{% endblock %}
+{% block title %}AP Vouchers{% endblock %}
+{% block page_title %}AP Vouchers{% endblock %}
 {% block content %}
 {% from "macros.html" import render_flash_messages %}
 {{ render_flash_messages() }}
@@ -10,17 +10,17 @@
     <div class="pb-card">
         <div class="pb-card-label">Outstanding AP</div>
         <div class="pb-card-value">₱{{ '{:,.2f}'.format(summary.outstanding_total) }}</div>
-        <div class="pb-card-detail">{{ summary.outstanding_count }} open bill{{ 's' if summary.outstanding_count != 1 else '' }}</div>
+        <div class="pb-card-detail">{{ summary.outstanding_count }} open APV{{ 's' if summary.outstanding_count != 1 else '' }}</div>
     </div>
     <div class="pb-card">
         <div class="pb-card-label" style="color:var(--red);">Overdue</div>
         <div class="pb-card-value" style="color:var(--red);">₱{{ '{:,.2f}'.format(summary.overdue_total) }}</div>
-        <div class="pb-card-detail">{{ summary.overdue_count }} bill{{ 's' if summary.overdue_count != 1 else '' }}</div>
+        <div class="pb-card-detail">{{ summary.overdue_count }} APV{{ 's' if summary.overdue_count != 1 else '' }}</div>
     </div>
     <div class="pb-card">
         <div class="pb-card-label" style="color:var(--amber);">Due in 7 Days</div>
         <div class="pb-card-value">₱{{ '{:,.2f}'.format(summary.due_soon_total) }}</div>
-        <div class="pb-card-detail">{{ summary.due_soon_count }} bill{{ 's' if summary.due_soon_count != 1 else '' }}</div>
+        <div class="pb-card-detail">{{ summary.due_soon_count }} APV{{ 's' if summary.due_soon_count != 1 else '' }}</div>
     </div>
     <div class="pb-card">
         <div class="pb-card-label">Drafts</div>
@@ -31,7 +31,7 @@
 
 <!-- Filter bar -->
 <form method="GET" action="{{ url_for('purchase_bills.list_bills') }}" class="pb-filter-bar">
-    <input type="text" name="q" value="{{ q }}" placeholder="Search bill # or vendor"
+    <input type="text" name="q" value="{{ q }}" placeholder="Search APV # or vendor"
            class="form-control form-control-sm pb-filter-search">
     <select name="status" class="form-control form-control-sm">
         <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
@@ -63,7 +63,7 @@
                class="btn btn-secondary pb-export-link">📊 Export Excel</a>
             <a href="{{ url_for('purchase_bills.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary pb-export-link">📄 Export CSV</a>
-            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Enter Bill</a>
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Enter APV</a>
         </div>
     </div>
     <div class="card-body">
@@ -73,8 +73,8 @@
         <table class="table">
             <thead>
                 <tr>
-                    <th style="width:28px;"><input type="checkbox" id="pb-check-all" aria-label="Select all bills"></th>
-                    <th>Bill #</th><th>Date</th><th>Vendor</th><th>Due Date</th>
+                    <th style="width:28px;"><input type="checkbox" id="pb-check-all" aria-label="Select all APVs"></th>
+                    <th>APV #</th><th>Date</th><th>Vendor</th><th>Due Date</th>
                     <th style="text-align:right;">Subtotal</th>
                     <th style="text-align:right;">VAT</th>
                     <th style="text-align:right;">WT</th>
@@ -116,11 +116,11 @@
         {% set filters_active = q or status_filter != 'all' or vendor_filter != 'all' or date_from or date_to %}
         <div class="empty-state">
             {% if filters_active %}
-            <p>No bills match your filters.</p>
+            <p>No APVs match your filters.</p>
             <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Clear Filters</a>
             {% else %}
-            <p>No purchase bills found.</p>
-            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Enter First Bill</a>
+            <p>No AP Vouchers found.</p>
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Enter First APV</a>
             {% endif %}
         </div>
         {% endif %}
@@ -131,7 +131,7 @@
         <div>
             Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
             {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
-            {{ pagination.total }} bills
+            {{ pagination.total }} APVs
         </div>
         <div style="display:flex;gap:8px">
             {% if pagination.has_prev %}

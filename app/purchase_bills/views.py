@@ -127,7 +127,7 @@ def accountant_or_admin_required(f):
         if not current_user.is_authenticated:
             return redirect(url_for('users.login'))
         if current_user.role not in ['accountant', 'admin']:
-            flash('Only Accountants and Administrators can manage purchase bills.', 'error')
+            flash('Only Accountants and Administrators can manage AP Vouchers.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
@@ -370,7 +370,7 @@ def create():
 
     if form.validate_on_submit():
         # Validate that the bill date is not in a closed period
-        if not validate_transaction_date_with_flash(form.bill_date.data, 'purchase bill'):
+        if not validate_transaction_date_with_flash(form.bill_date.data, 'AP Voucher'):
             return render_template('purchase_bills/form.html', form=form, bill=None)
 
         try:
@@ -478,7 +478,7 @@ def create():
                 new_values=model_to_dict(bill, ['bill_number', 'bill_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
             )
 
-            flash(f'Purchase Bill "{bill.bill_number}" created successfully!', 'success')
+            flash(f'AP Voucher "{bill.bill_number}" entered successfully!', 'success')
             return redirect(url_for('purchase_bills.view', id=bill.id))
 
         except Exception as e:
@@ -487,7 +487,7 @@ def create():
             current_app.logger.error(f"Error creating purchase bill", exc_info=True)
             log_exception(e, severity='ERROR', module='purchase_bills.create')
             db.session.rollback()
-            flash(f'Error creating purchase bill: {str(e)}', 'error')
+            flash(f'Error entering AP Voucher: {str(e)}', 'error')
 
     if request.method == 'GET':
         form.bill_number.data = generate_bill_number()
@@ -529,7 +529,7 @@ def edit(id):
     bill = _get_bill_or_404(id)
 
     if bill.status != 'draft':
-        flash('Only draft bills can be edited.', 'error')
+        flash('Only draft APVs can be edited.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     form = PurchaseBillForm(obj=bill)
@@ -539,7 +539,7 @@ def edit(id):
 
     if form.validate_on_submit():
         # Validate that the bill date is not in a closed period
-        if not validate_transaction_date_with_flash(form.bill_date.data, 'purchase bill'):
+        if not validate_transaction_date_with_flash(form.bill_date.data, 'AP Voucher'):
             return render_template('purchase_bills/form.html', form=form, bill=bill)
 
         try:
@@ -656,7 +656,7 @@ def edit(id):
                 new_values=new_values
             )
 
-            flash(f'Purchase Bill "{bill.bill_number}" updated successfully!', 'success')
+            flash(f'AP Voucher "{bill.bill_number}" saved successfully!', 'success')
             return redirect(url_for('purchase_bills.view', id=bill.id))
 
         except Exception as e:
@@ -665,7 +665,7 @@ def edit(id):
             current_app.logger.error(f"Error updating purchase bill", exc_info=True)
             log_exception(e, severity='ERROR', module='purchase_bills.update')
             db.session.rollback()
-            flash(f'Error updating purchase bill: {str(e)}', 'error')
+            flash(f'Error saving AP Voucher: {str(e)}', 'error')
 
     if request.method == 'GET':
         form.vendor_id.data = bill.vendor_id
@@ -697,7 +697,7 @@ def post(id):
     bill = _get_bill_or_404(id)
 
     if bill.status != 'draft':
-        flash('Only draft bills can be posted.', 'error')
+        flash('Only draft APVs can be posted.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     try:
@@ -714,14 +714,14 @@ def post(id):
             notes=f'Bill posted by {current_user.username}'
         )
 
-        flash(f'Purchase Bill "{bill.bill_number}" posted successfully!', 'success')
+        flash(f'AP Voucher "{bill.bill_number}" posted successfully!', 'success')
     except Exception as e:
         from flask import current_app
         from app.errors.utils import log_exception
         current_app.logger.error(f"Error posting purchase bill", exc_info=True)
         log_exception(e, severity='ERROR', module='purchase_bills.post')
         db.session.rollback()
-        flash(f'Error posting bill: {str(e)}', 'error')
+        flash(f'Error posting AP Voucher: {str(e)}', 'error')
 
     return redirect(url_for('purchase_bills.view', id=id))
 
@@ -736,11 +736,11 @@ def cancel(id):
     bill = _get_bill_or_404(id)
 
     if bill.status != 'posted':
-        flash('Only posted bills can be cancelled.', 'error')
+        flash('Only posted APVs can be cancelled.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     if bill.amount_paid > 0:
-        flash('Cannot cancel a bill with payments applied. Reverse the payments first.', 'error')
+        flash('Cannot cancel an AP Voucher with payments applied. Reverse the payments first.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     cancel_reason = request.form.get('cancel_reason', '').strip()
@@ -771,7 +771,7 @@ def cancel(id):
             notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}'
         )
 
-        flash(f'Purchase Bill "{bill.bill_number}" cancelled. Reversal journal entry created.', 'success')
+        flash(f'AP Voucher "{bill.bill_number}" cancelled. Reversal journal entry created.', 'success')
     except ValueError as e:
         db.session.rollback()
         flash(str(e), 'error')
@@ -779,7 +779,7 @@ def cancel(id):
         db.session.rollback()
         current_app.logger.error('Error cancelling purchase bill', exc_info=True)
         log_exception(e, severity='ERROR', module='purchase_bills.cancel')
-        flash(f'Error cancelling bill: {str(e)}', 'error')
+        flash(f'Error cancelling AP Voucher: {str(e)}', 'error')
 
     return redirect(url_for('purchase_bills.view', id=id))
 
@@ -1018,7 +1018,7 @@ def void(id):
     bill = _get_bill_or_404(id)
 
     if bill.status != 'draft':
-        flash('Only draft bills can be voided.', 'error')
+        flash('Only draft APVs can be voided.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     void_reason = request.form.get('void_reason', '').strip()
@@ -1057,14 +1057,14 @@ def void(id):
             notes=f'Draft voided by {current_user.username} on {reversal_date}. Reason: {void_reason}'
         )
 
-        flash(f'Purchase Bill "{bill.bill_number}" voided.', 'warning')
+        flash(f'AP Voucher "{bill.bill_number}" voided.', 'warning')
     except Exception as e:
         from flask import current_app
         from app.errors.utils import log_exception
         db.session.rollback()
         current_app.logger.error('Error voiding purchase bill', exc_info=True)
         log_exception(e, severity='ERROR', module='purchase_bills.void')
-        flash(f'Error voiding bill: {str(e)}', 'error')
+        flash(f'Error voiding AP Voucher: {str(e)}', 'error')
 
     return redirect(url_for('purchase_bills.view', id=id))
 
