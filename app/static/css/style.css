@@ -369,6 +369,9 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .badge-cancelled        { background: #fee2e2; color: #b91c1c; }
 .badge-cancel-requested { background: #fef3c7; color: #92400e; }
 
+/* ── Master-data change-request badge (rows with an open pending request) ── */
+.badge-pending-change   { background: #fef3c7; color: #92400e; margin-left: 6px; }
+
 /* ── User switcher (topbar) ────────────────────────────────── */
 .user-switcher { display:flex; align-items:center; gap:8px; padding:4px 10px; border-radius:8px; border:1px solid transparent; transition:border-color .15s, background .15s; }
 .user-switcher:hover { background:#f1f5f9; border-color:var(--border); }

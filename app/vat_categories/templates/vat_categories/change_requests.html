@@ -24,6 +24,7 @@
                 <tr>
                     <th>Action</th>
                     <th>Details</th>
+                    <th>Reason</th>
                     <th>Requested By</th>
                     <th>Requested At</th>
                     <th>Actions</th>
@@ -54,6 +55,7 @@
                             <strong>{{ proposed.get('name', 'N/A') }}</strong> ({{ proposed.get('code', 'N/A') }})
                             {% endif %}
                         </td>
+                        <td style="font-size: 13px; color: #64748b; max-width: 240px;">{{ request.request_reason or '—' }}</td>
                         <td>{{ request.requested_by.full_name if request.requested_by else 'N/A' }}</td>
                         <td>{{ request.requested_at.strftime('%b %d, %Y %I:%M %p') if request.requested_at else 'N/A' }}</td>
                         <td>
@@ -67,7 +69,7 @@
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="5" class="empty-state-cell">
+                        <td colspan="6" class="empty-state-cell">
                             <div class="empty-icon">✓</div>
                             <div>No pending change requests</div>
                         </td>

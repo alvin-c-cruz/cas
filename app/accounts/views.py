@@ -38,6 +38,36 @@ def can_auto_approve():
     return total_accountants == 1
 
 
+PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '
+                             'It will appear under Action Items until approved or rejected.')
+
+
+def find_pending_request(account_id=None, code=None):
+    """
+    Find an existing PENDING change request targeting the same record.
+
+    For update/delete pass account_id. For create pass the proposed code
+    (pending create requests have no account_id; the code lives in change_data).
+    """
+    pending = AccountChangeRequest.query.filter_by(status='pending')
+    if account_id is not None:
+        return pending.filter(AccountChangeRequest.account_id == account_id).first()
+    if code is not None:
+        for req in pending.filter(AccountChangeRequest.account_id.is_(None)).all():
+            if req.get_change_data().get('code') == code:
+                return req
+    return None
+
+
+def flash_duplicate_pending(existing_request):
+    """Flash a consistent error message about an existing pending change request."""
+    requested_on = (existing_request.requested_at.strftime('%b %d, %Y')
+                    if existing_request.requested_at else 'an earlier date')
+    flash(f'A pending change request for this record already exists '
+          f'(submitted by {existing_request.requested_by} on {requested_on}). '
+          f'It must be reviewed before another change can be submitted.', 'error')
+
+
 @accounts_bp.route('/')
 @login_required
 def list_accounts():
@@ -78,10 +108,14 @@ def list_accounts():
 
     pending_requests = AccountChangeRequest.query.filter_by(status='pending').all()
 
+    # Account ids with an open pending change request (for "Pending change" row badges)
+    pending_account_ids = {r.account_id for r in pending_requests if r.account_id}
+
     return render_template('accounts/list.html',
                            account_rows=account_rows,
                            type_counts=type_counts,
-                           pending_requests=pending_requests)
+                           pending_requests=pending_requests,
+                           pending_account_ids=pending_account_ids)
 
 
 @accounts_bp.route('/create', methods=['GET', 'POST'])
@@ -107,6 +141,12 @@ def create():
         if existing_name:
             flash(f'Account name "{form.name.data}" already exists. Please use a different name.', 'error')
             return render_template('accounts/form.html', form=form, account=None)
+
+        # Block duplicate pending requests for the same proposed account code
+        existing_request = find_pending_request(code=form.code.data)
+        if existing_request:
+            flash_duplicate_pending(existing_request)
+            return redirect(url_for('accounts.list_accounts'))
 
         try:
             # Determine inherited fields based on parent
@@ -142,7 +182,8 @@ def create():
                 change_data=json.dumps(change_data),
                 requested_by=current_user.username,
                 requested_at=ph_now(),
-                status='pending'
+                status='pending',
+                request_reason=form.request_reason.data.strip()
             )
 
             # Check if can auto-approve
@@ -181,10 +222,10 @@ def create():
                     record_id=change_request.id,
                     record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
                     new_values=change_data,
-                    notes='Pending approval'
+                    notes=f'Pending approval. Reason: {change_request.request_reason}'
                 )
 
-                flash('Account creation request submitted for approval by another accountant.', 'info')
+                flash(PENDING_SUBMITTED_MESSAGE, 'success')
 
             return redirect(url_for('accounts.list_accounts'))
 
@@ -262,6 +303,12 @@ def edit(id):
             flash(f'Account name "{form.name.data}" already exists. Please use a different name.', 'error')
             return render_template('accounts/form.html', form=form, account=account)
 
+        # Block duplicate pending requests for the same account
+        existing_request = find_pending_request(account_id=id)
+        if existing_request:
+            flash_duplicate_pending(existing_request)
+            return redirect(url_for('accounts.list_accounts'))
+
         try:
             # Determine inherited fields based on parent
             account_type = account.account_type
@@ -299,7 +346,8 @@ def edit(id):
                 change_data=json.dumps(change_data),
                 requested_by=current_user.username,
                 requested_at=ph_now(),
-                status='pending'
+                status='pending',
+                request_reason=form.request_reason.data.strip()
             )
 
             # Check if can auto-approve
@@ -355,10 +403,10 @@ def edit(id):
                     record_id=change_request.id,
                     record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
                     new_values=change_data,
-                    notes='Pending approval'
+                    notes=f'Pending approval. Reason: {change_request.request_reason}'
                 )
 
-                flash('Account update request submitted for approval by another accountant.', 'info')
+                flash(PENDING_SUBMITTED_MESSAGE, 'success')
 
             return redirect(url_for('accounts.list_accounts'))
 
@@ -381,6 +429,21 @@ def delete(id):
     try:
         account = Account.query.get_or_404(id)
 
+        # Reason for change is required (collected in the delete modal)
+        request_reason = (request.form.get('request_reason') or '').strip()
+        if not request_reason:
+            flash('A reason for the change is required to submit a deletion request.', 'error')
+            return redirect(url_for('accounts.list_accounts'))
+        if len(request_reason) > 500:
+            flash('Reason must be 500 characters or less.', 'error')
+            return redirect(url_for('accounts.list_accounts'))
+
+        # Block duplicate pending requests for the same account
+        existing_request = find_pending_request(account_id=id)
+        if existing_request:
+            flash_duplicate_pending(existing_request)
+            return redirect(url_for('accounts.list_accounts'))
+
         # Store account data for audit trail
         change_data = {
             'code': account.code,
@@ -399,7 +462,8 @@ def delete(id):
             change_data=json.dumps(change_data),
             requested_by=current_user.username,
             requested_at=ph_now(),
-            status='pending'
+            status='pending',
+            request_reason=request_reason
         )
 
         # Check if can auto-approve
@@ -437,10 +501,10 @@ def delete(id):
                 record_id=change_request.id,
                 record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
                 old_values=change_data,
-                notes='Pending approval'
+                notes=f'Pending approval. Reason: {request_reason}'
             )
 
-            flash('Account deletion request submitted for approval by another accountant.', 'info')
+            flash(PENDING_SUBMITTED_MESSAGE, 'success')
 
     except Exception as e:
         from flask import current_app

@@ -64,6 +64,9 @@ class VATCategoryChangeRequest(db.Model):
     reviewed_at = db.Column(db.DateTime)
     review_notes = db.Column(db.Text)
 
+    # Reason for the change (provided by the requester, shown to reviewers)
+    request_reason = db.Column(db.Text, nullable=True)
+
     # Relationships
     vat_category = db.relationship('VATCategory', backref='change_requests')
     requested_by = db.relationship('User', foreign_keys=[requested_by_id], backref='vat_category_requests')
@@ -84,4 +87,5 @@ class VATCategoryChangeRequest(db.Model):
             'reviewed_by': self.reviewed_by.full_name if self.reviewed_by else None,
             'reviewed_at': self.reviewed_at.isoformat() if self.reviewed_at else None,
             'review_notes': self.review_notes,
+            'request_reason': self.request_reason,
         }

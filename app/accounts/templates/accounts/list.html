@@ -97,6 +97,9 @@
                                 <span class="child-indicator">└─</span>
                                 {% endif %}
                                 <div class="account-name {% if row.is_header %}account-name-group{% endif %}">{{ account.name }}</div>
+                                {% if account.id in pending_account_ids %}
+                                <span class="badge badge-pending-change" title="A change request for this account is awaiting review">Pending change</span>
+                                {% endif %}
                             </div>
                             {% if account.description %}
                             <div class="account-desc" style="padding-left: {{ row.depth * 18 + (12 if row.depth > 0 else 0) }}px;">
@@ -160,6 +163,13 @@
         <p id="delete-modal-message" style="margin-bottom: 20px; color: #374151;"></p>
         <form id="delete-form" method="POST" action="">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="delete-request-reason" class="form-label">Reason for Change</label>
+                <textarea name="request_reason" id="delete-request-reason" rows="3" maxlength="500"
+                          class="form-control" required
+                          placeholder="Why is this deletion needed?"></textarea>
+                <div class="form-hint">Visible to the reviewer. Explain why this change is needed.</div>
+            </div>
             <div class="form-actions">
                 <button type="submit" class="btn btn-danger">Confirm Delete</button>
                 <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
@@ -401,6 +411,7 @@ function showDeleteModal(id, code, name) {
     document.getElementById('delete-form').action = '/accounts/' + id + '/delete';
     document.getElementById('delete-modal-message').textContent =
         'Are you sure you want to delete account ' + code + ' - ' + name + '? This will create a deletion request pending approval.';
+    document.getElementById('delete-request-reason').value = '';
     document.getElementById('delete-modal').style.display = 'flex';
 }
 function closeDeleteModal() {

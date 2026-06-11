@@ -22,6 +22,7 @@
                     <th>Request Type</th>
                     <th>Account Code</th>
                     <th>Account Name</th>
+                    <th>Reason</th>
                     <th>Requested By</th>
                     <th>Requested At</th>
                     <th>Actions</th>
@@ -42,6 +43,7 @@
                     </td>
                     <td><strong>{{ change_data.code }}</strong></td>
                     <td>{{ change_data.name }}</td>
+                    <td style="font-size: 13px; color: #64748b; max-width: 240px;">{{ request.request_reason or '—' }}</td>
                     <td>{{ request.requested_by }}</td>
                     <td>{{ request.requested_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
                     <td>
@@ -51,9 +53,10 @@
                             </button>
 
                             {% if request.can_be_approved_by(current_user.username) %}
-                            <form method="POST" action="{{ url_for('accounts.approve_request', request_id=request.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to APPROVE this {{ request.change_type }} request?');">
-                                <button type="submit" class="btn-action btn-action-success" title="Approve">Approve</button>
-                            </form>
+                            <button type="button" class="btn-action btn-action-success" title="Approve"
+                                    onclick="showApproveModal({{ request.id }}, '{{ request.change_type }}')">
+                                Approve
+                            </button>
 
                             <button type="button" class="btn-action btn-action-delete" onclick="showRejectModal({{ request.id }})" title="Reject">
                                 Reject
@@ -67,7 +70,7 @@
 
                 <!-- Details row (hidden by default) -->
                 <tr id="details-{{ request.id }}" class="details-row" style="display: none;">
-                    <td colspan="6">
+                    <td colspan="7">
                         <div class="details-panel">
                             <h4>Request Details</h4>
                             <div class="details-grid">
@@ -98,6 +101,9 @@
                                     <strong>Description:</strong><br>{{ change_data.description }}
                                 </div>
                                 {% endif %}
+                                <div class="detail-item" style="grid-column: 1 / -1;">
+                                    <strong>Reason for Change:</strong><br>{{ request.request_reason or '—' }}
+                                </div>
                             </div>
                         </div>
                     </td>
@@ -114,11 +120,27 @@
     </div>
 </div>
 
+<!-- Approve Modal -->
+<div id="approve-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Approve Request</h3>
+        <p id="approve-modal-message" style="margin-bottom: 20px; color: #374151;"></p>
+        <form id="approve-form" method="POST" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Approve Request</button>
+                <button type="button" class="btn btn-secondary" onclick="closeApproveModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Reject Modal -->
 <div id="reject-modal" class="modal" style="display: none;">
     <div class="modal-content">
         <h3>Reject Request</h3>
         <form id="reject-form" method="POST" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label for="rejection_reason">Reason for Rejection:</label>
                 <textarea name="rejection_reason" id="rejection_reason" rows="4" class="form-control" required></textarea>
@@ -267,6 +289,27 @@ function viewDetails(requestId) {
         detailsRow.style.display = 'none';
     }
 }
+
+function showApproveModal(requestId, changeType) {
+    const modal = document.getElementById('approve-modal');
+    const form = document.getElementById('approve-form');
+    form.action = '/accounts/approve/' + requestId;
+    document.getElementById('approve-modal-message').textContent =
+        'Are you sure you want to approve this ' + changeType + ' request?';
+    modal.style.display = 'flex';
+}
+
+function closeApproveModal() {
+    const modal = document.getElementById('approve-modal');
+    modal.style.display = 'none';
+}
+
+// Close approve modal when clicking outside
+document.getElementById('approve-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeApproveModal();
+    }
+});
 
 function showRejectModal(requestId) {
     const modal = document.getElementById('reject-modal');

@@ -41,6 +41,38 @@ def can_auto_approve():
     return total_accountants == 1
 
 
+PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '
+                             'It will appear under Action Items until approved or rejected.')
+
+
+def find_pending_request(withholding_tax_id=None, code=None):
+    """
+    Find an existing PENDING change request targeting the same record.
+
+    For update/delete pass withholding_tax_id. For create pass the proposed code
+    (pending create requests have no withholding_tax_id; the code lives in proposed_data).
+    """
+    pending = WithholdingTaxChangeRequest.query.filter_by(status='pending')
+    if withholding_tax_id is not None:
+        return pending.filter(WithholdingTaxChangeRequest.withholding_tax_id == withholding_tax_id).first()
+    if code is not None:
+        for req in pending.filter(WithholdingTaxChangeRequest.withholding_tax_id.is_(None)).all():
+            proposed = json.loads(req.proposed_data) if req.proposed_data else {}
+            if proposed.get('code') == code:
+                return req
+    return None
+
+
+def flash_duplicate_pending(existing_request):
+    """Flash a consistent error message about an existing pending change request."""
+    requested_by = existing_request.requested_by.username if existing_request.requested_by else 'unknown'
+    requested_on = (existing_request.requested_at.strftime('%b %d, %Y')
+                    if existing_request.requested_at else 'an earlier date')
+    flash(f'A pending change request for this record already exists '
+          f'(submitted by {requested_by} on {requested_on}). '
+          f'It must be reviewed before another change can be submitted.', 'error')
+
+
 @withholding_tax_bp.route('/')
 @login_required
 def list_withholding_tax():
@@ -50,9 +82,13 @@ def list_withholding_tax():
     # Get pending change requests for display
     pending_requests = WithholdingTaxChangeRequest.query.filter_by(status='pending').all()
 
+    # Record ids with an open pending change request (for "Pending change" row badges)
+    pending_record_ids = {r.withholding_tax_id for r in pending_requests if r.withholding_tax_id}
+
     return render_template('withholding_tax/list.html',
                          withholding_tax=withholding_tax,
-                         pending_requests=pending_requests)
+                         pending_requests=pending_requests,
+                         pending_record_ids=pending_record_ids)
 
 
 @withholding_tax_bp.route('/create', methods=['GET', 'POST'])
@@ -74,6 +110,12 @@ def create():
         if existing_name:
             flash(f'VAT name "{form.name.data}" already exists. Please use a different name.', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=None)
+
+        # Block duplicate pending requests for the same proposed code
+        existing_request = find_pending_request(code=form.code.data)
+        if existing_request:
+            flash_duplicate_pending(existing_request)
+            return redirect(url_for('withholding_tax.list_withholding_tax'))
 
         try:
             # Prepare change data
@@ -98,6 +140,18 @@ def create():
                     updated_by_id=current_user.id
                 )
                 db.session.add(withholding_tax)
+                db.session.flush()  # Get the ID before commit
+
+                # Audit log for auto-approved creation
+                log_audit(
+                    module='withholding_tax',
+                    action='create',
+                    record_id=withholding_tax.id,
+                    record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
+                    new_values=change_data,
+                    notes=f'Auto-approved (single accountant). Reason: {form.request_reason.data.strip()}'
+                )
+
                 db.session.commit()
                 flash(f'withholding tax "{withholding_tax.name}" has been created successfully.', 'success')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
@@ -108,7 +162,8 @@ def create():
                     status='pending',
                     proposed_data=json.dumps(change_data),
                     requested_by_id=current_user.id,
-                    requested_at=ph_now()
+                    requested_at=ph_now(),
+                    request_reason=form.request_reason.data.strip()
                 )
                 db.session.add(change_request)
                 db.session.flush()  # Get the ID before commit
@@ -120,11 +175,11 @@ def create():
                     record_id=change_request.id,
                     record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
                     new_values=change_data,
-                    notes='Pending approval'
+                    notes=f'Pending approval. Reason: {change_request.request_reason}'
                 )
 
                 db.session.commit()
-                flash(f'withholding tax creation request for "{change_data["name"]}" has been submitted for approval.', 'info')
+                flash(PENDING_SUBMITTED_MESSAGE, 'success')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
 
         except Exception as e:
@@ -166,6 +221,12 @@ def edit(id):
             flash(f'VAT name "{form.name.data}" already exists. Please use a different name.', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=withholding_tax)
 
+        # Block duplicate pending requests for the same record
+        existing_request = find_pending_request(withholding_tax_id=id)
+        if existing_request:
+            flash_duplicate_pending(existing_request)
+            return redirect(url_for('withholding_tax.list_withholding_tax'))
+
         try:
             # Prepare change data
             change_data = {
@@ -178,6 +239,9 @@ def edit(id):
 
             # Check if auto-approval is allowed
             if can_auto_approve():
+                # Capture old values before update
+                old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+
                 # Update withholding tax directly
                 withholding_tax.code = change_data['code']
                 withholding_tax.name = change_data['name']
@@ -186,6 +250,18 @@ def edit(id):
                 withholding_tax.is_active = change_data['is_active']
                 withholding_tax.updated_by_id = current_user.id
                 withholding_tax.updated_at = ph_now()
+
+                # Audit log for auto-approved update
+                log_audit(
+                    module='withholding_tax',
+                    action='update',
+                    record_id=withholding_tax.id,
+                    record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
+                    old_values=old_values,
+                    new_values=change_data,
+                    notes=f'Auto-approved (single accountant). Reason: {form.request_reason.data.strip()}'
+                )
+
                 db.session.commit()
                 flash(f'withholding tax "{withholding_tax.name}" has been updated successfully.', 'success')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
@@ -197,7 +273,8 @@ def edit(id):
                     withholding_tax_id=withholding_tax.id,
                     proposed_data=json.dumps(change_data),
                     requested_by_id=current_user.id,
-                    requested_at=ph_now()
+                    requested_at=ph_now(),
+                    request_reason=form.request_reason.data.strip()
                 )
                 db.session.add(change_request)
                 db.session.flush()  # Get the ID before commit
@@ -211,11 +288,11 @@ def edit(id):
                     record_identifier=f'Change Request: {withholding_tax.code} - {withholding_tax.name}',
                     old_values=old_values,
                     new_values=change_data,
-                    notes='Pending approval'
+                    notes=f'Pending approval. Reason: {change_request.request_reason}'
                 )
 
                 db.session.commit()
-                flash(f'withholding tax update request for "{withholding_tax.name}" has been submitted for approval.', 'info')
+                flash(PENDING_SUBMITTED_MESSAGE, 'success')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
 
         except Exception as e:
@@ -245,13 +322,45 @@ def delete(id):
     """Delete withholding tax - submits for approval"""
     withholding_tax = WithholdingTax.query.get_or_404(id)
 
+    # Reason for change is required (collected in the delete modal)
+    request_reason = (request.form.get('request_reason') or '').strip()
+    if not request_reason:
+        flash('A reason for the change is required to submit a deletion request.', 'error')
+        return redirect(url_for('withholding_tax.list_withholding_tax'))
+    if len(request_reason) > 500:
+        flash('Reason must be 500 characters or less.', 'error')
+        return redirect(url_for('withholding_tax.list_withholding_tax'))
+
+    # Block duplicate pending requests for the same record
+    existing_request = find_pending_request(withholding_tax_id=id)
+    if existing_request:
+        flash_duplicate_pending(existing_request)
+        return redirect(url_for('withholding_tax.list_withholding_tax'))
+
     try:
         # Check if auto-approval is allowed
         if can_auto_approve():
+            # Capture values before delete
+            old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+            wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
+            wt_id = withholding_tax.id
+            wt_name = withholding_tax.name
+
             # Delete withholding tax directly
             db.session.delete(withholding_tax)
+
+            # Audit log for auto-approved deletion
+            log_audit(
+                module='withholding_tax',
+                action='delete',
+                record_id=wt_id,
+                record_identifier=wt_identifier,
+                old_values=old_values,
+                notes=f'Auto-approved (single accountant). Reason: {request_reason}'
+            )
+
             db.session.commit()
-            flash(f'withholding tax "{withholding_tax.name}" has been deleted successfully.', 'success')
+            flash(f'withholding tax "{wt_name}" has been deleted successfully.', 'success')
         else:
             # Create change request for approval
             change_request = WithholdingTaxChangeRequest(
@@ -260,7 +369,8 @@ def delete(id):
                 withholding_tax_id=withholding_tax.id,
                 proposed_data=json.dumps({'name': withholding_tax.name, 'code': withholding_tax.code}),
                 requested_by_id=current_user.id,
-                requested_at=ph_now()
+                requested_at=ph_now(),
+                request_reason=request_reason
             )
             db.session.add(change_request)
             db.session.flush()  # Get the ID before commit
@@ -273,11 +383,11 @@ def delete(id):
                 record_id=change_request.id,
                 record_identifier=f'Change Request: {withholding_tax.code} - {withholding_tax.name}',
                 old_values=old_values,
-                notes='Pending approval'
+                notes=f'Pending approval. Reason: {request_reason}'
             )
 
             db.session.commit()
-            flash(f'withholding tax deletion request for "{withholding_tax.name}" has been submitted for approval.', 'info')
+            flash(PENDING_SUBMITTED_MESSAGE, 'success')
 
         return redirect(url_for('withholding_tax.list_withholding_tax'))
 
@@ -310,6 +420,7 @@ def change_requests():
             'requested_by': req.requested_by,
             'requested_at': req.requested_at,
             'requested_by_id': req.requested_by_id,
+            'request_reason': req.request_reason,
             'proposed_data': json.loads(req.proposed_data) if req.proposed_data else {}
         }
         requests_with_data.append(req_dict)

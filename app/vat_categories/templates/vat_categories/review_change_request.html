@@ -38,6 +38,9 @@
 
                 <div style="font-weight: 600; color: #64748b;">Requested At:</div>
                 <div>{{ change_request.requested_at.strftime('%B %d, %Y at %I:%M %p') if change_request.requested_at else 'N/A' }}</div>
+
+                <div style="font-weight: 600; color: #64748b;">Reason for Change:</div>
+                <div>{{ change_request.request_reason or '—' }}</div>
             </div>
         </div>
 

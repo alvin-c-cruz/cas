@@ -49,6 +49,13 @@ class AccountForm(FlaskForm):
                                validators=[Optional()],
                                render_kw={'placeholder': 'Optional description of this account', 'rows': 3})
 
+    request_reason = TextAreaField('Reason for Change',
+                                  validators=[
+                                      DataRequired(message='Please explain why this change is needed'),
+                                      Length(max=500, message='Reason must be 500 characters or less')
+                                  ],
+                                  render_kw={'placeholder': 'Why is this change needed?', 'rows': 3})
+
     def populate_parent_choices(self, accounts, exclude_id=None):
         """Populate parent account choices dynamically"""
         choices = [('', 'None (Top Level)')]

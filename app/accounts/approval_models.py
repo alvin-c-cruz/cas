@@ -46,6 +46,9 @@ class AccountChangeRequest(db.Model):
     # Rejection reason (if rejected)
     rejection_reason = db.Column(db.Text)
 
+    # Reason for the change (provided by the requester, shown to reviewers)
+    request_reason = db.Column(db.Text, nullable=True)
+
     # Relationship to account (for update/delete)
     account = db.relationship('Account', backref='change_requests', foreign_keys=[account_id])
 
@@ -72,7 +75,8 @@ class AccountChangeRequest(db.Model):
             'status': self.status,
             'reviewed_by': self.reviewed_by,
             'reviewed_at': self.reviewed_at.isoformat() if self.reviewed_at else None,
-            'rejection_reason': self.rejection_reason
+            'rejection_reason': self.rejection_reason,
+            'request_reason': self.request_reason
         }
 
     def can_be_approved_by(self, username):

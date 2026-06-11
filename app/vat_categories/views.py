@@ -41,6 +41,38 @@ def can_auto_approve():
     return total_accountants == 1
 
 
+PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '
+                             'It will appear under Action Items until approved or rejected.')
+
+
+def find_pending_request(vat_category_id=None, code=None):
+    """
+    Find an existing PENDING change request targeting the same record.
+
+    For update/delete pass vat_category_id. For create pass the proposed code
+    (pending create requests have no vat_category_id; the code lives in proposed_data).
+    """
+    pending = VATCategoryChangeRequest.query.filter_by(status='pending')
+    if vat_category_id is not None:
+        return pending.filter(VATCategoryChangeRequest.vat_category_id == vat_category_id).first()
+    if code is not None:
+        for req in pending.filter(VATCategoryChangeRequest.vat_category_id.is_(None)).all():
+            proposed = json.loads(req.proposed_data) if req.proposed_data else {}
+            if proposed.get('code') == code:
+                return req
+    return None
+
+
+def flash_duplicate_pending(existing_request):
+    """Flash a consistent error message about an existing pending change request."""
+    requested_by = existing_request.requested_by.username if existing_request.requested_by else 'unknown'
+    requested_on = (existing_request.requested_at.strftime('%b %d, %Y')
+                    if existing_request.requested_at else 'an earlier date')
+    flash(f'A pending change request for this record already exists '
+          f'(submitted by {requested_by} on {requested_on}). '
+          f'It must be reviewed before another change can be submitted.', 'error')
+
+
 @vat_categories_bp.route('/')
 @login_required
 def list_vat_categories():
@@ -50,9 +82,13 @@ def list_vat_categories():
     # Get pending change requests for display
     pending_requests = VATCategoryChangeRequest.query.filter_by(status='pending').all()
 
+    # Record ids with an open pending change request (for "Pending change" row badges)
+    pending_record_ids = {r.vat_category_id for r in pending_requests if r.vat_category_id}
+
     return render_template('vat_categories/list.html',
                          vat_categories=vat_categories,
-                         pending_requests=pending_requests)
+                         pending_requests=pending_requests,
+                         pending_record_ids=pending_record_ids)
 
 
 @vat_categories_bp.route('/create', methods=['GET', 'POST'])
@@ -74,6 +110,12 @@ def create():
         if existing_name:
             flash(f'VAT name "{form.name.data}" already exists. Please use a different name.', 'error')
             return render_template('vat_categories/form.html', form=form, vat_category=None)
+
+        # Block duplicate pending requests for the same proposed code
+        existing_request = find_pending_request(code=form.code.data)
+        if existing_request:
+            flash_duplicate_pending(existing_request)
+            return redirect(url_for('vat_categories.list_vat_categories'))
 
         try:
             # Prepare change data
@@ -98,6 +140,18 @@ def create():
                     updated_by_id=current_user.id
                 )
                 db.session.add(vat_category)
+                db.session.flush()  # Get the ID before commit
+
+                # Audit log for auto-approved creation
+                log_audit(
+                    module='vat_category',
+                    action='create',
+                    record_id=vat_category.id,
+                    record_identifier=f'{vat_category.code} - {vat_category.name}',
+                    new_values=change_data,
+                    notes=f'Auto-approved (single accountant). Reason: {form.request_reason.data.strip()}'
+                )
+
                 db.session.commit()
                 flash(f'VAT category "{vat_category.name}" has been created successfully.', 'success')
                 return redirect(url_for('vat_categories.list_vat_categories'))
@@ -108,7 +162,8 @@ def create():
                     status='pending',
                     proposed_data=json.dumps(change_data),
                     requested_by_id=current_user.id,
-                    requested_at=ph_now()
+                    requested_at=ph_now(),
+                    request_reason=form.request_reason.data.strip()
                 )
                 db.session.add(change_request)
                 db.session.flush()  # Get the ID before commit
@@ -120,11 +175,11 @@ def create():
                     record_id=change_request.id,
                     record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
                     new_values=change_data,
-                    notes='Pending approval'
+                    notes=f'Pending approval. Reason: {change_request.request_reason}'
                 )
 
                 db.session.commit()
-                flash(f'VAT category creation request for "{change_data["name"]}" has been submitted for approval.', 'info')
+                flash(PENDING_SUBMITTED_MESSAGE, 'success')
                 return redirect(url_for('vat_categories.list_vat_categories'))
 
         except Exception as e:
@@ -166,6 +221,12 @@ def edit(id):
             flash(f'VAT name "{form.name.data}" already exists. Please use a different name.', 'error')
             return render_template('vat_categories/form.html', form=form, vat_category=vat_category)
 
+        # Block duplicate pending requests for the same record
+        existing_request = find_pending_request(vat_category_id=id)
+        if existing_request:
+            flash_duplicate_pending(existing_request)
+            return redirect(url_for('vat_categories.list_vat_categories'))
+
         try:
             # Prepare change data
             change_data = {
@@ -178,6 +239,9 @@ def edit(id):
 
             # Check if auto-approval is allowed
             if can_auto_approve():
+                # Capture old values before update
+                old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+
                 # Update VAT category directly
                 vat_category.code = change_data['code']
                 vat_category.name = change_data['name']
@@ -186,6 +250,18 @@ def edit(id):
                 vat_category.is_active = change_data['is_active']
                 vat_category.updated_by_id = current_user.id
                 vat_category.updated_at = ph_now()
+
+                # Audit log for auto-approved update
+                log_audit(
+                    module='vat_category',
+                    action='update',
+                    record_id=vat_category.id,
+                    record_identifier=f'{vat_category.code} - {vat_category.name}',
+                    old_values=old_values,
+                    new_values=change_data,
+                    notes=f'Auto-approved (single accountant). Reason: {form.request_reason.data.strip()}'
+                )
+
                 db.session.commit()
                 flash(f'VAT category "{vat_category.name}" has been updated successfully.', 'success')
                 return redirect(url_for('vat_categories.list_vat_categories'))
@@ -197,7 +273,8 @@ def edit(id):
                     vat_category_id=vat_category.id,
                     proposed_data=json.dumps(change_data),
                     requested_by_id=current_user.id,
-                    requested_at=ph_now()
+                    requested_at=ph_now(),
+                    request_reason=form.request_reason.data.strip()
                 )
                 db.session.add(change_request)
                 db.session.flush()  # Get the ID before commit
@@ -211,11 +288,11 @@ def edit(id):
                     record_identifier=f'Change Request: {vat_category.code} - {vat_category.name}',
                     old_values=old_values,
                     new_values=change_data,
-                    notes='Pending approval'
+                    notes=f'Pending approval. Reason: {change_request.request_reason}'
                 )
 
                 db.session.commit()
-                flash(f'VAT category update request for "{vat_category.name}" has been submitted for approval.', 'info')
+                flash(PENDING_SUBMITTED_MESSAGE, 'success')
                 return redirect(url_for('vat_categories.list_vat_categories'))
 
         except Exception as e:
@@ -245,13 +322,45 @@ def delete(id):
     """Delete VAT category - submits for approval"""
     vat_category = VATCategory.query.get_or_404(id)
 
+    # Reason for change is required (collected in the delete modal)
+    request_reason = (request.form.get('request_reason') or '').strip()
+    if not request_reason:
+        flash('A reason for the change is required to submit a deletion request.', 'error')
+        return redirect(url_for('vat_categories.list_vat_categories'))
+    if len(request_reason) > 500:
+        flash('Reason must be 500 characters or less.', 'error')
+        return redirect(url_for('vat_categories.list_vat_categories'))
+
+    # Block duplicate pending requests for the same record
+    existing_request = find_pending_request(vat_category_id=id)
+    if existing_request:
+        flash_duplicate_pending(existing_request)
+        return redirect(url_for('vat_categories.list_vat_categories'))
+
     try:
         # Check if auto-approval is allowed
         if can_auto_approve():
+            # Capture values before delete
+            old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+            vat_identifier = f'{vat_category.code} - {vat_category.name}'
+            vat_id = vat_category.id
+            vat_name = vat_category.name
+
             # Delete VAT category directly
             db.session.delete(vat_category)
+
+            # Audit log for auto-approved deletion
+            log_audit(
+                module='vat_category',
+                action='delete',
+                record_id=vat_id,
+                record_identifier=vat_identifier,
+                old_values=old_values,
+                notes=f'Auto-approved (single accountant). Reason: {request_reason}'
+            )
+
             db.session.commit()
-            flash(f'VAT category "{vat_category.name}" has been deleted successfully.', 'success')
+            flash(f'VAT category "{vat_name}" has been deleted successfully.', 'success')
         else:
             # Create change request for approval
             change_request = VATCategoryChangeRequest(
@@ -260,7 +369,8 @@ def delete(id):
                 vat_category_id=vat_category.id,
                 proposed_data=json.dumps({'name': vat_category.name, 'code': vat_category.code}),
                 requested_by_id=current_user.id,
-                requested_at=ph_now()
+                requested_at=ph_now(),
+                request_reason=request_reason
             )
             db.session.add(change_request)
             db.session.flush()  # Get the ID before commit
@@ -273,11 +383,11 @@ def delete(id):
                 record_id=change_request.id,
                 record_identifier=f'Change Request: {vat_category.code} - {vat_category.name}',
                 old_values=old_values,
-                notes='Pending approval'
+                notes=f'Pending approval. Reason: {request_reason}'
             )
 
             db.session.commit()
-            flash(f'VAT category deletion request for "{vat_category.name}" has been submitted for approval.', 'info')
+            flash(PENDING_SUBMITTED_MESSAGE, 'success')
 
         return redirect(url_for('vat_categories.list_vat_categories'))
 
@@ -314,6 +424,7 @@ def change_requests():
             'reviewed_at': req.reviewed_at,
             'status': req.status,
             'review_notes': req.review_notes,
+            'request_reason': req.request_reason,
             'vat_category_id': req.vat_category_id,
             'vat_category': req.vat_category
         }

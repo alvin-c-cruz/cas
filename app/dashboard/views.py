@@ -105,14 +105,16 @@ def action_items():
         # Chart of Accounts change requests
         coa_requests = AccountChangeRequest.query.filter_by(status='pending').all()
         for req in coa_requests:
+            change_data = req.get_change_data()
             items.append({
                 'type': 'AccountChange',
-                'id': req.account_code,
-                'desc': f'{req.account_name} — {req.action}',
-                'by': req.requested_by.username if req.requested_by else '—',
+                'id': change_data.get('code', req.id),
+                'desc': f"{change_data.get('name', 'Account')} — {req.change_type}",
+                'by': req.requested_by or '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
-                'reviewUrl': f'/accounts/review-change-request/{req.id}'
+                'reason': req.request_reason,
+                'reviewUrl': '/accounts/pending-approvals'
             })
 
         # VAT Category change requests
@@ -126,6 +128,7 @@ def action_items():
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
+                'reason': req.request_reason,
                 'reviewUrl': f'/vat-categories/change-requests/{req.id}/review'
             })
 
@@ -140,6 +143,7 @@ def action_items():
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
+                'reason': req.request_reason,
                 'reviewUrl': f'/withholding-tax/change-requests/{req.id}/review'
             })
 
@@ -156,21 +160,23 @@ def get_action_items():
         # Chart of Accounts change requests
         coa_requests = AccountChangeRequest.query.filter_by(status='pending').all()
         for req in coa_requests:
+            change_data = req.get_change_data()
             # For create action, just show the name. For update/delete, show "name — action"
-            if req.action == 'create':
-                desc = req.account_name
+            if req.change_type == 'create':
+                desc = change_data.get('name', 'Account')
             else:
-                desc = f'{req.account_name} — {req.action}'
+                desc = f"{change_data.get('name', 'Account')} — {req.change_type}"
             items.append({
                 'type': 'AccountChange',
-                'id': req.account_code,
+                'id': change_data.get('code', req.id),
                 'desc': desc,
-                'by': req.requested_by.username if req.requested_by else '—',
+                'by': req.requested_by or '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
+                'reason': req.request_reason,
                 'recId': req.id,
                 'module': 'accounts',
-                'reviewUrl': f'/accounts/review-change-request/{req.id}'
+                'reviewUrl': '/accounts/pending-approvals'
             })
 
         # VAT Category change requests
@@ -190,6 +196,7 @@ def get_action_items():
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
+                'reason': req.request_reason,
                 'recId': req.id,
                 'module': 'vat_categories',
                 'reviewUrl': f'/vat-categories/change-requests/{req.id}/review'
@@ -212,6 +219,7 @@ def get_action_items():
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
                 'state': 'Pending',
+                'reason': req.request_reason,
                 'recId': req.id,
                 'module': 'withholding_tax',
                 'reviewUrl': f'/withholding-tax/change-requests/{req.id}/review'
