@@ -1144,6 +1144,7 @@ Fill these in during the first run; reuse the same data in later runs. **Never r
 | V12 | VAT 12% | 12.00 | Scenario 16 (⏸ approved 2026-06-12) |
 | V0 | VAT Zero-Rated | 0.00 | Scenario 16 (⏸ approved 2026-06-12) |
 | VEX | VAT Exempt | 0.00 | Scenario 16 (⏸ approved 2026-06-12) |
+| INV | Invalid | 0.00 | Owner request 2026-06-12 — purchases from non-VAT-registered individuals (no valid input VAT) |
 
 ### WHT Codes
 
