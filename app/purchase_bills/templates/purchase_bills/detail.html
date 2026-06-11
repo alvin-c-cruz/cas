@@ -49,7 +49,7 @@
 <div id="voidModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Void this APV?</h3>
-        <p style="color:var(--text-2); margin-bottom:12px;"><strong>{{ bill.bill_number }}</strong> will be marked as voided. No journal entry will be created since this APV has not been posted. The APV number may be reused.</p>
+        <p style="color:var(--text-2); margin-bottom:12px;"><strong>{{ bill.bill_number }}</strong> will be marked as voided. No journal entry will be created since this APV has not been posted. The voided APV keeps its number; it will not be reissued.</p>
         <p style="color:var(--text-2); margin-bottom:20px;">All attachments will also be permanently deleted.</p>
         <form method="POST" action="{{ url_for('purchase_bills.void', id=bill.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>

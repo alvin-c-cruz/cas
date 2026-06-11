@@ -63,3 +63,22 @@ class TestVoidDraft:
                                          record_id=bill.id).first()
         assert audit is not None
         assert audit.user_id == admin_user.id
+
+
+class TestBillNumberAfterVoid:
+    def test_voided_number_not_reissued(self, client, db_session,
+                                        admin_user, main_branch):
+        """B-016: bill_number is unique, so the generator must not offer a
+        voided bill's number again (it would collide on save)."""
+        from app.purchase_bills.views import generate_bill_number
+        from app.utils import ph_now
+
+        login(client)
+        bill = make_draft_bill(db_session, main_branch)
+        now = ph_now()
+        bill.bill_number = f'AP-{now.year}-{now.month:02d}-0001'
+        bill.status = 'voided'
+        db_session.commit()
+
+        next_number = generate_bill_number()
+        assert next_number == f'AP-{now.year}-{now.month:02d}-0002'

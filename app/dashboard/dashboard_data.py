@@ -34,9 +34,9 @@ def get_revenue_stats(year, month, branch_id=None, as_of_date=None):
     if as_of_date is None:
         as_of_date = date.today()
 
-    # Get all revenue accounts (account codes starting with 4)
+    # Get all revenue accounts (by type — code prefixes vary per company COA)
     revenue_accounts = Account.query.filter(
-        Account.code.like('4%'),
+        Account.account_type == 'Revenue',
         Account.is_active == True
     ).all()
 
@@ -100,9 +100,9 @@ def get_expense_stats(year, month, branch_id=None, as_of_date=None):
     if as_of_date is None:
         as_of_date = date.today()
 
-    # Get all expense accounts (account codes starting with 5)
+    # Get all expense accounts (by type — code prefixes vary per company COA)
     expense_accounts = Account.query.filter(
-        Account.code.like('5%'),
+        Account.account_type == 'Expense',
         Account.is_active == True
     ).all()
 
@@ -336,7 +336,7 @@ def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None):
         as_of_date = date.today()
 
     revenue_accounts = Account.query.filter(
-        Account.code.like('4%'),
+        Account.account_type == 'Revenue',
         Account.is_active == True
     ).all()
 
@@ -402,7 +402,7 @@ def get_expense_breakdown(as_of_date=None, branch_id=None):
         as_of_date = date.today()
 
     expense_accounts = Account.query.filter(
-        Account.code.like('5%'),
+        Account.account_type == 'Expense',
         Account.is_active == True
     ).all()
 

@@ -150,13 +150,15 @@ def generate_bill_number():
     """
     Generate next bill number in format: AP-YYYY-MM-NNNN
     Example: AP-2026-06-0001 (resets each month)
+
+    Voided bills keep their number (bill_number is unique; reissuing a
+    voided number would collide), so the sequence counts ALL bills.
     """
     now = ph_now()
     prefix = f'AP-{now.year}-{now.month:02d}-'
 
     latest_bill = PurchaseBill.query.filter(
-        PurchaseBill.bill_number.like(f'{prefix}%'),
-        PurchaseBill.status != 'voided'
+        PurchaseBill.bill_number.like(f'{prefix}%')
     ).order_by(PurchaseBill.bill_number.desc()).first()
 
     if latest_bill:
@@ -739,6 +741,12 @@ def post(id):
         bill.status = 'posted'
         bill.posted_by_id = current_user.id
         bill.posted_at = ph_now()
+
+        # Promote the bill's draft JE so the amounts enter the books now
+        if bill.journal_entry:
+            bill.journal_entry.status = 'posted'
+            bill.journal_entry.posted_by_id = current_user.id
+            bill.journal_entry.posted_at = ph_now()
         db.session.commit()
 
         log_audit(
@@ -839,6 +847,10 @@ def _post_bill_je(bill, user_id):
         if not wt_account:
             raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
 
+    # The JE mirrors the bill's lifecycle: created as a DRAFT while the bill
+    # is a draft (so unposted vouchers never hit GL reports), promoted to
+    # posted by the post route.
+    je_status = 'posted' if bill.status == 'posted' else 'draft'
     entry_number = generate_entry_number(bill.branch_id)
     je = JournalEntry(
         entry_number=entry_number,
@@ -848,9 +860,9 @@ def _post_bill_je(bill, user_id):
         entry_type='purchase',
         branch_id=bill.branch_id,
         created_by_id=user_id,
-        status='posted',
-        posted_by_id=user_id,
-        posted_at=ph_now(),
+        status=je_status,
+        posted_by_id=user_id if je_status == 'posted' else None,
+        posted_at=ph_now() if je_status == 'posted' else None,
         is_balanced=False,
         total_debit=Decimal('0.00'),
         total_credit=Decimal('0.00')
