@@ -728,6 +728,15 @@ def post(id):
         flash('Only draft APVs can be posted.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
+    missing = []
+    if not bill.vendor_invoice_number:
+        missing.append('Vendor Invoice #')
+    if not bill.vendor_invoice_date:
+        missing.append('Vendor Invoice Date')
+    if missing:
+        flash(f'Cannot post: {" and ".join(missing)} is required.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
     try:
         bill.status = 'posted'
         bill.posted_by_id = current_user.id
