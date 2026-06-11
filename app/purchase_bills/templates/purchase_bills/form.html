@@ -464,6 +464,7 @@ function calculateTotals() {
 function validateForm() {
     const btn = document.getElementById('submitBtn');
     const hint = document.getElementById('saveHint');
+    if (!btn || !hint) return;
 
     function block(msg) { btn.disabled = true; hint.textContent = msg; }
     function allow()     { btn.disabled = false; hint.textContent = ''; }
