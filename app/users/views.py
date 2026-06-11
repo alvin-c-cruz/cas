@@ -4,7 +4,7 @@ from app import db
 from app.users.models import User
 from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
 from app.utils import ph_now
-from app.audit.utils import log_create, log_update, log_delete, model_to_dict
+from app.audit.utils import log_audit, log_create, log_update, log_delete, model_to_dict
 from functools import wraps
 
 
@@ -726,6 +726,15 @@ def add_approved_email():
             db.session.add(approved_email)
             db.session.commit()
 
+            log_audit(
+                module='approved_email',
+                action='create',
+                record_id=approved_email.id,
+                record_identifier=approved_email.email,
+                new_values={'email': approved_email.email, 'notes': approved_email.notes},
+                notes='Email pre-approved for registration'
+            )
+
             flash(f'Email "{form.email.data}" has been approved for registration.', 'success')
             return redirect(url_for('users.list_approved_emails'))
         except Exception as e:
@@ -755,8 +764,18 @@ def delete_approved_email(id):
             return redirect(url_for('users.list_approved_emails'))
 
         email_address = approved_email.email
+        old_values = {'email': approved_email.email, 'notes': approved_email.notes}
         db.session.delete(approved_email)
         db.session.commit()
+
+        log_audit(
+            module='approved_email',
+            action='delete',
+            record_id=id,
+            record_identifier=email_address,
+            old_values=old_values,
+            notes='Approved email removed before use'
+        )
 
         flash(f'Approved email "{email_address}" has been removed.', 'success')
     except Exception as e:
