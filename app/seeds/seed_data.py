@@ -329,11 +329,16 @@ def seed_vat_categories():
         print(f"  [SKIP] {existing_count} VAT categories already exist, skipping...")
         return False
 
+    # Map VAT-bearing categories to the seed COA's input VAT account
+    # (seed_chart_of_accounts runs before this in seed_all)
+    input_vat_acct = Account.query.filter_by(code='10501').first()
+    input_vat_id = input_vat_acct.id if input_vat_acct else None
+
     vat_categories = [
-        {'code': 'VATABLE', 'name': 'Vatable (12%)', 'rate': 12.00, 'description': 'Standard VAT rate'},
-        {'code': 'VAT-EXEMPT', 'name': 'VAT-Exempt', 'rate': 0.00, 'description': 'Transactions exempt from VAT'},
-        {'code': 'ZERO-RATED', 'name': 'Zero-Rated', 'rate': 0.00, 'description': 'Zero-rated transactions (exports, etc.)'},
-        {'code': 'NON-VAT', 'name': 'Non-VAT', 'rate': 0.00, 'description': 'Non-VAT transactions'},
+        {'code': 'VATABLE', 'name': 'Vatable (12%)', 'rate': 12.00, 'description': 'Standard VAT rate', 'input_vat_account_id': input_vat_id},
+        {'code': 'VAT-EXEMPT', 'name': 'VAT-Exempt', 'rate': 0.00, 'description': 'Transactions exempt from VAT', 'input_vat_account_id': None},
+        {'code': 'ZERO-RATED', 'name': 'Zero-Rated', 'rate': 0.00, 'description': 'Zero-rated transactions (exports, etc.)', 'input_vat_account_id': None},
+        {'code': 'NON-VAT', 'name': 'Non-VAT', 'rate': 0.00, 'description': 'Non-VAT transactions', 'input_vat_account_id': None},
     ]
 
     for cat_data in vat_categories:
@@ -342,6 +347,7 @@ def seed_vat_categories():
             name=cat_data['name'],
             rate=cat_data['rate'],
             description=cat_data['description'],
+            input_vat_account_id=cat_data['input_vat_account_id'],
             is_active=True
         )
         db.session.add(vat_cat)
