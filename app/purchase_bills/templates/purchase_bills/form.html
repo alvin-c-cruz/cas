@@ -708,6 +708,7 @@ function revertWtOverride() {
 function renderJEPreview(subtotal, vatUsed, wtUsed) {
     const rows = [];
     let firstExpenseIdx = -1;
+    const vatBuckets = {};  // input VAT account code -> {code, name, amt} (B-014)
 
     lineItems.forEach(item => {
         if (!item.account_id) return;
@@ -717,6 +718,12 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         const amt = item.amount || 0;
         const vatAmt = vatRate > 0 ? Math.round((amt - amt / (1 + vatRate / 100)) * 100) / 100 : 0;
         const netBase = amt - vatAmt;
+        if (vatAmt > 0) {
+            const code = (vat && vat.input_vat_account_code) ? vat.input_vat_account_code : '??';
+            const name = (vat && vat.input_vat_account_name) ? vat.input_vat_account_name : 'No Input Tax account configured';
+            if (!vatBuckets[code]) vatBuckets[code] = { code: code, name: name, amt: 0 };
+            vatBuckets[code].amt += vatAmt;
+        }
         if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
         rows.push({
             code: acct ? acct.code : '—',
@@ -726,13 +733,29 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         });
     });
 
-    if (firstExpenseIdx >= 0) {
-        rows[firstExpenseIdx].debit -= (vatUsed - autoVat);
+    // Per-category input VAT rows, mirroring server _input_vat_buckets():
+    // sorted by account code, override difference applied to the largest
+    // bucket, zero buckets dropped, no rows at all when vatUsed <= 0.
+    let bucketList = [];
+    if (vatUsed > 0) {
+        bucketList = Object.values(vatBuckets).sort((a, b) => a.code.localeCompare(b.code));
+        const bucketTotal = bucketList.reduce((s, b) => s + b.amt, 0);
+        const overrideDiff = vatUsed - bucketTotal;
+        if (Math.abs(overrideDiff) > 0.004 && bucketList.length) {
+            bucketList.reduce((max, b) => (b.amt > max.amt ? b : max), bucketList[0]).amt += overrideDiff;
+        }
+        bucketList = bucketList.filter(b => Math.abs(b.amt) > 0.004);
     }
 
-    if (vatUsed > 0 && glAccounts && glAccounts.input_vat) {
-        rows.push({ code: glAccounts.input_vat.code, name: glAccounts.input_vat.name, debit: vatUsed, credit: 0 });
+    // Residual absorber (matches server): the first expense line soaks up the
+    // difference between the VAT actually booked and the per-line VAT baked
+    // into the net bases, so the preview always balances.
+    const vatRowsTotal = bucketList.reduce((s, b) => s + b.amt, 0);
+    if (firstExpenseIdx >= 0) {
+        rows[firstExpenseIdx].debit -= (vatRowsTotal - autoVat);
     }
+
+    bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: b.amt, credit: 0 }));
     if (wtUsed > 0 && glAccounts && glAccounts.wt) {
         rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: 0, credit: wtUsed });
     }
