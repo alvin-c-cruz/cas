@@ -27,3 +27,8 @@ class TestRateConditionalAccount:
     def test_rate_zero_without_account_ok(self, app):
         form, ok = make_form(app, 0, None)
         assert ok is True
+
+    def test_rate_zero_with_account_ignored(self, app):
+        form, ok = make_form(app, 0, 5)
+        assert ok is True
+        assert form.input_vat_account_id.data == 0

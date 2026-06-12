@@ -25,11 +25,12 @@ class VATCategoryForm(FlaskForm):
         NumberRange(min=0, max=100, message='VAT rate must be between 0 and 100')
     ], places=2)
     input_vat_account_id = SelectField('Input Tax Account', coerce=int,
-                                       validators=[Optional()], default=0)
+                                       validators=[], default=0)
 
     def validate_input_vat_account_id(self, field):
         """Required when rate > 0; cleared when rate is zero (no input tax)."""
-        if self.rate.data and self.rate.data > 0:
+        rate = self.rate.data  # None if rate failed to parse
+        if rate is not None and rate > 0:
             if not field.data or field.data == 0:
                 raise ValidationError(
                     'Input Tax account is required for VAT-bearing categories.')
