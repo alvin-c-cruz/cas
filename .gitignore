@@ -63,8 +63,21 @@ htmlcov/
 # Playwright MCP artifacts (snapshots, console/network logs)
 .playwright-mcp/
 
-# Personal local settings (hooks, overrides — not for team)
-.claude/settings.local.json
+# Claude Code project files (memory, settings, session artifacts)
+.claude/
+
+# Session screenshots and test artifacts in project root
+/*.png
+/*.svg
+/*.exe
+/*.jpg
+/*.jpeg
+
+# Development-only — not needed on PythonAnywhere
+/docs/
+/tests/
+/scripts/
+pytest.ini
 
 # Temporary files
 *.tmp
