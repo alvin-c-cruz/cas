@@ -438,10 +438,14 @@ def change_requests():
     # Parse JSON data for each request
     requests_with_data = []
     for req in all_requests:
+        proposed = json.loads(req.proposed_data) if req.proposed_data else {}
+        proposed_account_id = proposed.get('input_vat_account_id')
         req_dict = {
             'id': req.id,
             'action': req.action,
-            'proposed_data': json.loads(req.proposed_data) if req.proposed_data else {},
+            'proposed_data': proposed,
+            'input_vat_account': (db.session.get(Account, proposed_account_id)
+                                  if proposed_account_id else None),
             'requested_by_id': req.requested_by_id,
             'requested_by': req.requested_by,
             'requested_at': req.requested_at,
@@ -477,6 +481,11 @@ def review_change_request(id):
         return redirect(url_for('vat_categories.change_requests'))
 
     form = VATCategoryChangeReviewForm()
+
+    # Parse proposed data and resolve the proposed Input Tax account for display
+    proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
+    proposed_account_id = proposed_data.get('input_vat_account_id')
+    proposed_account = db.session.get(Account, proposed_account_id) if proposed_account_id else None
 
     if form.validate_on_submit():
         try:
@@ -623,12 +632,12 @@ def review_change_request(id):
             flash(f'Error processing change request: {str(e)}', 'error')
             return render_template('vat_categories/review_change_request.html',
                                  change_request=change_request,
+                                 proposed_data=proposed_data,
+                                 proposed_account=proposed_account,
                                  form=form)
-
-    # Parse proposed data for display
-    proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
 
     return render_template('vat_categories/review_change_request.html',
                          change_request=change_request,
                          proposed_data=proposed_data,
+                         proposed_account=proposed_account,
                          form=form)

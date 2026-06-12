@@ -59,6 +59,9 @@
             <div style="font-weight: 600; color: #64748b;">Rate:</div>
             <div>{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
 
+            <div style="font-weight: 600; color: var(--text-2);">Input Tax Account:</div>
+            <div>{% if proposed_account %}{{ proposed_account.code }} : {{ proposed_account.name }}{% else %}&mdash;{% endif %}</div>
+
             <div style="font-weight: 600; color: #64748b;">Status:</div>
             <div>
                 {% if proposed_data.get('is_active') %}
@@ -92,6 +95,16 @@
             <div style="text-align: center;">{{ "%.2f"|format(change_request.vat_category.rate) if change_request.vat_category else 'N/A' }}%</div>
             <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
 
+            <div style="font-weight: 600; color: var(--text-2);">Input Tax Account:</div>
+            <div style="text-align: center;">
+                {% if change_request.vat_category and change_request.vat_category.input_vat_account %}
+                    {{ change_request.vat_category.input_vat_account.code }} : {{ change_request.vat_category.input_vat_account.name }}
+                {% else %}&mdash;{% endif %}
+            </div>
+            <div style="text-align: center; color: var(--blue); font-weight: 500;">
+                {% if proposed_account %}{{ proposed_account.code }} : {{ proposed_account.name }}{% else %}&mdash;{% endif %}
+            </div>
+
             <div style="font-weight: 600; color: #64748b;">Status:</div>
             <div style="text-align: center;">
                 {% if change_request.vat_category and change_request.vat_category.is_active %}
@@ -124,6 +137,13 @@
 
             <div style="font-weight: 600; color: #64748b;">Rate:</div>
             <div>{{ "%.2f"|format(change_request.vat_category.rate) }}%</div>
+
+            <div style="font-weight: 600; color: var(--text-2);">Input Tax Account:</div>
+            <div>
+                {% if change_request.vat_category.input_vat_account %}
+                    {{ change_request.vat_category.input_vat_account.code }} : {{ change_request.vat_category.input_vat_account.name }}
+                {% else %}&mdash;{% endif %}
+            </div>
         </div>
         {% else %}
         <p style="color: #ef4444;">Warning: VAT category has already been deleted.</p>

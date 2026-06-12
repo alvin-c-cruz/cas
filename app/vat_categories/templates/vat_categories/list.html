@@ -33,6 +33,7 @@
                     <th>Name</th>
                     <th>Description</th>
                     <th>Rate (%)</th>
+                    <th>Input Tax Account</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -57,6 +58,11 @@
                             {{ "%.2f"|format(vat_category.rate) }}%
                         </td>
                         <td>
+                            {% if vat_category.input_vat_account %}
+                                {{ vat_category.input_vat_account.code }} : {{ vat_category.input_vat_account.name }}
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td>
                             {% if vat_category.is_active %}
                             <span class="badge badge-success">Active</span>
                             {% else %}
@@ -78,7 +84,7 @@
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="6" class="empty-state-cell">
+                        <td colspan="7" class="empty-state-cell">
                             <div class="empty-icon">📋</div>
                             <div>No VAT categories found</div>
                             {% if current_user.role in ['accountant', 'admin'] %}

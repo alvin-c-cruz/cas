@@ -92,3 +92,22 @@ class TestInputAccountWorkflow:
                     data={'action': 'approve', 'review_notes': 'ok'},
                     follow_redirects=True)
         assert db_session.get(VATCategory, cat.id).input_vat_account_id == a2.id
+
+    def test_review_and_list_pages_show_proposed_account(
+            self, client, db_session, admin_user, accountant_user, main_branch):
+        acct = make_account(db_session, code='10504', name='Input VAT - Importations')
+        login(client, 'admin', 'admin123')
+        client.post('/vat-categories/create', data=vat_data(acct.id, code='V12P'),
+                    follow_redirects=True)
+        req = VATCategoryChangeRequest.query.order_by(
+            VATCategoryChangeRequest.id.desc()).first()
+        assert req is not None and req.status == 'pending'
+
+        login(client, 'accountant', 'accountant123')
+        resp = client.get(f'/vat-categories/change-requests/{req.id}/review')
+        assert resp.status_code == 200
+        assert '10504 : Input VAT - Importations' in resp.data.decode()
+
+        resp = client.get('/vat-categories/change-requests')
+        assert resp.status_code == 200
+        assert b'10504' in resp.data

@@ -47,10 +47,10 @@
                         <td>
                             {% if request.action == 'create' %}
                             <strong>{{ proposed.get('name', 'N/A') }}</strong> ({{ proposed.get('code', 'N/A') }})
-                            <br><span style="font-size: 12px; color: #64748b;">Rate: {{ "%.2f"|format(proposed.get('rate', 0)) }}%</span>
+                            <br><span style="font-size: 12px; color: #64748b;">Rate: {{ "%.2f"|format(proposed.get('rate', 0)) }}% &middot; Input Tax: {% if request.input_vat_account %}{{ request.input_vat_account.code }}{% else %}&mdash;{% endif %}</span>
                             {% elif request.action == 'update' and request.vat_category %}
                             <strong>{{ request.vat_category.name }}</strong> ({{ request.vat_category.code }})
-                            <br><span style="font-size: 12px; color: #64748b;">New: {{ proposed.get('name', 'N/A') }} - {{ "%.2f"|format(proposed.get('rate', 0)) }}%</span>
+                            <br><span style="font-size: 12px; color: #64748b;">New: {{ proposed.get('name', 'N/A') }} - {{ "%.2f"|format(proposed.get('rate', 0)) }}% &middot; Input Tax: {% if request.input_vat_account %}{{ request.input_vat_account.code }}{% else %}&mdash;{% endif %}</span>
                             {% elif request.action == 'delete' %}
                             <strong>{{ proposed.get('name', 'N/A') }}</strong> ({{ proposed.get('code', 'N/A') }})
                             {% endif %}

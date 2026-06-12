@@ -5,6 +5,7 @@
 
 {% block content %}
 {% from "macros.html" import render_field %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 
 <div class="card">
     <div class="card-body">
@@ -74,6 +75,17 @@
                         {% endif %}
                         <small class="form-hint">Only active categories appear in dropdowns</small>
                     </div>
+                </div>
+
+                <div class="form-group" id="inputVatAccountGroup">
+                    {{ form.input_vat_account_id.label(class="form-label") }}
+                    {{ form.input_vat_account_id(class="form-control", id="inputVatAccountSelect") }}
+                    {% if form.input_vat_account_id.errors %}
+                        {% for error in form.input_vat_account_id.errors %}
+                            <div class="form-error">{{ error }}</div>
+                        {% endfor %}
+                    {% endif %}
+                    <small class="form-hint">Journal entries debit this account for the category's input VAT. Required when the rate is above 0%.</small>
                 </div>
             </div>
 
@@ -226,6 +238,7 @@
 }
 </style>
 
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Rate input live preview
@@ -255,6 +268,22 @@ document.addEventListener('DOMContentLoaded', function() {
         // Initialize label color
         toggleLabel.style.color = toggleInput.checked ? 'var(--green)' : 'var(--text-2)';
     }
+
+    // Input Tax account picker — searchable; hidden when rate is 0
+    const acctSelect = document.getElementById('inputVatAccountSelect');
+    const acctGroup = document.getElementById('inputVatAccountGroup');
+    if (acctSelect && window.Choices) {
+        new Choices(acctSelect, {
+            searchEnabled: true, itemSelectText: '', shouldSort: false,
+            searchResultLimit: 100, allowHTML: false
+        });
+    }
+    function syncAcctVisibility() {
+        const rate = parseFloat(rateInput ? rateInput.value : '0') || 0;
+        if (acctGroup) acctGroup.style.display = rate > 0 ? '' : 'none';
+    }
+    if (rateInput) rateInput.addEventListener('input', syncAcctVisibility);
+    syncAcctVisibility();
 });
 </script>
 {% endblock %}
