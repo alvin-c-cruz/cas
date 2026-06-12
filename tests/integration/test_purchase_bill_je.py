@@ -84,7 +84,9 @@ class TestBillCreatePostsJE:
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         assert je is not None
         assert je.entry_type == 'purchase'
-        assert je.status == 'posted'
+        # B-018: a draft bill's JE stays draft until the bill is posted,
+        # so unposted vouchers never appear in GL-based reports
+        assert je.status == 'draft'
         assert je.is_balanced is True
 
     def test_je_lines_correct_for_12pct_vat(

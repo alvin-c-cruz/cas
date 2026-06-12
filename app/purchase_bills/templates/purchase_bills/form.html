@@ -720,7 +720,7 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
         rows.push({
             code: acct ? acct.code : '—',
-            name: item.description || (acct ? acct.name : '—'),
+            name: acct ? acct.name : '—',
             debit: netBase,
             credit: 0
         });

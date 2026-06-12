@@ -40,7 +40,6 @@ def login():
         # Check if account is locked (if user exists)
         if user and user.is_account_locked():
             # Log failed login due to account lockout
-            from app.audit.utils import log_audit
             log_audit(
                 module='auth',
                 action='login_failed',
@@ -70,7 +69,6 @@ def login():
                 account_locked = user.increment_failed_attempts(max_attempts=5, lockout_minutes=15)
 
                 # Log failed login with invalid password
-                from app.audit.utils import log_audit
                 log_audit(
                     module='auth',
                     action='account_locked' if account_locked else 'login_failed',
@@ -89,7 +87,6 @@ def login():
                         flash('Invalid username or password.', 'error')
             else:
                 # Username not found - still log but without user_id
-                from app.audit.utils import log_audit
                 log_audit(
                     module='auth',
                     action='login_failed',
@@ -104,7 +101,6 @@ def login():
 
         if not user.is_active:
             # Log failed login due to inactive account
-            from app.audit.utils import log_audit
             log_audit(
                 module='auth',
                 action='login_failed',
@@ -131,13 +127,13 @@ def login():
             user.reset_failed_attempts()
 
             # Log successful login
-            from app.audit.utils import log_audit
             log_audit(
                 module='auth',
                 action='login_success',
                 record_id=user.id,
                 record_identifier=user.username,
-                notes=f'Login successful. Remember me: {form.remember_me.data}'
+                notes=f'Login successful. Remember me: {form.remember_me.data}',
+                user_id=user.id  # fires before login_user(); current_user is still anonymous
             )
 
             db.session.commit()
@@ -171,7 +167,15 @@ def login():
 
         # Auto-assign if only one branch accessible
         if len(accessible_branches) == 1:
-            session['selected_branch_id'] = accessible_branches[0].id
+            branch = accessible_branches[0]
+            session['selected_branch_id'] = branch.id
+            log_audit(
+                module='auth',
+                action='branch_selected',
+                record_id=user.id,
+                record_identifier=user.username,
+                notes=f'Auto-selected branch: {branch.name} (ID: {branch.id}) — single accessible branch'
+            )
             flash(f'Welcome back, {user.full_name}!', 'success')
 
             # Redirect to next page or dashboard
@@ -239,7 +243,6 @@ def select_branch():
         selected_branch = Branch.query.get(branch_id)
 
         # Log branch selection
-        from app.audit.utils import log_audit
         log_audit(
             module='auth',
             action='branch_selected',
@@ -261,7 +264,6 @@ def logout():
     from flask import session
 
     # Log logout before clearing session
-    from app.audit.utils import log_audit
     selected_branch = session.get('selected_branch_id')
     log_audit(
         module='auth',
@@ -307,7 +309,6 @@ def register():
                 approved_email.mark_as_used(user.id)
 
             # Log successful registration
-            from app.audit.utils import log_audit
             log_audit(
                 module='user_registration',
                 action='registration_success',
@@ -536,7 +537,6 @@ def edit_user(id):
 
             # Audit log - Branch assignment changes
             if old_branch_ids != new_branch_ids:
-                from app.audit.utils import log_audit
                 branch_names = [b.name for b in Branch.query.filter(Branch.id.in_(new_branch_ids)).all()]
                 log_audit(
                     module='user',
@@ -548,22 +548,24 @@ def edit_user(id):
                     notes=f'Branches: {", ".join(branch_names) if branch_names else "None"}'
                 )
 
-            # Audit log - Book permission changes
-            if old_book_permissions != book_permissions:
-                from app.audit.utils import log_audit
+            # Audit log - Book permission changes. Compare effective values:
+            # a user with no stored permissions reads as {} which must equal
+            # the form's explicit all-False dict, not differ from it.
+            old_effective = {k: bool(old_book_permissions.get(k)) for k in book_permissions}
+            if old_effective != book_permissions:
+                granted = any(book_permissions[k] and not old_effective[k] for k in book_permissions)
                 log_audit(
                     module='user',
-                    action='permission_granted',
+                    action='permission_granted' if granted else 'permission_revoked',
                     record_id=user.id,
                     record_identifier=f'{user.username} ({user.full_name})',
-                    old_values={'permissions': old_book_permissions},
+                    old_values={'permissions': old_effective},
                     new_values={'permissions': book_permissions},
                     notes='Book permissions updated'
                 )
 
             # Audit log - Password change
             if password_changed:
-                from app.audit.utils import log_audit
                 action = 'password_reset' if current_user.id != user.id else 'password_changed'
                 notes = f'Password reset by admin: {current_user.username}' if action == 'password_reset' else 'User changed own password'
                 log_audit(
@@ -576,7 +578,6 @@ def edit_user(id):
 
             # Audit log - Account unlock
             if account_unlocked:
-                from app.audit.utils import log_audit
                 log_audit(
                     module='user',
                     action='account_unlocked',

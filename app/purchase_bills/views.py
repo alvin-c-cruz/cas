@@ -734,7 +734,8 @@ def post(id):
     if not bill.vendor_invoice_date:
         missing.append('Vendor Invoice Date')
     if missing:
-        flash(f'Cannot post: {" and ".join(missing)} is required.', 'error')
+        verb = 'are' if len(missing) > 1 else 'is'
+        flash(f'Cannot post: {" and ".join(missing)} {verb} required.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
     try:
