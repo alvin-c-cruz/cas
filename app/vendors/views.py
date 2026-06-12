@@ -295,6 +295,11 @@ def delete(id):
     """Delete vendor"""
     vendor = Vendor.query.get_or_404(id)
 
+    bill_count = PurchaseBill.query.filter_by(vendor_id=vendor.id).count()
+    if bill_count > 0:
+        flash(f'Cannot delete vendor "{vendor.name}": {bill_count} associated purchase bill(s) exist.', 'error')
+        return redirect(url_for('vendors.list_vendors'))
+
     try:
         # Capture values before delete
         old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])

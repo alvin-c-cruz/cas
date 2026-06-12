@@ -120,7 +120,7 @@
             {% if current_user.role in ['staff', 'accountant', 'admin'] and bill.status == 'draft' %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void APV</button>
             {% endif %}
-            {% if bill.status == 'posted' and bill.amount_paid == 0 %}
+            {% if current_user.role in ['accountant', 'admin'] and bill.status == 'posted' and bill.amount_paid == 0 %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel APV</button>
             {% endif %}
             <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">← Back to List</a>
