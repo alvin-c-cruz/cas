@@ -329,6 +329,10 @@
             const username = document.getElementById('username');
             const password = document.getElementById('password');
 
+            // Clear any browser-autofilled values on fresh page load
+            username.value = '';
+            password.value = '';
+
             // Remove readonly when user focuses on the field
             username.addEventListener('focus', function() {
                 this.removeAttribute('readonly');

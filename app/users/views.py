@@ -695,6 +695,9 @@ def change_password():
 @admin_required
 def list_approved_emails():
     """List all approved emails for registration (admin only)."""
+    if current_user.role != 'admin':
+        flash('Only administrators can manage approved emails.', 'error')
+        return redirect(url_for('dashboard.index'))
     from app.users.approved_emails import ApprovedEmail
 
     # Get all approved emails, ordered by status (available first, then used)
@@ -711,6 +714,9 @@ def list_approved_emails():
 @admin_required
 def add_approved_email():
     """Add a new approved email for registration (admin only)."""
+    if current_user.role != 'admin':
+        flash('Only administrators can manage approved emails.', 'error')
+        return redirect(url_for('dashboard.index'))
     from app.users.forms import ApprovedEmailForm
     from app.users.approved_emails import ApprovedEmail
 
@@ -754,6 +760,9 @@ def add_approved_email():
 @admin_required
 def delete_approved_email(id):
     """Delete an approved email (admin only)."""
+    if current_user.role != 'admin':
+        flash('Only administrators can manage approved emails.', 'error')
+        return redirect(url_for('dashboard.index'))
     from app.users.approved_emails import ApprovedEmail
 
     try:
