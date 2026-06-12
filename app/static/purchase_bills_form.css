@@ -94,7 +94,7 @@
 
 /* ── VAT/WT override input ───────────────────────────────────────────────── */
 .bsr-input {
-    width: 110px; text-align: right; font-family: var(--mono);
+    width: 100%; box-sizing: border-box; text-align: right; font-family: var(--mono);
     font-size: 13px; border: 1px solid var(--blue); border-radius: 4px; padding: 3px 7px;
 }
 
