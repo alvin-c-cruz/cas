@@ -28,7 +28,7 @@
                     {{ render_field(form.vendor_invoice_date) }}
                     {{ render_field(form.reference) }}
                 </div>
-                <!-- Right 2/3: vendor card + notes -->
+                <!-- Right 2/3: vendor card -->
                 <div class="right-col">
                     <div id="vendorCard" class="vendor-step-card{% if bill %} vendor-step-card--done{% endif %}">
                         <div class="vendor-step-label" id="vendorCardLabel">
@@ -49,11 +49,12 @@
                         <div class="form-error">{{ form.vendor_id.errors[0] }}</div>
                         {% endif %}
                     </div>
-                    <div class="notes-col header-fields{% if bill %} header-fields--active{% endif %}">
-                        {{ form.notes.label(class='form-label') }}
-                        {{ form.notes(class='form-control', style='resize:vertical', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
-                        {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
-                    </div>
+                </div>
+                <!-- Notes: own grid area so it appears last on small screens -->
+                <div class="notes-col header-fields{% if bill %} header-fields--active{% endif %}">
+                    {{ form.notes.label(class='form-label') }}
+                    {{ form.notes(class='form-control', style='resize:vertical', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                    {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
                 </div>
             </div>
 
