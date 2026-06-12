@@ -29,13 +29,13 @@
 .li-btn-action:hover { background: var(--border); }
 
 /* ── Summary panel (.bsr rows) ───────────────────────────────────────────── */
-.bsr { display: grid; grid-template-columns: 1fr 130px; align-items: center; margin-bottom: 10px; gap: 8px; position: relative; }
+.bsr { display: grid; grid-template-columns: 1fr 130px; align-items: center; margin-bottom: 10px; gap: 8px; }
 .bsr--sep { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
 .bsr--total { margin-top: 4px; padding-top: 12px; border-top: 2px solid var(--border); margin-bottom: 0; }
 .bsr-label { color: var(--text-2); font-size: 13px; }
 .bsr-label--total { font-size: 15px; font-weight: 700; color: var(--text-1); }
 .bsr-hint { font-size: 11px; color: var(--text-2); margin-left: 4px; }
-.bsr-amt { font-family: var(--mono); font-weight: 600; font-size: 13px; text-align: right; display: block; position: relative; }
+.bsr-amt { font-family: var(--mono); font-weight: 600; font-size: 13px; text-align: right; display: block; }
 .bsr-amt--red { color: var(--red); }
 .bsr-amt--total { font-size: 18px; font-weight: 700; color: var(--blue); }
 /* Edit-mode wrap: input + revert button flex row, right-aligned */

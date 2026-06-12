@@ -80,8 +80,8 @@
 /* ── Totals override buttons ─────────────────────────────────────────────── */
 .totals-pencil {
     background: none; border: none; cursor: pointer;
-    font-size: 12px; opacity: 0.35; padding: 0; transition: opacity 0.15s;
-    position: absolute; right: -20px; top: 50%; transform: translateY(-50%);
+    font-size: 12px; opacity: 0.35; padding: 0 0 0 4px; transition: opacity 0.15s;
+    vertical-align: middle;
 }
 .totals-pencil:hover { opacity: 0.9; }
 .totals-pencil:focus-visible { opacity: 0.9; outline: 2px solid var(--blue); outline-offset: 2px; }
