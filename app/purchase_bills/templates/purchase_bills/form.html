@@ -123,16 +123,20 @@
                         <!-- Row 2: Less: Input VAT — pencil-click override -->
                         <div id="vatDisplayMode" class="bsr">
                             <span class="bsr-label">Less: Input VAT</span>
-                            <span id="vatDisplay" class="bsr-amt bsr-amt--col2">0.00</span>
-                            <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">✏️</button>
+                            <div class="bsr-amt-wrap">
+                                <span id="vatDisplay" class="bsr-amt">0.00</span>
+                                <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">✏️</button>
+                            </div>
                         </div>
                         <div id="vatEditMode" class="bsr" style="display:none">
                             <span class="bsr-label">Less: Input VAT <span id="vatAutoHint" class="bsr-hint"></span></span>
-                            <input type="text" id="vatOverrideInput" class="bsr-input"
-                                   onfocus="amtFocus(this)"
-                                   oninput="onVatOverrideInput(this.value)"
-                                   onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
-                            <button type="button" class="totals-revert" onclick="revertVatOverride()" title="Revert to auto">↺</button>
+                            <div class="bsr-amt-wrap bsr-amt-wrap--edit">
+                                <input type="text" id="vatOverrideInput" class="bsr-input"
+                                       onfocus="amtFocus(this)"
+                                       oninput="onVatOverrideInput(this.value)"
+                                       onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
+                                <button type="button" class="totals-revert" onclick="revertVatOverride()" title="Revert to auto">↺</button>
+                            </div>
                         </div>
 
                         <!-- Row 3: Net of VAT -->
@@ -150,16 +154,20 @@
                         <!-- Row 5: Less: Withholding Tax -->
                         <div id="wtDisplayMode" class="bsr">
                             <span class="bsr-label">Less: Withholding Tax</span>
-                            <span id="wtDisplay" class="bsr-amt bsr-amt--col2 bsr-amt--red">-0.00</span>
-                            <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button>
+                            <div class="bsr-amt-wrap">
+                                <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
+                                <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button>
+                            </div>
                         </div>
                         <div id="wtEditMode" class="bsr" style="display:none">
                             <span class="bsr-label">Less: Withholding Tax <span id="wtAutoHint" class="bsr-hint"></span></span>
-                            <input type="text" id="wtOverrideInput" class="bsr-input"
-                                   onfocus="amtFocus(this)"
-                                   oninput="onWtOverrideInput(this.value)"
-                                   onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
-                            <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">↺</button>
+                            <div class="bsr-amt-wrap bsr-amt-wrap--edit">
+                                <input type="text" id="wtOverrideInput" class="bsr-input"
+                                       onfocus="amtFocus(this)"
+                                       oninput="onWtOverrideInput(this.value)"
+                                       onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
+                                <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">↺</button>
+                            </div>
                         </div>
 
                         <!-- Row 6: Net Amount Payable -->
