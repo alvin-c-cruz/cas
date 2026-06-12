@@ -708,7 +708,7 @@ function revertWtOverride() {
 function renderJEPreview(subtotal, vatUsed, wtUsed) {
     const rows = [];
     let firstExpenseIdx = -1;
-    const vatBuckets = {};  // input VAT account code -> {code, name, amt} (B-014)
+    const vatBuckets = {};  // input VAT account id -> {code, name, amt} (B-014)
 
     lineItems.forEach(item => {
         if (!item.account_id) return;
@@ -719,10 +719,11 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         const vatAmt = vatRate > 0 ? Math.round((amt - amt / (1 + vatRate / 100)) * 100) / 100 : 0;
         const netBase = amt - vatAmt;
         if (vatAmt > 0) {
+            const acctId = (vat && vat.input_vat_account_id) ? vat.input_vat_account_id : '??';
             const code = (vat && vat.input_vat_account_code) ? vat.input_vat_account_code : '??';
             const name = (vat && vat.input_vat_account_name) ? vat.input_vat_account_name : 'No Input Tax account configured';
-            if (!vatBuckets[code]) vatBuckets[code] = { code: code, name: name, amt: 0 };
-            vatBuckets[code].amt += vatAmt;
+            if (!vatBuckets[acctId]) vatBuckets[acctId] = { code: code, name: name, amt: 0 };
+            vatBuckets[acctId].amt += vatAmt;
         }
         if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
         rows.push({
@@ -738,7 +739,7 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
     // bucket, zero buckets dropped, no rows at all when vatUsed <= 0.
     let bucketList = [];
     if (vatUsed > 0) {
-        bucketList = Object.values(vatBuckets).sort((a, b) => a.code.localeCompare(b.code));
+        bucketList = Object.values(vatBuckets).sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
         const bucketTotal = bucketList.reduce((s, b) => s + b.amt, 0);
         const overrideDiff = vatUsed - bucketTotal;
         if (Math.abs(overrideDiff) > 0.004 && bucketList.length) {
