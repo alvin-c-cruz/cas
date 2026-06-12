@@ -16,10 +16,7 @@
         <!-- Row 1: Vendor Code, Name, Check Payee Name (3-column layout) -->
         <div class="form-row-3col">
             <div class="form-group">
-                <label for="{{ form.code.id }}">
-                    {{ form.code.label.text }}
-                    {% if vendor %}<span class="field-locked-label">(locked)</span>{% endif %}
-                </label>
+                <label for="{{ form.code.id }}">{{ form.code.label.text }}</label>
                 {{ form.code(
                     class="form-control form-control-sm" + (" field-locked" if vendor else ""),
                     autocomplete="new-password",

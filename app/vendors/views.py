@@ -125,9 +125,9 @@ def generate_next_vendor_code():
 
 def populate_vat_category_choices(form):
     """Populate VAT category choices from database"""
-    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.name).all()
-    choices = [('', '-- Select --')]
-    choices.extend([(cat.name, cat.name) for cat in vat_categories])
+    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
+    choices = [('', '— Select VAT Category —')]
+    choices.extend([(cat.code, f'{cat.code} — {cat.name}') for cat in vat_categories])
     form.default_vat_category.choices = choices
 
 
