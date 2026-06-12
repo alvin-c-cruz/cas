@@ -7,10 +7,11 @@ different industries. Sample/demo data may use industry-flavored names
 (e.g., construction suppliers), but these are illustrative only.
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load .env relative to this file so it works under WSGI (CWD is unpredictable)
+load_dotenv(Path(__file__).parent / '.env')
 
 from app import create_app
 
