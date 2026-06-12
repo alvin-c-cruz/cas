@@ -122,10 +122,25 @@
 
     <div class="card-body">
 
+        <!-- ── Vendor Invoice banner ─────────────────────────────────────── -->
+        <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:14px 16px; margin-bottom:20px;">
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#92400e; margin-bottom:8px;">Vendor Invoice</div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
+                <div>
+                    <div style="font-size:10px; color:#a16207; margin-bottom:2px;">Invoice #</div>
+                    <div style="font-weight:700; font-size:16px; color:#78350f; font-family:var(--mono);">{{ bill.vendor_invoice_number if bill.vendor_invoice_number else '— not provided —' }}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:10px; color:#a16207; margin-bottom:2px;">Invoice Date</div>
+                    <div style="font-weight:600; color:#92400e;">{{ bill.vendor_invoice_date.strftime('%b %d, %Y') if bill.vendor_invoice_date else '—' }}</div>
+                </div>
+            </div>
+        </div>
+
         <!-- ── Two-column header ──────────────────────────────────────────── -->
         <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:24px; margin-bottom:32px;">
 
-            <!-- LEFT: header fields + vendor invoice banner -->
+            <!-- LEFT: header fields -->
             <div style="display:flex; flex-direction:column; gap:10px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">AP Number</span>
@@ -149,41 +164,28 @@
                     <span>{{ bill.reference }}</span>
                 </div>
                 {% endif %}
-
-                <!-- Vendor Invoice banner — always shown -->
-                <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:14px 16px; margin-top:6px;">
-                    <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#92400e; margin-bottom:8px;">Vendor Invoice</div>
-                    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
-                        <div>
-                            <div style="font-size:10px; color:#a16207; margin-bottom:2px;">Invoice #</div>
-                            <div style="font-weight:700; font-size:16px; color:#78350f; font-family:var(--mono);">{{ bill.vendor_invoice_number if bill.vendor_invoice_number else '— not provided —' }}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:10px; color:#a16207; margin-bottom:2px;">Invoice Date</div>
-                            <div style="font-weight:600; color:#92400e;">{{ bill.vendor_invoice_date.strftime('%b %d, %Y') if bill.vendor_invoice_date else '—' }}</div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
-            <!-- RIGHT: vendor card + notes -->
+            <!-- RIGHT: vendor + notes -->
             <div style="display:flex; flex-direction:column; gap:16px;">
-                <div style="border:2px solid var(--green, #22c55e); background:#f0fdf4; border-radius:8px; padding:16px 20px;">
-                    <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#15803d; margin-bottom:8px;">Vendor</div>
-                    <div style="font-weight:700; font-size:15px; margin-bottom:4px;">{{ bill.vendor_name }}</div>
-                    {% if bill.vendor_tin %}
-                    <div style="color:var(--text-2); font-size:12px; margin-bottom:2px;">TIN: {{ bill.vendor_tin }}</div>
-                    {% endif %}
-                    {% if bill.vendor_address %}
-                    <div style="color:var(--text-2); font-size:12px;">{{ bill.vendor_address }}</div>
-                    {% endif %}
+                <div>
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">Vendor</div>
+                    <div style="border:2px solid var(--green, #22c55e); background:#f0fdf4; border-radius:8px; padding:16px 20px;">
+                        <div style="font-weight:700; font-size:15px; margin-bottom:4px;">{{ bill.vendor_name }}</div>
+                        {% if bill.vendor_tin %}
+                        <div style="color:var(--text-2); font-size:12px; margin-bottom:2px;">TIN: {{ bill.vendor_tin }}</div>
+                        {% endif %}
+                        {% if bill.vendor_address %}
+                        <div style="color:var(--text-2); font-size:12px;">{{ bill.vendor_address }}</div>
+                        {% endif %}
+                    </div>
                 </div>
-                {% if bill.notes %}
-                <div style="background:var(--bg); border-radius:6px; padding:14px 16px;">
-                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin-bottom:8px;">Notes</div>
-                    <p style="margin:0; color:var(--text-2); white-space:pre-wrap; font-size:13px;">{{ bill.notes }}</p>
+                <div>
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">Notes</div>
+                    <div style="background:var(--bg); border-radius:6px; padding:14px 16px; min-height:48px;">
+                        <p style="margin:0; color:var(--text-2); white-space:pre-wrap; font-size:13px;">{{ bill.notes or '' }}</p>
+                    </div>
                 </div>
-                {% endif %}
             </div>
         </div>
 
@@ -256,8 +258,9 @@
             </div>
 
             <!-- AP Voucher Summary -->
+            <div>
+                <h3 style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin:0 0 8px;">AP Voucher Summary</h3>
             <div style="background:var(--bg); padding:20px; border-radius:6px;">
-                <h3 style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin:0 0 14px;">AP Voucher Summary</h3>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">Gross Amount:</span>
                     <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.subtotal) }}</span>
@@ -300,6 +303,7 @@
                     <span style="font-family:var(--mono); font-weight:600; color:{{ 'var(--red)' if bill.balance > 0 else 'var(--green)' }};">₱{{ '{:,.2f}'.format(bill.balance) }}</span>
                 </div>
                 {% endif %}
+            </div>
             </div>
         </div>
 
