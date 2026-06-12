@@ -44,3 +44,4 @@ class TestInputVatAccountField:
         d = cat.to_dict()
         assert d['input_vat_account_id'] is None
         assert d['input_vat_account_code'] is None
+        assert d['input_vat_account_name'] is None
