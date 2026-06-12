@@ -217,7 +217,7 @@ class TestPurchaseBillWhtIntegration:
         bill.journal_entry_id = source_je.id
         db_session.commit()
 
-        je = _create_reversal_je(bill, date.today(), admin_user.id)
+        je = _create_reversal_je(bill, date.today(), admin_user.id, label='Cancel')
         total_debit = sum(l.debit_amount for l in je.lines)
         total_credit = sum(l.credit_amount for l in je.lines)
         assert total_debit == total_credit  # JE must balance

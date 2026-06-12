@@ -1013,12 +1013,18 @@ def _post_bill_je(bill, user_id):
     return je
 
 
-def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
+def _create_reversal_je(bill, reversal_date, user_id, label='Cancel'):
     """Mirror the bill's stored JE with debits and credits swapped.
 
     Reverses exactly what was booked — per-category input VAT buckets,
     overrides, residual absorption and all (B-014). Raises ValueError if the
     bill has no stored journal entry to reverse.
+
+    ``label`` prefixes each reversal line's description and forms the first
+    six characters of the reference.
+
+    Callers must pass a source JE (via ``bill.journal_entry``) that is not
+    itself a reversal.
     """
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
@@ -1064,6 +1070,11 @@ def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
         raise ValueError(
             f'Reversal JE is not balanced '
             f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    # Link the source JE to its reversal. The source deliberately stays
+    # 'posted' so the GL nets to zero (original + reversal both in the books).
+    source_je.reversed_by_id = je.id
+
     return je
 
 

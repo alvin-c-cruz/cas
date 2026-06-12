@@ -160,12 +160,12 @@ def test_sales_invoice_has_sent_and_void_fields(db_session, posted_invoice):
     assert posted_invoice.voided_at is None
 
 
-# ── Bill void JE tests ───────────────────────────────────────────────────────
+# ── Bill cancel/reversal JE tests ────────────────────────────────────────────
 
 def test_create_bill_void_je_balanced(app, db_session, posted_bill, admin_user, gl_accounts):
-    """Void JE must have total_debit == total_credit."""
+    """Reversal JE must have total_debit == total_credit."""
     from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
-    je = _create_bill_void_je(posted_bill, date.today(), admin_user.id)
+    je = _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
     db_session.flush()
     assert je.is_balanced, f"JE not balanced: DR={je.total_debit} CR={je.total_credit}"
     assert je.total_debit == Decimal('1120.00')
@@ -174,8 +174,8 @@ def test_create_bill_void_je_balanced(app, db_session, posted_bill, admin_user, 
 
 def test_create_bill_void_je_reference_format(app, db_session, posted_bill, admin_user, gl_accounts):
     from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
-    je = _create_bill_void_je(posted_bill, date.today(), admin_user.id)
-    assert je.reference == 'VOID-PB-TEST-0001'
+    je = _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
+    assert je.reference == 'CANCEL-PB-TEST-0001'
     assert je.entry_type == 'reversal'
     assert je.status == 'posted'
     assert je.branch_id == posted_bill.branch_id
@@ -188,13 +188,13 @@ def test_create_bill_void_je_without_stored_je_raises(app, db_session, posted_bi
     posted_bill.journal_entry_id = None
     db_session.commit()
     with pytest.raises(ValueError, match='no stored journal entry'):
-        _create_bill_void_je(posted_bill, date.today(), admin_user.id)
+        _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
 
 
 def test_create_bill_void_je_mirrors_stored_lines(app, db_session, posted_bill, admin_user, gl_accounts):
     """Each reversal line swaps the debit/credit of the stored JE line."""
     from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
-    je = _create_bill_void_je(posted_bill, date.today(), admin_user.id)
+    je = _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
     db_session.flush()
     source = posted_bill.journal_entry
     src_lines = {l.account_id: l for l in source.lines.all()}
@@ -210,7 +210,7 @@ def test_bill_void_sets_status_and_fields(app, db_session, posted_bill, admin_us
     """After voiding, bill fields are updated correctly."""
     from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
     from app.utils import ph_now
-    _create_bill_void_je(posted_bill, date.today(), admin_user.id)
+    _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
     posted_bill.status = 'voided'
     posted_bill.voided_by_id = admin_user.id
     posted_bill.voided_at = ph_now()
@@ -230,7 +230,7 @@ def test_bill_void_creates_audit_entry(app, db_session, client, posted_bill, adm
     from app.audit.utils import log_audit
     from app.audit.models import AuditLog
 
-    _create_bill_void_je(posted_bill, date.today(), admin_user.id)
+    _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
     posted_bill.status = 'voided'
     posted_bill.voided_by_id = admin_user.id
     void_reason = 'Duplicate entry created in error'
