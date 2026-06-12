@@ -5,7 +5,7 @@ from app.vat_categories.models import VATCategory
 
 def make_account(db_session, code='10502', name='Input VAT - Domestic Goods'):
     a = Account(code=code, name=name, account_type='Asset',
-                normal_balance='debit', is_active=True)
+                normal_balance='Debit', is_active=True)
     db_session.add(a)
     db_session.commit()
     return a
