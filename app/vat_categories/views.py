@@ -436,15 +436,27 @@ def change_requests():
     all_requests = VATCategoryChangeRequest.query.order_by(VATCategoryChangeRequest.requested_at.desc()).all()
 
     # Parse JSON data for each request
-    requests_with_data = []
+    parsed = []
     for req in all_requests:
         proposed = json.loads(req.proposed_data) if req.proposed_data else {}
-        proposed_account_id = proposed.get('input_vat_account_id')
+        parsed.append((req, proposed, proposed.get('input_vat_account_id')))
+
+    # Batch-load all referenced input VAT accounts in one query
+    account_ids = {acct_id for _, _, acct_id in parsed if acct_id}
+    accounts_by_id = {}
+    if account_ids:
+        accounts_by_id = {
+            account.id: account
+            for account in Account.query.filter(Account.id.in_(account_ids)).all()
+        }
+
+    requests_with_data = []
+    for req, proposed, proposed_account_id in parsed:
         req_dict = {
             'id': req.id,
             'action': req.action,
             'proposed_data': proposed,
-            'input_vat_account': (db.session.get(Account, proposed_account_id)
+            'input_vat_account': (accounts_by_id.get(proposed_account_id)
                                   if proposed_account_id else None),
             'requested_by_id': req.requested_by_id,
             'requested_by': req.requested_by,

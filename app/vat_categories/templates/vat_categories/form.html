@@ -78,7 +78,7 @@
                 </div>
 
                 <div class="form-group" id="inputVatAccountGroup">
-                    {{ form.input_vat_account_id.label(class="form-label") }}
+                    {{ form.input_vat_account_id.label(class="form-label", for="inputVatAccountSelect") }}
                     {{ form.input_vat_account_id(class="form-control", id="inputVatAccountSelect") }}
                     {% if form.input_vat_account_id.errors %}
                         {% for error in form.input_vat_account_id.errors %}
@@ -272,8 +272,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Input Tax account picker — searchable; hidden when rate is 0
     const acctSelect = document.getElementById('inputVatAccountSelect');
     const acctGroup = document.getElementById('inputVatAccountGroup');
+    let acctChoices = null;
     if (acctSelect && window.Choices) {
-        new Choices(acctSelect, {
+        acctChoices = new Choices(acctSelect, {
             searchEnabled: true, itemSelectText: '', shouldSort: false,
             searchResultLimit: 100, allowHTML: false
         });
@@ -281,6 +282,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function syncAcctVisibility() {
         const rate = parseFloat(rateInput ? rateInput.value : '0') || 0;
         if (acctGroup) acctGroup.style.display = rate > 0 ? '' : 'none';
+        if (rate <= 0 && acctChoices) acctChoices.setChoiceByValue('0');
     }
     if (rateInput) rateInput.addEventListener('input', syncAcctVisibility);
     syncAcctVisibility();
