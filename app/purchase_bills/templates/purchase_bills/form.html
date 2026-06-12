@@ -4,10 +4,12 @@
 {% block page_title %}{{ 'Update Draft' if bill else 'Save Draft' }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field %}
+{% from "macros.html" import render_field, render_flash_messages %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_bills_form.css') }}">
+
+{{ render_flash_messages() }}
 
 <div class="card page-purchase-bill">
     <div class="card-body">
@@ -22,20 +24,8 @@
                     {{ render_field(form.bill_date) }}
                     {{ render_field(form.due_date) }}
                     {{ render_field(form.payment_terms) }}
-                    <div class="form-group">
-                        {{ form.vendor_invoice_number.label(class='form-label') }}
-                        <div style="flex:1; display:flex; flex-direction:column;">
-                            {{ form.vendor_invoice_number(id='vendor_invoice_number', class='form-control', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
-                            <p id="invNumHint" style="font-size:11px; margin:2px 0 0; color:var(--yellow, #d97706);">Required to post</p>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        {{ form.vendor_invoice_date.label(class='form-label') }}
-                        <div style="flex:1; display:flex; flex-direction:column;">
-                            {{ form.vendor_invoice_date(id='vendor_invoice_date', class='form-control', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
-                            <p id="invDateHint" style="font-size:11px; margin:2px 0 0; color:var(--yellow, #d97706);">Required to post</p>
-                        </div>
-                    </div>
+                    {{ render_field(form.vendor_invoice_number) }}
+                    {{ render_field(form.vendor_invoice_date) }}
                     {{ render_field(form.reference) }}
                 </div>
                 <!-- Right 2/3: vendor card + notes -->
@@ -589,38 +579,24 @@ function calculateTotals() {
 
 // ── Form validation gate ──────────────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', function() {
-    for (const id of ['bill_date', 'due_date']) {
-        document.getElementById(id)?.addEventListener('change', validateForm);
-    }
-});
-
-function updateInvoiceHints() {
-    const num  = document.getElementById('vendor_invoice_number');
-    const date = document.getElementById('vendor_invoice_date');
-    const numHint  = document.getElementById('invNumHint');
-    const dateHint = document.getElementById('invDateHint');
-    if (numHint)  numHint.style.visibility  = (num  && num.value.trim()) ? 'hidden' : 'visible';
-    if (dateHint) dateHint.style.visibility = (date && date.value)       ? 'hidden' : 'visible';
-}
-
 function validateForm() {
     const btn = document.getElementById('submitBtn');
     const hint = document.getElementById('saveHint');
     if (!btn || !hint) return;
 
-    updateInvoiceHints();
-
     function block(msg) { btn.disabled = true; hint.textContent = msg; }
     function allow()     { btn.disabled = false; hint.textContent = ''; }
-
-    if (lineItems.length === 0) { block('Add at least one line item.'); return; }
 
     const billDateVal = document.getElementById('bill_date')?.value;
     const dueDateVal = document.getElementById('due_date')?.value;
     if (billDateVal && dueDateVal && dueDateVal < billDateVal) {
         block('Due date cannot be earlier than the voucher date.'); return;
     }
+
+    const inv = document.getElementById('vendor_invoice_number');
+    if (!inv || !inv.value.trim()) { block('Enter the vendor invoice number.'); return; }
+
+    if (lineItems.length === 0) { block('Add at least one line item.'); return; }
 
     for (let i = 0; i < lineItems.length; i++) {
         const item = lineItems[i];
@@ -728,7 +704,7 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
         rows.push({
             code: acct ? acct.code : '—',
-            name: acct ? acct.name : '—',
+            name: item.description || (acct ? acct.name : '—'),
             debit: netBase,
             credit: 0
         });
@@ -748,9 +724,9 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         bucketList = bucketList.filter(b => Math.abs(b.amt) > 0.004);
     }
 
-    // Residual absorber (matches server): the first expense line soaks up the
-    // difference between the VAT actually booked and the per-line VAT baked
-    // into the net bases, so the preview always balances.
+    // Residual absorber: the first expense line soaks up the difference between
+    // the VAT actually booked and the per-line VAT baked into the net bases,
+    // so the preview always balances.
     const vatRowsTotal = bucketList.reduce((s, b) => s + b.amt, 0);
     if (firstExpenseIdx >= 0) {
         rows[firstExpenseIdx].debit -= (vatRowsTotal - autoVat);
@@ -904,7 +880,10 @@ if (ptSel) {
     });
 }
 
-// Vendor invoice fields update hints live
+// Date fields and vendor invoice # trigger validation
+for (const id of ['bill_date', 'due_date']) {
+    document.getElementById(id)?.addEventListener('change', validateForm);
+}
 const _invInput = document.getElementById('vendor_invoice_number');
 if (_invInput) _invInput.addEventListener('input', validateForm);
 const _invDate = document.getElementById('vendor_invoice_date');
