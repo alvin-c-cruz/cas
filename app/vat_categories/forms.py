@@ -3,7 +3,7 @@ VAT Category forms
 """
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, DecimalField, SelectField
-from wtforms.validators import DataRequired, InputRequired, Length, NumberRange, Optional
+from wtforms.validators import DataRequired, InputRequired, Length, NumberRange, Optional, ValidationError
 
 
 class VATCategoryForm(FlaskForm):
@@ -24,6 +24,18 @@ class VATCategoryForm(FlaskForm):
         InputRequired(message='VAT rate is required'),
         NumberRange(min=0, max=100, message='VAT rate must be between 0 and 100')
     ], places=2)
+    input_vat_account_id = SelectField('Input Tax Account', coerce=int,
+                                       validators=[Optional()], default=0)
+
+    def validate_input_vat_account_id(self, field):
+        """Required when rate > 0; cleared when rate is zero (no input tax)."""
+        if self.rate.data and self.rate.data > 0:
+            if not field.data or field.data == 0:
+                raise ValidationError(
+                    'Input Tax account is required for VAT-bearing categories.')
+        else:
+            field.data = 0
+
     is_active = SelectField('Status', choices=[
         ('1', 'Active'),
         ('0', 'Inactive')
