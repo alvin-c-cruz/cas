@@ -122,21 +122,6 @@
 
     <div class="card-body">
 
-        <!-- ── Vendor Invoice banner ─────────────────────────────────────── -->
-        <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:14px 16px; margin-bottom:20px;">
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#92400e; margin-bottom:8px;">Vendor Invoice</div>
-            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
-                <div>
-                    <div style="font-size:10px; color:#a16207; margin-bottom:2px;">Invoice #</div>
-                    <div style="font-weight:700; font-size:16px; color:#78350f; font-family:var(--mono);">{{ bill.vendor_invoice_number if bill.vendor_invoice_number else '— not provided —' }}</div>
-                </div>
-                <div style="text-align:right;">
-                    <div style="font-size:10px; color:#a16207; margin-bottom:2px;">Invoice Date</div>
-                    <div style="font-weight:600; color:#92400e;">{{ bill.vendor_invoice_date.strftime('%b %d, %Y') if bill.vendor_invoice_date else '—' }}</div>
-                </div>
-            </div>
-        </div>
-
         <!-- ── Two-column header ──────────────────────────────────────────── -->
         <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:24px; margin-bottom:32px;">
 
@@ -178,6 +163,21 @@
                         {% if bill.vendor_address %}
                         <div style="color:var(--text-2); font-size:12px;">{{ bill.vendor_address }}</div>
                         {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">Vendor Invoice</div>
+                    <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:14px 16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
+                            <div>
+                                <div style="font-size:10px; color:#a16207; margin-bottom:2px;">Invoice #</div>
+                                <div style="font-weight:700; font-size:16px; color:#78350f; font-family:var(--mono);">{{ bill.vendor_invoice_number if bill.vendor_invoice_number else '— not provided —' }}</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:10px; color:#a16207; margin-bottom:2px;">Invoice Date</div>
+                                <div style="font-weight:600; color:#92400e;">{{ bill.vendor_invoice_date.strftime('%b %d, %Y') if bill.vendor_invoice_date else '—' }}</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div>
