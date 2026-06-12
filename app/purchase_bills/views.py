@@ -796,15 +796,17 @@ def post(id):
         flash('Only draft APVs can be posted.', 'error')
         return redirect(url_for('purchase_bills.view', id=id))
 
-    missing = []
-    if not bill.vendor_invoice_number:
-        missing.append('Vendor Invoice #')
-    if not bill.vendor_invoice_date:
-        missing.append('Vendor Invoice Date')
-    if missing:
-        verb = 'are' if len(missing) > 1 else 'is'
-        flash(f'Cannot post: {" and ".join(missing)} {verb} required.', 'error')
-        return redirect(url_for('purchase_bills.view', id=id))
+    needs_invoice = bill.vat_amount > 0 or bill.withholding_tax_amount > 0
+    if needs_invoice:
+        missing = []
+        if not bill.vendor_invoice_number:
+            missing.append('Vendor Invoice #')
+        if not bill.vendor_invoice_date:
+            missing.append('Vendor Invoice Date')
+        if missing:
+            verb = 'are' if len(missing) > 1 else 'is'
+            flash(f'Cannot post: {" and ".join(missing)} {verb} required when VAT or withholding tax applies.', 'error')
+            return redirect(url_for('purchase_bills.view', id=id))
 
     try:
         bill.status = 'posted'
