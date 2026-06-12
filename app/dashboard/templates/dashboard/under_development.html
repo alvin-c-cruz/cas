@@ -1,47 +1,97 @@
 {% extends "base.html" %}
+{% block title %}{{ feature or 'Under Development' }} — CAS{% endblock %}
+{% block page_title %}Under Development{% endblock %}
 
-{% block title %}Under Development - CAS{% endblock %}
-
-{% block styles %}
+{% block extra_css %}
 <style>
-.under-dev-card {
-    max-width: 520px;
-    margin: var(--spacing-xl, 3rem) auto;
+.ud-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 60px 20px;
+}
+.ud-card {
+    width: 100%;
+    max-width: 560px;
     text-align: center;
-    padding: var(--spacing-lg, 2.5rem);
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    padding: 56px 48px;
 }
-.under-dev-icon {
-    font-size: 3rem;
-    margin-bottom: var(--spacing-md, 1rem);
+.ud-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 28px;
 }
-.under-dev-title {
-    margin-bottom: var(--spacing-sm, 0.75rem);
+.ud-icon {
+    font-size: 56px;
+    line-height: 1;
+    margin-bottom: 20px;
+    display: block;
 }
-.under-dev-body {
-    color: var(--text-muted);
-    margin-bottom: var(--spacing-lg, 2rem);
+.ud-feature {
+    font-size: 26px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 14px;
+}
+.ud-message {
+    color: #64748b;
+    font-size: 15px;
+    line-height: 1.7;
+    margin: 0 auto 36px;
+    max-width: 400px;
+}
+.ud-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.ud-divider {
+    height: 1px;
+    background: #f1f5f9;
+    margin: 32px 0;
+}
+.ud-note {
+    font-size: 12px;
+    color: #94a3b8;
+    margin: 0;
+}
+@media (max-width: 600px) {
+    .ud-card { padding: 36px 24px; }
+    .ud-feature { font-size: 22px; }
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-container">
-    <div class="page-header">
-        <h1 class="page-title">Under Development</h1>
-    </div>
-
-    <div class="card under-dev-card">
-        <div class="under-dev-icon">🚧</div>
-        <h2 class="under-dev-title">Coming Soon</h2>
-        <p class="under-dev-body">
-            {% if feature %}
-                <strong>{{ feature }}</strong> is not yet available.
-            {% else %}
-                This feature is not yet available.
-            {% endif %}
-            Check back in a future update.
+<div class="ud-wrap">
+    <div class="ud-card">
+        <div class="ud-badge">🚧 Under Development</div>
+        <span class="ud-icon">⚙️</span>
+        <h1 class="ud-feature">{{ feature or 'This Feature' }}</h1>
+        <p class="ud-message">
+            This module is currently being built and is not yet available.
+            It will be released in an upcoming version of CAS.
         </p>
-        <button class="btn btn-secondary" onclick="history.back()">&#8592; Go Back</button>
+        <div class="ud-actions">
+            <button class="btn btn-secondary" onclick="history.back()">← Go Back</button>
+            <a href="{{ url_for('dashboard.home') }}" class="btn btn-primary">Go to Dashboard</a>
+        </div>
+        <div class="ud-divider"></div>
+        <p class="ud-note">Need this sooner? Let your administrator know.</p>
     </div>
 </div>
 {% endblock %}

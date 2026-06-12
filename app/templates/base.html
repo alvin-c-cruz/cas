@@ -916,6 +916,24 @@
             background: #f1f5f9;
         }
 
+        .topbar-new-item--soon {
+            color: #94a3b8;
+        }
+
+        .topbar-new-item--soon::after {
+            content: 'soon';
+            font-size: 10px;
+            font-weight: 600;
+            color: #c2410c;
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            padding: 1px 6px;
+            border-radius: 8px;
+            margin-left: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
         .topbar-new-divider {
             height: 1px;
             background: #e2e8f0;
@@ -1185,19 +1203,22 @@
                         <span class="nav-icon">💼</span>
                         <span class="nav-text">Withholding Tax</span>
                     </a>
+                    <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
+                        <span class="nav-icon">📜</span>
+                        <span class="nav-text">Audit Log</span>
+                    </a>
                     {% endif %}
                 </div>
             </div>
 
-            <!-- Admin Section -->
-            {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
+            <!-- Admin Section (admin only) -->
+            {% if current_user.is_authenticated and current_user.role == 'admin' %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="admin">
                     <span>Admin</span>
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-admin">
-                    {% if current_user.is_authenticated and current_user.role == 'admin' %}
                     <a href="{{ url_for('company_settings.edit_settings') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('company_settings.') %}active{% endif %}">
                         <span class="nav-icon">⚙️</span>
                         <span class="nav-text">Company Settings</span>
@@ -1206,25 +1227,14 @@
                         <span class="nav-icon">🏪</span>
                         <span class="nav-text">Branch Management</span>
                     </a>
-                    {% endif %}
-                    {% if current_user.is_authenticated and current_user.role == 'admin' %}
                     <a href="{{ url_for('users.list_users') }}" class="nav-item {% if request.endpoint == 'users.list_users' or request.endpoint == 'users.create_user' or request.endpoint == 'users.edit_user' %}active{% endif %}">
                         <span class="nav-icon">👤</span>
                         <span class="nav-text">User Management</span>
                     </a>
-                    {% endif %}
-                    {% if current_user.is_authenticated and current_user.role == 'admin' %}
                     <a href="{{ url_for('users.list_approved_emails') }}" class="nav-item {% if request.endpoint == 'users.list_approved_emails' or request.endpoint == 'users.add_approved_email' %}active{% endif %}">
                         <span class="nav-icon">📧</span>
                         <span class="nav-text">Approved Emails</span>
                     </a>
-                    {% endif %}
-                    {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
-                    <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
-                        <span class="nav-icon">📜</span>
-                        <span class="nav-text">Audit Log</span>
-                    </a>
-                    {% endif %}
                 </div>
             </div>
             {% endif %}
@@ -1298,13 +1308,17 @@
                         <span>+</span> New <span style="margin-left: 2px;">▼</span>
                     </button>
                     <div class="topbar-new-dropdown" id="topbarNewDropdown">
+                        <a href="{{ url_for('purchase_bills.create') }}" class="topbar-new-item">
+                            📋 New AP Voucher
+                        </a>
                         <a href="{{ url_for('journal_entries.create') }}" class="topbar-new-item">
                             📝 New Journal Entry
                         </a>
-                        <a href="{{ url_for('receipts.create') }}?type=collection" class="topbar-new-item">
+                        <div class="topbar-new-divider"></div>
+                        <a href="{{ url_for('dashboard.under_development', feature='Collections') }}" class="topbar-new-item topbar-new-item--soon">
                             💰 New Collection
                         </a>
-                        <a href="{{ url_for('receipts.create') }}?type=payment" class="topbar-new-item">
+                        <a href="{{ url_for('dashboard.under_development', feature='Payments') }}" class="topbar-new-item topbar-new-item--soon">
                             💸 New Payment
                         </a>
                     </div>
