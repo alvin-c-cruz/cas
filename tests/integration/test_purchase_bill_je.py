@@ -57,7 +57,8 @@ class TestBillCreatePostsJE:
         vat_acct = get_or_create_account(db_session, '10501', 'Input VAT - Current', 'Asset')
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
-        vat_cat = VATCategory(code='VAT12', name='VAT 12%', rate=Decimal('12'), is_active=True)
+        vat_cat = VATCategory(code='VAT12', name='VAT 12%', rate=Decimal('12'), is_active=True,
+                              input_vat_account_id=vat_acct.id)
         db_session.add(vat_cat)
         db_session.commit()
 
@@ -98,7 +99,8 @@ class TestBillCreatePostsJE:
         vat_acct = get_or_create_account(db_session, '10501', 'Input VAT - Current', 'Asset')
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
-        vat_cat = VATCategory(code='VAT12B', name='VAT 12%', rate=Decimal('12'), is_active=True)
+        vat_cat = VATCategory(code='VAT12B', name='VAT 12%', rate=Decimal('12'), is_active=True,
+                              input_vat_account_id=vat_acct.id)
         db_session.add(vat_cat)
         db_session.commit()
 
@@ -151,7 +153,8 @@ class TestBillCreatePostsJE:
         vat_acct = get_or_create_account(db_session, '10501', 'Input VAT - Current', 'Asset')
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
-        vat_cat = VATCategory(code='VAT12R', name='VAT 12%', rate=Decimal('12'), is_active=True)
+        vat_cat = VATCategory(code='VAT12R', name='VAT 12%', rate=Decimal('12'), is_active=True,
+                              input_vat_account_id=vat_acct.id)
         db_session.add(vat_cat)
         db_session.commit()
 

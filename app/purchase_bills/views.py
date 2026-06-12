@@ -28,15 +28,50 @@ purchase_bills_bp = Blueprint('purchase_bills', __name__, template_folder='templ
 
 
 def _get_gl_accounts():
-    """Return the three GL accounts used for purchase bill journal entries."""
+    """Return the AP and WHT GL accounts used for purchase bill journal entries.
+
+    Input VAT accounts are no longer fixed here — each VAT category carries
+    its own input_vat_account (B-014); see _input_vat_buckets().
+    """
     ap_acct = Account.query.filter_by(code='20101').first()
-    input_vat_acct = Account.query.filter_by(code='10501').first()
     wt_gl_acct = Account.query.filter_by(code='20301').first()
     return {
         'ap': ap_acct,
-        'input_vat': input_vat_acct,
         'wt': wt_gl_acct,
     }
+
+
+def _input_vat_buckets(bill):
+    """Group the bill's input VAT by each line's VAT-category account (B-014).
+
+    Returns an ordered list of (Account, Decimal) pairs (by account code).
+    The whole-bill VAT override difference is applied to the largest bucket.
+    Raises ValueError if a VAT-bearing line's category has no account.
+    """
+    categories = {c.code: c for c in VATCategory.query.all()}
+    buckets = {}  # account_id -> [Account, Decimal]
+    for item in bill.line_items:
+        vat_amt = Decimal(str(item.vat_amount or 0))
+        if vat_amt <= 0:
+            continue
+        cat = categories.get(item.vat_category)
+        acct = cat.input_vat_account if cat else None
+        if acct is None:
+            label = cat.code if cat else (item.vat_category or 'unknown')
+            raise ValueError(
+                f"VAT category '{label}' has no Input Tax account configured. "
+                "Set it in VAT Categories.")
+        if acct.id not in buckets:
+            buckets[acct.id] = [acct, Decimal('0.00')]
+        buckets[acct.id][1] += vat_amt
+
+    ordered = sorted(buckets.values(), key=lambda b: b[0].code)
+    total = sum((b[1] for b in ordered), Decimal('0.00'))
+    override_diff = Decimal(str(bill.vat_amount)) - total
+    if override_diff != Decimal('0.00') and ordered:
+        largest = max(ordered, key=lambda b: b[1])
+        largest[1] += override_diff
+    return [(b[0], b[1]) for b in ordered]
 
 
 def _build_je_preview(bill):
@@ -70,12 +105,27 @@ def _build_je_preview(bill):
             'credit': Decimal('0.00'),
         })
 
-    vat_amount = Decimal(str(bill.vat_amount))
-    if vat_amount > 0 and accts['input_vat']:
+    try:
+        vat_buckets = _input_vat_buckets(bill)
+    except ValueError as e:
+        # Legacy draft with an unmapped VAT-bearing category — keep the page
+        # rendering and surface the problem inline instead of crashing.
+        vat_buckets = []
+        vat_amount = Decimal(str(bill.vat_amount))
+        if vat_amount > 0:
+            entries.append({
+                'code': '—',
+                'name': str(e),
+                'debit': vat_amount,
+                'credit': Decimal('0.00'),
+            })
+    for vat_acct, vat_amt in vat_buckets:
+        if vat_amt <= 0:
+            continue
         entries.append({
-            'code': accts['input_vat'].code,
-            'name': accts['input_vat'].name,
-            'debit': vat_amount,
+            'code': vat_acct.code,
+            'name': vat_acct.name,
+            'debit': vat_amt,
             'credit': Decimal('0.00'),
         })
 
@@ -513,9 +563,11 @@ def create():
 
         except Exception as e:
             from app.errors.utils import log_exception
+            # Roll back BEFORE logging — log_exception commits the session,
+            # which would otherwise persist the half-saved bill.
+            db.session.rollback()
             current_app.logger.error(f"Error creating purchase bill", exc_info=True)
             log_exception(e, severity='ERROR', module='purchase_bills.create')
-            db.session.rollback()
             flash(f'Error entering AP Voucher: {str(e)}', 'error')
 
     if request.method == 'GET':
@@ -529,7 +581,6 @@ def create():
     _accts = _get_gl_accounts()
     gl_accounts = {
         'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
-        'input_vat': {'code': _accts['input_vat'].code, 'name': _accts['input_vat'].name} if _accts['input_vat'] else None,
         'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
     return render_template('purchase_bills/form.html',
@@ -690,9 +741,11 @@ def edit(id):
 
         except Exception as e:
             from app.errors.utils import log_exception
+            # Roll back BEFORE logging — log_exception commits the session,
+            # which would otherwise persist the half-saved changes.
+            db.session.rollback()
             current_app.logger.error(f"Error updating purchase bill", exc_info=True)
             log_exception(e, severity='ERROR', module='purchase_bills.update')
-            db.session.rollback()
             flash(f'Error saving AP Voucher: {str(e)}', 'error')
 
     if request.method == 'GET':
@@ -705,7 +758,6 @@ def edit(id):
     _accts = _get_gl_accounts()
     gl_accounts = {
         'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
-        'input_vat': {'code': _accts['input_vat'].code, 'name': _accts['input_vat'].name} if _accts['input_vat'] else None,
         'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
     return render_template('purchase_bills/form.html',
@@ -761,9 +813,11 @@ def post(id):
         flash(f'AP Voucher "{bill.bill_number}" posted successfully!', 'success')
     except Exception as e:
         from app.errors.utils import log_exception
+        # Roll back BEFORE logging — log_exception commits the session,
+        # which would otherwise persist the half-applied status change.
+        db.session.rollback()
         current_app.logger.error(f"Error posting purchase bill", exc_info=True)
         log_exception(e, severity='ERROR', module='purchase_bills.post')
-        db.session.rollback()
         flash(f'Error posting AP Voucher: {str(e)}', 'error')
 
     return redirect(url_for('purchase_bills.view', id=id))
@@ -836,12 +890,6 @@ def _post_bill_je(bill, user_id):
     if not ap_account:
         raise ValueError("Accounts Payable - Trade (20101) not found in COA.")
 
-    input_vat_account = None
-    if bill.vat_amount and bill.vat_amount > 0:
-        input_vat_account = _accts['input_vat']
-        if not input_vat_account:
-            raise ValueError("Input VAT - Current (10501) not found in COA.")
-
     wt_account = None
     if bill.withholding_tax_amount and bill.withholding_tax_amount > 0:
         wt_account = _accts['wt']
@@ -871,8 +919,6 @@ def _post_bill_je(bill, user_id):
     db.session.add(je)
     db.session.flush()
 
-    vat_used = Decimal(str(bill.vat_amount))
-
     line_num = 1
     first_expense_line = None
     all_lines = []
@@ -895,12 +941,14 @@ def _post_bill_je(bill, user_id):
             first_expense_line = entry_line
         line_num += 1
 
-    if input_vat_account:
+    for vat_acct, vat_amt in _input_vat_buckets(bill):
+        if vat_amt <= 0:
+            continue
         vat_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
-            account_id=input_vat_account.id,
+            account_id=vat_acct.id,
             description=f'Input VAT: {bill.bill_number}',
-            debit_amount=vat_used,
+            debit_amount=vat_amt,
             credit_amount=Decimal('0.00')
         )
         db.session.add(vat_line)
