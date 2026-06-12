@@ -35,7 +35,7 @@
 .bsr-label { color: var(--text-2); font-size: 13px; }
 .bsr-label--total { font-size: 15px; font-weight: 700; color: var(--text-1); }
 .bsr-hint { font-size: 11px; color: var(--text-2); margin-left: 4px; }
-.bsr-amt { font-family: var(--mono); font-weight: 600; font-size: 13px; text-align: right; display: block; }
+.bsr-amt { font-family: var(--mono); font-weight: 600; font-size: 13px; text-align: right; display: block; position: relative; }
 .bsr-amt--red { color: var(--red); }
 .bsr-amt--total { font-size: 18px; font-weight: 700; color: var(--blue); }
 /* Edit-mode wrap: input + revert button flex row, right-aligned */
