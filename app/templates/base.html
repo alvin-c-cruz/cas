@@ -1186,6 +1186,7 @@
             </div>
 
             <!-- Admin Section -->
+            {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="admin">
                     <span>Admin</span>
@@ -1202,7 +1203,7 @@
                         <span class="nav-text">Branch Management</span>
                     </a>
                     {% endif %}
-                    {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
+                    {% if current_user.is_authenticated and current_user.role == 'admin' %}
                     <a href="{{ url_for('users.list_users') }}" class="nav-item {% if request.endpoint == 'users.list_users' or request.endpoint == 'users.create_user' or request.endpoint == 'users.edit_user' %}active{% endif %}">
                         <span class="nav-icon">👤</span>
                         <span class="nav-text">User Management</span>
@@ -1222,6 +1223,7 @@
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
         </div>
 
         <!-- User Switcher -->
