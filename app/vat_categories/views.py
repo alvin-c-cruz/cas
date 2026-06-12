@@ -48,6 +48,8 @@ def can_auto_approve():
 
 def _input_vat_account_choices():
     """Active leaf accounts for the Input Tax picker (groups are not postable)."""
+    # Deliberate direct query: the cached get_active_accounts() helper is never
+    # invalidated on account create/update/approve, so using it risks a stale picker.
     accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
     parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
     choices = [(0, '-- None (zero-rate) --')]
@@ -434,7 +436,6 @@ def change_requests():
     all_requests = VATCategoryChangeRequest.query.order_by(VATCategoryChangeRequest.requested_at.desc()).all()
 
     # Parse JSON data for each request
-    import json
     requests_with_data = []
     for req in all_requests:
         req_dict = {

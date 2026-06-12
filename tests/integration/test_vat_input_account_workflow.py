@@ -7,7 +7,8 @@ from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
 
 
 def login(client, username, password):
-    # Login view redirects authenticated users, so log out before switching.
+    # Logout first: the login view redirects already-authenticated users,
+    # so switching users mid-test requires clearing the session.
     client.get('/logout', follow_redirects=True)
     client.post('/login', data={'username': username, 'password': password},
                 follow_redirects=True)
