@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Under Development - CAS{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="page-header">
+        <h1 class="page-title">🚧 Under Development</h1>
+    </div>
+
+    <div class="card" style="max-width: 520px; margin: 3rem auto; text-align: center; padding: 2.5rem;">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">🚧</div>
+        <h2 style="margin-bottom: 0.75rem;">Coming Soon</h2>
+        <p style="color: var(--text-muted); margin-bottom: 2rem;">
+            {% if feature %}
+                <strong>{{ feature }}</strong> is not yet available.
+            {% else %}
+                This feature is not yet available.
+            {% endif %}
+            Check back in a future update.
+        </p>
+        <button class="btn btn-secondary" onclick="history.back()">&#8592; Go Back</button>
+    </div>
+</div>
+{% endblock %}

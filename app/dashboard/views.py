@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, jsonify
+from flask import Blueprint, render_template, redirect, url_for, jsonify, request
 from flask_login import login_required, current_user
 from datetime import datetime
 from app.accounts.approval_models import AccountChangeRequest
@@ -226,3 +226,9 @@ def get_action_items():
             })
 
     return jsonify(items)
+
+@dashboard_bp.route('/under-development')
+@login_required
+def under_development():
+    feature = request.args.get('feature', '')
+    return render_template('dashboard/under_development.html', feature=feature)
