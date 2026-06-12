@@ -45,7 +45,17 @@ def make_vat(db_session, code='VAT12', name='VATable 12%'):
     return vat
 
 
-def vat_form_data(code='VATX', name='Test VAT', reason='Needed for BIR compliance'):
+def make_input_vat_account(db_session, code='10599', name='Input VAT'):
+    """A leaf asset account usable as the Input Tax account (B-014)."""
+    account = Account(code=code, name=name, account_type='Asset',
+                      normal_balance='Debit', is_active=True)
+    db_session.add(account)
+    db_session.commit()
+    return account
+
+
+def vat_form_data(code='VATX', name='Test VAT', reason='Needed for BIR compliance',
+                  input_vat_account_id=None):
     data = {
         'code': code,
         'name': name,
@@ -53,6 +63,8 @@ def vat_form_data(code='VATX', name='Test VAT', reason='Needed for BIR complianc
         'rate': '12.00',
         'is_active': '1',
     }
+    if input_vat_account_id is not None:
+        data['input_vat_account_id'] = str(input_vat_account_id)
     if reason is not None:
         data['request_reason'] = reason
     return data
@@ -61,8 +73,10 @@ def vat_form_data(code='VATX', name='Test VAT', reason='Needed for BIR complianc
 class TestVATCategoryChangeRequests:
     def test_create_persists_reason_flash_and_audit(self, client, db_session, two_reviewers):
         login(client)
+        input_vat = make_input_vat_account(db_session)
         resp = client.post('/vat-categories/create',
-                           data=vat_form_data(reason='New VAT type required'),
+                           data=vat_form_data(reason='New VAT type required',
+                                              input_vat_account_id=input_vat.id),
                            follow_redirects=True)
         assert resp.status_code == 200
         assert PENDING_FLASH in resp.data
@@ -82,18 +96,24 @@ class TestVATCategoryChangeRequests:
 
     def test_create_reason_is_required(self, client, db_session, two_reviewers):
         login(client)
+        input_vat = make_input_vat_account(db_session)
         resp = client.post('/vat-categories/create',
-                           data=vat_form_data(reason=None),
+                           data=vat_form_data(reason=None,
+                                              input_vat_account_id=input_vat.id),
                            follow_redirects=True)
         assert resp.status_code == 200
         assert VATCategoryChangeRequest.query.count() == 0
 
     def test_duplicate_pending_create_is_blocked(self, client, db_session, two_reviewers):
         login(client)
-        client.post('/vat-categories/create', data=vat_form_data(), follow_redirects=True)
+        input_vat = make_input_vat_account(db_session)
+        client.post('/vat-categories/create',
+                    data=vat_form_data(input_vat_account_id=input_vat.id),
+                    follow_redirects=True)
         assert VATCategoryChangeRequest.query.count() == 1
 
-        resp = client.post('/vat-categories/create', data=vat_form_data(),
+        resp = client.post('/vat-categories/create',
+                           data=vat_form_data(input_vat_account_id=input_vat.id),
                            follow_redirects=True)
         assert DUPLICATE_FLASH in resp.data
         assert VATCategoryChangeRequest.query.count() == 1
@@ -101,16 +121,19 @@ class TestVATCategoryChangeRequests:
     def test_duplicate_pending_update_is_blocked(self, client, db_session, two_reviewers):
         login(client)
         vat = make_vat(db_session)
+        input_vat = make_input_vat_account(db_session)
         # First update request goes through
         resp = client.post(f'/vat-categories/{vat.id}/edit',
-                           data=vat_form_data(code=vat.code, name='Renamed VAT'),
+                           data=vat_form_data(code=vat.code, name='Renamed VAT',
+                                              input_vat_account_id=input_vat.id),
                            follow_redirects=True)
         assert PENDING_FLASH in resp.data
         assert VATCategoryChangeRequest.query.count() == 1
 
         # Second one targeting the same record is blocked
         resp = client.post(f'/vat-categories/{vat.id}/edit',
-                           data=vat_form_data(code=vat.code, name='Renamed Again'),
+                           data=vat_form_data(code=vat.code, name='Renamed Again',
+                                              input_vat_account_id=input_vat.id),
                            follow_redirects=True)
         assert DUPLICATE_FLASH in resp.data
         assert VATCategoryChangeRequest.query.count() == 1

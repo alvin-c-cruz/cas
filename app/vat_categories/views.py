@@ -8,6 +8,7 @@ from app import db
 from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
 from app.vat_categories.forms import VATCategoryForm, VATCategoryChangeReviewForm
 from app.users.models import User
+from app.accounts.models import Account
 from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
@@ -43,6 +44,16 @@ def can_auto_approve():
         User.is_active == True
     ).count()
     return total_accountants == 1
+
+
+def _input_vat_account_choices():
+    """Active leaf accounts for the Input Tax picker (groups are not postable)."""
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
+    choices = [(0, '-- None (zero-rate) --')]
+    choices += [(a.id, f'{a.code} : {a.name}') for a in accounts
+                if a.id not in parent_ids]
+    return choices
 
 
 PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '
@@ -104,6 +115,7 @@ def list_vat_categories():
 def create():
     """Create new VAT category - submits for approval"""
     form = VATCategoryForm()
+    form.input_vat_account_id.choices = _input_vat_account_choices()
 
     if form.validate_on_submit():
         # Check for duplicate code
@@ -131,7 +143,8 @@ def create():
                 'name': form.name.data,
                 'description': form.description.data,
                 'rate': float(form.rate.data),
-                'is_active': bool(int(form.is_active.data)) if form.is_active.data else True
+                'is_active': bool(int(form.is_active.data)) if form.is_active.data else True,
+                'input_vat_account_id': form.input_vat_account_id.data or None
             }
 
             # Check if auto-approval is allowed
@@ -143,6 +156,7 @@ def create():
                     description=change_data['description'],
                     rate=change_data['rate'],
                     is_active=change_data['is_active'],
+                    input_vat_account_id=change_data['input_vat_account_id'],
                     created_by_id=current_user.id,
                     updated_by_id=current_user.id
                 )
@@ -208,6 +222,7 @@ def edit(id):
     """Edit VAT category - submits for approval"""
     vat_category = VATCategory.query.get_or_404(id)
     form = VATCategoryForm(obj=vat_category)
+    form.input_vat_account_id.choices = _input_vat_account_choices()
 
     if form.validate_on_submit():
         # Check for duplicate code (excluding current)
@@ -241,13 +256,14 @@ def edit(id):
                 'name': form.name.data,
                 'description': form.description.data,
                 'rate': float(form.rate.data),
-                'is_active': bool(int(form.is_active.data)) if form.is_active.data else True
+                'is_active': bool(int(form.is_active.data)) if form.is_active.data else True,
+                'input_vat_account_id': form.input_vat_account_id.data or None
             }
 
             # Check if auto-approval is allowed
             if can_auto_approve():
                 # Capture old values before update
-                old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+                old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
 
                 # Update VAT category directly
                 vat_category.code = change_data['code']
@@ -255,6 +271,7 @@ def edit(id):
                 vat_category.description = change_data['description']
                 vat_category.rate = change_data['rate']
                 vat_category.is_active = change_data['is_active']
+                vat_category.input_vat_account_id = change_data['input_vat_account_id']
                 vat_category.updated_by_id = current_user.id
                 vat_category.updated_at = ph_now()
 
@@ -287,7 +304,7 @@ def edit(id):
                 db.session.flush()  # Get the ID before commit
 
                 # Audit log for update change request submission
-                old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+                old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
                 log_audit(
                     module='vat_category',
                     action='update',
@@ -317,6 +334,7 @@ def edit(id):
         form.name.data = vat_category.name
         form.description.data = vat_category.description
         form.rate.data = vat_category.rate
+        form.input_vat_account_id.data = vat_category.input_vat_account_id or 0
         form.is_active.data = '1' if vat_category.is_active else '0'
 
     return render_template('vat_categories/form.html', form=form, vat_category=vat_category)
@@ -348,7 +366,7 @@ def delete(id):
         # Check if auto-approval is allowed
         if can_auto_approve():
             # Capture values before delete
-            old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+            old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
             vat_identifier = f'{vat_category.code} - {vat_category.name}'
             vat_id = vat_category.id
             vat_name = vat_category.name
@@ -383,7 +401,7 @@ def delete(id):
             db.session.flush()  # Get the ID before commit
 
             # Audit log for delete change request submission
-            old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+            old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
             log_audit(
                 module='vat_category',
                 action='delete',
@@ -479,6 +497,7 @@ def review_change_request(id):
                         description=proposed_data.get('description'),
                         rate=proposed_data['rate'],
                         is_active=proposed_data.get('is_active', True),
+                        input_vat_account_id=proposed_data.get('input_vat_account_id'),
                         created_by_id=change_request.requested_by_id,
                         updated_by_id=current_user.id
                     )
@@ -491,7 +510,7 @@ def review_change_request(id):
                         action='create',
                         record_id=vat_category.id,
                         record_identifier=f'{vat_category.code} - {vat_category.name}',
-                        new_values=model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active']),
+                        new_values=model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id']),
                         notes=f'Approved by {current_user.username}'
                     )
 
@@ -502,18 +521,19 @@ def review_change_request(id):
                     vat_category = change_request.vat_category
                     if vat_category:
                         # Capture old values before update
-                        old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+                        old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
 
                         vat_category.code = proposed_data['code']
                         vat_category.name = proposed_data['name']
                         vat_category.description = proposed_data.get('description')
                         vat_category.rate = proposed_data['rate']
                         vat_category.is_active = proposed_data.get('is_active', True)
+                        vat_category.input_vat_account_id = proposed_data.get('input_vat_account_id')
                         vat_category.updated_by_id = current_user.id
                         vat_category.updated_at = ph_now()
 
                         # Audit log for approved update
-                        new_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+                        new_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
                         log_audit(
                             module='vat_category',
                             action='update',
@@ -531,7 +551,7 @@ def review_change_request(id):
                     vat_category = change_request.vat_category
                     if vat_category:
                         # Capture values before delete
-                        old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active'])
+                        old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
                         vat_identifier = f'{vat_category.code} - {vat_category.name}'
                         vat_id = vat_category.id
                         vat_name = vat_category.name
