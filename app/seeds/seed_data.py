@@ -16,6 +16,7 @@ from app.branches.models import Branch
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
+from app.vendors.models import Vendor
 from app.settings import AppSettings
 from datetime import datetime
 
@@ -507,10 +508,11 @@ def seed_minimal():
     Creates:
     - 1 admin user
     - 1 main branch (assigned to admin)
-    - 4 app settings
+    - 14 app settings
     - 22 accounts (Assets, Liabilities, Expenses with hierarchical structure)
     - 7 VAT categories (V12CG/V12DG/V12SV/V12IM/V0/VEX/INV)
     - 3 WHT codes (WC158, WC160, WC100)
+    - 9 vendors
     """
     print("\n" + "="*60)
     print("MINIMAL DATABASE SEEDING")
@@ -570,15 +572,25 @@ def seed_minimal():
             print(f"  [SKIP] {existing_settings} app settings already exist")
         else:
             settings = [
-                {'key': 'company_name', 'value': ''},
-                {'key': 'company_tin', 'value': ''},
-                {'key': 'company_address', 'value': ''},
-                {'key': 'fiscal_year_start', 'value': '01'},
+                {'key': 'company_name',         'value': 'ABC Company'},
+                {'key': 'company_tin',          'value': '123-456-789'},
+                {'key': 'company_address',      'value': 'Unit 5, 123 Rizal Street, Poblacion, Makati City, Metro Manila'},
+                {'key': 'fiscal_year_start',    'value': '01'},
+                {'key': 'email',                'value': 'info@alvincruzaccounting.ph'},
+                {'key': 'phone',                'value': '(02) 8765-4321'},
+                {'key': 'postal_code',          'value': '1210'},
+                {'key': 'rdo_code',             'value': '050'},
+                {'key': 'tin_branch_code',      'value': '000'},
+                {'key': 'trade_name',           'value': 'ACAS'},
+                {'key': 'vat_registration_type','value': 'VAT'},
+                {'key': 'officer_president',    'value': 'Alvin C. Cruz'},
+                {'key': 'officer_secretary',    'value': 'Sofia Esperanza M. Cruz'},
+                {'key': 'officer_treasurer',    'value': 'Joan Hazel M. Cruz'},
             ]
             for s in settings:
                 db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
             db.session.commit()
-            print(f"  [OK] {len(settings)} app settings created")
+            print(f"  [OK] 14 app settings created")
 
         # ------------------------------------------------------------------
         # 4. Chart of Accounts (22 accounts, three-pass seed: parents, then children)
@@ -694,6 +706,42 @@ def seed_minimal():
                 ))
             db.session.commit()
             print(f"  [OK] {len(wht_codes)} withholding tax codes created")
+
+        # ------------------------------------------------------------------
+        # 7. Vendors
+        # ------------------------------------------------------------------
+        print("\n7. Seeding vendors...")
+        existing_vendors = Vendor.query.count()
+        if existing_vendors > 0:
+            print(f"  [SKIP] {existing_vendors} vendors already exist")
+        else:
+            wt_map = {wt.code: wt for wt in WithholdingTax.query.all()}
+
+            vendors = [
+                {'code': 'MOS',    'name': 'Mega Office Supplies Co.', 'check_payee_name': 'Mega Office Supplies Co.', 'vat': 'V12DG', 'wt_codes': ['WC158']},
+                {'code': 'VND001', 'name': 'MOS Trading Corp',         'check_payee_name': 'MOS Trading Corp',         'vat': 'V12DG', 'wt_codes': ['WC158']},
+                {'code': 'VND002', 'name': 'Sunshine Property Mgmt',   'check_payee_name': 'Sunshine Property Mgmt',   'vat': 'V12DG', 'wt_codes': ['WC100']},
+                {'code': 'VND003', 'name': 'TechServe IT Solutions',   'check_payee_name': 'TechServe IT Solutions',   'vat': 'V12SV', 'wt_codes': ['WC160']},
+                {'code': 'VND004', 'name': 'ABC Law and Associates',   'check_payee_name': 'ABC Law and Associates',   'vat': 'V12SV', 'wt_codes': ['WC160']},
+                {'code': 'VND005', 'name': 'Green Power Electric Co',  'check_payee_name': 'Green Power Electric Co',  'vat': 'VEX',   'wt_codes': []},
+                {'code': 'VND006', 'name': 'PhilPost Courier',         'check_payee_name': 'PhilPost Courier',         'vat': 'INV',   'wt_codes': []},
+                {'code': 'VND007', 'name': 'ZeroExport Trading',       'check_payee_name': 'ZeroExport Trading',       'vat': 'V0',    'wt_codes': []},
+                {'code': 'VND008', 'name': 'Capitol Office Supply',    'check_payee_name': 'Capitol Office Supply',    'vat': 'V12DG', 'wt_codes': ['WC158']},
+            ]
+            for v in vendors:
+                vendor = Vendor(
+                    code=v['code'],
+                    name=v['name'],
+                    check_payee_name=v['check_payee_name'],
+                    default_vat_category=v['vat'],
+                    is_active=True
+                )
+                for wt_code in v['wt_codes']:
+                    if wt_code in wt_map:
+                        vendor.withholding_taxes.append(wt_map[wt_code])
+                db.session.add(vendor)
+            db.session.commit()
+            print(f"  [OK] {len(vendors)} vendors created")
 
         print("\n" + "="*60)
         print("MINIMAL SEEDING COMPLETE!")
