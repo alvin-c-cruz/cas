@@ -1094,7 +1094,7 @@
                         <span class="nav-icon">📓</span>
                         <span class="nav-text">Journal Entries</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                    <a href="{{ url_for('dashboard.under_development', feature='General Ledger') }}" class="nav-item {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'General Ledger' %}active{% endif %}">
                         <span class="nav-icon">📖</span>
                         <span class="nav-text">General Ledger</span>
                     </a>
@@ -1116,7 +1116,7 @@
                         <span class="nav-icon">📈</span>
                         <span class="nav-text">Balance Sheet</span>
                     </a>
-                    <a href="#" class="nav-item">
+                    <a href="{{ url_for('dashboard.under_development', feature='Cash Flow') }}" class="nav-item {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Cash Flow' %}active{% endif %}">
                         <span class="nav-icon">💸</span>
                         <span class="nav-text">Cash Flow</span>
                     </a>
@@ -1150,7 +1150,7 @@
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Withholding Tax</span>
                     </a>
-                    <a href="#" class="nav-item">
+                    <a href="{{ url_for('dashboard.under_development', feature='Annual ITR') }}" class="nav-item {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Annual ITR' %}active{% endif %}">
                         <span class="nav-icon">📄</span>
                         <span class="nav-text">Annual ITR</span>
                     </a>
