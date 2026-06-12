@@ -628,32 +628,33 @@ def delete_user(id):
         flash(f'Cannot delete user "{user.username}": {attachment_count} purchase bill attachment(s) uploaded by this user exist.', 'error')
         return redirect(url_for('users.list_users'))
 
-    try:
-        # Capture values before delete
-        old_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
-        user_identifier = f'{user.username} ({user.full_name})'
-        user_id = user.id
-        username = user.username
+    # TEMPORARILY DISABLED ERROR HANDLING FOR DEBUGGING - See full stack trace
+    # try:
+    # Capture values before delete
+    old_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
+    user_identifier = f'{user.username} ({user.full_name})'
+    user_id = user.id
+    username = user.username
 
-        db.session.delete(user)
-        db.session.commit()
+    db.session.delete(user)
+    db.session.commit()
 
-        # Audit log
-        log_delete(
-            module='user',
-            record_id=user_id,
-            record_identifier=user_identifier,
-            old_values=old_values
-        )
+    # Audit log
+    log_delete(
+        module='user',
+        record_id=user_id,
+        record_identifier=user_identifier,
+        old_values=old_values
+    )
 
-        flash(f'User "{username}" deleted successfully.', 'success')
-    except Exception as e:
-        from flask import current_app
-        from app.errors.utils import log_exception
-        current_app.logger.error(f"Error deleting user", exc_info=True)
-        log_exception(e, severity='ERROR', module='users.delete')
-        db.session.rollback()
-        flash(f'Error deleting user: {str(e)}', 'error')
+    flash(f'User "{username}" deleted successfully.', 'success')
+    # except Exception as e:
+    #     from flask import current_app
+    #     from app.errors.utils import log_exception
+    #     current_app.logger.error(f"Error deleting user", exc_info=True)
+    #     log_exception(e, severity='ERROR', module='users.delete')
+    #     db.session.rollback()
+    #     flash(f'Error deleting user: {str(e)}', 'error')
 
     return redirect(url_for('users.list_users'))
 
