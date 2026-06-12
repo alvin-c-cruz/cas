@@ -548,6 +548,7 @@ def seed_minimal():
             main_branch = Branch(
                 code='MAIN',
                 name='Main Branch',
+                address='Head Office',
                 is_active=True
             )
             db.session.add(main_branch)
@@ -644,6 +645,7 @@ def seed_minimal():
                     code=cat['code'],
                     name=cat['name'],
                     rate=cat['rate'],
+                    description='',
                     input_vat_account_id=cat['input_vat_account_id'],
                     is_active=True
                 ))
@@ -667,6 +669,7 @@ def seed_minimal():
                 db.session.add(WithholdingTax(
                     code=wt['code'],
                     name=wt['name'],
+                    description='',
                     rate=wt['rate'],
                     is_active=True
                 ))
