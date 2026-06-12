@@ -31,11 +31,15 @@ def accountant_or_admin_required(f):
 
 def can_auto_approve():
     """
-    Check if current user can auto-approve their own changes.
-    Returns True if there's only one accountant/admin in the system.
+    Sole-accountant rule (owner decision 2026-06-12, B-011): admins are
+    separate from accountants. The single active accountant auto-approves
+    their own changes regardless of how many admins exist; admins never
+    auto-approve and always go to pending.
     """
+    if current_user.role != 'accountant':
+        return False
     total_accountants = User.query.filter(
-        User.role.in_(['accountant', 'admin']),
+        User.role == 'accountant',
         User.is_active == True
     ).count()
     return total_accountants == 1
