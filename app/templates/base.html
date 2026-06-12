@@ -1072,9 +1072,13 @@
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">AP Vouchers</span>
                     </a>
-                    <a href="{{ url_for('receipts.list_receipts') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') %}active{% endif %}">
+                    <a href="{{ url_for('receipts.list_receipts') }}?type=collection" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'collection' %}active{% endif %}">
+                        <span class="nav-icon">💰</span>
+                        <span class="nav-text">Collections</span>
+                    </a>
+                    <a href="{{ url_for('receipts.list_receipts') }}?type=payment" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'payment' %}active{% endif %}">
                         <span class="nav-icon">💸</span>
-                        <span class="nav-text">Receipts & Payments</span>
+                        <span class="nav-text">Payments</span>
                     </a>
                 </div>
             </div>
@@ -1297,10 +1301,10 @@
                         <a href="{{ url_for('journal_entries.create') }}" class="topbar-new-item">
                             📝 New Journal Entry
                         </a>
-                        <a href="#" class="topbar-new-item">
+                        <a href="{{ url_for('receipts.create') }}?type=collection" class="topbar-new-item">
                             💰 New Collection
                         </a>
-                        <a href="#" class="topbar-new-item">
+                        <a href="{{ url_for('receipts.create') }}?type=payment" class="topbar-new-item">
                             💸 New Payment
                         </a>
                     </div>
