@@ -482,8 +482,8 @@ def review_change_request(id):
     """Review and approve/reject a change request"""
     change_request = VATCategoryChangeRequest.query.get_or_404(id)
 
-    # Cannot review own requests
-    if change_request.requested_by_id == current_user.id:
+    # Cannot review own requests (unless admin)
+    if change_request.requested_by_id == current_user.id and current_user.role != 'admin':
         flash('You cannot review your own change request.', 'error')
         return redirect(url_for('vat_categories.change_requests'))
 
