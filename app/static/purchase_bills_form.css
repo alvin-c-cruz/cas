@@ -86,10 +86,11 @@
 .totals-pencil:hover { opacity: 0.9; }
 .totals-pencil:focus-visible { opacity: 0.9; outline: 2px solid var(--blue); outline-offset: 2px; }
 .totals-revert {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 3px;
-    cursor: pointer; font-size: 11px; padding: 1px 5px; color: var(--text-2);
+    background: none; border: none; cursor: pointer;
+    font-size: 13px; padding: 0 0 0 4px; color: var(--text-2);
+    vertical-align: middle; transition: opacity 0.15s; opacity: 0.5;
 }
-.totals-revert:hover { background: var(--border); }
+.totals-revert:hover { opacity: 1; }
 
 /* ── VAT/WT override input ───────────────────────────────────────────────── */
 .bsr-input {

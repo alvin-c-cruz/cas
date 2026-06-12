@@ -126,14 +126,11 @@
                             <span id="vatDisplay" class="bsr-amt">0.00</span>
                         </div>
                         <div id="vatEditMode" class="bsr" style="display:none">
-                            <span class="bsr-label">Less: Input VAT <span id="vatAutoHint" class="bsr-hint"></span></span>
-                            <div class="bsr-amt-wrap">
-                                <input type="text" id="vatOverrideInput" class="bsr-input"
-                                       onfocus="amtFocus(this)"
-                                       oninput="onVatOverrideInput(this.value)"
-                                       onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
-                                <button type="button" class="totals-revert" onclick="revertVatOverride()" title="Revert to auto">↺</button>
-                            </div>
+                            <span class="bsr-label">Less: Input VAT <button type="button" class="totals-revert" onclick="revertVatOverride()" title="Revert to auto">↺</button><span id="vatAutoHint" style="display:none"></span></span>
+                            <input type="text" id="vatOverrideInput" class="bsr-input"
+                                   onfocus="amtFocus(this)"
+                                   oninput="onVatOverrideInput(this.value)"
+                                   onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
                         </div>
 
                         <!-- Row 3: Net of VAT -->
@@ -154,14 +151,11 @@
                             <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
                         </div>
                         <div id="wtEditMode" class="bsr" style="display:none">
-                            <span class="bsr-label">Less: Withholding Tax <span id="wtAutoHint" class="bsr-hint"></span></span>
-                            <div class="bsr-amt-wrap">
-                                <input type="text" id="wtOverrideInput" class="bsr-input"
-                                       onfocus="amtFocus(this)"
-                                       oninput="onWtOverrideInput(this.value)"
-                                       onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
-                                <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">↺</button>
-                            </div>
+                            <span class="bsr-label">Less: Withholding Tax <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">↺</button><span id="wtAutoHint" style="display:none"></span></span>
+                            <input type="text" id="wtOverrideInput" class="bsr-input"
+                                   onfocus="amtFocus(this)"
+                                   oninput="onWtOverrideInput(this.value)"
+                                   onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
                         </div>
 
                         <!-- Row 6: Net Amount Payable -->
