@@ -508,8 +508,8 @@ def seed_minimal():
     - 1 admin user
     - 1 main branch (assigned to admin)
     - 4 app settings
-    - 6 accounts (Input VAT group + leaf, AP-Trade, WHT Payable group + leaf, Office Supplies)
-    - 4 VAT categories (V12, V0, VEX, INV)
+    - 22 accounts (Assets, Liabilities, Expenses with hierarchical structure)
+    - 7 VAT categories (V12CG/V12DG/V12SV/V12IM/V0/VEX/INV)
     - 3 WHT codes (WC158, WC160, WC100)
     """
     print("\n" + "="*60)
@@ -581,47 +581,58 @@ def seed_minimal():
             print(f"  [OK] {len(settings)} app settings created")
 
         # ------------------------------------------------------------------
-        # 4. Chart of Accounts (6 accounts, parents before children)
+        # 4. Chart of Accounts (22 accounts, three-pass seed: parents, then children)
         # ------------------------------------------------------------------
-        print("\n4. Seeding minimal Chart of Accounts...")
+        print("\n4. Seeding Chart of Accounts...")
         existing_accounts = Account.query.count()
         if existing_accounts > 0:
             print(f"  [SKIP] {existing_accounts} accounts already exist")
         else:
-            # Parents first (no parent_id)
-            acct_10500 = Account(
-                code='10500', name='Input VAT',
-                account_type='Asset', normal_balance='debit', is_active=True
-            )
-            acct_20101 = Account(
-                code='20101', name='Accounts Payable - Trade',
-                account_type='Liability', normal_balance='credit', is_active=True
-            )
-            acct_20300 = Account(
-                code='20300', name='Withholding Tax Payable',
-                account_type='Liability', normal_balance='credit', is_active=True
-            )
-            acct_60101 = Account(
-                code='60101', name='Office Supplies Expense',
-                account_type='Expense', normal_balance='debit', is_active=True
-            )
-            db.session.add_all([acct_10500, acct_20101, acct_20300, acct_60101])
-            db.session.flush()  # Assign IDs before children reference them
+            # Pass 1: Root groups/standalones (no parent_id)
+            pass1_accounts = [
+                Account(code='10101', name='Cash on Hand', account_type='Asset', normal_balance='debit', is_active=True),
+                Account(code='10500', name='Input VAT', account_type='Asset', normal_balance='debit', is_active=True),
+                Account(code='20101', name='Accounts Payable - Trade', account_type='Liability', normal_balance='credit', is_active=True),
+                Account(code='20300', name='Withholding Tax Payable', account_type='Liability', normal_balance='credit', is_active=True),
+                Account(code='60100', name='Operating Expenses', account_type='Expense', normal_balance='debit', is_active=True),
+            ]
+            db.session.add_all(pass1_accounts)
+            db.session.flush()  # Assign IDs
 
-            # Children
-            acct_10501 = Account(
-                code='10501', name='Input VAT - Capital Goods',
-                account_type='Asset', normal_balance='debit', is_active=True,
-                parent_id=acct_10500.id
-            )
-            acct_20301 = Account(
-                code='20301', name='Withholding Tax Payable - Expanded',
-                account_type='Liability', normal_balance='credit', is_active=True,
-                parent_id=acct_20300.id
-            )
-            db.session.add_all([acct_10501, acct_20301])
+            # Get parents by code for Pass 2
+            parent_10500 = Account.query.filter_by(code='10500').first()
+            parent_20300 = Account.query.filter_by(code='20300').first()
+            parent_60100 = Account.query.filter_by(code='60100').first()
+
+            # Pass 2: Children of 10500 (Input VAT) and 20300 (WHT Payable)
+            pass2_accounts = [
+                Account(code='10501', name='Input VAT - Capital Goods', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
+                Account(code='10502', name='Input VAT - Domestic Goods', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
+                Account(code='10503', name='Input VAT - Services', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
+                Account(code='10504', name='Input VAT - Importation', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
+                Account(code='10505', name='Excess Input Tax Carry-Over', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
+                Account(code='10506', name='Deferred Input Tax', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
+                Account(code='20301', name='Withholding Tax Payable - Expanded', account_type='Liability', normal_balance='credit', is_active=True, parent_id=parent_20300.id),
+            ]
+            db.session.add_all(pass2_accounts)
+            db.session.flush()  # Assign IDs
+
+            # Pass 3: Children of 60100 (Operating Expenses)
+            pass3_accounts = [
+                Account(code='60101', name='Office Supplies Expense', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60102', name='Salaries and Wages', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60103', name='Rent Expense', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60104', name='Electricity and Water', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60105', name='Communications Expense', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60106', name='Transportation and Travel', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60107', name='Repairs and Maintenance', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60108', name='Representation and Entertainment', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60109', name='Professional Fees', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+                Account(code='60110', name='Miscellaneous Expense', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
+            ]
+            db.session.add_all(pass3_accounts)
             db.session.commit()
-            print("  [OK] 6 accounts created in Chart of Accounts")
+            print("  [OK] 22 accounts created in Chart of Accounts")
 
         # ------------------------------------------------------------------
         # 5. VAT Categories
@@ -631,14 +642,22 @@ def seed_minimal():
         if existing_vat > 0:
             print(f"  [SKIP] {existing_vat} VAT categories already exist")
         else:
-            input_vat_acct = Account.query.filter_by(code='10501').first()
-            input_vat_id = input_vat_acct.id if input_vat_acct else None
+            # Look up input VAT accounts by code (seeded above)
+            vat_accounts = {
+                a.code: a.id
+                for a in Account.query.filter(Account.code.in_(
+                    ['10501', '10502', '10503', '10504']
+                )).all()
+            }
 
             vat_categories = [
-                {'code': 'V12',  'name': 'VAT 12%',       'rate': 12.00, 'input_vat_account_id': input_vat_id},
-                {'code': 'V0',   'name': 'VAT Zero-Rated', 'rate':  0.00, 'input_vat_account_id': None},
-                {'code': 'VEX',  'name': 'VAT Exempt',     'rate':  0.00, 'input_vat_account_id': None},
-                {'code': 'INV',  'name': 'Invalid',        'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'VEX',   'name': 'VAT Exempt',               'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'V0',    'name': 'VAT Zero-Rated',            'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'INV',   'name': 'Invalid',                   'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'V12CG', 'name': 'Input Tax Capital Goods',   'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10501')},
+                {'code': 'V12DG', 'name': 'Input Tax Domestic Goods',  'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10502')},
+                {'code': 'V12SV', 'name': 'Input Tax Services',        'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10503')},
+                {'code': 'V12IM', 'name': 'Input Tax Importation',     'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10504')},
             ]
             for cat in vat_categories:
                 db.session.add(VATCategory(
