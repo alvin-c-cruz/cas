@@ -53,7 +53,7 @@ Columns (in order):
 | Amount (VAT-incl.) | `item.line_total`, right-aligned, monospace |
 | VAT | `item.vat_category` + rate, e.g. `VATABLE (12.00%)` |
 | WHT | `item.withholding_tax.code` + rate, e.g. `WC010 (10.00%)` or `—` |
-| Account Title | `item.account.code ~ ' - ' ~ item.account.name` |
+| Account Title | `item.account.code ~ ' : ' ~ item.account.name` |
 
 **Removed columns** (were in old detail, no longer shown): Input VAT, WHT Amt.
 
