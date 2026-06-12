@@ -108,9 +108,16 @@
             {% endif %}
         </div>
         <div class="card-header-actions">
-            {% if bill.status == 'draft' %}
+            {# Tier 2: accountant/admin only can post #}
+            {% if current_user.role in ['accountant', 'admin'] and bill.status == 'draft' %}
             <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post APV</button>
+            {% endif %}
+            {# Tier 1: staff/accountant/admin can edit draft #}
+            {% if current_user.role in ['staff', 'accountant', 'admin'] and bill.status == 'draft' %}
             <a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn btn-primary">Edit</a>
+            {% endif %}
+            {# Tier 1: staff/accountant/admin can void draft #}
+            {% if current_user.role in ['staff', 'accountant', 'admin'] and bill.status == 'draft' %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void APV</button>
             {% endif %}
             {% if bill.status == 'posted' and bill.amount_paid == 0 %}

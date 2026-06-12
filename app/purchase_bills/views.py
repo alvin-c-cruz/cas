@@ -202,6 +202,19 @@ def accountant_or_admin_required(f):
     return decorated_function
 
 
+def staff_or_above_required(f):
+    """Tier 1 AP voucher ops — staff, accountant, and admin allowed."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if current_user.role not in ['staff', 'accountant', 'admin']:
+            flash('You do not have permission to perform this action.', 'error')
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 VALID_BILL_STATUSES = {'draft', 'posted', 'partially_paid', 'paid', 'voided', 'cancelled'}
 
 
@@ -456,7 +469,7 @@ def export_csv_route():
 
 @purchase_bills_bp.route('/purchase-bills/create', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@staff_or_above_required
 def create():
     """Create new purchase bill."""
     form = PurchaseBillForm()
@@ -619,7 +632,7 @@ def view(id):
 
 @purchase_bills_bp.route('/purchase-bills/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@staff_or_above_required
 def edit(id):
     """Edit purchase bill (only drafts can be edited)."""
     bill = _get_bill_or_404(id)
@@ -1082,7 +1095,7 @@ def _create_reversal_je(bill, reversal_date, user_id, label='Cancel'):
 
 @purchase_bills_bp.route('/purchase-bills/<int:id>/void', methods=['POST'])
 @login_required
-@accountant_or_admin_required
+@staff_or_above_required
 def void(id):
     """Void a draft purchase bill (no journal entry — bill was never posted)."""
     bill = _get_bill_or_404(id)
@@ -1160,7 +1173,7 @@ def void(id):
 
 @purchase_bills_bp.route('/purchase-bills/<int:id>/attachments/upload', methods=['POST'])
 @login_required
-@accountant_or_admin_required
+@staff_or_above_required
 def upload_attachment(id):
     """Upload a file attachment to a draft AP Voucher."""
     bill = _get_bill_or_404(id)
