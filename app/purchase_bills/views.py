@@ -1014,24 +1014,19 @@ def _post_bill_je(bill, user_id):
 
 
 def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
-    """Create reversal JE when voiding or cancelling a purchase bill. Raises ValueError if required accounts missing."""
+    """Mirror the bill's stored JE with debits and credits swapped.
+
+    Reverses exactly what was booked — per-category input VAT buckets,
+    overrides, residual absorption and all (B-014). Raises ValueError if the
+    bill has no stored journal entry to reverse.
+    """
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
-    ap_account = Account.query.filter_by(code='20101').first()
-    if not ap_account:
-        raise ValueError(f"Accounts Payable - Trade (20101) not found in COA. Cannot {label.lower()}.")
-
-    input_vat_account = None
-    if bill.vat_amount > 0:
-        input_vat_account = Account.query.filter_by(code='10501').first()
-        if not input_vat_account:
-            raise ValueError(f"Input VAT - Current (10501) not found in COA. Cannot {label.lower()}.")
-
-    wt_account = None
-    if bill.withholding_tax_amount > 0:
-        wt_account = Account.query.filter_by(code='20301').first()
-        if not wt_account:
-            raise ValueError(f"Withholding Tax Payable - Expanded (20301) not found in COA. Cannot {label.lower()}.")
+    source_je = bill.journal_entry
+    if source_je is None:
+        raise ValueError(
+            f'Bill {bill.bill_number} has no stored journal entry to reverse. '
+            f'Cannot {label.lower()}.')
 
     entry_number = generate_entry_number(bill.branch_id)
     je = JournalEntry(
@@ -1041,6 +1036,7 @@ def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
         reference=f'{label.upper()[:6]}-{bill.bill_number}',
         entry_type='reversal',
         is_reversing=True,
+        reversed_entry_id=source_je.id,
         branch_id=bill.branch_id,
         created_by_id=user_id,
         status='posted',
@@ -1053,70 +1049,21 @@ def _create_reversal_je(bill, reversal_date, user_id, label='Void'):
     db.session.add(je)
     db.session.flush()
 
-    line_num = 1
-    all_lines = []
-    ap_line = JournalEntryLine(
-        entry_id=je.id, line_number=line_num,
-        account_id=ap_account.id,
-        description=f'{label} AP: {bill.bill_number}',
-        debit_amount=bill.total_amount,
-        credit_amount=Decimal('0.00')
-    )
-    db.session.add(ap_line)
-    all_lines.append(ap_line)
-    line_num += 1
-
-    if wt_account:
-        wt_line = JournalEntryLine(
-            entry_id=je.id, line_number=line_num,
-            account_id=wt_account.id,
-            description=f'{label} WT: {bill.bill_number}',
-            debit_amount=bill.withholding_tax_amount,
-            credit_amount=Decimal('0.00')
-        )
-        db.session.add(wt_line)
-        all_lines.append(wt_line)
-        line_num += 1
-
-    first_expense_reversal = None
-    for item in bill.line_items:
-        if item.account_id and item.line_total > 0:
-            net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
-            entry_line = JournalEntryLine(
-                entry_id=je.id, line_number=line_num,
-                account_id=item.account_id,
-                description=item.description,
-                debit_amount=Decimal('0.00'),
-                credit_amount=net_base
-            )
-            db.session.add(entry_line)
-            all_lines.append(entry_line)
-            if first_expense_reversal is None:
-                first_expense_reversal = entry_line
-            line_num += 1
-
-    if input_vat_account:
-        vat_line = JournalEntryLine(
-            entry_id=je.id, line_number=line_num,
-            account_id=input_vat_account.id,
-            description=f'{label} Input VAT: {bill.bill_number}',
-            debit_amount=Decimal('0.00'),
-            credit_amount=bill.vat_amount
-        )
-        db.session.add(vat_line)
-        all_lines.append(vat_line)
-
-    # Absorb rounding residual (and any VAT override difference) into the first
-    # expense line so the reversal JE always balances exactly
-    sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
-    sum_credits = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
-    residual = sum_debits - sum_credits
-    if residual != Decimal('0.00') and first_expense_reversal is not None:
-        first_expense_reversal.credit_amount += residual
-
+    for i, src in enumerate(source_je.lines.all(), start=1):
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=i,
+            account_id=src.account_id,
+            description=f'{label}: {src.description}' if src.description else label,
+            debit_amount=src.credit_amount,
+            credit_amount=src.debit_amount,
+        ))
     db.session.flush()
 
     je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(
+            f'Reversal JE is not balanced '
+            f'(debit={je.total_debit}, credit={je.total_credit}).')
     return je
 
 

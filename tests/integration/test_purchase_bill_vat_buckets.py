@@ -156,3 +156,66 @@ class TestVatBuckets:
         html = resp.data.decode('utf-8')
         assert 'too far below the computed VAT' in html
         assert PurchaseBill.query.filter_by(bill_number='AP-BKT-0005').first() is None
+
+
+class TestReversalMirrorsJE:
+    def test_cancel_reverses_bucketed_lines(self, client, db_session,
+                                            admin_user, main_branch):
+        w = setup_world(db_session)
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        post_bill(client, w['vendor'], [
+            {'description': 'goods', 'amount': 2240.0, 'vat_category': 'V12DG',
+             'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
+            {'description': 'services', 'amount': 560.0, 'vat_category': 'V12SV',
+             'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
+        ], number='AP-BKT-0006')
+        bill = PurchaseBill.query.filter_by(bill_number='AP-BKT-0006').first()
+        assert bill is not None
+        bill.vendor_invoice_number = 'SI-1'
+        bill.vendor_invoice_date = date(2026, 6, 12)
+        db_session.commit()
+        client.post(f'/purchase-bills/{bill.id}/post', follow_redirects=True)
+        client.post(f'/purchase-bills/{bill.id}/cancel', data={
+            'cancel_reason': 'bucket reversal test reason',
+            'reversal_date': '2026-06-12',
+        }, follow_redirects=True)
+
+        bill = PurchaseBill.query.filter_by(bill_number='AP-BKT-0006').first()
+        assert bill.status == 'cancelled'
+        reversal = (JournalEntry.query
+                    .filter(JournalEntry.reference.like('%AP-BKT-0006%'),
+                            JournalEntry.entry_type == 'reversal').first())
+        assert reversal is not None
+        assert reversal.is_balanced
+        sums = {}
+        for l in reversal.lines.all():
+            sums.setdefault(l.account.code, Decimal('0.00'))
+            sums[l.account.code] += l.credit_amount - l.debit_amount
+        # reversal CREDITS what the original debited
+        assert sums['10502'] == Decimal('240.00')
+        assert sums['10503'] == Decimal('60.00')
+        # AP was credited originally -> the reversal debits it, so credit - debit < 0
+        assert sums['20101'] < 0
+
+    def test_cancel_without_stored_je_raises_clear_error(self, client, db_session,
+                                                         admin_user, main_branch):
+        """A posted bill whose JE link is gone must fail loudly, not book a
+        wrong reversal rebuilt from totals."""
+        import pytest as _pytest
+        from app.purchase_bills.views import _create_reversal_je
+        w = setup_world(db_session)
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        post_bill(client, w['vendor'], [
+            {'description': 'goods', 'amount': 1120.0, 'vat_category': 'V12DG',
+             'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
+        ], number='AP-BKT-0007')
+        bill = PurchaseBill.query.filter_by(bill_number='AP-BKT-0007').first()
+        bill.journal_entry_id = None
+        db_session.commit()
+        with _pytest.raises(ValueError, match='no stored journal entry'):
+            _create_reversal_je(bill, date(2026, 6, 12), admin_user.id,
+                                label='Cancel')

@@ -31,6 +31,13 @@ def gl_accounts(db_session):
     for a in accounts.values():
         db_session.add(a)
     db_session.commit()
+    # _post_bill_je buckets input VAT by category account (B-014), so the
+    # VATABLE category used by the bill fixtures must be mapped.
+    from app.vat_categories.models import VATCategory
+    db_session.add(VATCategory(code='VATABLE', name='VATable Purchases',
+                               rate=Decimal('12.00'), is_active=True,
+                               input_vat_account_id=accounts['input_vat'].id))
+    db_session.commit()
     return accounts
 
 
@@ -87,6 +94,13 @@ def posted_bill(db_session, admin_user, main_branch, gl_accounts, test_vendor):
         account_id=gl_accounts['expense'].id
     )
     db_session.add(item)
+    db_session.flush()
+
+    # Posted bills always carry a stored JE (created on save, promoted on
+    # post); the reversal helper mirrors it, so the fixture must book one.
+    from app.purchase_bills.views import _post_bill_je
+    je = _post_bill_je(bill, admin_user.id)
+    bill.journal_entry_id = je.id
     db_session.commit()
     return bill
 
@@ -167,14 +181,29 @@ def test_create_bill_void_je_reference_format(app, db_session, posted_bill, admi
     assert je.branch_id == posted_bill.branch_id
 
 
-def test_create_bill_void_je_missing_ap_raises(app, db_session, posted_bill, admin_user, gl_accounts):
-    """Void must fail clearly if AP account is missing."""
+def test_create_bill_void_je_without_stored_je_raises(app, db_session, posted_bill, admin_user, gl_accounts):
+    """The reversal mirrors the stored JE, so a missing JE must fail clearly
+    rather than rebuild a (possibly wrong) reversal from bill totals."""
     from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
-    # Remove the AP account so the helper can't find it
-    db_session.delete(gl_accounts['ap'])
+    posted_bill.journal_entry_id = None
     db_session.commit()
-    with pytest.raises(ValueError, match='20101'):
+    with pytest.raises(ValueError, match='no stored journal entry'):
         _create_bill_void_je(posted_bill, date.today(), admin_user.id)
+
+
+def test_create_bill_void_je_mirrors_stored_lines(app, db_session, posted_bill, admin_user, gl_accounts):
+    """Each reversal line swaps the debit/credit of the stored JE line."""
+    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
+    je = _create_bill_void_je(posted_bill, date.today(), admin_user.id)
+    db_session.flush()
+    source = posted_bill.journal_entry
+    src_lines = {l.account_id: l for l in source.lines.all()}
+    rev_lines = {l.account_id: l for l in je.lines.all()}
+    assert set(rev_lines) == set(src_lines)
+    for account_id, src in src_lines.items():
+        rev = rev_lines[account_id]
+        assert rev.debit_amount == src.credit_amount
+        assert rev.credit_amount == src.debit_amount
 
 
 def test_bill_void_sets_status_and_fields(app, db_session, posted_bill, admin_user, gl_accounts):

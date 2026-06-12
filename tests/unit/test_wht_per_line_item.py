@@ -99,6 +99,13 @@ def gl_accounts_wht(db_session):
     for a in accounts:
         db_session.add(a)
     db_session.commit()
+    # _post_bill_je buckets input VAT by category account (B-014), so the
+    # VATABLE category used by the bill fixture must be mapped.
+    from app.vat_categories.models import VATCategory
+    db_session.add(VATCategory(code='VATABLE', name='VATable Purchases',
+                               rate=Decimal('12.00'), is_active=True,
+                               input_vat_account_id=accounts[1].id))
+    db_session.commit()
     return {a.code: a for a in accounts}
 
 
@@ -199,14 +206,23 @@ class TestPurchaseBillWhtIntegration:
 
     def test_void_je_uses_summed_wt_amount(self, db_session, admin_user, main_branch,
                                             test_vendor_with_wht, gl_accounts_wht, wht_codes):
-        """Void JE DR side must equal total_amount + withholding_tax_amount (summed from lines)."""
+        """The reversal mirrors the stored JE, so it must debit the WT payable
+        account by the summed per-line WT amount (700) and balance."""
         bill = self._make_bill(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         bill.status = 'posted'
+        db_session.flush()
+        from app.purchase_bills.views import _post_bill_je, _create_reversal_je
+        source_je = _post_bill_je(bill, admin_user.id)
+        bill.journal_entry_id = source_je.id
         db_session.commit()
-        from app.purchase_bills.views import _create_reversal_je
+
         je = _create_reversal_je(bill, date.today(), admin_user.id)
         total_debit = sum(l.debit_amount for l in je.lines)
         total_credit = sum(l.credit_amount for l in je.lines)
         assert total_debit == total_credit  # JE must balance
         assert bill.withholding_tax_amount == Decimal('700.00')
+        wt_account_id = gl_accounts_wht['20301'].id
+        wt_debit = sum(l.debit_amount for l in je.lines
+                       if l.account_id == wt_account_id)
+        assert wt_debit == Decimal('700.00')
