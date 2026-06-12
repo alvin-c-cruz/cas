@@ -45,7 +45,16 @@
                 {% for vendor in vendors %}
                 <tr>
                     <td><a href="{{ url_for('vendors.detail', id=vendor.id) }}" class="vendor-link"><strong>{{ vendor.code }}</strong></a></td>
-                    <td><a href="{{ url_for('vendors.detail', id=vendor.id) }}" class="vendor-link">{{ vendor.name }}</a></td>
+                    <td>
+                        <a href="{{ url_for('vendors.detail', id=vendor.id) }}" class="vendor-link">{{ vendor.name }}</a>
+                        {% set bir_missing = [] %}
+                        {% if not vendor.tin %}{% set bir_missing = bir_missing + ['TIN'] %}{% endif %}
+                        {% if not vendor.address %}{% set bir_missing = bir_missing + ['Address'] %}{% endif %}
+                        {% if not vendor.postal_code %}{% set bir_missing = bir_missing + ['Postal Code'] %}{% endif %}
+                        {% if bir_missing %}
+                        <br><span class="badge-bir-warn" title="BIR info missing: {{ bir_missing | join(', ') }}">⚠ BIR incomplete</span>
+                        {% endif %}
+                    </td>
                     <td>{{ vendor.contact_person or '—' }}</td>
                     <td>{{ vendor.phone or '—' }}</td>
                     <td>{{ vendor.tin or '—' }}</td>
@@ -227,6 +236,19 @@
 .vendor-link:hover {
     color: var(--blue);
     text-decoration: underline;
+}
+
+.badge-bir-warn {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-block;
+    cursor: default;
+    letter-spacing: 0.01em;
 }
 </style>
 
