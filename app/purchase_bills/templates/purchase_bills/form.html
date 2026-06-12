@@ -123,14 +123,12 @@
                         <!-- Row 2: Less: Input VAT — pencil-click override -->
                         <div id="vatDisplayMode" class="bsr">
                             <span class="bsr-label">Less: Input VAT</span>
-                            <div class="bsr-amt-wrap">
-                                <span id="vatDisplay" class="bsr-amt">0.00</span>
-                                <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">✏️</button>
-                            </div>
+                            <span id="vatDisplay" class="bsr-amt">0.00</span>
+                            <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">✏️</button>
                         </div>
                         <div id="vatEditMode" class="bsr" style="display:none">
                             <span class="bsr-label">Less: Input VAT <span id="vatAutoHint" class="bsr-hint"></span></span>
-                            <div class="bsr-amt-wrap bsr-amt-wrap--edit">
+                            <div class="bsr-amt-wrap">
                                 <input type="text" id="vatOverrideInput" class="bsr-input"
                                        onfocus="amtFocus(this)"
                                        oninput="onVatOverrideInput(this.value)"
@@ -154,14 +152,12 @@
                         <!-- Row 5: Less: Withholding Tax -->
                         <div id="wtDisplayMode" class="bsr">
                             <span class="bsr-label">Less: Withholding Tax</span>
-                            <div class="bsr-amt-wrap">
-                                <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
-                                <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button>
-                            </div>
+                            <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
+                            <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button>
                         </div>
                         <div id="wtEditMode" class="bsr" style="display:none">
                             <span class="bsr-label">Less: Withholding Tax <span id="wtAutoHint" class="bsr-hint"></span></span>
-                            <div class="bsr-amt-wrap bsr-amt-wrap--edit">
+                            <div class="bsr-amt-wrap">
                                 <input type="text" id="wtOverrideInput" class="bsr-input"
                                        onfocus="amtFocus(this)"
                                        oninput="onWtOverrideInput(this.value)"

@@ -29,7 +29,7 @@
 .li-btn-action:hover { background: var(--border); }
 
 /* ── Summary panel (.bsr rows) ───────────────────────────────────────────── */
-.bsr { display: grid; grid-template-columns: 1fr 130px; align-items: center; margin-bottom: 10px; gap: 8px; }
+.bsr { display: grid; grid-template-columns: 1fr 130px; align-items: center; margin-bottom: 10px; gap: 8px; position: relative; }
 .bsr--sep { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
 .bsr--total { margin-top: 4px; padding-top: 12px; border-top: 2px solid var(--border); margin-bottom: 0; }
 .bsr-label { color: var(--text-2); font-size: 13px; }
@@ -38,10 +38,8 @@
 .bsr-amt { font-family: var(--mono); font-weight: 600; font-size: 13px; text-align: right; display: block; }
 .bsr-amt--red { color: var(--red); }
 .bsr-amt--total { font-size: 18px; font-weight: 700; color: var(--blue); }
-/* Display-mode wrap: relative so pencil is absolutely placed just outside, after the figure */
-.bsr-amt-wrap { position: relative; display: block; }
-/* Edit-mode wrap: flex so input + revert button sit side-by-side, right-aligned */
-.bsr-amt-wrap--edit { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+/* Edit-mode wrap: input + revert button flex row, right-aligned */
+.bsr-amt-wrap { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 
 /* ── Choices.js compact overrides ────────────────────────────────────────── */
 .choices { margin-bottom: 0; }
