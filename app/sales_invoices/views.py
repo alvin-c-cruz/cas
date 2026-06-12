@@ -78,7 +78,7 @@ def generate_invoice_number():
 @sales_invoices_bp.route('/sales-invoices')
 @login_required
 def list_invoices():
-    """List all sales invoices."""
+    return redirect(url_for('dashboard.under_development', feature='Sales Invoices'))
     # Get filter parameters
     status_filter = request.args.get('status', 'all')
     customer_filter = request.args.get('customer', 'all')

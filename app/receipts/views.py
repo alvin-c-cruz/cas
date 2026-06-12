@@ -75,7 +75,9 @@ def generate_receipt_number(transaction_type):
 @receipts_bp.route('/receipts')
 @login_required
 def list_receipts():
-    """List all receipts/payments."""
+    type_filter = request.args.get('type', 'collection')
+    feature = 'Payments' if type_filter == 'payment' else 'Collections'
+    return redirect(url_for('dashboard.under_development', feature=feature))
     type_filter = request.args.get('type', 'all')
     method_filter = request.args.get('method', 'all')
     status_filter = request.args.get('status', 'all')

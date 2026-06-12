@@ -74,11 +74,7 @@ def index():
 @reports_bp.route('/reports/ar-aging')
 @login_required
 def ar_aging():
-    """
-    Accounts Receivable Aging Report.
-    Shows outstanding customer invoices grouped by age.
-    """
-    # Get as-of date from query params or use today
+    return redirect(url_for('dashboard.under_development', feature='AR Aging'))
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
@@ -153,11 +149,7 @@ def ar_aging():
 @reports_bp.route('/reports/ap-aging')
 @login_required
 def ap_aging():
-    """
-    Accounts Payable Aging Report.
-    Shows outstanding vendor bills grouped by age.
-    """
-    # Get as-of date from query params or use today
+    return redirect(url_for('dashboard.under_development', feature='AP Aging'))
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
@@ -235,7 +227,7 @@ def ap_aging():
 @login_required
 @accountant_or_admin_required
 def bir_index():
-    """BIR Reports index page"""
+    return redirect(url_for('dashboard.under_development', feature='BIR Reports'))
     current_year = datetime.now().year
     current_month = datetime.now().month
     current_quarter = ((current_month - 1) // 3) + 1
@@ -327,7 +319,7 @@ def bir_purchases_export_excel():
 @login_required
 @accountant_or_admin_required
 def bir_alphalist():
-    """Alphalist of Payees - Quarterly Withholding Tax Report"""
+    return redirect(url_for('dashboard.under_development', feature='BIR Alphalist'))
     year = request.args.get('year', datetime.now().year, type=int)
     quarter = request.args.get('quarter', ((datetime.now().month - 1) // 3) + 1, type=int)
     current_branch_id = session.get('selected_branch_id')
@@ -370,8 +362,7 @@ def bir_alphalist_export_excel():
 @login_required
 @accountant_or_admin_required
 def trial_balance():
-    """Trial Balance Report - Verify debits = credits"""
-    # Get as-of date from query params or use today
+    return redirect(url_for('dashboard.under_development', feature='Trial Balance'))
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
@@ -408,8 +399,7 @@ def trial_balance_export_excel():
 @login_required
 @accountant_or_admin_required
 def income_statement():
-    """Income Statement (P&L) Report"""
-    # Get period from query params or use current month
+    return redirect(url_for('dashboard.under_development', feature='Income Statement'))
     today = date.today()
     start_str = request.args.get('start_date', date(today.year, today.month, 1).isoformat())
     end_str = request.args.get('end_date', today.isoformat())
@@ -476,8 +466,7 @@ def income_statement_export_excel():
 @login_required
 @accountant_or_admin_required
 def balance_sheet():
-    """Balance Sheet Report"""
-    # Get as-of date from query params or use today
+    return redirect(url_for('dashboard.under_development', feature='Balance Sheet'))
     as_of_str = request.args.get('as_of', date.today().isoformat())
     as_of_date = date.fromisoformat(as_of_str)
 
