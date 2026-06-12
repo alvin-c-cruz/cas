@@ -500,6 +500,193 @@ def seed_all(force=False):
         raise
 
 
+def seed_minimal():
+    """
+    Seed a bare-minimum database for client demo/testing.
+
+    Creates:
+    - 1 admin user
+    - 1 main branch (assigned to admin)
+    - 4 app settings
+    - 6 accounts (Input VAT group + leaf, AP-Trade, WHT Payable group + leaf, Office Supplies)
+    - 4 VAT categories (V12, V0, VEX, INV)
+    - 3 WHT codes (WC158, WC160, WC100)
+    """
+    print("\n" + "="*60)
+    print("MINIMAL DATABASE SEEDING")
+    print("="*60 + "\n")
+
+    try:
+        # ------------------------------------------------------------------
+        # 1. Admin user
+        # ------------------------------------------------------------------
+        print("1. Seeding admin user...")
+        admin = User.query.filter_by(username='admin').first()
+        if admin:
+            print("  [SKIP] Admin user already exists")
+        else:
+            admin = User(
+                username='admin',
+                email='admin@cascorp.ph',
+                full_name='System Administrator',
+                role='admin',
+                is_active=True
+            )
+            admin.set_password('ac1123581321')
+            db.session.add(admin)
+            db.session.commit()
+            print("  [OK] Admin user created (username: admin, password: ac1123581321)")
+
+        # ------------------------------------------------------------------
+        # 2. Main Branch + assign admin
+        # ------------------------------------------------------------------
+        print("\n2. Seeding Main Branch...")
+        main_branch = Branch.query.filter_by(code='MAIN').first()
+        if main_branch:
+            print("  [SKIP] Main Branch already exists")
+        else:
+            main_branch = Branch(
+                code='MAIN',
+                name='Main Branch',
+                is_active=True
+            )
+            db.session.add(main_branch)
+            db.session.commit()
+            print("  [OK] Main Branch created (code: MAIN)")
+
+        # Assign admin to branch if not already assigned
+        if main_branch not in admin.branches.all():
+            admin.branches.append(main_branch)
+            db.session.commit()
+            print("  [OK] Admin assigned to Main Branch")
+
+        # ------------------------------------------------------------------
+        # 3. App settings
+        # ------------------------------------------------------------------
+        print("\n3. Seeding app settings...")
+        existing_settings = AppSettings.query.count()
+        if existing_settings > 0:
+            print(f"  [SKIP] {existing_settings} app settings already exist")
+        else:
+            settings = [
+                {'key': 'company_name', 'value': ''},
+                {'key': 'company_tin', 'value': ''},
+                {'key': 'company_address', 'value': ''},
+                {'key': 'fiscal_year_start', 'value': '01'},
+            ]
+            for s in settings:
+                db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
+            db.session.commit()
+            print(f"  [OK] {len(settings)} app settings created")
+
+        # ------------------------------------------------------------------
+        # 4. Chart of Accounts (6 accounts, parents before children)
+        # ------------------------------------------------------------------
+        print("\n4. Seeding minimal Chart of Accounts...")
+        existing_accounts = Account.query.count()
+        if existing_accounts > 0:
+            print(f"  [SKIP] {existing_accounts} accounts already exist")
+        else:
+            # Parents first (no parent_id)
+            acct_10500 = Account(
+                code='10500', name='Input VAT',
+                account_type='Asset', normal_balance='debit', is_active=True
+            )
+            acct_20101 = Account(
+                code='20101', name='Accounts Payable - Trade',
+                account_type='Liability', normal_balance='credit', is_active=True
+            )
+            acct_20300 = Account(
+                code='20300', name='Withholding Tax Payable',
+                account_type='Liability', normal_balance='credit', is_active=True
+            )
+            acct_60101 = Account(
+                code='60101', name='Office Supplies Expense',
+                account_type='Expense', normal_balance='debit', is_active=True
+            )
+            db.session.add_all([acct_10500, acct_20101, acct_20300, acct_60101])
+            db.session.flush()  # Assign IDs before children reference them
+
+            # Children
+            acct_10501 = Account(
+                code='10501', name='Input VAT - Capital Goods',
+                account_type='Asset', normal_balance='debit', is_active=True,
+                parent_id=acct_10500.id
+            )
+            acct_20301 = Account(
+                code='20301', name='Withholding Tax Payable - Expanded',
+                account_type='Liability', normal_balance='credit', is_active=True,
+                parent_id=acct_20300.id
+            )
+            db.session.add_all([acct_10501, acct_20301])
+            db.session.commit()
+            print("  [OK] 6 accounts created in Chart of Accounts")
+
+        # ------------------------------------------------------------------
+        # 5. VAT Categories
+        # ------------------------------------------------------------------
+        print("\n5. Seeding VAT categories...")
+        existing_vat = VATCategory.query.count()
+        if existing_vat > 0:
+            print(f"  [SKIP] {existing_vat} VAT categories already exist")
+        else:
+            input_vat_acct = Account.query.filter_by(code='10501').first()
+            input_vat_id = input_vat_acct.id if input_vat_acct else None
+
+            vat_categories = [
+                {'code': 'V12',  'name': 'VAT 12%',       'rate': 12.00, 'input_vat_account_id': input_vat_id},
+                {'code': 'V0',   'name': 'VAT Zero-Rated', 'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'VEX',  'name': 'VAT Exempt',     'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'INV',  'name': 'Invalid',        'rate':  0.00, 'input_vat_account_id': None},
+            ]
+            for cat in vat_categories:
+                db.session.add(VATCategory(
+                    code=cat['code'],
+                    name=cat['name'],
+                    rate=cat['rate'],
+                    input_vat_account_id=cat['input_vat_account_id'],
+                    is_active=True
+                ))
+            db.session.commit()
+            print(f"  [OK] {len(vat_categories)} VAT categories created")
+
+        # ------------------------------------------------------------------
+        # 6. Withholding Tax Codes
+        # ------------------------------------------------------------------
+        print("\n6. Seeding withholding tax codes...")
+        existing_wht = WithholdingTax.query.count()
+        if existing_wht > 0:
+            print(f"  [SKIP] {existing_wht} withholding tax codes already exist")
+        else:
+            wht_codes = [
+                {'code': 'WC158', 'name': 'Withholding Tax - Goods',     'rate': 1.00},
+                {'code': 'WC160', 'name': 'Withholding Tax - Services',   'rate': 2.00},
+                {'code': 'WC100', 'name': 'Withholding Tax - Rentals',    'rate': 5.00},
+            ]
+            for wt in wht_codes:
+                db.session.add(WithholdingTax(
+                    code=wt['code'],
+                    name=wt['name'],
+                    rate=wt['rate'],
+                    is_active=True
+                ))
+            db.session.commit()
+            print(f"  [OK] {len(wht_codes)} withholding tax codes created")
+
+        print("\n" + "="*60)
+        print("MINIMAL SEEDING COMPLETE!")
+        print("="*60)
+        print("\nYou can now log in with:")
+        print("  Username: admin")
+        print("  Password: ac1123581321")
+        print("\n")
+
+    except Exception as e:
+        print(f"\n[ERROR] Error during minimal seeding: {str(e)}")
+        db.session.rollback()
+        raise
+
+
 if __name__ == '__main__':
     print("This module should be run via Flask CLI:")
     print("  flask seed-db")

@@ -246,6 +246,12 @@ def create_app(config_name=None):
         print("  3. Password: ac112358321")
         print("="*60 + "\n")
 
+    @app.cli.command('seed-minimal')
+    def seed_minimal_database():
+        """Seed database with bare-minimum data for demo/testing (admin, branch, 6 accounts, 4 VAT cats, 3 WHT codes)."""
+        from app.seeds.seed_data import seed_minimal
+        seed_minimal()
+
     # Request/Response logging middleware
     @app.before_request
     def log_request_info():
