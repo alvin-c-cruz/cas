@@ -59,6 +59,7 @@ def post_bill(client, vendor, lines, number='AP-BKT-0001',
 
 
 def je_lines_by_code(db_session, number):
+    """Return (net-amount-by-account-code dict, JournalEntry) for a bill."""
     bill = PurchaseBill.query.filter_by(bill_number=number).first()
     assert bill is not None, f'Bill {number} not created'
     je = db_session.get(JournalEntry, bill.journal_entry_id)
@@ -67,7 +68,7 @@ def je_lines_by_code(db_session, number):
         code = l.account.code
         out.setdefault(code, Decimal('0.00'))
         out[code] += l.debit_amount - l.credit_amount
-    return out
+    return out, je
 
 
 class TestVatBuckets:
@@ -83,9 +84,10 @@ class TestVatBuckets:
             {'description': 'services', 'amount': 560.0, 'vat_category': 'V12SV',
              'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
         ])
-        sums = je_lines_by_code(db_session, 'AP-BKT-0001')
+        sums, je = je_lines_by_code(db_session, 'AP-BKT-0001')
         assert sums['10502'] == Decimal('240.00')
         assert sums['10503'] == Decimal('60.00')
+        assert je.is_balanced
 
     def test_override_difference_lands_on_largest_bucket(self, client, db_session,
                                                          admin_user, main_branch):
@@ -100,9 +102,10 @@ class TestVatBuckets:
             {'description': 'services', 'amount': 560.0, 'vat_category': 'V12SV',
              'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
         ], number='AP-BKT-0002', vat_override='1', vat_override_value='301')
-        sums = je_lines_by_code(db_session, 'AP-BKT-0002')
+        sums, je = je_lines_by_code(db_session, 'AP-BKT-0002')
         assert sums['10502'] == Decimal('241.00')
         assert sums['10503'] == Decimal('60.00')
+        assert je.is_balanced
 
     def test_unmapped_vat_bearing_category_blocks_save(self, client, db_session,
                                                        admin_user, main_branch):
@@ -117,3 +120,39 @@ class TestVatBuckets:
         html = resp.data.decode('utf-8')
         assert 'has no Input Tax account configured' in html
         assert PurchaseBill.query.filter_by(bill_number='AP-BKT-0003').first() is None
+
+    def test_override_zero_books_no_input_vat_lines(self, client, db_session,
+                                                    admin_user, main_branch):
+        w = setup_world(db_session)
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        # Whole-bill VAT override of 0 on VAT-bearing lines: no input VAT
+        # to book; the JE's residual absorber handles the difference.
+        post_bill(client, w['vendor'], [
+            {'description': 'goods', 'amount': 2240.0, 'vat_category': 'V12DG',
+             'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
+            {'description': 'services', 'amount': 560.0, 'vat_category': 'V12SV',
+             'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
+        ], number='AP-BKT-0004', vat_override='1', vat_override_value='0')
+        sums, je = je_lines_by_code(db_session, 'AP-BKT-0004')
+        assert '10502' not in sums
+        assert '10503' not in sums
+        assert je.is_balanced
+
+    def test_override_far_below_computed_blocks_save(self, client, db_session,
+                                                     admin_user, main_branch):
+        w = setup_world(db_session)
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        # computed VAT: 240 + 60 = 300; override 50 -> largest 240 - 250 = -10
+        resp = post_bill(client, w['vendor'], [
+            {'description': 'goods', 'amount': 2240.0, 'vat_category': 'V12DG',
+             'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
+            {'description': 'services', 'amount': 560.0, 'vat_category': 'V12SV',
+             'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
+        ], number='AP-BKT-0005', vat_override='1', vat_override_value='50')
+        html = resp.data.decode('utf-8')
+        assert 'too far below the computed VAT' in html
+        assert PurchaseBill.query.filter_by(bill_number='AP-BKT-0005').first() is None

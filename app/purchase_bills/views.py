@@ -46,8 +46,15 @@ def _input_vat_buckets(bill):
 
     Returns an ordered list of (Account, Decimal) pairs (by account code).
     The whole-bill VAT override difference is applied to the largest bucket.
-    Raises ValueError if a VAT-bearing line's category has no account.
+    Raises ValueError if a VAT-bearing line's category has no account, or
+    if the override is so far below the computed VAT that a bucket would
+    go negative.
     """
+    if Decimal(str(bill.vat_amount)) <= 0:
+        # Override of 0 (or no VAT at all): nothing to book to input tax
+        # accounts; the JE's residual absorber handles any difference.
+        return []
+
     categories = {c.code: c for c in VATCategory.query.all()}
     buckets = {}  # account_id -> [Account, Decimal]
     for item in bill.line_items:
@@ -65,13 +72,22 @@ def _input_vat_buckets(bill):
             buckets[acct.id] = [acct, Decimal('0.00')]
         buckets[acct.id][1] += vat_amt
 
-    ordered = sorted(buckets.values(), key=lambda b: b[0].code)
-    total = sum((b[1] for b in ordered), Decimal('0.00'))
+    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
+    total = sum((amt for _, amt in ordered), Decimal('0.00'))
     override_diff = Decimal(str(bill.vat_amount)) - total
     if override_diff != Decimal('0.00') and ordered:
-        largest = max(ordered, key=lambda b: b[1])
-        largest[1] += override_diff
-    return [(b[0], b[1]) for b in ordered]
+        largest_acct_id = max(ordered, key=lambda b: b[1])[0].id
+        ordered = [
+            (acct, amt + override_diff if acct.id == largest_acct_id else amt)
+            for acct, amt in ordered
+        ]
+    ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
+    if any(amt < Decimal('0.00') for _, amt in ordered):
+        raise ValueError(
+            'VAT override is too far below the computed VAT to allocate '
+            'across input tax accounts. Adjust the override or the line '
+            'VAT categories.')
+    return ordered
 
 
 def _build_je_preview(bill):
