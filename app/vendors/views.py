@@ -30,6 +30,19 @@ def accountant_or_admin_required(f):
     return decorated_function
 
 
+def staff_or_above_required(f):
+    """Tier 1 vendor ops — staff, accountant, and admin allowed."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if current_user.role not in ['staff', 'accountant', 'admin']:
+            flash('You do not have permission to perform this action.', 'error')
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 @vendors_bp.route('/vendors')
 @login_required
 def list_vendors():
@@ -120,7 +133,7 @@ def populate_vat_category_choices(form):
 
 @vendors_bp.route('/vendors/create', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@staff_or_above_required
 def create():
     """Create new vendor"""
     form = VendorForm()
@@ -190,7 +203,7 @@ def create():
 
 @vendors_bp.route('/vendors/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@staff_or_above_required
 def edit(id):
     """Edit vendor"""
     vendor = Vendor.query.get_or_404(id)

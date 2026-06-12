@@ -16,7 +16,7 @@
         <a href="{{ url_for('vendors.export_csv_route') }}" class="btn btn-secondary">
             📄 Export CSV
         </a>
-        {% if current_user.role in ['accountant', 'admin'] %}
+        {% if current_user.role in ['staff', 'accountant', 'admin'] %}
         <a href="{{ url_for('vendors.create') }}" class="btn btn-primary">
             + Add Vendor
         </a>
@@ -114,7 +114,7 @@
         {% if not vendors %}
         <div class="empty-state">
             <p>No vendors found.</p>
-            {% if current_user.role in ['accountant', 'admin'] %}
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
             <p><a href="{{ url_for('vendors.create') }}" class="btn btn-primary">Add your first vendor</a></p>
             {% endif %}
         </div>
