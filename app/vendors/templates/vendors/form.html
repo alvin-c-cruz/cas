@@ -68,7 +68,7 @@
         <div class="form-row-2col">
             <div class="form-group">
                 <label for="{{ form.email.id }}">{{ form.email.label.text }}</label>
-                {{ form.email(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+                {{ form.email(class="form-control form-control-sm", type="email", autocomplete="off", **{'data-lpignore': 'true'}) }}
                 {% if form.email.errors %}
                     <div class="error-message">{{ form.email.errors[0] }}</div>
                 {% endif %}
