@@ -1108,27 +1108,27 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-financial-reports">
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="{{ url_for('reports.income_statement') }}" class="nav-item {% if request.endpoint == 'reports.income_statement' %}active{% endif %}">
                         <span class="nav-icon">💰</span>
                         <span class="nav-text">Income Statement</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="{{ url_for('reports.balance_sheet') }}" class="nav-item {% if request.endpoint == 'reports.balance_sheet' %}active{% endif %}">
                         <span class="nav-icon">📈</span>
                         <span class="nav-text">Balance Sheet</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="#" class="nav-item">
                         <span class="nav-icon">💸</span>
                         <span class="nav-text">Cash Flow</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="{{ url_for('reports.trial_balance') }}" class="nav-item {% if request.endpoint == 'reports.trial_balance' %}active{% endif %}">
                         <span class="nav-icon">⚖️</span>
                         <span class="nav-text">Trial Balance</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="{{ url_for('reports.ar_aging') }}" class="nav-item {% if request.endpoint == 'reports.ar_aging' %}active{% endif %}">
                         <span class="nav-icon">📅</span>
                         <span class="nav-text">Aging of AR</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="{{ url_for('reports.ap_aging') }}" class="nav-item {% if request.endpoint == 'reports.ap_aging' %}active{% endif %}">
                         <span class="nav-icon">📆</span>
                         <span class="nav-text">Aging of AP</span>
                     </a>
@@ -1142,15 +1142,15 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-bir-reports">
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="{{ url_for('reports.bir_index') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.bir') %}active{% endif %}">
                         <span class="nav-icon">🏛</span>
                         <span class="nav-text">VAT Reports</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="{{ url_for('reports.bir_alphalist') }}" class="nav-item {% if request.endpoint == 'reports.bir_alphalist' %}active{% endif %}">
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Withholding Tax</span>
                     </a>
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item">
+                    <a href="#" class="nav-item">
                         <span class="nav-icon">📄</span>
                         <span class="nav-text">Annual ITR</span>
                     </a>
@@ -1292,7 +1292,7 @@
                         <span>+</span> New <span style="margin-left: 2px;">▼</span>
                     </button>
                     <div class="topbar-new-dropdown" id="topbarNewDropdown">
-                        <a href="#" class="topbar-new-item">
+                        <a href="{{ url_for('journal_entries.create') }}" class="topbar-new-item">
                             📝 New Journal Entry
                         </a>
                         <a href="#" class="topbar-new-item">
