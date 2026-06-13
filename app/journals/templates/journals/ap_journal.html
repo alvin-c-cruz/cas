@@ -36,6 +36,7 @@
 
     <div class="card-body">
         {% if entries %}
+        <div class="table-wrap">
         <table class="table">
             <thead>
                 <tr>
@@ -75,6 +76,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
         <div class="empty-state">
             <p>No AP entries found for this period.</p>
