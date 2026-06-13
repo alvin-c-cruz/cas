@@ -18,6 +18,7 @@
 .ap-jrnl-draft-badge { font-size:10px; font-weight:600; color:#c2410c; background:#fff7ed;
     border:1px solid #fed7aa; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
 .ap-jrnl-scroll { overflow-x:auto; }
+.ap-jrnl-balance-warning { color:var(--red,#dc2626); font-weight:600; margin-top:10px; }
 .ap-jrnl-meta { padding:8px 20px 0; }
 .ap-jrnl-meta h3 { margin:0; font-size:14px; }
 .ap-jrnl-meta p { margin:2px 0 0; font-size:12px; color:var(--text-2,#64748b); }
@@ -132,7 +133,7 @@
         </table>
         </div>
         {% if not matrix.balanced %}
-        <p style="color:var(--red,#dc2626); font-weight:600; margin-top:10px;">
+        <p class="ap-jrnl-balance-warning">
             Warning: Column totals do not net to zero &mdash; debits and credits are out of balance. Review the underlying entries.
         </p>
         {% endif %}
