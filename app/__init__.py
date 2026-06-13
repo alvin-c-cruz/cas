@@ -33,34 +33,37 @@ def create_app(config_name=None):
 
     # Configure logging
     if not app.debug and not app.testing:
-        # Use absolute path so log files land in the project root regardless of CWD
-        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'logs')
-        if not os.path.exists(log_dir):
-            os.mkdir(log_dir)
-
-        # Configure file handler for all logs
-        file_handler = RotatingFileHandler(
-            os.path.join(log_dir, 'cas_app.log'),
-            maxBytes=10485760,  # 10MB
-            backupCount=10
-        )
-        file_handler.setFormatter(logging.Formatter(
+        log_fmt = logging.Formatter(
             '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-        ))
-        file_handler.setLevel(logging.INFO)
-        app.logger.addHandler(file_handler)
-
-        # Configure file handler for errors only
-        error_handler = RotatingFileHandler(
-            os.path.join(log_dir, 'cas_errors.log'),
-            maxBytes=10485760,  # 10MB
-            backupCount=10
         )
-        error_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-        ))
-        error_handler.setLevel(logging.ERROR)
-        app.logger.addHandler(error_handler)
+        try:
+            log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'logs')
+            os.makedirs(log_dir, exist_ok=True)
+
+            file_handler = RotatingFileHandler(
+                os.path.join(log_dir, 'cas_app.log'),
+                maxBytes=10485760,
+                backupCount=10
+            )
+            file_handler.setFormatter(log_fmt)
+            file_handler.setLevel(logging.INFO)
+            app.logger.addHandler(file_handler)
+
+            error_handler = RotatingFileHandler(
+                os.path.join(log_dir, 'cas_errors.log'),
+                maxBytes=10485760,
+                backupCount=10
+            )
+            error_handler.setFormatter(log_fmt)
+            error_handler.setLevel(logging.ERROR)
+            app.logger.addHandler(error_handler)
+        except (OSError, PermissionError):
+            # Log directory not writable (e.g. read-only FS on PythonAnywhere);
+            # fall back to stderr — the platform captures it in its own error log.
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(log_fmt)
+            stream_handler.setLevel(logging.INFO)
+            app.logger.addHandler(stream_handler)
 
         app.logger.setLevel(logging.INFO)
         app.logger.info('CAS application startup')
