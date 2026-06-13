@@ -316,7 +316,7 @@ def create_app(config_name=None):
         from flask_login import current_user
         from app.users.utils import get_accessible_branches
 
-        if request.endpoint in BRANCH_EXEMPT_ENDPOINTS:
+        if request.endpoint is None or request.endpoint in BRANCH_EXEMPT_ENDPOINTS:
             return
         if not current_user.is_authenticated:
             return
