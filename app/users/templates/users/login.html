@@ -105,13 +105,12 @@
             username.value = '';
             password.value = '';
 
-            // Remove readonly when user focuses on the field
-            username.addEventListener('focus', function() {
-                this.removeAttribute('readonly');
-            });
-
-            password.addEventListener('focus', function() {
-                this.removeAttribute('readonly');
+            // Remove readonly on mousedown/touchstart so the field is writable
+            // before the browser attempts to focus it (readonly blocks click-focus in some browsers)
+            [username, password].forEach(function(el) {
+                el.addEventListener('mousedown', function() { this.removeAttribute('readonly'); });
+                el.addEventListener('touchstart', function() { this.removeAttribute('readonly'); });
+                el.addEventListener('focus', function() { this.removeAttribute('readonly'); });
             });
 
             // Add readonly back on blur to maintain security
