@@ -301,6 +301,44 @@ def create_app(config_name=None):
                 url = request.url.replace('http://', 'https://', 1)
                 return redirect(url, code=301)
 
+    BRANCH_EXEMPT_ENDPOINTS = {
+        'users.login',
+        'users.logout',
+        'users.register',
+        'users.select_branch',
+        'static',
+    }
+
+    @app.before_request
+    def validate_branch_session():
+        """Ensure session branch_id is valid on every request; auto-select or redirect if not."""
+        from flask import session, redirect, url_for, request
+        from flask_login import current_user
+        from app.users.utils import get_accessible_branches
+
+        if request.endpoint in BRANCH_EXEMPT_ENDPOINTS:
+            return
+        if not current_user.is_authenticated:
+            return
+
+        branch_id = session.get('selected_branch_id')
+        accessible = get_accessible_branches(current_user)
+
+        if branch_id is not None:
+            if any(b.id == branch_id for b in accessible):
+                return  # valid — continue
+
+            # stale or deactivated — clear it and force re-selection
+            session.pop('selected_branch_id', None)
+            return redirect(url_for('users.select_branch', next=request.url))
+
+        # branch_id missing — auto-select if only one accessible branch
+        if len(accessible) == 1:
+            session['selected_branch_id'] = accessible[0].id
+            return
+
+        return redirect(url_for('users.select_branch', next=request.url))
+
     @app.after_request
     def add_security_headers(response):
         """Add security headers to all responses"""
