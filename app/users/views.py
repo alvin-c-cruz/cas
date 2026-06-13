@@ -149,7 +149,7 @@ def login():
             )
 
             db.session.commit()
-        except:
+        except Exception:
             db.session.rollback()
 
         login_user(user, remember=form.remember_me.data)
