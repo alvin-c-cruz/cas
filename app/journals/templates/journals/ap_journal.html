@@ -150,12 +150,60 @@
 
 <script>
 (function () {
+    var form   = document.getElementById('apFilter');
     var toggle = document.getElementById('toggleCustom');
-    var mode = document.getElementById('apMode');
-    if (!toggle) return;
+    var mode   = document.getElementById('apMode');
+    if (!form || !toggle || !mode) return;
+
+    function showFields(isCustom) {
+        document.getElementById('monthFields').style.display = isCustom ? 'none' : '';
+        document.getElementById('yearField').style.display   = isCustom ? 'none' : '';
+        document.getElementById('fromField').style.display   = isCustom ? '' : 'none';
+        document.getElementById('toField').style.display     = isCustom ? '' : 'none';
+        toggle.textContent = isCustom ? 'Use month' : 'Custom range';
+    }
+
+    function fetchAndSwap(params) {
+        var url = '/journals/ap?' + params.toString();
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function (html) {
+                var doc   = new DOMParser().parseFromString(html, 'text/html');
+                var fresh = doc.getElementById('ap-journal-content');
+                if (!fresh) throw new Error('no content');
+                document.getElementById('ap-journal-content').replaceWith(fresh);
+                var exportLink = document.getElementById('apExportLink');
+                if (exportLink) exportLink.href = '/journals/ap/export?' + params.toString();
+                history.pushState({}, '', url);
+            })
+            .catch(function () {
+                /* fallback: let the browser do a normal GET */
+                window.location.href = url;
+            });
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        fetchAndSwap(new URLSearchParams(new FormData(form)));
+    });
+
     toggle.addEventListener('click', function () {
-        mode.value = (mode.value === 'custom') ? 'month' : 'custom';
-        document.getElementById('apFilter').submit();
+        var isCustom = mode.value !== 'custom';
+        mode.value = isCustom ? 'custom' : 'month';
+        showFields(isCustom);
+        fetchAndSwap(new URLSearchParams(new FormData(form)));
+    });
+
+    /* restore field visibility on back/forward navigation */
+    window.addEventListener('popstate', function () {
+        var params = new URLSearchParams(window.location.search);
+        var isCustom = params.get('mode') === 'custom';
+        mode.value = isCustom ? 'custom' : 'month';
+        showFields(isCustom);
+        fetchAndSwap(params);
     });
 })();
 </script>
