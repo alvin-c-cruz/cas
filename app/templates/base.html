@@ -1111,15 +1111,15 @@
                     </a>
                     <a href="{{ url_for('receipts.list_receipts') }}?type=collection" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'collection' %}active{% endif %}">
                         <span class="nav-icon">💰</span>
-                        <span class="nav-text">Receipts</span>
+                        <span class="nav-text">Cash Receipts</span>
                     </a>
                     <a href="{{ url_for('purchase_bills.list_bills') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('purchase_bills.') %}active{% endif %}">
                         <span class="nav-icon">📋</span>
-                        <span class="nav-text">Payables</span>
+                        <span class="nav-text">Accounts Payable</span>
                     </a>
                     <a href="{{ url_for('receipts.list_receipts') }}?type=payment" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'payment' %}active{% endif %}">
                         <span class="nav-icon">💸</span>
-                        <span class="nav-text">Disbursements</span>
+                        <span class="nav-text">Cash Disbursements</span>
                     </a>
                     <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' or (request.endpoint and request.endpoint.startswith('journal_entries.') and request.endpoint != 'journal_entries.list_entries') %}active{% endif %}">
                         <span class="nav-icon">📓</span>
