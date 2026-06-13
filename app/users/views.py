@@ -105,12 +105,8 @@ def _post_login_redirect(user, form):
     except Exception:
         db.session.rollback()
 
-    active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-    if user.role in ['admin', 'accountant']:
-        accessible_branches = active_branches
-    else:
-        user_branch_ids = {b.id for b in user.branches.all()}
-        accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
+    from app.users.utils import get_accessible_branches
+    accessible_branches = get_accessible_branches(user)
 
     if not accessible_branches:
         flash('No branches available. Please contact the administrator.', 'error')
@@ -165,13 +161,8 @@ def select_branch():
     next_url = _raw_next if (_raw_next and _is_safe_url(_raw_next)) else url_for('dashboard.index')
 
     # Get accessible branches for current user
-    active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-
-    if current_user.role in ['admin', 'accountant']:
-        accessible_branches = active_branches
-    else:
-        user_branch_ids = current_user.get_branch_ids()
-        accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
+    from app.users.utils import get_accessible_branches
+    accessible_branches = get_accessible_branches(current_user)
 
     # If only one branch, redirect directly
     if len(accessible_branches) == 1:
