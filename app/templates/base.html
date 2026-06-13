@@ -921,8 +921,7 @@
             color: #94a3b8;
         }
 
-        .topbar-new-item--soon::after {
-            content: 'soon';
+        .soon-badge {
             font-size: 10px;
             font-weight: 600;
             color: #c2410c;
@@ -933,6 +932,29 @@
             margin-left: 8px;
             text-transform: uppercase;
             letter-spacing: 0.04em;
+        }
+
+        .nav-item--soon {
+            color: #94a3b8;
+            pointer-events: auto;
+        }
+
+        .nav-item--soon:hover {
+            color: #94a3b8;
+        }
+
+        .nav-coming-soon {
+            font-size: 9px;
+            font-weight: 600;
+            color: #c2410c;
+            background: #fff7ed;
+            border: 1px solid #fed7aa;
+            padding: 1px 5px;
+            border-radius: 6px;
+            margin-left: auto;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            flex-shrink: 0;
         }
 
         .topbar-new-divider {
@@ -1113,9 +1135,10 @@
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Chart of Accounts</span>
                     </a>
-                    <a href="{{ url_for('dashboard.under_development', feature='General Ledger') }}" class="nav-item {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'General Ledger' %}active{% endif %}">
+                    <a href="{{ url_for('dashboard.under_development', feature='General Ledger') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'General Ledger' %}active{% endif %}">
                         <span class="nav-icon">📖</span>
                         <span class="nav-text">General Ledger</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                 </div>
             </div>
@@ -1161,9 +1184,10 @@
                         <span class="nav-icon">📈</span>
                         <span class="nav-text">Balance Sheet</span>
                     </a>
-                    <a href="{{ url_for('dashboard.under_development', feature='Cash Flow') }}" class="nav-item {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Cash Flow' %}active{% endif %}">
+                    <a href="{{ url_for('dashboard.under_development', feature='Cash Flow') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Cash Flow' %}active{% endif %}">
                         <span class="nav-icon">💸</span>
                         <span class="nav-text">Cash Flow</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('reports.trial_balance') }}" class="nav-item {% if request.endpoint == 'reports.trial_balance' %}active{% endif %}">
                         <span class="nav-icon">⚖️</span>
@@ -1195,9 +1219,10 @@
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Withholding Tax</span>
                     </a>
-                    <a href="{{ url_for('dashboard.under_development', feature='Annual ITR') }}" class="nav-item {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Annual ITR' %}active{% endif %}">
+                    <a href="{{ url_for('dashboard.under_development', feature='Annual ITR') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Annual ITR' %}active{% endif %}">
                         <span class="nav-icon">📄</span>
                         <span class="nav-text">Annual ITR</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                 </div>
             </div>
@@ -1339,10 +1364,10 @@
                         </a>
                         <div class="topbar-new-divider"></div>
                         <a href="{{ url_for('dashboard.under_development', feature='Collections') }}" class="topbar-new-item topbar-new-item--soon">
-                            💰 New Collection
+                            💰 New Collection <span class="soon-badge">Soon</span>
                         </a>
                         <a href="{{ url_for('dashboard.under_development', feature='Payments') }}" class="topbar-new-item topbar-new-item--soon">
-                            💸 New Payment
+                            💸 New Payment <span class="soon-badge">Soon</span>
                         </a>
                     </div>
                 </div>

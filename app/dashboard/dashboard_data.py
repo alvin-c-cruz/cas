@@ -8,6 +8,7 @@ This module calculates real-time business statistics from the database:
 - Monthly trends
 """
 from datetime import datetime, date, timedelta
+from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, extract, and_, or_
 from decimal import Decimal
 
@@ -344,7 +345,7 @@ def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None):
 
     for i in range(months - 1, -1, -1):
         # Calculate the month/year for this iteration
-        target_date = as_of_date - timedelta(days=i * 30)  # Approximate
+        target_date = as_of_date - relativedelta(months=i)
         target_year = target_date.year
         target_month = target_date.month
 
