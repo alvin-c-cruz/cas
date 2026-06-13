@@ -35,64 +35,8 @@ def accountant_or_admin_required(f):
 @journal_entries_bp.route('/journal-entries')
 @login_required
 def list_entries():
-    """List all journal entries for the current branch."""
-    # Get current branch from session
-    from flask import session
-    current_branch_id = session.get('selected_branch_id')
-
-    # If no branch selected, try to get user's first assigned branch
-    if not current_branch_id and current_user.branches.count() > 0:
-        first_branch = current_user.branches.first()
-        current_branch_id = first_branch.id
-        session['selected_branch_id'] = current_branch_id
-
-    status_filter = request.args.get('status', 'all')
-    type_filter = request.args.get('type', 'all')
-
-    # Default to current year (January 1 to December 31)
-    current_year = datetime.now().year
-    default_date_from = f'{current_year}-01-01'
-    default_date_to = f'{current_year}-12-31'
-
-    date_from = request.args.get('date_from', default_date_from)
-    date_to = request.args.get('date_to', default_date_to)
-
-    # Filter by current branch (if branch is selected)
-    if current_branch_id:
-        query = JournalEntry.query.filter_by(branch_id=current_branch_id)
-    else:
-        # Show empty list if no branch
-        query = JournalEntry.query.filter_by(branch_id=-1)
-
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
-
-    if type_filter != 'all':
-        query = query.filter_by(entry_type=type_filter)
-
-    # Date filtering
-    if date_from:
-        try:
-            from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
-            query = query.filter(JournalEntry.entry_date >= from_date)
-        except ValueError:
-            flash('Invalid date format for "From" date.', 'error')
-
-    if date_to:
-        try:
-            to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
-            query = query.filter(JournalEntry.entry_date <= to_date)
-        except ValueError:
-            flash('Invalid date format for "To" date.', 'error')
-
-    entries = query.order_by(JournalEntry.entry_date.desc()).all()
-
-    return render_template('journal_entries/list.html',
-                         entries=entries,
-                         status_filter=status_filter,
-                         type_filter=type_filter,
-                         date_from=date_from,
-                         date_to=date_to)
+    """Redirect to the Journal Voucher view (journals redesign)."""
+    return redirect(url_for('journals.voucher'))
 
 
 @journal_entries_bp.route('/journal-entries/create', methods=['GET', 'POST'])

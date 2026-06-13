@@ -181,6 +181,7 @@ def create_app(config_name=None):
     from app.purchase_bills.views import purchase_bills_bp
     from app.receipts.views import receipts_bp
     from app.journal_entries.views import journal_entries_bp
+    from app.journals.views import journals_bp
     from app.reports.views import reports_bp
     from app.errors.views import errors_bp
     from app.periods.views import periods_bp
@@ -200,6 +201,7 @@ def create_app(config_name=None):
     app.register_blueprint(purchase_bills_bp)
     app.register_blueprint(receipts_bp)
     app.register_blueprint(journal_entries_bp)
+    app.register_blueprint(journals_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(errors_bp)
     app.register_blueprint(periods_bp)
