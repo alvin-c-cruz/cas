@@ -8,239 +8,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .login-container {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            width: 100%;
-            max-width: 420px;
-            padding: 48px 40px;
-        }
-
-        .login-header {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-
-        .logo {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-        }
-
-        .logo svg {
-            width: 36px;
-            height: 36px;
-            fill: white;
-        }
-
-        .login-header h1 {
-            font-size: 28px;
-            font-weight: 700;
-            color: #1e293b;
-            margin: 0 0 8px 0;
-        }
-
-        .login-header p {
-            font-size: 14px;
-            color: #64748b;
-            margin: 0;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            color: #334155;
-            margin-bottom: 8px;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px 16px;
-            font-size: 14px;
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            transition: all 0.2s;
-            font-family: 'Inter', sans-serif;
-            box-sizing: border-box;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-
-        select.form-control {
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            padding-right: 36px;
-        }
-
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin: 20px 0;
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-        }
-
-        .checkbox-group label {
-            font-size: 14px;
-            color: #475569;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .btn-primary {
-            width: 100%;
-            padding: 12px 24px;
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .btn-primary:hover {
-            background: #2563eb;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-        }
-
-        .btn-primary:active {
-            transform: translateY(0);
-        }
-
-        .login-footer {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 14px;
-            color: #64748b;
-        }
-
-        .login-footer a {
-            color: #3b82f6;
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .login-footer a:hover {
-            text-decoration: underline;
-        }
-
-        /* Flash messages */
-        .alert {
-            padding: 16px 20px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 14px;
-            line-height: 1.5;
-            font-weight: 400;
-            border: none;
-        }
-
-        .alert-error, .alert-danger {
-            background: #fef2f2;
-            color: #991b1b;
-            border-left: 4px solid #ef4444;
-        }
-
-        .alert-success {
-            background: #f0fdf4;
-            color: #166534;
-            border-left: 4px solid #22c55e;
-        }
-
-        .alert-info {
-            background: #eff6ff;
-            color: #1e40af;
-            border-left: 4px solid #3b82f6;
-        }
-
-        .alert-warning {
-            background: #fffbeb;
-            color: #92400e;
-            border-left: 4px solid #f59e0b;
-        }
-
-        .password-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .forgot-password {
-            font-size: 13px;
-            color: #3b82f6;
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .forgot-password:hover {
-            text-decoration: underline;
-            color: #2563eb;
-        }
-
-        .form-error {
-            color: #ef4444;
-            font-size: 12px;
-            margin-top: 6px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .form-control.error {
-            border-color: #ef4444;
-        }
-
-        .form-control.error:focus {
-            border-color: #ef4444;
-            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
-        }
-    </style>
 </head>
-<body>
+<body class="login-page">
     <div class="login-container">
         <div class="login-header">
-            <div class="logo" aria-hidden="true">
+            <div class="login-logo" aria-hidden="true">
                 <!-- Calculator icon representing accounting -->
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                     <path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v4h10V4H7zm0 6v2h2v-2H7zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zm-8 4v2h2v-2H7zm4 0v2h2v-2h-2zm4 0v2h2v-2h-2zm-8 4v2h2v-2H7zm4 0v2h6v-2h-6z"/>
@@ -265,10 +37,10 @@
             <input type="text" name="fake_username" autocomplete="username" style="display:none;" tabindex="-1" aria-hidden="true">
             <input type="password" name="fake_password" autocomplete="current-password" style="display:none;" tabindex="-1" aria-hidden="true">
 
-            <div class="form-group">
-                {{ form.username.label(class='form-label', for='username') }}
+            <div class="login-form-group">
+                {{ form.username.label(class='login-form-label', for='username') }}
                 {{ form.username(
-                    class='form-control' + (' error' if form.username.errors else ''),
+                    class='login-form-control' + (' error' if form.username.errors else ''),
                     id='username',
                     placeholder='Enter your username',
                     autofocus=true,
@@ -278,17 +50,17 @@
                     **{'aria-label': 'Username', 'aria-required': 'true', 'aria-invalid': 'true' if form.username.errors else 'false'}
                 ) }}
                 {% if form.username.errors %}
-                    <div class="form-error" role="alert">
+                    <div class="login-form-error" role="alert">
                         <span>⚠</span>
                         <span>{% for error in form.username.errors %}{{ error }}{% endfor %}</span>
                     </div>
                 {% endif %}
             </div>
 
-            <div class="form-group">
-                {{ form.password.label(class='form-label', for='password') }}
+            <div class="login-form-group">
+                {{ form.password.label(class='login-form-label', for='password') }}
                 {{ form.password(
-                    class='form-control' + (' error' if form.password.errors else ''),
+                    class='login-form-control' + (' error' if form.password.errors else ''),
                     id='password',
                     placeholder='Enter your password',
                     autocomplete='off',
@@ -296,24 +68,24 @@
                     required=true,
                     **{'aria-label': 'Password', 'aria-required': 'true', 'aria-invalid': 'true' if form.password.errors else 'false', 'data-lpignore': 'true', 'data-form-type': 'other', 'data-1p-ignore': 'true'}
                 ) }}
-                <a href="#" class="forgot-password" id="forgotPasswordLink">Forgot password?</a>
+                <a href="#" class="login-forgot" id="forgotPasswordLink">Forgot password?</a>
                 <div id="forgotPasswordNote" class="alert alert-info" style="display: none;" role="note">
                     Please contact your system administrator to reset your password.
                 </div>
                 {% if form.password.errors %}
-                    <div class="form-error" role="alert">
+                    <div class="login-form-error" role="alert">
                         <span>⚠</span>
                         <span>{% for error in form.password.errors %}{{ error }}{% endfor %}</span>
                     </div>
                 {% endif %}
             </div>
 
-            <div class="checkbox-group">
+            <div class="login-checkbox-group">
                 {{ form.remember_me(id='remember_me', **{'aria-label': 'Remember me on this device'}) }}
                 {{ form.remember_me.label(for='remember_me') }}
             </div>
 
-            <button type="submit" class="btn-primary" aria-label="Sign in to your account">
+            <button type="submit" class="login-btn" aria-label="Sign in to your account">
                 Sign In
             </button>
         </form>
