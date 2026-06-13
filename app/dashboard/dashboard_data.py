@@ -167,29 +167,26 @@ def get_receivables_stats(as_of_date=None, branch_id=None):
     if as_of_date is None:
         as_of_date = date.today()
 
-    query = SalesInvoice.query.filter(
+    base_filter = [
         SalesInvoice.status.in_(['posted', 'partially_paid']),
-        SalesInvoice.invoice_date <= as_of_date
-    )
+        SalesInvoice.invoice_date <= as_of_date,
+    ]
     if branch_id is not None:
-        query = query.filter(SalesInvoice.branch_id == branch_id)
-    unpaid_invoices = query.all()
+        base_filter.append(SalesInvoice.branch_id == branch_id)
 
-    total_receivable = Decimal('0.00')
-    overdue_amount = Decimal('0.00')
+    total_receivable, count = db.session.query(
+        func.sum(SalesInvoice.total_amount - SalesInvoice.amount_paid),
+        func.count(SalesInvoice.id)
+    ).filter(*base_filter).one()
 
-    for invoice in unpaid_invoices:
-        balance = invoice.total_amount - invoice.amount_paid
-        total_receivable += balance
-
-        # Check if overdue as of the as_of_date
-        if invoice.due_date and invoice.due_date < as_of_date:
-            overdue_amount += balance
+    overdue_amount = db.session.query(
+        func.sum(SalesInvoice.total_amount - SalesInvoice.amount_paid)
+    ).filter(*base_filter, SalesInvoice.due_date < as_of_date).scalar()
 
     return {
-        'total': float(total_receivable),
-        'count': len(unpaid_invoices),
-        'overdue': float(overdue_amount)
+        'total': float(total_receivable or Decimal('0.00')),
+        'count': count or 0,
+        'overdue': float(overdue_amount or Decimal('0.00')),
     }
 
 
@@ -210,29 +207,26 @@ def get_payables_stats(as_of_date=None, branch_id=None):
     if as_of_date is None:
         as_of_date = date.today()
 
-    query = PurchaseBill.query.filter(
+    base_filter = [
         PurchaseBill.status.in_(['posted', 'partially_paid']),
-        PurchaseBill.bill_date <= as_of_date
-    )
+        PurchaseBill.bill_date <= as_of_date,
+    ]
     if branch_id is not None:
-        query = query.filter(PurchaseBill.branch_id == branch_id)
-    unpaid_bills = query.all()
+        base_filter.append(PurchaseBill.branch_id == branch_id)
 
-    total_payable = Decimal('0.00')
-    overdue_amount = Decimal('0.00')
+    total_payable, count = db.session.query(
+        func.sum(PurchaseBill.total_amount - PurchaseBill.amount_paid),
+        func.count(PurchaseBill.id)
+    ).filter(*base_filter).one()
 
-    for bill in unpaid_bills:
-        balance = bill.total_amount - bill.amount_paid
-        total_payable += balance
-
-        # Check if overdue as of the as_of_date
-        if bill.due_date and bill.due_date < as_of_date:
-            overdue_amount += balance
+    overdue_amount = db.session.query(
+        func.sum(PurchaseBill.total_amount - PurchaseBill.amount_paid)
+    ).filter(*base_filter, PurchaseBill.due_date < as_of_date).scalar()
 
     return {
-        'total': float(total_payable),
-        'count': len(unpaid_bills),
-        'overdue': float(overdue_amount)
+        'total': float(total_payable or Decimal('0.00')),
+        'count': count or 0,
+        'overdue': float(overdue_amount or Decimal('0.00')),
     }
 
 
@@ -406,29 +400,36 @@ def get_expense_breakdown(as_of_date=None, branch_id=None):
         Account.is_active == True
     ).all()
 
-    categories = {}
+    if not expense_accounts:
+        return {'labels': [], 'data': []}
 
+    expense_account_ids = [acc.id for acc in expense_accounts]
+    account_code_map = {acc.id: acc.code for acc in expense_accounts}
+
+    totals_query = db.session.query(
+        JournalEntryLine.account_id,
+        func.sum(JournalEntryLine.debit_amount - JournalEntryLine.credit_amount).label('total')
+    ).join(JournalEntry).filter(
+        JournalEntry.status == 'posted',
+        JournalEntryLine.account_id.in_(expense_account_ids),
+        extract('year', JournalEntry.entry_date) == as_of_date.year,
+        JournalEntry.entry_date <= as_of_date
+    ).group_by(JournalEntryLine.account_id)
+
+    if branch_id is not None:
+        totals_query = totals_query.filter(JournalEntry.branch_id == branch_id)
+
+    account_totals = {
+        row.account_id: row.total or Decimal('0.00')
+        for row in totals_query.all()
+    }
+
+    categories = {}
     for account in expense_accounts:
-        # Group by first 2 digits of account code (e.g., 51xxx, 52xxx)
         category_code = account.code[:2] + 'xxx'
         category_name = _get_expense_category_name(category_code)
-
-        account_total_query = db.session.query(
-            func.sum(JournalEntryLine.debit_amount - JournalEntryLine.credit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntryLine.account_id == account.id,
-            extract('year', JournalEntry.entry_date) == as_of_date.year,
-            JournalEntry.entry_date <= as_of_date
-        )
-        if branch_id is not None:
-            account_total_query = account_total_query.filter(JournalEntry.branch_id == branch_id)
-        account_total = account_total_query.scalar() or Decimal('0.00')
-
-        if category_name not in categories:
-            categories[category_name] = Decimal('0.00')
-
-        categories[category_name] += account_total
+        account_total = account_totals.get(account.id, Decimal('0.00'))
+        categories[category_name] = categories.get(category_name, Decimal('0.00')) + account_total
 
     # Convert to chart format
     labels = list(categories.keys())

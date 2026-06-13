@@ -1,6 +1,8 @@
+import json
 from flask import Blueprint, render_template, redirect, url_for, jsonify, request
 from flask_login import login_required, current_user
 from datetime import datetime
+from app.utils import ph_now
 from app.accounts.approval_models import AccountChangeRequest
 from app.vat_categories.models import VATCategoryChangeRequest
 from app.withholding_tax.models import WithholdingTaxChangeRequest
@@ -26,7 +28,7 @@ def home():
     from flask import session, request
 
     # Get "as of" date from query parameter or default to today
-    today = datetime.now().date()
+    today = ph_now().date()
     as_of_date_str = request.args.get('as_of_date')
 
     if as_of_date_str:
@@ -97,7 +99,6 @@ def home():
 @login_required
 def action_items():
     """Action Items page - shows all items needing user's action"""
-    import json
     items = []
 
     # Only accountants and admins see pending change requests
@@ -182,7 +183,6 @@ def get_action_items():
         # VAT Category change requests
         vat_requests = VATCategoryChangeRequest.query.filter_by(status='pending').all()
         for req in vat_requests:
-            import json
             proposed = json.loads(req.proposed_data) if req.proposed_data else {}
             # For create action, just show the name. For update/delete, show "name — action"
             if req.action == 'create':
@@ -205,7 +205,6 @@ def get_action_items():
         # Withholding Tax change requests
         wt_requests = WithholdingTaxChangeRequest.query.filter_by(status='pending').all()
         for req in wt_requests:
-            import json
             proposed = json.loads(req.proposed_data) if req.proposed_data else {}
             # For create action, just show the name. For update/delete, show "name — action"
             if req.action == 'create':
