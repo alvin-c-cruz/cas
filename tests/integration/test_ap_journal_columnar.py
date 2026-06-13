@@ -33,6 +33,9 @@ def _entry(branch_id, status, entry_date, number, lines):
             entry_id=je.id, line_number=n, account_id=acct.id,
             debit_amount=Decimal(str(dr)), credit_amount=Decimal(str(cr))))
         n += 1
+    je.total_debit = sum((Decimal(str(dr)) for _, dr, _ in lines), Decimal('0'))
+    je.total_credit = sum((Decimal(str(cr)) for _, _, cr in lines), Decimal('0'))
+    je.is_balanced = (je.total_debit == je.total_credit)
     db.session.commit()
     return je
 
