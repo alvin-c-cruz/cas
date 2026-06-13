@@ -131,6 +131,9 @@ def _post_login_redirect(user, form):
 
     session['needs_branch_selection'] = True
     flash(f'Welcome back, {user.full_name}! Please select your branch.', 'info')
+    next_page = request.args.get('next')
+    if next_page and _is_safe_url(next_page):
+        return redirect(url_for('users.select_branch', next=next_page))
     return redirect(url_for('users.select_branch'))
 
 
@@ -166,12 +169,9 @@ def select_branch():
 
     if current_user.role in ['admin', 'accountant']:
         accessible_branches = active_branches
-    elif current_user.branches:
-        # Filter user's assigned branches to only show active ones
+    else:
         user_branch_ids = current_user.get_branch_ids()
         accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
-    else:
-        accessible_branches = []
 
     # If only one branch, redirect directly
     if len(accessible_branches) == 1:
