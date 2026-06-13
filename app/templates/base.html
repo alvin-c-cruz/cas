@@ -957,6 +957,20 @@
             flex-shrink: 0;
         }
 
+        .nav-partial {
+            font-size: 9px;
+            font-weight: 600;
+            color: #1d4ed8;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            padding: 1px 5px;
+            border-radius: 6px;
+            margin-left: auto;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            flex-shrink: 0;
+        }
+
         .topbar-new-divider {
             height: 1px;
             background: #e2e8f0;
@@ -1127,6 +1141,7 @@
                     <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' or (request.endpoint and request.endpoint.startswith('journal_entries.') and request.endpoint != 'journal_entries.list_entries') %}active{% endif %}">
                         <span class="nav-icon">📓</span>
                         <span class="nav-text">Journal Voucher</span>
+                        <span class="nav-partial">Partial</span>
                     </a>
                 </div>
             </div>
