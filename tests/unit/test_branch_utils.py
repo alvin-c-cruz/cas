@@ -23,9 +23,25 @@ class TestGetAccessibleBranches:
         other = Branch(name='Other', code='OTH', is_active=True)
         db_session.add(other)
         db_session.commit()
-        # staff_user is not assigned to any branch yet
+        # Assign staff_user to main_branch only
+        staff_user.branches.append(main_branch)
+        db_session.commit()
         result = get_accessible_branches(staff_user)
-        assert all(b.id != other.id for b in result)
+        ids = {b.id for b in result}
+        assert main_branch.id in ids       # assigned branch is included
+        assert other.id not in ids         # unassigned branch is excluded
+
+    def test_viewer_gets_only_assigned_branches(self, db_session, viewer_user, main_branch):
+        from app.branches.models import Branch
+        other = Branch(name='Other2', code='OT2', is_active=True)
+        db_session.add(other)
+        db_session.commit()
+        viewer_user.branches.append(main_branch)
+        db_session.commit()
+        result = get_accessible_branches(viewer_user)
+        ids = {b.id for b in result}
+        assert main_branch.id in ids
+        assert other.id not in ids
 
     def test_inactive_branches_excluded(self, db_session, admin_user, main_branch):
         from app.branches.models import Branch
