@@ -40,7 +40,6 @@
                     <th>Date</th>
                     <th>AP No.</th>
                     <th>Vendor</th>
-                    <th>Accounts Payable</th>
                     <th style="text-align: right;">Amount</th>
                     <th>Status</th>
                     <th>Posted By</th>
@@ -59,7 +58,6 @@
                         {% endif %}
                     </td>
                     <td>{{ bill.vendor_name if bill else '—' }}</td>
-                    <td style="color: var(--text-2); font-size: 13px;">Accounts Payable</td>
                     <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(entry.total_credit) }}</td>
                     <td>
                         <span class="badge badge-{{ 'secondary' if entry.status == 'draft' else 'info' if entry.status == 'posted' else 'danger' }}">
