@@ -36,7 +36,7 @@
     <div class="card-header">
         <div class="ap-jrnl-actions" style="display:flex; gap:8px; justify-content:flex-end;">
             <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
-            <a href="{{ url_for('journals.ap_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Download Excel</a>
+            <a id="apExportLink" href="{{ url_for('journals.ap_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Download Excel</a>
         </div>
     </div>
 
@@ -72,6 +72,7 @@
         </div>
     </form>
 
+    <div id="ap-journal-content">
     <div class="ap-jrnl-meta">
         <h3>Accounts Payable Journal</h3>
         <p>{{ period.label }} &mdash; {{ current_branch.name if current_branch else 'All Branches' }}</p>
@@ -143,8 +144,9 @@
             <p style="font-size:13px; color:var(--text-3);">AP journal entries are created automatically when an AP voucher is posted.</p>
         </div>
         {% endif %}
-    </div>
-</div>
+    </div>{# card-body #}
+    </div>{# ap-journal-content #}
+</div>{# card #}
 
 <script>
 (function () {
