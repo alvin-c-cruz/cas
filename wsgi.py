@@ -54,9 +54,14 @@ os.environ['FLASK_ENV'] = 'production'
 # ============================================================
 
 from app import create_app
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Create Flask application instance
 application = create_app()
+
+# Trust PythonAnywhere's reverse proxy headers so Flask correctly detects HTTPS
+# Without this, enforce_https() sees HTTP internally and redirects every request
+application.wsgi_app = ProxyFix(application.wsgi_app, x_proto=1, x_host=1)
 
 # For debugging (optional - remove in production)
 # print(f"Flask app initialized for user: {PYTHONANYWHERE_USERNAME}")

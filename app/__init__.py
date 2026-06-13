@@ -33,13 +33,14 @@ def create_app(config_name=None):
 
     # Configure logging
     if not app.debug and not app.testing:
-        # Create logs directory if it doesn't exist
-        if not os.path.exists('logs'):
-            os.mkdir('logs')
+        # Use absolute path so log files land in the project root regardless of CWD
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'logs')
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
 
         # Configure file handler for all logs
         file_handler = RotatingFileHandler(
-            'logs/cas_app.log',
+            os.path.join(log_dir, 'cas_app.log'),
             maxBytes=10485760,  # 10MB
             backupCount=10
         )
@@ -51,7 +52,7 @@ def create_app(config_name=None):
 
         # Configure file handler for errors only
         error_handler = RotatingFileHandler(
-            'logs/cas_errors.log',
+            os.path.join(log_dir, 'cas_errors.log'),
             maxBytes=10485760,  # 10MB
             backupCount=10
         )
