@@ -10,7 +10,8 @@ from decimal import Decimal
 
 from flask import make_response
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Alignment, Border, Font, Side
+from openpyxl.utils import get_column_letter
 
 
 def _parse_iso(value):
@@ -161,29 +162,42 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     """Build the columnar AP Journal as an .xlsx Flask response.
 
     identity(entry) -> (no, invoice_no, vendor, particulars) for the left columns.
-    Credits render in parentheses; draft rows show identifiers only.
+    Amount cells store real floats with #,##0.00;(#,##0.00) format so Excel
+    can sort/sum them. Draft rows show identifiers only with no amounts.
     """
     wb = Workbook()
     ws = wb.active
     ws.title = 'AP Journal'
+
     bold = Font(bold=True)
     right = Alignment(horizontal='right')
+    center_wrap = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    num_fmt = '#,##0.00;(#,##0.00)'
 
-    ws.append([company_name])
-    ws['A1'].font = bold
-    ws.append([branch_name])
-    ws['A2'].font = bold
-    ws.append(['Accounts Payable Journal'])
-    ws['A3'].font = bold
+    thin = Side(style='thin')
+    double_s = Side(style='double')
+    cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    total_border = Border(left=thin, right=thin, top=double_s, bottom=double_s)
+
+    # Preamble rows 1–5
+    ws.append([company_name]);         ws['A1'].font = bold
+    ws.append([branch_name]);          ws['A2'].font = bold
+    ws.append(['Accounts Payable Journal']); ws['A3'].font = bold
     ws.append([period_label])
     ws.append([])
 
+    # Header row (row 6)
     fixed = ['Date', 'AP No.', 'Invoice No.', 'Vendor', 'Particulars']
     header = fixed + [c['name'] for c in columns]
     ws.append(header)
-    for cell in ws[ws.max_row]:
+    hdr_row = ws.max_row
+    ws.row_dimensions[hdr_row].height = 40
+    for cell in ws[hdr_row]:
         cell.font = bold
+        cell.alignment = center_wrap
+        cell.border = cell_border
 
+    # Data rows
     for r in rows:
         e = r['entry']
         no, invoice, vendor, particulars = identity(e)
@@ -195,17 +209,40 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
             ('[DRAFT] ' + (particulars or '')) if r['is_draft'] else (particulars or ''),
         ]
         for c in columns:
-            line.append('' if r['is_draft'] else _fmt(r['cells'].get(c['account_id'])))
+            if r['is_draft']:
+                line.append(None)
+            else:
+                val = r['cells'].get(c['account_id'])
+                line.append(float(val) if val else None)
         ws.append(line)
-        for i in range(len(fixed) + 1, len(header) + 1):
-            ws.cell(row=ws.max_row, column=i).alignment = right
+        cur = ws.max_row
+        for i, cell in enumerate(ws[cur], 1):
+            cell.border = cell_border
+            if i > len(fixed):
+                cell.number_format = num_fmt
+                cell.alignment = right
 
-    total_line = ['TOTAL', '', '', '', ''] + [_fmt(totals.get(c['account_id'])) for c in columns]
+    # Blank separator before total
+    ws.append([])
+
+    # TOTAL row with double rule top and bottom
+    total_line = ['TOTAL', '', '', '', '']
+    for c in columns:
+        val = totals.get(c['account_id'])
+        total_line.append(float(val) if val else None)
     ws.append(total_line)
-    for cell in ws[ws.max_row]:
+    tot_row = ws.max_row
+    for i, cell in enumerate(ws[tot_row], 1):
         cell.font = bold
-    for i in range(len(fixed) + 1, len(header) + 1):
-        ws.cell(row=ws.max_row, column=i).alignment = right
+        cell.border = total_border
+        if i > len(fixed):
+            cell.number_format = num_fmt
+            cell.alignment = right
+
+    # Column widths: Date, AP No., Invoice No., Vendor, Particulars, then amount cols
+    col_widths = [12, 22, 22, 28, 40] + [20] * len(columns)
+    for i, width in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = width
 
     output = io.BytesIO()
     wb.save(output)

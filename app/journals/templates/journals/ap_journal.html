@@ -36,7 +36,7 @@
     <div class="card-header">
         <div class="ap-jrnl-actions" style="display:flex; gap:8px; justify-content:flex-end;">
             <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
-            <a href="{{ url_for('journals.ap_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Excel</a>
+            <a href="{{ url_for('journals.ap_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Download Excel</a>
         </div>
     </div>
 
