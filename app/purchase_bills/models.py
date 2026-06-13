@@ -57,7 +57,7 @@ class PurchaseBill(db.Model):
 
     # Reference fields
     reference = db.Column(db.String(100))  # PO number, job order, etc.
-    notes = db.Column(db.Text)
+    notes = db.Column(db.Text, nullable=False, default='')
 
     # Financial totals (computed from line items)
     subtotal = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # VAT-inclusive sum of all line amounts
