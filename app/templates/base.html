@@ -1107,11 +1107,11 @@
                 <div class="nav-section-content" id="section-transactions">
                     <a href="{{ url_for('sales_invoices.list_invoices') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_invoices.') %}active{% endif %}">
                         <span class="nav-icon">📄</span>
-                        <span class="nav-text">Sales Invoices</span>
+                        <span class="nav-text">Sales</span>
                     </a>
                     <a href="{{ url_for('receipts.list_receipts') }}?type=collection" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'collection' %}active{% endif %}">
                         <span class="nav-icon">💰</span>
-                        <span class="nav-text">Collections</span>
+                        <span class="nav-text">Receipts</span>
                     </a>
                     <a href="{{ url_for('purchase_bills.list_bills') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('purchase_bills.') %}active{% endif %}">
                         <span class="nav-icon">📋</span>
@@ -1119,7 +1119,7 @@
                     </a>
                     <a href="{{ url_for('receipts.list_receipts') }}?type=payment" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'payment' %}active{% endif %}">
                         <span class="nav-icon">💸</span>
-                        <span class="nav-text">Payments</span>
+                        <span class="nav-text">Disbursements</span>
                     </a>
                     <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' or (request.endpoint and request.endpoint.startswith('journal_entries.') and request.endpoint != 'journal_entries.list_entries') %}active{% endif %}">
                         <span class="nav-icon">📓</span>
