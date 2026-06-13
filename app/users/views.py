@@ -42,10 +42,6 @@ def login():
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
 
-        # Get IP address and user agent for audit trail
-        ip_address = request.remote_addr
-        user_agent = request.headers.get('User-Agent', '')[:500]  # Limit to 500 chars
-
         # Check if account is locked (if user exists)
         if user and user.is_account_locked():
             # Log failed login due to account lockout
