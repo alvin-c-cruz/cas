@@ -17,7 +17,6 @@ def _branch_id():
 
 
 def _date_defaults():
-    from app.utils import ph_now
     year = ph_now().year
     return request.args.get('date_from', f'{year}-01-01'), request.args.get('date_to', f'{year}-12-31')
 
