@@ -328,9 +328,8 @@ def create_app(config_name=None):
             if any(b.id == branch_id for b in accessible):
                 return  # valid — continue
 
-            # stale or deactivated — clear it and force re-selection
+            # stale or deactivated — clear it and fall through to auto-select logic
             session.pop('selected_branch_id', None)
-            return redirect(url_for('users.select_branch', next=request.url))
 
         # branch_id missing — auto-select if only one accessible branch
         if len(accessible) == 1:
