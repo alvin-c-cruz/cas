@@ -54,4 +54,6 @@ class PurchaseBillForm(FlaskForm):
         Length(max=100, message='Reference must be 100 characters or less.')
     ])
 
-    notes = TextAreaField('Notes', validators=[Optional()])
+    notes = TextAreaField('Notes (Particulars)', validators=[
+        DataRequired(message='Notes are required — this becomes the Particulars in the AP Journal.')
+    ])

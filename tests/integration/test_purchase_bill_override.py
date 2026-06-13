@@ -82,6 +82,7 @@ class TestBillPencilOverride:
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
+            'notes': 'Test particulars',
             'line_items': make_line_items(
                 11200.00, vat_code='OVR12', account_id=fx['exp'].id),
             'vat_override': '1',
@@ -107,6 +108,7 @@ class TestBillPencilOverride:
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
+            'notes': 'Test particulars',
             'line_items': make_line_items(
                 11200.00, vat_code='OVR12', account_id=fx['exp'].id),
             'vat_override': '1',
@@ -132,6 +134,7 @@ class TestBillPencilOverride:
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
+            'notes': 'Test particulars',
             'line_items': make_line_items(
                 11200.00, vat_code='OVR12', account_id=fx['exp'].id),
             'vat_override': '1',
@@ -169,6 +172,7 @@ class TestBillPencilOverride:
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
+            'notes': 'Test particulars',
             'line_items': make_line_items(
                 10000.00, vat_code='', account_id=fx['exp'].id,
                 wt_id=fx['wt'].id, wt_rate=float(fx['wt'].rate)),
@@ -195,6 +199,7 @@ class TestBillPencilOverride:
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
+            'notes': 'Test particulars',
             'line_items': make_line_items(
                 10000.00, vat_code='', account_id=fx['exp'].id,
                 wt_id=fx['wt'].id, wt_rate=float(fx['wt'].rate)),
@@ -230,6 +235,7 @@ class TestBillPencilOverride:
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
+            'notes': 'Test particulars',
             'line_items': make_line_items(
                 11200.00, vat_code='OVR12', account_id=fx['exp'].id,
                 wt_id=fx['wt'].id, wt_rate=float(fx['wt'].rate)),
@@ -264,6 +270,7 @@ class TestBillPencilOverride:
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
+            'notes': 'Test particulars',
             'line_items': make_line_items(
                 11200.00, vat_code='OVR12', account_id=fx['exp'].id),
             'vat_override': '1',
@@ -287,6 +294,7 @@ class TestBillPencilOverride:
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
+            'notes': 'Test particulars',
             'line_items': make_line_items(
                 10000.00, vat_code='', account_id=fx['exp'].id,
                 wt_id=fx['wt'].id, wt_rate=float(fx['wt'].rate)),

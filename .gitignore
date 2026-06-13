@@ -106,3 +106,5 @@ pytest.ini
 /generate_*.py
 nul
 .superpowers/
+
+.analyze-page/

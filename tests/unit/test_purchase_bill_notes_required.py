@@ -47,3 +47,32 @@ def test_bill_orm_default_notes_is_empty_string(db_session):
     db.session.commit()
 
     assert bill.notes == '', f"Expected empty string, got {repr(bill.notes)}"
+
+
+from app.purchase_bills.forms import PurchaseBillForm
+
+
+def _make_form(app, notes_value):
+    """Return a PurchaseBillForm with all required fields populated, overriding notes."""
+    from datetime import date as _date
+    with app.test_request_context():
+        form = PurchaseBillForm(formdata=None, meta={'csrf': False})
+        # Satisfy the SelectField pre-validate so it doesn't abort before notes
+        form.vendor_id.choices = [(1, 'Test Vendor')]
+        form.vendor_id.data = 1
+        form.bill_number.data = 'AP-2026-06-0001'
+        form.bill_date.data = _date(2026, 6, 1)
+        form.due_date.data = _date(2026, 6, 30)
+        form.notes.data = notes_value
+        form.validate()
+        return form
+
+
+def test_form_requires_notes(app):
+    form = _make_form(app, '')
+    assert 'notes' in form.errors
+
+
+def test_form_accepts_notes(app):
+    form = _make_form(app, 'To record office supplies')
+    assert 'notes' not in form.errors
