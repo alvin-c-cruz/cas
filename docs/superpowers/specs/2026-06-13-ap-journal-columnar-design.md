@@ -24,9 +24,18 @@ The columnar journal is a **read-only pivot of those existing lines** — no cha
 
 ## Architecture
 
+### Date filter (monthly by default)
+
+Special journals are kept per month, so the filter defaults to a **Month + Year selector** (defaulting to the current month). An optional **"Custom range" toggle** reveals two date inputs for arbitrary `date_from`/`date_to` when a non-monthly span is needed.
+
+- **Month mode** (default): selected month/year derives `date_from` = 1st of month, `date_to` = last day of month. Header reads **"For the month of June 2026"**; export/print filename uses `YYYY-MM` (e.g. `AP-Journal-2026-06.xlsx`).
+- **Custom mode**: explicit `date_from`/`date_to` drive the query. Header reads **"From <date_from> to <date_to>"**; filename uses `<from>_<to>`.
+
+Internally both modes resolve to a `date_from`/`date_to` pair, so the query logic below is identical for both. This same filter pattern applies to the future CR and CD journals.
+
 ### Data flow
 
-1. Query purchase `JournalEntry` rows for branch + date range (as today), eager-loading `lines` and each line's `account`.
+1. Query purchase `JournalEntry` rows for branch + resolved `date_from`/`date_to`, eager-loading `lines` and each line's `account`.
 2. Build the **column set**: the union of all accounts referenced by any line in the result set. Columns are ordered "credits first" (see below). Columns appear only if used in the period.
 3. For each entry, build a **cell map** `{account_id: signed_amount}` where `signed_amount = debit_amount - credit_amount`. Debits are positive; credits are negative and rendered in parentheses.
 4. Compute **per-column totals** across all *posted* entries. The sum of all column totals must equal `0.00` (Σdebits − Σcredits), which is the on-screen/exported balance proof.
@@ -79,8 +88,8 @@ The journal reads `bill.notes` for each entry (joined via `entry.reference == bi
 
 | File | Change |
 |---|---|
-| `app/journals/views.py` → `ap_journal()` | Eager-load `lines` + `account`; build ordered `columns`, per-row cell maps, `column_totals`; split posted vs draft; pass to template. |
-| `app/journals/templates/journals/ap_journal.html` | Replace fixed 6-column table with dynamic columnar table; horizontal scroll on screen; add `@media print` landscape stylesheet (pattern from `app/reports/templates/reports/ap_aging.html`); add a Print button (`window.print()`) and an Excel download button. |
+| `app/journals/views.py` → `ap_journal()` | Resolve month/custom filter into `date_from`/`date_to`; eager-load `lines` + `account`; build ordered `columns`, per-row cell maps, `column_totals`; split posted vs draft; pass period label + filter mode to template. |
+| `app/journals/templates/journals/ap_journal.html` | Month/Year selector with a "Custom range" toggle; replace fixed 6-column table with dynamic columnar table; horizontal scroll on screen; add `@media print` landscape stylesheet (pattern from `app/reports/templates/reports/ap_aging.html`); add a Print button (`window.print()`) and an Excel download button. |
 | `app/journals/views.py` → new `ap_journal_export()` route | Build the same columnar matrix and emit `.xlsx` via `app/utils/export.py` (custom column assembly — the generic `export_to_excel` takes flat columns, so this route constructs headers/rows to match the on-screen matrix, including the totals row and parenthesised credits). |
 | `app/purchase_bills/models.py` | `notes` → `nullable=False` (Particulars). Column type (`Text`) otherwise unchanged. |
 | `migrations/versions/<new>.py` | Alembic migration: backfill NULL/empty notes, then `batch_alter_table` set `notes` NOT NULL. |
