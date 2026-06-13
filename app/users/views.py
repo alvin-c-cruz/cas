@@ -1,11 +1,14 @@
+from urllib.parse import urlparse, urljoin
+from functools import wraps
+
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
+
 from app import db
 from app.users.models import User
 from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
 from app.utils import ph_now
 from app.audit.utils import log_audit, log_create, log_update, log_delete, model_to_dict
-from functools import wraps
 
 
 users_bp = Blueprint('users', __name__, template_folder='templates')
@@ -20,6 +23,12 @@ def admin_required(f):
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def _is_safe_url(target):
+    ref = urlparse(request.host_url)
+    test = urlparse(urljoin(request.host_url, target))
+    return test.scheme in ('http', 'https') and ref.netloc == test.netloc
 
 
 @users_bp.route('/login', methods=['GET', 'POST'])
@@ -178,9 +187,9 @@ def login():
             )
             flash(f'Welcome back, {user.full_name}!', 'success')
 
-            # Redirect to next page or dashboard
+            # Redirect to next page or dashboard (validated to prevent open redirect)
             next_page = request.args.get('next')
-            if next_page:
+            if next_page and _is_safe_url(next_page):
                 return redirect(next_page)
             return redirect(url_for('dashboard.index'))
 
@@ -200,7 +209,8 @@ def select_branch():
     from flask import session
 
     # Get the 'next' URL parameter (where to redirect after branch selection)
-    next_url = request.args.get('next') or request.form.get('next') or url_for('dashboard.index')
+    _raw_next = request.args.get('next') or request.form.get('next')
+    next_url = _raw_next if (_raw_next and _is_safe_url(_raw_next)) else url_for('dashboard.index')
 
     # Get accessible branches for current user
     active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
