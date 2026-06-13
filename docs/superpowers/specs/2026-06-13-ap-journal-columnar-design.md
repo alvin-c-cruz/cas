@@ -55,12 +55,19 @@ Accounts are matched to groups 1–3 by the same account lookups `_post_bill_je(
 
 ## Particulars source
 
-"Particulars" maps to the bill's **`notes`** field. To ensure the journal always has a narrative, **Notes becomes a required field on the APV (purchase bill) entry form**:
-- Add a `DataRequired` validator to the notes field in `app/purchase_bills/forms.py`.
-- This is a form-level change only — the `notes` DB column stays `nullable=True`, so **no migration** and no model-change approval needed.
-- **Existing bills** with empty notes will show a blank Particulars cell — acceptable. The requirement applies only to newly created/edited bills.
+"Particulars" maps to the bill's **`notes`** field. Notes becomes **required at both the database and the form level** (user-approved model change, 2026-06-13).
 
-The journal reads `bill.notes` for each entry (joined via `entry.reference == bill.bill_number`, as the view already does for `bill_map`).
+**Model change (approved):**
+- `PurchaseBill.notes`: `db.Column(db.Text)` → `db.Column(db.Text, nullable=False)`.
+
+**Migration (Alembic, SQLite batch mode):**
+1. Backfill existing rows: `UPDATE purchase_bills SET notes = '(No particulars recorded)' WHERE notes IS NULL OR notes = ''` — required so legacy NULL/empty rows do not violate the new NOT NULL constraint.
+2. Alter the `notes` column to `nullable=False` via `op.batch_alter_table('purchase_bills')` (SQLite cannot alter a column in place without batch mode).
+
+**Form change:**
+- Add a `DataRequired` validator to the notes field in `app/purchase_bills/forms.py`. NOT NULL alone permits an empty string, so the validator enforces actual content on newly created/edited bills.
+
+The journal reads `bill.notes` for each entry (joined via `entry.reference == bill.bill_number`, as the view already does for `bill_map`). Legacy bills backfilled with the placeholder show `(No particulars recorded)` in the Particulars column.
 
 ## Draft handling
 
@@ -75,8 +82,10 @@ The journal reads `bill.notes` for each entry (joined via `entry.reference == bi
 | `app/journals/views.py` → `ap_journal()` | Eager-load `lines` + `account`; build ordered `columns`, per-row cell maps, `column_totals`; split posted vs draft; pass to template. |
 | `app/journals/templates/journals/ap_journal.html` | Replace fixed 6-column table with dynamic columnar table; horizontal scroll on screen; add `@media print` landscape stylesheet (pattern from `app/reports/templates/reports/ap_aging.html`); add a Print button (`window.print()`) and an Excel download button. |
 | `app/journals/views.py` → new `ap_journal_export()` route | Build the same columnar matrix and emit `.xlsx` via `app/utils/export.py` (custom column assembly — the generic `export_to_excel` takes flat columns, so this route constructs headers/rows to match the on-screen matrix, including the totals row and parenthesised credits). |
+| `app/purchase_bills/models.py` | `notes` → `nullable=False` (Particulars). Column type (`Text`) otherwise unchanged. |
+| `migrations/versions/<new>.py` | Alembic migration: backfill NULL/empty notes, then `batch_alter_table` set `notes` NOT NULL. |
 | `app/purchase_bills/forms.py` | Add `DataRequired` to the notes field (Particulars). |
-| Tests | View test (columnar pivot, totals = 0, draft excluded from totals); export route test; form validation test (notes required). |
+| Tests | View test (columnar pivot, totals = 0, draft excluded from totals); export route test; form validation test (notes required); migration applies cleanly on a DB with pre-existing NULL notes. |
 
 ## Output formats
 
@@ -86,7 +95,7 @@ The journal reads `bill.notes` for each entry (joined via `entry.reference == bi
 
 ## Edge cases & ripple effects
 
-- **Notes now required**: form tests and any fixtures/seed that create bills without notes must be updated. Existing posted bills with empty notes render a blank Particulars (no error).
+- **Notes now required (DB + form)**: any fixtures/seed/tests that create bills without notes must be updated to supply notes, or they will fail the NOT NULL constraint and the form validator. The migration backfills legacy rows with `(No particulars recorded)`.
 - **Wide tables**: many distinct accounts → many columns. Screen uses horizontal scroll; print uses landscape + reduced font.
 - **Excel parity**: the export must use the *same* filter (branch + date range) and the *same* column ordering as the screen so the two always agree.
 - **Empty period**: if no entries match, show the existing empty-state message; export produces a header-only sheet.
