@@ -33,6 +33,107 @@ def _is_safe_url(target):
     return test.scheme in ('http', 'https') and ref.netloc == test.netloc
 
 
+def _check_login_guards(user, form):
+    """Run pre-auth checks: locked account, bad credentials, inactive account.
+
+    Returns a rendered response if a guard fired, or None if all checks pass.
+    """
+    if user and user.is_account_locked():
+        log_audit(module='auth', action='login_failed', record_id=user.id,
+                  record_identifier=user.username,
+                  notes='Account locked due to multiple failed login attempts')
+        lockout_time = user.account_locked_until
+        if lockout_time:
+            if lockout_time.tzinfo is None:
+                PHT = timezone(timedelta(hours=8))
+                lockout_time = lockout_time.replace(tzinfo=PHT)
+            minutes_remaining = int((lockout_time - ph_now()).total_seconds() / 60)
+            flash(f'Your account is locked due to multiple failed login attempts. '
+                  f'Please try again in {minutes_remaining} minutes or contact the administrator.',
+                  'error')
+        else:
+            flash('Your account is locked. Please contact the administrator.', 'error')
+        return render_template('users/login.html', form=form)
+
+    if user is None or not user.check_password(form.password.data):
+        if user:
+            account_locked = user.increment_failed_attempts(max_attempts=5, lockout_minutes=15)
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            log_audit(module='auth',
+                      action='account_locked' if account_locked else 'login_failed',
+                      record_id=user.id, record_identifier=user.username,
+                      notes='Too many failed attempts - account locked' if account_locked else 'Invalid password')
+            if account_locked:
+                flash('Too many failed login attempts. Your account has been locked for 15 minutes.', 'error')
+            else:
+                remaining_attempts = 5 - user.failed_login_attempts
+                if remaining_attempts <= 2:
+                    flash(f'Invalid username or password. Warning: {remaining_attempts} attempts remaining before account lockout.', 'error')
+                else:
+                    flash('Invalid username or password.', 'error')
+        else:
+            log_audit(module='auth', action='login_failed', record_id=None,
+                      record_identifier=form.username.data, notes='Invalid username')
+            flash('Invalid username or password.', 'error')
+        return render_template('users/login.html', form=form)
+
+    if not user.is_active:
+        log_audit(module='auth', action='login_failed', record_id=user.id,
+                  record_identifier=user.username, notes='Account inactive')
+        if user.last_login is None:
+            flash('Your account is pending approval. Please wait for an administrator to activate your account.', 'error')
+        else:
+            flash('Your account has been deactivated. Please contact the administrator.', 'error')
+        return render_template('users/login.html', form=form)
+
+    return None
+
+
+def _post_login_redirect(user, form):
+    """Persist successful login state and redirect to branch or dashboard."""
+    try:
+        user.last_login = ph_now()
+        user.reset_failed_attempts()
+        log_audit(module='auth', action='login_success', record_id=user.id,
+                  record_identifier=user.username,
+                  notes=f'Login successful. Remember me: {form.remember_me.data}',
+                  user_id=user.id)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
+    if user.role in ['admin', 'accountant']:
+        accessible_branches = active_branches
+    else:
+        user_branch_ids = {b.id for b in user.branches.all()}
+        accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
+
+    if not accessible_branches:
+        flash('No branches available. Please contact the administrator.', 'error')
+        logout_user()
+        return redirect(url_for('users.login'))
+
+    if len(accessible_branches) == 1:
+        branch = accessible_branches[0]
+        session['selected_branch_id'] = branch.id
+        log_audit(module='auth', action='branch_selected', record_id=user.id,
+                  record_identifier=user.username,
+                  notes=f'Auto-selected branch: {branch.name} (ID: {branch.id}) — single accessible branch')
+        flash(f'Welcome back, {user.full_name}!', 'success')
+        next_page = request.args.get('next')
+        if next_page and _is_safe_url(next_page):
+            return redirect(next_page)
+        return redirect(url_for('dashboard.index'))
+
+    session['needs_branch_selection'] = True
+    flash(f'Welcome back, {user.full_name}! Please select your branch.', 'info')
+    return redirect(url_for('users.select_branch'))
+
+
 @users_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """User login."""
@@ -43,157 +144,11 @@ def login():
 
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
-
-        # Check if account is locked (if user exists)
-        if user and user.is_account_locked():
-            # Log failed login due to account lockout
-            log_audit(
-                module='auth',
-                action='login_failed',
-                record_id=user.id,
-                record_identifier=user.username,
-                notes='Account locked due to multiple failed login attempts'
-            )
-
-            lockout_time = user.account_locked_until
-            if lockout_time:
-                # Make lockout_time timezone-aware if it's naive (same fix as in models.py)
-                if lockout_time.tzinfo is None:
-                    PHT = timezone(timedelta(hours=8))
-                    lockout_time = lockout_time.replace(tzinfo=PHT)
-
-                minutes_remaining = int((lockout_time - ph_now()).total_seconds() / 60)
-                flash(f'Your account is locked due to multiple failed login attempts. Please try again in {minutes_remaining} minutes or contact the administrator.', 'error')
-            else:
-                flash('Your account is locked. Please contact the administrator.', 'error')
-            return render_template('users/login.html', form=form)
-
-        if user is None or not user.check_password(form.password.data):
-            # Log failed login attempt
-            if user:
-                # Increment failed attempts and check if account should be locked
-                account_locked = user.increment_failed_attempts(max_attempts=5, lockout_minutes=15)
-
-                # Persist lockout state immediately — do not rely on log_audit's commit
-                try:
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-
-                # Log failed login with invalid password
-                log_audit(
-                    module='auth',
-                    action='account_locked' if account_locked else 'login_failed',
-                    record_id=user.id,
-                    record_identifier=user.username,
-                    notes='Too many failed attempts - account locked' if account_locked else 'Invalid password'
-                )
-
-                if account_locked:
-                    flash('Too many failed login attempts. Your account has been locked for 15 minutes.', 'error')
-                else:
-                    remaining_attempts = 5 - user.failed_login_attempts
-                    if remaining_attempts <= 2:
-                        flash(f'Invalid username or password. Warning: {remaining_attempts} attempts remaining before account lockout.', 'error')
-                    else:
-                        flash('Invalid username or password.', 'error')
-            else:
-                # Username not found - still log but without user_id
-                log_audit(
-                    module='auth',
-                    action='login_failed',
-                    record_id=None,
-                    record_identifier=form.username.data,
-                    notes='Invalid username'
-                )
-
-                flash('Invalid username or password.', 'error')
-
-            return render_template('users/login.html', form=form)
-
-        if not user.is_active:
-            # Log failed login due to inactive account
-            log_audit(
-                module='auth',
-                action='login_failed',
-                record_id=user.id,
-                record_identifier=user.username,
-                notes='Account inactive'
-            )
-
-            # Differentiate between pending approval and deactivated account
-            if user.last_login is None:
-                # User has never logged in - account is pending approval
-                flash('Your account is pending approval. Please wait for an administrator to activate your account.', 'error')
-            else:
-                # User has logged in before - account was deactivated
-                flash('Your account has been deactivated. Please contact the administrator.', 'error')
-            return render_template('users/login.html', form=form)
-
-        # Successful login
-        try:
-            # Update last login
-            user.last_login = ph_now()
-
-            # Reset failed login attempts on successful login
-            user.reset_failed_attempts()
-
-            # Log successful login
-            log_audit(
-                module='auth',
-                action='login_success',
-                record_id=user.id,
-                record_identifier=user.username,
-                notes=f'Login successful. Remember me: {form.remember_me.data}',
-                user_id=user.id  # fires before login_user(); current_user is still anonymous
-            )
-
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-
+        guard_response = _check_login_guards(user, form)
+        if guard_response is not None:
+            return guard_response
         login_user(user, remember=form.remember_me.data)
-
-        # Get all active branches
-        active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-
-        # Filter branches based on user permissions
-        # Admins and accountants see all branches
-        # Other users see only their assigned branches
-        if user.role in ['admin', 'accountant']:
-            accessible_branches = active_branches
-        else:
-            user_branch_ids = {b.id for b in user.branches.all()}
-            accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
-
-        if not accessible_branches:
-            flash('No branches available. Please contact the administrator.', 'error')
-            logout_user()
-            return redirect(url_for('users.login'))
-
-        # Auto-assign if only one branch accessible
-        if len(accessible_branches) == 1:
-            branch = accessible_branches[0]
-            session['selected_branch_id'] = branch.id
-            log_audit(
-                module='auth',
-                action='branch_selected',
-                record_id=user.id,
-                record_identifier=user.username,
-                notes=f'Auto-selected branch: {branch.name} (ID: {branch.id}) — single accessible branch'
-            )
-            flash(f'Welcome back, {user.full_name}!', 'success')
-
-            # Redirect to next page or dashboard (validated to prevent open redirect)
-            next_page = request.args.get('next')
-            if next_page and _is_safe_url(next_page):
-                return redirect(next_page)
-            return redirect(url_for('dashboard.index'))
-
-        # Multiple branches - redirect to branch selection
-        session['needs_branch_selection'] = True
-        flash(f'Welcome back, {user.full_name}! Please select your branch.', 'info')
-        return redirect(url_for('users.select_branch'))
+        return _post_login_redirect(user, form)
 
     return render_template('users/login.html', form=form)
 
