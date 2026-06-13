@@ -208,5 +208,5 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     output.seek(0)
     resp = make_response(output.getvalue())
     resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    resp.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    resp.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp

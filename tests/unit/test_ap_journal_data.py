@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from app.journals.ap_journal_data import resolve_period
 
 
@@ -51,25 +51,14 @@ def test_resolve_period_custom_inverted_falls_back_to_month():
     assert p['date_from'] == date(2026, 6, 1)
 
 
-import os
 import io
 from decimal import Decimal
 from openpyxl import load_workbook
-import pytest
-from app import create_app
 from app.journals.ap_journal_data import build_ap_journal_xlsx
-
-
-@pytest.fixture(scope='module')
-def flask_app():
-    os.environ['SECRET_KEY'] = 'test-secret-key'
-    app = create_app('testing')
-    return app
 
 
 def _fake_entry(date_str, number, invoice, vendor, notes):
     class E: pass
-    from datetime import datetime
     e = E()
     e.entry_date = datetime.strptime(date_str, '%Y-%m-%d').date()
     e.reference = number
@@ -79,7 +68,7 @@ def _fake_entry(date_str, number, invoice, vendor, notes):
     return e
 
 
-def test_build_ap_journal_xlsx_has_headers_and_total_row(flask_app):
+def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
     columns = [
         {'account_id': 1, 'code': '20101', 'name': 'Accounts Payable - Trade', 'group': 'ap'},
         {'account_id': 2, 'code': '60400', 'name': 'Rent Expense', 'group': 'other'},
@@ -90,7 +79,7 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(flask_app):
         'is_draft': False,
     }]
     totals = {1: Decimal('-5000'), 2: Decimal('5000')}
-    with flask_app.app_context():
+    with app.app_context():
         resp = build_ap_journal_xlsx(
             columns=columns, rows=rows, totals=totals,
             period_label='For the month of June 2026',
