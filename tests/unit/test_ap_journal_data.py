@@ -1,5 +1,6 @@
 from datetime import date, datetime
-from app.journals.ap_journal_data import resolve_period
+from decimal import Decimal
+from app.journals.ap_journal_data import resolve_period, _fmt
 
 
 def test_resolve_period_defaults_to_given_month():
@@ -51,8 +52,15 @@ def test_resolve_period_custom_inverted_falls_back_to_month():
     assert p['date_from'] == date(2026, 6, 1)
 
 
+def test__fmt():
+    assert _fmt(None) == ''
+    assert _fmt(Decimal('0')) == ''
+    assert _fmt(Decimal('5000')) == '5,000.00'
+    assert _fmt(Decimal('-5000')) == '(5,000.00)'
+    assert _fmt(Decimal('-0.01')) == '(0.01)'
+
+
 import io
-from decimal import Decimal
 from openpyxl import load_workbook
 from app.journals.ap_journal_data import build_ap_journal_xlsx
 
@@ -96,3 +104,19 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
     assert 'Accounts Payable - Trade' in all_text
     assert 'Rent Expense' in all_text
     assert 'TOTAL' in all_text
+
+    fixed = ['Date', 'No.', 'Invoice No.', 'Vendor', 'Particulars']
+    header = fixed + [c['name'] for c in columns]
+
+    # verify parenthesised credit and positive debit in data row
+    # header is row 5 (rows 1-4 are company header, journal title, period, blank)
+    # data row is row 6
+    data_row = [ws.cell(row=6, column=i).value for i in range(1, len(header) + 1)]
+    assert '(5,000.00)' in data_row   # AP column (credit → negative → parenthesised)
+    assert '5,000.00' in data_row      # Rent Expense column (debit → positive)
+
+    # TOTAL row is row 7
+    total_row = [ws.cell(row=7, column=i).value for i in range(1, len(header) + 1)]
+    assert total_row[0] == 'TOTAL'
+    assert '(5,000.00)' in total_row
+    assert '5,000.00' in total_row

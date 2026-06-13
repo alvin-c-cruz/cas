@@ -202,6 +202,8 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     ws.append(total_line)
     for cell in ws[ws.max_row]:
         cell.font = bold
+    for i in range(len(fixed) + 1, len(header) + 1):
+        ws.cell(row=ws.max_row, column=i).alignment = right
 
     output = io.BytesIO()
     wb.save(output)
