@@ -118,3 +118,71 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
     assert total_row[0] == 'TOTAL'
     assert total_row[5] == '=SUM(F7:F7)'   # AP column formula
     assert total_row[6] == '=SUM(G7:G7)'   # Rent Expense column formula
+
+
+from unittest.mock import MagicMock
+
+
+def _mock_bill(bill_number, bill_date, vendor_name='Vendor X',
+               vendor_invoice_number='INV-1', notes=''):
+    b = MagicMock()
+    b.bill_number = bill_number
+    b.bill_date = bill_date
+    b.vendor_name = vendor_name
+    b.vendor_invoice_number = vendor_invoice_number
+    b.notes = notes
+    return b
+
+
+def test_build_columnar_voided_rows_excluded_from_totals():
+    from app.journals.ap_journal_data import build_columnar
+    voided = _mock_bill('AP-2026-06-0002', date(2026, 6, 2))
+    matrix = build_columnar(
+        posted_entries=[], draft_entries=[],
+        ap_account_id=1, wt_account_id=2, input_vat_account_ids=set(),
+        voided_bills=[voided],
+    )
+    assert len(matrix['rows']) == 1
+    row = matrix['rows'][0]
+    assert row['is_voided'] is True
+    assert row['cells'] == {}
+    assert row['bill'] is voided
+    assert matrix['totals'] == {}
+    assert matrix['grand_total'] == Decimal('0')
+
+
+def test_build_columnar_voided_rows_sort_with_posted_by_date():
+    from app.journals.ap_journal_data import build_columnar
+    voided = _mock_bill('AP-2026-06-0001', date(2026, 6, 1))
+
+    posted_je = MagicMock()
+    posted_je.entry_date = date(2026, 6, 3)
+    posted_je.entry_number = 'AP-2026-06-0003'
+    line = MagicMock()
+    acct = MagicMock()
+    acct.id = 99
+    acct.code = '20101'
+    acct.name = 'AP'
+    line.account = acct
+    line.debit_amount = Decimal('0')
+    line.credit_amount = Decimal('5000')
+    posted_je.lines.all.return_value = [line]
+
+    matrix = build_columnar(
+        posted_entries=[posted_je], draft_entries=[],
+        ap_account_id=99, wt_account_id=None, input_vat_account_ids=set(),
+        voided_bills=[voided],
+    )
+    assert matrix['rows'][0]['is_voided'] is True
+    assert matrix['rows'][1]['is_voided'] is False
+
+
+def test_build_columnar_voided_no_column_contribution():
+    from app.journals.ap_journal_data import build_columnar
+    voided = _mock_bill('AP-2026-06-0005', date(2026, 6, 5))
+    matrix = build_columnar(
+        posted_entries=[], draft_entries=[],
+        ap_account_id=1, wt_account_id=2, input_vat_account_ids=set(),
+        voided_bills=[voided],
+    )
+    assert matrix['columns'] == []

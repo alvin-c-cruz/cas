@@ -96,19 +96,22 @@ def _group_for(account, ap_account_id, wt_account_id, input_vat_account_ids):
 
 
 def build_columnar(posted_entries, draft_entries, ap_account_id,
-                   wt_account_id, input_vat_account_ids):
+                   wt_account_id, input_vat_account_ids, voided_bills=None):
     """Pivot journal-entry lines into a columnar matrix.
 
     Columns are built only from POSTED entries' accounts, ordered
     credits-first (AP, WHT, Input VAT, then other accounts by code).
     Posted rows carry signed amounts (debit - credit) per account and
-    contribute to per-column totals. Draft rows are listed with a flag
-    and no amounts, excluded from totals.
+    contribute to per-column totals. Draft and voided rows are listed
+    with a flag and no amounts, excluded from totals.
 
     Returns dict: columns, rows, totals, grand_total, balanced.
     """
-    accounts_by_id = {}          # account_id -> Account
-    totals = {}                  # account_id -> Decimal
+    if voided_bills is None:
+        voided_bills = []
+
+    accounts_by_id = {}
+    totals = {}
     rows = []
 
     for je in posted_entries:
@@ -119,10 +122,13 @@ def build_columnar(posted_entries, draft_entries, ap_account_id,
             signed = (line.debit_amount or Decimal('0')) - (line.credit_amount or Decimal('0'))
             cells[acct.id] = cells.get(acct.id, Decimal('0')) + signed
             totals[acct.id] = totals.get(acct.id, Decimal('0')) + signed
-        rows.append({'entry': je, 'cells': cells, 'is_draft': False})
+        rows.append({'entry': je, 'cells': cells, 'is_draft': False, 'is_voided': False})
 
     for je in draft_entries:
-        rows.append({'entry': je, 'cells': {}, 'is_draft': True})
+        rows.append({'entry': je, 'cells': {}, 'is_draft': True, 'is_voided': False})
+
+    for bill in voided_bills:
+        rows.append({'bill': bill, 'entry': None, 'cells': {}, 'is_draft': False, 'is_voided': True})
 
     ordered = sorted(
         accounts_by_id.values(),
@@ -135,8 +141,12 @@ def build_columnar(posted_entries, draft_entries, ap_account_id,
         'group': _group_for(a, ap_account_id, wt_account_id, input_vat_account_ids),
     } for a in ordered]
 
-    # Sort rows by entry date then number for a stable, chronological journal
-    rows.sort(key=lambda r: (r['entry'].entry_date, r['entry'].entry_number))
+    def _row_sort_key(r):
+        if r['is_voided']:
+            return (r['bill'].bill_date, r['bill'].bill_number)
+        return (r['entry'].entry_date, r['entry'].entry_number)
+
+    rows.sort(key=_row_sort_key)
 
     grand_total = sum(totals.values(), Decimal('0'))
     return {
