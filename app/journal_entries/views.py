@@ -11,7 +11,7 @@ from app.accounts.models import Account
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.periods.utils import validate_transaction_date_with_flash
-from app.journal_entries.utils import generate_entry_number
+from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from datetime import datetime, date
 from decimal import Decimal
 import json
@@ -219,7 +219,7 @@ def create():
             flash('Please select a branch before creating journal entries.', 'error')
             return redirect(url_for('users.select_branch', next=request.url))
 
-        form.entry_number.data = generate_entry_number(current_branch_id)
+        form.entry_number.data = generate_jv_number(current_branch_id)
         form.entry_date.data = date.today()
 
     accounts = Account.query.order_by(Account.code).all()

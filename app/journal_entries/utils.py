@@ -23,3 +23,27 @@ def generate_entry_number(branch_id):
         next_num = 1
 
     return f'{prefix}{next_num:04d}'
+
+
+def generate_jv_number(branch_id):
+    """Generate next JV number for a branch: JV-YYYY-MM-NNNN. Resets each month."""
+    from app.journal_entries.models import JournalEntry
+    from app.utils import ph_now
+    now = ph_now()
+    prefix = f'JV-{now.year}-{now.month:02d}-'
+
+    latest = JournalEntry.query.filter(
+        JournalEntry.entry_number.like(f'{prefix}%'),
+        JournalEntry.branch_id == branch_id
+    ).order_by(JournalEntry.entry_number.desc()).first()
+
+    if latest:
+        try:
+            last_num = int(latest.entry_number.split('-')[-1])
+            next_num = last_num + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    return f'{prefix}{next_num:04d}'
