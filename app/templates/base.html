@@ -1124,25 +1124,6 @@
                 </div>
             </div>
 
-            <!-- Ledger Section -->
-            <div class="nav-section">
-                <div class="nav-label nav-label-collapsible" data-section="ledger">
-                    <span>Ledger</span>
-                    <span class="nav-label-arrow">▼</span>
-                </div>
-                <div class="nav-section-content" id="section-ledger">
-                    <a href="{{ url_for('accounts.list_accounts') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts.') %}active{% endif %}">
-                        <span class="nav-icon">📋</span>
-                        <span class="nav-text">Chart of Accounts</span>
-                    </a>
-                    <a href="{{ url_for('dashboard.under_development', feature='General Ledger') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'General Ledger' %}active{% endif %}">
-                        <span class="nav-icon">📖</span>
-                        <span class="nav-text">General Ledger</span>
-                        <span class="nav-coming-soon">Soon</span>
-                    </a>
-                </div>
-            </div>
-
             <!-- Journals Section -->
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="journals">
@@ -1165,6 +1146,25 @@
                     <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' or (request.endpoint and request.endpoint.startswith('journal_entries.') and request.endpoint != 'journal_entries.list_entries') %}active{% endif %}">
                         <span class="nav-icon">📓</span>
                         <span class="nav-text">Journal Voucher</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Ledger Section -->
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="ledger">
+                    <span>Ledger</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-ledger">
+                    <a href="{{ url_for('accounts.list_accounts') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts.') %}active{% endif %}">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-text">Chart of Accounts</span>
+                    </a>
+                    <a href="{{ url_for('dashboard.under_development', feature='General Ledger') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'General Ledger' %}active{% endif %}">
+                        <span class="nav-icon">📖</span>
+                        <span class="nav-text">General Ledger</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                 </div>
             </div>
