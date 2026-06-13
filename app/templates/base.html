@@ -1113,13 +1113,35 @@
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Chart of Accounts</span>
                     </a>
-                    <a href="{{ url_for('journal_entries.list_entries') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('journal_entries.') %}active{% endif %}">
-                        <span class="nav-icon">📓</span>
-                        <span class="nav-text">Journal Entries</span>
-                    </a>
                     <a href="{{ url_for('dashboard.under_development', feature='General Ledger') }}" class="nav-item {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'General Ledger' %}active{% endif %}">
                         <span class="nav-icon">📖</span>
                         <span class="nav-text">General Ledger</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Journals Section -->
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="journals">
+                    <span>Journals</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-journals">
+                    <a href="{{ url_for('journals.ap_journal') }}" class="nav-item {% if request.endpoint == 'journals.ap_journal' %}active{% endif %}">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-text">Accounts Payable Journal</span>
+                    </a>
+                    <a href="{{ url_for('journals.cr_journal') }}" class="nav-item {% if request.endpoint == 'journals.cr_journal' %}active{% endif %}">
+                        <span class="nav-icon">💰</span>
+                        <span class="nav-text">Cash Receipts Journal</span>
+                    </a>
+                    <a href="{{ url_for('journals.cd_journal') }}" class="nav-item {% if request.endpoint == 'journals.cd_journal' %}active{% endif %}">
+                        <span class="nav-icon">💸</span>
+                        <span class="nav-text">Cash Disbursements Journal</span>
+                    </a>
+                    <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' or (request.endpoint and request.endpoint.startswith('journal_entries.') and request.endpoint != 'journal_entries.list_entries') %}active{% endif %}">
+                        <span class="nav-icon">📓</span>
+                        <span class="nav-text">Journal Voucher</span>
                     </a>
                 </div>
             </div>
@@ -1313,7 +1335,7 @@
                             📋 New AP Voucher
                         </a>
                         <a href="{{ url_for('journal_entries.create') }}" class="topbar-new-item">
-                            📝 New Journal Entry
+                            📝 New Journal Voucher
                         </a>
                         <div class="topbar-new-divider"></div>
                         <a href="{{ url_for('dashboard.under_development', feature='Collections') }}" class="topbar-new-item topbar-new-item--soon">
