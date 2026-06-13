@@ -77,6 +77,12 @@ def login():
                 # Increment failed attempts and check if account should be locked
                 account_locked = user.increment_failed_attempts(max_attempts=5, lockout_minutes=15)
 
+                # Persist lockout state immediately — do not rely on log_audit's commit
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+
                 # Log failed login with invalid password
                 log_audit(
                     module='auth',
