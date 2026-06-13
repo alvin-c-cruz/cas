@@ -1195,6 +1195,16 @@
                         <span class="nav-text">General Ledger</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
+                    <a href="{{ url_for('reports.ar_aging') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.ar_aging' %}active{% endif %}">
+                        <span class="nav-icon">📅</span>
+                        <span class="nav-text">Aging of AR</span>
+                        <span class="nav-coming-soon">Soon</span>
+                    </a>
+                    <a href="{{ url_for('reports.ap_aging') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.ap_aging' %}active{% endif %}">
+                        <span class="nav-icon">📆</span>
+                        <span class="nav-text">Aging of AP</span>
+                        <span class="nav-coming-soon">Soon</span>
+                    </a>
                 </div>
             </div>
 
@@ -1223,16 +1233,6 @@
                     <a href="{{ url_for('reports.trial_balance') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.trial_balance' %}active{% endif %}">
                         <span class="nav-icon">⚖️</span>
                         <span class="nav-text">Trial Balance</span>
-                        <span class="nav-coming-soon">Soon</span>
-                    </a>
-                    <a href="{{ url_for('reports.ar_aging') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.ar_aging' %}active{% endif %}">
-                        <span class="nav-icon">📅</span>
-                        <span class="nav-text">Aging of AR</span>
-                        <span class="nav-coming-soon">Soon</span>
-                    </a>
-                    <a href="{{ url_for('reports.ap_aging') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.ap_aging' %}active{% endif %}">
-                        <span class="nav-icon">📆</span>
-                        <span class="nav-text">Aging of AP</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
                 </div>
