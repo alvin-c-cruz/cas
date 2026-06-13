@@ -105,7 +105,8 @@ def ap_journal_export():
     period, matrix, bill_map = _ap_journal_context(branch_id)
 
     branch = db.session.get(Branch, branch_id)
-    branch_name = branch.name if branch else 'All Branches'
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
     company_name = AppSettings.get_setting('company_name') or 'Company'
 
     if period['mode'] == 'month':

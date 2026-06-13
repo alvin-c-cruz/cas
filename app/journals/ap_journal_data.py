@@ -161,15 +161,13 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
                           branch_name, filename, identity):
     """Build the columnar AP Journal as an .xlsx Flask response.
 
-    identity(entry) -> (no, invoice_no, vendor, particulars) for the left columns.
-    Amount cells store real floats with #,##0.00;(#,##0.00) format so Excel
-    can sort/sum them. Draft rows show identifiers only with no amounts.
+    branch_name=None skips the branch row (caller passes None when only one
+    branch exists). Amount columns use SUM formulas so totals are live in Excel.
     """
     wb = Workbook()
     ws = wb.active
     ws.title = 'AP Journal'
 
-    bold = Font(bold=True)
     right = Alignment(horizontal='right')
     center_wrap = Alignment(horizontal='center', vertical='center', wrap_text=True)
     num_fmt = '#,##0.00;(#,##0.00)'
@@ -177,27 +175,34 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     thin = Side(style='thin')
     double_s = Side(style='double')
     cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    total_border = Border(left=thin, right=thin, top=double_s, bottom=double_s)
+    total_border = Border(left=thin, right=thin, top=thin, bottom=double_s)
 
-    # Preamble rows 1–5
-    ws.append([company_name]);         ws['A1'].font = bold
-    ws.append([branch_name]);          ws['A2'].font = bold
-    ws.append(['Accounts Payable Journal']); ws['A3'].font = bold
+    # Preamble
+    ws.append([company_name])
+    ws['A1'].font = Font(bold=True, size=16)
+
+    if branch_name:
+        ws.append([branch_name])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=16)
+
+    ws.append(['Accounts Payable Journal'])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, size=14)
     ws.append([period_label])
     ws.append([])
 
-    # Header row (row 6)
+    # Header row
     fixed = ['Date', 'AP No.', 'Invoice No.', 'Vendor', 'Particulars']
     header = fixed + [c['name'] for c in columns]
     ws.append(header)
     hdr_row = ws.max_row
     ws.row_dimensions[hdr_row].height = 40
     for cell in ws[hdr_row]:
-        cell.font = bold
+        cell.font = Font(bold=True)
         cell.alignment = center_wrap
         cell.border = cell_border
 
     # Data rows
+    first_data_row = hdr_row + 1
     for r in rows:
         e = r['entry']
         no, invoice, vendor, particulars = identity(e)
@@ -222,24 +227,27 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
                 cell.number_format = num_fmt
                 cell.alignment = right
 
+    last_data_row = ws.max_row
+
     # Blank separator before total
     ws.append([])
 
-    # TOTAL row with double rule top and bottom
-    total_line = ['TOTAL', '', '', '', '']
-    for c in columns:
-        val = totals.get(c['account_id'])
-        total_line.append(float(val) if val else None)
-    ws.append(total_line)
+    # TOTAL row: SUM formulas, double bottom rule only
+    ws.append(['TOTAL', '', '', '', ''])
     tot_row = ws.max_row
-    for i, cell in enumerate(ws[tot_row], 1):
-        cell.font = bold
+    for i in range(1, len(fixed) + 1):
+        ws.cell(row=tot_row, column=i).font = Font(bold=True)
+        ws.cell(row=tot_row, column=i).border = total_border
+    for i, c in enumerate(columns, len(fixed) + 1):
+        col_letter = get_column_letter(i)
+        cell = ws.cell(row=tot_row, column=i)
+        cell.value = f'=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row})'
+        cell.font = Font(bold=True)
+        cell.number_format = num_fmt
+        cell.alignment = right
         cell.border = total_border
-        if i > len(fixed):
-            cell.number_format = num_fmt
-            cell.alignment = right
 
-    # Column widths: Date, AP No., Invoice No., Vendor, Particulars, then amount cols
+    # Column widths
     col_widths = [12, 22, 22, 28, 40] + [20] * len(columns)
     for i, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = width

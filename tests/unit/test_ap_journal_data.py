@@ -108,13 +108,13 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
     fixed = ['Date', 'AP No.', 'Invoice No.', 'Vendor', 'Particulars']
     header = fixed + [c['name'] for c in columns]
 
-    # header row 6, data row 7 (amounts stored as floats with number format)
+    # header row 6 (branch shown in test), data row 7
     data_row = [ws.cell(row=7, column=i).value for i in range(1, len(header) + 1)]
     assert -5000.0 in data_row   # AP column (credit → negative float)
     assert 5000.0 in data_row     # Rent Expense column (debit → positive float)
 
-    # blank row 8, TOTAL row is row 9
+    # blank row 8, TOTAL row 9 — amounts are SUM formulas (openpyxl stores as strings)
     total_row = [ws.cell(row=9, column=i).value for i in range(1, len(header) + 1)]
     assert total_row[0] == 'TOTAL'
-    assert -5000.0 in total_row
-    assert 5000.0 in total_row
+    assert total_row[5] == '=SUM(F7:F7)'   # AP column formula
+    assert total_row[6] == '=SUM(G7:G7)'   # Rent Expense column formula
