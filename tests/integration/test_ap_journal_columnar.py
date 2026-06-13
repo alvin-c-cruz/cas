@@ -132,3 +132,17 @@ def test_ap_journal_export_returns_xlsx(client, db_session):
     assert res.status_code == 200
     assert res.headers['Content-Type'].startswith('application/vnd.openxmlformats')
     assert 'AP-Journal-2026-06.xlsx' in res.headers['Content-Disposition']
+
+
+def test_ap_journal_view_shows_draft_indicator(client, db_session):
+    branch = Branch(name='Main', code='MAIN')
+    db.session.add(branch)
+    db.session.commit()
+    ap = _acct('20101', 'Accounts Payable - Trade', 'Liability', 'credit')
+    rent = _acct('60400', 'Rent Expense', 'Expense', 'debit')
+    _entry(branch.id, 'draft', date(2026, 6, 5), 'AP-2026-06-0009',
+           [(rent, 700, 0), (ap, 0, 700)])
+    _login(client, db_session, branch)
+    res = client.get('/journals/ap?mode=month&year=2026&month=6')
+    body = res.get_data(as_text=True)
+    assert 'Draft' in body
