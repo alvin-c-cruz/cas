@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from flask import make_response
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 
@@ -176,6 +176,7 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     double_s = Side(style='double')
     cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
     total_border = Border(bottom=double_s)
+    draft_fill = PatternFill(fill_type='solid', fgColor='FFF9C4')  # light yellow
 
     # Preamble
     ws.append([company_name])
@@ -223,6 +224,8 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
         cur = ws.max_row
         for i, cell in enumerate(ws[cur], 1):
             cell.border = cell_border
+            if r['is_draft']:
+                cell.fill = draft_fill
             if i > len(fixed):
                 cell.number_format = num_fmt
                 cell.alignment = right
