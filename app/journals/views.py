@@ -1,5 +1,5 @@
 """Journals — filtered list views over JournalEntry for each journal type."""
-from flask import Blueprint, render_template, redirect, url_for, request, session
+from flask import Blueprint, render_template, redirect, url_for, request, session, flash
 from flask_login import login_required
 from app import db
 from app.journal_entries.models import JournalEntry
@@ -15,7 +15,8 @@ def _branch_id():
 
 
 def _date_defaults():
-    year = datetime.now().year
+    from app.utils import ph_now
+    year = ph_now().year
     return request.args.get('date_from', f'{year}-01-01'), request.args.get('date_to', f'{year}-12-31')
 
 
@@ -40,13 +41,14 @@ def ap_journal():
     branch_id = _branch_id()
     date_from, date_to = _date_defaults()
 
-    if branch_id:
-        query = JournalEntry.query.filter(
-            JournalEntry.entry_type == 'purchase',
-            JournalEntry.branch_id == branch_id
-        )
-    else:
-        query = JournalEntry.query.filter_by(branch_id=-1)
+    if not branch_id:
+        flash('Please select a branch to view journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    query = JournalEntry.query.filter(
+        JournalEntry.entry_type == 'purchase',
+        JournalEntry.branch_id == branch_id
+    )
 
     query = _apply_date_filter(query, date_from, date_to)
     entries = query.order_by(JournalEntry.entry_date.desc()).all()
@@ -69,13 +71,14 @@ def voucher():
     date_from, date_to = _date_defaults()
     status_filter = request.args.get('status', 'all')
 
-    if branch_id:
-        query = JournalEntry.query.filter(
-            JournalEntry.entry_type.in_(VOUCHER_TYPES),
-            JournalEntry.branch_id == branch_id
-        )
-    else:
-        query = JournalEntry.query.filter_by(branch_id=-1)
+    if not branch_id:
+        flash('Please select a branch to view journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    query = JournalEntry.query.filter(
+        JournalEntry.entry_type.in_(VOUCHER_TYPES),
+        JournalEntry.branch_id == branch_id
+    )
 
     if status_filter != 'all':
         query = query.filter(JournalEntry.status == status_filter)
