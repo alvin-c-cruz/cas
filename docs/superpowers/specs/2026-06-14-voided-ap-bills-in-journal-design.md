@@ -73,6 +73,5 @@ Confirm that voided bills already display a `VOIDED` status badge. No query chan
 
 ## Out of Scope
 
-- Sales Invoice void display (separate module, different void semantics — creates a reversal JE).
-- Receipt/JE cancel display in their respective journals.
+- Sales Invoice, Receipt, and Journal Voucher void/cancel display in their respective journals — to be handled when those journals are built. This spec establishes the pattern they will follow.
 - Changing the void handler (JE deletion on void remains correct).
