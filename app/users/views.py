@@ -164,12 +164,9 @@ def login():
         # Other users see only their assigned branches
         if user.role in ['admin', 'accountant']:
             accessible_branches = active_branches
-        elif user.branches:
-            # Filter user's assigned branches to only show active ones
-            user_branch_ids = user.get_branch_ids()
-            accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
         else:
-            accessible_branches = []
+            user_branch_ids = {b.id for b in user.branches.all()}
+            accessible_branches = [b for b in active_branches if b.id in user_branch_ids]
 
         if not accessible_branches:
             flash('No branches available. Please contact the administrator.', 'error')
