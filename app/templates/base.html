@@ -1105,21 +1105,24 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-transactions">
-                    <a href="{{ url_for('sales_invoices.list_invoices') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_invoices.') %}active{% endif %}">
+                    <a href="{{ url_for('sales_invoices.list_invoices') }}" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('sales_invoices.') %}active{% endif %}">
                         <span class="nav-icon">📄</span>
                         <span class="nav-text">Sales</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('receipts.list_receipts') }}?type=collection" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'collection' %}active{% endif %}">
+                    <a href="{{ url_for('receipts.list_receipts') }}?type=collection" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'collection' %}active{% endif %}">
                         <span class="nav-icon">💰</span>
                         <span class="nav-text">Cash Receipts</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('purchase_bills.list_bills') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('purchase_bills.') %}active{% endif %}">
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Accounts Payable</span>
                     </a>
-                    <a href="{{ url_for('receipts.list_receipts') }}?type=payment" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'payment' %}active{% endif %}">
+                    <a href="{{ url_for('receipts.list_receipts') }}?type=payment" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'payment' %}active{% endif %}">
                         <span class="nav-icon">💸</span>
                         <span class="nav-text">Cash Disbursements</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' or (request.endpoint and request.endpoint.startswith('journal_entries.') and request.endpoint != 'journal_entries.list_entries') %}active{% endif %}">
                         <span class="nav-icon">📓</span>
@@ -1187,30 +1190,35 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-financial-reports">
-                    <a href="{{ url_for('reports.income_statement') }}" class="nav-item {% if request.endpoint == 'reports.income_statement' %}active{% endif %}">
+                    <a href="{{ url_for('reports.income_statement') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.income_statement' %}active{% endif %}">
                         <span class="nav-icon">💰</span>
                         <span class="nav-text">Income Statement</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('reports.balance_sheet') }}" class="nav-item {% if request.endpoint == 'reports.balance_sheet' %}active{% endif %}">
+                    <a href="{{ url_for('reports.balance_sheet') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.balance_sheet' %}active{% endif %}">
                         <span class="nav-icon">📈</span>
                         <span class="nav-text">Balance Sheet</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('dashboard.under_development', feature='Cash Flow') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Cash Flow' %}active{% endif %}">
                         <span class="nav-icon">💸</span>
                         <span class="nav-text">Cash Flow</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('reports.trial_balance') }}" class="nav-item {% if request.endpoint == 'reports.trial_balance' %}active{% endif %}">
+                    <a href="{{ url_for('reports.trial_balance') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.trial_balance' %}active{% endif %}">
                         <span class="nav-icon">⚖️</span>
                         <span class="nav-text">Trial Balance</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('reports.ar_aging') }}" class="nav-item {% if request.endpoint == 'reports.ar_aging' %}active{% endif %}">
+                    <a href="{{ url_for('reports.ar_aging') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.ar_aging' %}active{% endif %}">
                         <span class="nav-icon">📅</span>
                         <span class="nav-text">Aging of AR</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('reports.ap_aging') }}" class="nav-item {% if request.endpoint == 'reports.ap_aging' %}active{% endif %}">
+                    <a href="{{ url_for('reports.ap_aging') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.ap_aging' %}active{% endif %}">
                         <span class="nav-icon">📆</span>
                         <span class="nav-text">Aging of AP</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                 </div>
             </div>
@@ -1222,13 +1230,15 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-bir-reports">
-                    <a href="{{ url_for('reports.bir_index') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.bir') %}active{% endif %}">
+                    <a href="{{ url_for('reports.bir_index') }}" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('reports.bir') %}active{% endif %}">
                         <span class="nav-icon">🏛</span>
                         <span class="nav-text">VAT Reports</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('reports.bir_alphalist') }}" class="nav-item {% if request.endpoint == 'reports.bir_alphalist' %}active{% endif %}">
+                    <a href="{{ url_for('reports.bir_alphalist') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.bir_alphalist' %}active{% endif %}">
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Withholding Tax</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('dashboard.under_development', feature='Annual ITR') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Annual ITR' %}active{% endif %}">
                         <span class="nav-icon">📄</span>
@@ -1245,9 +1255,10 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-maintenance">
-                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
+                    <a href="{{ url_for('customers.list_customers') }}" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                         <span class="nav-icon">👥</span>
                         <span class="nav-text">Customers</span>
+                        <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('vendors.list_vendors') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vendors.') %}active{% endif %}">
                         <span class="nav-icon">🏢</span>
