@@ -1,6 +1,11 @@
+import io
 from datetime import date, datetime
 from decimal import Decimal
-from app.journals.ap_journal_data import resolve_period, _fmt
+from unittest.mock import MagicMock
+
+from openpyxl import load_workbook
+
+from app.journals.ap_journal_data import resolve_period, _fmt, build_ap_journal_xlsx, build_columnar
 
 
 def test_resolve_period_defaults_to_given_month():
@@ -60,11 +65,6 @@ def test__fmt():
     assert _fmt(Decimal('-0.01')) == '(0.01)'
 
 
-import io
-from openpyxl import load_workbook
-from app.journals.ap_journal_data import build_ap_journal_xlsx
-
-
 def _fake_entry(date_str, number, invoice, vendor, notes):
     class E: pass
     e = E()
@@ -120,9 +120,6 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
     assert total_row[6] == '=SUM(G7:G7)'   # Rent Expense column formula
 
 
-from unittest.mock import MagicMock
-
-
 def _mock_bill(bill_number, bill_date, vendor_name='Vendor X',
                vendor_invoice_number='INV-1', notes=''):
     b = MagicMock()
@@ -135,7 +132,6 @@ def _mock_bill(bill_number, bill_date, vendor_name='Vendor X',
 
 
 def test_build_columnar_voided_rows_excluded_from_totals():
-    from app.journals.ap_journal_data import build_columnar
     voided = _mock_bill('AP-2026-06-0002', date(2026, 6, 2))
     matrix = build_columnar(
         posted_entries=[], draft_entries=[],
@@ -152,7 +148,6 @@ def test_build_columnar_voided_rows_excluded_from_totals():
 
 
 def test_build_columnar_voided_rows_sort_with_posted_by_date():
-    from app.journals.ap_journal_data import build_columnar
     voided = _mock_bill('AP-2026-06-0001', date(2026, 6, 1))
 
     posted_je = MagicMock()
@@ -178,7 +173,6 @@ def test_build_columnar_voided_rows_sort_with_posted_by_date():
 
 
 def test_build_columnar_voided_no_column_contribution():
-    from app.journals.ap_journal_data import build_columnar
     voided = _mock_bill('AP-2026-06-0005', date(2026, 6, 5))
     matrix = build_columnar(
         posted_entries=[], draft_entries=[],
