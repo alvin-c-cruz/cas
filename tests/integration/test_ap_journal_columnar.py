@@ -7,6 +7,7 @@ from app.accounts.models import Account
 from app.branches.models import Branch
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journals.ap_journal_data import build_columnar
+from app.users.models import User
 
 
 def _acct(code, name, atype, normal):
@@ -86,3 +87,48 @@ def test_build_columnar_draft_excluded_from_totals_and_columns(db_session):
     draft_rows = [r for r in matrix['rows'] if r['is_draft']]
     assert len(draft_rows) == 1
     assert draft_rows[0]['cells'] == {}
+
+
+def _login(client, db_session, branch):
+    u = User(username='acc', email='acc@t.com', full_name='Acc', role='accountant', is_active=True)
+    u.set_password('pass')
+    u.branches.append(branch)
+    db.session.add(u)
+    db.session.commit()
+    client.post('/login', data={'username': 'acc', 'password': 'pass'}, follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+
+
+def test_ap_journal_view_renders_account_columns(client, db_session):
+    branch = Branch(name='Main', code='MAIN')
+    db.session.add(branch)
+    db.session.commit()
+    ap = _acct('20101', 'Accounts Payable - Trade', 'Liability', 'credit')
+    rent = _acct('60400', 'Rent Expense', 'Expense', 'debit')
+    _entry(branch.id, 'posted', date(2026, 6, 1), 'AP-2026-06-0001',
+           [(rent, 5000, 0), (ap, 0, 5000)])
+    _login(client, db_session, branch)
+
+    res = client.get('/journals/ap?mode=month&year=2026&month=6')
+    assert res.status_code == 200
+    body = res.get_data(as_text=True)
+    assert 'Rent Expense' in body
+    assert 'Accounts Payable - Trade' in body
+    assert 'For the month of June 2026' in body
+
+
+def test_ap_journal_export_returns_xlsx(client, db_session):
+    branch = Branch(name='Main', code='MAIN')
+    db.session.add(branch)
+    db.session.commit()
+    ap = _acct('20101', 'Accounts Payable - Trade', 'Liability', 'credit')
+    rent = _acct('60400', 'Rent Expense', 'Expense', 'debit')
+    _entry(branch.id, 'posted', date(2026, 6, 1), 'AP-2026-06-0001',
+           [(rent, 5000, 0), (ap, 0, 5000)])
+    _login(client, db_session, branch)
+
+    res = client.get('/journals/ap/export?mode=month&year=2026&month=6')
+    assert res.status_code == 200
+    assert res.headers['Content-Type'].startswith('application/vnd.openxmlformats')
+    assert 'AP-Journal-2026-06.xlsx' in res.headers['Content-Disposition']

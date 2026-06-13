@@ -3,6 +3,8 @@ from flask import Blueprint, render_template, redirect, url_for, request, sessio
 from flask_login import login_required
 from app import db
 from app.journal_entries.models import JournalEntry
+from app.utils import ph_now
+from app.journals.ap_journal_data import resolve_period, build_columnar, build_ap_journal_xlsx
 from datetime import datetime
 
 journals_bp = Blueprint('journals', __name__, template_folder='templates')
@@ -34,34 +36,89 @@ def _apply_date_filter(query, date_from, date_to):
     return query
 
 
+def _gl_account_ids():
+    """Return (ap_id, wt_id, input_vat_ids) for column grouping."""
+    from app.accounts.models import Account
+    from app.vat_categories.models import VATCategory
+    ap = Account.query.filter_by(code='20101').first()
+    wt = Account.query.filter_by(code='20301').first()
+    vat_ids = {c.input_vat_account.id for c in VATCategory.query.all() if c.input_vat_account}
+    return (ap.id if ap else None, wt.id if wt else None, vat_ids)
+
+
+def _ap_journal_context(branch_id):
+    """Build the columnar AP journal data for a branch + period from request.args."""
+    period = resolve_period(request.args, today=ph_now().date())
+
+    entries = JournalEntry.query.filter(
+        JournalEntry.entry_type == 'purchase',
+        JournalEntry.branch_id == branch_id,
+        JournalEntry.entry_date >= period['date_from'],
+        JournalEntry.entry_date <= period['date_to'],
+    ).order_by(JournalEntry.entry_date).all()
+    posted = [e for e in entries if e.status == 'posted']
+    drafts = [e for e in entries if e.status == 'draft']
+
+    ap_id, wt_id, vat_ids = _gl_account_ids()
+    matrix = build_columnar(posted, drafts, ap_id, wt_id, vat_ids)
+
+    from app.purchase_bills.models import PurchaseBill
+    refs = [e.reference for e in entries if e.reference]
+    bills = PurchaseBill.query.filter(PurchaseBill.bill_number.in_(refs)).all() if refs else []
+    bill_map = {b.bill_number: b for b in bills}
+    return period, matrix, bill_map
+
+
+def _entry_identity(entry, bill_map):
+    """Return (no, invoice_no, vendor, particulars) for the left identifier columns."""
+    bill = bill_map.get(entry.reference)
+    return (
+        entry.reference or '—',
+        (bill.vendor_invoice_number if bill else '') or '',
+        (bill.vendor_name if bill else '') or '—',
+        (bill.notes if bill else '') or '',
+    )
+
+
 @journals_bp.route('/journals/ap')
 @login_required
 def ap_journal():
-    from app.purchase_bills.models import PurchaseBill
     branch_id = _branch_id()
-    date_from, date_to = _date_defaults()
-
     if not branch_id:
         flash('Please select a branch to view journal entries.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
 
-    query = JournalEntry.query.filter(
-        JournalEntry.entry_type == 'purchase',
-        JournalEntry.branch_id == branch_id
-    )
-
-    query = _apply_date_filter(query, date_from, date_to)
-    entries = query.order_by(JournalEntry.entry_date.desc()).all()
-
-    references = [e.reference for e in entries if e.reference]
-    bills = PurchaseBill.query.filter(PurchaseBill.bill_number.in_(references)).all() if references else []
-    bill_map = {b.bill_number: b for b in bills}
-
+    period, matrix, bill_map = _ap_journal_context(branch_id)
     return render_template('journals/ap_journal.html',
-                           entries=entries,
-                           bill_map=bill_map,
-                           date_from=date_from,
-                           date_to=date_to)
+                           period=period, matrix=matrix, bill_map=bill_map)
+
+
+@journals_bp.route('/journals/ap/export')
+@login_required
+def ap_journal_export():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to export journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    period, matrix, bill_map = _ap_journal_context(branch_id)
+
+    branch = db.session.get(Branch, branch_id)
+    branch_name = branch.name if branch else 'All Branches'
+    company_name = AppSettings.get_setting('company_name') or 'Company'
+
+    if period['mode'] == 'month':
+        filename = f"AP-Journal-{period['year']}-{period['month']:02d}.xlsx"
+    else:
+        filename = f"AP-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
+
+    return build_ap_journal_xlsx(
+        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
+        period_label=period['label'], company_name=company_name,
+        branch_name=branch_name, filename=filename,
+        identity=lambda e: _entry_identity(e, bill_map))
 
 
 @journals_bp.route('/journals/voucher')
