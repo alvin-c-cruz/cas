@@ -170,13 +170,15 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     right = Alignment(horizontal='right')
 
     ws.append([company_name])
-    ws['A1'].font = Font(bold=True, size=14)
-    ws.append(['Accounts Payable Journal'])
+    ws['A1'].font = bold
+    ws.append([branch_name])
     ws['A2'].font = bold
-    ws.append([f'{period_label} — {branch_name}'])
+    ws.append(['Accounts Payable Journal'])
+    ws['A3'].font = bold
+    ws.append([period_label])
     ws.append([])
 
-    fixed = ['Date', 'No.', 'Invoice No.', 'Vendor', 'Particulars']
+    fixed = ['Date', 'AP No.', 'Invoice No.', 'Vendor', 'Particulars']
     header = fixed + [c['name'] for c in columns]
     ws.append(header)
     for cell in ws[ws.max_row]:
@@ -186,7 +188,7 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
         e = r['entry']
         no, invoice, vendor, particulars = identity(e)
         line = [
-            e.entry_date.strftime('%Y-%m-%d'),
+            e.entry_date.strftime('%d-%b-%Y'),
             no or '',
             invoice or '',
             vendor or '',
