@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "Stop-Process -Id (Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue).OwningProcess -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Start-Process -NoNewWindow -FilePath python -ArgumentList 'flask_app.py' -WorkingDirectory 'C:\\envs\\cas'",
+            "shell": "powershell",
+            "async": true,
+            "statusMessage": "Starting Flask dev server..."
+          }
+        ]
+      }
+    ]
+  }
+}

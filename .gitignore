@@ -65,6 +65,7 @@ htmlcov/
 
 # Claude Code project files (memory, settings, session artifacts)
 .claude/
+!.claude/settings.local.json
 
 # Session screenshots and test artifacts in project root
 /*.png
@@ -92,6 +93,8 @@ pytest.ini
 # All scripts should be in ../../scripts/cas/
 /*.md
 !README.md
+!CLAUDE.md
+!PROJECT_FOUNDATIONS.md
 /*.html
 /mockup/
 /seed_*.py
