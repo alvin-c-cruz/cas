@@ -32,16 +32,19 @@ def resolve_period(args, today):
     if mode == 'custom':
         df = _parse_iso(args.get('date_from'))
         dt = _parse_iso(args.get('date_to'))
-        if df and dt:
+        if df and dt and df <= dt:
             return {
                 'mode': 'custom',
                 'year': df.year,
                 'month': df.month,
                 'date_from': df,
                 'date_to': dt,
-                'label': f"From {df.strftime('%B %d, %Y')} to {dt.strftime('%B %d, %Y')}",
+                'label': (
+                    f"From {df.strftime('%B')} {df.day}, {df.year}"
+                    f" to {dt.strftime('%B')} {dt.day}, {dt.year}"
+                ),
             }
-        # bad/missing custom dates → fall through to month default
+        # bad/missing/inverted custom dates → fall through to month default
 
     try:
         year = int(args.get('year', today.year))
