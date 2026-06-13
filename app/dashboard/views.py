@@ -81,12 +81,8 @@ def home():
     revenue_trend = get_monthly_revenue_trend(months=6, as_of_date=as_of_date, branch_id=current_branch_id)
     expense_breakdown = get_expense_breakdown(as_of_date=as_of_date, branch_id=current_branch_id)
 
-    # Action items placeholder (can be enhanced later)
-    action_items = []
-
     return render_template('dashboard/index.html',
                          stats=stats,
-                         action_items=action_items,
                          top_customers=top_customers,
                          top_vendors=top_vendors,
                          revenue_trend=revenue_trend,

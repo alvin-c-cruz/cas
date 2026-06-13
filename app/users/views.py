@@ -181,6 +181,13 @@ def select_branch():
 
     # If no branches, error
     if not accessible_branches:
+        log_audit(
+            module='auth',
+            action='logout',
+            record_id=current_user.id,
+            record_identifier=current_user.username,
+            notes='Forced logout: no accessible branches'
+        )
         flash('No branches available. Please contact the administrator.', 'error')
         logout_user()
         return redirect(url_for('users.login'))
@@ -199,7 +206,7 @@ def select_branch():
         session['selected_branch_id'] = branch_id
         session.pop('needs_branch_selection', None)
 
-        selected_branch = Branch.query.get(branch_id)
+        selected_branch = next(b for b in accessible_branches if b.id == branch_id)
 
         # Log branch selection
         log_audit(
