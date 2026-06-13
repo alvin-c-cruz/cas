@@ -4,8 +4,13 @@ No Flask request access here — callers pass plain dicts/values so these
 functions are unit-testable in isolation.
 """
 import calendar
+import io
 from datetime import date, datetime
 from decimal import Decimal
+
+from flask import make_response
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
 
 
 def _parse_iso(value):
@@ -140,3 +145,68 @@ def build_columnar(posted_entries, draft_entries, ap_account_id,
         'grand_total': grand_total,
         'balanced': grand_total == Decimal('0'),
     }
+
+
+def _fmt(value):
+    """Render a signed Decimal: credits (negative) in parentheses, blanks for zero/None."""
+    if value is None or value == Decimal('0'):
+        return ''
+    if value < 0:
+        return f'({-value:,.2f})'
+    return f'{value:,.2f}'
+
+
+def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
+                          branch_name, filename, identity):
+    """Build the columnar AP Journal as an .xlsx Flask response.
+
+    identity(entry) -> (no, invoice_no, vendor, particulars) for the left columns.
+    Credits render in parentheses; draft rows show identifiers only.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'AP Journal'
+    bold = Font(bold=True)
+    right = Alignment(horizontal='right')
+
+    ws.append([company_name])
+    ws['A1'].font = Font(bold=True, size=14)
+    ws.append(['Accounts Payable Journal'])
+    ws['A2'].font = bold
+    ws.append([f'{period_label} — {branch_name}'])
+    ws.append([])
+
+    fixed = ['Date', 'No.', 'Invoice No.', 'Vendor', 'Particulars']
+    header = fixed + [c['name'] for c in columns]
+    ws.append(header)
+    for cell in ws[ws.max_row]:
+        cell.font = bold
+
+    for r in rows:
+        e = r['entry']
+        no, invoice, vendor, particulars = identity(e)
+        line = [
+            e.entry_date.strftime('%Y-%m-%d'),
+            no or '',
+            invoice or '',
+            vendor or '',
+            ('[DRAFT] ' + (particulars or '')) if r['is_draft'] else (particulars or ''),
+        ]
+        for c in columns:
+            line.append('' if r['is_draft'] else _fmt(r['cells'].get(c['account_id'])))
+        ws.append(line)
+        for i in range(len(fixed) + 1, len(header) + 1):
+            ws.cell(row=ws.max_row, column=i).alignment = right
+
+    total_line = ['TOTAL', '', '', '', ''] + [_fmt(totals.get(c['account_id'])) for c in columns]
+    ws.append(total_line)
+    for cell in ws[ws.max_row]:
+        cell.font = bold
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    resp = make_response(output.getvalue())
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    resp.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return resp

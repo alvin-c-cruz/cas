@@ -49,3 +49,61 @@ def test_resolve_period_custom_inverted_falls_back_to_month():
     )
     assert p['mode'] == 'month'
     assert p['date_from'] == date(2026, 6, 1)
+
+
+import os
+import io
+from decimal import Decimal
+from openpyxl import load_workbook
+import pytest
+from app import create_app
+from app.journals.ap_journal_data import build_ap_journal_xlsx
+
+
+@pytest.fixture(scope='module')
+def flask_app():
+    os.environ['SECRET_KEY'] = 'test-secret-key'
+    app = create_app('testing')
+    return app
+
+
+def _fake_entry(date_str, number, invoice, vendor, notes):
+    class E: pass
+    from datetime import datetime
+    e = E()
+    e.entry_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    e.reference = number
+    e._invoice = invoice
+    e._vendor = vendor
+    e._notes = notes
+    return e
+
+
+def test_build_ap_journal_xlsx_has_headers_and_total_row(flask_app):
+    columns = [
+        {'account_id': 1, 'code': '20101', 'name': 'Accounts Payable - Trade', 'group': 'ap'},
+        {'account_id': 2, 'code': '60400', 'name': 'Rent Expense', 'group': 'other'},
+    ]
+    rows = [{
+        'entry': _fake_entry('2026-06-01', 'AP-2026-06-0001', 'SI-1', 'Vendor A', 'Rent'),
+        'cells': {1: Decimal('-5000'), 2: Decimal('5000')},
+        'is_draft': False,
+    }]
+    totals = {1: Decimal('-5000'), 2: Decimal('5000')}
+    with flask_app.app_context():
+        resp = build_ap_journal_xlsx(
+            columns=columns, rows=rows, totals=totals,
+            period_label='For the month of June 2026',
+            company_name='ABC Company', branch_name='Main Branch',
+            filename='AP-Journal-2026-06.xlsx',
+            identity=lambda e: (e.reference, e._invoice, e._vendor, e._notes))
+    assert resp.headers['Content-Type'].startswith('application/vnd.openxmlformats')
+    assert 'AP-Journal-2026-06.xlsx' in resp.headers['Content-Disposition']
+
+    wb = load_workbook(io.BytesIO(resp.get_data()))
+    ws = wb.active
+    all_text = ' '.join(str(c.value) for row in ws.iter_rows() for c in row if c.value is not None)
+    assert 'Accounts Payable Journal' in all_text
+    assert 'Accounts Payable - Trade' in all_text
+    assert 'Rent Expense' in all_text
+    assert 'TOTAL' in all_text
