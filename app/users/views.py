@@ -1,10 +1,12 @@
 from urllib.parse import urlparse, urljoin
 from functools import wraps
+from datetime import timezone, timedelta
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_user, logout_user, login_required, current_user
 
 from app import db
+from app.branches.models import Branch
 from app.users.models import User
 from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
 from app.utils import ph_now
@@ -53,7 +55,6 @@ def login():
                 notes='Account locked due to multiple failed login attempts'
             )
 
-            from datetime import datetime, timezone, timedelta
             lockout_time = user.account_locked_until
             if lockout_time:
                 # Make lockout_time timezone-aware if it's naive (same fix as in models.py)
@@ -154,9 +155,6 @@ def login():
         login_user(user, remember=form.remember_me.data)
 
         # Get all active branches
-        from app.branches.models import Branch
-        from flask import session
-
         active_branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
 
         # Filter branches based on user permissions
@@ -204,9 +202,6 @@ def login():
 @login_required
 def select_branch():
     """Branch selection page (for users with access to multiple branches)."""
-    from app.branches.models import Branch
-    from flask import session
-
     # Get the 'next' URL parameter (where to redirect after branch selection)
     _raw_next = request.args.get('next') or request.form.get('next')
     next_url = _raw_next if (_raw_next and _is_safe_url(_raw_next)) else url_for('dashboard.index')
@@ -270,8 +265,6 @@ def select_branch():
 @login_required
 def logout():
     """User logout."""
-    from flask import session
-
     # Log logout before clearing session
     selected_branch = session.get('selected_branch_id')
     log_audit(
@@ -357,7 +350,6 @@ def list_users():
 @admin_required
 def create_user():
     """Create new user (admin only)."""
-    from app.branches.models import Branch
 
     form = UserForm()
 
@@ -441,7 +433,6 @@ def create_user():
 @admin_required
 def edit_user(id):
     """Edit existing user (admin only)."""
-    from app.branches.models import Branch
 
     user = User.query.get_or_404(id)
 
