@@ -466,3 +466,104 @@ def _create_reversal_je(invoice, reversal_date, user_id, label='Cancel'):
     source_je.reversed_by_id = je.id
 
     return je
+
+
+# ---------------------------------------------------------------------------
+# List helpers + routes
+# ---------------------------------------------------------------------------
+
+def _filtered_invoices_query(include_ids=False):
+    current_branch_id = session.get('selected_branch_id')
+    query = SalesInvoice.query.filter_by(branch_id=current_branch_id)
+
+    if include_ids:
+        ids_param = request.args.get('ids', '')
+        if ids_param:
+            ids = [int(x) for x in ids_param.split(',') if x.strip().isdigit()]
+            if ids:
+                return query.filter(SalesInvoice.id.in_(ids))
+
+    status_filter = request.args.get('status', 'all')
+    if status_filter in VALID_INVOICE_STATUSES:
+        query = query.filter_by(status=status_filter)
+
+    customer_filter = request.args.get('customer', 'all')
+    if customer_filter != 'all':
+        try:
+            query = query.filter_by(customer_id=int(customer_filter))
+        except ValueError:
+            pass
+
+    q = request.args.get('q', '').strip()
+    if q:
+        like = f'%{q}%'
+        query = query.filter(
+            db.or_(SalesInvoice.invoice_number.ilike(like),
+                   SalesInvoice.customer_name.ilike(like))
+        )
+
+    date_from = request.args.get('date_from', '')
+    if date_from:
+        try:
+            query = query.filter(SalesInvoice.invoice_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', '')
+    if date_to:
+        try:
+            query = query.filter(SalesInvoice.invoice_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    return query
+
+
+@sales_invoices_bp.route('/sales-invoices')
+@login_required
+def list_invoices():
+    from app.sales_invoices.utils import compute_invoices_summary
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    query = _filtered_invoices_query().order_by(SalesInvoice.invoice_date.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    summary = compute_invoices_summary(session.get('selected_branch_id'))
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    return render_template(
+        'sales_invoices/list.html',
+        invoices=pagination.items,
+        pagination=pagination,
+        customers=customers,
+        summary=summary,
+        today=ph_now().date(),
+        status_filter=request.args.get('status', 'all'),
+        customer_filter=request.args.get('customer', 'all'),
+        q=request.args.get('q', ''),
+        date_from=request.args.get('date_from', ''),
+        date_to=request.args.get('date_to', ''),
+    )
+
+
+@sales_invoices_bp.route('/sales-invoices/export/excel')
+@login_required
+def export_excel():
+    invoices = (_filtered_invoices_query(include_ids=True)
+                .order_by(SalesInvoice.invoice_date.desc()).all())
+    log_audit('sales_invoice', 'export_excel', None, f'{len(invoices)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_excel(data=invoices, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                           filename=f'sales_invoices_{timestamp}.xlsx',
+                           title='Sales Invoices Report')
+
+
+@sales_invoices_bp.route('/sales-invoices/export/csv')
+@login_required
+def export_csv_route():
+    invoices = (_filtered_invoices_query(include_ids=True)
+                .order_by(SalesInvoice.invoice_date.desc()).all())
+    log_audit('sales_invoice', 'export_csv', None, f'{len(invoices)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_csv(data=invoices, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                         filename=f'sales_invoices_{timestamp}.csv')
