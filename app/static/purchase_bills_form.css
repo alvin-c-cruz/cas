@@ -35,25 +35,38 @@
     font-weight: 600;
 }
 
-/* ── Choices.js vendor search-select inside vendor card ──────────────────── */
-.vendor-step-card .choices {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--card);
-    margin-bottom: 0;
-}
-.vendor-step-card .choices__inner {
-    border: none !important;
-    background: transparent !important;
+/* ── Choices.js vendor search-select — mirror native .form-control select ── */
+/* .page-purchase-bill prefix gives specificity (0,3,0) > transactions.css (0,2,0) everywhere */
+.page-purchase-bill .vendor-step-card .choices { width: 100%; margin-bottom: 0; }
+.page-purchase-bill .vendor-step-card .choices__inner {
+    display: block !important;
+    height: auto !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    background: white !important;
     min-height: unset !important;
-    padding: 7px 36px 7px 12px !important;
-    border-radius: 0 !important;
+    padding: 10px 36px 10px 14px !important;
+    font-size: 14px !important;
+    font-family: 'Inter', sans-serif !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+    transition: all 0.2s !important;
 }
-.vendor-step-card .choices.is-focused,
-.vendor-step-card .choices.is-open {
-    border-color: var(--blue);
-    box-shadow: 0 0 0 2px rgba(59,130,246,.15);
+.page-purchase-bill .vendor-step-card .choices.is-focused .choices__inner,
+.page-purchase-bill .vendor-step-card .choices.is-open .choices__inner {
+    border-color: #3b82f6 !important;
+    border-radius: 6px !important;
+    background: white !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+/* Restore caret (transactions.css hides it globally via display:none !important) */
+.page-purchase-bill .vendor-step-card .choices[data-type*='select-one']::after {
+    display: block !important;
+    border-color: #64748b transparent transparent !important;
+    right: 14px !important;
+}
+.page-purchase-bill .vendor-step-card .choices[data-type*='select-one'].is-open::after {
+    border-color: transparent transparent #64748b !important;
 }
 
 /* ── Choices.js in header fields looks like a form-control ───────────────── */
