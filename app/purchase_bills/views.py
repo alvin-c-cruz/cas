@@ -627,8 +627,10 @@ def view(id):
     """View purchase bill details."""
     bill = _get_bill_or_404(id)
     je_entries = _build_je_preview(bill)
+    apv_print_access = AppSettings.get_setting('apv_print_access', 'posted_only')
     return render_template('purchase_bills/detail.html', bill=bill,
-                           je_entries=je_entries)
+                           je_entries=je_entries,
+                           apv_print_access=apv_print_access)
 
 
 @purchase_bills_bp.route('/purchase-bills/<int:id>/print')

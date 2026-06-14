@@ -108,6 +108,12 @@
             {% endif %}
         </div>
         <div class="card-header-actions">
+            {% if (apv_print_access == 'posted_only' and bill.status in ('posted', 'partially_paid', 'paid'))
+               or (apv_print_access == 'draft_and_posted' and bill.status not in ('voided', 'cancelled')) %}
+            <a href="{{ url_for('purchase_bills.print_bill', id=bill.id) }}"
+               target="_blank"
+               class="btn btn-secondary">Print</a>
+            {% endif %}
             {# Tier 2: accountant/admin only can post #}
             {% if current_user.role in ['accountant', 'admin'] and bill.status == 'draft' %}
             <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post APV</button>
