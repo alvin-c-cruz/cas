@@ -36,7 +36,7 @@
 </div>
 
 <!-- Stat Cards -->
-<div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
+<div class="stat-grid stat-grid--2col">
   <div class="stat-card">
     <div class="stat-icon-wrap ic-green">📈</div>
     <div class="stat-label">Revenue</div>
@@ -131,7 +131,7 @@
       <div class="card-title">Revenue Trend (6 Months)</div>
     </div>
     <div class="card-body">
-      <canvas id="revenueTrendChart" style="max-height: 300px;"></canvas>
+      <canvas id="revenueTrendChart" class="dashboard-chart"></canvas>
     </div>
   </div>
 
@@ -141,7 +141,7 @@
       <div class="card-title">Expense Breakdown (YTD)</div>
     </div>
     <div class="card-body">
-      <canvas id="expenseBreakdownChart" style="max-height: 300px;"></canvas>
+      <canvas id="expenseBreakdownChart" class="dashboard-chart"></canvas>
     </div>
   </div>
 
@@ -162,16 +162,16 @@
         <thead>
           <tr>
             <th>Customer</th>
-            <th style="text-align: right;">Total Sales</th>
-            <th style="text-align: center;">Invoices</th>
+            <th class="text-right">Total Sales</th>
+            <th class="text-center">Invoices</th>
           </tr>
         </thead>
         <tbody>
           {% for customer in top_customers %}
           <tr>
             <td>{{ customer.name }}</td>
-            <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(customer.total_sales) }}</td>
-            <td style="text-align: center;">{{ customer.invoice_count }}</td>
+            <td class="text-right font-mono">₱{{ '{:,.2f}'.format(customer.total_sales) }}</td>
+            <td class="text-center">{{ customer.invoice_count }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -196,16 +196,16 @@
         <thead>
           <tr>
             <th>Vendor</th>
-            <th style="text-align: right;">Total Purchases</th>
-            <th style="text-align: center;">Bills</th>
+            <th class="text-right">Total Purchases</th>
+            <th class="text-center">Bills</th>
           </tr>
         </thead>
         <tbody>
           {% for vendor in top_vendors %}
           <tr>
             <td>{{ vendor.name }}</td>
-            <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(vendor.total_purchases) }}</td>
-            <td style="text-align: center;">{{ vendor.bill_count }}</td>
+            <td class="text-right font-mono">₱{{ '{:,.2f}'.format(vendor.total_purchases) }}</td>
+            <td class="text-center">{{ vendor.bill_count }}</td>
           </tr>
           {% endfor %}
         </tbody>
