@@ -3,6 +3,10 @@
 {% block page_title %}AP Vouchers{% endblock %}
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<style>
+.choices__list--dropdown { min-width: 220px; }
+.choices__list--dropdown .choices__list { max-height: 200px; overflow-y: auto; }
+</style>
 {% endblock %}
 {% block content %}
 
