@@ -602,8 +602,8 @@ def create():
 
     if request.method == 'GET':
         form.bill_number.data = generate_bill_number()
-        form.bill_date.data = date.today()
-        form.due_date.data = date.today() + timedelta(days=30)
+        form.bill_date.data = ph_now().date()
+        form.due_date.data = ph_now().date() + timedelta(days=30)
 
     vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
     all_accounts = _get_all_accounts_for_select()
