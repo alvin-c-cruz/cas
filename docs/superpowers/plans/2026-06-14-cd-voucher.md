@@ -2300,3 +2300,757 @@ Navigate to `/cash-disbursements/create`. Expected: page renders with left colum
 git add app/cash_disbursements/templates/cash_disbursements/form.html
 git commit -m "feat: CDV form template with AP lines + expense lines + summary panel"
 ```
+
+---
+
+## Task 8: Detail View + Template
+
+**Files:**
+- Modify: `app/cash_disbursements/views.py` — add `view` route
+- Create: `app/cash_disbursements/templates/cash_disbursements/detail.html`
+
+- [ ] **Step 1: Add view route to views.py**
+
+Append to `app/cash_disbursements/views.py`:
+
+```python
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>')
+@login_required
+def view(id):
+    cdv = _get_cdv_or_404(id)
+    je_entries = _build_cdv_je_preview(cdv)
+    return render_template('cash_disbursements/detail.html',
+                           cdv=cdv, je_entries=je_entries, now=ph_now())
+```
+
+- [ ] **Step 2: Create the detail template**
+
+Create `app/cash_disbursements/templates/cash_disbursements/detail.html`:
+
+```html
+{% extends "base.html" %}
+{% block title %}CDV {{ cdv.cdv_number }}{% endblock %}
+{% block page_title %}Cash Disbursement Voucher — {{ cdv.cdv_number }}{% endblock %}
+
+{% block content %}
+
+<!-- Post modal (draft only) -->
+{% if cdv.status == 'draft' %}
+<div id="postModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Post this CDV?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">Posting will make the CDV final, update AP bill balances, and enter it in the GL.</p>
+    <div style="display:flex;gap:12px;justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('postModal').style.display='none'">Cancel</button>
+      <form method="POST" action="{{ url_for('cash_disbursements.post', id=cdv.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit" class="btn btn-success">Post CDV</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Void modal (draft only) -->
+<div id="voidModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:480px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Void this CDV?</h3>
+    <p style="color:var(--text-2);margin-bottom:20px;"><strong>{{ cdv.cdv_number }}</strong> will be voided. The draft journal entry will be deleted. This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('cash_disbursements.void', id=cdv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+        <textarea name="void_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('voidModal').style.display='none'">Keep CDV</button>
+        <button type="submit" class="btn btn-danger">Void CDV</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Cancel modal (posted only) -->
+{% if cdv.status == 'posted' %}
+<div id="cancelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:480px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Cancel this CDV?</h3>
+    <p style="color:var(--text-2);margin-bottom:20px;">Cancelling <strong>{{ cdv.cdv_number }}</strong> will create a reversal JE and restore all AP bill balances. This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('cash_disbursements.cancel', id=cdv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+        <textarea name="cancel_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
+      </div>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reversal Date <span style="color:var(--red);">*</span></label>
+        <input type="date" name="reversal_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required style="width:100%;">
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">Keep CDV</button>
+        <button type="submit" class="btn btn-danger">Cancel CDV</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:20px;font-weight:700;">{{ cdv.cdv_number }}</span>
+      {% set badge = {'draft':'secondary','posted':'info','voided':'dark','cancelled':'danger'} %}
+      <span class="badge badge-{{ badge.get(cdv.status, 'secondary') }}">{{ cdv.status|title }}</span>
+    </div>
+    <div class="card-header-actions">
+      <a href="{{ url_for('cash_disbursements.print_cdv', id=cdv.id) }}" target="_blank"
+         rel="noopener noreferrer" class="btn btn-secondary">Print</a>
+      {% if current_user.role in ['accountant','admin'] and cdv.status == 'draft' %}
+      <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post CDV</button>
+      {% endif %}
+      {% if current_user.role in ['staff','accountant','admin'] and cdv.status == 'draft' %}
+      <a href="{{ url_for('cash_disbursements.edit', id=cdv.id) }}" class="btn btn-primary">Edit</a>
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void</button>
+      {% endif %}
+      {% if current_user.role in ['accountant','admin'] and cdv.status == 'posted' %}
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel CDV</button>
+      {% endif %}
+      <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">← Back</a>
+    </div>
+  </div>
+
+  <div class="card-body">
+
+    <!-- Header info grid -->
+    <div style="display:grid;grid-template-columns:1fr 1.5fr;gap:24px;margin-bottom:28px;">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        {% macro field(label, val) %}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:var(--text-2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">{{ label }}</span>
+          <span>{{ val }}</span>
+        </div>
+        {% endmacro %}
+        {{ field('CD Number', cdv.cdv_number) }}
+        {{ field('CDV Date', cdv.cdv_date.strftime('%b %d, %Y')) }}
+        {{ field('Payment Method', cdv.payment_method|replace('_',' ')|title) }}
+        {% if cdv.payment_method == 'check' %}
+        {{ field('Check #', cdv.check_number or '—') }}
+        {{ field('Check Date', cdv.check_date.strftime('%b %d, %Y') if cdv.check_date else '—') }}
+        {{ field('Bank', cdv.check_bank or '—') }}
+        {% endif %}
+        {{ field('Cash / Bank Acct', (cdv.cash_account.code ~ ' — ' ~ cdv.cash_account.name) if cdv.cash_account else '—') }}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;">Vendor</div>
+          <div style="border:2px solid var(--green,#22c55e);background:var(--alert-success-bg);border-radius:8px;padding:16px 20px;">
+            <div style="font-weight:700;font-size:15px;margin-bottom:4px;">{{ cdv.vendor_name }}</div>
+            {% if cdv.vendor_tin %}<div style="color:var(--text-2);font-size:12px;">TIN: {{ cdv.vendor_tin }}</div>{% endif %}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;">Notes (Particulars)</div>
+          <div style="background:var(--bg);border-radius:6px;padding:14px 16px;min-height:48px;">
+            <p style="margin:0;color:var(--text-2);white-space:pre-wrap;font-size:13px;">{{ cdv.notes or '' }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section A: AP Lines -->
+    {% if cdv.ap_lines %}
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Section A — AP Bills Paid</div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>AP No.</th><th>Bill Date</th>
+            <th style="text-align:right;">Original Balance</th>
+            <th style="text-align:right;">Amount Applied</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ap_line in cdv.ap_lines %}
+          <tr>
+            <td><a href="{{ url_for('purchase_bills.view', id=ap_line.bill_id) }}"
+                   style="color:var(--blue);font-weight:600;">{{ ap_line.bill_number }}</a></td>
+            <td>{{ ap_line.bill.bill_date.strftime('%b %d, %Y') if ap_line.bill else '—' }}</td>
+            <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap_line.original_balance) }}</td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(ap_line.amount_applied) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <!-- Section B: Expense Lines -->
+    {% if cdv.expense_lines %}
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Section B — Direct Expenses</div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th><th>Description</th>
+            <th style="text-align:right;">Amount (VAT-incl.)</th>
+            <th>VAT</th><th>WHT</th><th>Account</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for exp in cdv.expense_lines %}
+          <tr>
+            <td>{{ exp.line_number }}</td>
+            <td>{{ exp.description or '—' }}</td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(exp.line_total) }}</td>
+            <td>{{ exp.vat_category or 'None' }} ({{ '{:.2f}'.format(exp.vat_rate) }}%)</td>
+            <td style="font-size:12px;">
+              {% if exp.withholding_tax %}{{ exp.withholding_tax.code }} ({{ '{:.2f}'.format(exp.wt_rate) }}%){% else %}—{% endif %}
+            </td>
+            <td style="font-size:12px;color:var(--text-2);">{{ exp.account.code ~ ' : ' ~ exp.account.name if exp.account else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <!-- JE + Summary grid -->
+    <div style="display:grid;grid-template-columns:1fr 300px;gap:24px;">
+
+      <!-- Journal Entry -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Journal Entry</div>
+        <table class="table" style="font-size:13px;">
+          <thead>
+            <tr><th>Code</th><th>Account Title</th><th style="text-align:right;">Debit</th><th style="text-align:right;">Credit</th></tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(td=0, tc=0) %}
+            {% for e in je_entries %}
+            {% set ns.td = ns.td + e.debit %}
+            {% set ns.tc = ns.tc + e.credit %}
+            <tr>
+              <td style="color:var(--text-2);font-size:12px;">{{ e.code }}</td>
+              <td {{ 'style="padding-left:24px;"' | safe if e.credit > 0 }}>{{ e.name }}</td>
+              <td style="text-align:right;font-family:var(--mono);">{% if e.debit > 0 %}{{ '{:,.2f}'.format(e.debit) }}{% else %}—{% endif %}</td>
+              <td style="text-align:right;font-family:var(--mono);">{% if e.credit > 0 %}{{ '{:,.2f}'.format(e.credit) }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+            <tr style="font-weight:700;border-top:2px solid var(--border);">
+              <td colspan="2">Total</td>
+              <td style="text-align:right;font-family:var(--mono);">{{ '{:,.2f}'.format(ns.td) }}</td>
+              <td style="text-align:right;font-family:var(--mono);">{{ '{:,.2f}'.format(ns.tc) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- CDV Summary -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">CDV Summary</div>
+        <div style="background:var(--bg);padding:20px;border-radius:6px;">
+          {% macro sumrow(label, val, red=false, bold=false) %}
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+            <span style="color:var(--text-2);">{{ label }}</span>
+            <span style="font-family:var(--mono);font-weight:{{ '700' if bold else '600' }};{{ 'color:var(--red);' if red }}">{{ val }}</span>
+          </div>
+          {% endmacro %}
+          {{ sumrow('AP Applied:', '₱' ~ '{:,.2f}'.format(cdv.total_ap_applied)) }}
+          {{ sumrow('Direct Expenses:', '₱' ~ '{:,.2f}'.format(cdv.total_expense)) }}
+          {{ sumrow('Input VAT:' ~ (' ⚙' if cdv.vat_override else ''), '₱' ~ '{:,.2f}'.format(cdv.total_vat)) }}
+          <div style="height:1px;background:var(--border);margin:8px 0;"></div>
+          {{ sumrow('Less: WHT:' ~ (' ⚙' if cdv.wt_override else ''), '-₱' ~ '{:,.2f}'.format(cdv.total_wt), red=true) }}
+          <div style="height:2px;background:var(--border);margin:10px 0;"></div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="font-size:15px;font-weight:700;">Net Cash Disbursed:</span>
+            <span style="font-family:var(--mono);font-size:17px;font-weight:700;color:var(--blue);">₱{{ '{:,.2f}'.format(cdv.total_amount) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audit trail -->
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3);">
+      Created by {{ cdv.created_by.username if cdv.created_by else '—' }}
+      on {{ cdv.created_at.strftime('%b %d, %Y %H:%M') if cdv.created_at else '—' }}
+      {% if cdv.posted_by %}
+       &mdash; Posted by {{ cdv.posted_by.username }} on {{ cdv.posted_at.strftime('%b %d, %Y %H:%M') if cdv.posted_at else '—' }}
+      {% endif %}
+      {% if cdv.voided_by %}
+       &mdash; Voided by {{ cdv.voided_by.username }} on {{ cdv.voided_at.strftime('%b %d, %Y %H:%M') if cdv.voided_at else '—' }}
+       &mdash; <em>{{ cdv.void_reason }}</em>
+      {% endif %}
+      {% if cdv.cancel_reason %}
+       &mdash; Cancelled on {{ cdv.cancelled_at.strftime('%b %d, %Y %H:%M') if cdv.cancelled_at else '—' }}
+       &mdash; <em>{{ cdv.cancel_reason }}</em>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<style>
+.badge { padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase; }
+.badge-secondary { background:var(--text-3);color:white; }
+.badge-info { background:var(--blue);color:white; }
+.badge-dark { background:var(--text-1,#374151);color:white; }
+.badge-danger { background:var(--red);color:white; }
+</style>
+{% endblock %}
+```
+
+- [ ] **Step 3: Verify detail page**
+
+Navigate to a CDV detail page. Expected: header info, AP lines section (if any), expense lines section (if any), JE preview, summary panel, action buttons.
+
+- [ ] **Step 4: Commit**
+
+```powershell
+git add app/cash_disbursements/views.py app/cash_disbursements/templates/cash_disbursements/detail.html
+git commit -m "feat: CDV detail view and template"
+```
+
+---
+
+## Task 9: Post, Void, Cancel Routes + Integration Tests
+
+**Files:**
+- Modify: `app/cash_disbursements/views.py` — add `post`, `void`, `cancel`, `_apply_ap_payments`, `_reverse_ap_payments`
+- Create: `tests/integration/test_cdv_views.py`
+
+- [ ] **Step 1: Write failing integration tests**
+
+Create `tests/integration/test_cdv_views.py`:
+
+```python
+"""Integration tests for CDV post, void, and cancel routes."""
+import json
+import pytest
+from decimal import Decimal
+from datetime import date
+
+from app.accounts.models import Account
+from app.vendors.models import Vendor
+from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
+from app.journal_entries.models import JournalEntry
+from app.audit.models import AuditLog
+from app.utils import ph_now
+
+pytestmark = [pytest.mark.integration]
+
+
+def login(client):
+    client.post('/login', data={'username': 'admin', 'password': 'admin123'},
+                follow_redirects=True)
+
+
+def setup_accounts(db_session):
+    ap  = Account(code='20101', name='AP Trade',  account_type='Liability', normal_balance='credit', is_active=True)
+    wt  = Account(code='20301', name='WHT Payable', account_type='Liability', normal_balance='credit', is_active=True)
+    cash = Account(code='10101', name='Cash on Hand', account_type='Asset', normal_balance='debit', is_active=True)
+    exp  = Account(code='60101', name='Office Supplies', account_type='Expense', normal_balance='debit', is_active=True)
+    db_session.add_all([ap, wt, cash, exp])
+    db_session.commit()
+    return ap, wt, cash, exp
+
+
+def make_vendor(db_session):
+    v = Vendor(code='CDV01', name='CDV Vendor', check_payee_name='CDV Vendor', is_active=True)
+    db_session.add(v)
+    db_session.commit()
+    return v
+
+
+def make_posted_bill(db_session, vendor, ap_account, branch_id):
+    """Create a posted APV bill with balance = 5000."""
+    bill = PurchaseBill(
+        branch_id=branch_id,
+        bill_number='AP-TEST-CDV-0001',
+        bill_date=ph_now().date(),
+        due_date=ph_now().date(),
+        vendor_id=vendor.id,
+        vendor_name=vendor.name,
+        notes='Test AP bill',
+        status='posted',
+        amount_paid=Decimal('0.00'),
+        balance=Decimal('5000.00'),
+        total_amount=Decimal('5000.00'),
+        subtotal=Decimal('5000.00'),
+        vat_amount=Decimal('0.00'),
+        withholding_tax_amount=Decimal('0.00'),
+    )
+    db_session.add(bill)
+    db_session.commit()
+    return bill
+
+
+def create_draft_cdv(client, vendor, cash_account, ap_lines=None, expense_lines=None):
+    today = ph_now().date().isoformat()
+    return client.post('/cash-disbursements/create', data={
+        'cdv_number': 'CD-TEST-0001',
+        'cdv_date': today,
+        'vendor_id': vendor.id,
+        'payment_method': 'cash',
+        'cash_account_id': cash_account.id,
+        'notes': 'Test CDV particulars',
+        'ap_lines': json.dumps(ap_lines or []),
+        'expense_lines': json.dumps(expense_lines or []),
+        'vat_override': '0', 'vat_override_value': '0',
+        'wt_override': '0', 'wt_override_value': '0',
+    }, follow_redirects=True)
+
+
+class TestCDVCreate:
+    def test_draft_cdv_creates_draft_je(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
+
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.bill_number,
+                     'original_balance': 5000.0, 'amount_applied': 3000.0}]
+        create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        assert cdv is not None
+        assert cdv.status == 'draft'
+        assert cdv.total_ap_applied == Decimal('3000.00')
+        assert cdv.total_amount == Decimal('3000.00')
+
+        je = db_session.get(JournalEntry, cdv.journal_entry_id)
+        assert je is not None
+        assert je.status == 'draft'
+        assert je.entry_type == 'disbursement'
+
+    def test_audit_log_on_create(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        expense_lines = [{'description': 'Office supplies', 'amount': 1000.0,
+                          'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
+        create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
+
+        log = AuditLog.query.filter_by(module='cash_disbursement', action='create').first()
+        assert log is not None
+
+
+class TestCDVPost:
+    def test_post_promotes_je_and_updates_bill(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
+
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.bill_number,
+                     'original_balance': 5000.0, 'amount_applied': 5000.0}]
+        create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+
+        resp = client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
+        assert resp.status_code == 200
+
+        db_session.refresh(cdv)
+        db_session.refresh(bill)
+        assert cdv.status == 'posted'
+        je = db_session.get(JournalEntry, cdv.journal_entry_id)
+        assert je.status == 'posted'
+        assert bill.amount_paid == Decimal('5000.00')
+        assert bill.balance == Decimal('0.00')
+        assert bill.status == 'paid'
+
+    def test_post_partial_payment_sets_partially_paid(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
+
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.bill_number,
+                     'original_balance': 5000.0, 'amount_applied': 2000.0}]
+        create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
+
+        db_session.refresh(bill)
+        assert bill.status == 'partially_paid'
+        assert bill.amount_paid == Decimal('2000.00')
+        assert bill.balance == Decimal('3000.00')
+
+    def test_post_audit_log(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        expense_lines = [{'description': 'Supplies', 'amount': 500.0,
+                          'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
+        create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
+
+        log = AuditLog.query.filter_by(module='cash_disbursement', action='post').first()
+        assert log is not None
+
+
+class TestCDVVoid:
+    def test_void_deletes_draft_je(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        expense_lines = [{'description': 'Supplies', 'amount': 1000.0,
+                          'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
+        create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        je_id = cdv.journal_entry_id
+
+        client.post(f'/cash-disbursements/{cdv.id}/void',
+                    data={'void_reason': 'Entered in error — test'},
+                    follow_redirects=True)
+
+        db_session.refresh(cdv)
+        assert cdv.status == 'voided'
+        assert cdv.journal_entry_id is None
+        assert db_session.get(JournalEntry, je_id) is None
+
+    def test_void_requires_reason(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        expense_lines = [{'description': 'X', 'amount': 100.0,
+                          'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
+        create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+
+        client.post(f'/cash-disbursements/{cdv.id}/void',
+                    data={'void_reason': 'short'},
+                    follow_redirects=True)
+        db_session.refresh(cdv)
+        assert cdv.status == 'draft'  # not voided
+
+
+class TestCDVCancel:
+    def test_cancel_creates_reversal_and_restores_bill(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
+
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.bill_number,
+                     'original_balance': 5000.0, 'amount_applied': 5000.0}]
+        create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
+
+        today = ph_now().date().isoformat()
+        client.post(f'/cash-disbursements/{cdv.id}/cancel', data={
+            'cancel_reason': 'Paid the wrong vendor — reversing now',
+            'reversal_date': today,
+        }, follow_redirects=True)
+
+        db_session.refresh(cdv)
+        db_session.refresh(bill)
+        assert cdv.status == 'cancelled'
+        assert bill.status == 'posted'
+        assert bill.amount_paid == Decimal('0.00')
+        assert bill.balance == Decimal('5000.00')
+
+        # Reversal JE must exist
+        reversal = JournalEntry.query.filter_by(
+            entry_type='reversal', is_reversing=True
+        ).first()
+        assert reversal is not None
+        assert reversal.status == 'posted'
+
+    def test_cancel_audit_log(self, client, db_session, admin_user, main_branch):
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        expense_lines = [{'description': 'Test', 'amount': 500.0,
+                          'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
+        create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
+        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
+        today = ph_now().date().isoformat()
+        client.post(f'/cash-disbursements/{cdv.id}/cancel', data={
+            'cancel_reason': 'Duplicate entry — cancelling',
+            'reversal_date': today,
+        }, follow_redirects=True)
+
+        log = AuditLog.query.filter_by(module='cash_disbursement', action='cancel').first()
+        assert log is not None
+```
+
+- [ ] **Step 2: Run tests — expect FAIL (routes don't exist yet)**
+
+```powershell
+pytest tests/integration/test_cdv_views.py -v
+```
+
+Expected: FAIL with 404 / ImportError.
+
+- [ ] **Step 3: Add post, void, cancel routes and AP payment helpers to views.py**
+
+Append to `app/cash_disbursements/views.py`:
+
+```python
+def _apply_ap_payments(cdv):
+    """Increment APV bill amount_paid and reduce balance on CDV post."""
+    for ap_line in cdv.ap_lines:
+        bill = ap_line.bill
+        bill.amount_paid = Decimal(str(bill.amount_paid)) + Decimal(str(ap_line.amount_applied))
+        bill.balance = Decimal(str(bill.total_amount)) - bill.amount_paid
+        if bill.balance <= 0:
+            bill.status = 'paid'
+        elif bill.amount_paid > 0:
+            bill.status = 'partially_paid'
+
+
+def _reverse_ap_payments(cdv):
+    """Reverse APV bill amounts on CDV cancel. Raises ValueError on inconsistency."""
+    for ap_line in cdv.ap_lines:
+        bill = ap_line.bill
+        new_paid = Decimal(str(bill.amount_paid)) - Decimal(str(ap_line.amount_applied))
+        if new_paid < 0:
+            raise ValueError(
+                f'Cannot cancel: reversing payment on {ap_line.bill_number} '
+                f'would result in negative amount_paid.'
+            )
+        bill.amount_paid = new_paid
+        bill.balance = Decimal(str(bill.total_amount)) - new_paid
+        if bill.amount_paid <= 0:
+            bill.status = 'posted'
+        else:
+            bill.status = 'partially_paid'
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/post', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def post(id):
+    cdv = _get_cdv_or_404(id)
+    if cdv.status != 'draft':
+        flash('Only draft CDVs can be posted.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    try:
+        cdv.status = 'posted'
+        cdv.posted_by_id = current_user.id
+        cdv.posted_at = ph_now()
+        if cdv.journal_entry:
+            cdv.journal_entry.status = 'posted'
+            cdv.journal_entry.posted_by_id = current_user.id
+            cdv.journal_entry.posted_at = ph_now()
+        _apply_ap_payments(cdv)
+        db.session.commit()
+        log_audit(
+            module='cash_disbursement', action='post',
+            record_id=cdv.id,
+            record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
+            notes=f'Posted by {current_user.username}'
+        )
+        flash(f'CDV "{cdv.cdv_number}" posted successfully!', 'success')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error posting CDV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_disbursements.post')
+        flash(f'Error posting CDV: {str(e)}', 'error')
+    return redirect(url_for('cash_disbursements.view', id=id))
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/void', methods=['POST'])
+@login_required
+@staff_or_above_required
+def void(id):
+    cdv = _get_cdv_or_404(id)
+    if cdv.status != 'draft':
+        flash('Only draft CDVs can be voided.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    try:
+        if cdv.journal_entry_id:
+            from app.journal_entries.models import JournalEntry as _JE
+            je_to_delete = db.session.get(_JE, cdv.journal_entry_id)
+            if je_to_delete:
+                db.session.delete(je_to_delete)
+            cdv.journal_entry_id = None
+            cdv.journal_entry = None
+        cdv.status = 'voided'
+        cdv.voided_at = ph_now()
+        cdv.voided_by_id = current_user.id
+        cdv.void_reason = void_reason
+        db.session.commit()
+        log_audit(
+            module='cash_disbursement', action='void',
+            record_id=cdv.id,
+            record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
+            notes=f'Voided by {current_user.username}. Reason: {void_reason}'
+        )
+        flash(f'CDV "{cdv.cdv_number}" voided.', 'warning')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error voiding CDV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_disbursements.void')
+        flash(f'Error voiding CDV: {str(e)}', 'error')
+    return redirect(url_for('cash_disbursements.view', id=id))
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/cancel', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def cancel(id):
+    from app.errors.utils import log_exception
+    cdv = _get_cdv_or_404(id)
+    if cdv.status != 'posted':
+        flash('Only posted CDVs can be cancelled.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Cancellation reason must be at least 10 characters.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    try:
+        _reverse_ap_payments(cdv)
+        _create_cdv_reversal_je(cdv, reversal_date, current_user.id)
+        cdv.status = 'cancelled'
+        cdv.cancelled_at = ph_now()
+        cdv.cancel_reason = cancel_reason
+        db.session.commit()
+        log_audit(
+            module='cash_disbursement', action='cancel',
+            record_id=cdv.id,
+            record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
+            notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}'
+        )
+        flash(f'CDV "{cdv.cdv_number}" cancelled. Reversal JE created.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error cancelling CDV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_disbursements.cancel')
+        flash(f'Error cancelling CDV: {str(e)}', 'error')
+    return redirect(url_for('cash_disbursements.view', id=id))
+```
+
+- [ ] **Step 4: Run tests — expect PASS**
+
+```powershell
+pytest tests/integration/test_cdv_views.py -v
+```
+
+Expected: all 9 tests PASS.
+
+- [ ] **Step 5: Commit**
+
+```powershell
+git add app/cash_disbursements/views.py tests/integration/test_cdv_views.py
+git commit -m "feat: CDV post/void/cancel routes, AP balance updates, integration tests"
+```
