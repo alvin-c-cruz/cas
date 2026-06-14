@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Cash Disbursements Journal{% endblock %}
+{% block page_title %}Cash Disbursements Journal{% endblock %}
+
+{% block extra_css %}
+<style>
+.cd-jrnl-toolbar { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap;
+    padding:20px; background:var(--surface-2, #f8fafc); border-bottom:1px solid var(--border, #e2e8f0); }
+.cd-jrnl-field label { display:block; font-size:12px; font-weight:600; color:var(--text-2,#64748b);
+    margin-bottom:6px; text-transform:uppercase; }
+.cd-jrnl-table { width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap; }
+.cd-jrnl-table th, .cd-jrnl-table td { padding:6px 8px; border-bottom:1px solid var(--border,#e2e8f0); }
+.cd-jrnl-table th { text-align:left; border-bottom:2px solid var(--text-1,#334155); }
+.cd-jrnl-num { text-align:right; font-family:var(--mono, monospace); }
+.cd-jrnl-total td { border-top:2px solid var(--text-1,#334155); font-weight:700; }
+.cd-jrnl-head--credit { background:#fef2f2; }
+.cd-jrnl-head--debit { background:#eff6ff; }
+.cd-jrnl-draft-badge { font-size:10px; font-weight:600; color:#c2410c; background:#fff7ed;
+    border:1px solid #fed7aa; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
+.cd-jrnl-cancelled-badge { font-size:10px; font-weight:600; color:#b91c1c; background:#fef2f2;
+    border:1px solid #fecaca; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
+.cd-jrnl-cancelled td { text-decoration:line-through; background:var(--red-50, #fef2f2); }
+.cd-jrnl-cancelled .cd-jrnl-no-strike { text-decoration:none !important; }
+.cd-jrnl-scroll { overflow-x:auto; }
+.cd-jrnl-balance-warning { color:var(--red,#dc2626); font-weight:600; margin-top:10px; }
+.cd-jrnl-meta { padding:8px 20px 0; }
+.cd-jrnl-meta h3 { margin:0; font-size:14px; }
+.cd-jrnl-meta p { margin:2px 0 0; font-size:12px; color:var(--text-2,#64748b); }
+@media print {
+    .sidebar, .topbar, .cd-jrnl-toolbar, .cd-jrnl-actions { display:none !important; }
+    .main-content { margin-left:0 !important; }
+    @page { size: landscape; }
+    .cd-jrnl-table { font-size:9px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="cd-jrnl-actions" style="display:flex; gap:8px; justify-content:flex-end;">
+            <a id="cdPrintLink" href="{{ url_for('journals.cd_journal_print', **request.args) }}" class="btn btn-secondary btn-sm">Print</a>
+            <a id="cdExportLink" href="{{ url_for('journals.cd_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Download Excel</a>
+        </div>
+    </div>
+
+    <form method="GET" action="{{ url_for('journals.cd_journal') }}" class="cd-jrnl-toolbar" id="cdFilter">
+        <input type="hidden" name="mode" id="cdMode" value="{{ period.mode }}">
+        <div class="cd-jrnl-field" id="cdMonthFields" {% if period.mode == 'custom' %}style="display:none"{% endif %}>
+            <label>Month</label>
+            <select name="month" class="form-control form-control-sm">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m == period.month %}selected{% endif %}>
+                    {{ ['January','February','March','April','May','June','July','August','September','October','November','December'][m-1] }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="cd-jrnl-field" id="cdYearField" {% if period.mode == 'custom' %}style="display:none"{% endif %}>
+            <label>Year</label>
+            <input type="number" name="year" value="{{ period.year }}" class="form-control form-control-sm" style="width:100px;">
+        </div>
+        <div class="cd-jrnl-field" id="cdFromField" {% if period.mode != 'custom' %}style="display:none"{% endif %}>
+            <label>From</label>
+            <input type="date" name="date_from" value="{{ period.date_from.isoformat() }}" class="form-control form-control-sm">
+        </div>
+        <div class="cd-jrnl-field" id="cdToField" {% if period.mode != 'custom' %}style="display:none"{% endif %}>
+            <label>To</label>
+            <input type="date" name="date_to" value="{{ period.date_to.isoformat() }}" class="form-control form-control-sm">
+        </div>
+        <div class="cd-jrnl-field">
+            <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+            <button type="button" id="cdToggleCustom" class="btn btn-secondary btn-sm">
+                {% if period.mode == 'custom' %}Use month{% else %}Custom range{% endif %}
+            </button>
+        </div>
+    </form>
+
+    <div id="cd-journal-content">
+    <div class="cd-jrnl-meta">
+        <h3>Cash Disbursements Journal</h3>
+        <p>{{ period.label }} &mdash; {{ current_branch.name if current_branch else 'All Branches' }}</p>
+    </div>
+
+    <div class="card-body">
+        {% if matrix.rows %}
+        <div class="cd-jrnl-scroll">
+        <table class="cd-jrnl-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>CD No.</th>
+                    <th>Check No.</th>
+                    <th>Vendor</th>
+                    <th>Particulars</th>
+                    {% for col in matrix.columns %}
+                    <th class="cd-jrnl-num {% if col.group in ['wht','cash'] %}cd-jrnl-head--credit{% else %}cd-jrnl-head--debit{% endif %}">{{ col.name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in matrix.rows %}
+                {% set cdv = cdv_map.get(row.entry.reference) %}
+                <tr {% if row.is_cancelled %}class="cd-jrnl-cancelled"{% endif %}>
+                    <td>{{ row.entry.entry_date.strftime('%b %d, %Y') }}</td>
+                    <td class="cd-jrnl-no-strike">
+                        {% if cdv %}
+                        <a href="{{ url_for('cash_disbursements.view', id=cdv.id) }}" style="font-weight:600;color:var(--blue);">{{ row.entry.reference }}</a>
+                        {% else %}{{ row.entry.reference or '&mdash;' }}{% endif %}
+                        {% if row.is_draft %}<span class="cd-jrnl-draft-badge">Draft</span>{% endif %}
+                        {% if row.is_cancelled %}<span class="cd-jrnl-cancelled-badge cd-jrnl-no-strike">Cancelled</span>{% endif %}
+                    </td>
+                    <td>{{ cdv.check_number if cdv and cdv.check_number else '' }}</td>
+                    <td>{{ cdv.vendor_name if cdv else '&mdash;' }}</td>
+                    <td>{{ (cdv.notes if cdv else '') or '' }}</td>
+                    {% for col in matrix.columns %}
+                    <td class="cd-jrnl-num">
+                        {%- if row.is_draft -%}
+                        {%- elif col.account_id in row.cells and row.cells[col.account_id] != 0 -%}
+                            {%- set v = row.cells[col.account_id] -%}
+                            {%- if v < 0 -%}({{ '{:,.2f}'.format(-v) }}){%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
+                        {%- endif -%}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                <tr class="cd-jrnl-total">
+                    <td colspan="5">TOTAL</td>
+                    {% for col in matrix.columns %}
+                    <td class="cd-jrnl-num">
+                        {%- set t = matrix.totals.get(col.account_id) -%}
+                        {%- if t and t != 0 -%}
+                            {%- if t < 0 -%}({{ '{:,.2f}'.format(-t) }}){%- else -%}{{ '{:,.2f}'.format(t) }}{%- endif -%}
+                        {%- endif -%}
+                    </td>
+                    {% endfor %}
+                </tr>
+            </tbody>
+        </table>
+        </div>
+        {% if not matrix.balanced %}
+        <p class="cd-jrnl-balance-warning">
+            Warning: Column totals do not net to zero &mdash; debits and credits are out of balance. Review the underlying entries.
+        </p>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <p>No CD entries found for {{ period.label | lower }}.</p>
+            <p style="font-size:13px; color:var(--text-3);">CD journal entries are created automatically when a CDV is posted.</p>
+        </div>
+        {% endif %}
+    </div>{# card-body #}
+    </div>{# cd-journal-content #}
+</div>{# card #}
+
+<script>
+(function () {
+    var form   = document.getElementById('cdFilter');
+    var toggle = document.getElementById('cdToggleCustom');
+    var mode   = document.getElementById('cdMode');
+    if (!form || !toggle || !mode) return;
+
+    function showFields(isCustom) {
+        document.getElementById('cdMonthFields').style.display = isCustom ? 'none' : '';
+        document.getElementById('cdYearField').style.display   = isCustom ? 'none' : '';
+        document.getElementById('cdFromField').style.display   = isCustom ? '' : 'none';
+        document.getElementById('cdToField').style.display     = isCustom ? '' : 'none';
+        toggle.textContent = isCustom ? 'Use month' : 'Custom range';
+    }
+
+    function fetchAndSwap(params) {
+        var url = '/journals/cd?' + params.toString();
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function (html) {
+                var doc   = new DOMParser().parseFromString(html, 'text/html');
+                var fresh = doc.getElementById('cd-journal-content');
+                if (!fresh) throw new Error('no content');
+                document.getElementById('cd-journal-content').replaceWith(fresh);
+                var exportLink = document.getElementById('cdExportLink');
+                if (exportLink) exportLink.href = '/journals/cd/export?' + params.toString();
+                var printLink = document.getElementById('cdPrintLink');
+                if (printLink) printLink.href = '/journals/cd/print?' + params.toString();
+                history.pushState({}, '', url);
+            })
+            .catch(function () {
+                window.location.href = url;
+            });
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        fetchAndSwap(new URLSearchParams(new FormData(form)));
+    });
+
+    toggle.addEventListener('click', function () {
+        var isCustom = mode.value !== 'custom';
+        mode.value = isCustom ? 'custom' : 'month';
+        showFields(isCustom);
+        fetchAndSwap(new URLSearchParams(new FormData(form)));
+    });
+
+    window.addEventListener('popstate', function () {
+        var params = new URLSearchParams(window.location.search);
+        var isCustom = params.get('mode') === 'custom';
+        mode.value = isCustom ? 'custom' : 'month';
+        showFields(isCustom);
+        fetchAndSwap(params);
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}CD Journal Print — {{ period.label }}{% endblock %}
+{% block page_title %}CD Journal — Print Preview{% endblock %}
+
+{% block extra_css %}
+<style>
+  .cdj-print-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .cdj-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+  .cdj-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .cdj-header .branch-name  { font-size: 13px; font-weight: 700; color: #444; margin-top: 2px; }
+  .cdj-header .doc-title    { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-top: 6px; }
+  .cdj-header .period-label { font-size: 11px; color: #555; margin-top: 3px; }
+  .cdj-scroll { overflow-x: auto; }
+  .cdj-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .cdj-table th, .cdj-table td { border: 1px solid #aaa; padding: 3px 6px; white-space: nowrap; }
+  .cdj-table th { background: #222; color: #fff; font-weight: 700; text-align: left; }
+  .cdj-table th.num { text-align: center; width: 120px; min-width: 120px;
+    white-space: normal; word-break: break-word; vertical-align: bottom; }
+  .cdj-table td.num { text-align: right; font-family: monospace; width: 120px; min-width: 120px; max-width: 120px; }
+  .cdj-table th.credit-col { background: #b71c1c; }
+  .cdj-table th.debit-col  { background: #1565c0; }
+  .cdj-row-draft td { background: #fffde7; }
+  .cdj-row-cancelled td { background: #ffebee; text-decoration: line-through; }
+  .cdj-row-cancelled td.no-strike { text-decoration: none; }
+  .cdj-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
+  .balance-warning { margin-top: 10px; font-size: 11px; font-weight: 700; color: #b91c1c; }
+  .audit-footer { margin-top: 8px; font-size: 9px; color: #888; text-align: right;
+                  border-top: 1px solid #ddd; padding-top: 4px; }
+  @media print {
+    nav.sidebar, header.topbar, .cdj-print-actions, .card-header { display: none !important; }
+    .main { margin-left: 0 !important; padding: 0 !important; }
+    .content-wrapper, .card { box-shadow: none !important; border: none !important; }
+    .cdj-scroll { overflow: visible !important; }
+    @page { size: A4 landscape; margin: 10mm; }
+    .cdj-table { font-size: 8px; }
+    .cdj-table th.num { width: 90px; min-width: 90px; white-space: normal; }
+    .cdj-table td.num { width: 90px; min-width: 90px; max-width: 90px; }
+    .cdj-table thead { display: table-header-group; }
+    .cdj-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    .cdj-header { page-break-after: avoid; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="cdj-print-actions">
+      <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
+      <a href="{{ url_for('journals.cd_journal') }}" class="btn btn-secondary btn-sm">Back</a>
+    </div>
+  </div>
+  <div class="card-body">
+
+    <div class="cdj-header">
+      {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
+      {% if branch_name %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
+      <div class="doc-title">CASH DISBURSEMENTS JOURNAL</div>
+      <div class="period-label">{{ period.label }}</div>
+    </div>
+
+    {% if matrix.rows %}
+    <div class="cdj-scroll">
+    <table class="cdj-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>CD No.</th>
+          <th>Check No.</th>
+          <th>Vendor</th>
+          <th>Particulars</th>
+          {% for col in matrix.columns %}
+          <th class="num {% if col.group in ['wht','cash'] %}credit-col{% else %}debit-col{% endif %}">
+            {{ col.name }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix.rows %}
+        {% set cdv = cdv_map.get(row.entry.reference) %}
+        <tr {% if row.is_cancelled %}class="cdj-row-cancelled"{% elif row.is_draft %}class="cdj-row-draft"{% endif %}>
+          <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
+          <td class="no-strike">{{ row.entry.reference or '—' }}</td>
+          <td>{{ cdv.check_number if cdv and cdv.check_number else '' }}</td>
+          <td>{{ cdv.vendor_name if cdv else '—' }}</td>
+          <td>
+            {%- if row.is_cancelled -%}[CANCELLED] {% endif -%}
+            {%- if row.is_draft -%}[DRAFT] {% endif -%}
+            {{ (cdv.notes if cdv else '') or '' }}
+          </td>
+          {% for col in matrix.columns %}
+          <td class="num">
+            {%- if not row.is_draft and col.account_id in row.cells and row.cells[col.account_id] != 0 -%}
+              {%- set v = row.cells[col.account_id] -%}
+              {%- if v < 0 -%}({{ '{:,.2f}'.format(-v) }}){%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+
+        <tr class="cdj-total">
+          <td colspan="5">TOTAL</td>
+          {% for col in matrix.columns %}
+          <td class="num">
+            {%- set t = matrix.totals.get(col.account_id) -%}
+            {%- if t and t != 0 -%}
+              {%- if t < 0 -%}({{ '{:,.2f}'.format(-t) }}){%- else -%}{{ '{:,.2f}'.format(t) }}{%- endif -%}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    {% if not matrix.balanced %}
+    <p class="balance-warning">Warning: Column totals do not net to zero — debits and credits are out of balance.</p>
+    {% endif %}
+
+    {% else %}
+    <p style="margin-top:16px; color:#555;">No CD entries found for {{ period.label | lower }}.</p>
+    {% endif %}
+
+    <div class="audit-footer">
+      Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+    </div>
+
+  </div>
+</div>
+{% endblock %}
