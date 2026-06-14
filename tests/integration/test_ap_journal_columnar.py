@@ -206,3 +206,22 @@ def test_ap_journal_export_includes_voided_bill(client, db_session):
     all_text = ' '.join(str(c.value) for row in ws.iter_rows() for c in row if c.value is not None)
     assert 'AP-2026-06-0007' in all_text
     assert '[VOIDED]' in all_text
+
+
+def test_ap_journal_view_voided_excluded_from_totals_mixed(client, db_session):
+    branch = Branch(name='Main', code='MAIN')
+    db.session.add(branch); db.session.commit()
+    ap = _acct('20101', 'Accounts Payable - Trade', 'Liability', 'credit')
+    rent = _acct('60400', 'Rent Expense', 'Expense', 'debit')
+    _entry(branch.id, 'posted', date(2026, 6, 1), 'AP-2026-06-0001',
+           [(rent, 5000, 0), (ap, 0, 5000)])
+    _voided_bill(branch.id, 'AP-2026-06-0002', date(2026, 6, 2))
+    _login(client, db_session, branch)
+
+    res = client.get('/journals/ap?mode=month&year=2026&month=6')
+    assert res.status_code == 200
+    body = res.get_data(as_text=True)
+    assert 'AP-2026-06-0001' in body
+    assert 'AP-2026-06-0002' in body
+    assert 'VOIDED' in body
+    assert '5,000.00' in body
