@@ -861,6 +861,15 @@ function initOverrides() {
     calculateTotals();
 }
 
+// ── Vendor search-select ──────────────────────────────────────────────────────
+const vendorSel = document.getElementById('vendor_id');
+if (vendorSel) {
+    new Choices(vendorSel, {
+        searchEnabled: true, itemSelectText: '', shouldSort: false,
+        searchResultLimit: 50, allowHTML: false,
+    });
+}
+
 // ── Payment Terms search-select ───────────────────────────────────────────────
 const ptSel = document.getElementById('payment_terms');
 if (ptSel) {

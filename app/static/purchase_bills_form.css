@@ -35,6 +35,25 @@
     font-weight: 600;
 }
 
+/* ── Choices.js vendor search-select inside vendor card ──────────────────── */
+.vendor-step-card .choices {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card);
+}
+.vendor-step-card .choices__inner {
+    border: none !important;
+    background: transparent !important;
+    min-height: 38px;
+    border-radius: 0 !important;
+}
+.vendor-step-card .choices.is-focused,
+.vendor-step-card .choices.is-open {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px rgba(59,130,246,.15);
+}
+
 /* ── Choices.js in header fields looks like a form-control ───────────────── */
 /* Border on .choices (not .choices__inner) — avoids overflow:hidden clipping */
 .left-col-fields .choices {
