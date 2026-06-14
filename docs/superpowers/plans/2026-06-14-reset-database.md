@@ -299,7 +299,7 @@ Admin branches: ['MAIN']
 Main Branch: Main Branch
 VAT categories: 7
 WHT codes: 3
-App settings: 16
+App settings: 14
 ```
 
 - [ ] **Step 4: Verify login works**
