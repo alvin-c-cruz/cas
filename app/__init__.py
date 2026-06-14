@@ -191,6 +191,7 @@ def create_app(config_name=None):
     from app.errors.views import errors_bp
     from app.periods.views import periods_bp
     from app.company_settings.views import company_settings_bp
+    from app.cash_disbursements.views import cash_disbursements_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -211,7 +212,7 @@ def create_app(config_name=None):
     app.register_blueprint(errors_bp)
     app.register_blueprint(periods_bp)
     app.register_blueprint(company_settings_bp, url_prefix='/settings')
-
+    app.register_blueprint(cash_disbursements_bp)
 
     migrate.init_app(app, db)
 
