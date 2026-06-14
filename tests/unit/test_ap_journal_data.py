@@ -172,6 +172,49 @@ def test_build_columnar_voided_rows_sort_with_posted_by_date():
     assert matrix['rows'][1]['is_voided'] is False
 
 
+def test_build_ap_journal_xlsx_voided_row_has_red_fill_and_no_amounts(app):
+    from datetime import date
+    from decimal import Decimal
+    from unittest.mock import MagicMock
+
+    bill = MagicMock()
+    bill.bill_date = date(2026, 6, 3)
+    bill.bill_number = 'AP-2026-06-0002'
+    bill.vendor_invoice_number = 'INV-99'
+    bill.vendor_name = 'Voided Vendor'
+    bill.notes = 'Test void'
+
+    columns = [
+        {'account_id': 1, 'code': '20101', 'name': 'Accounts Payable - Trade', 'group': 'ap'},
+    ]
+    rows = [{
+        'entry': None,
+        'bill': bill,
+        'cells': {},
+        'is_draft': False,
+        'is_voided': True,
+    }]
+    with app.app_context():
+        resp = build_ap_journal_xlsx(
+            columns=columns, rows=rows, totals={},
+            period_label='For the month of June 2026',
+            company_name='ABC Co', branch_name=None,
+            filename='test.xlsx',
+            identity=lambda e: ('', '', '', ''))
+
+    wb = load_workbook(io.BytesIO(resp.get_data()))
+    ws = wb.active
+    all_text = ' '.join(str(c.value) for row in ws.iter_rows() for c in row if c.value is not None)
+    assert 'AP-2026-06-0002' in all_text
+    assert 'Voided Vendor' in all_text
+    assert '[VOIDED]' in all_text
+
+    # All amount cells for the voided row must be blank (None)
+    # No branch → header row 5, data row 6
+    data_row_vals = [ws.cell(row=6, column=i).value for i in range(6, 6 + len(columns))]
+    assert all(v is None for v in data_row_vals)
+
+
 def test_build_columnar_voided_no_column_contribution():
     voided = _mock_bill('AP-2026-06-0005', date(2026, 6, 5))
     matrix = build_columnar(

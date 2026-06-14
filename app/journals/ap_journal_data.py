@@ -186,7 +186,8 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     double_s = Side(style='double')
     cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
     total_border = Border(bottom=double_s)
-    draft_fill = PatternFill(fill_type='solid', fgColor='FFF9C4')  # light yellow
+    draft_fill  = PatternFill(fill_type='solid', fgColor='FFF9C4')  # light yellow
+    voided_fill = PatternFill(fill_type='solid', fgColor='FFCDD2')  # light red
 
     # Preamble
     ws.append([company_name])
@@ -215,6 +216,22 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     # Data rows
     first_data_row = hdr_row + 1
     for r in rows:
+        if r.get('is_voided'):
+            b = r['bill']
+            line = [
+                b.bill_date.strftime('%d-%b-%Y'),
+                b.bill_number or '',
+                b.vendor_invoice_number or '',
+                b.vendor_name or '',
+                '[VOIDED] ' + (b.notes or ''),
+            ] + [None] * len(columns)
+            ws.append(line)
+            cur = ws.max_row
+            for cell in ws[cur]:
+                cell.border = cell_border
+                cell.fill = voided_fill
+            continue
+
         e = r['entry']
         no, invoice, vendor, particulars = identity(e)
         line = [
