@@ -1,8 +1,17 @@
 {% extends "base.html" %}
 {% block title %}AP Vouchers{% endblock %}
 {% block page_title %}AP Vouchers{% endblock %}
-{% block head %}
+{% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<style>
+.pb-vendor-filter .choices__list--dropdown {
+    min-width: 220px;
+}
+.pb-vendor-filter .choices__list--dropdown .choices__list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+</style>
 {% endblock %}
 {% block content %}
 
@@ -253,7 +262,8 @@
             searchEnabled: true,
             itemSelectText: '',
             shouldSort: false,
-            allowHTML: false
+            allowHTML: false,
+            classNames: { containerOuter: 'choices pb-vendor-filter' }
         });
     }
 })();
