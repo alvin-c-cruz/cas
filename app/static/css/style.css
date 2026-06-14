@@ -1460,7 +1460,7 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
   font-size: 32px;
   font-weight: 700;
   font-family: var(--mono);
-  color: var(--text-1);
+  color: var(--text);
   margin-bottom: 4px;
 }
 
@@ -1575,6 +1575,4 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 
 .dashboard-chart { max-height: 300px; }
 
-.text-right  { text-align: right; }
-.text-center { text-align: center; }
 .font-mono   { font-family: var(--mono); }
