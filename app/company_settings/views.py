@@ -52,6 +52,8 @@ SETTINGS_KEYS = [
     'officer_treasurer',
     'officer_secretary',
     'apv_print_access',
+    'sv_print_access',
+    'cd_print_access',
 ]
 
 LOGO_SETTING_KEY = 'company_logo'

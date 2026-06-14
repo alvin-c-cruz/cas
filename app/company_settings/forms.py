@@ -26,8 +26,8 @@ VAT_REGISTRATION_CHOICES = [
     ('Non-VAT', 'Non-VAT'),
 ]
 
-APV_PRINT_ACCESS_CHOICES = [
-    ('posted_only', 'Posted only'),
+PRINT_ACCESS_CHOICES = [
+    ('posted_only',      'Posted only'),
     ('draft_and_posted', 'Draft and posted'),
 ]
 
@@ -102,5 +102,11 @@ class CompanySettingsForm(FlaskForm):
 
     # Documents
     apv_print_access = SelectField(
-        'APV Print Access', choices=APV_PRINT_ACCESS_CHOICES, default='posted_only'
+        'APV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
+    )
+    sv_print_access = SelectField(
+        'Sales Invoice Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
+    )
+    cd_print_access = SelectField(
+        'CDV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )
