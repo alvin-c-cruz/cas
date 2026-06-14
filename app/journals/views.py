@@ -253,7 +253,7 @@ def cd_journal_export():
     branch = db.session.get(Branch, branch_id)
     branch_count = Branch.query.count()
     branch_name = branch.name if (branch and branch_count > 1) else None
-    company_name = AppSettings.get_setting('company_name') or 'Company'
+    company_name = AppSettings.get_setting('company_name') or ''
 
     if period['mode'] == 'month':
         filename = f"CD-Journal-{period['year']}-{period['month']:02d}.xlsx"
