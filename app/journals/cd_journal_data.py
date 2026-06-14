@@ -63,7 +63,7 @@ def build_columnar_cd(posted_entries, draft_entries, ap_account_id,
             signed = (line.debit_amount or Decimal('0')) - (line.credit_amount or Decimal('0'))
             cells[acct.id] = cells.get(acct.id, Decimal('0')) + signed
             totals[acct.id] = totals.get(acct.id, Decimal('0')) + signed
-        is_cancelled = je.reference in cancelled_refs if cancelled_refs else False
+        is_cancelled = je.reference in cancelled_refs
         rows.append({'entry': je, 'cells': cells, 'is_draft': False, 'is_cancelled': is_cancelled})
 
     for je in draft_entries:
