@@ -508,7 +508,7 @@ def seed_minimal():
     Creates:
     - 1 admin user
     - 1 main branch (assigned to admin)
-    - 14 app settings
+    - 15 app settings
     - 22 accounts (Assets, Liabilities, Expenses with hierarchical structure)
     - 7 VAT categories (V12CG/V12DG/V12SV/V12IM/V0/VEX/INV)
     - 3 WHT codes (WC158, WC160, WC100)
@@ -586,11 +586,12 @@ def seed_minimal():
                 {'key': 'officer_president',    'value': 'Alvin C. Cruz'},
                 {'key': 'officer_secretary',    'value': 'Sofia Esperanza M. Cruz'},
                 {'key': 'officer_treasurer',    'value': 'Joan Hazel M. Cruz'},
+                {'key': 'apv_print_access',     'value': 'posted_only'},
             ]
             for s in settings:
                 db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
             db.session.commit()
-            print(f"  [OK] 14 app settings created")
+            print(f"  [OK] 15 app settings created")
 
         # ------------------------------------------------------------------
         # 4. Chart of Accounts (22 accounts, three-pass seed: parents, then children)
