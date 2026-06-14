@@ -77,3 +77,57 @@ def test_sales_invoice_calculate_totals_no_items(db_session, customer, branch):
     assert inv.total_before_wt == Decimal('0.00')
     assert inv.total_amount == Decimal('0.00')
     assert inv.balance == Decimal('0.00')
+
+
+@pytest.fixture
+def wht_code(db_session):
+    from app.withholding_tax.models import WithholdingTax
+    w = WithholdingTax(code='WC010', name='EWT 10%', rate=Decimal('10.00'), is_active=True)
+    db_session.add(w)
+    db_session.commit()
+    return w
+
+
+def test_invoice_item_calculate_amounts_vat_inclusive(db_session, revenue_account, wht_code):
+    from app.sales_invoices.models import SalesInvoiceItem
+    item = SalesInvoiceItem(
+        line_number=1,
+        description='Service',
+        amount=Decimal('11200.00'),
+        vat_rate=Decimal('12.00'),
+        wt_rate=Decimal('10.00'),
+        account_id=revenue_account.id,
+    )
+    item.calculate_amounts()
+    # VAT-inclusive: net_base = 11200 / 1.12 = 10000
+    net_base = Decimal('11200.00') / Decimal('1.12')
+    expected_vat = (Decimal('11200.00') - net_base).quantize(Decimal('0.01'))
+    expected_wt = (net_base * Decimal('0.10')).quantize(Decimal('0.01'))
+    assert item.line_total == Decimal('11200.00')
+    assert abs(item.vat_amount - expected_vat) < Decimal('0.02')
+    assert abs(item.wt_amount - expected_wt) < Decimal('0.02')
+
+
+def test_invoice_item_zero_vat(db_session, revenue_account):
+    from app.sales_invoices.models import SalesInvoiceItem
+    item = SalesInvoiceItem(
+        line_number=1,
+        description='Exempt Service',
+        amount=Decimal('5000.00'),
+        vat_rate=Decimal('0.00'),
+        account_id=revenue_account.id,
+    )
+    item.calculate_amounts()
+    assert item.line_total == Decimal('5000.00')
+    assert item.vat_amount == Decimal('0.00')
+    assert item.wt_amount == Decimal('0.00')
+
+
+def test_invoice_attachment_model_structure(db_session):
+    from app.sales_invoices.models import SalesInvoiceAttachment
+    col_names = [c.name for c in SalesInvoiceAttachment.__table__.columns]
+    assert 'invoice_id' in col_names
+    assert 'stored_filename' in col_names
+    assert 'mime_type' in col_names
+    assert 'file_size' in col_names
+    assert 'uploaded_by_id' in col_names

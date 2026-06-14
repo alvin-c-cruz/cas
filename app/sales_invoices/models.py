@@ -162,37 +162,70 @@ class SalesInvoice(db.Model):
         }
 
 
-# Stubs — full implementation in Task 4
 class SalesInvoiceItem(db.Model):
     __tablename__ = 'sales_invoice_items'
+
     id = db.Column(db.Integer, primary_key=True)
-    invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=False)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=False, index=True)
     line_number = db.Column(db.Integer, nullable=False)
     description = db.Column(db.String(500), nullable=False)
     amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
-    quantity = db.Column(db.Numeric(15, 4), default=1.0000, nullable=False)
-    unit_price = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
+
     vat_category = db.Column(db.String(100))
     vat_rate = db.Column(db.Numeric(5, 2), default=0.00, nullable=False)
+
     line_total = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
+
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'))
     account = db.relationship('Account')
+
     wt_id = db.Column(db.Integer, db.ForeignKey('withholding_tax.id'), nullable=True)
+    withholding_tax = db.relationship('WithholdingTax', foreign_keys=[wt_id])
     wt_rate = db.Column(db.Numeric(5, 2), nullable=True)
     wt_amount = db.Column(db.Numeric(15, 2), default=Decimal('0.00'), nullable=False)
 
+    def __repr__(self):
+        return f'<SalesInvoiceItem {self.invoice_id}-{self.line_number}>'
+
     def calculate_amounts(self):
-        pass
+        """Extract VAT from VAT-inclusive amount; compute WHT on net base."""
+        vat_rate = Decimal(str(self.vat_rate)) if self.vat_rate else Decimal('0')
+        amount = Decimal(str(self.amount)) if self.amount else Decimal('0')
+        if vat_rate > 0:
+            net_base = amount / (1 + vat_rate / Decimal('100'))
+        else:
+            net_base = amount
+        self.line_total = amount
+        self.vat_amount = (amount - net_base).quantize(
+            Decimal('0.01'), rounding='ROUND_HALF_UP')
+        wt_rate = Decimal(str(self.wt_rate)) if self.wt_rate else Decimal('0')
+        self.wt_amount = (net_base * wt_rate / Decimal('100')).quantize(
+            Decimal('0.01'), rounding='ROUND_HALF_UP')
 
     def to_dict(self):
-        return {}
+        return {
+            'id': self.id,
+            'line_number': self.line_number,
+            'description': self.description,
+            'amount': float(self.amount),
+            'vat_category': self.vat_category,
+            'vat_rate': float(self.vat_rate),
+            'line_total': float(self.line_total),
+            'vat_amount': float(self.vat_amount),
+            'account_id': self.account_id,
+            'wt_id': self.wt_id,
+            'wt_rate': float(self.wt_rate) if self.wt_rate is not None else None,
+            'wt_amount': float(self.wt_amount),
+        }
 
 
 class SalesInvoiceAttachment(db.Model):
     __tablename__ = 'sales_invoice_attachments'
+
     id = db.Column(db.Integer, primary_key=True)
-    invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=False)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'),
+                           nullable=False, index=True)
     original_filename = db.Column(db.String(255), nullable=False)
     stored_filename = db.Column(db.String(255), nullable=False, unique=True)
     mime_type = db.Column(db.String(100), nullable=False)
@@ -201,3 +234,18 @@ class SalesInvoiceAttachment(db.Model):
     uploaded_by = db.relationship('User', foreign_keys=[uploaded_by_id],
                                   backref='uploaded_invoice_attachments')
     uploaded_at = db.Column(db.DateTime, default=ph_now, nullable=False)
+
+    def __repr__(self):
+        return f'<SalesInvoiceAttachment {self.original_filename} invoice={self.invoice_id}>'
+
+    @property
+    def is_image(self):
+        return self.mime_type.startswith('image/')
+
+    @property
+    def file_size_human(self):
+        if self.file_size < 1024:
+            return f'{self.file_size} B'
+        if self.file_size < 1024 * 1024:
+            return f'{self.file_size / 1024:.1f} KB'
+        return f'{self.file_size / (1024 * 1024):.1f} MB'
