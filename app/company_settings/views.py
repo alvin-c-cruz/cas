@@ -142,9 +142,6 @@ def edit_settings():
             if value:
                 getattr(form, key).data = value
 
-        if not form.apv_print_access.data:
-            form.apv_print_access.data = 'posted_only'
-
     return render_template(
         'company_settings/form.html',
         form=form,

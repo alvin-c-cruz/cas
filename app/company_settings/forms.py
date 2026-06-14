@@ -102,5 +102,5 @@ class CompanySettingsForm(FlaskForm):
 
     # Documents
     apv_print_access = SelectField(
-        'APV Print Access', choices=APV_PRINT_ACCESS_CHOICES
+        'APV Print Access', choices=APV_PRINT_ACCESS_CHOICES, default='posted_only'
     )
