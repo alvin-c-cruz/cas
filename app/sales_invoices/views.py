@@ -101,8 +101,9 @@ def _get_all_accounts_for_select():
     id_map = {a.id: a for a in all_accts}
 
     def _depth(acct):
-        d, p = 0, acct.parent_id
-        while p and p in id_map:
+        d, p, visited = 0, acct.parent_id, set()
+        while p and p in id_map and p not in visited:
+            visited.add(p)
             d += 1
             p = id_map[p].parent_id
         return d
@@ -126,7 +127,7 @@ def _apply_overrides(invoice):
     if vat_override:
         try:
             vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
-            if vat_val < 0 or vat_val > invoice.subtotal:
+            if vat_val < 0 or (invoice.subtotal is not None and vat_val > invoice.subtotal):
                 raise ValueError('out of range')
         except (_decimal.InvalidOperation, ValueError):
             db.session.rollback()
@@ -136,7 +137,7 @@ def _apply_overrides(invoice):
     if wt_override:
         try:
             wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
-            if wt_val < 0 or wt_val > invoice.subtotal:
+            if wt_val < 0 or (invoice.subtotal is not None and wt_val > invoice.subtotal):
                 raise ValueError('out of range')
         except (_decimal.InvalidOperation, ValueError):
             db.session.rollback()
