@@ -1,19 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>AP Journal — {{ period.label }}</title>
+{% extends "base.html" %}
+{% block title %}AP Journal Print — {{ period.label }}{% endblock %}
+{% block page_title %}AP Journal — Print Preview{% endblock %}
+
+{% block extra_css %}
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
-
-  .screen-only { }
-  @media print {
-    .screen-only { display: none !important; }
-    @page { size: A4 landscape; margin: 10mm; }
-  }
-
-  .page-wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .apj-print-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
   /* Header */
   .apj-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
@@ -22,138 +13,126 @@
   .apj-header .doc-title    { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-top: 6px; }
   .apj-header .period-label { font-size: 11px; color: #555; margin-top: 3px; }
 
-  /* Print/Close bar */
-  .print-bar { margin-bottom: 20px; display: flex; gap: 8px; }
-  .btn-print { padding: 8px 20px; background: #1565c0; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
-  .btn-close  { padding: 8px 20px; background: #666; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; }
-
   /* Table */
+  .apj-scroll { overflow-x: auto; }
   .apj-table { width: 100%; border-collapse: collapse; font-size: 10px; }
   .apj-table th, .apj-table td { border: 1px solid #aaa; padding: 3px 6px; white-space: nowrap; }
   .apj-table th { background: #222; color: #fff; font-weight: 700; text-align: left; }
-  .apj-table th.num {
-    text-align: right;
-    width: 120px;
-    min-width: 120px;
-  }
-  .apj-table td.num {
-    text-align: right;
-    font-family: monospace;
-    width: 120px;
-    min-width: 120px;
-    max-width: 120px;
-  }
+  .apj-table th.num { text-align: right; width: 120px; min-width: 120px; }
+  .apj-table td.num { text-align: right; font-family: monospace; width: 120px; min-width: 120px; max-width: 120px; }
   .apj-table th.credit-col { background: #b71c1c; }
   .apj-table th.debit-col  { background: #1565c0; }
-
-  /* Row states */
   .apj-row-draft  td { background: #fffde7; }
   .apj-row-voided td { background: #ffebee; text-decoration: line-through; }
   .apj-row-voided td.no-strike { text-decoration: none; }
-
-  /* Total row */
   .apj-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
-
-
-  /* Balance warning */
   .balance-warning { margin-top: 10px; font-size: 11px; font-weight: 700; color: #b91c1c; }
-
-  /* Footer */
   .audit-footer { margin-top: 8px; font-size: 9px; color: #888; text-align: right;
                   border-top: 1px solid #ddd; padding-top: 4px; }
+
+  @media print {
+    .sidebar, .topbar, .apj-print-actions { display: none !important; }
+    .main-content { margin-left: 0 !important; }
+    @page { size: A4 landscape; margin: 10mm; }
+    .apj-table { font-size: 9px; }
+    .card-header { display: none !important; }
+  }
 </style>
-</head>
-<body>
-<div class="page-wrap">
+{% endblock %}
 
-  <!-- Screen-only controls -->
-  <div class="print-bar screen-only">
-    <button class="btn-print" onclick="window.print()">Print</button>
-    <a class="btn-close" href="{{ url_for('journals.ap_journal') }}">Close</a>
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="apj-print-actions">
+      <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
+      <a href="{{ url_for('journals.ap_journal') }}" class="btn btn-secondary btn-sm">Back</a>
+    </div>
   </div>
+  <div class="card-body">
 
-  <!-- Header -->
-  <div class="apj-header">
-    {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
-    {% if branch_name %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
-    <div class="doc-title">ACCOUNTS PAYABLE JOURNAL</div>
-    <div class="period-label">{{ period.label }}</div>
+    <!-- Document header (visible on screen and in print) -->
+    <div class="apj-header">
+      {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
+      {% if branch_name %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
+      <div class="doc-title">ACCOUNTS PAYABLE JOURNAL</div>
+      <div class="period-label">{{ period.label }}</div>
+    </div>
+
+    {% if matrix.rows %}
+    <div class="apj-scroll">
+    <table class="apj-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>AP No.</th>
+          <th>Invoice No.</th>
+          <th>Vendor</th>
+          <th>Particulars</th>
+          {% for col in matrix.columns %}
+          <th class="num {% if col.group in ['ap','wht'] %}credit-col{% else %}debit-col{% endif %}">
+            {{ col.name }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix.rows %}
+        {% if row.is_voided %}
+        <tr class="apj-row-voided">
+          <td>{{ row.bill.bill_date.strftime('%d-%b-%Y') }}</td>
+          <td class="no-strike">{{ row.bill.bill_number }}</td>
+          <td>{{ row.bill.vendor_invoice_number or '' }}</td>
+          <td>{{ row.bill.vendor_name }}</td>
+          <td>[VOIDED] {{ row.bill.notes or '' }}</td>
+          {% for col in matrix.columns %}<td class="num no-strike"></td>{% endfor %}
+        </tr>
+        {% else %}
+        {% set bill = bill_map.get(row.entry.reference) %}
+        <tr {% if row.is_draft %}class="apj-row-draft"{% endif %}>
+          <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
+          <td>{{ row.entry.reference or '—' }}</td>
+          <td>{{ bill.vendor_invoice_number if bill else '' }}</td>
+          <td>{{ bill.vendor_name if bill else '—' }}</td>
+          <td>{{ ('[DRAFT] ' + ((bill.notes if bill else '') or '')) if row.is_draft else ((bill.notes if bill else '') or '') }}</td>
+          {% for col in matrix.columns %}
+          <td class="num">
+            {%- if not row.is_draft and col.account_id in row.cells and row.cells[col.account_id] != 0 -%}
+              {%- set v = row.cells[col.account_id] -%}
+              {%- if v < 0 -%}({{ '{:,.2f}'.format(-v) }}){%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endif %}
+        {% endfor %}
+
+        <tr class="apj-total">
+          <td colspan="5">TOTAL</td>
+          {% for col in matrix.columns %}
+          <td class="num">
+            {%- set t = matrix.totals.get(col.account_id) -%}
+            {%- if t and t != 0 -%}
+              {%- if t < 0 -%}({{ '{:,.2f}'.format(-t) }}){%- else -%}{{ '{:,.2f}'.format(t) }}{%- endif -%}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    {% if not matrix.balanced %}
+    <p class="balance-warning">Warning: Column totals do not net to zero — debits and credits are out of balance.</p>
+    {% endif %}
+
+    {% else %}
+    <p style="margin-top:16px; color:#555;">No AP entries found for {{ period.label | lower }}.</p>
+    {% endif %}
+
+    <div class="audit-footer">
+      Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+    </div>
+
   </div>
-
-  {% if matrix.rows %}
-  <table class="apj-table">
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>AP No.</th>
-        <th>Invoice No.</th>
-        <th>Vendor</th>
-        <th>Particulars</th>
-        {% for col in matrix.columns %}
-        <th class="num {% if col.group in ['ap','wht'] %}credit-col{% else %}debit-col{% endif %}">
-          {{ col.name }}
-        </th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in matrix.rows %}
-      {% if row.is_voided %}
-      <tr class="apj-row-voided">
-        <td>{{ row.bill.bill_date.strftime('%d-%b-%Y') }}</td>
-        <td class="no-strike">{{ row.bill.bill_number }}</td>
-        <td>{{ row.bill.vendor_invoice_number or '' }}</td>
-        <td>{{ row.bill.vendor_name }}</td>
-        <td>[VOIDED] {{ row.bill.notes or '' }}</td>
-        {% for col in matrix.columns %}<td class="num no-strike"></td>{% endfor %}
-      </tr>
-      {% else %}
-      {% set bill = bill_map.get(row.entry.reference) %}
-      <tr {% if row.is_draft %}class="apj-row-draft"{% endif %}>
-        <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
-        <td>{{ row.entry.reference or '—' }}</td>
-        <td>{{ bill.vendor_invoice_number if bill else '' }}</td>
-        <td>{{ bill.vendor_name if bill else '—' }}</td>
-        <td>{{ ('[DRAFT] ' + ((bill.notes if bill else '') or '')) if row.is_draft else ((bill.notes if bill else '') or '') }}</td>
-        {% for col in matrix.columns %}
-        <td class="num">
-          {%- if not row.is_draft and col.account_id in row.cells and row.cells[col.account_id] != 0 -%}
-            {%- set v = row.cells[col.account_id] -%}
-            {%- if v < 0 -%}({{ '{:,.2f}'.format(-v) }}){%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
-          {%- endif -%}
-        </td>
-        {% endfor %}
-      </tr>
-      {% endif %}
-      {% endfor %}
-
-      <!-- Total row -->
-      <tr class="apj-total">
-        <td colspan="5">TOTAL</td>
-        {% for col in matrix.columns %}
-        <td class="num">
-          {%- set t = matrix.totals.get(col.account_id) -%}
-          {%- if t and t != 0 -%}
-            {%- if t < 0 -%}({{ '{:,.2f}'.format(-t) }}){%- else -%}{{ '{:,.2f}'.format(t) }}{%- endif -%}
-          {%- endif -%}
-        </td>
-        {% endfor %}
-      </tr>
-    </tbody>
-  </table>
-
-  {% if not matrix.balanced %}
-  <p class="balance-warning">Warning: Column totals do not net to zero — debits and credits are out of balance.</p>
-  {% endif %}
-
-  {% else %}
-  <p style="margin-top:16px; color:#555;">No AP entries found for {{ period.label | lower }}.</p>
-  {% endif %}
-
-  <div class="audit-footer">
-    Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
-  </div>
-
 </div>
-</body>
-</html>
+{% endblock %}
