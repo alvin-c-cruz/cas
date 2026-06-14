@@ -112,6 +112,7 @@
                or (apv_print_access == 'draft_and_posted' and bill.status not in ('voided', 'cancelled')) %}
             <a href="{{ url_for('purchase_bills.print_bill', id=bill.id) }}"
                target="_blank"
+               rel="noopener noreferrer"
                class="btn btn-secondary">Print</a>
             {% endif %}
             {# Tier 2: accountant/admin only can post #}
