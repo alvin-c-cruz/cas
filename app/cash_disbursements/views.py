@@ -864,4 +864,4 @@ def print_cdv(id):
     cdv = _get_cdv_or_404(id)
     je_entries = _build_cdv_je_preview(cdv)
     return render_template('cash_disbursements/print.html',
-                           cdv=cdv, je_entries=je_entries, now=ph_now())
+                           cdv=cdv, je_entries=je_entries, now=ph_now)

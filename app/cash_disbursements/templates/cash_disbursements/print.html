@@ -1,12 +1,169 @@
-{% extends 'base.html' %}
-{% block title %}Print CDV — {{ cdv.cdv_number }}{% endblock %}
-{% block content %}
-<div class="container">
-  <h2>Cash Disbursement Voucher</h2>
-  <p><strong>CDV No:</strong> {{ cdv.cdv_number }}</p>
-  <p><strong>Date:</strong> {{ cdv.cdv_date }}</p>
-  <p><strong>Vendor:</strong> {{ cdv.vendor_name }}</p>
-  <p><strong>Amount:</strong> {{ cdv.total_amount }}</p>
-  <p><strong>Status:</strong> {{ cdv.status }}</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CDV {{ cdv.cdv_number }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: white; padding: 20px; }
+  h2 { font-size: 13px; font-weight: 700; margin: 16px 0 6px; border-bottom: 1px solid #bbb; padding-bottom: 3px; }
+  .header { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .company-name { font-size: 14px; font-weight: 700; }
+  .doc-title { font-size: 20px; font-weight: 700; margin: 8px 0 4px; letter-spacing: .03em; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 700;
+           text-transform: uppercase; border: 1px solid #555; }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; margin-top: 10px; }
+  .field { display: flex; gap: 6px; }
+  .field-label { font-weight: 600; color: #555; white-space: nowrap; }
+  .vendor-box { border: 2px solid #111; padding: 10px 14px; border-radius: 4px; }
+  .vendor-box .vname { font-size: 13px; font-weight: 700; }
+  .vendor-box .vtin  { font-size: 10px; color: #555; margin-top: 2px; }
+  .notes-box { background: #f9f9f9; border: 1px solid #ddd; padding: 8px 12px; border-radius: 3px;
+               min-height: 32px; font-size: 11px; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  thead tr { background: #f0f0f0; }
+  th { text-align: left; padding: 4px 6px; font-weight: 700; border: 1px solid #bbb; }
+  td { padding: 3px 6px; border: 1px solid #ddd; vertical-align: top; }
+  .right { text-align: right; }
+  .mono { font-family: "Courier New", monospace; }
+  .summary { margin-top: 12px; width: 280px; margin-left: auto; }
+  .sum-row { display: flex; justify-content: space-between; padding: 3px 0; }
+  .sum-row.total { border-top: 2px solid #111; font-size: 13px; font-weight: 700; padding-top: 6px; margin-top: 4px; }
+  .sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 36px; }
+  .sig-box { border-top: 1px solid #555; padding-top: 4px; text-align: center; font-size: 10px; color: #555; }
+  @media print {
+    body { padding: 0; }
+    @page { margin: 15mm 12mm; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="company-name">{{ current_user.branch.name if current_user and current_user.branch else '' }}</div>
+    <div class="doc-title">CASH DISBURSEMENT VOUCHER</div>
+    <span class="badge">{{ cdv.status|upper }}</span>
+    <div class="field-grid" style="margin-top:12px;">
+      <div class="field"><span class="field-label">CD No.:</span> {{ cdv.cdv_number }}</div>
+      <div class="field"><span class="field-label">Date:</span> {{ cdv.cdv_date.strftime('%B %d, %Y') }}</div>
+      <div class="field"><span class="field-label">Payment:</span> {{ cdv.payment_method|replace('_',' ')|title }}</div>
+      {% if cdv.payment_method == 'check' %}
+      <div class="field"><span class="field-label">Check #:</span> {{ cdv.check_number or '—' }}</div>
+      <div class="field"><span class="field-label">Check Date:</span> {{ cdv.check_date.strftime('%b %d, %Y') if cdv.check_date else '—' }}</div>
+      <div class="field"><span class="field-label">Bank:</span> {{ cdv.check_bank or '—' }}</div>
+      {% endif %}
+      <div class="field"><span class="field-label">Cash/Bank Acct:</span>
+        {{ (cdv.cash_account.code ~ ' — ' ~ cdv.cash_account.name) if cdv.cash_account else '—' }}</div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:6px;">PAY TO:</div>
+    <div class="vendor-box">
+      <div class="vname">{{ cdv.vendor_name }}</div>
+      {% if cdv.vendor_tin %}<div class="vtin">TIN: {{ cdv.vendor_tin }}</div>{% endif %}
+    </div>
+    <div style="margin-top:10px;font-size:9px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:4px;">Particulars / Notes:</div>
+    <div class="notes-box">{{ cdv.notes or '' }}</div>
+  </div>
 </div>
-{% endblock %}
+
+{% if cdv.ap_lines %}
+<h2>Section A — AP Bills Paid</h2>
+<table>
+  <thead>
+    <tr>
+      <th>AP Number</th><th>Bill Date</th>
+      <th class="right">Original Balance</th>
+      <th class="right">Amount Applied</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ap_line in cdv.ap_lines %}
+    <tr>
+      <td>{{ ap_line.bill_number }}</td>
+      <td>{{ ap_line.bill.bill_date.strftime('%b %d, %Y') if ap_line.bill else '—' }}</td>
+      <td class="right mono">₱{{ '{:,.2f}'.format(ap_line.original_balance) }}</td>
+      <td class="right mono">₱{{ '{:,.2f}'.format(ap_line.amount_applied) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if cdv.expense_lines %}
+<h2>Section B — Direct Expenses</h2>
+<table>
+  <thead>
+    <tr>
+      <th>#</th><th>Description</th><th>Account</th>
+      <th>VAT</th><th>WHT</th>
+      <th class="right">Amount</th>
+      <th class="right">VAT Amt</th>
+      <th class="right">WHT Amt</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for exp in cdv.expense_lines %}
+    <tr>
+      <td>{{ exp.line_number }}</td>
+      <td>{{ exp.description or '—' }}</td>
+      <td style="font-size:9px;">{{ (exp.account.code ~ ' — ' ~ exp.account.name) if exp.account else '—' }}</td>
+      <td>{{ exp.vat_category or 'None' }} ({{ '{:.2f}'.format(exp.vat_rate) }}%)</td>
+      <td style="font-size:9px;">{% if exp.withholding_tax %}{{ exp.withholding_tax.code }} ({{ '{:.2f}'.format(exp.wt_rate) }}%){% else %}—{% endif %}</td>
+      <td class="right mono">{{ '{:,.2f}'.format(exp.line_total) }}</td>
+      <td class="right mono">{{ '{:,.2f}'.format(exp.vat_amount) }}</td>
+      <td class="right mono">{{ '{:,.2f}'.format(exp.wt_amount) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<div class="summary">
+  <div class="sum-row"><span>AP Applied:</span><span class="mono">₱{{ '{:,.2f}'.format(cdv.total_ap_applied) }}</span></div>
+  <div class="sum-row"><span>Direct Expenses:</span><span class="mono">₱{{ '{:,.2f}'.format(cdv.total_expense) }}</span></div>
+  <div class="sum-row"><span>Input VAT{{ ' ⚙' if cdv.vat_override }}:</span><span class="mono">₱{{ '{:,.2f}'.format(cdv.total_vat) }}</span></div>
+  <div class="sum-row" style="color:#c00;"><span>Less WHT{{ ' ⚙' if cdv.wt_override }}:</span><span class="mono">-₱{{ '{:,.2f}'.format(cdv.total_wt) }}</span></div>
+  <div class="sum-row total"><span>Net Cash Disbursed:</span><span class="mono">₱{{ '{:,.2f}'.format(cdv.total_amount) }}</span></div>
+</div>
+
+{% if je_entries %}
+<h2>Journal Entry</h2>
+<table style="width:auto;">
+  <thead><tr><th>Code</th><th>Account</th><th class="right">Debit</th><th class="right">Credit</th></tr></thead>
+  <tbody>
+    {% set ns = namespace(td=0, tc=0) %}
+    {% for e in je_entries %}
+    {% set ns.td = ns.td + e.debit %}{% set ns.tc = ns.tc + e.credit %}
+    <tr>
+      <td style="color:#555;">{{ e.code }}</td>
+      <td {{ 'style="padding-left:18px;"' | safe if e.credit > 0 }}>{{ e.name }}</td>
+      <td class="right mono">{% if e.debit > 0 %}{{ '{:,.2f}'.format(e.debit) }}{% endif %}</td>
+      <td class="right mono">{% if e.credit > 0 %}{{ '{:,.2f}'.format(e.credit) }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    <tr style="font-weight:700;border-top:1px solid #bbb;">
+      <td colspan="2">Total</td>
+      <td class="right mono">{{ '{:,.2f}'.format(ns.td) }}</td>
+      <td class="right mono">{{ '{:,.2f}'.format(ns.tc) }}</td>
+    </tr>
+  </tbody>
+</table>
+{% endif %}
+
+<div class="sig-grid">
+  <div class="sig-box">Prepared by</div>
+  <div class="sig-box">Approved by</div>
+  <div class="sig-box">Received by / Payee</div>
+</div>
+
+<div style="margin-top:24px;font-size:9px;color:#888;">
+  Printed by {{ current_user.username }} · {{ now().strftime('%B %d, %Y %H:%M') }}
+  {% if cdv.created_by %} · Created by {{ cdv.created_by.username }}{% if cdv.created_at %} on {{ cdv.created_at.strftime('%b %d, %Y') }}{% endif %}{% endif %}
+  {% if cdv.posted_by %} · Posted by {{ cdv.posted_by.username }}{% if cdv.posted_at %} on {{ cdv.posted_at.strftime('%b %d, %Y') }}{% endif %}{% endif %}
+</div>
+
+<script>window.addEventListener('load', () => window.print());</script>
+</body>
+</html>
