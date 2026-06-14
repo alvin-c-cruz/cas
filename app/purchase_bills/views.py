@@ -285,6 +285,54 @@ _ATTACHMENT_ALLOWED = {
 }
 
 
+_EXPORT_COLUMNS = [
+    'bill_number', 'bill_date', 'due_date', 'vendor_name', 'vendor_tin',
+    'vendor_invoice_number', 'subtotal', 'vat_amount', 'withholding_tax_amount',
+    'total_amount', 'amount_paid', 'balance', 'status',
+]
+
+_EXPORT_HEADERS = [
+    'Bill #', 'Bill Date', 'Due Date', 'Vendor', 'TIN', 'Vendor Invoice #',
+    'Subtotal', 'VAT', 'Withholding Tax', 'Total', 'Paid', 'Balance', 'Status',
+]
+
+
+def _apply_overrides(bill):
+    """Apply VAT/WT manual overrides from request.form to bill.
+
+    Mutates bill in place. Returns a redirect Response on validation error,
+    or None on success. Caller must check the return value.
+    """
+    import decimal as _decimal
+    vat_override = request.form.get('vat_override') == '1'
+    wt_override = request.form.get('wt_override') == '1'
+    bill.vat_override = vat_override
+    bill.wt_override = wt_override
+    if vat_override:
+        try:
+            vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
+            if vat_val < 0 or vat_val > bill.subtotal:
+                raise ValueError('out of range')
+        except (_decimal.InvalidOperation, ValueError):
+            db.session.rollback()
+            flash('Invalid VAT override value.', 'danger')
+            return redirect(url_for('purchase_bills.list_bills'))
+        bill.vat_amount = vat_val
+    if wt_override:
+        try:
+            wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
+            if wt_val < 0 or wt_val > bill.subtotal:
+                raise ValueError('out of range')
+        except (_decimal.InvalidOperation, ValueError):
+            db.session.rollback()
+            flash('Invalid withholding tax override value.', 'danger')
+            return redirect(url_for('purchase_bills.list_bills'))
+        bill.withholding_tax_amount = wt_val
+    bill.total_amount = bill.subtotal - bill.withholding_tax_amount
+    bill.balance = bill.total_amount - bill.amount_paid
+    return None
+
+
 def _filtered_bills_query(include_ids=False):
     """Build a branch-scoped PurchaseBill query from request filter args.
 
@@ -368,103 +416,35 @@ def list_bills():
 @purchase_bills_bp.route('/purchase-bills/export/excel')
 @login_required
 def export_excel():
-    """Export purchase bills to Excel"""
-    query = _filtered_bills_query(include_ids=True)
-
-    bills = query.options(selectinload(PurchaseBill.line_items)).order_by(PurchaseBill.bill_date.desc()).all()
-
-    columns = [
-        'bill_number',
-        'bill_date',
-        'due_date',
-        'vendor_name',
-        'vendor_tin',
-        'vendor_invoice_number',
-        'subtotal',
-        'vat_amount',
-        'withholding_tax_amount',
-        'total_amount',
-        'amount_paid',
-        'balance',
-        'status'
-    ]
-
-    headers = [
-        'Bill #',
-        'Bill Date',
-        'Due Date',
-        'Vendor',
-        'TIN',
-        'Vendor Invoice #',
-        'Subtotal',
-        'VAT',
-        'Withholding Tax',
-        'Total',
-        'Paid',
-        'Balance',
-        'Status'
-    ]
-
+    bills = _filtered_bills_query(include_ids=True).options(
+        selectinload(PurchaseBill.line_items)
+    ).order_by(PurchaseBill.bill_date.desc()).all()
+    log_audit('purchase_bill', 'export_excel', None, f'{len(bills)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
-    filename = f'purchase_bills_{timestamp}.xlsx'
-
     return export_to_excel(
         data=bills,
-        columns=columns,
-        headers=headers,
-        filename=filename,
-        title='Purchase Bills Report'
+        columns=_EXPORT_COLUMNS,
+        headers=_EXPORT_HEADERS,
+        filename=f'purchase_bills_{timestamp}.xlsx',
+        title='Purchase Bills Report',
     )
 
 
 @purchase_bills_bp.route('/purchase-bills/export/csv')
 @login_required
 def export_csv_route():
-    """Export purchase bills to CSV"""
-    query = _filtered_bills_query(include_ids=True)
-
-    bills = query.options(selectinload(PurchaseBill.line_items)).order_by(PurchaseBill.bill_date.desc()).all()
-
-    columns = [
-        'bill_number',
-        'bill_date',
-        'due_date',
-        'vendor_name',
-        'vendor_tin',
-        'vendor_invoice_number',
-        'subtotal',
-        'vat_amount',
-        'withholding_tax_amount',
-        'total_amount',
-        'amount_paid',
-        'balance',
-        'status'
-    ]
-
-    headers = [
-        'Bill #',
-        'Bill Date',
-        'Due Date',
-        'Vendor',
-        'TIN',
-        'Vendor Invoice #',
-        'Subtotal',
-        'VAT',
-        'Withholding Tax',
-        'Total',
-        'Paid',
-        'Balance',
-        'Status'
-    ]
-
+    bills = _filtered_bills_query(include_ids=True).options(
+        selectinload(PurchaseBill.line_items)
+    ).order_by(PurchaseBill.bill_date.desc()).all()
+    log_audit('purchase_bill', 'export_csv', None, f'{len(bills)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
-    filename = f'purchase_bills_{timestamp}.csv'
-
     return export_to_csv(
         data=bills,
-        columns=columns,
-        headers=headers,
-        filename=filename
+        columns=_EXPORT_COLUMNS,
+        headers=_EXPORT_HEADERS,
+        filename=f'purchase_bills_{timestamp}.csv',
     )
 
 
@@ -544,35 +524,9 @@ def create():
 
             bill.calculate_totals()
 
-            # Apply manual overrides
-            import decimal as _decimal
-            vat_override = request.form.get('vat_override') == '1'
-            wt_override = request.form.get('wt_override') == '1'
-            bill.vat_override = vat_override
-            bill.wt_override = wt_override
-            if vat_override:
-                try:
-                    vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
-                    if vat_val < 0 or vat_val > bill.subtotal:
-                        raise ValueError('out of range')
-                except (_decimal.InvalidOperation, ValueError):
-                    db.session.rollback()
-                    flash('Invalid VAT override value.', 'danger')
-                    return redirect(url_for('purchase_bills.list_bills'))
-                bill.vat_amount = vat_val
-            if wt_override:
-                try:
-                    wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
-                    if wt_val < 0 or wt_val > bill.subtotal:
-                        raise ValueError('out of range')
-                except (_decimal.InvalidOperation, ValueError):
-                    db.session.rollback()
-                    flash('Invalid withholding tax override value.', 'danger')
-                    return redirect(url_for('purchase_bills.list_bills'))
-                bill.withholding_tax_amount = wt_val
-            # Recompute net payable after potential overrides
-            bill.total_amount = bill.subtotal - bill.withholding_tax_amount
-            bill.balance = bill.total_amount - bill.amount_paid
+            err = _apply_overrides(bill)
+            if err:
+                return err
 
             db.session.add(bill)
             db.session.flush()  # need bill.id before creating JE
@@ -757,34 +711,9 @@ def edit(id):
 
             bill.calculate_totals()
 
-            # Apply manual overrides
-            import decimal as _decimal
-            vat_override = request.form.get('vat_override') == '1'
-            wt_override = request.form.get('wt_override') == '1'
-            bill.vat_override = vat_override
-            bill.wt_override = wt_override
-            if vat_override:
-                try:
-                    vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
-                    if vat_val < 0 or vat_val > bill.subtotal:
-                        raise ValueError('out of range')
-                except (_decimal.InvalidOperation, ValueError):
-                    db.session.rollback()
-                    flash('Invalid VAT override value.', 'danger')
-                    return redirect(url_for('purchase_bills.list_bills'))
-                bill.vat_amount = vat_val
-            if wt_override:
-                try:
-                    wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
-                    if wt_val < 0 or wt_val > bill.subtotal:
-                        raise ValueError('out of range')
-                except (_decimal.InvalidOperation, ValueError):
-                    db.session.rollback()
-                    flash('Invalid withholding tax override value.', 'danger')
-                    return redirect(url_for('purchase_bills.list_bills'))
-                bill.withholding_tax_amount = wt_val
-            bill.total_amount = bill.subtotal - bill.withholding_tax_amount
-            bill.balance = bill.total_amount - bill.amount_paid
+            err = _apply_overrides(bill)
+            if err:
+                return err
 
             # Delete old JE and create a fresh one
             if bill.journal_entry_id:
