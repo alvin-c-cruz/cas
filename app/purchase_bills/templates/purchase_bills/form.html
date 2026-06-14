@@ -61,7 +61,7 @@
             <!-- ③ Line Items Locked Placeholder -->
             <div id="lineItemsLocked" class="line-items-locked{% if bill %} line-items-locked--hidden{% endif %}">
                 <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
-                <div style="font-size: 14px; font-weight: 600; color: #92400e;">
+                <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
                     Select a vendor above to add line items
                 </div>
                 <div style="font-size: 12px; color: var(--text-2); margin-top: 6px;">
@@ -270,7 +270,7 @@
             <td style="padding:8px 12px;">{{ att.original_filename }}</td>
             <td style="padding:8px 12px;">
               {% if att.is_image %}
-              <span style="background:#dbeafe; color:#1d4ed8; padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600;">IMAGE</span>
+              <span style="background:var(--alert-info-bg); color:var(--alert-info-text); padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600;">IMAGE</span>
               {% else %}
               <span style="background:var(--surface); color:var(--text-2); padding:2px 8px; border-radius:4px; font-size:12px;">{{ att.mime_type.split('/')[-1]|upper }}</span>
               {% endif %}
