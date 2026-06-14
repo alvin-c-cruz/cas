@@ -380,6 +380,6 @@ def create_app(config_name=None):
 
     # GLOBAL ERROR HANDLERS DELETED FOR TESTING
     # This allows full Python tracebacks to show in browser
-    # TODO: Re-enable after testing complete
+    # TODO: re-enable error handlers before production deployment
 
     return app
