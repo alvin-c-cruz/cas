@@ -610,10 +610,7 @@ def print_bill(id):
             [line for line in lines if (line.debit_amount or 0) > 0 and line.account_id in vat_account_ids],
             key=lambda line: line.account.code
         )
-        credits = sorted(
-            [line for line in lines if (line.credit_amount or 0) > 0],
-            key=lambda line: line.account.code
-        )
+        credits = [line for line in lines if (line.credit_amount or 0) > 0]
         je_lines = debit_non_vat + debit_vat + credits
 
     company = {
