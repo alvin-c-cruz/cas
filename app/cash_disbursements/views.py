@@ -865,3 +865,98 @@ def print_cdv(id):
     je_entries = _build_cdv_je_preview(cdv)
     return render_template('cash_disbursements/print.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now)
+
+
+def _cdv_export_data(branch_id):
+    """Return (data_dicts, columns, headers) for CDV list export.
+
+    Applies the same filters as list_cdvs (status, vendor, payment_method,
+    date_from, date_to).  Returns pre-built dicts so that export_to_excel /
+    export_to_csv can consume them via the dict path.
+    """
+    q = CashDisbursementVoucher.query.filter_by(branch_id=branch_id)
+
+    status = request.args.get('status', '')
+    vendor_id = request.args.get('vendor', '')
+    payment_method = request.args.get('payment_method', '')
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+
+    if status and status != 'all':
+        q = q.filter(CashDisbursementVoucher.status == status)
+    if vendor_id and vendor_id != 'all':
+        try:
+            q = q.filter(CashDisbursementVoucher.vendor_id == int(vendor_id))
+        except ValueError:
+            pass
+    if payment_method and payment_method != 'all':
+        q = q.filter(CashDisbursementVoucher.payment_method == payment_method)
+    if date_from:
+        try:
+            q = q.filter(CashDisbursementVoucher.cdv_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            q = q.filter(CashDisbursementVoucher.cdv_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    cdvs = q.order_by(CashDisbursementVoucher.cdv_date.desc(),
+                      CashDisbursementVoucher.cdv_number.desc()).all()
+
+    columns = [
+        'CDV Number', 'Date', 'Vendor', 'Payment Method',
+        'Check #', 'Check Date', 'Cash/Bank Account',
+        'AP Applied', 'Direct Expenses', 'Input VAT', 'WHT',
+        'Net Disbursed', 'Status',
+    ]
+    data = []
+    for cdv in cdvs:
+        data.append({
+            'CDV Number': cdv.cdv_number,
+            'Date': cdv.cdv_date.strftime('%Y-%m-%d') if cdv.cdv_date else '',
+            'Vendor': cdv.vendor_name,
+            'Payment Method': (cdv.payment_method.replace('_', ' ').title()
+                               if cdv.payment_method else ''),
+            'Check #': cdv.check_number or '',
+            'Check Date': cdv.check_date.strftime('%Y-%m-%d') if cdv.check_date else '',
+            'Cash/Bank Account': (
+                f'{cdv.cash_account.code} — {cdv.cash_account.name}'
+                if cdv.cash_account else ''
+            ),
+            'AP Applied': float(cdv.total_ap_applied or 0),
+            'Direct Expenses': float(cdv.total_expense or 0),
+            'Input VAT': float(cdv.total_vat or 0),
+            'WHT': float(cdv.total_wt or 0),
+            'Net Disbursed': float(cdv.total_amount or 0),
+            'Status': cdv.status.title() if cdv.status else '',
+        })
+    return data, columns, columns  # columns == headers for dict-based export
+
+
+@cash_disbursements_bp.route('/cash-disbursements/export/excel')
+@login_required
+def export_excel():
+    branch_id = session.get('selected_branch_id')
+    data, columns, headers = _cdv_export_data(branch_id)
+    return export_to_excel(
+        data=data,
+        columns=columns,
+        headers=headers,
+        filename=f'cash_disbursements_{ph_now().strftime("%Y%m%d")}.xlsx',
+        title='Cash Disbursements',
+    )
+
+
+@cash_disbursements_bp.route('/cash-disbursements/export/csv')
+@login_required
+def export_csv():
+    branch_id = session.get('selected_branch_id')
+    data, columns, headers = _cdv_export_data(branch_id)
+    return export_to_csv(
+        data=data,
+        columns=columns,
+        headers=headers,
+        filename=f'cash_disbursements_{ph_now().strftime("%Y%m%d")}.csv',
+    )
