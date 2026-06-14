@@ -183,6 +183,7 @@ def ap_aging():
 
         # Add to vendor totals
         vendors[vendor_name]['bills'].append({
+            'bill_id': bill.id,
             'bill_number': bill.bill_number,
             'bill_date': bill.bill_date,
             'due_date': bill.due_date,
