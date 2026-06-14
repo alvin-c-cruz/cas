@@ -31,11 +31,14 @@
                   border-top: 1px solid #ddd; padding-top: 4px; }
 
   @media print {
-    .sidebar, .topbar, .apj-print-actions { display: none !important; }
-    .main-content { margin-left: 0 !important; }
+    nav.sidebar, header.topbar, .apj-print-actions, .card-header { display: none !important; }
+    .main { margin-left: 0 !important; padding: 0 !important; }
+    .content-wrapper, .card { box-shadow: none !important; border: none !important; }
+    .apj-scroll { overflow: visible !important; }
     @page { size: A4 landscape; margin: 10mm; }
-    .apj-table { font-size: 9px; }
-    .card-header { display: none !important; }
+    .apj-table { font-size: 8px; }
+    .apj-table th.num { width: 90px; min-width: 90px; }
+    .apj-table td.num { width: 90px; min-width: 90px; max-width: 90px; }
   }
 </style>
 {% endblock %}
