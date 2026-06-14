@@ -149,77 +149,60 @@ def ar_aging():
 @reports_bp.route('/reports/ap-aging')
 @login_required
 def ap_aging():
-    return redirect(url_for('dashboard.under_development', feature='AP Aging'))
     as_of_str = request.args.get('as_of', date.today().isoformat())
-    as_of_date = date.fromisoformat(as_of_str)
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
 
-    # Get all posted bills that are not fully paid — scoped to current branch
     current_branch_id = session.get('selected_branch_id')
     bills = PurchaseBill.query.filter(
-        PurchaseBill.status == 'posted',
+        PurchaseBill.status.in_(['posted', 'partially_paid']),
         PurchaseBill.balance > 0,
         PurchaseBill.branch_id == current_branch_id
     ).order_by(PurchaseBill.vendor_name, PurchaseBill.due_date).all()
 
-    # Group by vendor
     vendors = {}
-
     for bill in bills:
-        vendor_name = bill.vendor_name
-        if vendor_name not in vendors:
-            vendors[vendor_name] = {
-                'name': vendor_name,
+        key = bill.vendor_name
+        if key not in vendors:
+            vendors[key] = {
+                'name': bill.vendor_name,
                 'bills': [],
                 'current': Decimal('0.00'),
                 '1-30': Decimal('0.00'),
                 '31-60': Decimal('0.00'),
                 '61-90': Decimal('0.00'),
                 '90+': Decimal('0.00'),
-                'total': Decimal('0.00')
+                'total': Decimal('0.00'),
             }
-
-        # Calculate age bucket
         bucket = calculate_age_bucket(bill.due_date, as_of_date)
-
-        # Add to vendor totals
-        vendors[vendor_name]['bills'].append({
+        vendors[key]['bills'].append({
             'bill_id': bill.id,
             'bill_number': bill.bill_number,
             'bill_date': bill.bill_date,
             'due_date': bill.due_date,
             'balance_due': bill.balance,
             'bucket': bucket,
-            'days_overdue': (as_of_date - bill.due_date).days if bill.due_date else 0
+            'days_overdue': max(0, (as_of_date - bill.due_date).days) if bill.due_date else 0,
         })
+        vendors[key][bucket] += bill.balance
+        vendors[key]['total'] += bill.balance
 
-        vendors[vendor_name][bucket] += bill.balance
-        vendors[vendor_name]['total'] += bill.balance
-
-    # Calculate grand totals
     grand_totals = {
-        'current': Decimal('0.00'),
-        '1-30': Decimal('0.00'),
-        '31-60': Decimal('0.00'),
-        '61-90': Decimal('0.00'),
-        '90+': Decimal('0.00'),
-        'total': Decimal('0.00')
+        'current': Decimal('0.00'), '1-30': Decimal('0.00'),
+        '31-60': Decimal('0.00'), '61-90': Decimal('0.00'),
+        '90+': Decimal('0.00'), 'total': Decimal('0.00'),
     }
+    for v in vendors.values():
+        for k in grand_totals:
+            grand_totals[k] += v[k]
 
-    for vendor_data in vendors.values():
-        grand_totals['current'] += vendor_data['current']
-        grand_totals['1-30'] += vendor_data['1-30']
-        grand_totals['31-60'] += vendor_data['31-60']
-        grand_totals['61-90'] += vendor_data['61-90']
-        grand_totals['90+'] += vendor_data['90+']
-        grand_totals['total'] += vendor_data['total']
-
-    # Sort vendors by total balance (descending)
     vendors_list = sorted(vendors.values(), key=lambda x: x['total'], reverse=True)
-
     return render_template('reports/ap_aging.html',
-                         vendors=vendors_list,
-                         grand_totals=grand_totals,
-                         as_of_date=as_of_date)
+                           vendors=vendors_list,
+                           grand_totals=grand_totals,
+                           as_of_date=as_of_date)
 
 
 # BIR Compliance Reports
@@ -528,3 +511,68 @@ def balance_sheet_export_excel():
     title = f'Balance Sheet - As of {as_of_date.strftime("%B %d, %Y")}'
 
     return export_to_excel(data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/ap-aging/export/excel')
+@login_required
+def ap_aging_export_excel():
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+    current_branch_id = session.get('selected_branch_id')
+    bills = PurchaseBill.query.filter(
+        PurchaseBill.status.in_(['posted', 'partially_paid']),
+        PurchaseBill.balance > 0,
+        PurchaseBill.branch_id == current_branch_id,
+    ).order_by(PurchaseBill.vendor_name, PurchaseBill.due_date).all()
+    rows = []
+    for bill in bills:
+        bucket = calculate_age_bucket(bill.due_date, as_of_date)
+        rows.append({
+            'bill_number': bill.bill_number,
+            'vendor_name': bill.vendor_name,
+            'bill_date': bill.bill_date,
+            'due_date': bill.due_date,
+            'balance': float(bill.balance),
+            'bucket': bucket,
+            'days_overdue': max(0, (as_of_date - bill.due_date).days) if bill.due_date else 0,
+        })
+    headers = ['Bill #', 'Vendor', 'Bill Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
+    columns = ['bill_number', 'vendor_name', 'bill_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    return export_to_excel(rows, columns, headers,
+                           filename=f'ap_aging_{as_of_date.isoformat()}.xlsx',
+                           title=f'AP Aging as of {as_of_date}')
+
+
+@reports_bp.route('/reports/ap-aging/export/csv')
+@login_required
+def ap_aging_export_csv():
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+    current_branch_id = session.get('selected_branch_id')
+    bills = PurchaseBill.query.filter(
+        PurchaseBill.status.in_(['posted', 'partially_paid']),
+        PurchaseBill.balance > 0,
+        PurchaseBill.branch_id == current_branch_id,
+    ).order_by(PurchaseBill.vendor_name, PurchaseBill.due_date).all()
+    rows = []
+    for bill in bills:
+        bucket = calculate_age_bucket(bill.due_date, as_of_date)
+        rows.append({
+            'bill_number': bill.bill_number,
+            'vendor_name': bill.vendor_name,
+            'bill_date': bill.bill_date,
+            'due_date': bill.due_date,
+            'balance': float(bill.balance),
+            'bucket': bucket,
+            'days_overdue': max(0, (as_of_date - bill.due_date).days) if bill.due_date else 0,
+        })
+    headers = ['Bill #', 'Vendor', 'Bill Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
+    columns = ['bill_number', 'vendor_name', 'bill_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    return export_to_csv(rows, columns, headers,
+                         filename=f'ap_aging_{as_of_date.isoformat()}.csv')
