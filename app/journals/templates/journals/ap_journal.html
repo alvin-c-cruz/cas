@@ -96,6 +96,19 @@
             </thead>
             <tbody>
                 {% for row in matrix.rows %}
+                {% if row.is_voided %}
+                <tr style="opacity:0.6;">
+                    <td>{{ row.bill.bill_date.strftime('%b %d, %Y') }}</td>
+                    <td>
+                        <a href="{{ url_for('purchase_bills.view', id=row.bill.id) }}" style="font-weight:600; text-decoration:line-through;">{{ row.bill.bill_number }}</a>
+                        <span class="ap-jrnl-draft-badge" style="background:#fef2f2; border-color:#fecaca; color:#b91c1c;">VOIDED</span>
+                    </td>
+                    <td>{{ row.bill.vendor_invoice_number or '' }}</td>
+                    <td style="text-decoration:line-through;">{{ row.bill.vendor_name }}</td>
+                    <td></td>
+                    {% for col in matrix.columns %}<td></td>{% endfor %}
+                </tr>
+                {% else %}
                 {% set bill = bill_map.get(row.entry.reference) %}
                 <tr>
                     <td>{{ row.entry.entry_date.strftime('%b %d, %Y') }}</td>
@@ -118,6 +131,7 @@
                     </td>
                     {% endfor %}
                 </tr>
+                {% endif %}
                 {% endfor %}
                 <tr class="ap-jrnl-total">
                     <td colspan="5">TOTAL</td>

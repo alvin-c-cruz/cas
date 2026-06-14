@@ -8,6 +8,7 @@ from app.branches.models import Branch
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journals.ap_journal_data import build_columnar
 from app.users.models import User
+from app.vendors.models import Vendor
 
 
 def _acct(code, name, atype, normal):
@@ -146,3 +147,62 @@ def test_ap_journal_view_shows_draft_indicator(client, db_session):
     res = client.get('/journals/ap?mode=month&year=2026&month=6')
     body = res.get_data(as_text=True)
     assert 'Draft' in body
+
+
+def _voided_bill(branch_id, bill_number, bill_date, vendor_name='Vendor V'):
+    from app.purchase_bills.models import PurchaseBill
+    from decimal import Decimal
+    vendor = Vendor.query.filter_by(code='TEST-V').first()
+    if not vendor:
+        vendor = Vendor(code='TEST-V', name=vendor_name)
+        db.session.add(vendor)
+        db.session.flush()
+    b = PurchaseBill(
+        bill_number=bill_number,
+        bill_date=bill_date,
+        due_date=bill_date,
+        vendor_id=vendor.id,
+        vendor_name=vendor_name,
+        status='voided',
+        subtotal=Decimal('0'),
+        vat_amount=Decimal('0'),
+        withholding_tax_amount=Decimal('0'),
+        total_amount=Decimal('0'),
+        branch_id=branch_id,
+    )
+    db.session.add(b)
+    db.session.commit()
+    return b
+
+
+def test_ap_journal_view_shows_voided_bill(client, db_session):
+    branch = Branch(name='Main', code='MAIN')
+    db.session.add(branch)
+    db.session.commit()
+    _voided_bill(branch.id, 'AP-2026-06-0003', date(2026, 6, 3))
+    _login(client, db_session, branch)
+
+    res = client.get('/journals/ap?mode=month&year=2026&month=6')
+    assert res.status_code == 200
+    body = res.get_data(as_text=True)
+    assert 'AP-2026-06-0003' in body
+    assert 'VOIDED' in body
+
+
+def test_ap_journal_export_includes_voided_bill(client, db_session):
+    import io
+    from openpyxl import load_workbook
+
+    branch = Branch(name='Main', code='MAIN')
+    db.session.add(branch)
+    db.session.commit()
+    _voided_bill(branch.id, 'AP-2026-06-0007', date(2026, 6, 7), vendor_name='Void Co')
+    _login(client, db_session, branch)
+
+    res = client.get('/journals/ap/export?mode=month&year=2026&month=6')
+    assert res.status_code == 200
+    wb = load_workbook(io.BytesIO(res.get_data()))
+    ws = wb.active
+    all_text = ' '.join(str(c.value) for row in ws.iter_rows() for c in row if c.value is not None)
+    assert 'AP-2026-06-0007' in all_text
+    assert '[VOIDED]' in all_text

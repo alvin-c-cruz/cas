@@ -47,6 +47,7 @@ def _gl_account_ids():
 
 def _ap_journal_context(branch_id):
     """Build the columnar AP journal data for a branch + period from request.args."""
+    from app.purchase_bills.models import PurchaseBill
     period = resolve_period(request.args, today=ph_now().date())
 
     entries = JournalEntry.query.filter(
@@ -58,10 +59,16 @@ def _ap_journal_context(branch_id):
     posted = [e for e in entries if e.status == 'posted']
     drafts = [e for e in entries if e.status == 'draft']
 
-    ap_id, wt_id, vat_ids = _gl_account_ids()
-    matrix = build_columnar(posted, drafts, ap_id, wt_id, vat_ids)
+    voided_bills = PurchaseBill.query.filter(
+        PurchaseBill.branch_id == branch_id,
+        PurchaseBill.status == 'voided',
+        PurchaseBill.bill_date >= period['date_from'],
+        PurchaseBill.bill_date <= period['date_to'],
+    ).order_by(PurchaseBill.bill_date, PurchaseBill.bill_number).all()
 
-    from app.purchase_bills.models import PurchaseBill
+    ap_id, wt_id, vat_ids = _gl_account_ids()
+    matrix = build_columnar(posted, drafts, ap_id, wt_id, vat_ids, voided_bills=voided_bills)
+
     refs = [e.reference for e in entries if e.reference]
     bills = PurchaseBill.query.filter(PurchaseBill.bill_number.in_(refs)).all() if refs else []
     bill_map = {b.bill_number: b for b in bills}
