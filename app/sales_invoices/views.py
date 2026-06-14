@@ -146,8 +146,9 @@ def _apply_overrides(invoice):
             flash('Invalid withholding tax override value.', 'danger')
             return redirect(url_for('sales_invoices.list_invoices'))
         invoice.withholding_tax_amount = wt_val
-    invoice.total_amount = invoice.subtotal - invoice.withholding_tax_amount
-    invoice.balance = invoice.total_amount - invoice.amount_paid
+    if vat_override or wt_override:
+        invoice.total_amount = invoice.subtotal - invoice.withholding_tax_amount
+        invoice.balance = invoice.total_amount - invoice.amount_paid
     return None
 
 
@@ -589,6 +590,7 @@ def create():
             return render_template('sales_invoices/form.html', form=form, invoice=None,
                                    vat_categories=_vat_categories_for_form(),
                                    all_accounts=_get_all_accounts_for_select(),
+                                   line_items=[],
                                    gl_accounts=_gl_accounts_dict())
         try:
             cust = Customer.query.get(form.customer_id.data)
@@ -810,6 +812,8 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
 
         raw_account_id = item_data.get('account_id')
         account_id = int(raw_account_id) if raw_account_id and str(raw_account_id).strip() else None
+        if account_id and not Account.query.get(account_id):
+            account_id = None
 
         line_item = SalesInvoiceItem(
             line_number=idx,
