@@ -106,7 +106,7 @@
         <div class="card-header-actions">
             {# Print access #}
             {% if (sv_print_access == 'posted_only' and invoice.status in ('posted', 'partially_paid', 'paid'))
-               or (sv_print_access == 'all' and invoice.status not in ('voided', 'cancelled')) %}
+               or (sv_print_access == 'draft_and_posted' and invoice.status not in ('voided', 'cancelled')) %}
             <a href="{{ url_for('sales_invoices.print_invoice', id=invoice.id) }}"
                target="_blank"
                rel="noopener noreferrer"
