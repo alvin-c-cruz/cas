@@ -829,3 +829,150 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
             line_item.invoice_id = invoice.id
         line_item.calculate_amounts()
         invoice.line_items.append(line_item)
+
+
+# ---------------------------------------------------------------------------
+# View / Post / Cancel / Void routes (Task 12)
+# ---------------------------------------------------------------------------
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>')
+@login_required
+def view(id):
+    invoice = _get_invoice_or_404(id)
+    je_entries = _build_je_preview(invoice)
+    sv_print_access = AppSettings.get_setting('sv_print_access', 'posted_only')
+    return render_template('sales_invoices/detail.html', invoice=invoice,
+                           je_entries=je_entries, sv_print_access=sv_print_access)
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
+@login_required
+@staff_or_above_required
+def post(id):
+    invoice = _get_invoice_or_404(id)
+    if invoice.status != 'draft':
+        flash('Only draft Sales Invoices can be posted.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    try:
+        invoice.status = 'posted'
+        invoice.posted_by_id = current_user.id
+        invoice.posted_at = ph_now()
+        if invoice.journal_entry:
+            invoice.journal_entry.status = 'posted'
+            invoice.journal_entry.posted_by_id = current_user.id
+            invoice.journal_entry.posted_at = ph_now()
+        db.session.commit()
+        log_audit('sales_invoice', 'post', invoice.id,
+                  f'{invoice.invoice_number} - {invoice.customer_name}',
+                  notes=f'Invoice posted by {current_user.username}')
+        flash(f'Sales Invoice "{invoice.invoice_number}" posted successfully!', 'success')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error posting sales invoice', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.post')
+        flash(f'Error posting Sales Invoice: {str(e)}', 'error')
+    return redirect(url_for('sales_invoices.view', id=id))
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/cancel', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def cancel(id):
+    invoice = _get_invoice_or_404(id)
+    if invoice.status != 'posted':
+        flash('Only posted Sales Invoices can be cancelled.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    if invoice.amount_paid > 0:
+        flash('Cannot cancel a Sales Invoice with payments applied. Reverse the payments first.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Cancellation reason must be at least 10 characters.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    try:
+        _create_reversal_je(invoice, reversal_date, current_user.id, label='Cancel')
+        invoice.status = 'cancelled'
+        invoice.cancelled_at = ph_now()
+        invoice.cancel_reason = cancel_reason
+        db.session.commit()
+        log_audit('sales_invoice', 'cancel', invoice.id,
+                  f'{invoice.invoice_number} - {invoice.customer_name}',
+                  notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}')
+        flash(f'Sales Invoice "{invoice.invoice_number}" cancelled. Reversal JE created.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error cancelling sales invoice', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.cancel')
+        flash(f'Error cancelling Sales Invoice: {str(e)}', 'error')
+    return redirect(url_for('sales_invoices.view', id=id))
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/void', methods=['POST'])
+@login_required
+@staff_or_above_required
+def void(id):
+    invoice = _get_invoice_or_404(id)
+    if invoice.status != 'draft':
+        flash('Only draft Sales Invoices can be voided.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid void date.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    try:
+        if invoice.journal_entry_id:
+            from app.journal_entries.models import JournalEntry as _JE
+            je_to_delete = db.session.get(_JE, invoice.journal_entry_id)
+            if je_to_delete:
+                db.session.delete(je_to_delete)
+            invoice.journal_entry_id = None
+            invoice.journal_entry = None
+
+        attachment_paths = []
+        for att in list(invoice.attachments):
+            fp = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                              str(invoice.id), att.stored_filename)
+            attachment_paths.append(fp)
+            db.session.delete(att)
+
+        invoice.status = 'voided'
+        invoice.voided_at = ph_now()
+        invoice.voided_by_id = current_user.id
+        invoice.void_reason = void_reason
+        db.session.commit()
+
+        for fp in attachment_paths:
+            if os.path.isfile(fp):
+                try:
+                    os.remove(fp)
+                except OSError:
+                    current_app.logger.warning(f'Could not remove attachment during void: {fp}')
+
+        log_audit('sales_invoice', 'void', invoice.id,
+                  f'{invoice.invoice_number} - {invoice.customer_name}',
+                  notes=f'Draft voided by {current_user.username}. Reason: {void_reason}. {len(attachment_paths)} attachment(s) deleted.')
+        flash(f'Sales Invoice "{invoice.invoice_number}" voided.', 'warning')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error voiding sales invoice', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.void')
+        flash(f'Error voiding Sales Invoice: {str(e)}', 'error')
+    return redirect(url_for('sales_invoices.view', id=id))

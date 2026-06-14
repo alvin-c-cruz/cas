@@ -241,3 +241,118 @@ def test_create_invoice_posts_to_books(client, db_session, accountant_user, cust
                                      record_id=inv.id).first()
     assert audit is not None
     assert audit.user_id == accountant_user.id
+
+
+def _make_draft_invoice(db_session, customer, revenue_account, branch, user):
+    """Helper: create a draft SV with one line item and a linked draft JE."""
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.accounts.models import Account
+
+    inv = SalesInvoice(
+        branch_id=branch.id,
+        invoice_number='SI-2026-TEST',
+        invoice_date=date(2026, 6, 14),
+        due_date=date(2026, 7, 14),
+        customer_id=customer.id,
+        customer_name=customer.name,
+        notes='',
+        status='draft',
+        subtotal=Decimal('10000.00'),
+        vat_amount=Decimal('0.00'),
+        total_before_wt=Decimal('10000.00'),
+        withholding_tax_amount=Decimal('0.00'),
+        total_amount=Decimal('10000.00'),
+        amount_paid=Decimal('0.00'),
+        balance=Decimal('10000.00'),
+        created_by_id=user.id,
+    )
+    db_session.add(inv)
+    db_session.flush()
+
+    item = SalesInvoiceItem(
+        invoice_id=inv.id, line_number=1, description='Service',
+        amount=Decimal('10000.00'), vat_rate=Decimal('0.00'),
+        line_total=Decimal('10000.00'), vat_amount=Decimal('0.00'),
+        wt_amount=Decimal('0.00'), account_id=revenue_account.id,
+    )
+    db_session.add(item)
+
+    ar = Account.query.filter_by(code='10201').first()
+    if not ar:
+        ar = Account(code='10201', name='AR', account_type='Asset',
+                     normal_balance='debit', is_active=True)
+        db_session.add(ar)
+    db_session.flush()
+
+    je = JournalEntry(
+        entry_number='JE-2026-0001', entry_date=date(2026, 6, 14),
+        description='Test', reference='SI-2026-TEST', entry_type='sale',
+        branch_id=branch.id, created_by_id=user.id, status='draft',
+        is_balanced=True, total_debit=Decimal('10000.00'), total_credit=Decimal('10000.00'),
+    )
+    db_session.add(je)
+    db_session.flush()
+    inv.journal_entry_id = je.id
+
+    db_session.add(JournalEntryLine(
+        entry_id=je.id, line_number=1, account_id=ar.id,
+        description='AR', debit_amount=Decimal('10000.00'), credit_amount=Decimal('0.00')))
+    db_session.add(JournalEntryLine(
+        entry_id=je.id, line_number=2, account_id=revenue_account.id,
+        description='Revenue', debit_amount=Decimal('0.00'), credit_amount=Decimal('10000.00')))
+    db_session.commit()
+    return inv
+
+
+def test_post_invoice(client, db_session, accountant_user, customer, revenue_account, branch):
+    from app.audit.models import AuditLog
+    inv = _make_draft_invoice(db_session, customer, revenue_account, branch, accountant_user)
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+    resp = client.post(f'/sales-invoices/{inv.id}/post', data={'csrf_token': 'test'},
+                       follow_redirects=False)
+    assert resp.status_code == 302
+    db_session.refresh(inv)
+    assert inv.status == 'posted'
+    assert inv.journal_entry.status == 'posted'
+    audit = AuditLog.query.filter_by(module='sales_invoice', action='post', record_id=inv.id).first()
+    assert audit is not None
+
+
+def test_cancel_posted_invoice(client, db_session, accountant_user, customer, revenue_account, branch):
+    from app.audit.models import AuditLog
+    inv = _make_draft_invoice(db_session, customer, revenue_account, branch, accountant_user)
+    inv.status = 'posted'
+    inv.journal_entry.status = 'posted'
+    db_session.commit()
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+    resp = client.post(f'/sales-invoices/{inv.id}/cancel',
+                       data={'cancel_reason': 'Customer cancelled the order',
+                             'reversal_date': '2026-06-15'},
+                       follow_redirects=False)
+    assert resp.status_code == 302
+    db_session.refresh(inv)
+    assert inv.status == 'cancelled'
+    audit = AuditLog.query.filter_by(module='sales_invoice', action='cancel', record_id=inv.id).first()
+    assert audit is not None
+
+
+def test_void_draft_invoice(client, db_session, accountant_user, customer, revenue_account, branch):
+    from app.audit.models import AuditLog
+    inv = _make_draft_invoice(db_session, customer, revenue_account, branch, accountant_user)
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+    resp = client.post(f'/sales-invoices/{inv.id}/void',
+                       data={'void_reason': 'Entered by mistake on wrong date',
+                             'reversal_date': '2026-06-14'},
+                       follow_redirects=False)
+    assert resp.status_code == 302
+    db_session.refresh(inv)
+    assert inv.status == 'voided'
+    audit = AuditLog.query.filter_by(module='sales_invoice', action='void', record_id=inv.id).first()
+    assert audit is not None
