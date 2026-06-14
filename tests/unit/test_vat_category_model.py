@@ -49,3 +49,15 @@ class TestInputVatAccountField:
         assert d['input_vat_account_id'] is None
         assert d['input_vat_account_code'] is None
         assert d['input_vat_account_name'] is None
+
+
+def test_vat_category_has_output_vat_account_id(db_session):
+    from app.vat_categories.models import VATCategory
+    cat = VATCategory(code='TEST', name='Test', rate=12.0)
+    db_session.add(cat)
+    db_session.commit()
+    assert hasattr(cat, 'output_vat_account_id')
+    assert cat.output_vat_account_id is None
+    d = cat.to_dict()
+    assert 'output_vat_account_id' in d
+    assert 'output_vat_account_code' in d
