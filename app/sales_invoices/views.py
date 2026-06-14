@@ -976,3 +976,147 @@ def void(id):
         log_exception(e, severity='ERROR', module='sales_invoices.void')
         flash(f'Error voiding Sales Invoice: {str(e)}', 'error')
     return redirect(url_for('sales_invoices.view', id=id))
+
+
+# ---------------------------------------------------------------------------
+# Print + Attachment routes (Task 13)
+# ---------------------------------------------------------------------------
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/print')
+@login_required
+def print_invoice(id):
+    invoice = _get_invoice_or_404(id)
+    je_lines = []
+    if invoice.journal_entry:
+        vat_account_ids = {
+            c.output_vat_account_id
+            for c in VATCategory.query.all()
+            if c.output_vat_account_id
+        }
+        lines = invoice.journal_entry.lines.all()
+        revenue_lines = sorted(
+            [l for l in lines if (l.credit_amount or 0) > 0 and l.account_id not in vat_account_ids],
+            key=lambda l: l.account.code)
+        vat_lines = sorted(
+            [l for l in lines if (l.credit_amount or 0) > 0 and l.account_id in vat_account_ids],
+            key=lambda l: l.account.code)
+        debit_lines = sorted(
+            [l for l in lines if (l.debit_amount or 0) > 0],
+            key=lambda l: l.account.code)
+        je_lines = revenue_lines + vat_lines + debit_lines
+
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    return render_template('sales_invoices/print.html', invoice=invoice,
+                           je_lines=je_lines, company=company, printed_at=ph_now())
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/attachments/upload', methods=['POST'])
+@login_required
+@staff_or_above_required
+def upload_attachment(id):
+    invoice = _get_invoice_or_404(id)
+    if invoice.status != 'draft':
+        flash('Attachments can only be uploaded while the Sales Invoice is in draft status.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
+    uploaded_file = request.files.get('attachment')
+    if not uploaded_file or uploaded_file.filename == '':
+        flash('No file selected.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
+    original_name = secure_filename(uploaded_file.filename)
+    if not original_name:
+        flash('Invalid filename.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
+    _, ext = os.path.splitext(original_name)
+    ext = ext.lower()
+    mime_type = _ATTACHMENT_ALLOWED.get(ext)
+    if mime_type is None:
+        flash(f'File type "{ext or "unknown"}" is not allowed.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
+    stored_name = uuid.uuid4().hex + ext
+    upload_dir = _invoice_upload_dir(id)
+    file_path = os.path.join(upload_dir, stored_name)
+    try:
+        uploaded_file.save(file_path)
+        file_size = os.path.getsize(file_path)
+        attachment = SalesInvoiceAttachment(
+            invoice_id=invoice.id, original_filename=original_name,
+            stored_filename=stored_name, mime_type=mime_type,
+            file_size=file_size, uploaded_by_id=current_user.id)
+        db.session.add(attachment)
+        db.session.commit()
+        log_create('sales_invoice_attachment', attachment.id,
+                   f'{invoice.invoice_number} / {original_name}',
+                   new_values={'invoice_id': invoice.id, 'original_filename': original_name,
+                               'mime_type': mime_type, 'file_size': file_size})
+        flash(f'File "{original_name}" uploaded successfully.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        flash(f'Error uploading file: {str(e)}', 'error')
+    return redirect(url_for('sales_invoices.edit', id=id))
+
+
+@sales_invoices_bp.route('/sales-invoices/attachments/<int:attachment_id>/download')
+@login_required
+def download_attachment(attachment_id):
+    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    invoice = _get_invoice_or_404(attachment.invoice_id)
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                             str(invoice.id), attachment.stored_filename)
+    if not os.path.isfile(file_path):
+        flash('File not found on disk.', 'error')
+        return redirect(url_for('sales_invoices.view', id=invoice.id))
+    response = send_file(file_path, mimetype=attachment.mime_type, as_attachment=True,
+                         download_name=attachment.original_filename)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@sales_invoices_bp.route('/sales-invoices/attachments/<int:attachment_id>/preview')
+@login_required
+def preview_attachment(attachment_id):
+    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    if not attachment.is_image:
+        abort(404)
+    invoice = _get_invoice_or_404(attachment.invoice_id)
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                             str(invoice.id), attachment.stored_filename)
+    if not os.path.isfile(file_path):
+        abort(404)
+    response = send_file(file_path, mimetype=attachment.mime_type, as_attachment=False)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
+
+
+@sales_invoices_bp.route('/sales-invoices/attachments/<int:attachment_id>/delete', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def delete_attachment(attachment_id):
+    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    invoice = _get_invoice_or_404(attachment.invoice_id)
+    if invoice.status != 'draft':
+        flash('Attachments can only be deleted while the Sales Invoice is in draft status.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=invoice.id))
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                             str(invoice.id), attachment.stored_filename)
+    old_values = {'invoice_id': invoice.id, 'original_filename': attachment.original_filename,
+                  'mime_type': attachment.mime_type, 'file_size': attachment.file_size}
+    original_name = attachment.original_filename
+    try:
+        db.session.delete(attachment)
+        db.session.commit()
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+        log_delete('sales_invoice_attachment', attachment_id,
+                   f'{invoice.invoice_number} / {original_name}', old_values=old_values)
+        flash(f'File "{original_name}" deleted.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting file: {str(e)}', 'error')
+    return redirect(url_for('sales_invoices.edit', id=invoice.id))
