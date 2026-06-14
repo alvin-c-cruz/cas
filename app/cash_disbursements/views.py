@@ -707,3 +707,161 @@ def view(id):
     je_entries = _build_cdv_je_preview(cdv)
     return render_template('cash_disbursements/detail.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now())
+
+
+def _apply_ap_payments(cdv):
+    """Increment APV bill amount_paid and reduce balance on CDV post."""
+    for ap_line in cdv.ap_lines:
+        bill = ap_line.bill
+        bill.amount_paid = Decimal(str(bill.amount_paid)) + Decimal(str(ap_line.amount_applied))
+        bill.balance = Decimal(str(bill.total_amount)) - bill.amount_paid
+        if bill.balance <= 0:
+            bill.status = 'paid'
+        elif bill.amount_paid > 0:
+            bill.status = 'partially_paid'
+
+
+def _reverse_ap_payments(cdv):
+    """Reverse APV bill amounts on CDV cancel. Raises ValueError on inconsistency."""
+    for ap_line in cdv.ap_lines:
+        bill = ap_line.bill
+        new_paid = Decimal(str(bill.amount_paid)) - Decimal(str(ap_line.amount_applied))
+        if new_paid < 0:
+            raise ValueError(
+                f'Cannot cancel: reversing payment on {ap_line.bill_number} '
+                f'would result in negative amount_paid.'
+            )
+        bill.amount_paid = new_paid
+        bill.balance = Decimal(str(bill.total_amount)) - new_paid
+        if bill.amount_paid <= 0:
+            bill.status = 'posted'
+        else:
+            bill.status = 'partially_paid'
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/post', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def post(id):
+    cdv = _get_cdv_or_404(id)
+    if cdv.status != 'draft':
+        flash('Only draft CDVs can be posted.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    try:
+        cdv.status = 'posted'
+        cdv.posted_by_id = current_user.id
+        cdv.posted_at = ph_now()
+        if cdv.journal_entry:
+            cdv.journal_entry.status = 'posted'
+            cdv.journal_entry.posted_by_id = current_user.id
+            cdv.journal_entry.posted_at = ph_now()
+        _apply_ap_payments(cdv)
+        db.session.commit()
+        log_audit(
+            module='cash_disbursement', action='post',
+            record_id=cdv.id,
+            record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
+            notes=f'Posted by {current_user.username}'
+        )
+        flash(f'CDV "{cdv.cdv_number}" posted successfully!', 'success')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error posting CDV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_disbursements.post')
+        flash(f'Error posting CDV: {str(e)}', 'error')
+    return redirect(url_for('cash_disbursements.view', id=id))
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/void', methods=['POST'])
+@login_required
+@staff_or_above_required
+def void(id):
+    cdv = _get_cdv_or_404(id)
+    if cdv.status != 'draft':
+        flash('Only draft CDVs can be voided.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    try:
+        if cdv.journal_entry_id:
+            from app.journal_entries.models import JournalEntry as _JE
+            je_to_delete = db.session.get(_JE, cdv.journal_entry_id)
+            if je_to_delete:
+                db.session.delete(je_to_delete)
+            cdv.journal_entry_id = None
+            cdv.journal_entry = None
+        cdv.status = 'voided'
+        cdv.voided_at = ph_now()
+        cdv.voided_by_id = current_user.id
+        cdv.void_reason = void_reason
+        db.session.commit()
+        log_audit(
+            module='cash_disbursement', action='void',
+            record_id=cdv.id,
+            record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
+            notes=f'Voided by {current_user.username}. Reason: {void_reason}'
+        )
+        flash(f'CDV "{cdv.cdv_number}" voided.', 'warning')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error voiding CDV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_disbursements.void')
+        flash(f'Error voiding CDV: {str(e)}', 'error')
+    return redirect(url_for('cash_disbursements.view', id=id))
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/cancel', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def cancel(id):
+    from app.errors.utils import log_exception
+    cdv = _get_cdv_or_404(id)
+    if cdv.status != 'posted':
+        flash('Only posted CDVs can be cancelled.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Cancellation reason must be at least 10 characters.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    try:
+        _reverse_ap_payments(cdv)
+        _create_cdv_reversal_je(cdv, reversal_date, current_user.id)
+        cdv.status = 'cancelled'
+        cdv.cancelled_at = ph_now()
+        cdv.cancel_reason = cancel_reason
+        db.session.commit()
+        log_audit(
+            module='cash_disbursement', action='cancel',
+            record_id=cdv.id,
+            record_identifier=f'{cdv.cdv_number} - {cdv.vendor_name}',
+            notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}'
+        )
+        flash(f'CDV "{cdv.cdv_number}" cancelled. Reversal JE created.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error cancelling CDV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_disbursements.cancel')
+        flash(f'Error cancelling CDV: {str(e)}', 'error')
+    return redirect(url_for('cash_disbursements.view', id=id))
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/print')
+@login_required
+def print_cdv(id):
+    cdv = _get_cdv_or_404(id)
+    je_entries = _build_cdv_je_preview(cdv)
+    return render_template('cash_disbursements/print.html',
+                           cdv=cdv, je_entries=je_entries, now=ph_now())
