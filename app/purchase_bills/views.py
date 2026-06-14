@@ -15,6 +15,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
+from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number
 from datetime import date, timedelta
@@ -634,7 +635,6 @@ def view(id):
 @login_required
 def print_bill(id):
     """Standalone print preview for an APV."""
-    from app.settings import AppSettings
     bill = _get_bill_or_404(id)
 
     # Sort JE lines: non-VAT debits → VAT debits → credits, each by account code
@@ -647,16 +647,16 @@ def print_bill(id):
         }
         lines = bill.journal_entry.lines.all()
         debit_non_vat = sorted(
-            [l for l in lines if (l.debit_amount or 0) > 0 and l.account_id not in vat_account_ids],
-            key=lambda l: l.account.code
+            [line for line in lines if (line.debit_amount or 0) > 0 and line.account_id not in vat_account_ids],
+            key=lambda line: line.account.code
         )
         debit_vat = sorted(
-            [l for l in lines if (l.debit_amount or 0) > 0 and l.account_id in vat_account_ids],
-            key=lambda l: l.account.code
+            [line for line in lines if (line.debit_amount or 0) > 0 and line.account_id in vat_account_ids],
+            key=lambda line: line.account.code
         )
         credits = sorted(
-            [l for l in lines if (l.credit_amount or 0) > 0],
-            key=lambda l: l.account.code
+            [line for line in lines if (line.credit_amount or 0) > 0],
+            key=lambda line: line.account.code
         )
         je_lines = debit_non_vat + debit_vat + credits
 
