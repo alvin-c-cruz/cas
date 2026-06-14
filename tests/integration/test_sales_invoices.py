@@ -131,3 +131,67 @@ def test_invoice_attachment_model_structure(db_session):
     assert 'mime_type' in col_names
     assert 'file_size' in col_names
     assert 'uploaded_by_id' in col_names
+
+
+def test_post_invoice_je_creates_balanced_entry(db_session, customer, revenue_account, branch, accountant_user):
+    """_post_invoice_je creates a balanced JE with correct debit/credit structure."""
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    from app.accounts.models import Account
+    from app.vat_categories.models import VATCategory
+
+    # Create required GL accounts
+    ar = Account.query.filter_by(code='10201').first()
+    if not ar:
+        ar = Account(code='10201', name='AR - Trade', account_type='Asset',
+                     normal_balance='debit', is_active=True)
+        db_session.add(ar)
+
+    output_vat = Account.query.filter_by(code='20201').first()
+    if not output_vat:
+        output_vat = Account(code='20201', name='Output VAT', account_type='Liability',
+                             normal_balance='credit', is_active=True)
+        db_session.add(output_vat)
+    db_session.flush()
+
+    vat_cat = VATCategory.query.filter_by(code='V12TEST').first()
+    if not vat_cat:
+        vat_cat = VATCategory(code='V12TEST', name='VAT 12% Test', rate=Decimal('12.00'),
+                              output_vat_account_id=output_vat.id)
+        db_session.add(vat_cat)
+    db_session.flush()
+
+    inv = SalesInvoice(
+        branch_id=branch.id,
+        invoice_number='SI-2026-JE01',
+        invoice_date=date(2026, 6, 14),
+        due_date=date(2026, 7, 14),
+        customer_id=customer.id,
+        customer_name=customer.name,
+        notes='',
+        status='draft',
+        amount_paid=Decimal('0.00'),
+    )
+    db_session.add(inv)
+    db_session.flush()
+
+    item = SalesInvoiceItem(
+        invoice_id=inv.id, line_number=1, description='Service',
+        amount=Decimal('11200.00'), vat_category='V12TEST',
+        vat_rate=Decimal('12.00'), account_id=revenue_account.id,
+    )
+    item.calculate_amounts()
+    db_session.add(item)
+    db_session.flush()
+    inv.calculate_totals()
+
+    from app.sales_invoices import views as sv_views
+    je = sv_views._post_invoice_je(inv, accountant_user.id)
+    db_session.flush()
+
+    assert je.is_balanced
+    assert je.total_debit == je.total_credit
+    # AR is a debit; revenue + output VAT are credits
+    debit_lines = [l for l in je.lines if l.debit_amount > 0]
+    credit_lines = [l for l in je.lines if l.credit_amount > 0]
+    assert len(debit_lines) >= 1  # AR at minimum
+    assert len(credit_lines) >= 1  # Revenue at minimum

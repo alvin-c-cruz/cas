@@ -299,28 +299,142 @@ def _build_je_preview(invoice):
     return entries
 
 
-def _create_invoice_void_je(invoice, reversal_date, user_id):
-    """Create reversal JE when voiding a sales invoice. Raises ValueError if required accounts missing."""
+# ---------------------------------------------------------------------------
+# Journal Entry creation
+# ---------------------------------------------------------------------------
+
+def _post_invoice_je(invoice, user_id):
+    """Create the sales JE. Reverse of APV: Dr AR + Dr Creditable WHT; Cr Revenue + Cr Output VAT."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
-    ar_account = Account.query.filter_by(code='10201').first()
+    accts = _get_gl_accounts()
+    ar_account = accts['ar']
     if not ar_account:
-        raise ValueError("Accounts Receivable - Trade (10201) not found in COA. Cannot void.")
+        raise ValueError("Accounts Receivable - Trade (10201) not found in COA.")
 
-    output_vat_account = None
-    if invoice.vat_amount > 0:
-        output_vat_account = Account.query.filter_by(code='20201').first()
-        if not output_vat_account:
-            raise ValueError("Output VAT - Sales (20201) not found in COA. Cannot void.")
+    wt_account = None
+    if invoice.withholding_tax_amount and Decimal(str(invoice.withholding_tax_amount)) > 0:
+        wt_account = accts['wt']
+        if not wt_account:
+            raise ValueError("Creditable Withholding Tax (10212) not found in COA. "
+                             "Add this account before posting a sales invoice with WHT.")
+
+    je_status = 'posted' if invoice.status == 'posted' else 'draft'
+    entry_number = generate_entry_number(invoice.branch_id)
+    je = JournalEntry(
+        entry_number=entry_number,
+        entry_date=invoice.invoice_date,
+        description=f'Sales Invoice {invoice.invoice_number} — {invoice.customer_name}',
+        reference=invoice.invoice_number,
+        entry_type='sale',
+        branch_id=invoice.branch_id,
+        created_by_id=user_id,
+        status=je_status,
+        posted_by_id=user_id if je_status == 'posted' else None,
+        posted_at=ph_now() if je_status == 'posted' else None,
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00'),
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    line_num = 1
+    first_revenue_line = None
+    all_lines = []
+
+    # Credit: revenue accounts (net base per line item)
+    for item in invoice.line_items:
+        if not item.account_id:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entry_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=item.account_id,
+            description=item.description or '',
+            debit_amount=Decimal('0.00'),
+            credit_amount=net_base,
+        )
+        db.session.add(entry_line)
+        all_lines.append(entry_line)
+        if first_revenue_line is None:
+            first_revenue_line = entry_line
+        line_num += 1
+
+    # Credit: output VAT per bucket
+    for vat_acct, vat_amt in _output_vat_buckets(invoice):
+        if vat_amt <= 0:
+            continue
+        vat_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=vat_acct.id,
+            description=f'Output VAT: {invoice.invoice_number}',
+            debit_amount=Decimal('0.00'),
+            credit_amount=vat_amt,
+        )
+        db.session.add(vat_line)
+        all_lines.append(vat_line)
+        line_num += 1
+
+    # Debit: Creditable WHT Receivable
+    if wt_account:
+        wt_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=wt_account.id,
+            description=f'Creditable WHT: {invoice.invoice_number}',
+            debit_amount=Decimal(str(invoice.withholding_tax_amount)),
+            credit_amount=Decimal('0.00'),
+        )
+        db.session.add(wt_line)
+        all_lines.append(wt_line)
+        line_num += 1
+
+    # Debit: Accounts Receivable
+    ar_line = JournalEntryLine(
+        entry_id=je.id, line_number=line_num,
+        account_id=ar_account.id,
+        description=f'AR: {invoice.invoice_number} — {invoice.customer_name}',
+        debit_amount=Decimal(str(invoice.total_amount)),
+        credit_amount=Decimal('0.00'),
+    )
+    db.session.add(ar_line)
+    all_lines.append(ar_line)
+
+    # Absorb rounding residual into first revenue line
+    sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
+    sum_credits = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
+    residual = sum_debits - sum_credits
+    if residual != Decimal('0.00') and first_revenue_line is not None:
+        first_revenue_line.credit_amount += residual
+
+    db.session.flush()
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(
+            f"Sales invoice JE is not balanced "
+            f"(debit={je.total_debit}, credit={je.total_credit}). "
+            "Ensure every line item has a revenue account assigned.")
+    return je
+
+
+def _create_reversal_je(invoice, reversal_date, user_id, label='Cancel'):
+    """Swap debits/credits of the stored JE — used by cancel and void."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    source_je = invoice.journal_entry
+    if source_je is None:
+        raise ValueError(
+            f'Invoice {invoice.invoice_number} has no stored journal entry to reverse.')
 
     entry_number = generate_entry_number(invoice.branch_id)
     je = JournalEntry(
         entry_number=entry_number,
         entry_date=reversal_date,
-        description=f'Sales Invoice Void — {invoice.invoice_number} (reversal)',
-        reference=f'VOID-{invoice.invoice_number}',
+        description=f'Sales Invoice {label} — {invoice.invoice_number} (reversal)',
+        reference=f'{label.upper()[:6]}-{invoice.invoice_number}',
         entry_type='reversal',
         is_reversing=True,
+        reversed_entry_id=source_je.id,
         branch_id=invoice.branch_id,
         created_by_id=user_id,
         status='posted',
@@ -328,42 +442,27 @@ def _create_invoice_void_je(invoice, reversal_date, user_id):
         posted_at=ph_now(),
         is_balanced=False,
         total_debit=Decimal('0.00'),
-        total_credit=Decimal('0.00')
+        total_credit=Decimal('0.00'),
     )
     db.session.add(je)
     db.session.flush()
 
-    line_num = 1
-    for item in invoice.line_items:
-        if item.account_id and item.line_total > 0:
-            # Debit the net revenue (line_total is VAT-inclusive; subtract extracted VAT)
-            net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount or 0))
-            db.session.add(JournalEntryLine(
-                entry_id=je.id, line_number=line_num,
-                account_id=item.account_id,
-                description=item.description,
-                debit_amount=net_base,
-                credit_amount=Decimal('0.00')
-            ))
-            line_num += 1
-
-    if output_vat_account:
+    for i, src in enumerate(source_je.lines.all(), start=1):
         db.session.add(JournalEntryLine(
-            entry_id=je.id, line_number=line_num,
-            account_id=output_vat_account.id,
-            description=f'Void Output VAT: {invoice.invoice_number}',
-            debit_amount=invoice.vat_amount,
-            credit_amount=Decimal('0.00')
+            entry_id=je.id, line_number=i,
+            account_id=src.account_id,
+            description=f'{label}: {src.description}' if src.description else label,
+            debit_amount=src.credit_amount,   # swap
+            credit_amount=src.debit_amount,   # swap
         ))
-        line_num += 1
-
-    db.session.add(JournalEntryLine(
-        entry_id=je.id, line_number=line_num,
-        account_id=ar_account.id,
-        description=f'Void AR: {invoice.invoice_number}',
-        debit_amount=Decimal('0.00'),
-        credit_amount=invoice.total_amount
-    ))
+    db.session.flush()
 
     je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'Reversal JE is not balanced '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    # Link the source JE to its reversal
+    source_je.reversed_by_id = je.id
+
     return je
