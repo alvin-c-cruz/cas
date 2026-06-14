@@ -99,6 +99,29 @@ def ap_journal():
                            period=period, matrix=matrix, bill_map=bill_map)
 
 
+@journals_bp.route('/journals/ap/print')
+@login_required
+def ap_journal_print():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    period, matrix, bill_map = _ap_journal_context(branch_id)
+
+    branch = db.session.get(Branch, branch_id)
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
+    company_name = AppSettings.get_setting('company_name') or ''
+
+    return render_template('journals/ap_journal_print.html',
+                           period=period, matrix=matrix, bill_map=bill_map,
+                           company_name=company_name, branch_name=branch_name,
+                           printed_at=ph_now())
+
+
 @journals_bp.route('/journals/ap/export')
 @login_required
 def ap_journal_export():
