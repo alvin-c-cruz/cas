@@ -698,3 +698,12 @@ def edit(id):
 
     ctx = _form_context()
     return render_template('cash_disbursements/form.html', form=form, cdv=cdv, **ctx)
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>')
+@login_required
+def view(id):
+    cdv = _get_cdv_or_404(id)
+    je_entries = _build_cdv_je_preview(cdv)
+    return render_template('cash_disbursements/detail.html',
+                           cdv=cdv, je_entries=je_entries, now=ph_now())
