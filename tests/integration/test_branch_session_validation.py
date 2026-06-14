@@ -1,6 +1,8 @@
 """Integration tests for branch session validation before_request hook."""
 import pytest
 from flask import session
+pytestmark = [pytest.mark.branches, pytest.mark.integration]
+
 
 
 def login(client, password='admin123'):
@@ -60,6 +62,7 @@ class TestBranchSessionValidation:
     def test_deactivated_branch_redirects_to_select_branch(self, client, db_session,
                                                              admin_user, main_branch):
         from app.branches.models import Branch
+
         # Create two extra branches so that after deactivating one,
         # multiple active branches remain (preventing auto-select)
         extra = Branch(name='Extra', code='EXT', is_active=True)

@@ -6,6 +6,10 @@
 """
 from app.users.approved_emails import ApprovedEmail
 from app.audit.models import AuditLog
+import pytest
+pytestmark = [pytest.mark.users, pytest.mark.integration]
+
+
 
 
 def login(client, username='admin', password='admin123'):

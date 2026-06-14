@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 
 from openpyxl import load_workbook
 
+import pytest
 from app.journals.ap_journal_data import resolve_period, _fmt, build_ap_journal_xlsx, build_columnar
+pytestmark = [pytest.mark.journals, pytest.mark.unit]
 
 
 def test_resolve_period_defaults_to_given_month():

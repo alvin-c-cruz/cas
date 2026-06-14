@@ -7,6 +7,8 @@ from app.vendors.models import Vendor
 from app.purchase_bills.models import PurchaseBill
 from app.audit.models import AuditLog
 from app.utils import ph_now
+pytestmark = [pytest.mark.vendors, pytest.mark.integration]
+
 
 
 def login(client, username='admin', password='admin123'):
@@ -224,6 +226,7 @@ class TestVendorStaffPermissions:
     def test_staff_still_blocked_from_delete(self, client, db_session, admin_user,
                                               staff_user, accountant_user, main_branch):
         from app.vendors.models import Vendor
+
         admin_user.add_branch(main_branch)
         staff_user.add_branch(main_branch)
         accountant_user.add_branch(main_branch)

@@ -9,6 +9,9 @@ from app.vendors.models import Vendor
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
+pytestmark = [pytest.mark.purchase_bills, pytest.mark.integration]
+
+
 
 
 def login(client, username='accountant', password='accountant123'):

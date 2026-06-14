@@ -9,6 +9,8 @@ from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journals.ap_journal_data import build_columnar
 from app.users.models import User
 from app.vendors.models import Vendor
+pytestmark = [pytest.mark.journals, pytest.mark.integration]
+
 
 
 def _acct(code, name, atype, normal):
@@ -192,6 +194,7 @@ def test_ap_journal_view_shows_voided_bill(client, db_session):
 def test_ap_journal_export_includes_voided_bill(client, db_session):
     import io
     from openpyxl import load_workbook
+
 
     branch = Branch(name='Main', code='MAIN')
     db.session.add(branch)

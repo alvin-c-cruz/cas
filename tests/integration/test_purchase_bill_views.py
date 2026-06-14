@@ -7,6 +7,8 @@ from decimal import Decimal
 from app.vendors.models import Vendor
 from app.purchase_bills.models import PurchaseBill
 from app.utils import ph_now
+pytestmark = [pytest.mark.purchase_bills, pytest.mark.integration]
+
 
 
 def login(client, username='admin', password='admin123'):
@@ -296,6 +298,7 @@ class TestVoidCancelDelete:
     def test_cancelled_number_included_in_sequence(self, client, db_session, admin_user, main_branch):
         from app.purchase_bills.views import generate_bill_number
         from app.utils import ph_now
+
         vendor = make_vendor(db_session, code='PVV-005', name='Seq Vendor 2')
         now = ph_now()
         prefix = f'AP-{now.year}-{now.month:02d}-'

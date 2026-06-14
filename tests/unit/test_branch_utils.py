@@ -1,6 +1,8 @@
 """Unit tests for app.users.utils.get_accessible_branches."""
 import pytest
 from app.users.utils import get_accessible_branches
+pytestmark = [pytest.mark.branches, pytest.mark.unit]
+
 
 
 class TestGetAccessibleBranches:
@@ -45,6 +47,7 @@ class TestGetAccessibleBranches:
 
     def test_inactive_branches_excluded(self, db_session, admin_user, main_branch):
         from app.branches.models import Branch
+
         inactive = Branch(name='Old', code='OLD', is_active=False)
         db_session.add(inactive)
         db_session.commit()

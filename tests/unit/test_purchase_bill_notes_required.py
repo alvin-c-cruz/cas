@@ -50,11 +50,14 @@ def test_bill_orm_default_notes_is_empty_string(db_session):
 
 
 from app.purchase_bills.forms import PurchaseBillForm
+pytestmark = [pytest.mark.purchase_bills, pytest.mark.unit]
+
 
 
 def _make_form(app, notes_value):
     """Return a PurchaseBillForm with all required fields populated, overriding notes."""
     from datetime import date as _date
+
     with app.test_request_context():
         form = PurchaseBillForm(formdata=None, meta={'csrf': False})
         # Satisfy the SelectField pre-validate so it doesn't abort before notes

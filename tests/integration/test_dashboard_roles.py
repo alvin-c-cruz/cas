@@ -1,3 +1,7 @@
+import pytest
+pytestmark = [pytest.mark.users, pytest.mark.integration]
+
+
 """Dashboard role-based visibility tests.
 
 Covers: page access, financial metrics (all roles), sidebar nav gating,
