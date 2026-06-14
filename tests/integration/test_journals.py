@@ -74,14 +74,15 @@ def test_cr_redirects_to_under_development(client, setup):
     assert 'under_development' in res.location or 'Cash+Receipts' in res.location or 'Cash' in res.location
 
 
-def test_cd_redirects_to_under_development(client, setup):
+def test_cd_journal_accessible_all_roles(client, setup):
     users, branch = setup
-    with client.session_transaction() as sess:
-        sess['selected_branch_id'] = branch.id
-    login(client, 'staff')
-    res = client.get('/journals/cd')
-    assert res.status_code == 302
-    assert 'under_development' in res.location or 'Cash' in res.location
+    for role in ['admin', 'accountant', 'staff', 'viewer']:
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = branch.id
+        login(client, role)
+        res = client.get('/journals/cd')
+        assert res.status_code == 200, f"{role} got {res.status_code} on /journals/cd"
+        client.get('/logout')
 
 
 def test_journal_entries_redirects_to_voucher(client, setup):

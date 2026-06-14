@@ -237,6 +237,36 @@ def cd_journal():
                            period=period, matrix=matrix, cdv_map=cdv_map)
 
 
+@journals_bp.route('/journals/cd/export')
+@login_required
+def cd_journal_export():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to export journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    from app.journals.cd_journal_data import build_cd_journal_xlsx
+    period, matrix, cdv_map = _cd_journal_context(branch_id)
+
+    branch = db.session.get(Branch, branch_id)
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
+    company_name = AppSettings.get_setting('company_name') or 'Company'
+
+    if period['mode'] == 'month':
+        filename = f"CD-Journal-{period['year']}-{period['month']:02d}.xlsx"
+    else:
+        filename = f"CD-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
+
+    return build_cd_journal_xlsx(
+        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
+        period_label=period['label'], company_name=company_name,
+        branch_name=branch_name, filename=filename,
+        identity=lambda e: _cd_entry_identity(e, cdv_map))
+
+
 @journals_bp.route('/journals/cd/print')
 @login_required
 def cd_journal_print():

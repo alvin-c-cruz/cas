@@ -40,7 +40,7 @@
     <div class="card-header">
         <div class="cd-jrnl-actions" style="display:flex; gap:8px; justify-content:flex-end;">
             <a id="cdPrintLink" href="{{ url_for('journals.cd_journal_print', **request.args) }}" class="btn btn-secondary btn-sm">Print</a>
-            <a id="cdExportLink" href="/journals/cd/export?{{ request.query_string.decode() }}" class="btn btn-primary btn-sm">Download Excel</a>
+            <a id="cdExportLink" href="{{ url_for('journals.cd_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Download Excel</a>
         </div>
     </div>
 

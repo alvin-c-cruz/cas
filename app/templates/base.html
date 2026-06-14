@@ -1165,7 +1165,7 @@
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Accounts Payable Journal</span>
                     </a>
-                    <a href="{{ url_for('journals.cd_journal') }}" class="nav-item {% if request.endpoint == 'journals.cd_journal' %}active{% endif %}">
+                    <a href="{{ url_for('journals.cd_journal') }}" class="nav-item {% if request.endpoint in ['journals.cd_journal', 'journals.cd_journal_print', 'journals.cd_journal_export'] %}active{% endif %}">
                         <span class="nav-icon">💸</span>
                         <span class="nav-text">Cash Disbursements Journal</span>
                     </a>
