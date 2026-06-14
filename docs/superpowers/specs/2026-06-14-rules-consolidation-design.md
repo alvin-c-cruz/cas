@@ -138,6 +138,24 @@ pytest                            # full suite unchanged
 
 ---
 
+## Stream 4: Session Start Protocol
+
+Add a "Session Start Protocol" section to `CLAUDE.md`:
+
+```markdown
+## Session Start Protocol
+
+At the start of every new conversation, before responding to the first user message:
+1. Read `MEMORY.md` (already in context via system-reminder)
+2. Output exactly: `Session start — [N] memory rules loaded · CLAUDE.md reviewed · Ready.`
+   where N = number of entries listed in MEMORY.md
+3. Then proceed with the task
+```
+
+No hooks, scripts, or skill changes needed. MEMORY.md is already injected into context via system-reminder — this simply makes the acknowledgment visible.
+
+---
+
 ## Out of Scope
 
 - Modifying any skill files in the plugin cache
