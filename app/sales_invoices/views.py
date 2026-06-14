@@ -450,7 +450,13 @@ def _create_reversal_je(invoice, reversal_date, user_id, label='Cancel'):
     db.session.add(je)
     db.session.flush()
 
-    for i, src in enumerate(source_je.lines.all(), start=1):
+    source_lines = source_je.lines.all()
+    if not source_lines:
+        db.session.rollback()
+        raise ValueError(
+            f'Cannot reverse JE {source_je.entry_number}: it has no lines.')
+
+    for i, src in enumerate(source_lines, start=1):
         db.session.add(JournalEntryLine(
             entry_id=je.id, line_number=i,
             account_id=src.account_id,
@@ -929,12 +935,6 @@ def void(id):
     void_reason = request.form.get('void_reason', '').strip()
     if len(void_reason) < 10:
         flash('Void reason must be at least 10 characters.', 'error')
-        return redirect(url_for('sales_invoices.view', id=id))
-    reversal_date_str = request.form.get('reversal_date', '')
-    try:
-        reversal_date = date.fromisoformat(reversal_date_str)
-    except ValueError:
-        flash('Invalid void date.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
     try:
         if invoice.journal_entry_id:
