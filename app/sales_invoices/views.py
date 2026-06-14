@@ -1111,12 +1111,17 @@ def delete_attachment(attachment_id):
     try:
         db.session.delete(attachment)
         db.session.commit()
-        if os.path.isfile(file_path):
-            os.remove(file_path)
-        log_delete('sales_invoice_attachment', attachment_id,
-                   f'{invoice.invoice_number} / {original_name}', old_values=old_values)
-        flash(f'File "{original_name}" deleted.', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Error deleting file: {str(e)}', 'error')
+        return redirect(url_for('sales_invoices.edit', id=invoice.id))
+    # DB committed — now clean up disk and audit
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            current_app.logger.warning(f'Could not remove attachment file: {file_path}')
+    log_delete('sales_invoice_attachment', attachment_id,
+               f'{invoice.invoice_number} / {original_name}', old_values=old_values)
+    flash(f'File "{original_name}" deleted.', 'success')
     return redirect(url_for('sales_invoices.edit', id=invoice.id))
