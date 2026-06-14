@@ -75,3 +75,25 @@ Production target is PythonAnywhere via `wsgi.py` (set `PYTHONANYWHERE_USERNAME`
 
 - **Root-level `*.md` files are gitignored** (`.gitignore` has `/*.md` with only `README.md` whitelisted). `CLAUDE.md` and `PROJECT_FOUNDATIONS.md` won't be tracked unless force-added (`git add -f`). Docs are expected under `../../docs/cas/` and scripts under `../../scripts/cas/`.
 - Global error handlers are currently **disabled** in `create_app` (bottom of the file) to surface full tracebacks during testing — re-enable before production.
+
+## Workflow Preferences
+
+These override default skill behavior:
+
+- **Auto-invoke subagent-driven development.** After `writing-plans` completes, invoke
+  `superpowers:subagent-driven-development` immediately — do NOT present a "which approach?"
+  choice first.
+- **Skip finishing-branch options menu.** After all tasks are committed and pushed and tests
+  pass, summarize what was done in 2-3 sentences. Do not invoke `finishing-a-development-branch`
+  or present the 4-option menu.
+- **Testing scope tie-breaker.** If a bug is found during testing:
+  - In a module you are **currently touching** → fix inline and continue.
+  - In a module you are **not touching at all** → stop, scope it separately, then continue.
+
+## Session Start Protocol
+
+At the start of every new conversation, before responding to the first user message:
+1. Read `MEMORY.md` (already in context via system-reminder)
+2. Output exactly: `Session start — [N] memory rules loaded · CLAUDE.md reviewed · Ready.`
+   where N = number of entries listed in MEMORY.md
+3. Then proceed with the task
