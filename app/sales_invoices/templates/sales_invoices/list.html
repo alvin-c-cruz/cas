@@ -1,144 +1,264 @@
-{% extends "base.html" %}
-
+﻿{% extends "base.html" %}
 {% block title %}Sales Invoices{% endblock %}
 {% block page_title %}Sales Invoices{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<style>
+.choices__list--dropdown { min-width: 220px; }
+.choices__list--dropdown .choices__list { max-height: 200px; overflow-y: auto; }
 
+/* Customer Choices.js - match native Status select appearance */
+.si-filter-bar .choices {
+    width: 160px;
+    margin-bottom: 0;
+}
+.si-filter-bar .choices__inner {
+    padding: 10px 36px 10px 14px;
+    font-size: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: white;
+    min-height: unset;
+    font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+.si-filter-bar .choices.is-focused .choices__inner,
+.si-filter-bar .choices.is-open .choices__inner {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    outline: none;
+}
+.si-filter-bar .choices__list--single { padding: 0; }
+.si-filter-bar .choices__list--single .choices__item {
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+}
+.si-filter-bar .choices[data-type*='select-one']::after {
+    border-color: #64748b transparent transparent;
+    right: 14px;
+}
+.si-filter-bar .choices[data-type*='select-one'].is-open::after {
+    border-color: transparent transparent #64748b;
+}
+@media (max-width: 640px) {
+    .si-filter-bar .choices { width: 100%; }
+}
+.si-date-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.si-date-group__label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    padding-left: 2px;
+}
+</style>
+{% endblock %}
 {% block content %}
+
+<!-- Summary cards -->
+<div class="si-summary-grid">
+    <div class="si-card">
+        <div class="si-card-label">Outstanding AR</div>
+        <div class="si-card-value">&#x20B1;{{ '{:,.2f}'.format(summary.outstanding_total) }}</div>
+        <div class="si-card-detail">{{ summary.outstanding_count }} open invoice{{ 's' if summary.outstanding_count != 1 else '' }}</div>
+    </div>
+    <div class="si-card">
+        <div class="si-card-label" style="color:var(--red);">Overdue</div>
+        <div class="si-card-value" style="color:var(--red);">&#x20B1;{{ '{:,.2f}'.format(summary.overdue_total) }}</div>
+        <div class="si-card-detail">{{ summary.overdue_count }} invoice{{ 's' if summary.overdue_count != 1 else '' }}</div>
+    </div>
+    <div class="si-card">
+        <div class="si-card-label" style="color:var(--amber);">Due in 7 Days</div>
+        <div class="si-card-value">&#x20B1;{{ '{:,.2f}'.format(summary.due_soon_total) }}</div>
+        <div class="si-card-detail">{{ summary.due_soon_count }} invoice{{ 's' if summary.due_soon_count != 1 else '' }}</div>
+    </div>
+    <div class="si-card">
+        <div class="si-card-label">Drafts</div>
+        <div class="si-card-value">{{ summary.draft_count }}</div>
+        <div class="si-card-detail">to finish</div>
+    </div>
+</div>
+
+<!-- Filter bar -->
+<form method="GET" action="{{ url_for('sales_invoices.list_invoices') }}" class="si-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search invoice # or customer"
+           class="form-control form-control-sm si-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+        <option value="partially_paid" {% if status_filter == 'partially_paid' %}selected{% endif %}>Partially Paid</option>
+        <option value="paid" {% if status_filter == 'paid' %}selected{% endif %}>Paid</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+        <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
+    </select>
+    <select name="customer_id" id="customer-filter" class="form-control form-control-sm">
+        <option value="all">All Customers</option>
+        {% for c in customers %}
+        <option value="{{ c.id }}" {% if customer_filter == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+    </select>
+    <label class="si-date-group">
+        <span class="si-date-group__label">From</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </label>
+    <label class="si-date-group">
+        <span class="si-date-group__label">To</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
 
 <div class="card">
     <div class="card-header">
-        <div class="card-header-actions" style="display: flex; gap: 8px;">
-            <a href="{{ url_for('sales_invoices.export_excel', status=status_filter, customer=customer_filter) }}" class="btn btn-secondary">
-                📊 Export Excel
-            </a>
-            <a href="{{ url_for('sales_invoices.export_csv_route', status=status_filter, customer=customer_filter) }}" class="btn btn-secondary">
-                📄 Export CSV
-            </a>
-            {% if current_user.role in ['accountant', 'admin'] %}
-            <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">
-                <span>➕</span> Enter Invoice
-            </a>
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
+            <span id="si-selected-count" class="si-selected-count"></span>
+            <a href="{{ url_for('sales_invoices.export_excel', status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary si-export-link">&#x1F4CA; Export Excel</a>
+            <a href="{{ url_for('sales_invoices.export_csv_route', status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary si-export-link">&#x1F4C4; Export CSV</a>
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">&#x2795; Enter Invoice</a>
             {% endif %}
         </div>
     </div>
-
-    <!-- Filters -->
-    <div class="card-body" style="border-bottom: 1px solid var(--border); padding: 16px 20px;">
-        <form method="GET" action="{{ url_for('sales_invoices.list_invoices') }}" style="display: flex; gap: 12px; align-items: flex-end;">
-            <div class="form-group" style="margin: 0; flex: 1; max-width: 200px;">
-                <label class="form-label" style="font-size: 12px; margin-bottom: 4px;">Status</label>
-                <select name="status" class="form-control" onchange="this.form.submit()">
-                    <option value="all" {{ 'selected' if status_filter == 'all' }}>All Statuses</option>
-                    <option value="draft" {{ 'selected' if status_filter == 'draft' }}>Draft</option>
-                    <option value="posted" {{ 'selected' if status_filter == 'posted' }}>Posted</option>
-                    <option value="paid" {{ 'selected' if status_filter == 'paid' }}>Paid</option>
-                    <option value="partially_paid" {{ 'selected' if status_filter == 'partially_paid' }}>Partially Paid</option>
-                    <option value="cancelled" {{ 'selected' if status_filter == 'cancelled' }}>Cancelled</option>
-                </select>
-            </div>
-
-            <div class="form-group" style="margin: 0; flex: 1; max-width: 300px;">
-                <label class="form-label" style="font-size: 12px; margin-bottom: 4px;">Customer</label>
-                <select name="customer" class="form-control" onchange="this.form.submit()">
-                    <option value="all" {{ 'selected' if customer_filter == 'all' }}>All Customers</option>
-                    {% for customer in customers %}
-                    <option value="{{ customer.id }}" {{ 'selected' if customer_filter == customer.id|string }}>
-                        {{ customer.code }} - {{ customer.name }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <button type="submit" class="btn btn-secondary" style="display: none;">Filter</button>
-        </form>
-    </div>
-
     <div class="card-body">
         {% if invoices %}
+        {% set badge_map = {'draft':'draft','posted':'posted','partially_paid':'partial','paid':'paid','voided':'void','cancelled':'cancelled'} %}
+        <div class="table-wrap">
         <table class="table">
             <thead>
                 <tr>
-                    <th>Invoice #</th>
-                    <th>Date</th>
-                    <th>Customer</th>
-                    <th>Due Date</th>
-                    <th style="text-align: right;">Subtotal</th>
-                    <th style="text-align: right;">VAT</th>
-                    <th style="text-align: right;">Total</th>
-                    <th style="text-align: right;">Balance</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th style="width:28px;"><input type="checkbox" id="si-check-all" aria-label="Select all invoices"></th>
+                    <th>Invoice #</th><th>Date</th><th>Due Date</th><th>Customer</th>
+                    <th style="text-align:right;">Subtotal</th>
+                    <th style="text-align:right;">VAT</th>
+                    <th style="text-align:right;">WHT</th>
+                    <th style="text-align:right;">Total</th>
+                    <th style="text-align:right;">Balance</th>
+                    <th>Status</th><th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for invoice in invoices %}
                 <tr>
-                    <td>
-                        <a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" style="font-weight: 600; color: var(--blue);">
-                            {{ invoice.invoice_number }}
-                        </a>
-                    </td>
+                    <td><input type="checkbox" class="si-row-check" value="{{ invoice.id }}" aria-label="Select {{ invoice.invoice_number }}"></td>
+                    <td><a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" style="font-weight:600;color:var(--blue);">{{ invoice.invoice_number }}</a></td>
                     <td>{{ invoice.invoice_date.strftime('%b %d, %Y') }}</td>
-                    <td>{{ invoice.customer_name }}</td>
-                    <td>{{ invoice.due_date.strftime('%b %d, %Y') }}</td>
-                    <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(invoice.subtotal) }}</td>
-                    <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(invoice.vat_amount) }}</td>
-                    <td style="text-align: right; font-family: var(--mono); font-weight: 600;">₱{{ '{:,.2f}'.format(invoice.total_amount) }}</td>
-                    <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(invoice.balance) }}</td>
-                    <td>
-                        {% if invoice.status == 'draft' %}
-                        <span class="badge badge-secondary">Draft</span>
-                        {% elif invoice.status == 'posted' %}
-                        <span class="badge badge-info">Posted</span>
-                        {% elif invoice.status == 'paid' %}
-                        <span class="badge badge-success">Paid</span>
-                        {% elif invoice.status == 'partially_paid' %}
-                        <span class="badge badge-warning">Partially Paid</span>
-                        {% elif invoice.status == 'cancelled' %}
-                        <span class="badge badge-danger">Cancelled</span>
-                        {% endif %}
+                    <td {% if invoice.due_date and invoice.due_date < today and invoice.status in ['posted', 'partially_paid'] %}style="color:var(--red);font-weight:600;"{% endif %}>
+                        {{ invoice.due_date.strftime('%b %d, %Y') if invoice.due_date else '&mdash;' }}
                     </td>
+                    <td>{{ invoice.customer_name }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">&#x20B1;{{ '{:,.2f}'.format(invoice.subtotal) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">&#x20B1;{{ '{:,.2f}'.format(invoice.vat_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);{% if invoice.withholding_tax_amount > 0 %}color:var(--red);{% endif %}">
+                        {% if invoice.withholding_tax_amount > 0 %}-&#x20B1;{{ '{:,.2f}'.format(invoice.withholding_tax_amount) }}{% else %}&mdash;{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">&#x20B1;{{ '{:,.2f}'.format(invoice.total_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">
+                        {% if invoice.status in ['paid', 'voided', 'cancelled'] %}&mdash;{% else %}&#x20B1;{{ '{:,.2f}'.format(invoice.balance) }}{% endif %}
+                    </td>
+                    <td><span class="badge badge-{{ badge_map.get(invoice.status, 'draft') }}">{{ invoice.status|replace('_', ' ')|title }}</span></td>
                     <td>
-                        <div class="btn-group">
-                            <a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" class="btn-action" title="View">👁️</a>
-                            {% if invoice.status == 'draft' %}
-                            <a href="{{ url_for('sales_invoices.edit', id=invoice.id) }}" class="btn-action" title="Edit">✏️</a>
-                            {% endif %}
-                        </div>
+                        <a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" class="btn-action">&#x1F441;&#xFE0F;</a>
+                        {% if invoice.status == 'draft' %}<a href="{{ url_for('sales_invoices.edit', id=invoice.id) }}" class="btn-action">&#x270F;&#xFE0F;</a>{% endif %}
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
+        {% set filters_active = q or status_filter != 'all' or customer_filter != 'all' or date_from or date_to %}
         <div class="empty-state">
-            <p>No sales invoices found.</p>
-            {% if current_user.role in ['accountant', 'admin'] %}
+            {% if filters_active %}
+            <p>No invoices match your filters.</p>
+            <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">Clear Filters</a>
+            {% else %}
+            <p>No Sales Invoices found.</p>
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
             <a href="{{ url_for('sales_invoices.create') }}" class="btn btn-primary">Enter First Invoice</a>
+            {% endif %}
             {% endif %}
         </div>
         {% endif %}
     </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} invoice{{ 's' if pagination.total != 1 else '' }}
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('sales_invoices.list_invoices', page=pagination.prev_num, status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">&larr; Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('sales_invoices.list_invoices', page=pagination.next_num, status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next &rarr;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <style>
-.badge {
-    padding: 4px 8px;
-    border-radius: 4px;
+.si-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.si-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
+}
+.si-card-label {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
 }
-.badge-secondary { background: var(--text-3); color: white; }
-.badge-info { background: var(--blue); color: white; }
-.badge-success { background: var(--green); color: white; }
-.badge-warning { background: var(--amber); color: white; }
-.badge-danger { background: var(--red); color: white; }
-
-.btn-group {
+.si-card-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--mono);
+    margin: 4px 0 2px;
+}
+.si-card-detail { font-size: 12px; color: var(--text-3); }
+.si-filter-bar {
     display: flex;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 16px;
 }
+/* Global .form-control is width:100%; constrain inside the filter bar so
+   the controls share one row instead of stacking full-width. */
+.si-filter-bar .form-control { width: auto; }
+.si-filter-bar select.form-control { width: 160px; }
+.si-filter-bar input[type="date"].form-control { width: 150px; }
+.si-filter-search { flex: 1 1 200px; min-width: 180px; }
+@media (max-width: 640px) {
+    .si-filter-bar .form-control,
+    .si-filter-bar select.form-control,
+    .si-filter-bar input[type="date"].form-control { width: 100%; }
+}
+.si-selected-count { font-size: 13px; color: var(--text-2); }
 .btn-action {
     padding: 4px 8px;
     border-radius: 4px;
@@ -146,10 +266,57 @@
     border: 1px solid var(--border);
     cursor: pointer;
     font-size: 14px;
-    transition: background 0.15s;
 }
-.btn-action:hover {
-    background: var(--border);
-}
+.btn-action:hover { background: var(--border); }
+@media (max-width: 1024px) { .si-summary-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .si-summary-grid { grid-template-columns: 1fr; } }
 </style>
+
+<script>
+(function () {
+    const checkAll = document.getElementById('si-check-all');
+    const rowChecks = document.querySelectorAll('.si-row-check');
+    const counter = document.getElementById('si-selected-count');
+    const exportLinks = document.querySelectorAll('.si-export-link');
+
+    function updateSelection() {
+        const selected = Array.from(rowChecks).filter(cb => cb.checked).map(cb => cb.value);
+        counter.textContent = selected.length ? selected.length + ' selected' : '';
+        exportLinks.forEach(link => {
+            const url = new URL(link.href, window.location.origin);
+            if (selected.length) {
+                url.searchParams.set('ids', selected.join(','));
+            } else {
+                url.searchParams.delete('ids');
+            }
+            const qs = url.searchParams.toString();
+            link.href = url.pathname + (qs ? '?' + qs : '');
+        });
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', function () {
+            rowChecks.forEach(cb => { cb.checked = checkAll.checked; });
+            updateSelection();
+        });
+    }
+    rowChecks.forEach(cb => cb.addEventListener('change', updateSelection));
+})();
+</script>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const customerSel = document.getElementById('customer-filter');
+    if (customerSel) {
+        new Choices(customerSel, {
+            searchEnabled: true,
+            itemSelectText: '',
+            shouldSort: false,
+            allowHTML: false,
+        });
+    }
+})();
+</script>
+
 {% endblock %}
