@@ -3054,3 +3054,338 @@ Expected: all 9 tests PASS.
 git add app/cash_disbursements/views.py tests/integration/test_cdv_views.py
 git commit -m "feat: CDV post/void/cancel routes, AP balance updates, integration tests"
 ```
+
+---
+
+## Task 10: Print View + Template
+
+**Files:**
+- Modify: `app/cash_disbursements/views.py` — add `print_cdv` route
+- Create: `app/cash_disbursements/templates/cash_disbursements/print.html`
+
+- [ ] **Step 1: Add print route to views.py**
+
+Append to `app/cash_disbursements/views.py`:
+
+```python
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/print')
+@login_required
+def print_cdv(id):
+    cdv = _get_cdv_or_404(id)
+    je_entries = _build_cdv_je_preview(cdv)
+    return render_template('cash_disbursements/print.html',
+                           cdv=cdv, je_entries=je_entries, now=ph_now)
+```
+
+- [ ] **Step 2: Create the print template**
+
+Create `app/cash_disbursements/templates/cash_disbursements/print.html`:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CDV {{ cdv.cdv_number }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: white; padding: 20px; }
+  h2 { font-size: 13px; font-weight: 700; margin: 16px 0 6px; border-bottom: 1px solid #bbb; padding-bottom: 3px; }
+  .header { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .company-name { font-size: 14px; font-weight: 700; }
+  .doc-title { font-size: 20px; font-weight: 700; margin: 8px 0 4px; letter-spacing: .03em; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 700;
+           text-transform: uppercase; border: 1px solid #555; }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; margin-top: 10px; }
+  .field { display: flex; gap: 6px; }
+  .field-label { font-weight: 600; color: #555; white-space: nowrap; }
+  .vendor-box { border: 2px solid #111; padding: 10px 14px; border-radius: 4px; }
+  .vendor-box .vname { font-size: 13px; font-weight: 700; }
+  .vendor-box .vtin  { font-size: 10px; color: #555; margin-top: 2px; }
+  .notes-box { background: #f9f9f9; border: 1px solid #ddd; padding: 8px 12px; border-radius: 3px;
+               min-height: 32px; font-size: 11px; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  thead tr { background: #f0f0f0; }
+  th { text-align: left; padding: 4px 6px; font-weight: 700; border: 1px solid #bbb; }
+  td { padding: 3px 6px; border: 1px solid #ddd; vertical-align: top; }
+  .right { text-align: right; }
+  .mono { font-family: "Courier New", monospace; }
+  .summary { margin-top: 12px; width: 280px; margin-left: auto; }
+  .sum-row { display: flex; justify-content: space-between; padding: 3px 0; }
+  .sum-row.total { border-top: 2px solid #111; font-size: 13px; font-weight: 700; padding-top: 6px; margin-top: 4px; }
+  .sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 36px; }
+  .sig-box { border-top: 1px solid #555; padding-top: 4px; text-align: center; font-size: 10px; color: #555; }
+  @media print {
+    body { padding: 0; }
+    @page { margin: 15mm 12mm; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="company-name">{{ current_user.branch.name if current_user and current_user.branch else '' }}</div>
+    <div class="doc-title">CASH DISBURSEMENT VOUCHER</div>
+    <span class="badge">{{ cdv.status|upper }}</span>
+    <div class="field-grid" style="margin-top:12px;">
+      <div class="field"><span class="field-label">CD No.:</span> {{ cdv.cdv_number }}</div>
+      <div class="field"><span class="field-label">Date:</span> {{ cdv.cdv_date.strftime('%B %d, %Y') }}</div>
+      <div class="field"><span class="field-label">Payment:</span> {{ cdv.payment_method|replace('_',' ')|title }}</div>
+      {% if cdv.payment_method == 'check' %}
+      <div class="field"><span class="field-label">Check #:</span> {{ cdv.check_number or '—' }}</div>
+      <div class="field"><span class="field-label">Check Date:</span> {{ cdv.check_date.strftime('%b %d, %Y') if cdv.check_date else '—' }}</div>
+      <div class="field"><span class="field-label">Bank:</span> {{ cdv.check_bank or '—' }}</div>
+      {% endif %}
+      <div class="field"><span class="field-label">Cash/Bank Acct:</span>
+        {{ (cdv.cash_account.code ~ ' — ' ~ cdv.cash_account.name) if cdv.cash_account else '—' }}</div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:6px;">PAY TO:</div>
+    <div class="vendor-box">
+      <div class="vname">{{ cdv.vendor_name }}</div>
+      {% if cdv.vendor_tin %}<div class="vtin">TIN: {{ cdv.vendor_tin }}</div>{% endif %}
+    </div>
+    <div style="margin-top:10px;font-size:9px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:4px;">Particulars / Notes:</div>
+    <div class="notes-box">{{ cdv.notes or '' }}</div>
+  </div>
+</div>
+
+{% if cdv.ap_lines %}
+<h2>Section A — AP Bills Paid</h2>
+<table>
+  <thead>
+    <tr>
+      <th>AP Number</th><th>Bill Date</th>
+      <th class="right">Original Balance</th>
+      <th class="right">Amount Applied</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ap_line in cdv.ap_lines %}
+    <tr>
+      <td>{{ ap_line.bill_number }}</td>
+      <td>{{ ap_line.bill.bill_date.strftime('%b %d, %Y') if ap_line.bill else '—' }}</td>
+      <td class="right mono">₱{{ '{:,.2f}'.format(ap_line.original_balance) }}</td>
+      <td class="right mono">₱{{ '{:,.2f}'.format(ap_line.amount_applied) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if cdv.expense_lines %}
+<h2>Section B — Direct Expenses</h2>
+<table>
+  <thead>
+    <tr>
+      <th>#</th><th>Description</th><th>Account</th>
+      <th>VAT</th><th>WHT</th>
+      <th class="right">Amount</th>
+      <th class="right">VAT Amt</th>
+      <th class="right">WHT Amt</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for exp in cdv.expense_lines %}
+    <tr>
+      <td>{{ exp.line_number }}</td>
+      <td>{{ exp.description or '—' }}</td>
+      <td style="font-size:9px;">{{ (exp.account.code ~ ' — ' ~ exp.account.name) if exp.account else '—' }}</td>
+      <td>{{ exp.vat_category or 'None' }} ({{ '{:.2f}'.format(exp.vat_rate) }}%)</td>
+      <td style="font-size:9px;">{% if exp.withholding_tax %}{{ exp.withholding_tax.code }} ({{ '{:.2f}'.format(exp.wt_rate) }}%){% else %}—{% endif %}</td>
+      <td class="right mono">{{ '{:,.2f}'.format(exp.line_total) }}</td>
+      <td class="right mono">{{ '{:,.2f}'.format(exp.vat_amount) }}</td>
+      <td class="right mono">{{ '{:,.2f}'.format(exp.wt_amount) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<div class="summary">
+  <div class="sum-row"><span>AP Applied:</span><span class="mono">₱{{ '{:,.2f}'.format(cdv.total_ap_applied) }}</span></div>
+  <div class="sum-row"><span>Direct Expenses:</span><span class="mono">₱{{ '{:,.2f}'.format(cdv.total_expense) }}</span></div>
+  <div class="sum-row"><span>Input VAT{{ ' ⚙' if cdv.vat_override }}:</span><span class="mono">₱{{ '{:,.2f}'.format(cdv.total_vat) }}</span></div>
+  <div class="sum-row" style="color:#c00;"><span>Less WHT{{ ' ⚙' if cdv.wt_override }}:</span><span class="mono">-₱{{ '{:,.2f}'.format(cdv.total_wt) }}</span></div>
+  <div class="sum-row total"><span>Net Cash Disbursed:</span><span class="mono">₱{{ '{:,.2f}'.format(cdv.total_amount) }}</span></div>
+</div>
+
+{% if je_entries %}
+<h2>Journal Entry</h2>
+<table style="width:auto;">
+  <thead><tr><th>Code</th><th>Account</th><th class="right">Debit</th><th class="right">Credit</th></tr></thead>
+  <tbody>
+    {% set ns = namespace(td=0, tc=0) %}
+    {% for e in je_entries %}
+    {% set ns.td = ns.td + e.debit %}{% set ns.tc = ns.tc + e.credit %}
+    <tr>
+      <td style="color:#555;">{{ e.code }}</td>
+      <td {{ 'style="padding-left:18px;"' | safe if e.credit > 0 }}>{{ e.name }}</td>
+      <td class="right mono">{% if e.debit > 0 %}{{ '{:,.2f}'.format(e.debit) }}{% endif %}</td>
+      <td class="right mono">{% if e.credit > 0 %}{{ '{:,.2f}'.format(e.credit) }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    <tr style="font-weight:700;border-top:1px solid #bbb;">
+      <td colspan="2">Total</td>
+      <td class="right mono">{{ '{:,.2f}'.format(ns.td) }}</td>
+      <td class="right mono">{{ '{:,.2f}'.format(ns.tc) }}</td>
+    </tr>
+  </tbody>
+</table>
+{% endif %}
+
+<div class="sig-grid">
+  <div class="sig-box">Prepared by</div>
+  <div class="sig-box">Approved by</div>
+  <div class="sig-box">Received by / Payee</div>
+</div>
+
+<div style="margin-top:24px;font-size:9px;color:#888;">
+  Printed by {{ current_user.username }} · {{ now().strftime('%B %d, %Y %H:%M') }}
+  {% if cdv.created_by %} · Created by {{ cdv.created_by.username }}{% if cdv.created_at %} on {{ cdv.created_at.strftime('%b %d, %Y') }}{% endif %}{% endif %}
+  {% if cdv.posted_by %} · Posted by {{ cdv.posted_by.username }}{% if cdv.posted_at %} on {{ cdv.posted_at.strftime('%b %d, %Y') }}{% endif %}{% endif %}
+</div>
+
+<script>window.addEventListener('load', () => window.print());</script>
+</body>
+</html>
+```
+
+- [ ] **Step 3: Verify print page**
+
+Navigate to `/cash-disbursements/<id>/print` for a posted CDV. Expected: clean A4 layout, all sections present, auto-print dialog triggers on load.
+
+- [ ] **Step 4: Commit**
+
+```powershell
+git add app/cash_disbursements/views.py app/cash_disbursements/templates/cash_disbursements/print.html
+git commit -m "feat: CDV print view and print template"
+```
+
+---
+
+## Task 11: Export Routes (Excel + CSV)
+
+**Files:**
+- Modify: `app/cash_disbursements/views.py` — add `_cdv_export_rows`, `export_excel`, `export_csv`
+- Modify: `app/cash_disbursements/templates/cash_disbursements/list.html` — add export buttons to filter bar
+
+- [ ] **Step 1: Add export helpers and routes to views.py**
+
+Append to `app/cash_disbursements/views.py`:
+
+```python
+def _cdv_export_rows(branch_id):
+    """Return (headers, rows) for CDV list export. Applies same filters as list_cdvs."""
+    q = CashDisbursementVoucher.query.filter_by(branch_id=branch_id)
+    status = request.args.get('status', '')
+    vendor_id = request.args.get('vendor_id', '')
+    payment_method = request.args.get('payment_method', '')
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+    if status:
+        q = q.filter(CashDisbursementVoucher.status == status)
+    if vendor_id:
+        q = q.filter(CashDisbursementVoucher.vendor_id == int(vendor_id))
+    if payment_method:
+        q = q.filter(CashDisbursementVoucher.payment_method == payment_method)
+    if date_from:
+        from datetime import date as _date
+        q = q.filter(CashDisbursementVoucher.cdv_date >= _date.fromisoformat(date_from))
+    if date_to:
+        from datetime import date as _date
+        q = q.filter(CashDisbursementVoucher.cdv_date <= _date.fromisoformat(date_to))
+    cdvs = q.order_by(CashDisbursementVoucher.cdv_date.desc(),
+                      CashDisbursementVoucher.cdv_number.desc()).all()
+    headers = [
+        'CDV Number', 'Date', 'Vendor', 'Payment Method',
+        'Check #', 'Check Date', 'Cash/Bank Account',
+        'AP Applied', 'Direct Expenses', 'Input VAT', 'WHT',
+        'Net Disbursed', 'Status',
+    ]
+    rows = []
+    for cdv in cdvs:
+        rows.append([
+            cdv.cdv_number,
+            cdv.cdv_date.strftime('%Y-%m-%d') if cdv.cdv_date else '',
+            cdv.vendor_name,
+            cdv.payment_method.replace('_', ' ').title() if cdv.payment_method else '',
+            cdv.check_number or '',
+            cdv.check_date.strftime('%Y-%m-%d') if cdv.check_date else '',
+            f'{cdv.cash_account.code} — {cdv.cash_account.name}' if cdv.cash_account else '',
+            float(cdv.total_ap_applied or 0),
+            float(cdv.total_expense or 0),
+            float(cdv.total_vat or 0),
+            float(cdv.total_wt or 0),
+            float(cdv.total_amount or 0),
+            cdv.status.title() if cdv.status else '',
+        ])
+    return headers, rows
+
+
+@cash_disbursements_bp.route('/cash-disbursements/export/excel')
+@login_required
+def export_excel():
+    branch_id = session.get('selected_branch_id')
+    headers, rows = _cdv_export_rows(branch_id)
+    from app.utils.export import export_to_excel
+    return export_to_excel(
+        headers=headers,
+        rows=rows,
+        sheet_name='Cash Disbursements',
+        filename=f'cash_disbursements_{ph_now().strftime("%Y%m%d")}.xlsx',
+    )
+
+
+@cash_disbursements_bp.route('/cash-disbursements/export/csv')
+@login_required
+def export_csv():
+    branch_id = session.get('selected_branch_id')
+    headers, rows = _cdv_export_rows(branch_id)
+    from app.utils.export import export_to_csv
+    return export_to_csv(
+        headers=headers,
+        rows=rows,
+        filename=f'cash_disbursements_{ph_now().strftime("%Y%m%d")}.csv',
+    )
+```
+
+- [ ] **Step 2: Add export buttons to list.html filter bar**
+
+In `list.html`, inside the filter bar row, add export buttons aligned to the right:
+
+```html
+<div style="display:flex;gap:8px;margin-left:auto;align-items:flex-end;">
+  <a href="{{ url_for('cash_disbursements.export_excel') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
+     class="btn btn-secondary" style="font-size:13px;">⬇ Excel</a>
+  <a href="{{ url_for('cash_disbursements.export_csv') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
+     class="btn btn-secondary" style="font-size:13px;">⬇ CSV</a>
+</div>
+```
+
+This passes the active filter query string through to the export route.
+
+- [ ] **Step 3: Verify exports**
+
+1. Open the CDV list with a status filter (e.g., `status=posted`).
+2. Click **⬇ Excel** — verify the download contains only posted CDVs, 13 columns, numeric amounts.
+3. Click **⬇ CSV** — verify same filtered rows in plain text.
+
+- [ ] **Step 4: Commit**
+
+```powershell
+git add app/cash_disbursements/views.py app/cash_disbursements/templates/cash_disbursements/list.html
+git commit -m "feat: CDV Excel and CSV export routes with filter passthrough"
+```
+
+---
+
+## Implementation Complete
+
+After all 11 tasks are committed and tests pass:
+
+- [ ] **Smoke test end-to-end**: Create a CDV with AP lines + expense lines → post → verify APV bill balances → print → export → cancel → verify reversal JE + APV balances restored.
+- [ ] **Update nav memory**: remove stale `project-journals-redesign.md` entry that says "CDV will NOT be developed." CDV is now shipped.
+- [ ] **CDJ spec** (separate deliverable): Cash Disbursements Journal report is out of scope for this plan. Start a new spec: `docs/superpowers/specs/YYYY-MM-DD-cdj.md`.
