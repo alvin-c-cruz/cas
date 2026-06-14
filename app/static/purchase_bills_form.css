@@ -41,11 +41,13 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--card);
+    margin-bottom: 0;
 }
 .vendor-step-card .choices__inner {
     border: none !important;
     background: transparent !important;
-    min-height: 38px;
+    min-height: unset !important;
+    padding: 7px 36px 7px 12px !important;
     border-radius: 0 !important;
 }
 .vendor-step-card .choices.is-focused,
