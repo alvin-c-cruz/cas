@@ -133,9 +133,9 @@ def posted_invoice(db_session, admin_user, main_branch, gl_accounts, test_custom
     item = SalesInvoiceItem(
         invoice_id=invoice.id, line_number=1,
         description='Consulting Services', amount=Decimal('2240.00'),
-        vat_category='VATABLE',
-        vat_rate=Decimal('12.00'), line_total=Decimal('2000.00'),
-        vat_amount=Decimal('240.00'), account_id=gl_accounts['revenue'].id
+        vat_category='VATABLE', vat_rate=Decimal('12.00'),
+        line_total=Decimal('2240.00'), vat_amount=Decimal('240.00'),
+        wt_amount=Decimal('0.00'), account_id=gl_accounts['revenue'].id
     )
     db_session.add(item)
     db_session.commit()

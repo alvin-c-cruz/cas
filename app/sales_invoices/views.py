@@ -180,6 +180,125 @@ _EXPORT_HEADERS = [
 # JE helpers (Task 8) and route functions (Tasks 9-12) are appended below
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# JE helpers
+# ---------------------------------------------------------------------------
+
+def _get_gl_accounts():
+    """Return AR-Trade (10201) and Creditable WHT Receivable (10212) accounts."""
+    ar_acct = Account.query.filter_by(code='10201').first()
+    wt_acct = Account.query.filter_by(code='10212').first()
+    return {'ar': ar_acct, 'wt': wt_acct}
+
+
+def _output_vat_buckets(invoice):
+    """Group output VAT amounts by VATCategory.output_vat_account.
+
+    Mirrors APV _input_vat_buckets() but reads output_vat_account.
+    Returns sorted list of (Account, Decimal) pairs.
+    Raises ValueError if a VAT-bearing line's category has no output_vat_account.
+    """
+    if Decimal(str(invoice.vat_amount)) <= 0:
+        return []
+
+    categories = {c.code: c for c in VATCategory.query.all()}
+    buckets = {}
+    for item in invoice.line_items:
+        vat_amt = Decimal(str(item.vat_amount or 0))
+        if vat_amt <= 0:
+            continue
+        cat = categories.get(item.vat_category)
+        acct = cat.output_vat_account if cat else None
+        if acct is None:
+            label = cat.code if cat else (item.vat_category or 'unknown')
+            raise ValueError(
+                f"VAT category '{label}' has no Output Tax account configured. "
+                "Set it in VAT Categories before posting.")
+        if acct.id not in buckets:
+            buckets[acct.id] = [acct, Decimal('0.00')]
+        buckets[acct.id][1] += vat_amt
+
+    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
+    total = sum((amt for _, amt in ordered), Decimal('0.00'))
+    override_diff = Decimal(str(invoice.vat_amount)) - total
+    if override_diff != Decimal('0.00') and ordered:
+        largest_id = max(ordered, key=lambda b: b[1])[0].id
+        ordered = [
+            (acct, amt + override_diff if acct.id == largest_id else amt)
+            for acct, amt in ordered
+        ]
+    ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
+    if any(amt < Decimal('0.00') for _, amt in ordered):
+        raise ValueError(
+            'VAT override is too far below the computed VAT to allocate '
+            'across output tax accounts.')
+    return ordered
+
+
+def _build_je_preview(invoice):
+    """Return [{code, name, debit, credit}] for the detail view JE section.
+
+    If the invoice has a stored JE, read from it.
+    If draft (no stored JE), compute what _post_invoice_je would produce.
+    """
+    if invoice.journal_entry:
+        return [
+            {
+                'code': line.account.code if line.account else '—',
+                'name': line.account.name if line.account else '—',
+                'debit': line.debit_amount,
+                'credit': line.credit_amount,
+            }
+            for line in invoice.journal_entry.lines.all()
+        ]
+
+    # Draft preview: compute inline
+    accts = _get_gl_accounts()
+    entries = []
+
+    # Credit revenue per line (net base)
+    for item in invoice.line_items:
+        if not item.account_id or not item.account:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entries.append({
+            'code': item.account.code,
+            'name': item.account.name,
+            'debit': Decimal('0.00'),
+            'credit': net_base,
+        })
+
+    # Credit output VAT buckets
+    try:
+        vat_buckets = _output_vat_buckets(invoice)
+    except ValueError as e:
+        vat_buckets = []
+        vat_amount = Decimal(str(invoice.vat_amount))
+        if vat_amount > 0:
+            entries.append({'code': '—', 'name': str(e),
+                            'debit': Decimal('0.00'), 'credit': vat_amount})
+
+    for vat_acct, vat_amt in vat_buckets:
+        if vat_amt <= 0:
+            continue
+        entries.append({'code': vat_acct.code, 'name': vat_acct.name,
+                        'debit': Decimal('0.00'), 'credit': vat_amt})
+
+    # Debit Creditable WHT Receivable
+    wt_amount = Decimal(str(invoice.withholding_tax_amount))
+    if wt_amount > 0 and accts['wt']:
+        entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
+                        'debit': wt_amount, 'credit': Decimal('0.00')})
+
+    # Debit Accounts Receivable
+    if accts['ar']:
+        entries.append({'code': accts['ar'].code, 'name': accts['ar'].name,
+                        'debit': Decimal(str(invoice.total_amount)),
+                        'credit': Decimal('0.00')})
+
+    return entries
+
+
 def _create_invoice_void_je(invoice, reversal_date, user_id):
     """Create reversal JE when voiding a sales invoice. Raises ValueError if required accounts missing."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
@@ -217,11 +336,13 @@ def _create_invoice_void_je(invoice, reversal_date, user_id):
     line_num = 1
     for item in invoice.line_items:
         if item.account_id and item.line_total > 0:
+            # Debit the net revenue (line_total is VAT-inclusive; subtract extracted VAT)
+            net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount or 0))
             db.session.add(JournalEntryLine(
                 entry_id=je.id, line_number=line_num,
                 account_id=item.account_id,
                 description=item.description,
-                debit_amount=item.line_total,
+                debit_amount=net_base,
                 credit_amount=Decimal('0.00')
             ))
             line_num += 1
