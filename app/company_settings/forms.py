@@ -26,6 +26,11 @@ VAT_REGISTRATION_CHOICES = [
     ('Non-VAT', 'Non-VAT'),
 ]
 
+APV_PRINT_ACCESS_CHOICES = [
+    ('posted_only', 'Posted only'),
+    ('draft_and_posted', 'Draft and posted'),
+]
+
 
 class CompanySettingsForm(FlaskForm):
     """Form for editing company-wide settings (stored as app_settings rows)."""
@@ -94,3 +99,8 @@ class CompanySettingsForm(FlaskForm):
         Optional(),
         Length(max=200, message='Name must be 200 characters or less.')
     ])
+
+    # Documents
+    apv_print_access = SelectField(
+        'APV Print Access', choices=APV_PRINT_ACCESS_CHOICES
+    )
