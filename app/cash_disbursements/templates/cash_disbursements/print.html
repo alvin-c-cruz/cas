@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Print CDV — {{ cdv.cdv_number }}{% endblock %}
+{% block content %}
+<div class="container">
+  <h2>Cash Disbursement Voucher</h2>
+  <p><strong>CDV No:</strong> {{ cdv.cdv_number }}</p>
+  <p><strong>Date:</strong> {{ cdv.cdv_date }}</p>
+  <p><strong>Vendor:</strong> {{ cdv.vendor_name }}</p>
+  <p><strong>Amount:</strong> {{ cdv.total_amount }}</p>
+  <p><strong>Status:</strong> {{ cdv.status }}</p>
+</div>
+{% endblock %}
