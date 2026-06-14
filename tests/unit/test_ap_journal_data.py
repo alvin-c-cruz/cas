@@ -85,6 +85,7 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
         'entry': _fake_entry('2026-06-01', 'AP-2026-06-0001', 'SI-1', 'Vendor A', 'Rent'),
         'cells': {1: Decimal('-5000'), 2: Decimal('5000')},
         'is_draft': False,
+        'is_voided': False,
     }]
     totals = {1: Decimal('-5000'), 2: Decimal('5000')}
     with app.app_context():
@@ -116,8 +117,8 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
     # blank row 8, TOTAL row 9 — amounts are SUM formulas (openpyxl stores as strings)
     total_row = [ws.cell(row=9, column=i).value for i in range(1, len(header) + 1)]
     assert total_row[0] == 'TOTAL'
-    assert total_row[5] == '=SUM(F7:F7)'   # AP column formula
-    assert total_row[6] == '=SUM(G7:G7)'   # Rent Expense column formula
+    assert total_row[5] == '=SUM(F7:F8)'   # AP column formula
+    assert total_row[6] == '=SUM(G7:G8)'   # Rent Expense column formula
 
 
 def _mock_bill(bill_number, bill_date, vendor_name='Vendor X',
@@ -213,6 +214,12 @@ def test_build_ap_journal_xlsx_voided_row_has_red_fill_and_no_amounts(app):
     # No branch → header row 5, data row 6
     data_row_vals = [ws.cell(row=6, column=i).value for i in range(6, 6 + len(columns))]
     assert all(v is None for v in data_row_vals)
+
+    # Verify red fill on all cells of the voided row (data row 6, no branch → header row 5)
+    # 5 fixed columns (Date, AP No., Invoice No., Vendor, Particulars) + N account columns
+    for col_idx in range(1, 5 + len(columns) + 1):
+        cell = ws.cell(row=6, column=col_idx)
+        assert cell.fill.fgColor.rgb.endswith('FFCDD2'), f"col {col_idx}: expected FFCDD2, got {cell.fill.fgColor.rgb}"
 
 
 def test_build_columnar_voided_no_column_contribution():
