@@ -630,6 +630,51 @@ def view(id):
                            je_entries=je_entries)
 
 
+@purchase_bills_bp.route('/purchase-bills/<int:id>/print')
+@login_required
+def print_bill(id):
+    """Standalone print preview for an APV."""
+    from app.settings import AppSettings
+    bill = _get_bill_or_404(id)
+
+    # Sort JE lines: non-VAT debits → VAT debits → credits, each by account code
+    je_lines = []
+    if bill.journal_entry:
+        vat_account_ids = {
+            c.input_vat_account_id
+            for c in VATCategory.query.all()
+            if c.input_vat_account_id
+        }
+        lines = bill.journal_entry.lines.all()
+        debit_non_vat = sorted(
+            [l for l in lines if (l.debit_amount or 0) > 0 and l.account_id not in vat_account_ids],
+            key=lambda l: l.account.code
+        )
+        debit_vat = sorted(
+            [l for l in lines if (l.debit_amount or 0) > 0 and l.account_id in vat_account_ids],
+            key=lambda l: l.account.code
+        )
+        credits = sorted(
+            [l for l in lines if (l.credit_amount or 0) > 0],
+            key=lambda l: l.account.code
+        )
+        je_lines = debit_non_vat + debit_vat + credits
+
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+
+    return render_template(
+        'purchase_bills/print.html',
+        bill=bill,
+        je_lines=je_lines,
+        company=company,
+        printed_at=ph_now(),
+    )
+
+
 @purchase_bills_bp.route('/purchase-bills/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 @staff_or_above_required
