@@ -120,28 +120,20 @@ class SalesInvoice(db.Model):
         return f'<SalesInvoice {self.invoice_number}>'
 
     def calculate_totals(self):
-        """Compute invoice totals from VAT-inclusive line amounts.
-
-        When line_items exist, aggregates from them.
-        When no line items exist (e.g. manual or round-trip), uses existing
-        subtotal/vat_amount/withholding_tax_amount to recompute derived fields.
-        """
-        if self.line_items:
-            subtotal = Decimal('0.00')
-            auto_vat = Decimal('0.00')
-            auto_wt = Decimal('0.00')
-            for item in self.line_items:
-                subtotal += Decimal(str(item.line_total))
-                auto_vat += Decimal(str(item.vat_amount or 0))
-                auto_wt += Decimal(str(item.wt_amount or 0))
-            self.subtotal = subtotal
-            if not self.vat_override:
-                self.vat_amount = auto_vat
-            if not self.wt_override:
-                self.withholding_tax_amount = auto_wt
-
-        self.total_before_wt = Decimal(str(self.subtotal))   # VAT is extracted from subtotal, not added
-        self.total_amount = Decimal(str(self.subtotal)) - Decimal(str(self.withholding_tax_amount))
+        subtotal = Decimal('0.00')
+        auto_vat = Decimal('0.00')
+        auto_wt = Decimal('0.00')
+        for item in self.line_items:
+            subtotal += Decimal(str(item.line_total))
+            auto_vat += Decimal(str(item.vat_amount or 0))
+            auto_wt += Decimal(str(item.wt_amount or 0))
+        self.subtotal = subtotal
+        if not self.vat_override:
+            self.vat_amount = auto_vat
+        if not self.wt_override:
+            self.withholding_tax_amount = auto_wt
+        self.total_before_wt = self.subtotal
+        self.total_amount = self.subtotal - Decimal(str(self.withholding_tax_amount))
         self.balance = self.total_amount - Decimal(str(self.amount_paid))
 
     def to_dict(self):

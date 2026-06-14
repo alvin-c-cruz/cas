@@ -56,7 +56,8 @@ def test_sales_invoice_has_required_fields(db_session, customer, branch):
     assert inv.customer_po_number is None
 
 
-def test_sales_invoice_calculate_totals_no_wht(db_session, customer, branch):
+def test_sales_invoice_calculate_totals_no_items(db_session, customer, branch):
+    """calculate_totals() with no line items zeros all totals (PurchaseBill pattern)."""
     from app.sales_invoices.models import SalesInvoice
     inv = SalesInvoice(
         branch_id=branch.id,
@@ -68,13 +69,11 @@ def test_sales_invoice_calculate_totals_no_wht(db_session, customer, branch):
         notes='',
         status='draft',
         amount_paid=Decimal('0.00'),
-        subtotal=Decimal('11200.00'),
-        vat_amount=Decimal('1200.00'),
-        withholding_tax_amount=Decimal('0.00'),
     )
     db_session.add(inv)
     db_session.commit()
     inv.calculate_totals()
-    assert inv.total_before_wt == Decimal('11200.00')
-    assert inv.total_amount == Decimal('11200.00')
-    assert inv.balance == Decimal('11200.00')
+    assert inv.subtotal == Decimal('0.00')
+    assert inv.total_before_wt == Decimal('0.00')
+    assert inv.total_amount == Decimal('0.00')
+    assert inv.balance == Decimal('0.00')
