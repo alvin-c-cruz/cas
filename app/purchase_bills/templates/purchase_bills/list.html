@@ -6,6 +6,44 @@
 <style>
 .choices__list--dropdown { min-width: 220px; }
 .choices__list--dropdown .choices__list { max-height: 200px; overflow-y: auto; }
+
+/* Vendor Choices.js — match native Status select appearance */
+.pb-filter-bar .choices {
+    width: 160px;
+    margin-bottom: 0;
+}
+.pb-filter-bar .choices__inner {
+    padding: 10px 36px 10px 14px;
+    font-size: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: white;
+    min-height: unset;
+    font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+.pb-filter-bar .choices.is-focused .choices__inner,
+.pb-filter-bar .choices.is-open .choices__inner {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    outline: none;
+}
+.pb-filter-bar .choices__list--single { padding: 0; }
+.pb-filter-bar .choices__list--single .choices__item {
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+}
+.pb-filter-bar .choices[data-type*='select-one']::after {
+    border-color: #64748b transparent transparent;
+    right: 14px;
+}
+.pb-filter-bar .choices[data-type*='select-one'].is-open::after {
+    border-color: transparent transparent #64748b;
+}
+@media (max-width: 640px) {
+    .pb-filter-bar .choices { width: 100%; }
+}
 </style>
 {% endblock %}
 {% block content %}
