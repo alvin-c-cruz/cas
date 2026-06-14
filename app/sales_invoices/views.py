@@ -597,7 +597,8 @@ def create():
                                    vat_categories=_vat_categories_for_form(),
                                    all_accounts=_get_all_accounts_for_select(),
                                    line_items=[],
-                                   gl_accounts=_gl_accounts_dict())
+                                   gl_accounts=_gl_accounts_dict(),
+                                   wht_codes=_wht_codes_for_form())
         try:
             cust = Customer.query.get(form.customer_id.data)
             if not cust:
@@ -605,7 +606,8 @@ def create():
                 return render_template('sales_invoices/form.html', form=form, invoice=None,
                                        vat_categories=_vat_categories_for_form(),
                                        all_accounts=_get_all_accounts_for_select(),
-                                       gl_accounts=_gl_accounts_dict())
+                                       gl_accounts=_gl_accounts_dict(),
+                                       wht_codes=_wht_codes_for_form())
 
             invoice = SalesInvoice(
                 branch_id=session.get('selected_branch_id'),
@@ -669,7 +671,9 @@ def create():
     return render_template('sales_invoices/form.html', form=form, invoice=None,
                            vat_categories=_vat_categories_for_form(),
                            all_accounts=_get_all_accounts_for_select(),
-                           gl_accounts=_gl_accounts_dict())
+                           line_items=[],
+                           gl_accounts=_gl_accounts_dict(),
+                           wht_codes=_wht_codes_for_form())
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/edit', methods=['GET', 'POST'])
@@ -694,7 +698,8 @@ def edit(id):
                                    vat_categories=_vat_categories_for_form(),
                                    all_accounts=_get_all_accounts_for_select(),
                                    line_items=[item.to_dict() for item in invoice.line_items],
-                                   gl_accounts=_gl_accounts_dict())
+                                   gl_accounts=_gl_accounts_dict(),
+                                   wht_codes=_wht_codes_for_form())
         try:
             old_values = model_to_dict(invoice, [
                 'invoice_number', 'invoice_date', 'due_date', 'customer_name',
@@ -707,7 +712,8 @@ def edit(id):
                                        vat_categories=_vat_categories_for_form(),
                                        all_accounts=_get_all_accounts_for_select(),
                                        line_items=[item.to_dict() for item in invoice.line_items],
-                                       gl_accounts=_gl_accounts_dict())
+                                       gl_accounts=_gl_accounts_dict(),
+                                       wht_codes=_wht_codes_for_form())
 
             invoice.invoice_number = form.invoice_number.data
             invoice.invoice_date = form.invoice_date.data
@@ -775,7 +781,8 @@ def edit(id):
                            vat_categories=_vat_categories_for_form(),
                            all_accounts=_get_all_accounts_for_select(),
                            line_items=[item.to_dict() for item in invoice.line_items],
-                           gl_accounts=_gl_accounts_dict())
+                           gl_accounts=_gl_accounts_dict(),
+                           wht_codes=_wht_codes_for_form())
 
 
 # ── helpers called by create() and edit() ───────────────────────────────────
@@ -791,6 +798,11 @@ def _gl_accounts_dict():
         'ar': {'code': _accts['ar'].code, 'name': _accts['ar'].name} if _accts['ar'] else None,
         'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
+
+
+def _wht_codes_for_form():
+    return [w.to_dict() for w in
+            WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()]
 
 
 def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=False):
