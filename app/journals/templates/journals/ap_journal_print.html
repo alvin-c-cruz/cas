@@ -42,6 +42,12 @@
     .apj-table { font-size: 8px; }
     .apj-table th.num { width: 90px; min-width: 90px; white-space: normal; }
     .apj-table td.num { width: 90px; min-width: 90px; max-width: 90px; }
+    /* Repeat column headers on every printed page */
+    .apj-table thead { display: table-header-group; }
+    /* Keep each row on one page */
+    .apj-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    /* Keep company header attached to the table */
+    .apj-header { page-break-after: avoid; }
   }
 </style>
 {% endblock %}
