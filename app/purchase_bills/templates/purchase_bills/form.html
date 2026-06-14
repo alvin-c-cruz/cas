@@ -582,6 +582,9 @@ function validateForm() {
         block('Due date cannot be earlier than the voucher date.'); return;
     }
 
+    const invoiceNo = (document.getElementById('vendor_invoice_number')?.value || '').trim();
+    if (!invoiceNo) { block('Enter the vendor invoice number before saving.'); return; }
+
     if (lineItems.length === 0) { block('Add at least one line item.'); return; }
 
     for (let i = 0; i < lineItems.length; i++) {
