@@ -34,7 +34,7 @@ class SalesInvoiceForm(FlaskForm):
     customer_po_date = DateField('Customer PO Date', validators=[Optional()],
                                  format='%Y-%m-%d')
 
-    payment_terms = SelectField('Payment Terms', choices=[
+    payment_terms = SelectField('Payment Terms', validators=[DataRequired()], choices=[
         ('Net 15', 'Net 15'), ('Net 30', 'Net 30'), ('Net 45', 'Net 45'),
         ('Net 60', 'Net 60'), ('Cash on Delivery', 'Cash on Delivery'),
         ('Advance Payment', 'Advance Payment'),
