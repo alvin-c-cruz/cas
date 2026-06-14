@@ -1,4 +1,237 @@
 {% extends "base.html" %}
 {% block title %}Cash Disbursements{% endblock %}
 {% block page_title %}Cash Disbursements{% endblock %}
-{% block content %}<p>CDV list coming in Task 5.</p>{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<style>
+.cdv-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.cdv-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
+}
+.cdv-card-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+}
+.cdv-card-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--mono);
+    margin: 4px 0 2px;
+}
+.cdv-card-detail { font-size: 12px; color: var(--text-3); }
+.cdv-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+}
+.cdv-filter-bar .form-control { width: auto; }
+.cdv-filter-bar select.form-control { width: 160px; }
+.cdv-filter-bar input[type="date"].form-control { width: 150px; }
+.cdv-filter-search { flex: 1 1 200px; min-width: 180px; }
+.cdv-date-group { display: flex; flex-direction: column; gap: 2px; }
+.cdv-date-group__label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #64748b; padding-left: 2px;
+}
+.btn-action {
+    padding: 4px 8px; border-radius: 4px;
+    background: var(--bg); border: 1px solid var(--border);
+    cursor: pointer; font-size: 14px;
+}
+.btn-action:hover { background: var(--border); }
+.choices__list--dropdown { min-width: 220px; }
+.choices__list--dropdown .choices__list { max-height: 200px; overflow-y: auto; }
+.cdv-filter-bar .choices { width: 160px; margin-bottom: 0; }
+.cdv-filter-bar .choices__inner {
+    padding: 10px 36px 10px 14px; font-size: 14px;
+    border: 1px solid #cbd5e1; border-radius: 6px;
+    background: white; min-height: unset;
+    font-family: 'Inter', sans-serif; box-sizing: border-box; transition: all 0.2s;
+}
+.cdv-filter-bar .choices.is-focused .choices__inner,
+.cdv-filter-bar .choices.is-open .choices__inner {
+    border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); outline: none;
+}
+.cdv-filter-bar .choices__list--single { padding: 0; }
+.cdv-filter-bar .choices__list--single .choices__item { font-size: 14px; font-family: 'Inter', sans-serif; }
+.cdv-filter-bar .choices[data-type*='select-one']::after { border-color: #64748b transparent transparent; right: 14px; }
+.cdv-filter-bar .choices[data-type*='select-one'].is-open::after { border-color: transparent transparent #64748b; }
+@media (max-width: 1024px) { .cdv-summary-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  {
+    .cdv-summary-grid { grid-template-columns: 1fr; }
+    .cdv-filter-bar .form-control,
+    .cdv-filter-bar select.form-control,
+    .cdv-filter-bar input[type="date"].form-control { width: 100%; }
+    .cdv-filter-bar .choices { width: 100%; }
+}
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="cdv-summary-grid">
+    <div class="cdv-card">
+        <div class="cdv-card-label">Disbursed This Month</div>
+        <div class="cdv-card-value">₱{{ '{:,.2f}'.format(summary.disbursed_this_month) }}</div>
+        <div class="cdv-card-detail">posted CDVs</div>
+    </div>
+    <div class="cdv-card">
+        <div class="cdv-card-label">Drafts</div>
+        <div class="cdv-card-value">{{ summary.draft_count }}</div>
+        <div class="cdv-card-detail">to finish</div>
+    </div>
+    <div class="cdv-card">
+        <div class="cdv-card-label" style="color:var(--red);">Cancelled</div>
+        <div class="cdv-card-value" style="color:var(--red);">{{ summary.cancelled_count }}</div>
+        <div class="cdv-card-detail">this branch</div>
+    </div>
+</div>
+
+<form method="GET" action="{{ url_for('cash_disbursements.list_cdvs') }}" class="cdv-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search CD # or vendor"
+           class="form-control form-control-sm cdv-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+        <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+    <select name="vendor" id="vendor-filter" class="form-control form-control-sm">
+        <option value="all">All Vendors</option>
+        {% for v in vendors %}
+        <option value="{{ v.id }}" {% if vendor_filter == v.id|string %}selected{% endif %}>{{ v.name }}</option>
+        {% endfor %}
+    </select>
+    <select name="payment_method" class="form-control form-control-sm">
+        <option value="all" {% if pm_filter == 'all' %}selected{% endif %}>All Methods</option>
+        <option value="cash" {% if pm_filter == 'cash' %}selected{% endif %}>Cash</option>
+        <option value="check" {% if pm_filter == 'check' %}selected{% endif %}>Check</option>
+        <option value="bank_transfer" {% if pm_filter == 'bank_transfer' %}selected{% endif %}>Bank Transfer</option>
+        <option value="online" {% if pm_filter == 'online' %}selected{% endif %}>Online</option>
+    </select>
+    <label class="cdv-date-group">
+        <span class="cdv-date-group__label">From</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </label>
+    <label class="cdv-date-group">
+        <span class="cdv-date-group__label">To</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('cash_disbursements.create') }}" class="btn btn-primary">➕ Enter CDV</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        {% if cdvs %}
+        {% set badge_map = {'draft':'draft','posted':'posted','voided':'void','cancelled':'cancelled'} %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>CD #</th><th>Date</th><th>Vendor</th><th>Method</th>
+                    <th style="text-align:right;">AP Applied</th>
+                    <th style="text-align:right;">Expenses</th>
+                    <th style="text-align:right;">WT</th>
+                    <th style="text-align:right;">Net Cash Out</th>
+                    <th>Status</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cdv in cdvs %}
+                <tr>
+                    <td><a href="{{ url_for('cash_disbursements.view', id=cdv.id) }}"
+                           style="font-weight:600;color:var(--blue);">{{ cdv.cdv_number }}</a></td>
+                    <td>{{ cdv.cdv_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ cdv.vendor_name }}</td>
+                    <td>{{ cdv.payment_method|replace('_',' ')|title }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">
+                        {% if cdv.total_ap_applied > 0 %}₱{{ '{:,.2f}'.format(cdv.total_ap_applied) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);">
+                        {% if cdv.total_expense > 0 %}₱{{ '{:,.2f}'.format(cdv.total_expense) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);{% if cdv.total_wt > 0 %}color:var(--red);{% endif %}">
+                        {% if cdv.total_wt > 0 %}-₱{{ '{:,.2f}'.format(cdv.total_wt) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(cdv.total_amount) }}</td>
+                    <td><span class="badge badge-{{ badge_map.get(cdv.status, 'draft') }}">{{ cdv.status|title }}</span></td>
+                    <td>
+                        <a href="{{ url_for('cash_disbursements.view', id=cdv.id) }}" class="btn-action">👁️</a>
+                        {% if cdv.status == 'draft' %}
+                        <a href="{{ url_for('cash_disbursements.edit', id=cdv.id) }}" class="btn-action">✏️</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        {% set filters_active = q or status_filter != 'all' or vendor_filter != 'all' or date_from or date_to or pm_filter != 'all' %}
+        <div class="empty-state">
+            {% if filters_active %}
+            <p>No CDVs match your filters.</p>
+            <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">Clear Filters</a>
+            {% else %}
+            <p>No Cash Disbursement Vouchers found.</p>
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('cash_disbursements.create') }}" class="btn btn-primary">Enter First CDV</a>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} CDVs
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('cash_disbursements.list_cdvs', page=pagination.prev_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to, payment_method=pm_filter) }}"
+               class="btn btn-secondary btn-sm">← Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('cash_disbursements.list_cdvs', page=pagination.next_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to, payment_method=pm_filter) }}"
+               class="btn btn-secondary btn-sm">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const vendorSel = document.getElementById('vendor-filter');
+    if (vendorSel) {
+        new Choices(vendorSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
+    }
+})();
+</script>
+{% endblock %}
