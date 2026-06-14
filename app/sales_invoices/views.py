@@ -13,6 +13,8 @@ from app.audit.utils import log_create, log_update, log_delete, model_to_dict, l
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.journal_entries.utils import generate_entry_number
+from app.settings import AppSettings
+from app.periods.utils import validate_transaction_date_with_flash
 from datetime import date, timedelta
 from decimal import Decimal
 import json
@@ -567,3 +569,259 @@ def export_csv_route():
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     return export_to_csv(data=invoices, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
                          filename=f'sales_invoices_{timestamp}.csv')
+
+
+# ---------------------------------------------------------------------------
+# Create and Edit routes
+# ---------------------------------------------------------------------------
+
+@sales_invoices_bp.route('/sales-invoices/create', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def create():
+    form = SalesInvoiceForm()
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    form.customer_id.choices = [(0, '-- Select Customer --')] + [
+        (c.id, f'{c.code} - {c.name}') for c in customers]
+
+    if form.validate_on_submit():
+        if not validate_transaction_date_with_flash(form.invoice_date.data, 'Sales Invoice'):
+            return render_template('sales_invoices/form.html', form=form, invoice=None,
+                                   vat_categories=_vat_categories_for_form(),
+                                   all_accounts=_get_all_accounts_for_select(),
+                                   gl_accounts=_gl_accounts_dict())
+        try:
+            cust = Customer.query.get(form.customer_id.data)
+            if not cust:
+                flash('Selected customer not found.', 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=None,
+                                       vat_categories=_vat_categories_for_form(),
+                                       all_accounts=_get_all_accounts_for_select(),
+                                       gl_accounts=_gl_accounts_dict())
+
+            invoice = SalesInvoice(
+                branch_id=session.get('selected_branch_id'),
+                invoice_number=form.invoice_number.data,
+                invoice_date=form.invoice_date.data,
+                due_date=form.due_date.data,
+                customer_id=cust.id,
+                customer_name=cust.name,
+                customer_tin=cust.tin,
+                customer_address=cust.address,
+                customer_po_number=form.customer_po_number.data or None,
+                customer_po_date=form.customer_po_date.data or None,
+                payment_terms=form.payment_terms.data,
+                reference=form.reference.data,
+                notes=form.notes.data or '',
+                status='draft',
+                amount_paid=Decimal('0.00'),
+                balance=Decimal('0.00'),
+                created_by_id=current_user.id,
+            )
+            _parse_and_attach_line_items(invoice, request.form.get('line_items', '[]'))
+            invoice.calculate_totals()
+            err = _apply_overrides(invoice)
+            if err:
+                return err
+
+            db.session.add(invoice)
+            db.session.flush()
+
+            je = _post_invoice_je(invoice, current_user.id)
+            invoice.journal_entry_id = je.id
+            db.session.commit()
+
+            log_create(
+                module='sales_invoice',
+                record_id=invoice.id,
+                record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+                new_values=model_to_dict(invoice, [
+                    'invoice_number', 'invoice_date', 'due_date', 'customer_name',
+                    'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+            )
+            flash(f'Sales Invoice "{invoice.invoice_number}" entered successfully!', 'success')
+            # Redirect to detail view; falls back to list if view route not yet registered
+            try:
+                return redirect(url_for('sales_invoices.view', id=invoice.id))
+            except Exception:
+                return redirect(url_for('sales_invoices.list_invoices'))
+
+        except Exception as e:
+            from app.errors.utils import log_exception
+            db.session.rollback()
+            current_app.logger.error('Error creating sales invoice', exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_invoices.create')
+            flash(f'Error entering Sales Invoice: {str(e)}', 'error')
+
+    if request.method == 'GET':
+        form.invoice_number.data = generate_invoice_number()
+        form.invoice_date.data = ph_now().date()
+        form.due_date.data = ph_now().date() + timedelta(days=30)
+
+    return render_template('sales_invoices/form.html', form=form, invoice=None,
+                           vat_categories=_vat_categories_for_form(),
+                           all_accounts=_get_all_accounts_for_select(),
+                           gl_accounts=_gl_accounts_dict())
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def edit(id):
+    invoice = _get_invoice_or_404(id)
+    if invoice.status != 'draft':
+        flash('Only draft Sales Invoices can be edited.', 'error')
+        try:
+            return redirect(url_for('sales_invoices.view', id=id))
+        except Exception:
+            return redirect(url_for('sales_invoices.list_invoices'))
+
+    form = SalesInvoiceForm(obj=invoice)
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
+
+    if form.validate_on_submit():
+        if not validate_transaction_date_with_flash(form.invoice_date.data, 'Sales Invoice'):
+            return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                                   vat_categories=_vat_categories_for_form(),
+                                   all_accounts=_get_all_accounts_for_select(),
+                                   line_items=[item.to_dict() for item in invoice.line_items],
+                                   gl_accounts=_gl_accounts_dict())
+        try:
+            old_values = model_to_dict(invoice, [
+                'invoice_number', 'invoice_date', 'due_date', 'customer_name',
+                'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+
+            cust = Customer.query.get(form.customer_id.data)
+            if not cust:
+                flash('Selected customer not found.', 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                                       vat_categories=_vat_categories_for_form(),
+                                       all_accounts=_get_all_accounts_for_select(),
+                                       line_items=[item.to_dict() for item in invoice.line_items],
+                                       gl_accounts=_gl_accounts_dict())
+
+            invoice.invoice_number = form.invoice_number.data
+            invoice.invoice_date = form.invoice_date.data
+            invoice.due_date = form.due_date.data
+            invoice.customer_id = cust.id
+            invoice.customer_name = cust.name
+            invoice.customer_tin = cust.tin
+            invoice.customer_address = cust.address
+            invoice.customer_po_number = form.customer_po_number.data or None
+            invoice.customer_po_date = form.customer_po_date.data or None
+            invoice.payment_terms = form.payment_terms.data
+            invoice.reference = form.reference.data
+            invoice.notes = form.notes.data or ''
+
+            SalesInvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
+            _parse_and_attach_line_items(invoice, request.form.get('line_items', '[]'),
+                                         assign_invoice_id=True)
+            db.session.flush()
+
+            invoice.calculate_totals()
+            err = _apply_overrides(invoice)
+            if err:
+                return err
+
+            if invoice.journal_entry_id:
+                from app.journal_entries.models import JournalEntry as _JE
+                old_je_id = invoice.journal_entry_id
+                invoice.journal_entry_id = None
+                invoice.journal_entry = None
+                db.session.flush()
+                old_je = db.session.get(_JE, old_je_id)
+                if old_je:
+                    db.session.delete(old_je)
+                db.session.flush()
+
+            je = _post_invoice_je(invoice, current_user.id)
+            invoice.journal_entry_id = je.id
+            db.session.commit()
+
+            new_values = model_to_dict(invoice, [
+                'invoice_number', 'invoice_date', 'due_date', 'customer_name',
+                'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+            log_update(module='sales_invoice', record_id=invoice.id,
+                       record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+                       old_values=old_values, new_values=new_values)
+
+            flash(f'Sales Invoice "{invoice.invoice_number}" saved successfully!', 'success')
+            # Redirect to detail view; falls back to list if view route not yet registered
+            try:
+                return redirect(url_for('sales_invoices.view', id=invoice.id))
+            except Exception:
+                return redirect(url_for('sales_invoices.list_invoices'))
+
+        except Exception as e:
+            from app.errors.utils import log_exception
+            db.session.rollback()
+            current_app.logger.error('Error updating sales invoice', exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_invoices.edit')
+            flash(f'Error saving Sales Invoice: {str(e)}', 'error')
+
+    if request.method == 'GET':
+        form.customer_id.data = invoice.customer_id
+
+    return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                           vat_categories=_vat_categories_for_form(),
+                           all_accounts=_get_all_accounts_for_select(),
+                           line_items=[item.to_dict() for item in invoice.line_items],
+                           gl_accounts=_gl_accounts_dict())
+
+
+# ── helpers called by create() and edit() ───────────────────────────────────
+
+def _vat_categories_for_form():
+    return [v.to_dict() for v in
+            VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+
+
+def _gl_accounts_dict():
+    _accts = _get_gl_accounts()
+    return {
+        'ar': {'code': _accts['ar'].code, 'name': _accts['ar'].name} if _accts['ar'] else None,
+        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
+    }
+
+
+def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=False):
+    """Parse JSON line items string and attach SalesInvoiceItem objects to the invoice."""
+    try:
+        items = json.loads(line_items_json) if line_items_json else []
+    except (json.JSONDecodeError, TypeError):
+        items = []
+
+    for idx, item_data in enumerate(items, start=1):
+        vat_rate = Decimal('0.00')
+        vat_category = item_data.get('vat_category') or None
+        if vat_category:
+            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+            if vat_cat:
+                vat_rate = Decimal(str(vat_cat.rate))
+
+        raw_wt_id = item_data.get('wt_id')
+        wt_id = int(raw_wt_id) if raw_wt_id and str(raw_wt_id).strip() else None
+        wt_rate = None
+        if wt_id:
+            wt_obj = WithholdingTax.query.get(wt_id)
+            if wt_obj:
+                wt_rate = wt_obj.rate
+
+        raw_account_id = item_data.get('account_id')
+        account_id = int(raw_account_id) if raw_account_id and str(raw_account_id).strip() else None
+
+        line_item = SalesInvoiceItem(
+            line_number=idx,
+            description=item_data.get('description', ''),
+            amount=Decimal(str(item_data.get('amount', '0') or '0')),
+            vat_category=vat_category,
+            vat_rate=vat_rate,
+            account_id=account_id,
+            wt_id=wt_id,
+            wt_rate=wt_rate,
+        )
+        if assign_invoice_id:
+            line_item.invoice_id = invoice.id
+        line_item.calculate_amounts()
+        invoice.line_items.append(line_item)

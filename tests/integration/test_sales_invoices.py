@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 from decimal import Decimal
 from datetime import date
 
@@ -195,3 +195,49 @@ def test_post_invoice_je_creates_balanced_entry(db_session, customer, revenue_ac
     credit_lines = [l for l in je.lines if l.credit_amount > 0]
     assert len(debit_lines) >= 1  # AR at minimum
     assert len(credit_lines) >= 1  # Revenue at minimum
+
+
+def test_create_invoice_posts_to_books(client, db_session, accountant_user, customer, revenue_account, branch):
+    """Creating an SV saves draft JE and audit log entry."""
+    from app.accounts.models import Account
+    from app.audit.models import AuditLog
+    from app.sales_invoices.models import SalesInvoice
+    import json as _json
+
+    # Ensure GL accounts exist
+    if not Account.query.filter_by(code='10201').first():
+        db_session.add(Account(code='10201', name='AR - Trade', account_type='Asset',
+                               normal_balance='debit', is_active=True))
+    if not Account.query.filter_by(code='20201').first():
+        db_session.add(Account(code='20201', name='Output VAT', account_type='Liability',
+                               normal_balance='credit', is_active=True))
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+
+    line_item = {
+        'description': 'Consulting', 'amount': '11200.00',
+        'vat_category': '', 'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id),
+    }
+    resp = client.post('/sales-invoices/create', data={
+        'invoice_number': 'SI-2026-0001',
+        'invoice_date': '2026-06-14',
+        'due_date': '2026-07-14',
+        'customer_id': str(customer.id),
+        'payment_terms': 'Net 30',
+        'notes': 'Test invoice',
+        'line_items': _json.dumps([line_item]),
+    })
+
+    assert resp.status_code == 302
+    inv = SalesInvoice.query.filter_by(invoice_number='SI-2026-0001').first()
+    assert inv is not None
+    assert inv.journal_entry_id is not None
+    assert inv.total_amount == Decimal('11200.00')
+
+    audit = AuditLog.query.filter_by(module='sales_invoice', action='create',
+                                     record_id=inv.id).first()
+    assert audit is not None
+    assert audit.user_id == accountant_user.id
