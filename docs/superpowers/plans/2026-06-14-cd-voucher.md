@@ -1592,3 +1592,711 @@ def edit(id):
 git add app/cash_disbursements/views.py
 git commit -m "feat: CDV create/edit routes, JE builder, helper functions"
 ```
+
+---
+
+## Task 7: Form Template (HTML + CSS + JS)
+
+**Files:**
+- Create: `app/cash_disbursements/templates/cash_disbursements/form.html`
+
+The CDV form has two line-item sections (AP lines and expense lines) on the right, plus the standard header fields on the left. The vendor Choices.js picker drives an AJAX call that populates the open-bills picker in Section A. Section B reuses the exact APV line-items JS pattern.
+
+- [ ] **Step 1: Create the form template**
+
+Create `app/cash_disbursements/templates/cash_disbursements/form.html`:
+
+```html
+{% extends "base.html" %}
+{% block title %}{{ 'Update Draft CDV' if cdv else 'Enter CDV' }}{% endblock %}
+{% block page_title %}{{ 'Update Draft CDV' if cdv else 'Enter CDV' }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field, render_flash_messages %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
+
+{{ render_flash_messages() }}
+
+<style>
+.cdv-form-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+.cdv-left-col { display: flex; flex-direction: column; gap: 14px; }
+.cdv-right-col { display: flex; flex-direction: column; gap: 20px; }
+.cdv-section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;
+}
+.cdv-locked {
+    background: var(--alert-warning-bg); border: 1px dashed var(--alert-warning-border);
+    border-radius: var(--radius); padding: 32px; text-align: center;
+    font-size: 14px; color: var(--alert-warning-text);
+}
+.cdv-bill-picker-row {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;
+}
+.cdv-bill-picker-row select { flex: 1; min-width: 200px; }
+.bill-summary-panel { min-width: 240px; }
+.bsr {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 8px; align-items: center; padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+}
+.bsr:last-child { border-bottom: none; }
+.bsr-label { font-size: 13px; color: var(--text-2); }
+.bsr-label--total { font-weight: 700; color: var(--text-1); }
+.bsr-amt { font-family: var(--mono); font-size: 13px; text-align: right; }
+.bsr-amt--total { font-weight: 700; font-size: 15px; color: var(--blue); }
+.bsr-amt--red { color: var(--red); }
+.bsr--total { padding-top: 10px; }
+.bsr-input {
+    width: 120px; text-align: right; font-family: var(--mono);
+    border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 13px;
+}
+.totals-pencil, .totals-revert {
+    background: none; border: none; cursor: pointer; font-size: 13px;
+    padding: 0 2px; opacity: .6;
+}
+.totals-pencil:hover, .totals-revert:hover { opacity: 1; }
+.check-fields { display: flex; flex-direction: column; gap: 10px; }
+@media (max-width: 900px) {
+    .cdv-form-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="card">
+  <div class="card-body">
+    <form method="POST" novalidate id="cdvForm" onsubmit="serializeData()">
+      {{ form.hidden_tag() }}
+
+      <div class="cdv-form-grid">
+
+        <!-- ── Left column: header fields ── -->
+        <div class="cdv-left-col">
+          {{ render_field(form.cdv_number) }}
+          {{ render_field(form.cdv_date) }}
+
+          <!-- Vendor (Choices.js) -->
+          <div>
+            {{ form.vendor_id.label(class='form-label') }}
+            <select name="vendor_id" id="vendor_id" class="form-control" required>
+              <option value="">Search or select a vendor…</option>
+              {% for choice in form.vendor_id.choices %}
+              <option value="{{ choice[0] }}"
+                {% if cdv and cdv.vendor_id == choice[0] %}selected{% endif %}>{{ choice[1] }}</option>
+              {% endfor %}
+            </select>
+            {% if form.vendor_id.errors %}<div class="form-error">{{ form.vendor_id.errors[0] }}</div>{% endif %}
+          </div>
+
+          {{ render_field(form.payment_method) }}
+
+          <!-- Check fields — shown when method = check -->
+          <div id="checkFields" class="check-fields" style="display:none">
+            {{ render_field(form.check_number) }}
+            {{ render_field(form.check_date) }}
+            {{ render_field(form.check_bank) }}
+          </div>
+
+          <!-- Cash/Bank Account (Choices.js) -->
+          <div>
+            {{ form.cash_account_id.label(class='form-label') }}
+            <select name="cash_account_id" id="cash_account_id" class="form-control" required>
+              <option value="">Search or select account…</option>
+              {% for choice in form.cash_account_id.choices %}
+              <option value="{{ choice[0] }}"
+                {% if cdv and cdv.cash_account_id == choice[0] %}selected{% endif %}>{{ choice[1] }}</option>
+              {% endfor %}
+            </select>
+            {% if form.cash_account_id.errors %}<div class="form-error">{{ form.cash_account_id.errors[0] }}</div>{% endif %}
+          </div>
+
+          {{ render_field(form.notes) }}
+        </div>
+
+        <!-- ── Right column: sections + summary ── -->
+        <div class="cdv-right-col">
+
+          <!-- Locked placeholder (no vendor yet on create) -->
+          <div id="cdvLocked" {% if cdv %}style="display:none"{% endif %} class="cdv-locked">
+            🔒 Select a vendor above to add lines
+          </div>
+
+          <div id="cdvSections" {% if not cdv %}style="display:none"{% endif %}>
+
+            <!-- Section A: Pay AP Bills -->
+            <div>
+              <div class="cdv-section-label">Section A — Pay AP Bills</div>
+              <div class="cdv-bill-picker-row">
+                <select id="apBillPicker" class="form-control form-control-sm">
+                  <option value="">-- Select an open bill --</option>
+                </select>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addSelectedBill()">+ Add Bill</button>
+              </div>
+              <table class="table" id="apLinesTable">
+                <thead>
+                  <tr>
+                    <th>AP No.</th>
+                    <th>Invoice #</th>
+                    <th>Bill Date</th>
+                    <th style="text-align:right;">Balance</th>
+                    <th style="text-align:right;">Amount to Pay</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="apLinesBody"></tbody>
+              </table>
+              <p id="apEmptyHint" style="font-size:13px;color:var(--text-3);">No AP bills added — this CDV will record a direct cash expense only.</p>
+            </div>
+
+            <!-- Section B: Direct Expenses -->
+            <div>
+              <div class="cdv-section-label">Section B — Direct Expenses</div>
+              <table class="table" id="expenseLinesTable">
+                <thead>
+                  <tr>
+                    <th style="width:35%">Description</th>
+                    <th style="width:13%;text-align:right">Amount (VAT-incl.)</th>
+                    <th style="width:9%">VT</th>
+                    <th style="width:8%">WT</th>
+                    <th style="width:28%">Account Title</th>
+                    <th style="width:7%"></th>
+                  </tr>
+                </thead>
+                <tbody id="expenseLinesBody"></tbody>
+              </table>
+              <button type="button" class="btn btn-secondary" onclick="addExpenseLine()">+ Add Expense Line</button>
+            </div>
+
+            <!-- Bottom: Summary panel -->
+            <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+              <div>
+                <div class="cdv-section-label">CDV Summary</div>
+                <div class="bill-summary-panel">
+
+                  <div class="bsr">
+                    <span class="bsr-label">AP Applied</span>
+                    <span id="apAppliedDisplay" class="bsr-amt">0.00</span>
+                  </div>
+
+                  <div class="bsr">
+                    <span class="bsr-label">Direct Expenses</span>
+                    <span id="expenseDisplay" class="bsr-amt">0.00</span>
+                  </div>
+
+                  <div id="vatDisplayMode" class="bsr">
+                    <span class="bsr-label">Input VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override VAT">✏️</button></span>
+                    <span id="vatDisplay" class="bsr-amt">0.00</span>
+                  </div>
+                  <div id="vatEditMode" class="bsr" style="display:none">
+                    <span class="bsr-label">Input VAT <button type="button" class="totals-revert" onclick="revertVatOverride()">↺</button></span>
+                    <input type="text" id="vatOverrideInput" class="bsr-input"
+                           onfocus="amtFocus(this)"
+                           oninput="onVatOverrideInput(this.value)"
+                           onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
+                  </div>
+
+                  <div id="wtDisplayMode" class="bsr">
+                    <span class="bsr-label">Less: WHT <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override WHT">✏️</button></span>
+                    <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
+                  </div>
+                  <div id="wtEditMode" class="bsr" style="display:none">
+                    <span class="bsr-label">Less: WHT <button type="button" class="totals-revert" onclick="revertWtOverride()">↺</button></span>
+                    <input type="text" id="wtOverrideInput" class="bsr-input"
+                           onfocus="amtFocus(this)"
+                           oninput="onWtOverrideInput(this.value)"
+                           onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
+                  </div>
+
+                  <div class="bsr bsr--total">
+                    <span class="bsr-label bsr-label--total">Net Cash Disbursed</span>
+                    <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions" style="margin-top: 24px;">
+              <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
+                {{ 'Update Draft' if cdv else 'Save Draft' }}
+              </button>
+              <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">Back</a>
+            </div>
+            <p id="saveHint" style="font-size:12px;color:var(--text-3);margin-top:6px;"></p>
+
+          </div><!-- end #cdvSections -->
+        </div><!-- end right col -->
+      </div><!-- end grid -->
+
+      <!-- Hidden serialized data -->
+      <input type="hidden" name="ap_lines"      id="apLinesData">
+      <input type="hidden" name="expense_lines" id="expenseLinesData">
+      <input type="hidden" name="vat_override"       id="vatOverrideFlag"  value="0">
+      <input type="hidden" name="vat_override_value" id="vatOverrideValue" value="0">
+      <input type="hidden" name="wt_override"        id="wtOverrideFlag"   value="0">
+      <input type="hidden" name="wt_override_value"  id="wtOverrideValue"  value="0">
+    </form>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
+<script>
+// ── Data from server ──────────────────────────────────────────────────────────
+const vatCategories = {{ vat_categories | tojson }};
+const allAccounts   = {{ all_accounts   | tojson }};
+const glAccounts    = {{ gl_accounts    | tojson }};
+const wtCodes       = {{ wt_codes       | tojson }};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let apLines      = [];   // {bill_id, bill_number, vendor_invoice_number, bill_date, original_balance, amount_applied}
+let expenseLines = [];   // {id, description, amount, vat_category, vat_rate, account_id, wt_id, wt_rate}
+let expenseCounter = 0;
+let expenseChoices = {};  // {id: {vat, wht, acct}}
+let openBills = [];       // fetched from server; bills not yet added to apLines
+let autoVat = 0, autoWt = 0;
+let vatOverrideActive = false, wtOverrideActive = false;
+
+// ── Vendor Choices.js ─────────────────────────────────────────────────────────
+const vendorSel = document.getElementById('vendor_id');
+const vendorChoices = new Choices(vendorSel, {
+    searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false,
+});
+vendorSel.addEventListener('change', () => onVendorChange(vendorSel.value));
+
+// ── Cash account Choices.js ───────────────────────────────────────────────────
+const cashAccSel = document.getElementById('cash_account_id');
+new Choices(cashAccSel, {
+    searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false,
+});
+
+// ── Payment method toggle ────────────────────────────────────────────────────
+const pmSel = document.getElementById('payment_method');
+function toggleCheckFields() {
+    const show = pmSel && pmSel.value === 'check';
+    document.getElementById('checkFields').style.display = show ? '' : 'none';
+}
+if (pmSel) {
+    pmSel.addEventListener('change', toggleCheckFields);
+    toggleCheckFields();
+}
+
+// ── Vendor change → fetch open bills ─────────────────────────────────────────
+function onVendorChange(vendorId) {
+    apLines = [];
+    document.getElementById('apLinesBody').innerHTML = '';
+    renderApEmpty();
+    document.getElementById('apBillPicker').innerHTML = '<option value="">-- Select an open bill --</option>';
+
+    if (!vendorId) {
+        document.getElementById('cdvLocked').style.display = '';
+        document.getElementById('cdvSections').style.display = 'none';
+        recalculate();
+        return;
+    }
+    document.getElementById('cdvLocked').style.display = 'none';
+    document.getElementById('cdvSections').style.display = '';
+
+    fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${vendorId}`)
+        .then(r => r.json())
+        .then(bills => {
+            openBills = bills;
+            refreshBillPicker();
+            recalculate();
+        });
+}
+
+function refreshBillPicker() {
+    const addedIds = new Set(apLines.map(l => l.bill_id));
+    const picker = document.getElementById('apBillPicker');
+    picker.innerHTML = '<option value="">-- Select an open bill --</option>';
+    openBills.filter(b => !addedIds.has(b.id)).forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = `${b.bill_number} | ${b.vendor_invoice_number || '—'} | ${b.bill_date} | ₱${fmt(b.balance)}`;
+        picker.appendChild(opt);
+    });
+}
+
+// ── Section A: AP Lines ───────────────────────────────────────────────────────
+function addSelectedBill() {
+    const picker = document.getElementById('apBillPicker');
+    const billId = parseInt(picker.value);
+    if (!billId) return;
+    const bill = openBills.find(b => b.id === billId);
+    if (!bill) return;
+    addApLine(bill);
+    picker.value = '';
+    refreshBillPicker();
+}
+
+function addApLine(bill) {
+    const line = {
+        bill_id: bill.id,
+        bill_number: bill.bill_number,
+        vendor_invoice_number: bill.vendor_invoice_number || '',
+        bill_date: bill.bill_date,
+        original_balance: bill.balance,
+        amount_applied: bill.balance,
+    };
+    apLines.push(line);
+
+    const tbody = document.getElementById('apLinesBody');
+    const tr = document.createElement('tr');
+    tr.id = `ap-row-${bill.id}`;
+    tr.innerHTML = `
+        <td style="font-family:var(--mono)">${escHtml(bill.bill_number)}</td>
+        <td>${escHtml(bill.vendor_invoice_number || '—')}</td>
+        <td>${escHtml(bill.bill_date)}</td>
+        <td style="text-align:right;font-family:var(--mono)">₱${fmt(bill.balance)}</td>
+        <td style="text-align:right">
+            <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
+                   value="${fmt(bill.balance)}"
+                   onfocus="amtFocus(this)"
+                   onblur="onApAmountBlur(this, ${bill.id}, ${bill.balance})"
+                   oninput="onApAmountInput(this, ${bill.id}, ${bill.balance})">
+        </td>
+        <td><button type="button" class="btn-action" onclick="removeApLine(${bill.id})">🗑️</button></td>
+    `;
+    tbody.appendChild(tr);
+    renderApEmpty();
+    recalculate();
+}
+
+function onApAmountInput(input, billId, maxVal) {
+    const v = parseFloat(input.value.replace(/,/g, '')) || 0;
+    const line = apLines.find(l => l.bill_id === billId);
+    if (line) line.amount_applied = Math.min(v, maxVal);
+    recalculate();
+}
+
+function onApAmountBlur(input, billId, maxVal) {
+    let v = parseFloat(input.value.replace(/,/g, '')) || 0;
+    if (v > maxVal) v = maxVal;
+    if (v <= 0) v = maxVal;  // reset to balance if user clears it
+    input.value = amtFmt(v);
+    const line = apLines.find(l => l.bill_id === billId);
+    if (line) line.amount_applied = v;
+    recalculate();
+}
+
+function removeApLine(billId) {
+    apLines = apLines.filter(l => l.bill_id !== billId);
+    const row = document.getElementById(`ap-row-${billId}`);
+    if (row) row.remove();
+    refreshBillPicker();
+    renderApEmpty();
+    recalculate();
+}
+
+function renderApEmpty() {
+    const hint = document.getElementById('apEmptyHint');
+    if (hint) hint.style.display = apLines.length === 0 ? '' : 'none';
+}
+
+// ── Section B: Expense Lines (mirrors APV addLineItem) ────────────────────────
+function addExpenseLine(existingItem) {
+    expenseCounter++;
+    const id = expenseCounter;
+    const item = existingItem
+        ? { ...existingItem, id }
+        : { id, description: '', amount: 0, vat_category: '', account_id: null, wt_id: null, wt_rate: null };
+    expenseLines.push(item);
+
+    const row = document.createElement('tr');
+    row.id = `exp-${id}`;
+    row.innerHTML = `
+        <td><input type="text" class="form-control" value="${escHtml(item.description || '')}"
+                   onchange="updateExpense(${id}, 'description', this.value)"></td>
+        <td><input type="text" class="form-control" value="${amtFmt(item.amount || 0)}"
+                   style="text-align:right;font-family:var(--mono)"
+                   onfocus="amtFocus(this)" onblur="expAmtBlur(this, ${id})"></td>
+        <td>
+            <select class="form-control vat-sel">
+                <option value="">No VAT</option>
+                ${vatCategories.map(v => `<option value="${escHtml(v.code)}" ${item.vat_category === v.code ? 'selected' : ''}>${escHtml(v.code)}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <select class="form-control wht-sel">
+                <option value="">None</option>
+                ${wtCodes.map(w => `<option value="${w.id}" data-rate="${w.rate}" ${item.wt_id == w.id ? 'selected' : ''}>${escHtml(w.code)}</option>`).join('')}
+            </select>
+        </td>
+        <td>
+            <select class="form-control acct-sel">
+                <option value="">Select Account</option>
+                ${allAccounts.map(a => {
+                    const lbl = escHtml(a.code) + ' : ' + escHtml(a.name);
+                    if (a.is_group) return `<option disabled value="">${lbl}</option>`;
+                    return `<option value="${a.id}" ${item.account_id === a.id ? 'selected' : ''}>${lbl}</option>`;
+                }).join('')}
+            </select>
+        </td>
+        <td><button type="button" class="btn-action" onclick="removeExpenseLine(${id})">🗑️</button></td>
+    `;
+    document.getElementById('expenseLinesBody').appendChild(row);
+
+    const newRow = document.getElementById(`exp-${id}`);
+    const vatSel = newRow.querySelector('.vat-sel');
+    const whtSel = newRow.querySelector('.wht-sel');
+    const acctSel = newRow.querySelector('.acct-sel');
+    const codeOpts = { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false };
+    const vatC  = new Choices(vatSel,  codeOpts);
+    const whtC  = new Choices(whtSel,  codeOpts);
+    const acctC = new Choices(acctSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
+    vatSel.addEventListener('change',  () => updateExpense(id, 'vat_category', vatSel.value));
+    whtSel.addEventListener('change',  () => { updateExpenseWht(id, whtSel); });
+    acctSel.addEventListener('change', () => updateExpense(id, 'account_id', parseInt(acctSel.value) || null));
+    expenseChoices[id] = { vat: vatC, wht: whtC, acct: acctC };
+    recalculate();
+}
+
+function expAmtBlur(input, id) {
+    const v = parseFloat(input.value.replace(/,/g, '')) || 0;
+    input.value = amtFmt(v);
+    updateExpense(id, 'amount', v);
+}
+
+function updateExpense(id, field, value) {
+    const item = expenseLines.find(i => i.id === id);
+    if (!item) return;
+    item[field] = value;
+    if (['amount', 'vat_category'].includes(field)) revertVatOverride();
+    recalculate();
+}
+
+function updateExpenseWht(id, sel) {
+    const item = expenseLines.find(i => i.id === id);
+    if (!item) return;
+    item.wt_id   = sel.value ? parseInt(sel.value) : null;
+    const whtObj = wtCodes.find(w => w.id == sel.value);
+    item.wt_rate = whtObj ? whtObj.rate : null;
+    if (wtOverrideActive) revertWtOverride();
+    recalculate();
+}
+
+function removeExpenseLine(id) {
+    if (expenseChoices[id]) {
+        expenseChoices[id].vat.destroy();
+        expenseChoices[id].wht.destroy();
+        expenseChoices[id].acct.destroy();
+        delete expenseChoices[id];
+    }
+    document.getElementById(`exp-${id}`).remove();
+    expenseLines = expenseLines.filter(i => i.id !== id);
+    recalculate();
+}
+
+// ── Recalculate totals ────────────────────────────────────────────────────────
+function recalculate() {
+    const apApplied = apLines.reduce((s, l) => s + (l.amount_applied || 0), 0);
+
+    let expense = 0;
+    autoVat = 0;
+    autoWt  = 0;
+    expenseLines.forEach(item => {
+        const amt = item.amount || 0;
+        expense += amt;
+        const vat = vatCategories.find(v => v.code === item.vat_category);
+        const vatRate = vat ? vat.rate : 0;
+        if (vatRate > 0) {
+            const netBase = amt / (1 + vatRate / 100);
+            autoVat += amt - netBase;
+            if (item.wt_rate) autoWt += netBase * (item.wt_rate / 100);
+        } else {
+            if (item.wt_rate) autoWt += amt * (item.wt_rate / 100);
+        }
+    });
+    autoVat = Math.round(autoVat * 100) / 100;
+    autoWt  = Math.round(autoWt  * 100) / 100;
+
+    const vatUsed = vatOverrideActive
+        ? (parseFloat(document.getElementById('vatOverrideInput').value.replace(/,/g, '')) || 0)
+        : autoVat;
+    const wtUsed = wtOverrideActive
+        ? (parseFloat(document.getElementById('wtOverrideInput').value.replace(/,/g, '')) || 0)
+        : autoWt;
+
+    const total = apApplied + expense - wtUsed;
+
+    document.getElementById('apAppliedDisplay').textContent = fmt(apApplied);
+    document.getElementById('expenseDisplay').textContent   = fmt(expense);
+    if (!vatOverrideActive) document.getElementById('vatDisplay').textContent = fmt(vatUsed);
+    if (!wtOverrideActive)  document.getElementById('wtDisplay').textContent  = '-' + fmt(wtUsed);
+    document.getElementById('totalDisplay').textContent = fmt(total);
+
+    validateForm();
+}
+
+// ── Form validation ───────────────────────────────────────────────────────────
+function validateForm() {
+    const btn  = document.getElementById('submitBtn');
+    const hint = document.getElementById('saveHint');
+    if (!btn || !hint) return;
+    function block(msg) { btn.disabled = true; hint.textContent = msg; }
+    function allow()    { btn.disabled = false; hint.textContent = ''; }
+
+    if (apLines.length === 0 && expenseLines.length === 0) {
+        block('Add at least one AP bill or one expense line.'); return;
+    }
+
+    for (let i = 0; i < apLines.length; i++) {
+        const l = apLines[i];
+        if (!l.amount_applied || l.amount_applied <= 0) {
+            block(`AP line ${i+1}: amount to pay must be greater than zero.`); return;
+        }
+        if (l.amount_applied > l.original_balance) {
+            block(`AP line ${i+1}: amount cannot exceed the bill balance.`); return;
+        }
+    }
+
+    for (let i = 0; i < expenseLines.length; i++) {
+        const item = expenseLines[i];
+        const n = i + 1;
+        if (!item.account_id) { block(`Expense line ${n}: select an account title.`); return; }
+        if (!item.amount || item.amount <= 0) { block(`Expense line ${n}: enter an amount > 0.`); return; }
+    }
+
+    allow();
+}
+
+// ── VAT override UX (mirrors APV) ────────────────────────────────────────────
+function startVatOverride() {
+    vatOverrideActive = true;
+    document.getElementById('vatOverrideInput').value = amtFmt(autoVat);
+    document.getElementById('vatDisplayMode').style.display = 'none';
+    document.getElementById('vatEditMode').style.display    = '';
+    document.getElementById('vatOverrideFlag').value  = '1';
+    document.getElementById('vatOverrideValue').value = autoVat.toFixed(2);
+    document.getElementById('vatOverrideInput').focus();
+    recalculate();
+}
+function onVatOverrideInput(val) {
+    const v = parseFloat(String(val).replace(/,/g, '')) || 0;
+    document.getElementById('vatOverrideFlag').value  = '1';
+    document.getElementById('vatOverrideValue').value = v.toFixed(2);
+    document.getElementById('vatDisplay').textContent = fmt(v);
+    recalculate();
+}
+function revertVatOverride() {
+    vatOverrideActive = false;
+    document.getElementById('vatOverrideFlag').value  = '0';
+    document.getElementById('vatOverrideValue').value = '0';
+    document.getElementById('vatDisplayMode').style.display = '';
+    document.getElementById('vatEditMode').style.display    = 'none';
+    recalculate();
+}
+
+// ── WHT override UX ───────────────────────────────────────────────────────────
+function startWtOverride() {
+    wtOverrideActive = true;
+    document.getElementById('wtOverrideInput').value = amtFmt(autoWt);
+    document.getElementById('wtDisplayMode').style.display = 'none';
+    document.getElementById('wtEditMode').style.display    = '';
+    document.getElementById('wtOverrideFlag').value  = '1';
+    document.getElementById('wtOverrideValue').value = autoWt.toFixed(2);
+    document.getElementById('wtOverrideInput').focus();
+    recalculate();
+}
+function onWtOverrideInput(val) {
+    const v = parseFloat(String(val).replace(/,/g, '')) || 0;
+    document.getElementById('wtOverrideFlag').value  = '1';
+    document.getElementById('wtOverrideValue').value = v.toFixed(2);
+    document.getElementById('wtDisplay').textContent = '-' + fmt(v);
+    recalculate();
+}
+function revertWtOverride() {
+    wtOverrideActive = false;
+    document.getElementById('wtOverrideFlag').value  = '0';
+    document.getElementById('wtOverrideValue').value = '0';
+    document.getElementById('wtDisplayMode').style.display = '';
+    document.getElementById('wtEditMode').style.display    = 'none';
+    recalculate();
+}
+
+// ── Serialize on submit ───────────────────────────────────────────────────────
+function serializeData() {
+    document.getElementById('apLinesData').value      = JSON.stringify(apLines);
+    document.getElementById('expenseLinesData').value = JSON.stringify(
+        expenseLines.map(item => ({
+            description:  item.description,
+            amount:       item.amount,
+            vat_category: item.vat_category,
+            account_id:   item.account_id,
+            wt_id:        item.wt_id,
+        }))
+    );
+}
+
+// ── Helpers (amtFmt/fmt/escHtml from transaction-utils.js) ───────────────────
+function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+// ── Restore state on edit ────────────────────────────────────────────────────
+{% if cdv %}
+// Re-load AP lines
+{% for ap_line in ap_lines %}
+apLines.push({
+    bill_id:               {{ ap_line.bill_id }},
+    bill_number:           {{ ap_line.bill_number | tojson }},
+    vendor_invoice_number: '',
+    bill_date:             '',
+    original_balance:      {{ ap_line.original_balance }},
+    amount_applied:        {{ ap_line.amount_applied }},
+});
+(function() {
+    const tbody = document.getElementById('apLinesBody');
+    const tr = document.createElement('tr');
+    tr.id = 'ap-row-{{ ap_line.bill_id }}';
+    tr.innerHTML = `
+        <td style="font-family:var(--mono)">{{ ap_line.bill_number }}</td>
+        <td>—</td>
+        <td>—</td>
+        <td style="text-align:right;font-family:var(--mono)">₱${fmt({{ ap_line.original_balance }})}</td>
+        <td style="text-align:right">
+            <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
+                   value="${fmt({{ ap_line.amount_applied }})}"
+                   onfocus="amtFocus(this)"
+                   onblur="onApAmountBlur(this, {{ ap_line.bill_id }}, {{ ap_line.original_balance }})"
+                   oninput="onApAmountInput(this, {{ ap_line.bill_id }}, {{ ap_line.original_balance }})">
+        </td>
+        <td><button type="button" class="btn-action" onclick="removeApLine({{ ap_line.bill_id }})">🗑️</button></td>
+    `;
+    tbody.appendChild(tr);
+})();
+{% endfor %}
+
+// Re-load expense lines
+{% for exp_line in expense_lines %}
+addExpenseLine({{ exp_line | tojson }});
+{% endfor %}
+
+renderApEmpty();
+recalculate();
+
+// Fetch open bills so user can add more
+const savedVendorId = document.getElementById('vendor_id').value;
+if (savedVendorId) {
+    fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${savedVendorId}`)
+        .then(r => r.json())
+        .then(bills => { openBills = bills; refreshBillPicker(); });
+}
+{% endif %}
+</script>
+{% endblock %}
+```
+
+- [ ] **Step 2: Verify create page loads**
+
+Navigate to `/cash-disbursements/create`. Expected: page renders with left column fields and locked right panel. Select a vendor — locked panel disappears, bill picker and expense table appear.
+
+- [ ] **Step 3: Commit**
+
+```powershell
+git add app/cash_disbursements/templates/cash_disbursements/form.html
+git commit -m "feat: CDV form template with AP lines + expense lines + summary panel"
+```
