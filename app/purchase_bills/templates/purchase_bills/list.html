@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}AP Vouchers{% endblock %}
 {% block page_title %}AP Vouchers{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+{% endblock %}
 {% block content %}
 
 <!-- Summary cards -->
@@ -40,7 +43,7 @@
         <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
         <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
     </select>
-    <select name="vendor" class="form-control form-control-sm">
+    <select name="vendor" id="vendor-filter" class="form-control form-control-sm">
         <option value="all">All Vendors</option>
         {% for v in vendors %}
         <option value="{{ v.id }}" {% if vendor_filter == v.id|string %}selected{% endif %}>{{ v.name }}</option>
@@ -238,6 +241,21 @@
         });
     }
     rowChecks.forEach(cb => cb.addEventListener('change', updateSelection));
+})();
+</script>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const vendorSel = document.getElementById('vendor-filter');
+    if (vendorSel) {
+        new Choices(vendorSel, {
+            searchEnabled: true,
+            itemSelectText: '',
+            shouldSort: false,
+            allowHTML: false
+        });
+    }
 })();
 </script>
 {% endblock %}
