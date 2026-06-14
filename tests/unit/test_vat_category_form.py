@@ -38,3 +38,9 @@ class TestRateConditionalAccount:
         form, ok = make_form(app, 0, 5)
         assert ok is True
         assert form.input_vat_account_id.data == 0
+
+    def test_output_vat_account_required_when_rate_positive(self, app):
+        """output_vat_account_id must be set when rate > 0."""
+        form, ok = make_form(app, 12, 5, output_account_id=0)
+        assert ok is False
+        assert 'output_vat_account_id' in form.errors

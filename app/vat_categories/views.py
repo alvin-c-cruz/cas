@@ -46,25 +46,25 @@ def can_auto_approve():
     return total_accountants == 1
 
 
-def _input_vat_account_choices():
-    """Active leaf accounts for the Input Tax picker (groups are not postable)."""
-    # Deliberate direct query: the cached get_active_accounts() helper is never
-    # invalidated on account create/update/approve, so using it risks a stale picker.
+def _vat_account_choices(placeholder='-- None --'):
+    """Active leaf accounts for VAT pickers (groups are not postable).
+
+    Deliberate direct query: the cached get_active_accounts() helper is never
+    invalidated on account create/update/approve, so using it risks a stale picker.
+    """
     accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
     parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
-    choices = [(0, '-- None (zero-rate) --')]
-    choices += [(a.id, f'{a.code} : {a.name}') for a in accounts
-                if a.id not in parent_ids]
+    choices = [(0, placeholder)]
+    choices += [(a.id, f'{a.code} : {a.name}') for a in accounts if a.id not in parent_ids]
     return choices
+
+
+def _input_vat_account_choices():
+    return _vat_account_choices(placeholder='-- Select Input Tax Account --')
 
 
 def _output_vat_account_choices():
-    """Active leaf accounts for the Output Tax picker (groups are not postable)."""
-    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
-    choices = [(0, '-- None (zero-rate) --')]
-    choices += [(a.id, f'{a.code} : {a.name}') for a in accounts if a.id not in parent_ids]
-    return choices
+    return _vat_account_choices(placeholder='-- None (zero-rate) --')
 
 
 PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '
@@ -455,10 +455,13 @@ def change_requests():
     parsed = []
     for req in all_requests:
         proposed = json.loads(req.proposed_data) if req.proposed_data else {}
-        parsed.append((req, proposed, proposed.get('input_vat_account_id')))
+        parsed.append((req, proposed,
+                       proposed.get('input_vat_account_id'),
+                       proposed.get('output_vat_account_id')))
 
-    # Batch-load all referenced input VAT accounts in one query
-    account_ids = {acct_id for _, _, acct_id in parsed if acct_id}
+    # Batch-load all referenced input and output VAT accounts in one query
+    account_ids = {acct_id for _, _, in_id, out_id in parsed
+                   for acct_id in (in_id, out_id) if acct_id}
     accounts_by_id = {}
     if account_ids:
         accounts_by_id = {
@@ -467,13 +470,15 @@ def change_requests():
         }
 
     requests_with_data = []
-    for req, proposed, proposed_account_id in parsed:
+    for req, proposed, proposed_input_id, proposed_output_id in parsed:
         req_dict = {
             'id': req.id,
             'action': req.action,
             'proposed_data': proposed,
-            'input_vat_account': (accounts_by_id.get(proposed_account_id)
-                                  if proposed_account_id else None),
+            'input_vat_account': (accounts_by_id.get(proposed_input_id)
+                                  if proposed_input_id else None),
+            'output_vat_account': (accounts_by_id.get(proposed_output_id)
+                                   if proposed_output_id else None),
             'requested_by_id': req.requested_by_id,
             'requested_by': req.requested_by,
             'requested_at': req.requested_at,
@@ -510,10 +515,13 @@ def review_change_request(id):
 
     form = VATCategoryChangeReviewForm()
 
-    # Parse proposed data and resolve the proposed Input Tax account for display
+    # Parse proposed data and resolve the proposed Input/Output Tax accounts for display
     proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
     proposed_account_id = proposed_data.get('input_vat_account_id')
     proposed_account = db.session.get(Account, proposed_account_id) if proposed_account_id else None
+    proposed_output_account_id = proposed_data.get('output_vat_account_id')
+    proposed_output_account = (db.session.get(Account, proposed_output_account_id)
+                               if proposed_output_account_id else None)
 
     if form.validate_on_submit():
         try:
@@ -664,10 +672,12 @@ def review_change_request(id):
                                  change_request=change_request,
                                  proposed_data=proposed_data,
                                  proposed_account=proposed_account,
+                                 proposed_output_account=proposed_output_account,
                                  form=form)
 
     return render_template('vat_categories/review_change_request.html',
                          change_request=change_request,
                          proposed_data=proposed_data,
                          proposed_account=proposed_account,
+                         proposed_output_account=proposed_output_account,
                          form=form)
