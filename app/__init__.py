@@ -165,6 +165,7 @@ def create_app(config_name=None):
     from app.settings import AppSettings
     from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
     from app.purchase_bills.models import PurchaseBill, PurchaseBillItem, PurchaseBillAttachment
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
     from app.receipts.models import Receipt
     from app.journal_entries.models import JournalEntry, JournalEntryLine
     from app.errors.models import ErrorLog
