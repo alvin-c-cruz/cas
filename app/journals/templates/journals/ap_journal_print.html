@@ -18,7 +18,10 @@
   .apj-table { width: 100%; border-collapse: collapse; font-size: 10px; }
   .apj-table th, .apj-table td { border: 1px solid #aaa; padding: 3px 6px; white-space: nowrap; }
   .apj-table th { background: #222; color: #fff; font-weight: 700; text-align: left; }
-  .apj-table th.num { text-align: right; width: 120px; min-width: 120px; }
+  .apj-table th.num {
+    text-align: right; width: 120px; min-width: 120px;
+    white-space: normal; word-break: break-word; vertical-align: bottom;
+  }
   .apj-table td.num { text-align: right; font-family: monospace; width: 120px; min-width: 120px; max-width: 120px; }
   .apj-table th.credit-col { background: #b71c1c; }
   .apj-table th.debit-col  { background: #1565c0; }
@@ -37,7 +40,7 @@
     .apj-scroll { overflow: visible !important; }
     @page { size: A4 landscape; margin: 10mm; }
     .apj-table { font-size: 8px; }
-    .apj-table th.num { width: 90px; min-width: 90px; }
+    .apj-table th.num { width: 90px; min-width: 90px; white-space: normal; }
     .apj-table td.num { width: 90px; min-width: 90px; max-width: 90px; }
   }
 </style>
