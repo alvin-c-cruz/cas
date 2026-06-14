@@ -54,13 +54,6 @@
   /* Total row */
   .apj-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
 
-  /* Badges */
-  .badge-draft  { font-size: 9px; font-weight: 700; color: #c2410c; background: #fff7ed;
-                  border: 1px solid #fed7aa; padding: 1px 5px; border-radius: 6px;
-                  text-decoration: none; display: inline-block; }
-  .badge-voided { font-size: 9px; font-weight: 700; color: #b91c1c; background: #fef2f2;
-                  border: 1px solid #fecaca; padding: 1px 5px; border-radius: 6px;
-                  text-decoration: none; display: inline-block; }
 
   /* Balance warning */
   .balance-warning { margin-top: 10px; font-size: 11px; font-weight: 700; color: #b91c1c; }
@@ -108,23 +101,20 @@
       {% if row.is_voided %}
       <tr class="apj-row-voided">
         <td>{{ row.bill.bill_date.strftime('%d-%b-%Y') }}</td>
-        <td class="no-strike">{{ row.bill.bill_number }} <span class="badge-voided">VOIDED</span></td>
+        <td class="no-strike">{{ row.bill.bill_number }}</td>
         <td>{{ row.bill.vendor_invoice_number or '' }}</td>
         <td>{{ row.bill.vendor_name }}</td>
-        <td>{{ row.bill.notes or '' }}</td>
+        <td>[VOIDED] {{ row.bill.notes or '' }}</td>
         {% for col in matrix.columns %}<td class="num no-strike"></td>{% endfor %}
       </tr>
       {% else %}
       {% set bill = bill_map.get(row.entry.reference) %}
       <tr {% if row.is_draft %}class="apj-row-draft"{% endif %}>
         <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
-        <td>
-          {{ row.entry.reference or '—' }}
-          {% if row.is_draft %}<span class="badge-draft">DRAFT</span>{% endif %}
-        </td>
+        <td>{{ row.entry.reference or '—' }}</td>
         <td>{{ bill.vendor_invoice_number if bill else '' }}</td>
         <td>{{ bill.vendor_name if bill else '—' }}</td>
-        <td>{{ (bill.notes if bill else '') or '' }}</td>
+        <td>{{ ('[DRAFT] ' + ((bill.notes if bill else '') or '')) if row.is_draft else ((bill.notes if bill else '') or '') }}</td>
         {% for col in matrix.columns %}
         <td class="num">
           {%- if not row.is_draft and col.account_id in row.cells and row.cells[col.account_id] != 0 -%}
