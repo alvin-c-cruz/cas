@@ -139,14 +139,15 @@ def list_cdvs():
             CashDisbursementVoucher.vendor_name.ilike(like)
         ))
 
-    date_from = request.args.get('date_from', '')
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
     if date_from:
         try:
             query = query.filter(CashDisbursementVoucher.cdv_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', '')
+    date_to = request.args.get('date_to', f'{year}-12-31')
     if date_to:
         try:
             query = query.filter(CashDisbursementVoucher.cdv_date <= date.fromisoformat(date_to))

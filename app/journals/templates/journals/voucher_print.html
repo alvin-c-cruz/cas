@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Journal Voucher — Print Preview{% endblock %}
+{% block page_title %}Journal Voucher — Print Preview{% endblock %}
+
+{% block extra_css %}
+<style>
+  .jv-print-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  .jv-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+  .jv-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .jv-header .doc-title    { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-top: 6px; }
+  .jv-header .period-label { font-size: 11px; color: #555; margin-top: 3px; }
+
+  .jv-scroll { overflow-x: auto; }
+  .jv-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .jv-table th, .jv-table td { border: 1px solid #aaa; padding: 3px 6px; white-space: nowrap; }
+  .jv-table th { background: #222; color: #fff; font-weight: 700; text-align: left; }
+  .jv-table td.num { text-align: right; font-family: monospace; }
+  .jv-table th.num { text-align: right; }
+  .jv-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
+  .audit-footer { margin-top: 8px; font-size: 9px; color: #888; text-align: right;
+                  border-top: 1px solid #ddd; padding-top: 4px; }
+
+  @media print {
+    nav.sidebar, header.topbar, .jv-print-actions, .card-header { display: none !important; }
+    .main { margin-left: 0 !important; padding: 0 !important; }
+    .content-wrapper, .card { box-shadow: none !important; border: none !important; }
+    .jv-scroll { overflow: visible !important; }
+    @page { size: A4 landscape; margin: 10mm; }
+    .jv-table { font-size: 8px; }
+    .jv-table thead { display: table-header-group; }
+    .jv-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    .jv-header { page-break-after: avoid; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="jv-print-actions">
+      <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
+      <a href="{{ url_for('journals.voucher', status=status_filter, date_from=date_from, date_to=date_to) }}" class="btn btn-secondary btn-sm">Back</a>
+    </div>
+  </div>
+  <div class="card-body">
+
+    <div class="jv-header">
+      {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
+      <div class="doc-title">JOURNAL VOUCHER</div>
+      <div class="period-label">
+        {% if date_from and date_to %}{{ date_from }} to {{ date_to }}{% else %}All Records{% endif %}
+        {% if status_filter and status_filter != 'all' %} · {{ status_filter | title }}{% endif %}
+      </div>
+    </div>
+
+    {% if entries %}
+    {% set total_amount = namespace(v=0) %}
+    <div class="jv-scroll">
+    <table class="jv-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>JV #</th>
+          <th>Description</th>
+          <th class="num">Amount</th>
+          <th>Status</th>
+          <th>Posted By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        {% set total_amount.v = total_amount.v + entry.total_debit %}
+        <tr {% if entry.status == 'cancelled' %}style="text-decoration:line-through;background:#ffebee;"{% elif entry.status == 'draft' %}style="background:#fffde7;"{% endif %}>
+          <td>{{ entry.entry_date.strftime('%d-%b-%Y') }}</td>
+          <td>{{ entry.entry_number }}</td>
+          <td>{{ entry.description[:80] }}{% if entry.description and entry.description | length > 80 %}…{% endif %}</td>
+          <td class="num">{{ '{:,.2f}'.format(entry.total_debit) }}</td>
+          <td>{{ entry.status | title }}</td>
+          <td>{{ entry.posted_by.username if entry.posted_by else (entry.created_by.username if entry.created_by else '—') }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="jv-total">
+          <td colspan="3">TOTAL ({{ entries | length }} record{{ 's' if entries | length != 1 else '' }})</td>
+          <td class="num">{{ '{:,.2f}'.format(total_amount.v) }}</td>
+          <td colspan="2"></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p style="margin-top:16px; color:var(--text-2);">No journal vouchers match the selected filters.</p>
+    {% endif %}
+
+    <div class="audit-footer">
+      Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

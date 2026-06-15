@@ -367,14 +367,15 @@ def _filtered_bills_query(include_ids=False):
         query = query.filter(db.or_(PurchaseBill.bill_number.ilike(like),
                                     PurchaseBill.vendor_name.ilike(like)))
 
-    date_from = request.args.get('date_from', '')
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
     if date_from:
         try:
             query = query.filter(PurchaseBill.bill_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', '')
+    date_to = request.args.get('date_to', f'{year}-12-31')
     if date_to:
         try:
             query = query.filter(PurchaseBill.bill_date <= date.fromisoformat(date_to))
@@ -409,8 +410,8 @@ def list_bills():
                            status_filter=request.args.get('status', 'all'),
                            vendor_filter=request.args.get('vendor', 'all'),
                            q=request.args.get('q', ''),
-                           date_from=request.args.get('date_from', ''),
-                           date_to=request.args.get('date_to', ''))
+                           date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
+                           date_to=request.args.get('date_to', f'{ph_now().year}-12-31'))
 
 
 @purchase_bills_bp.route('/purchase-bills/export/excel')
@@ -461,8 +462,8 @@ def print_list():
                            today=ph_now().date(),
                            printed_at=ph_now(),
                            status_filter=request.args.get('status', 'all'),
-                           date_from=request.args.get('date_from', ''),
-                           date_to=request.args.get('date_to', ''))
+                           date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
+                           date_to=request.args.get('date_to', f'{ph_now().year}-12-31'))
 
 
 @purchase_bills_bp.route('/purchase-bills/create', methods=['GET', 'POST'])

@@ -218,6 +218,94 @@ def voucher():
                            status_filter=status_filter)
 
 
+@journals_bp.route('/journals/voucher/print')
+@login_required
+def voucher_print():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.settings import AppSettings
+    date_from, date_to = _date_defaults()
+    status_filter = request.args.get('status', 'all')
+
+    query = JournalEntry.query.filter(
+        JournalEntry.entry_type.in_(VOUCHER_TYPES),
+        JournalEntry.branch_id == branch_id
+    )
+    if status_filter != 'all':
+        query = query.filter(JournalEntry.status == status_filter)
+    query = _apply_date_filter(query, date_from, date_to)
+    entries = query.order_by(JournalEntry.entry_date.asc()).all()
+
+    company_name = AppSettings.get_setting('company_name') or ''
+    return render_template('journals/voucher_print.html',
+                           entries=entries,
+                           date_from=date_from,
+                           date_to=date_to,
+                           status_filter=status_filter,
+                           company_name=company_name,
+                           printed_at=ph_now())
+
+
+@journals_bp.route('/journals/voucher/export')
+@login_required
+def voucher_export():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from io import BytesIO
+    import openpyxl
+    from flask import send_file
+    from app.settings import AppSettings
+
+    date_from, date_to = _date_defaults()
+    status_filter = request.args.get('status', 'all')
+
+    query = JournalEntry.query.filter(
+        JournalEntry.entry_type.in_(VOUCHER_TYPES),
+        JournalEntry.branch_id == branch_id
+    )
+    if status_filter != 'all':
+        query = query.filter(JournalEntry.status == status_filter)
+    query = _apply_date_filter(query, date_from, date_to)
+    entries = query.order_by(JournalEntry.entry_date.asc()).all()
+
+    company_name = AppSettings.get_setting('company_name') or ''
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Journal Voucher'
+
+    if company_name:
+        ws.append([company_name])
+    ws.append(['JOURNAL VOUCHER'])
+    ws.append([f'{date_from} to {date_to}'])
+    ws.append([])
+    ws.append(['Date', 'JV #', 'Description', 'Amount', 'Status', 'Posted By'])
+
+    for entry in entries:
+        posted_by = (entry.posted_by.username if entry.posted_by
+                     else (entry.created_by.username if entry.created_by else ''))
+        ws.append([
+            entry.entry_date.strftime('%Y-%m-%d'),
+            entry.entry_number,
+            entry.description or '',
+            float(entry.total_debit),
+            entry.status.title(),
+            posted_by,
+        ])
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    filename = f'JV-{date_from}-{date_to}.xlsx'
+    return send_file(bio, as_attachment=True, download_name=filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 @journals_bp.route('/journals/cr')
 @login_required
 def cr_journal():

@@ -511,14 +511,15 @@ def _filtered_invoices_query(include_ids=False):
                    SalesInvoice.customer_name.ilike(like))
         )
 
-    date_from = request.args.get('date_from', '')
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
     if date_from:
         try:
             query = query.filter(SalesInvoice.invoice_date >= date.fromisoformat(date_from))
         except ValueError:
             pass
 
-    date_to = request.args.get('date_to', '')
+    date_to = request.args.get('date_to', f'{year}-12-31')
     if date_to:
         try:
             query = query.filter(SalesInvoice.invoice_date <= date.fromisoformat(date_to))
@@ -548,8 +549,8 @@ def list_invoices():
         status_filter=request.args.get('status', 'all'),
         customer_filter=request.args.get('customer', 'all'),
         q=request.args.get('q', ''),
-        date_from=request.args.get('date_from', ''),
-        date_to=request.args.get('date_to', ''),
+        date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
+        date_to=request.args.get('date_to', f'{ph_now().year}-12-31'),
     )
 
 
@@ -566,8 +567,8 @@ def print_list():
         today=ph_now().date(),
         printed_at=ph_now(),
         status_filter=request.args.get('status', 'all'),
-        date_from=request.args.get('date_from', ''),
-        date_to=request.args.get('date_to', ''),
+        date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
+        date_to=request.args.get('date_to', f'{ph_now().year}-12-31'),
     )
 
 
