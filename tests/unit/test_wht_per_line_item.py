@@ -1,19 +1,19 @@
-"""Unit tests for WHT per line item on PurchaseBillItem.
+"""Unit tests for WHT per line item on AccountsPayableItem.
 
-Model redesign: PurchaseBillItem now uses a single VAT-inclusive `amount` field
+Model redesign: AccountsPayableItem now uses a single VAT-inclusive `amount` field
 (replacing the old quantity × unit_cost approach).  WHT is computed on the
 net (ex-VAT) base per BIR EWT standard.
 """
 import pytest
 from decimal import Decimal
 from datetime import date, timedelta
-from app.purchase_bills.models import PurchaseBillItem
+from app.accounts_payable.models import AccountsPayableItem
 pytestmark = [pytest.mark.withholding_tax, pytest.mark.unit]
 
 
 
 @pytest.mark.usefixtures("app")
-class TestPurchaseBillItemWht:
+class TestAccountsPayableItemWht:
     def _make_item(self, **kwargs):
         # amount=1120 is VAT-inclusive at 12%:
         #   net_base = 1120 / 1.12 = 1000, vat = 120
@@ -26,7 +26,7 @@ class TestPurchaseBillItemWht:
             wt_rate=None,
         )
         defaults.update(kwargs)
-        return PurchaseBillItem(**defaults)
+        return AccountsPayableItem(**defaults)
 
     def test_wt_amount_zero_when_no_wht(self):
         item = self._make_item()
@@ -111,13 +111,13 @@ def gl_accounts_wht(db_session):
     return {a.code: a for a in accounts}
 
 
-class TestPurchaseBillWhtIntegration:
-    def _make_bill(self, db_session, admin_user, main_branch, test_vendor_with_wht,
+class TestAccountsPayableWhtIntegration:
+    def _make_ap(self, db_session, admin_user, main_branch, test_vendor_with_wht,
                    gl_accounts_wht, wht_codes):
-        from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
-        bill = PurchaseBill(
-            bill_number='PB-WHT-0001',
-            bill_date=date.today(),
+        from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+        bill = AccountsPayable(
+            ap_number='PB-WHT-0001',
+            ap_date=date.today(),
             due_date=date.today() + timedelta(days=30),
             vendor_id=test_vendor_with_wht.id,
             vendor_name='WHT Vendor',
@@ -133,8 +133,8 @@ class TestPurchaseBillWhtIntegration:
         db_session.flush()
 
         # item1: 5600 VAT-inclusive at 12% → net_base=5000; WHT at 10% = 500
-        item1 = PurchaseBillItem(
-            bill_id=bill.id, line_number=1, description='Consultancy',
+        item1 = AccountsPayableItem(
+            ap_id=bill.id, line_number=1, description='Consultancy',
             amount=Decimal('5600.00'),
             vat_rate=Decimal('12.00'), vat_category='VATABLE',
             account_id=gl_accounts_wht['50999'].id,
@@ -142,8 +142,8 @@ class TestPurchaseBillWhtIntegration:
             wt_rate=Decimal('10.00'),
         )
         # item2: 11200 VAT-inclusive at 12% → net_base=10000; WHT at 2% = 200
-        item2 = PurchaseBillItem(
-            bill_id=bill.id, line_number=2, description='Construction',
+        item2 = AccountsPayableItem(
+            ap_id=bill.id, line_number=2, description='Construction',
             amount=Decimal('11200.00'),
             vat_rate=Decimal('12.00'), vat_category='VATABLE',
             account_id=gl_accounts_wht['50999'].id,
@@ -160,7 +160,7 @@ class TestPurchaseBillWhtIntegration:
 
     def test_line_wt_amounts_computed(self, db_session, admin_user, main_branch,
                                       test_vendor_with_wht, gl_accounts_wht, wht_codes):
-        bill = self._make_bill(db_session, admin_user, main_branch,
+        bill = self._make_ap(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         items = sorted(bill.line_items, key=lambda i: i.line_number)
         # item1: net_base = 5600/1.12 = 5000; wt = 5000 * 10% = 500
@@ -170,14 +170,14 @@ class TestPurchaseBillWhtIntegration:
 
     def test_bill_withholding_tax_amount_sums_lines(self, db_session, admin_user, main_branch,
                                                      test_vendor_with_wht, gl_accounts_wht, wht_codes):
-        bill = self._make_bill(db_session, admin_user, main_branch,
+        bill = self._make_ap(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         # 500 + 200 = 700
         assert bill.withholding_tax_amount == Decimal('700.00')
 
     def test_bill_total_amount_deducts_wht_sum(self, db_session, admin_user, main_branch,
                                                 test_vendor_with_wht, gl_accounts_wht, wht_codes):
-        bill = self._make_bill(db_session, admin_user, main_branch,
+        bill = self._make_ap(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         # subtotal = 5600 + 11200 = 16800 (VAT-inclusive)
         # vat_amount = 600 + 1200 = 1800 (extracted from amounts)
@@ -191,7 +191,7 @@ class TestPurchaseBillWhtIntegration:
 
     def test_to_dict_includes_wt_fields(self, db_session, admin_user, main_branch,
                                          test_vendor_with_wht, gl_accounts_wht, wht_codes):
-        bill = self._make_bill(db_session, admin_user, main_branch,
+        bill = self._make_ap(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         items = sorted(bill.line_items, key=lambda i: i.line_number)
         d = items[0].to_dict()
@@ -201,7 +201,7 @@ class TestPurchaseBillWhtIntegration:
 
     def test_bill_to_dict_excludes_withholding_tax_rate(self, db_session, admin_user, main_branch,
                                                           test_vendor_with_wht, gl_accounts_wht, wht_codes):
-        bill = self._make_bill(db_session, admin_user, main_branch,
+        bill = self._make_ap(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         d = bill.to_dict()
         assert 'withholding_tax_rate' not in d
@@ -210,11 +210,11 @@ class TestPurchaseBillWhtIntegration:
                                             test_vendor_with_wht, gl_accounts_wht, wht_codes):
         """The reversal mirrors the stored JE, so it must debit the WT payable
         account by the summed per-line WT amount (700) and balance."""
-        bill = self._make_bill(db_session, admin_user, main_branch,
+        bill = self._make_ap(db_session, admin_user, main_branch,
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         bill.status = 'posted'
         db_session.flush()
-        from app.purchase_bills.views import _post_bill_je, _create_reversal_je
+        from app.accounts_payable.views import _post_bill_je, _create_reversal_je
 
         source_je = _post_bill_je(bill, admin_user.id)
         bill.journal_entry_id = source_je.id

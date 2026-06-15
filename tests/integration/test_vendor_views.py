@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.vendors.models import Vendor
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 from app.audit.models import AuditLog
 from app.utils import ph_now
 pytestmark = [pytest.mark.vendors, pytest.mark.integration]
@@ -24,14 +24,14 @@ def make_vendor(db_session, code='IV001', name='Integration Vendor'):
     return v
 
 
-def make_bill(db_session, vendor, branch, bill_number='PB-IT-001',
+def make_ap(db_session, vendor, branch, ap_number='PB-IT-001',
               status='posted', days_overdue=0):
     today = ph_now().date()
     due = today - timedelta(days=days_overdue)
-    b = PurchaseBill(
-        bill_number=bill_number, vendor_id=vendor.id,
+    b = AccountsPayable(
+        ap_number=ap_number, vendor_id=vendor.id,
         vendor_name=vendor.name, vendor_tin='', vendor_address='',
-        branch_id=branch.id, bill_date=today, due_date=due,
+        branch_id=branch.id, ap_date=today, due_date=due,
         status=status, subtotal=Decimal('1000.00'),
         vat_amount=Decimal('0.00'), total_before_wt=Decimal('1000.00'),
         withholding_tax_rate=Decimal('0.00'), withholding_tax_amount=Decimal('0.00'),
@@ -86,7 +86,7 @@ class TestVendorDetail:
     def test_detail_bills_tab_renders(self, client, db_session, admin_user, main_branch):
         login(client)
         vendor = make_vendor(db_session, code='DV003', name='Bills Tab Vendor')
-        make_bill(db_session, vendor, main_branch, 'PB-BT-001')
+        make_ap(db_session, vendor, main_branch, 'PB-BT-001')
         resp = client.get(f'/vendors/{vendor.id}?tab=bills')
         assert resp.status_code == 200
         assert b'PB-BT-001' in resp.data
@@ -94,8 +94,8 @@ class TestVendorDetail:
     def test_detail_bills_status_filter(self, client, db_session, admin_user, main_branch):
         login(client)
         vendor = make_vendor(db_session, code='DV004', name='Filter Vendor')
-        make_bill(db_session, vendor, main_branch, 'PB-POSTED', status='posted')
-        make_bill(db_session, vendor, main_branch, 'PB-DRAFT', status='draft')
+        make_ap(db_session, vendor, main_branch, 'PB-POSTED', status='posted')
+        make_ap(db_session, vendor, main_branch, 'PB-DRAFT', status='draft')
         resp = client.get(f'/vendors/{vendor.id}?tab=bills&status=draft')
         assert resp.status_code == 200
         assert b'PB-DRAFT' in resp.data
@@ -105,9 +105,9 @@ class TestVendorDetail:
         login(client)
         vendor = make_vendor(db_session, code='DV005', name='Date Filter Vendor')
         today = ph_now().date()
-        b1 = make_bill(db_session, vendor, main_branch, 'PB-TODAY')
-        b2 = make_bill(db_session, vendor, main_branch, 'PB-OLD')
-        b2.bill_date = date(today.year - 1, 1, 1)
+        b1 = make_ap(db_session, vendor, main_branch, 'PB-TODAY')
+        b2 = make_ap(db_session, vendor, main_branch, 'PB-OLD')
+        b2.ap_date = date(today.year - 1, 1, 1)
         db_session.commit()
         from_date = today.isoformat()
         resp = client.get(f'/vendors/{vendor.id}?tab=bills&date_from={from_date}')

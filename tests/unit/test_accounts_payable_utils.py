@@ -5,9 +5,9 @@ from decimal import Decimal
 
 from app.branches.models import Branch
 from app.vendors.models import Vendor
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 from app.utils import ph_now
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.unit]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.unit]
 
 
 
@@ -26,17 +26,17 @@ def make_branch(db_session, code='BR2', name='Branch Two'):
     return b
 
 
-def make_bill(db_session, vendor, branch, bill_number, due_date, status='posted',
+def make_ap(db_session, vendor, branch, ap_number, due_date, status='posted',
               total_amount=Decimal('1000.00'), balance=None):
     today = ph_now().date()
-    b = PurchaseBill(
-        bill_number=bill_number,
+    b = AccountsPayable(
+        ap_number=ap_number,
         vendor_id=vendor.id,
         vendor_name=vendor.name,
         vendor_tin='',
         vendor_address='',
         branch_id=branch.id,
-        bill_date=today,
+        ap_date=today,
         due_date=due_date,
         status=status,
         subtotal=total_amount,
@@ -57,33 +57,33 @@ def make_bill(db_session, vendor, branch, bill_number, due_date, status='posted'
 @pytest.mark.usefixtures('app')
 class TestBillsSummary:
     def test_summary_buckets(self, db_session, main_branch):
-        from app.purchase_bills.utils import compute_bills_summary
+        from app.accounts_payable.utils import compute_ap_summary
         vendor = make_vendor(db_session)
         today = ph_now().date()
 
         # Overdue (posted, due 10 days ago)
-        make_bill(db_session, vendor, main_branch, 'S001',
+        make_ap(db_session, vendor, main_branch, 'S001',
                   due_date=today - timedelta(days=10),
                   total_amount=Decimal('100.00'))
         # Due soon (posted, due in 3 days)
-        make_bill(db_session, vendor, main_branch, 'S002',
+        make_ap(db_session, vendor, main_branch, 'S002',
                   due_date=today + timedelta(days=3),
                   total_amount=Decimal('200.00'))
         # Outstanding but not overdue/due-soon (due in 30 days)
-        make_bill(db_session, vendor, main_branch, 'S003',
+        make_ap(db_session, vendor, main_branch, 'S003',
                   due_date=today + timedelta(days=30),
                   total_amount=Decimal('400.00'))
         # Due today (boundary: inclusive lower bound of due-soon window)
-        make_bill(db_session, vendor, main_branch, 'S005',
+        make_ap(db_session, vendor, main_branch, 'S005',
                   due_date=today,
                   total_amount=Decimal('50.00'))
         # Draft (not in outstanding)
-        make_bill(db_session, vendor, main_branch, 'S004',
+        make_ap(db_session, vendor, main_branch, 'S004',
                   due_date=today, status='draft',
                   total_amount=Decimal('999.00'))
         db_session.commit()
 
-        s = compute_bills_summary(main_branch.id)
+        s = compute_ap_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('750.00')
         assert s['outstanding_count'] == 4
         assert s['overdue_total'] == Decimal('100.00')
@@ -93,56 +93,56 @@ class TestBillsSummary:
         assert s['draft_count'] == 1
 
     def test_partially_paid_included_with_balance(self, db_session, main_branch):
-        from app.purchase_bills.utils import compute_bills_summary
+        from app.accounts_payable.utils import compute_ap_summary
         vendor = make_vendor(db_session, code='SV002')
         today = ph_now().date()
 
-        make_bill(db_session, vendor, main_branch, 'S010',
+        make_ap(db_session, vendor, main_branch, 'S010',
                   due_date=today - timedelta(days=5), status='partially_paid',
                   total_amount=Decimal('1000.00'), balance=Decimal('400.00'))
         db_session.commit()
 
-        s = compute_bills_summary(main_branch.id)
+        s = compute_ap_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('400.00')
         assert s['overdue_total'] == Decimal('400.00')
         assert s['outstanding_count'] == 1
 
     def test_closed_statuses_excluded(self, db_session, main_branch):
-        from app.purchase_bills.utils import compute_bills_summary
+        from app.accounts_payable.utils import compute_ap_summary
         vendor = make_vendor(db_session, code='SV003')
         today = ph_now().date()
 
         for i, status in enumerate(['paid', 'voided', 'cancelled']):
-            make_bill(db_session, vendor, main_branch, f'S02{i}',
+            make_ap(db_session, vendor, main_branch, f'S02{i}',
                       due_date=today - timedelta(days=5), status=status,
                       total_amount=Decimal('500.00'))
         db_session.commit()
 
-        s = compute_bills_summary(main_branch.id)
+        s = compute_ap_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('0.00')
         assert s['outstanding_count'] == 0
         assert s['overdue_count'] == 0
 
     def test_branch_scoping(self, db_session, main_branch):
-        from app.purchase_bills.utils import compute_bills_summary
+        from app.accounts_payable.utils import compute_ap_summary
         vendor = make_vendor(db_session, code='SV004')
         other = make_branch(db_session)
         today = ph_now().date()
 
-        make_bill(db_session, vendor, main_branch, 'S030',
+        make_ap(db_session, vendor, main_branch, 'S030',
                   due_date=today, total_amount=Decimal('100.00'))
-        make_bill(db_session, vendor, other, 'S031',
+        make_ap(db_session, vendor, other, 'S031',
                   due_date=today, total_amount=Decimal('900.00'))
         db_session.commit()
 
-        s = compute_bills_summary(main_branch.id)
+        s = compute_ap_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('100.00')
         assert s['outstanding_count'] == 1
 
     def test_empty_branch_returns_zeros(self, db_session, main_branch):
-        from app.purchase_bills.utils import compute_bills_summary
+        from app.accounts_payable.utils import compute_ap_summary
 
-        s = compute_bills_summary(main_branch.id)
+        s = compute_ap_summary(main_branch.id)
         assert s['outstanding_total'] == Decimal('0.00')
         assert s['outstanding_count'] == 0
         assert s['overdue_count'] == 0

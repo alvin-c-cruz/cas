@@ -123,11 +123,11 @@ def test_build_ap_journal_xlsx_has_headers_and_total_row(app):
     assert total_row[6] == '=SUM(G7:G8)'   # Rent Expense column formula
 
 
-def _mock_bill(bill_number, bill_date, vendor_name='Vendor X',
+def _mock_bill(ap_number, ap_date, vendor_name='Vendor X',
                vendor_invoice_number='INV-1', notes=''):
     b = MagicMock()
-    b.bill_number = bill_number
-    b.bill_date = bill_date
+    b.ap_number = ap_number
+    b.ap_date = ap_date
     b.vendor_name = vendor_name
     b.vendor_invoice_number = vendor_invoice_number
     b.notes = notes
@@ -181,8 +181,8 @@ def test_build_ap_journal_xlsx_voided_row_has_red_fill_and_no_amounts(app):
     from unittest.mock import MagicMock
 
     bill = MagicMock()
-    bill.bill_date = date(2026, 6, 3)
-    bill.bill_number = 'AP-2026-06-0002'
+    bill.ap_date = date(2026, 6, 3)
+    bill.ap_number = 'AP-2026-06-0002'
     bill.vendor_invoice_number = 'INV-99'
     bill.vendor_name = 'Voided Vendor'
     bill.notes = 'Test void'

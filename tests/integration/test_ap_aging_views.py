@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.vendors.models import Vendor
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 
 pytestmark = [pytest.mark.integration]
 
@@ -42,19 +42,19 @@ def make_vendor(db_session, code='APV001', name='AP Test Vendor'):
     return vendor
 
 
-def make_bill(db_session, vendor, branch_id, bill_number='AP-2026-06-0001',
-              status='posted', bill_date=None, due_date=None,
+def make_ap(db_session, vendor, branch_id, ap_number='AP-2026-06-0001',
+              status='posted', ap_date=None, due_date=None,
               total_amount=Decimal('1000.00'), balance=None):
-    """Create a PurchaseBill with sensible defaults; accepts overrides."""
+    """Create a AccountsPayable with sensible defaults; accepts overrides."""
     today = date.today()
-    bill = PurchaseBill(
-        bill_number=bill_number,
+    bill = AccountsPayable(
+        ap_number=ap_number,
         vendor_id=vendor.id,
         vendor_name=vendor.name,
         vendor_tin='',
         vendor_address='',
         branch_id=branch_id,
-        bill_date=bill_date or today,
+        ap_date=ap_date or today,
         due_date=due_date or (today + timedelta(days=30)),
         status=status,
         subtotal=total_amount,
@@ -103,8 +103,8 @@ class TestAPAgingView:
     def test_posted_bill_appears(self, client, db_session, accountant_user, main_branch):
         """A posted bill with balance > 0 should show the vendor name."""
         vendor = make_vendor(db_session, code='APV-P001', name='Acme Supplies')
-        make_bill(db_session, vendor, main_branch.id,
-                  bill_number='AP-2026-01-0001', status='posted',
+        make_ap(db_session, vendor, main_branch.id,
+                  ap_number='AP-2026-01-0001', status='posted',
                   balance=Decimal('5000.00'))
         login(client)
         set_branch(client, main_branch.id)
@@ -115,8 +115,8 @@ class TestAPAgingView:
     def test_partially_paid_bill_appears(self, client, db_session, accountant_user, main_branch):
         """A partially_paid bill with balance > 0 should show the vendor name."""
         vendor = make_vendor(db_session, code='APV-PP01', name='Partial Pay Vendor')
-        make_bill(db_session, vendor, main_branch.id,
-                  bill_number='AP-2026-01-0002', status='partially_paid',
+        make_ap(db_session, vendor, main_branch.id,
+                  ap_number='AP-2026-01-0002', status='partially_paid',
                   total_amount=Decimal('3000.00'),
                   balance=Decimal('1500.00'))
         login(client)
@@ -128,8 +128,8 @@ class TestAPAgingView:
     def test_paid_bill_excluded(self, client, db_session, accountant_user, main_branch):
         """A fully-paid bill should NOT appear in the report."""
         vendor = make_vendor(db_session, code='APV-PAID', name='Fully Paid Vendor')
-        make_bill(db_session, vendor, main_branch.id,
-                  bill_number='AP-2026-01-0003', status='paid',
+        make_ap(db_session, vendor, main_branch.id,
+                  ap_number='AP-2026-01-0003', status='paid',
                   total_amount=Decimal('2000.00'),
                   balance=Decimal('0.00'))
         login(client)
@@ -143,8 +143,8 @@ class TestAPAgingView:
         today = date.today()
         vendor = make_vendor(db_session, code='APV-CUR1', name='Current Bucket Vendor')
         # due_date = today + 10 days; as_of = yesterday → not yet overdue
-        make_bill(db_session, vendor, main_branch.id,
-                  bill_number='AP-2026-02-0001', status='posted',
+        make_ap(db_session, vendor, main_branch.id,
+                  ap_number='AP-2026-02-0001', status='posted',
                   due_date=today + timedelta(days=10),
                   balance=Decimal('1000.00'))
         login(client)
@@ -160,8 +160,8 @@ class TestAPAgingView:
         today = date.today()
         vendor = make_vendor(db_session, code='APV-OLD1', name='Old Overdue Vendor')
         # due_date = today; as_of = today + 91 → 91 days overdue → 90+ bucket
-        make_bill(db_session, vendor, main_branch.id,
-                  bill_number='AP-2026-02-0002', status='posted',
+        make_ap(db_session, vendor, main_branch.id,
+                  ap_number='AP-2026-02-0002', status='posted',
                   due_date=today,
                   balance=Decimal('1000.00'))
         login(client)
@@ -176,8 +176,8 @@ class TestAPAgingView:
         """Bills belonging to branch_manila are NOT visible when branch main is selected."""
         vendor = make_vendor(db_session, code='APV-BR01', name='Manila Branch Vendor')
         # Create bill in branch_manila
-        make_bill(db_session, vendor, branch_manila.id,
-                  bill_number='AP-2026-03-0001', status='posted',
+        make_ap(db_session, vendor, branch_manila.id,
+                  ap_number='AP-2026-03-0001', status='posted',
                   balance=Decimal('8000.00'))
         login(client)
         # Select main_branch (not manila)
@@ -230,8 +230,8 @@ class TestAPAgingExport:
         import zipfile
 
         vendor = make_vendor(db_session, code='APV-XL01', name='Excel Export Vendor')
-        make_bill(db_session, vendor, main_branch.id,
-                  bill_number='AP-2026-04-0001', status='posted',
+        make_ap(db_session, vendor, main_branch.id,
+                  ap_number='AP-2026-04-0001', status='posted',
                   balance=Decimal('2500.00'))
         login(client)
         set_branch(client, main_branch.id)
@@ -249,8 +249,8 @@ class TestAPAgingExport:
     def test_csv_export_contains_bill_data(self, client, db_session, accountant_user, main_branch):
         """CSV export includes vendor name and bill number for outstanding bills."""
         vendor = make_vendor(db_session, code='APV-CSV1', name='CSV Export Vendor')
-        make_bill(db_session, vendor, main_branch.id,
-                  bill_number='AP-2026-05-0001', status='posted',
+        make_ap(db_session, vendor, main_branch.id,
+                  ap_number='AP-2026-05-0001', status='posted',
                   balance=Decimal('1750.00'))
         login(client)
         set_branch(client, main_branch.id)

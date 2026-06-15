@@ -12,12 +12,12 @@ from datetime import date
 
 from app.accounts.models import Account
 from app.vendors.models import Vendor
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 from app.journal_entries.models import JournalEntry
 from app.dashboard.dashboard_data import get_expense_stats
 from app.utils import ph_now
 import pytest
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
 
 
 
@@ -44,9 +44,9 @@ def create_draft(client, vendor, account):
     line_items = json.dumps([{'description': 'Item', 'amount': 1120.0,
                               'vat_category': '', 'account_id': account.id,
                               'wt_id': None, 'wt_rate': None}])
-    return client.post('/purchase-bills/create', data={
-        'bill_number': 'AP-JETEST-0001',
-        'bill_date': today, 'due_date': today,
+    return client.post('/accounts-payable/create', data={
+        'ap_number': 'AP-JETEST-0001',
+        'ap_date': today, 'due_date': today,
         'vendor_id': vendor.id, 'payment_terms': 'Net 30',
         'vendor_invoice_number': 'SI-001', 'vendor_invoice_date': today,
         'notes': 'Test particulars',
@@ -62,7 +62,7 @@ class TestJELifecycle:
         expense, vendor = setup_gl(db_session)
         create_draft(client, vendor, expense)
 
-        bill = PurchaseBill.query.filter_by(bill_number='AP-JETEST-0001').first()
+        bill = AccountsPayable.query.filter_by(ap_number='AP-JETEST-0001').first()
         assert bill is not None and bill.status == 'draft'
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         assert je.status == 'draft'
@@ -72,9 +72,9 @@ class TestJELifecycle:
         login(client)
         expense, vendor = setup_gl(db_session)
         create_draft(client, vendor, expense)
-        bill = PurchaseBill.query.filter_by(bill_number='AP-JETEST-0001').first()
+        bill = AccountsPayable.query.filter_by(ap_number='AP-JETEST-0001').first()
 
-        client.post(f'/purchase-bills/{bill.id}/post', follow_redirects=True)
+        client.post(f'/accounts-payable/{bill.id}/post', follow_redirects=True)
 
         assert bill.status == 'posted'
         je = db_session.get(JournalEntry, bill.journal_entry_id)
@@ -86,7 +86,7 @@ class TestJELifecycle:
         login(client)
         expense, vendor = setup_gl(db_session)
         create_draft(client, vendor, expense)
-        bill = PurchaseBill.query.filter_by(bill_number='AP-JETEST-0001').first()
+        bill = AccountsPayable.query.filter_by(ap_number='AP-JETEST-0001').first()
 
         now = ph_now()
         # while draft: nothing in expense stats
@@ -94,6 +94,6 @@ class TestJELifecycle:
         assert stats['mtd'] == 0.0
 
         # after posting: the expense account (6xxxx code) must be picked up
-        client.post(f'/purchase-bills/{bill.id}/post', follow_redirects=True)
+        client.post(f'/accounts-payable/{bill.id}/post', follow_redirects=True)
         stats = get_expense_stats(now.year, now.month, branch_id=main_branch.id)
         assert stats['mtd'] > 0

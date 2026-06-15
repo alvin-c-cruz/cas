@@ -7,9 +7,9 @@ import json
 
 from app.accounts.models import Account
 from app.vendors.models import Vendor
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 import pytest
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
 
 
 
@@ -38,13 +38,13 @@ def make_expense(db_session):
 
 
 class TestDueDateValidation:
-    def _post_bill(self, client, vendor, account, bill_date, due_date):
+    def _post_bill(self, client, vendor, account, ap_date, due_date):
         line_items = json.dumps([{'description': 'Item', 'amount': 100.0,
                                   'vat_category': '', 'account_id': account.id,
                                   'wt_id': None, 'wt_rate': None}])
-        return client.post('/purchase-bills/create', data={
-            'bill_number': 'AP-2026-06-9999',
-            'bill_date': bill_date,
+        return client.post('/accounts-payable/create', data={
+            'ap_number': 'AP-2026-06-9999',
+            'ap_date': ap_date,
             'due_date': due_date,
             'vendor_id': vendor.id,
             'payment_terms': 'Net 30',
@@ -64,7 +64,7 @@ class TestDueDateValidation:
         html = resp.data.decode('utf-8')
         # once in the client-validation JS source, once as the rendered form error
         assert html.count('Due date cannot be earlier than the voucher date.') >= 2
-        assert PurchaseBill.query.filter_by(bill_number='AP-2026-06-9999').first() is None
+        assert AccountsPayable.query.filter_by(ap_number='AP-2026-06-9999').first() is None
 
     def test_due_date_equal_or_after_voucher_date_allowed(self, client, db_session,
                                                           admin_user, main_branch):
@@ -74,6 +74,6 @@ class TestDueDateValidation:
         resp = self._post_bill(client, vendor, account,
                                '2026-06-12', '2026-06-12')
         assert resp.status_code == 200
-        bill = PurchaseBill.query.filter_by(bill_number='AP-2026-06-9999').first()
+        bill = AccountsPayable.query.filter_by(ap_number='AP-2026-06-9999').first()
         assert bill is not None
         assert bill.status == 'draft'

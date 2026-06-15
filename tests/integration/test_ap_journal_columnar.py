@@ -151,18 +151,18 @@ def test_ap_journal_view_shows_draft_indicator(client, db_session):
     assert 'Draft' in body
 
 
-def _voided_bill(branch_id, bill_number, bill_date, vendor_name='Vendor V'):
-    from app.purchase_bills.models import PurchaseBill
+def _voided_bill(branch_id, ap_number, ap_date, vendor_name='Vendor V'):
+    from app.accounts_payable.models import AccountsPayable
     from decimal import Decimal
     vendor = Vendor.query.filter_by(code='TEST-V').first()
     if not vendor:
         vendor = Vendor(code='TEST-V', name=vendor_name)
         db.session.add(vendor)
         db.session.flush()
-    b = PurchaseBill(
-        bill_number=bill_number,
-        bill_date=bill_date,
-        due_date=bill_date,
+    b = AccountsPayable(
+        ap_number=ap_number,
+        ap_date=ap_date,
+        due_date=ap_date,
         vendor_id=vendor.id,
         vendor_name=vendor_name,
         status='voided',

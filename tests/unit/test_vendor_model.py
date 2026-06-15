@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.vendors.models import Vendor
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.withholding_tax.models import WithholdingTax
 from app.utils import ph_now
 pytestmark = [pytest.mark.vendors, pytest.mark.unit]
@@ -26,17 +26,17 @@ def make_wht(db_session, code, name, rate):
     return wt
 
 
-def make_bill(db_session, vendor, branch, bill_number, due_date, status='posted',
+def make_ap(db_session, vendor, branch, ap_number, due_date, status='posted',
               total_amount=Decimal('1000.00')):
     today = ph_now().date()
-    b = PurchaseBill(
-        bill_number=bill_number,
+    b = AccountsPayable(
+        ap_number=ap_number,
         vendor_id=vendor.id,
         vendor_name=vendor.name,
         vendor_tin='',
         vendor_address='',
         branch_id=branch.id,
-        bill_date=today,
+        ap_date=today,
         due_date=due_date,
         status=status,
         subtotal=total_amount,
@@ -61,19 +61,19 @@ class TestApAging:
         vendor = make_vendor(db_session)
         today = ph_now().date()
 
-        make_bill(db_session, vendor, main_branch, 'B001',
+        make_ap(db_session, vendor, main_branch, 'B001',
                   due_date=today + timedelta(days=5),
                   total_amount=Decimal('100.00'))   # current
-        make_bill(db_session, vendor, main_branch, 'B002',
+        make_ap(db_session, vendor, main_branch, 'B002',
                   due_date=today - timedelta(days=15),
                   total_amount=Decimal('200.00'))   # 1-30
-        make_bill(db_session, vendor, main_branch, 'B003',
+        make_ap(db_session, vendor, main_branch, 'B003',
                   due_date=today - timedelta(days=45),
                   total_amount=Decimal('300.00'))   # 31-60
-        make_bill(db_session, vendor, main_branch, 'B004',
+        make_ap(db_session, vendor, main_branch, 'B004',
                   due_date=today - timedelta(days=75),
                   total_amount=Decimal('400.00'))   # 61-90
-        make_bill(db_session, vendor, main_branch, 'B005',
+        make_ap(db_session, vendor, main_branch, 'B005',
                   due_date=today - timedelta(days=100),
                   total_amount=Decimal('500.00'))   # 90+
         db_session.commit()
@@ -93,7 +93,7 @@ class TestApAging:
         overdue = today - timedelta(days=10)
 
         for i, status in enumerate(['draft', 'voided', 'cancelled', 'paid']):
-            make_bill(db_session, vendor, main_branch, f'B00{6+i}',
+            make_ap(db_session, vendor, main_branch, f'B00{6+i}',
                       due_date=overdue, status=status,
                       total_amount=Decimal('999.00'))
         db_session.commit()
@@ -108,7 +108,7 @@ class TestApAging:
         overdue = today - timedelta(days=10)
 
         # partially_paid bill with remaining balance of 400
-        b = make_bill(db_session, vendor, main_branch, 'B100',
+        b = make_ap(db_session, vendor, main_branch, 'B100',
                       due_date=overdue, status='partially_paid',
                       total_amount=Decimal('1000.00'))
         b.balance = Decimal('400.00')
@@ -143,11 +143,11 @@ class TestWhtYtd:
         prior_year_date = date(today.year - 1, 6, 1)
 
         # Current year bill with WHT
-        bill_current = make_bill(db_session, vendor, main_branch, 'B010',
+        bill_current = make_ap(db_session, vendor, main_branch, 'B010',
                                  due_date=today, status='posted',
                                  total_amount=Decimal('1000.00'))
-        item_current = PurchaseBillItem(
-            bill_id=bill_current.id,
+        item_current = AccountsPayableItem(
+            ap_id=bill_current.id,
             line_number=1,
             description='Service', amount=Decimal('1000.00'),
             vat_rate=Decimal('0.00'), vat_amount=Decimal('0.00'),
@@ -158,13 +158,13 @@ class TestWhtYtd:
         db_session.add(item_current)
 
         # Prior year bill — must be excluded
-        bill_prior = make_bill(db_session, vendor, main_branch, 'B011',
+        bill_prior = make_ap(db_session, vendor, main_branch, 'B011',
                                due_date=prior_year_date, status='posted',
                                total_amount=Decimal('500.00'))
-        bill_prior.bill_date = prior_year_date  # override to prior year
+        bill_prior.ap_date = prior_year_date  # override to prior year
         db_session.flush()
-        item_prior = PurchaseBillItem(
-            bill_id=bill_prior.id,
+        item_prior = AccountsPayableItem(
+            ap_id=bill_prior.id,
             line_number=1,
             description='Old Service', amount=Decimal('500.00'),
             vat_rate=Decimal('0.00'), vat_amount=Decimal('0.00'),
@@ -189,17 +189,17 @@ class TestWhtYtd:
         wt060 = make_wht(db_session, code='WC060', name='Contractors 2%', rate=Decimal('2.00'))
 
         today = ph_now().date()
-        bill = make_bill(db_session, vendor, main_branch, 'B020',
+        bill = make_ap(db_session, vendor, main_branch, 'B020',
                          due_date=today, status='posted',
                          total_amount=Decimal('2000.00'))
-        db_session.add(PurchaseBillItem(
-            bill_id=bill.id, line_number=1, description='Prof Fees',
+        db_session.add(AccountsPayableItem(
+            ap_id=bill.id, line_number=1, description='Prof Fees',
             amount=Decimal('1000.00'), vat_rate=Decimal('0.00'),
             vat_amount=Decimal('0.00'), line_total=Decimal('1000.00'),
             wt_id=wt010.id, wt_rate=wt010.rate, wt_amount=Decimal('100.00'),
         ))
-        db_session.add(PurchaseBillItem(
-            bill_id=bill.id, line_number=2, description='Contractor',
+        db_session.add(AccountsPayableItem(
+            ap_id=bill.id, line_number=2, description='Contractor',
             amount=Decimal('1000.00'), vat_rate=Decimal('0.00'),
             vat_amount=Decimal('0.00'), line_total=Decimal('1000.00'),
             wt_id=wt060.id, wt_rate=wt060.rate, wt_amount=Decimal('20.00'),

@@ -1,18 +1,18 @@
-"""Unit tests for PurchaseBill and PurchaseBillItem model changes."""
+"""Unit tests for AccountsPayable and AccountsPayableItem model changes."""
 import pytest
 from decimal import Decimal
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.unit]
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.unit]
 
 
 
 
 @pytest.mark.usefixtures("app")
-class TestPurchaseBillItemCalculateAmounts:
-    """Tests for PurchaseBillItem.calculate_amounts() with new VAT-inclusive Amount field."""
+class TestAccountsPayableItemCalculateAmounts:
+    """Tests for AccountsPayableItem.calculate_amounts() with new VAT-inclusive Amount field."""
 
     def _make_item(self, amount, vat_rate=Decimal('0'), wt_rate=None):
-        item = PurchaseBillItem()
+        item = AccountsPayableItem()
         item.amount = Decimal(str(amount))
         item.vat_rate = vat_rate
         item.wt_rate = Decimal(str(wt_rate)) if wt_rate is not None else None
@@ -44,17 +44,17 @@ class TestPurchaseBillItemCalculateAmounts:
         assert item.wt_amount == Decimal('0.00')
 
     def test_no_quantity_or_unit_cost_attributes(self):
-        item = PurchaseBillItem()
+        item = AccountsPayableItem()
         assert not hasattr(item, 'quantity')
         assert not hasattr(item, 'unit_cost')
 
 
 @pytest.mark.usefixtures("app")
-class TestPurchaseBillCalculateTotals:
-    """Tests for PurchaseBill.calculate_totals() with new VAT-inclusive design."""
+class TestAccountsPayableCalculateTotals:
+    """Tests for AccountsPayable.calculate_totals() with new VAT-inclusive design."""
 
     def _make_item(self, amount, vat_rate=Decimal('0'), wt_rate=None):
-        item = PurchaseBillItem()
+        item = AccountsPayableItem()
         item.amount = Decimal(str(amount))
         item.vat_rate = Decimal(str(vat_rate))
         item.wt_rate = Decimal(str(wt_rate)) if wt_rate is not None else None
@@ -62,7 +62,7 @@ class TestPurchaseBillCalculateTotals:
         return item
 
     def test_subtotal_is_sum_of_vat_inclusive_amounts(self):
-        bill = PurchaseBill()
+        bill = AccountsPayable()
         bill.amount_paid = Decimal('0.00')
         item1 = self._make_item('11200.00', vat_rate=Decimal('12'))
         item2 = self._make_item('2240.00', vat_rate=Decimal('12'))
@@ -71,7 +71,7 @@ class TestPurchaseBillCalculateTotals:
         assert bill.subtotal == Decimal('13440.00')
 
     def test_vat_amount_extracted_not_added(self):
-        bill = PurchaseBill()
+        bill = AccountsPayable()
         bill.amount_paid = Decimal('0.00')
         item = self._make_item('11200.00', vat_rate=Decimal('12'))
         bill.line_items = [item]
@@ -82,7 +82,7 @@ class TestPurchaseBillCalculateTotals:
         assert bill.total_before_wt == Decimal('11200.00')  # equals subtotal, not subtotal+vat
 
     def test_total_amount_is_subtotal_minus_wht(self):
-        bill = PurchaseBill()
+        bill = AccountsPayable()
         bill.amount_paid = Decimal('0.00')
         # 11200 at 12% VAT, 2% WHT: net_base=10000, wht=200, net_payable=11200-200=11000
         item = self._make_item('11200.00', vat_rate=Decimal('12'), wt_rate='2')
@@ -92,7 +92,7 @@ class TestPurchaseBillCalculateTotals:
         assert bill.total_amount == Decimal('11000.00')
 
     def test_balance_equals_total_minus_amount_paid(self):
-        bill = PurchaseBill()
+        bill = AccountsPayable()
         bill.amount_paid = Decimal('500.00')
         item = self._make_item('11200.00', vat_rate=Decimal('12'), wt_rate='2')
         bill.line_items = [item]
@@ -101,9 +101,9 @@ class TestPurchaseBillCalculateTotals:
 
 
 @pytest.mark.usefixtures("app")
-class TestPurchaseBillItemToDict:
+class TestAccountsPayableItemToDict:
     def test_to_dict_has_amount_not_quantity_or_unit_cost(self):
-        item = PurchaseBillItem()
+        item = AccountsPayableItem()
         item.id = 1
         item.line_number = 1
         item.description = 'Test'

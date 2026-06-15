@@ -3,9 +3,9 @@ import pytest
 from decimal import Decimal
 from app.accounts.models import Account
 from app.vendors.models import Vendor
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.utils import ph_now
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
 
 
 
@@ -34,17 +34,17 @@ def make_vendor(db_session, code='DV001'):
     return v
 
 
-def make_bill_with_line(db_session, vendor, branch, expense_account,
+def make_ap_with_line(db_session, vendor, branch, expense_account,
                          vendor_invoice_number=''):
     today = ph_now().date()
-    bill = PurchaseBill(
-        bill_number='DET-001',
+    bill = AccountsPayable(
+        ap_number='DET-001',
         vendor_id=vendor.id,
         vendor_name=vendor.name,
         vendor_tin='123-456-789',
         vendor_address='Test Address, Manila',
         branch_id=branch.id,
-        bill_date=today,
+        ap_date=today,
         due_date=today,
         payment_terms='Net 30',
         vendor_invoice_number=vendor_invoice_number,
@@ -60,8 +60,8 @@ def make_bill_with_line(db_session, vendor, branch, expense_account,
     )
     db_session.add(bill)
     db_session.flush()
-    item = PurchaseBillItem(
-        bill_id=bill.id,
+    item = AccountsPayableItem(
+        ap_id=bill.id,
         line_number=1,
         description='Test Service',
         amount=Decimal('11200.00'),
@@ -94,9 +94,9 @@ class TestDetailPageLayout:
             self, client, db_session, admin_user, main_branch):
         expense = setup_gl_accounts(db_session)
         vendor = make_vendor(db_session)
-        bill = make_bill_with_line(db_session, vendor, main_branch, expense)
+        bill = make_ap_with_line(db_session, vendor, main_branch, expense)
         login(client)
-        resp = client.get(f'/purchase-bills/{bill.id}')
+        resp = client.get(f'/accounts-payable/{bill.id}')
         assert resp.status_code == 200
         html = resp.data.decode('utf-8')
         assert 'Voucher Date' in html
@@ -106,10 +106,10 @@ class TestDetailPageLayout:
             self, client, db_session, admin_user, main_branch):
         expense = setup_gl_accounts(db_session)
         vendor = make_vendor(db_session)
-        bill = make_bill_with_line(db_session, vendor, main_branch, expense,
+        bill = make_ap_with_line(db_session, vendor, main_branch, expense,
                                     vendor_invoice_number='')
         login(client)
-        resp = client.get(f'/purchase-bills/{bill.id}')
+        resp = client.get(f'/accounts-payable/{bill.id}')
         html = resp.data.decode('utf-8')
         assert 'Vendor Invoice' in html
         assert '— not provided —' in html
@@ -118,10 +118,10 @@ class TestDetailPageLayout:
             self, client, db_session, admin_user, main_branch):
         expense = setup_gl_accounts(db_session)
         vendor = make_vendor(db_session)
-        bill = make_bill_with_line(db_session, vendor, main_branch, expense,
+        bill = make_ap_with_line(db_session, vendor, main_branch, expense,
                                     vendor_invoice_number='INV-2026-001')
         login(client)
-        resp = client.get(f'/purchase-bills/{bill.id}')
+        resp = client.get(f'/accounts-payable/{bill.id}')
         html = resp.data.decode('utf-8')
         # The redesigned banner must show "Vendor Invoice" as a standalone section
         # label followed by the invoice number (not buried in vendor info inline).
@@ -133,9 +133,9 @@ class TestDetailPageLayout:
             self, client, db_session, admin_user, main_branch):
         expense = setup_gl_accounts(db_session)
         vendor = make_vendor(db_session)
-        bill = make_bill_with_line(db_session, vendor, main_branch, expense)
+        bill = make_ap_with_line(db_session, vendor, main_branch, expense)
         login(client)
-        resp = client.get(f'/purchase-bills/{bill.id}')
+        resp = client.get(f'/accounts-payable/{bill.id}')
         html = resp.data.decode('utf-8')
         # The redesigned page must have a "Journal Entry" section heading
         # within the bill card body (not just the sidebar nav link).
@@ -146,9 +146,9 @@ class TestDetailPageLayout:
             self, client, db_session, admin_user, main_branch):
         expense = setup_gl_accounts(db_session)
         vendor = make_vendor(db_session)
-        bill = make_bill_with_line(db_session, vendor, main_branch, expense)
+        bill = make_ap_with_line(db_session, vendor, main_branch, expense)
         login(client)
-        resp = client.get(f'/purchase-bills/{bill.id}')
+        resp = client.get(f'/accounts-payable/{bill.id}')
         html = resp.data.decode('utf-8')
         assert 'AP Voucher Summary' in html
 
@@ -156,9 +156,9 @@ class TestDetailPageLayout:
             self, client, db_session, admin_user, main_branch):
         expense = setup_gl_accounts(db_session)
         vendor = make_vendor(db_session)
-        bill = make_bill_with_line(db_session, vendor, main_branch, expense)
+        bill = make_ap_with_line(db_session, vendor, main_branch, expense)
         login(client)
-        resp = client.get(f'/purchase-bills/{bill.id}')
+        resp = client.get(f'/accounts-payable/{bill.id}')
         html = resp.data.decode('utf-8')
         assert 'Account Title' in html
         assert 'WHT Amt' not in html

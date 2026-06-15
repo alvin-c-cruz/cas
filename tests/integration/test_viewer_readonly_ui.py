@@ -23,7 +23,7 @@ class TestViewerReadOnlyUI:
         login(client, 'viewer', 'viewer123')
 
         checks = {
-            '/purchase-bills': ['Enter APV', 'Enter First APV'],
+            '/accounts-payable': ['Enter APV', 'Enter First APV'],
             '/sales-invoices': ['Enter Invoice', 'Enter First Invoice'],
             '/receipts': ['Enter Receipt', 'Enter Payment'],
             '/journal-entries': ['Enter Journal Entry', 'Enter First Entry'],
@@ -41,7 +41,7 @@ class TestViewerReadOnlyUI:
         db_session.commit()
         login(client, 'accountant', 'accountant123')
 
-        resp = client.get('/purchase-bills', follow_redirects=True)
+        resp = client.get('/accounts-payable', follow_redirects=True)
         html = resp.data.decode('utf-8')
         assert 'Enter APV' in html or 'Enter First APV' in html
         assert 'id="topbarNewBtn"' in html

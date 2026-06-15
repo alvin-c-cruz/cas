@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 from sqlalchemy import text
 from app import db
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 from app.branches.models import Branch
 from app.vendors.models import Vendor
 
@@ -19,8 +19,8 @@ def test_bill_without_notes_violates_not_null(db_session):
     # The ORM default='' means the ORM never sends NULL — test the DB constraint directly.
     with pytest.raises(Exception):  # IntegrityError: NOT NULL constraint failed
         db.session.execute(text(
-            "INSERT INTO purchase_bills "
-            "(bill_number, bill_date, due_date, vendor_id, vendor_name, total_amount, "
+            "INSERT INTO accounts_payable "
+            "(ap_number, ap_date, due_date, vendor_id, vendor_name, total_amount, "
             "subtotal, vat_amount, total_before_wt, withholding_tax_rate, "
             "withholding_tax_amount, vat_override, wt_override, status, "
             "amount_paid, balance, created_at, updated_at, notes) "
@@ -39,8 +39,8 @@ def test_bill_orm_default_notes_is_empty_string(db_session):
     db.session.add(vendor)
     db.session.commit()
 
-    bill = PurchaseBill(
-        branch_id=branch.id, bill_number='AP-X-2', bill_date=date(2026, 6, 1),
+    bill = AccountsPayable(
+        branch_id=branch.id, ap_number='AP-X-2', ap_date=date(2026, 6, 1),
         due_date=date(2026, 6, 30), vendor_id=vendor.id, vendor_name='V',
         total_amount=Decimal('100.00'))  # notes intentionally omitted
     db.session.add(bill)
@@ -49,22 +49,22 @@ def test_bill_orm_default_notes_is_empty_string(db_session):
     assert bill.notes == '', f"Expected empty string, got {repr(bill.notes)}"
 
 
-from app.purchase_bills.forms import PurchaseBillForm
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.unit]
+from app.accounts_payable.forms import AccountsPayableForm
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.unit]
 
 
 
 def _make_form(app, notes_value):
-    """Return a PurchaseBillForm with all required fields populated, overriding notes."""
+    """Return a AccountsPayableForm with all required fields populated, overriding notes."""
     from datetime import date as _date
 
     with app.test_request_context():
-        form = PurchaseBillForm(formdata=None, meta={'csrf': False})
+        form = AccountsPayableForm(formdata=None, meta={'csrf': False})
         # Satisfy the SelectField pre-validate so it doesn't abort before notes
         form.vendor_id.choices = [(1, 'Test Vendor')]
         form.vendor_id.data = 1
-        form.bill_number.data = 'AP-2026-06-0001'
-        form.bill_date.data = _date(2026, 6, 1)
+        form.ap_number.data = 'AP-2026-06-0001'
+        form.ap_date.data = _date(2026, 6, 1)
         form.due_date.data = _date(2026, 6, 30)
         form.notes.data = notes_value
         form.validate()

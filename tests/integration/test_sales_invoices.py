@@ -57,7 +57,7 @@ def test_sales_invoice_has_required_fields(db_session, customer, branch):
 
 
 def test_sales_invoice_calculate_totals_no_items(db_session, customer, branch):
-    """calculate_totals() with no line items zeros all totals (PurchaseBill pattern)."""
+    """calculate_totals() with no line items zeros all totals (AccountsPayable pattern)."""
     from app.sales_invoices.models import SalesInvoice
     inv = SalesInvoice(
         branch_id=branch.id,

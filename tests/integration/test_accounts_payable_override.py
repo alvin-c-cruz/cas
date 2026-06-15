@@ -3,13 +3,13 @@ import json
 import pytest
 from decimal import Decimal
 from datetime import date
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.vendors.models import Vendor
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
 
 
 
@@ -79,9 +79,9 @@ class TestBillPencilOverride:
         login(client)
         fx = self._fixtures(db_session)
 
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'OVR-001',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'OVR-001',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
@@ -94,7 +94,7 @@ class TestBillPencilOverride:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='OVR-001').first()
+        bill = AccountsPayable.query.filter_by(ap_number='OVR-001').first()
         assert bill is not None
         assert bill.vat_override is True
         assert bill.vat_amount == Decimal('1200.01')
@@ -105,9 +105,9 @@ class TestBillPencilOverride:
         login(client)
         fx = self._fixtures(db_session)
 
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'OVR-002',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'OVR-002',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
@@ -120,7 +120,7 @@ class TestBillPencilOverride:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='OVR-002').first()
+        bill = AccountsPayable.query.filter_by(ap_number='OVR-002').first()
         assert bill is not None
         assert bill.vat_override is True
         assert bill.vat_amount == Decimal('1199.99')
@@ -131,9 +131,9 @@ class TestBillPencilOverride:
         login(client)
         fx = self._fixtures(db_session)
 
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'OVR-003',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'OVR-003',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
@@ -146,7 +146,7 @@ class TestBillPencilOverride:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='OVR-003').first()
+        bill = AccountsPayable.query.filter_by(ap_number='OVR-003').first()
         assert bill is not None
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         lines = JournalEntryLine.query.filter_by(entry_id=je.id).all()
@@ -169,9 +169,9 @@ class TestBillPencilOverride:
         login(client)
         fx = self._fixtures(db_session)
 
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'OVR-004',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'OVR-004',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
@@ -185,7 +185,7 @@ class TestBillPencilOverride:
             'wt_override_value': '100.01',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='OVR-004').first()
+        bill = AccountsPayable.query.filter_by(ap_number='OVR-004').first()
         assert bill is not None
         assert bill.wt_override is True
         assert bill.withholding_tax_amount == Decimal('100.01')
@@ -196,9 +196,9 @@ class TestBillPencilOverride:
         login(client)
         fx = self._fixtures(db_session)
 
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'OVR-005',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'OVR-005',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
@@ -212,7 +212,7 @@ class TestBillPencilOverride:
             'wt_override_value': '99.99',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='OVR-005').first()
+        bill = AccountsPayable.query.filter_by(ap_number='OVR-005').first()
         assert bill is not None
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         lines = JournalEntryLine.query.filter_by(entry_id=je.id).all()
@@ -232,9 +232,9 @@ class TestBillPencilOverride:
         fx = self._fixtures(db_session)
 
         # ₱11,200 incl. 12% VAT + 1% WHT on base
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'OVR-006',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'OVR-006',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
@@ -248,7 +248,7 @@ class TestBillPencilOverride:
             'wt_override_value': '99.99',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='OVR-006').first()
+        bill = AccountsPayable.query.filter_by(ap_number='OVR-006').first()
         assert bill is not None
         assert bill.vat_override is True
         assert bill.vat_amount == Decimal('1200.01')
@@ -267,9 +267,9 @@ class TestBillPencilOverride:
         login(client)
         fx = self._fixtures(db_session)
 
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'OVR-BAD',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'OVR-BAD',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
@@ -282,7 +282,7 @@ class TestBillPencilOverride:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='OVR-BAD').first()
+        bill = AccountsPayable.query.filter_by(ap_number='OVR-BAD').first()
         assert bill is None  # rejected, not persisted
 
     def test_wt_override_out_of_range_rejected(
@@ -291,9 +291,9 @@ class TestBillPencilOverride:
         login(client)
         fx = self._fixtures(db_session)
 
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'OVR-BAD2',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'OVR-BAD2',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': fx['vendor'].id,
             'payment_terms': 'Net 30',
@@ -307,5 +307,5 @@ class TestBillPencilOverride:
             'wt_override_value': '99999.99',  # exceeds subtotal (10000)
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='OVR-BAD2').first()
+        bill = AccountsPayable.query.filter_by(ap_number='OVR-BAD2').first()
         assert bill is None

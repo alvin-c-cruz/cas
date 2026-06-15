@@ -3,13 +3,13 @@ import json
 import pytest
 from decimal import Decimal
 from datetime import date
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.vendors.models import Vendor
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
 
 
 
@@ -65,9 +65,9 @@ class TestBillCreatePostsJE:
         db_session.add(vat_cat)
         db_session.commit()
 
-        resp = client.post('/purchase-bills/create', data={
-            'bill_number': 'PBJ-001',
-            'bill_date': date.today().isoformat(),
+        resp = client.post('/accounts-payable/create', data={
+            'ap_number': 'PBJ-001',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': vendor.id,
             'payment_terms': 'Net 30',
@@ -82,7 +82,7 @@ class TestBillCreatePostsJE:
 
         assert resp.status_code == 200
 
-        bill = PurchaseBill.query.filter_by(bill_number='PBJ-001').first()
+        bill = AccountsPayable.query.filter_by(ap_number='PBJ-001').first()
         assert bill is not None
         assert bill.journal_entry_id is not None
 
@@ -108,9 +108,9 @@ class TestBillCreatePostsJE:
         db_session.add(vat_cat)
         db_session.commit()
 
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'PBJ-002',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'PBJ-002',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': vendor.id,
             'payment_terms': 'Net 30',
@@ -123,7 +123,7 @@ class TestBillCreatePostsJE:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='PBJ-002').first()
+        bill = AccountsPayable.query.filter_by(ap_number='PBJ-002').first()
         assert bill is not None, "Bill PBJ-002 not created"
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         lines = JournalEntryLine.query.filter_by(entry_id=je.id).all()
@@ -170,9 +170,9 @@ class TestBillCreatePostsJE:
             for i in range(1, 4)
         ])
 
-        resp = client.post('/purchase-bills/create', data={
-            'bill_number': 'PBJ-004',
-            'bill_date': date.today().isoformat(),
+        resp = client.post('/accounts-payable/create', data={
+            'ap_number': 'PBJ-004',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': vendor.id,
             'payment_terms': 'Net 30',
@@ -183,7 +183,7 @@ class TestBillCreatePostsJE:
         }, follow_redirects=True)
         assert resp.status_code == 200
 
-        bill = PurchaseBill.query.filter_by(bill_number='PBJ-004').first()
+        bill = AccountsPayable.query.filter_by(ap_number='PBJ-004').first()
         assert bill is not None, "Bill PBJ-004 not created (JE likely failed to balance)"
         assert bill.journal_entry_id is not None
 
@@ -209,9 +209,9 @@ class TestBillCreatePostsJE:
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
         # Create the bill
-        client.post('/purchase-bills/create', data={
-            'bill_number': 'PBJ-003',
-            'bill_date': date.today().isoformat(),
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'PBJ-003',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': vendor.id,
             'payment_terms': 'Net 30',
@@ -222,15 +222,15 @@ class TestBillCreatePostsJE:
             'wt_override': '0', 'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='PBJ-003').first()
+        bill = AccountsPayable.query.filter_by(ap_number='PBJ-003').first()
         assert bill is not None, "Bill PBJ-003 not created"
         old_je_id = bill.journal_entry_id
         assert old_je_id is not None
 
         # Edit the bill
-        client.post(f'/purchase-bills/{bill.id}/edit', data={
-            'bill_number': 'PBJ-003',
-            'bill_date': date.today().isoformat(),
+        client.post(f'/accounts-payable/{bill.id}/edit', data={
+            'ap_number': 'PBJ-003',
+            'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': vendor.id,
             'payment_terms': 'Net 30',
@@ -242,7 +242,7 @@ class TestBillCreatePostsJE:
         }, follow_redirects=True)
 
         db_session.expire_all()
-        bill = PurchaseBill.query.filter_by(bill_number='PBJ-003').first()
+        bill = AccountsPayable.query.filter_by(ap_number='PBJ-003').first()
         new_je_id = bill.journal_entry_id
         assert new_je_id is not None
 

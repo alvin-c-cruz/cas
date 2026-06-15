@@ -12,7 +12,7 @@ from app.accounts.models import Account
 from app.customers.models import Customer
 from app.vendors.models import Vendor
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.audit.models import AuditLog
 from app.errors.models import ErrorLog
 
@@ -172,12 +172,12 @@ class TestN1QueryPrevention:
             f"Query count: {query_counter.count}, expected <=5 (N+1 detected!)"
         )
 
-    def test_purchase_bills_with_items_optimized(self, db_session, query_counter):
+    def test_accounts_payable_with_items_optimized(self, db_session, query_counter):
         """
         RED → GREEN → REFACTOR
         REQUIREMENT: Loading bills with items should use <=3 queries for 50 bills
         WHY: Bill list shows item count - could trigger N+1
-        SOLUTION: Use selectinload(PurchaseBill.items)
+        SOLUTION: Use selectinload(AccountsPayable.items)
         """
         # Arrange: Create vendors and bills with items
         from app.vendors.models import Vendor
@@ -194,9 +194,9 @@ class TestN1QueryPrevention:
         db_session.commit()
 
         for i in range(50):
-            bill = PurchaseBill(
-                bill_number=f'BILL-{i:04d}',
-                bill_date=date(2026, 1, 1),
+            bill = AccountsPayable(
+                ap_number=f'BILL-{i:04d}',
+                ap_date=date(2026, 1, 1),
                 due_date=date(2026, 1, 31),
                 vendor_id=vendors[i % 5].id,
                 vendor_name=vendors[i % 5].name,
@@ -208,8 +208,8 @@ class TestN1QueryPrevention:
 
             # Add 3 items to each bill
             for j in range(3):
-                item = PurchaseBillItem(
-                    bill_id=bill.id,
+                item = AccountsPayableItem(
+                    ap_id=bill.id,
                     line_number=j + 1,
                     description=f'Item {j}',
                     amount=100.00,
@@ -222,7 +222,7 @@ class TestN1QueryPrevention:
         # Act: Load bills with items (with optimization)
         query_counter.reset()
         from sqlalchemy.orm import selectinload
-        bills = PurchaseBill.query.options(selectinload(PurchaseBill.line_items)).all()
+        bills = AccountsPayable.query.options(selectinload(AccountsPayable.line_items)).all()
 
         # Access items for each bill (should NOT trigger N+1 with selectinload)
         total_items = sum(len(bill.line_items) for bill in bills)

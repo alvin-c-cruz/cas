@@ -2,12 +2,12 @@
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.accounts.models import Account
 from app import db
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.unit]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.unit]
 
 
 
@@ -69,9 +69,9 @@ def test_customer(db_session):
 @pytest.fixture
 def posted_bill(db_session, admin_user, main_branch, gl_accounts, test_vendor):
     """Create a posted purchase bill with one line item and no WT."""
-    bill = PurchaseBill(
-        bill_number='PB-TEST-0001',
-        bill_date=date.today(),
+    bill = AccountsPayable(
+        ap_number='PB-TEST-0001',
+        ap_date=date.today(),
         due_date=date.today() + timedelta(days=30),
         vendor_id=test_vendor.id,
         vendor_name='Test Vendor',
@@ -92,8 +92,8 @@ def posted_bill(db_session, admin_user, main_branch, gl_accounts, test_vendor):
     db_session.add(bill)
     db_session.flush()
 
-    item = PurchaseBillItem(
-        bill_id=bill.id, line_number=1,
+    item = AccountsPayableItem(
+        ap_id=bill.id, line_number=1,
         description='Office Supplies', amount=Decimal('1120.00'),
         vat_category='VATABLE', vat_rate=Decimal('12.00'),
         line_total=Decimal('1120.00'), vat_amount=Decimal('120.00'),
@@ -104,7 +104,7 @@ def posted_bill(db_session, admin_user, main_branch, gl_accounts, test_vendor):
 
     # Posted bills always carry a stored JE (created on save, promoted on
     # post); the reversal helper mirrors it, so the fixture must book one.
-    from app.purchase_bills.views import _post_bill_je
+    from app.accounts_payable.views import _post_bill_je
     je = _post_bill_je(bill, admin_user.id)
     bill.journal_entry_id = je.id
     db_session.commit()
@@ -147,7 +147,7 @@ def posted_invoice(db_session, admin_user, main_branch, gl_accounts, test_custom
 
 # ── Model field tests ────────────────────────────────────────────────────────
 
-def test_purchase_bill_has_void_fields(db_session, posted_bill):
+def test_accounts_payable_has_void_fields(db_session, posted_bill):
     assert hasattr(posted_bill, 'voided_at')
     assert hasattr(posted_bill, 'voided_by_id')
     assert hasattr(posted_bill, 'void_reason')
@@ -170,7 +170,7 @@ def test_sales_invoice_has_sent_and_void_fields(db_session, posted_invoice):
 
 def test_create_bill_void_je_balanced(app, db_session, posted_bill, admin_user, gl_accounts):
     """Reversal JE must have total_debit == total_credit."""
-    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
+    from app.accounts_payable.views import _create_reversal_je as _create_bill_void_je
     je = _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
     db_session.flush()
     assert je.is_balanced, f"JE not balanced: DR={je.total_debit} CR={je.total_credit}"
@@ -179,7 +179,7 @@ def test_create_bill_void_je_balanced(app, db_session, posted_bill, admin_user, 
 
 
 def test_create_bill_void_je_reference_format(app, db_session, posted_bill, admin_user, gl_accounts):
-    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
+    from app.accounts_payable.views import _create_reversal_je as _create_bill_void_je
     je = _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
     assert je.reference == 'CANCEL-PB-TEST-0001'
     assert je.entry_type == 'reversal'
@@ -190,7 +190,7 @@ def test_create_bill_void_je_reference_format(app, db_session, posted_bill, admi
 def test_create_bill_void_je_without_stored_je_raises(app, db_session, posted_bill, admin_user, gl_accounts):
     """The reversal mirrors the stored JE, so a missing JE must fail clearly
     rather than rebuild a (possibly wrong) reversal from bill totals."""
-    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
+    from app.accounts_payable.views import _create_reversal_je as _create_bill_void_je
     posted_bill.journal_entry_id = None
     db_session.commit()
     with pytest.raises(ValueError, match='no stored journal entry'):
@@ -199,7 +199,7 @@ def test_create_bill_void_je_without_stored_je_raises(app, db_session, posted_bi
 
 def test_create_bill_void_je_mirrors_stored_lines(app, db_session, posted_bill, admin_user, gl_accounts):
     """Each reversal line swaps the debit/credit of the stored JE line."""
-    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
+    from app.accounts_payable.views import _create_reversal_je as _create_bill_void_je
     je = _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
     db_session.flush()
     source = posted_bill.journal_entry
@@ -214,7 +214,7 @@ def test_create_bill_void_je_mirrors_stored_lines(app, db_session, posted_bill, 
 
 def test_bill_void_sets_status_and_fields(app, db_session, posted_bill, admin_user, gl_accounts):
     """After voiding, bill fields are updated correctly."""
-    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
+    from app.accounts_payable.views import _create_reversal_je as _create_bill_void_je
     from app.utils import ph_now
     _create_bill_void_je(posted_bill, date.today(), admin_user.id, label='Cancel')
     posted_bill.status = 'voided'
@@ -232,7 +232,7 @@ def test_bill_void_sets_status_and_fields(app, db_session, posted_bill, admin_us
 
 def test_bill_void_creates_audit_entry(app, db_session, client, posted_bill, admin_user, gl_accounts):
     """Void route creates an audit log entry."""
-    from app.purchase_bills.views import _create_reversal_je as _create_bill_void_je
+    from app.accounts_payable.views import _create_reversal_je as _create_bill_void_je
     from app.audit.utils import log_audit
     from app.audit.models import AuditLog
 
@@ -244,15 +244,15 @@ def test_bill_void_creates_audit_entry(app, db_session, client, posted_bill, adm
     db_session.commit()
 
     log_audit(
-        module='purchase_bill',
+        module='accounts_payable',
         action='void',
         record_id=posted_bill.id,
-        record_identifier=f'{posted_bill.bill_number} - {posted_bill.vendor_name}',
+        record_identifier=f'{posted_bill.ap_number} - {posted_bill.vendor_name}',
         notes=f'Voided by {admin_user.username}. Reason: {void_reason}'
     )
 
     entry = AuditLog.query.filter_by(
-        module='purchase_bill', action='void', record_id=posted_bill.id
+        module='accounts_payable', action='void', record_id=posted_bill.id
     ).first()
     assert entry is not None
     assert admin_user.username in entry.notes

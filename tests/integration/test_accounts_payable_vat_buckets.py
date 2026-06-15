@@ -7,9 +7,9 @@ from datetime import date
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.vendors.models import Vendor
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 from app.journal_entries.models import JournalEntry
-pytestmark = [pytest.mark.purchase_bills, pytest.mark.integration]
+pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
 
 
 
@@ -50,9 +50,9 @@ def setup_world(db_session):
 
 def post_bill(client, vendor, lines, number='AP-BKT-0001',
               vat_override='0', vat_override_value='0'):
-    return client.post('/purchase-bills/create', data={
-        'bill_number': number,
-        'bill_date': date.today().isoformat(),
+    return client.post('/accounts-payable/create', data={
+        'ap_number': number,
+        'ap_date': date.today().isoformat(),
         'due_date': date.today().isoformat(),
         'vendor_id': vendor.id, 'payment_terms': 'Net 30',
         'notes': 'Test particulars',
@@ -64,7 +64,7 @@ def post_bill(client, vendor, lines, number='AP-BKT-0001',
 
 def je_lines_by_code(db_session, number):
     """Return (net-amount-by-account-code dict, JournalEntry) for a bill."""
-    bill = PurchaseBill.query.filter_by(bill_number=number).first()
+    bill = AccountsPayable.query.filter_by(ap_number=number).first()
     assert bill is not None, f'Bill {number} not created'
     je = db_session.get(JournalEntry, bill.journal_entry_id)
     out = {}
@@ -123,7 +123,7 @@ class TestVatBuckets:
         ], number='AP-BKT-0003')
         html = resp.data.decode('utf-8')
         assert 'has no Input Tax account configured' in html
-        assert PurchaseBill.query.filter_by(bill_number='AP-BKT-0003').first() is None
+        assert AccountsPayable.query.filter_by(ap_number='AP-BKT-0003').first() is None
 
     def test_override_zero_books_no_input_vat_lines(self, client, db_session,
                                                     admin_user, main_branch):
@@ -159,7 +159,7 @@ class TestVatBuckets:
         ], number='AP-BKT-0005', vat_override='1', vat_override_value='50')
         html = resp.data.decode('utf-8')
         assert 'too far below the computed VAT' in html
-        assert PurchaseBill.query.filter_by(bill_number='AP-BKT-0005').first() is None
+        assert AccountsPayable.query.filter_by(ap_number='AP-BKT-0005').first() is None
 
 
 class TestReversalMirrorsJE:
@@ -175,18 +175,18 @@ class TestReversalMirrorsJE:
             {'description': 'services', 'amount': 560.0, 'vat_category': 'V12SV',
              'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
         ], number='AP-BKT-0006')
-        bill = PurchaseBill.query.filter_by(bill_number='AP-BKT-0006').first()
+        bill = AccountsPayable.query.filter_by(ap_number='AP-BKT-0006').first()
         assert bill is not None
         bill.vendor_invoice_number = 'SI-1'
         bill.vendor_invoice_date = date(2026, 6, 12)
         db_session.commit()
-        client.post(f'/purchase-bills/{bill.id}/post', follow_redirects=True)
-        client.post(f'/purchase-bills/{bill.id}/cancel', data={
+        client.post(f'/accounts-payable/{bill.id}/post', follow_redirects=True)
+        client.post(f'/accounts-payable/{bill.id}/cancel', data={
             'cancel_reason': 'bucket reversal test reason',
             'reversal_date': '2026-06-12',
         }, follow_redirects=True)
 
-        bill = PurchaseBill.query.filter_by(bill_number='AP-BKT-0006').first()
+        bill = AccountsPayable.query.filter_by(ap_number='AP-BKT-0006').first()
         assert bill.status == 'cancelled'
         reversal = (JournalEntry.query
                     .filter(JournalEntry.reference.like('%AP-BKT-0006%'),
@@ -208,7 +208,7 @@ class TestReversalMirrorsJE:
         """A posted bill whose JE link is gone must fail loudly, not book a
         wrong reversal rebuilt from totals."""
         import pytest as _pytest
-        from app.purchase_bills.views import _create_reversal_je
+        from app.accounts_payable.views import _create_reversal_je
 
         w = setup_world(db_session)
         login(client)
@@ -218,7 +218,7 @@ class TestReversalMirrorsJE:
             {'description': 'goods', 'amount': 1120.0, 'vat_category': 'V12DG',
              'account_id': w['69903'].id, 'wt_id': None, 'wt_rate': None},
         ], number='AP-BKT-0007')
-        bill = PurchaseBill.query.filter_by(bill_number='AP-BKT-0007').first()
+        bill = AccountsPayable.query.filter_by(ap_number='AP-BKT-0007').first()
         bill.journal_entry_id = None
         db_session.commit()
         with _pytest.raises(ValueError, match='no stored journal entry'):
