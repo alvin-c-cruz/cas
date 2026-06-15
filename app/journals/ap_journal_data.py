@@ -71,6 +71,7 @@ def resolve_period(args, today):
         'date_from': df,
         'date_to': dt,
         'label': df.strftime('For the month of %B %Y'),
+        'label_body': df.strftime('the month of %B %Y'),
     }
 
 

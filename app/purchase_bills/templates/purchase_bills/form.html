@@ -171,7 +171,7 @@
 
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
-                        {{ 'Update Draft' if bill else 'Save Draft' }}
+                        {{ 'Update Bill' if bill else 'Enter Bill' }}
                     </button>
                     <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Back</a>
                 </div>
