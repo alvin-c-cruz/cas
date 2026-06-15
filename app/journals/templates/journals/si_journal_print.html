@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}SI Journal Print — {{ period.label }}{% endblock %}
+{% block page_title %}SI Journal — Print Preview{% endblock %}
+
+{% block extra_css %}
+<style>
+  .sij-print-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* Header */
+  .sij-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+  .sij-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .sij-header .branch-name  { font-size: 13px; font-weight: 700; color: #444; margin-top: 2px; }
+  .sij-header .doc-title    { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-top: 6px; }
+  .sij-header .period-label { font-size: 11px; color: #555; margin-top: 3px; }
+
+  /* Table */
+  .sij-scroll { overflow-x: auto; }
+  .sij-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .sij-table th, .sij-table td { border: 1px solid #aaa; padding: 3px 6px; white-space: nowrap; }
+  .sij-table th { background: #222; color: #fff; font-weight: 700; text-align: left; }
+  .sij-table th.num {
+    text-align: center; width: 120px; min-width: 120px;
+    white-space: normal; word-break: break-word; vertical-align: bottom;
+  }
+  .sij-table td.num { text-align: right; font-family: monospace; width: 120px; min-width: 120px; max-width: 120px; }
+  .sij-table th.credit-col { background: #b71c1c; }
+  .sij-table th.debit-col  { background: #1565c0; }
+  .sij-row-draft  td { background: #fffde7; }
+  .sij-row-voided td { background: #ffebee; text-decoration: line-through; }
+  .sij-row-voided td.no-strike { text-decoration: none; }
+  .sij-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
+  .balance-warning { margin-top: 10px; font-size: 11px; font-weight: 700; color: #b91c1c; }
+  .audit-footer { margin-top: 8px; font-size: 9px; color: #888; text-align: right;
+                  border-top: 1px solid #ddd; padding-top: 4px; }
+
+  @media print {
+    nav.sidebar, header.topbar, .sij-print-actions, .card-header { display: none !important; }
+    .main { margin-left: 0 !important; padding: 0 !important; }
+    .content-wrapper, .card { box-shadow: none !important; border: none !important; }
+    .sij-scroll { overflow: visible !important; }
+    @page { size: A4 landscape; margin: 10mm; }
+    .sij-table { font-size: 8px; }
+    .sij-table th.num { width: 90px; min-width: 90px; white-space: normal; }
+    .sij-table td.num { width: 90px; min-width: 90px; max-width: 90px; }
+    /* Repeat column headers on every printed page */
+    .sij-table thead { display: table-header-group; }
+    /* Keep each row on one page */
+    .sij-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    /* Keep company header attached to the table */
+    .sij-header { page-break-after: avoid; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="sij-print-actions">
+      <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
+      <a href="{{ url_for('journals.si_journal') }}" class="btn btn-secondary btn-sm">Back</a>
+    </div>
+  </div>
+  <div class="card-body">
+
+    <!-- Document header (visible on screen and in print) -->
+    <div class="sij-header">
+      {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
+      {% if branch_name %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
+      <div class="doc-title">SALES JOURNAL</div>
+      <div class="period-label">{{ period.label }}</div>
+    </div>
+
+    {% if matrix.rows %}
+    <div class="sij-scroll">
+    <table class="sij-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>SI No.</th>
+          <th>Customer PO</th>
+          <th>Customer</th>
+          <th>Particulars</th>
+          {% for col in matrix.columns %}
+          <th class="num {% if col.group in ['ar','wht_recv'] %}debit-col{% else %}credit-col{% endif %}">
+            {{ col.name }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix.rows %}
+        {% if row.is_voided %}
+        <tr class="sij-row-voided">
+          <td>{{ row.invoice.invoice_date.strftime('%d-%b-%Y') }}</td>
+          <td class="no-strike">{{ row.invoice.invoice_number }}</td>
+          <td>{{ row.invoice.customer_po_number or '' }}</td>
+          <td>{{ row.invoice.customer_name }}</td>
+          <td>[VOIDED] {{ row.invoice.notes or '' }}</td>
+          {% for col in matrix.columns %}<td class="num no-strike"></td>{% endfor %}
+        </tr>
+        {% else %}
+        {% set inv = invoice_map.get(row.entry.reference) %}
+        <tr {% if row.is_draft %}class="sij-row-draft"{% endif %}>
+          <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
+          <td>{{ row.entry.reference or '—' }}</td>
+          <td>{{ inv.customer_po_number if inv else '' }}</td>
+          <td>{{ inv.customer_name if inv else '—' }}</td>
+          <td>{{ ('[DRAFT] ' + ((inv.notes if inv else '') or '')) if row.is_draft else ((inv.notes if inv else '') or '') }}</td>
+          {% for col in matrix.columns %}
+          <td class="num">
+            {%- if not row.is_draft and col.account_id in row.cells and row.cells[col.account_id] != 0 -%}
+              {%- set v = row.cells[col.account_id] -%}
+              {%- if v < 0 -%}({{ '{:,.2f}'.format(-v) }}){%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endif %}
+        {% endfor %}
+
+        <tr class="sij-total">
+          <td colspan="5">TOTAL</td>
+          {% for col in matrix.columns %}
+          <td class="num">
+            {%- set t = matrix.totals.get(col.account_id) -%}
+            {%- if t and t != 0 -%}
+              {%- if t < 0 -%}({{ '{:,.2f}'.format(-t) }}){%- else -%}{{ '{:,.2f}'.format(t) }}{%- endif -%}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    {% if not matrix.balanced %}
+    <p class="balance-warning">Warning: Column totals do not net to zero — debits and credits are out of balance.</p>
+    {% endif %}
+
+    {% else %}
+    <p style="margin-top:16px; color:#555;">No SI entries found — {{ period.label | lower }}.</p>
+    {% endif %}
+
+    <div class="audit-footer">
+      Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+    </div>
+
+  </div>
+</div>
+{% endblock %}
