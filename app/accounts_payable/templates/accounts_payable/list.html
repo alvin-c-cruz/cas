@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}AP Vouchers{% endblock %}
+{% block page_title %}AP Vouchers{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<style>
+.choices__list--dropdown { min-width: 220px; }
+.choices__list--dropdown .choices__list { max-height: 200px; overflow-y: auto; }
+
+/* Vendor Choices.js — match native Status select appearance */
+.pb-filter-bar .choices {
+    width: 160px;
+    margin-bottom: 0;
+}
+.pb-filter-bar .choices__inner {
+    padding: 10px 36px 10px 14px;
+    font-size: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: white;
+    min-height: unset;
+    font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+.pb-filter-bar .choices.is-focused .choices__inner,
+.pb-filter-bar .choices.is-open .choices__inner {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    outline: none;
+}
+.pb-filter-bar .choices__list--single { padding: 0; }
+.pb-filter-bar .choices__list--single .choices__item {
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+}
+.pb-filter-bar .choices[data-type*='select-one']::after {
+    border-color: #64748b transparent transparent;
+    right: 14px;
+}
+.pb-filter-bar .choices[data-type*='select-one'].is-open::after {
+    border-color: transparent transparent #64748b;
+}
+@media (max-width: 640px) {
+    .pb-filter-bar .choices { width: 100%; }
+}
+.pb-date-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.pb-date-group__label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    padding-left: 2px;
+}
+</style>
+{% endblock %}
+{% block content %}
+
+<!-- Summary cards -->
+<div class="pb-summary-grid">
+    <div class="pb-card">
+        <div class="pb-card-label">Outstanding AP</div>
+        <div class="pb-card-value">₱{{ '{:,.2f}'.format(summary.outstanding_total) }}</div>
+        <div class="pb-card-detail">{{ summary.outstanding_count }} open APV{{ 's' if summary.outstanding_count != 1 else '' }}</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label" style="color:var(--red);">Overdue</div>
+        <div class="pb-card-value" style="color:var(--red);">₱{{ '{:,.2f}'.format(summary.overdue_total) }}</div>
+        <div class="pb-card-detail">{{ summary.overdue_count }} APV{{ 's' if summary.overdue_count != 1 else '' }}</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label" style="color:var(--amber);">Due in 7 Days</div>
+        <div class="pb-card-value">₱{{ '{:,.2f}'.format(summary.due_soon_total) }}</div>
+        <div class="pb-card-detail">{{ summary.due_soon_count }} APV{{ 's' if summary.due_soon_count != 1 else '' }}</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label">Drafts</div>
+        <div class="pb-card-value">{{ summary.draft_count }}</div>
+        <div class="pb-card-detail">to finish</div>
+    </div>
+</div>
+
+<!-- Filter bar -->
+<form method="GET" action="{{ url_for('purchase_bills.list_bills') }}" class="pb-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search APV # or vendor"
+           class="form-control form-control-sm pb-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+        <option value="partially_paid" {% if status_filter == 'partially_paid' %}selected{% endif %}>Partially Paid</option>
+        <option value="paid" {% if status_filter == 'paid' %}selected{% endif %}>Paid</option>
+        <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+    <select name="vendor" id="vendor-filter" class="form-control form-control-sm">
+        <option value="all">All Vendors</option>
+        {% for v in vendors %}
+        <option value="{{ v.id }}" {% if vendor_filter == v.id|string %}selected{% endif %}>{{ v.name }}</option>
+        {% endfor %}
+    </select>
+    <label class="pb-date-group">
+        <span class="pb-date-group__label">From</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </label>
+    <label class="pb-date-group">
+        <span class="pb-date-group__label">To</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
+            <span id="pb-selected-count" class="pb-selected-count"></span>
+            <!-- Future: "Pay selected" button (payment voucher project) renders here -->
+            <a href="{{ url_for('journals.ap_journal') }}"
+               class="btn btn-secondary btn-sm">View Journal</a>
+            <a href="{{ url_for('journals.ap_journal_export') }}"
+               class="btn btn-secondary btn-sm">Download Journal</a>
+            <a href="{{ url_for('purchase_bills.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm pb-export-link">Export Excel</a>
+            <a href="{{ url_for('purchase_bills.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary pb-export-link">📄 Export CSV</a>
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Enter APV</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        {% if bills %}
+        {% set badge_map = {'draft':'draft','posted':'posted','partially_paid':'partial','paid':'paid','voided':'void','cancelled':'cancelled'} %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width:28px;"><input type="checkbox" id="pb-check-all" aria-label="Select all APVs"></th>
+                    <th>APV #</th><th>Date</th><th>Vendor</th><th>Due Date</th>
+                    <th style="text-align:right;">Subtotal</th>
+                    <th style="text-align:right;">VAT</th>
+                    <th style="text-align:right;">WT</th>
+                    <th style="text-align:right;">Net Payable</th>
+                    <th style="text-align:right;">Balance</th>
+                    <th>Status</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bill in bills %}
+                <tr>
+                    <td><input type="checkbox" class="pb-row-check" value="{{ bill.id }}" aria-label="Select {{ bill.bill_number }}"></td>
+                    <td><a href="{{ url_for('purchase_bills.view', id=bill.id) }}" style="font-weight:600;color:var(--blue);">{{ bill.bill_number }}</a></td>
+                    <td>{{ bill.bill_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ bill.vendor_name }}</td>
+                    <td {% if bill.due_date and bill.due_date < today and bill.status in ['posted', 'partially_paid'] %}style="color:var(--red);font-weight:600;"{% endif %}>
+                        {{ bill.due_date.strftime('%b %d, %Y') if bill.due_date else '—' }}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.subtotal) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);{% if bill.withholding_tax_amount > 0 %}color:var(--red);{% endif %}">
+                        {% if bill.withholding_tax_amount > 0 %}-₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">
+                        {% if bill.status in ['paid', 'voided', 'cancelled'] %}—{% else %}₱{{ '{:,.2f}'.format(bill.balance) }}{% endif %}
+                    </td>
+                    <td><span class="badge badge-{{ badge_map.get(bill.status, 'draft') }}">{{ bill.status|replace('_', ' ')|title }}</span></td>
+                    <td>
+                        <a href="{{ url_for('purchase_bills.view', id=bill.id) }}" class="btn-action">👁️</a>
+                        {% if bill.status == 'draft' %}<a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn-action">✏️</a>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        {% set filters_active = q or status_filter != 'all' or vendor_filter != 'all' or date_from or date_to %}
+        <div class="empty-state">
+            {% if filters_active %}
+            <p>No APVs match your filters.</p>
+            <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Clear Filters</a>
+            {% else %}
+            <p>No AP Vouchers found.</p>
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Enter First APV</a>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} APVs
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.prev_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">← Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.next_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.pb-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.pb-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
+}
+.pb-card-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+}
+.pb-card-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--mono);
+    margin: 4px 0 2px;
+}
+.pb-card-detail { font-size: 12px; color: var(--text-3); }
+.pb-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+}
+/* Global .form-control is width:100%; constrain inside the filter bar so
+   the controls share one row instead of stacking full-width. */
+.pb-filter-bar .form-control { width: auto; }
+.pb-filter-bar select.form-control { width: 160px; }
+.pb-filter-bar input[type="date"].form-control { width: 150px; }
+.pb-filter-search { flex: 1 1 200px; min-width: 180px; }
+@media (max-width: 640px) {
+    .pb-filter-bar .form-control,
+    .pb-filter-bar select.form-control,
+    .pb-filter-bar input[type="date"].form-control { width: 100%; }
+}
+.pb-selected-count { font-size: 13px; color: var(--text-2); }
+.btn-action {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 14px;
+}
+.btn-action:hover { background: var(--border); }
+@media (max-width: 1024px) { .pb-summary-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .pb-summary-grid { grid-template-columns: 1fr; } }
+</style>
+
+<script>
+(function () {
+    const checkAll = document.getElementById('pb-check-all');
+    const rowChecks = document.querySelectorAll('.pb-row-check');
+    const counter = document.getElementById('pb-selected-count');
+    const exportLinks = document.querySelectorAll('.pb-export-link');
+
+    function updateSelection() {
+        const selected = Array.from(rowChecks).filter(cb => cb.checked).map(cb => cb.value);
+        counter.textContent = selected.length ? selected.length + ' selected' : '';
+        exportLinks.forEach(link => {
+            const url = new URL(link.href, window.location.origin);
+            if (selected.length) {
+                url.searchParams.set('ids', selected.join(','));
+            } else {
+                url.searchParams.delete('ids');
+            }
+            const qs = url.searchParams.toString();
+            link.href = url.pathname + (qs ? '?' + qs : '');
+        });
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', function () {
+            rowChecks.forEach(cb => { cb.checked = checkAll.checked; });
+            updateSelection();
+        });
+    }
+    rowChecks.forEach(cb => cb.addEventListener('change', updateSelection));
+})();
+</script>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const vendorSel = document.getElementById('vendor-filter');
+    if (vendorSel) {
+        new Choices(vendorSel, {
+            searchEnabled: true,
+            itemSelectText: '',
+            shouldSort: false,
+            allowHTML: false,
+        });
+    }
+})();
+</script>
+
+{% endblock %}

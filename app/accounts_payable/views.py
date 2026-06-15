@@ -1,0 +1,1342 @@
+"""
+Purchase Bill views for managing supplier invoices and expenses.
+"""
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort, current_app, send_file
+from flask_login import login_required, current_user
+from functools import wraps
+from sqlalchemy.orm import selectinload
+from app import db
+from app.purchase_bills.models import PurchaseBill, PurchaseBillItem, PurchaseBillAttachment
+from app.purchase_bills.forms import PurchaseBillForm
+from app.vendors.models import Vendor
+from app.vat_categories.models import VATCategory
+from app.accounts.models import Account
+from app.withholding_tax.models import WithholdingTax
+from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
+from app.utils import ph_now
+from app.utils.export import export_to_excel, export_to_csv
+from app.settings import AppSettings
+from app.periods.utils import validate_transaction_date_with_flash
+from app.journal_entries.utils import generate_entry_number
+from datetime import date, timedelta
+from decimal import Decimal
+import json
+import os
+import uuid
+from werkzeug.utils import secure_filename
+
+purchase_bills_bp = Blueprint('purchase_bills', __name__, template_folder='templates')
+
+
+def _get_gl_accounts():
+    """Return the AP and WHT GL accounts used for purchase bill journal entries.
+
+    Input VAT accounts are no longer fixed here — each VAT category carries
+    its own input_vat_account (B-014); see _input_vat_buckets().
+    """
+    ap_acct = Account.query.filter_by(code='20101').first()
+    wt_gl_acct = Account.query.filter_by(code='20301').first()
+    return {
+        'ap': ap_acct,
+        'wt': wt_gl_acct,
+    }
+
+
+def _input_vat_buckets(bill):
+    """Group the bill's input VAT by each line's VAT-category account (B-014).
+
+    Returns an ordered list of (Account, Decimal) pairs (by account code).
+    The whole-bill VAT override difference is applied to the largest bucket.
+    Raises ValueError if a VAT-bearing line's category has no account, or
+    if the override is so far below the computed VAT that a bucket would
+    go negative.
+    """
+    if Decimal(str(bill.vat_amount)) <= 0:
+        # Override of 0 (or no VAT at all): nothing to book to input tax
+        # accounts; the JE's residual absorber handles any difference.
+        return []
+
+    categories = {c.code: c for c in VATCategory.query.all()}
+    buckets = {}  # account_id -> [Account, Decimal]
+    for item in bill.line_items:
+        vat_amt = Decimal(str(item.vat_amount or 0))
+        if vat_amt <= 0:
+            continue
+        cat = categories.get(item.vat_category)
+        acct = cat.input_vat_account if cat else None
+        if acct is None:
+            label = cat.code if cat else (item.vat_category or 'unknown')
+            raise ValueError(
+                f"VAT category '{label}' has no Input Tax account configured. "
+                "Set it in VAT Categories.")
+        if acct.id not in buckets:
+            buckets[acct.id] = [acct, Decimal('0.00')]
+        buckets[acct.id][1] += vat_amt
+
+    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
+    total = sum((amt for _, amt in ordered), Decimal('0.00'))
+    override_diff = Decimal(str(bill.vat_amount)) - total
+    if override_diff != Decimal('0.00') and ordered:
+        largest_acct_id = max(ordered, key=lambda b: b[1])[0].id
+        ordered = [
+            (acct, amt + override_diff if acct.id == largest_acct_id else amt)
+            for acct, amt in ordered
+        ]
+    ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
+    if any(amt < Decimal('0.00') for _, amt in ordered):
+        raise ValueError(
+            'VAT override is too far below the computed VAT to allocate '
+            'across input tax accounts. Adjust the override or the line '
+            'VAT categories.')
+    return ordered
+
+
+def _build_je_preview(bill):
+    """Return list of {code, name, debit, credit} dicts for the JE section.
+
+    For posted bills reads from the stored JournalEntry. For drafts,
+    computes the same entries the post route would create.
+    """
+    if bill.journal_entry:
+        return [
+            {
+                'code': line.account.code if line.account else '—',
+                'name': line.account.name if line.account else '—',
+                'debit': line.debit_amount,
+                'credit': line.credit_amount,
+            }
+            for line in bill.journal_entry.lines.all()
+        ]
+
+    accts = _get_gl_accounts()
+    entries = []
+
+    for item in bill.line_items:
+        if not item.account_id or not item.account:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entries.append({
+            'code': item.account.code if item.account else '—',
+            'name': item.account.name if item.account else '—',
+            'debit': net_base,
+            'credit': Decimal('0.00'),
+        })
+
+    try:
+        vat_buckets = _input_vat_buckets(bill)
+    except ValueError as e:
+        # Legacy draft with an unmapped VAT-bearing category — keep the page
+        # rendering and surface the problem inline instead of crashing.
+        vat_buckets = []
+        vat_amount = Decimal(str(bill.vat_amount))
+        if vat_amount > 0:
+            entries.append({
+                'code': '—',
+                'name': str(e),
+                'debit': vat_amount,
+                'credit': Decimal('0.00'),
+            })
+    for vat_acct, vat_amt in vat_buckets:
+        if vat_amt <= 0:
+            continue
+        entries.append({
+            'code': vat_acct.code,
+            'name': vat_acct.name,
+            'debit': vat_amt,
+            'credit': Decimal('0.00'),
+        })
+
+    wt_amount = Decimal(str(bill.withholding_tax_amount))
+    if wt_amount > 0 and accts['wt']:
+        entries.append({
+            'code': accts['wt'].code,
+            'name': accts['wt'].name,
+            'debit': Decimal('0.00'),
+            'credit': wt_amount,
+        })
+
+    if accts['ap']:
+        entries.append({
+            'code': accts['ap'].code,
+            'name': accts['ap'].name,
+            'debit': Decimal('0.00'),
+            'credit': Decimal(str(bill.total_amount)),
+        })
+
+    return entries
+
+
+def _get_all_accounts_for_select():
+    """Return all active accounts with is_group and depth flags for the account picker.
+    Group accounts (those with children) are shown but non-selectable per hierarchy rules.
+    """
+    all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    parent_ids = {a.parent_id for a in all_accts if a.parent_id is not None}
+    id_map = {a.id: a for a in all_accts}
+
+    def _depth(acct):
+        d, p = 0, acct.parent_id
+        while p and p in id_map:
+            d += 1
+            p = id_map[p].parent_id
+        return d
+
+    result = []
+    for a in all_accts:
+        d = a.to_dict()
+        d['is_group'] = a.id in parent_ids
+        d['depth'] = _depth(a)
+        result.append(d)
+    return result
+
+
+def accountant_or_admin_required(f):
+    """Decorator to require accountant or admin role."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if current_user.role not in ['accountant', 'admin']:
+            flash('Only Accountants and Administrators can manage AP Vouchers.', 'error')
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def staff_or_above_required(f):
+    """Tier 1 AP voucher ops — staff, accountant, and admin allowed."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if current_user.role not in ['staff', 'accountant', 'admin']:
+            flash('You do not have permission to perform this action.', 'error')
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+VALID_BILL_STATUSES = {'draft', 'posted', 'partially_paid', 'paid', 'voided', 'cancelled'}
+
+
+@purchase_bills_bp.before_request
+def require_branch_selection():
+    if current_user.is_authenticated and not session.get('selected_branch_id'):
+        flash('Please select a branch to continue.', 'warning')
+        return redirect(url_for('users.select_branch'))
+
+
+def generate_bill_number():
+    """
+    Generate next bill number in format: AP-YYYY-MM-NNNN
+    Example: AP-2026-06-0001 (resets each month)
+
+    Voided bills keep their number (bill_number is unique; reissuing a
+    voided number would collide), so the sequence counts ALL bills.
+    """
+    now = ph_now()
+    prefix = f'AP-{now.year}-{now.month:02d}-'
+
+    latest_bill = PurchaseBill.query.filter(
+        PurchaseBill.bill_number.like(f'{prefix}%')
+    ).order_by(PurchaseBill.bill_number.desc()).first()
+
+    if latest_bill:
+        try:
+            last_num = int(latest_bill.bill_number.split('-')[-1])
+            next_num = last_num + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    return f'{prefix}{next_num:04d}'
+
+
+def _get_bill_or_404(id):
+    bill = PurchaseBill.query.get_or_404(id)
+    if bill.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    return bill
+
+
+def _bill_upload_dir(bill_id):
+    """Return (and create if needed) the upload directory for a bill's attachments."""
+    path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'purchase_bills', str(bill_id))
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+# Server-side allowlist: extension → canonical MIME type.
+# SVG is intentionally excluded — it executes JS when served inline.
+_ATTACHMENT_ALLOWED = {
+    '.png':  'image/png',
+    '.jpg':  'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif':  'image/gif',
+    '.webp': 'image/webp',
+    '.pdf':  'application/pdf',
+    '.doc':  'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls':  'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.csv':  'text/csv',
+    '.txt':  'text/plain',
+}
+
+
+_EXPORT_COLUMNS = [
+    'bill_number', 'bill_date', 'due_date', 'vendor_name', 'vendor_tin',
+    'vendor_invoice_number', 'subtotal', 'vat_amount', 'withholding_tax_amount',
+    'total_amount', 'amount_paid', 'balance', 'status',
+]
+
+_EXPORT_HEADERS = [
+    'Bill #', 'Bill Date', 'Due Date', 'Vendor', 'TIN', 'Vendor Invoice #',
+    'Subtotal', 'VAT', 'Withholding Tax', 'Total', 'Paid', 'Balance', 'Status',
+]
+
+
+def _apply_overrides(bill):
+    """Apply VAT/WT manual overrides from request.form to bill.
+
+    Mutates bill in place. Returns a redirect Response on validation error,
+    or None on success. Caller must check the return value.
+    """
+    import decimal as _decimal
+    vat_override = request.form.get('vat_override') == '1'
+    wt_override = request.form.get('wt_override') == '1'
+    bill.vat_override = vat_override
+    bill.wt_override = wt_override
+    if vat_override:
+        try:
+            vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
+            if vat_val < 0 or vat_val > bill.subtotal:
+                raise ValueError('out of range')
+        except (_decimal.InvalidOperation, ValueError):
+            db.session.rollback()
+            flash('Invalid VAT override value.', 'danger')
+            return redirect(url_for('purchase_bills.list_bills'))
+        bill.vat_amount = vat_val
+    if wt_override:
+        try:
+            wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
+            if wt_val < 0 or wt_val > bill.subtotal:
+                raise ValueError('out of range')
+        except (_decimal.InvalidOperation, ValueError):
+            db.session.rollback()
+            flash('Invalid withholding tax override value.', 'danger')
+            return redirect(url_for('purchase_bills.list_bills'))
+        bill.withholding_tax_amount = wt_val
+    bill.total_amount = bill.subtotal - bill.withholding_tax_amount
+    bill.balance = bill.total_amount - bill.amount_paid
+    return None
+
+
+def _filtered_bills_query(include_ids=False):
+    """Build a branch-scoped PurchaseBill query from request filter args.
+
+    Args read: status, vendor, q, date_from, date_to — and ids when
+    include_ids=True (exports only); a valid ids list overrides all
+    other filters but stays branch-scoped. Invalid values are ignored.
+    """
+    current_branch_id = session.get('selected_branch_id')
+    query = PurchaseBill.query.filter_by(branch_id=current_branch_id)
+
+    if include_ids:
+        ids_param = request.args.get('ids', '')
+        if ids_param:
+            ids = [int(x) for x in ids_param.split(',') if x.strip().isdigit()]
+            if ids:
+                return query.filter(PurchaseBill.id.in_(ids))
+
+    status_filter = request.args.get('status', 'all')
+    if status_filter in VALID_BILL_STATUSES:
+        query = query.filter_by(status=status_filter)
+
+    vendor_filter = request.args.get('vendor', 'all')
+    if vendor_filter != 'all':
+        try:
+            query = query.filter_by(vendor_id=int(vendor_filter))
+        except ValueError:
+            pass
+
+    q = request.args.get('q', '').strip()
+    if q:
+        like = f'%{q}%'
+        query = query.filter(db.or_(PurchaseBill.bill_number.ilike(like),
+                                    PurchaseBill.vendor_name.ilike(like)))
+
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
+    if date_from:
+        try:
+            query = query.filter(PurchaseBill.bill_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', f'{year}-12-31')
+    if date_to:
+        try:
+            query = query.filter(PurchaseBill.bill_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    return query
+
+
+@purchase_bills_bp.route('/purchase-bills')
+@login_required
+def list_bills():
+    """List purchase bills with summary cards, filters, search, pagination."""
+    from app.purchase_bills.utils import compute_bills_summary
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    query = (_filtered_bills_query()
+             .order_by(PurchaseBill.bill_date.desc()))
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    summary = compute_bills_summary(session.get('selected_branch_id'))
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+
+    return render_template('purchase_bills/list.html',
+                           bills=pagination.items,
+                           pagination=pagination,
+                           vendors=vendors,
+                           summary=summary,
+                           today=ph_now().date(),
+                           status_filter=request.args.get('status', 'all'),
+                           vendor_filter=request.args.get('vendor', 'all'),
+                           q=request.args.get('q', ''),
+                           date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
+                           date_to=request.args.get('date_to', f'{ph_now().year}-12-31'))
+
+
+@purchase_bills_bp.route('/purchase-bills/export/excel')
+@login_required
+def export_excel():
+    bills = _filtered_bills_query(include_ids=True).options(
+        selectinload(PurchaseBill.line_items)
+    ).order_by(PurchaseBill.bill_date.desc()).all()
+    log_audit('purchase_bill', 'export_excel', None, f'{len(bills)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_excel(
+        data=bills,
+        columns=_EXPORT_COLUMNS,
+        headers=_EXPORT_HEADERS,
+        filename=f'purchase_bills_{timestamp}.xlsx',
+        title='Purchase Bills Report',
+    )
+
+
+@purchase_bills_bp.route('/purchase-bills/export/csv')
+@login_required
+def export_csv_route():
+    bills = _filtered_bills_query(include_ids=True).options(
+        selectinload(PurchaseBill.line_items)
+    ).order_by(PurchaseBill.bill_date.desc()).all()
+    log_audit('purchase_bill', 'export_csv', None, f'{len(bills)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_csv(
+        data=bills,
+        columns=_EXPORT_COLUMNS,
+        headers=_EXPORT_HEADERS,
+        filename=f'purchase_bills_{timestamp}.csv',
+    )
+
+
+@purchase_bills_bp.route('/purchase-bills/print')
+@login_required
+def print_list():
+    from app.settings import AppSettings
+    bills = (_filtered_bills_query(include_ids=True)
+             .order_by(PurchaseBill.bill_date.desc()).all())
+    company_name = AppSettings.get_setting('company_name') or ''
+    return render_template('purchase_bills/list_print.html',
+                           bills=bills,
+                           company_name=company_name,
+                           today=ph_now().date(),
+                           printed_at=ph_now(),
+                           status_filter=request.args.get('status', 'all'),
+                           date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
+                           date_to=request.args.get('date_to', f'{ph_now().year}-12-31'))
+
+
+@purchase_bills_bp.route('/purchase-bills/create', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def create():
+    """Create new purchase bill."""
+    form = PurchaseBillForm()
+
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    form.vendor_id.choices = [(0, '-- Select Vendor --')] + [(v.id, f'{v.code} - {v.name}') for v in vendors]
+
+    if form.validate_on_submit():
+        # Validate that the bill date is not in a closed period
+        if not validate_transaction_date_with_flash(form.bill_date.data, 'AP Voucher'):
+            return render_template('purchase_bills/form.html', form=form, bill=None)
+
+        try:
+            vendor = Vendor.query.get(form.vendor_id.data)
+            if not vendor:
+                flash('Selected vendor not found.', 'error')
+                return render_template('purchase_bills/form.html', form=form, bill=None)
+
+            bill = PurchaseBill(
+                branch_id=session.get('selected_branch_id'),
+                bill_number=form.bill_number.data,
+                bill_date=form.bill_date.data,
+                due_date=form.due_date.data,
+                vendor_id=vendor.id,
+                vendor_name=vendor.name,
+                vendor_tin=vendor.tin,
+                vendor_address=vendor.address,
+                vendor_invoice_number=form.vendor_invoice_number.data,
+                vendor_invoice_date=form.vendor_invoice_date.data,
+                payment_terms=form.payment_terms.data,
+                withholding_tax_rate=Decimal('0.00'),
+                reference=form.reference.data,
+                notes=form.notes.data,
+                status='draft',
+                amount_paid=Decimal('0.00'),
+                balance=Decimal('0.00'),
+                created_by_id=current_user.id
+            )
+
+            line_items_data = request.form.getlist('line_items')
+            if line_items_data:
+                line_items = json.loads(line_items_data[0]) if line_items_data[0] else []
+
+                for idx, item_data in enumerate(line_items, start=1):
+                    vat_rate = Decimal('0.00')
+                    vat_category = item_data.get('vat_category')
+                    if vat_category:
+                        vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+                        if vat_cat:
+                            vat_rate = Decimal(str(vat_cat.rate))
+
+                    wt_id = int(item_data['wt_id']) if item_data.get('wt_id') else None
+                    wt_rate = None
+                    if wt_id:
+                        wt_obj = WithholdingTax.query.get(wt_id)
+                        if wt_obj:
+                            wt_rate = wt_obj.rate
+
+                    line_item = PurchaseBillItem(
+                        line_number=idx,
+                        description=item_data.get('description', ''),
+                        amount=Decimal(str(item_data.get('amount', 0))),
+                        vat_category=vat_category,
+                        vat_rate=vat_rate,
+                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None,
+                        wt_id=wt_id,
+                        wt_rate=wt_rate,
+                    )
+                    line_item.calculate_amounts()
+                    bill.line_items.append(line_item)
+
+            bill.calculate_totals()
+
+            err = _apply_overrides(bill)
+            if err:
+                return err
+
+            db.session.add(bill)
+            db.session.flush()  # need bill.id before creating JE
+
+            je = _post_bill_je(bill, current_user.id)
+            bill.journal_entry_id = je.id
+            db.session.commit()
+
+            log_create(
+                module='purchase_bill',
+                record_id=bill.id,
+                record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
+                new_values=model_to_dict(bill, ['bill_number', 'bill_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+            )
+
+            flash(f'AP Voucher "{bill.bill_number}" entered successfully!', 'success')
+            return redirect(url_for('purchase_bills.view', id=bill.id))
+
+        except Exception as e:
+            from app.errors.utils import log_exception
+            # Roll back BEFORE logging — log_exception commits the session,
+            # which would otherwise persist the half-saved bill.
+            db.session.rollback()
+            current_app.logger.error(f"Error creating purchase bill", exc_info=True)
+            log_exception(e, severity='ERROR', module='purchase_bills.create')
+            flash(f'Error entering AP Voucher: {str(e)}', 'error')
+
+    if request.method == 'GET':
+        form.bill_number.data = generate_bill_number()
+        form.bill_date.data = ph_now().date()
+        form.due_date.data = ph_now().date() + timedelta(days=30)
+
+    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+    all_accounts = _get_all_accounts_for_select()
+
+    _accts = _get_gl_accounts()
+    gl_accounts = {
+        'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
+        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
+    }
+    return render_template('purchase_bills/form.html',
+                         form=form,
+                         bill=None,
+                         vat_categories=vat_categories,
+                         all_accounts=all_accounts,
+                         gl_accounts=gl_accounts)
+
+
+@purchase_bills_bp.route('/purchase-bills/<int:id>')
+@login_required
+def view(id):
+    """View purchase bill details."""
+    bill = _get_bill_or_404(id)
+    je_entries = _build_je_preview(bill)
+    apv_print_access = AppSettings.get_setting('apv_print_access', 'posted_only')
+    return render_template('purchase_bills/detail.html', bill=bill,
+                           je_entries=je_entries,
+                           apv_print_access=apv_print_access)
+
+
+@purchase_bills_bp.route('/purchase-bills/<int:id>/print')
+@login_required
+def print_bill(id):
+    """Standalone print preview for an APV."""
+    bill = _get_bill_or_404(id)
+
+    # Sort JE lines: non-VAT debits → VAT debits → credits, each by account code
+    je_lines = []
+    if bill.journal_entry:
+        vat_account_ids = {
+            c.input_vat_account_id
+            for c in VATCategory.query.all()
+            if c.input_vat_account_id
+        }
+        lines = bill.journal_entry.lines.all()
+        debit_non_vat = sorted(
+            [line for line in lines if (line.debit_amount or 0) > 0 and line.account_id not in vat_account_ids],
+            key=lambda line: line.account.code
+        )
+        debit_vat = sorted(
+            [line for line in lines if (line.debit_amount or 0) > 0 and line.account_id in vat_account_ids],
+            key=lambda line: line.account.code
+        )
+        credits = [line for line in lines if (line.credit_amount or 0) > 0]
+        je_lines = debit_non_vat + debit_vat + credits
+
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+
+    return render_template(
+        'purchase_bills/print.html',
+        bill=bill,
+        je_lines=je_lines,
+        company=company,
+        printed_at=ph_now(),
+    )
+
+
+@purchase_bills_bp.route('/purchase-bills/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def edit(id):
+    """Edit purchase bill (only drafts can be edited)."""
+    bill = _get_bill_or_404(id)
+
+    if bill.status != 'draft':
+        flash('Only draft APVs can be edited.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    form = PurchaseBillForm(obj=bill)
+
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
+
+    if form.validate_on_submit():
+        # Validate that the bill date is not in a closed period
+        if not validate_transaction_date_with_flash(form.bill_date.data, 'AP Voucher'):
+            return render_template('purchase_bills/form.html', form=form, bill=bill)
+
+        try:
+            old_values = model_to_dict(bill, ['bill_number', 'bill_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+
+            vendor = Vendor.query.get(form.vendor_id.data)
+            if not vendor:
+                flash('Selected vendor not found.', 'error')
+                return render_template('purchase_bills/form.html', form=form, bill=bill)
+
+            bill.bill_number = form.bill_number.data
+            bill.bill_date = form.bill_date.data
+            bill.due_date = form.due_date.data
+            bill.vendor_id = vendor.id
+            bill.vendor_name = vendor.name
+            bill.vendor_tin = vendor.tin
+            bill.vendor_address = vendor.address
+            bill.vendor_invoice_number = form.vendor_invoice_number.data
+            bill.vendor_invoice_date = form.vendor_invoice_date.data
+            bill.payment_terms = form.payment_terms.data
+            bill.withholding_tax_rate = Decimal('0.00')
+            bill.reference = form.reference.data
+            bill.notes = form.notes.data
+
+            PurchaseBillItem.query.filter_by(bill_id=bill.id).delete()
+
+            line_items_data = request.form.getlist('line_items')
+            if line_items_data:
+                line_items = json.loads(line_items_data[0]) if line_items_data[0] else []
+
+                for idx, item_data in enumerate(line_items, start=1):
+                    vat_rate = Decimal('0.00')
+                    vat_category = item_data.get('vat_category')
+                    if vat_category:
+                        vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+                        if vat_cat:
+                            vat_rate = Decimal(str(vat_cat.rate))
+
+                    wt_id = int(item_data['wt_id']) if item_data.get('wt_id') else None
+                    wt_rate = None
+                    if wt_id:
+                        wt_obj = WithholdingTax.query.get(wt_id)
+                        if wt_obj:
+                            wt_rate = wt_obj.rate
+
+                    line_item = PurchaseBillItem(
+                        bill_id=bill.id,
+                        line_number=idx,
+                        description=item_data.get('description', ''),
+                        amount=Decimal(str(item_data.get('amount', 0))),
+                        vat_category=vat_category,
+                        vat_rate=vat_rate,
+                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None,
+                        wt_id=wt_id,
+                        wt_rate=wt_rate,
+                    )
+                    line_item.calculate_amounts()
+                    db.session.add(line_item)
+
+            bill.calculate_totals()
+
+            err = _apply_overrides(bill)
+            if err:
+                return err
+
+            # Delete old JE and create a fresh one
+            if bill.journal_entry_id:
+                from app.journal_entries.models import JournalEntry as _JE
+                old_je_id_to_delete = bill.journal_entry_id
+                bill.journal_entry_id = None
+                bill.journal_entry = None
+                db.session.flush()  # commit FK null before deleting the JE row
+                old_je = db.session.get(_JE, old_je_id_to_delete)
+                if old_je:
+                    db.session.delete(old_je)
+
+            db.session.flush()
+
+            je = _post_bill_je(bill, current_user.id)
+            bill.journal_entry_id = je.id
+            db.session.commit()
+
+            new_values = model_to_dict(bill, ['bill_number', 'bill_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+            log_update(
+                module='purchase_bill',
+                record_id=bill.id,
+                record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
+                old_values=old_values,
+                new_values=new_values
+            )
+
+            flash(f'AP Voucher "{bill.bill_number}" saved successfully!', 'success')
+            return redirect(url_for('purchase_bills.view', id=bill.id))
+
+        except Exception as e:
+            from app.errors.utils import log_exception
+            # Roll back BEFORE logging — log_exception commits the session,
+            # which would otherwise persist the half-saved changes.
+            db.session.rollback()
+            current_app.logger.error(f"Error updating purchase bill", exc_info=True)
+            log_exception(e, severity='ERROR', module='purchase_bills.update')
+            flash(f'Error saving AP Voucher: {str(e)}', 'error')
+
+    if request.method == 'GET':
+        form.vendor_id.data = bill.vendor_id
+
+    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+    all_accounts = _get_all_accounts_for_select()
+    line_items = [item.to_dict() for item in bill.line_items]
+
+    _accts = _get_gl_accounts()
+    gl_accounts = {
+        'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
+        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
+    }
+    return render_template('purchase_bills/form.html',
+                         form=form,
+                         bill=bill,
+                         vat_categories=vat_categories,
+                         all_accounts=all_accounts,
+                         line_items=line_items,
+                         gl_accounts=gl_accounts)
+
+
+@purchase_bills_bp.route('/purchase-bills/<int:id>/post', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def post(id):
+    """Post purchase bill (makes it final)."""
+    bill = _get_bill_or_404(id)
+
+    if bill.status != 'draft':
+        flash('Only draft APVs can be posted.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    needs_invoice = bill.vat_amount > 0 or bill.withholding_tax_amount > 0
+    if needs_invoice:
+        missing = []
+        if not bill.vendor_invoice_number:
+            missing.append('Vendor Invoice #')
+        if not bill.vendor_invoice_date:
+            missing.append('Vendor Invoice Date')
+        if missing:
+            verb = 'are' if len(missing) > 1 else 'is'
+            flash(f'Cannot post: {" and ".join(missing)} {verb} required when VAT or withholding tax applies.', 'error')
+            return redirect(url_for('purchase_bills.view', id=id))
+
+    try:
+        bill.status = 'posted'
+        bill.posted_by_id = current_user.id
+        bill.posted_at = ph_now()
+
+        # Promote the bill's draft JE so the amounts enter the books now
+        if bill.journal_entry:
+            bill.journal_entry.status = 'posted'
+            bill.journal_entry.posted_by_id = current_user.id
+            bill.journal_entry.posted_at = ph_now()
+        db.session.commit()
+
+        log_audit(
+            module='purchase_bill',
+            action='post',
+            record_id=bill.id,
+            record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
+            notes=f'Bill posted by {current_user.username}'
+        )
+
+        flash(f'AP Voucher "{bill.bill_number}" posted successfully!', 'success')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        # Roll back BEFORE logging — log_exception commits the session,
+        # which would otherwise persist the half-applied status change.
+        db.session.rollback()
+        current_app.logger.error(f"Error posting purchase bill", exc_info=True)
+        log_exception(e, severity='ERROR', module='purchase_bills.post')
+        flash(f'Error posting AP Voucher: {str(e)}', 'error')
+
+    return redirect(url_for('purchase_bills.view', id=id))
+
+
+@purchase_bills_bp.route('/purchase-bills/<int:id>/cancel', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def cancel(id):
+    """Cancel a posted purchase bill and create a reversal journal entry."""
+    from app.errors.utils import log_exception
+    bill = _get_bill_or_404(id)
+
+    if bill.status != 'posted':
+        flash('Only posted APVs can be cancelled.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    if bill.amount_paid > 0:
+        flash('Cannot cancel an AP Voucher with payments applied. Reverse the payments first.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Cancellation reason must be at least 10 characters.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    try:
+        _create_reversal_je(bill, reversal_date, current_user.id, label='Cancel')
+
+        bill.status = 'cancelled'
+        bill.cancelled_at = ph_now()
+        bill.cancel_reason = cancel_reason
+        db.session.commit()
+
+        log_audit(
+            module='purchase_bill',
+            action='cancel',
+            record_id=bill.id,
+            record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
+            notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}'
+        )
+
+        flash(f'AP Voucher "{bill.bill_number}" cancelled. Reversal journal entry created.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error cancelling purchase bill', exc_info=True)
+        log_exception(e, severity='ERROR', module='purchase_bills.cancel')
+        flash(f'Error cancelling AP Voucher: {str(e)}', 'error')
+
+    return redirect(url_for('purchase_bills.view', id=id))
+
+
+def _post_bill_je(bill, user_id):
+    """Create and immediately post a purchase JE for a bill. Raises ValueError if required accounts missing."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    _accts = _get_gl_accounts()
+
+    ap_account = _accts['ap']
+    if not ap_account:
+        raise ValueError("Accounts Payable - Trade (20101) not found in COA.")
+
+    wt_account = None
+    if bill.withholding_tax_amount and bill.withholding_tax_amount > 0:
+        wt_account = _accts['wt']
+        if not wt_account:
+            raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
+
+    # The JE mirrors the bill's lifecycle: created as a DRAFT while the bill
+    # is a draft (so unposted vouchers never hit GL reports), promoted to
+    # posted by the post route.
+    je_status = 'posted' if bill.status == 'posted' else 'draft'
+    entry_number = generate_entry_number(bill.branch_id)
+    je = JournalEntry(
+        entry_number=entry_number,
+        entry_date=bill.bill_date,
+        description=f'Purchase Bill {bill.bill_number} — {bill.vendor_name}',
+        reference=bill.bill_number,
+        entry_type='purchase',
+        branch_id=bill.branch_id,
+        created_by_id=user_id,
+        status=je_status,
+        posted_by_id=user_id if je_status == 'posted' else None,
+        posted_at=ph_now() if je_status == 'posted' else None,
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00')
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    line_num = 1
+    first_expense_line = None
+    all_lines = []
+
+    for item in bill.line_items:
+        if not item.account_id:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entry_line = JournalEntryLine(
+            entry_id=je.id,
+            line_number=line_num,
+            account_id=item.account_id,
+            description=item.description or '',
+            debit_amount=net_base,
+            credit_amount=Decimal('0.00')
+        )
+        db.session.add(entry_line)
+        all_lines.append(entry_line)
+        if first_expense_line is None:
+            first_expense_line = entry_line
+        line_num += 1
+
+    for vat_acct, vat_amt in _input_vat_buckets(bill):
+        if vat_amt <= 0:
+            continue
+        vat_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=vat_acct.id,
+            description=f'Input VAT: {bill.bill_number}',
+            debit_amount=vat_amt,
+            credit_amount=Decimal('0.00')
+        )
+        db.session.add(vat_line)
+        all_lines.append(vat_line)
+        line_num += 1
+
+    if wt_account:
+        wt_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=wt_account.id,
+            description=f'WHT Payable: {bill.bill_number}',
+            debit_amount=Decimal('0.00'),
+            credit_amount=Decimal(str(bill.withholding_tax_amount))
+        )
+        db.session.add(wt_line)
+        all_lines.append(wt_line)
+        line_num += 1
+
+    ap_line = JournalEntryLine(
+        entry_id=je.id, line_number=line_num,
+        account_id=ap_account.id,
+        description=f'AP: {bill.bill_number} — {bill.vendor_name}',
+        debit_amount=Decimal('0.00'),
+        credit_amount=Decimal(str(bill.total_amount))
+    )
+    db.session.add(ap_line)
+    all_lines.append(ap_line)
+
+    # Absorb rounding residual (and any VAT override difference) into the first
+    # expense line so the JE always balances exactly
+    sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
+    sum_credits = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
+    residual = sum_credits - sum_debits
+    if residual != Decimal('0.00') and first_expense_line is not None:
+        first_expense_line.debit_amount += residual
+
+    db.session.flush()
+
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(
+            f"Purchase bill JE is not balanced "
+            f"(debit={je.total_debit}, credit={je.total_credit}). "
+            "Ensure every line item has an expense account assigned."
+        )
+    return je
+
+
+def _create_reversal_je(bill, reversal_date, user_id, label='Cancel'):
+    """Mirror the bill's stored JE with debits and credits swapped.
+
+    Reverses exactly what was booked — per-category input VAT buckets,
+    overrides, residual absorption and all (B-014). Raises ValueError if the
+    bill has no stored journal entry to reverse.
+
+    ``label`` prefixes each reversal line's description and forms the first
+    six characters of the reference.
+
+    Callers must pass a source JE (via ``bill.journal_entry``) that is not
+    itself a reversal.
+    """
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    source_je = bill.journal_entry
+    if source_je is None:
+        raise ValueError(
+            f'Bill {bill.bill_number} has no stored journal entry to reverse. '
+            f'Cannot {label.lower()}.')
+
+    entry_number = generate_entry_number(bill.branch_id)
+    je = JournalEntry(
+        entry_number=entry_number,
+        entry_date=reversal_date,
+        description=f'Purchase Bill {label} — {bill.bill_number} (reversal)',
+        reference=f'{label.upper()[:6]}-{bill.bill_number}',
+        entry_type='reversal',
+        is_reversing=True,
+        reversed_entry_id=source_je.id,
+        branch_id=bill.branch_id,
+        created_by_id=user_id,
+        status='posted',
+        posted_by_id=user_id,
+        posted_at=ph_now(),
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00')
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    for i, src in enumerate(source_je.lines.all(), start=1):
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=i,
+            account_id=src.account_id,
+            description=f'{label}: {src.description}' if src.description else label,
+            debit_amount=src.credit_amount,
+            credit_amount=src.debit_amount,
+        ))
+    db.session.flush()
+
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(
+            f'Reversal JE is not balanced '
+            f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    # Link the source JE to its reversal. The source deliberately stays
+    # 'posted' so the GL nets to zero (original + reversal both in the books).
+    source_je.reversed_by_id = je.id
+
+    return je
+
+
+@purchase_bills_bp.route('/purchase-bills/<int:id>/void', methods=['POST'])
+@login_required
+@staff_or_above_required
+def void(id):
+    """Void a draft purchase bill (no journal entry — bill was never posted)."""
+    bill = _get_bill_or_404(id)
+
+    if bill.status != 'draft':
+        flash('Only draft APVs can be voided.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid void date.', 'error')
+        return redirect(url_for('purchase_bills.view', id=id))
+
+    try:
+        # Delete the linked JE if it exists (JE was auto-created on save, even for drafts)
+        if bill.journal_entry_id:
+            from app.journal_entries.models import JournalEntry as _JE
+            je_to_delete = db.session.get(_JE, bill.journal_entry_id)
+            if je_to_delete:
+                db.session.delete(je_to_delete)
+            bill.journal_entry_id = None
+            bill.journal_entry = None
+
+        # Collect attachment file paths before deleting DB rows
+        attachment_paths = []
+        for att in list(bill.attachments):
+            fp = os.path.join(
+                current_app.config['UPLOAD_FOLDER'],
+                'purchase_bills',
+                str(bill.id),
+                att.stored_filename
+            )
+            attachment_paths.append(fp)
+            db.session.delete(att)
+
+        bill.status = 'voided'
+        bill.voided_at = ph_now()
+        bill.voided_by_id = current_user.id
+        bill.void_reason = void_reason
+        db.session.commit()
+
+        # Delete attachment files from disk after successful DB commit
+        for fp in attachment_paths:
+            if os.path.isfile(fp):
+                try:
+                    os.remove(fp)
+                except OSError:
+                    current_app.logger.warning(f'Could not remove attachment file during void: {fp}')
+
+        log_audit(
+            module='purchase_bill',
+            action='void',
+            record_id=bill.id,
+            record_identifier=f'{bill.bill_number} - {bill.vendor_name}',
+            notes=f'Draft voided by {current_user.username} on {reversal_date}. Reason: {void_reason}. {len(attachment_paths)} attachment(s) deleted.'
+        )
+
+        flash(f'AP Voucher "{bill.bill_number}" voided.', 'warning')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error voiding purchase bill', exc_info=True)
+        log_exception(e, severity='ERROR', module='purchase_bills.void')
+        flash(f'Error voiding AP Voucher: {str(e)}', 'error')
+
+    return redirect(url_for('purchase_bills.view', id=id))
+
+
+@purchase_bills_bp.route('/purchase-bills/<int:id>/attachments/upload', methods=['POST'])
+@login_required
+@staff_or_above_required
+def upload_attachment(id):
+    """Upload a file attachment to a draft AP Voucher."""
+    bill = _get_bill_or_404(id)
+
+    if bill.status != 'draft':
+        flash('Attachments can only be uploaded while the APV is in draft status.', 'error')
+        return redirect(url_for('purchase_bills.edit', id=id))
+
+    uploaded_file = request.files.get('attachment')
+    if not uploaded_file or uploaded_file.filename == '':
+        flash('No file selected.', 'error')
+        return redirect(url_for('purchase_bills.edit', id=id))
+
+    original_name = secure_filename(uploaded_file.filename)
+    if not original_name:
+        flash('Invalid filename.', 'error')
+        return redirect(url_for('purchase_bills.edit', id=id))
+
+    _, ext = os.path.splitext(original_name)
+    ext = ext.lower()
+    mime_type = _ATTACHMENT_ALLOWED.get(ext)
+    if mime_type is None:
+        allowed = ', '.join(sorted(_ATTACHMENT_ALLOWED))
+        flash(f'File type "{ext or "unknown"}" is not allowed. Accepted: {allowed}', 'error')
+        return redirect(url_for('purchase_bills.edit', id=id))
+    stored_name = uuid.uuid4().hex + ext
+
+    upload_dir = _bill_upload_dir(id)
+    file_path = os.path.join(upload_dir, stored_name)
+
+    try:
+        uploaded_file.save(file_path)
+        file_size = os.path.getsize(file_path)
+
+        attachment = PurchaseBillAttachment(
+            bill_id=bill.id,
+            original_filename=original_name,
+            stored_filename=stored_name,
+            mime_type=mime_type,
+            file_size=file_size,
+            uploaded_by_id=current_user.id,
+        )
+        db.session.add(attachment)
+        db.session.commit()
+
+        log_create(
+            module='purchase_bill_attachment',
+            record_id=attachment.id,
+            record_identifier=f'{bill.bill_number} / {original_name}',
+            new_values={
+                'bill_id': bill.id,
+                'original_filename': original_name,
+                'stored_filename': stored_name,
+                'mime_type': mime_type,
+                'file_size': file_size,
+            }
+        )
+
+        flash(f'File "{original_name}" uploaded successfully.', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        current_app.logger.error(f'Error uploading attachment: {e}', exc_info=True)
+        flash(f'Error uploading file: {str(e)}', 'error')
+
+    return redirect(url_for('purchase_bills.edit', id=id))
+
+
+@purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/download')
+@login_required
+def download_attachment(attachment_id):
+    """Download a file attachment (all non-voided bill statuses)."""
+    attachment = PurchaseBillAttachment.query.get_or_404(attachment_id)
+    bill = _get_bill_or_404(attachment.bill_id)
+
+    file_path = os.path.join(
+        current_app.config['UPLOAD_FOLDER'],
+        'purchase_bills',
+        str(bill.id),
+        attachment.stored_filename
+    )
+
+    if not os.path.isfile(file_path):
+        flash('File not found on disk.', 'error')
+        return redirect(url_for('purchase_bills.view', id=bill.id))
+
+    response = send_file(
+        file_path,
+        mimetype=attachment.mime_type,
+        as_attachment=True,
+        download_name=attachment.original_filename
+    )
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/preview')
+@login_required
+def preview_attachment(attachment_id):
+    """Serve an image attachment inline (for the popup modal img tag)."""
+    attachment = PurchaseBillAttachment.query.get_or_404(attachment_id)
+
+    if not attachment.is_image:
+        abort(404)
+
+    bill = _get_bill_or_404(attachment.bill_id)
+
+    file_path = os.path.join(
+        current_app.config['UPLOAD_FOLDER'],
+        'purchase_bills',
+        str(bill.id),
+        attachment.stored_filename
+    )
+
+    if not os.path.isfile(file_path):
+        abort(404)
+
+    response = send_file(file_path, mimetype=attachment.mime_type, as_attachment=False)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
+
+
+@purchase_bills_bp.route('/purchase-bills/attachments/<int:attachment_id>/delete', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def delete_attachment(attachment_id):
+    """Delete a file attachment (draft status only)."""
+    attachment = PurchaseBillAttachment.query.get_or_404(attachment_id)
+    bill = _get_bill_or_404(attachment.bill_id)
+
+    if bill.status != 'draft':
+        flash('Attachments can only be deleted while the APV is in draft status.', 'error')
+        return redirect(url_for('purchase_bills.edit', id=bill.id))
+
+    file_path = os.path.join(
+        current_app.config['UPLOAD_FOLDER'],
+        'purchase_bills',
+        str(bill.id),
+        attachment.stored_filename
+    )
+
+    old_values = {
+        'bill_id': bill.id,
+        'original_filename': attachment.original_filename,
+        'stored_filename': attachment.stored_filename,
+        'mime_type': attachment.mime_type,
+        'file_size': attachment.file_size,
+    }
+    original_name = attachment.original_filename
+
+    try:
+        db.session.delete(attachment)
+        db.session.commit()
+
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+        log_delete(
+            module='purchase_bill_attachment',
+            record_id=attachment_id,
+            record_identifier=f'{bill.bill_number} / {original_name}',
+            old_values=old_values
+        )
+
+        flash(f'File "{original_name}" deleted.', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error deleting attachment: {e}', exc_info=True)
+        flash(f'Error deleting file: {str(e)}', 'error')
+
+    return redirect(url_for('purchase_bills.edit', id=bill.id))

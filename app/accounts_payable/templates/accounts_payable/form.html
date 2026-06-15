@@ -1,0 +1,924 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Update AP Voucher' if bill else 'New AP Voucher' }}{% endblock %}
+{% block page_title %}{{ 'Update AP Voucher' if bill else 'New AP Voucher' }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field, render_flash_messages %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_bills_form.css') }}?v=7">
+
+{{ render_flash_messages() }}
+
+<div class="card page-purchase-bill">
+    <div class="card-body">
+        <form method="POST" novalidate id="billForm">
+            {{ form.hidden_tag() }}
+
+            <!-- Header: 7 fields (1/3) + Vendor + Notes (2/3) -->
+            <div class="form-main-grid">
+                <!-- Left 1/3: all 7 inline fields -->
+                <div class="left-col-fields header-fields{% if bill %} header-fields--active{% endif %}">
+                    {{ render_field(form.bill_number) }}
+                    {{ render_field(form.bill_date) }}
+                    {{ render_field(form.due_date) }}
+                    {{ render_field(form.payment_terms) }}
+                    {{ render_field(form.vendor_invoice_number) }}
+                    {{ render_field(form.vendor_invoice_date) }}
+                    {{ render_field(form.reference) }}
+                </div>
+                <!-- Right 2/3: vendor card -->
+                <div class="right-col">
+                    <div id="vendorCard" class="vendor-step-card{% if bill %} vendor-step-card--done{% endif %}">
+                        <div class="vendor-step-label" id="vendorCardLabel">
+                            {% if bill %}✓ {{ bill.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
+                        </div>
+                        <div id="vendorBadges" class="vendor-badges"></div>
+                        <select name="vendor_id" id="vendor_id" class="form-control" required
+                                {% if not bill %}autofocus{% endif %}>
+                            <option value="">Search or select a vendor…</option>
+                            {% for choice in form.vendor_id.choices %}
+                            <option value="{{ choice[0] }}"
+                                {% if bill and bill.vendor_id == choice[0] %}selected{% endif %}>
+                                {{ choice[1] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% if form.vendor_id.errors %}
+                        <div class="form-error">{{ form.vendor_id.errors[0] }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- Notes: own grid area so it appears last on small screens -->
+                <div class="notes-col header-fields{% if bill %} header-fields--active{% endif %}">
+                    {{ form.notes.label(class='form-label') }}
+                    {{ form.notes(class='form-control', style='resize:vertical', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                    {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
+                </div>
+            </div>
+
+            <!-- ③ Line Items Locked Placeholder -->
+            <div id="lineItemsLocked" class="line-items-locked{% if bill %} line-items-locked--hidden{% endif %}">
+                <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
+                <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
+                    Select a vendor above to add line items
+                </div>
+                <div style="font-size: 12px; color: var(--text-2); margin-top: 6px;">
+                    WHT codes and VAT defaults will load from the vendor.
+                </div>
+            </div>
+
+            <!-- ④ Line Items Section (hidden on create, visible on edit) -->
+            <div id="lineItemsSection"{% if not bill %} style="display:none"{% endif %}>
+                <div style="margin-top: 16px;">
+                    <table class="table" id="lineItemsTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 38%;">Description</th>
+                                <th style="width: 13%; text-align: right;">Amount (VAT-incl.)</th>
+                                <th style="width: 9%;">VT</th>
+                                <th style="width: 8%;">WT</th>
+                                <th style="width: 27%;">Account Title</th>
+                                <th style="width: 5%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="lineItemsBody"></tbody>
+                    </table>
+
+                    <button type="button" class="btn btn-secondary" onclick="addLineItem()">+ Add Line Item</button>
+                    <input type="hidden" name="line_items" id="lineItemsData">
+                </div>
+
+                <!-- ⑤ Bottom: JE Preview (left) + Totals Panel (right) -->
+                <div style="display: grid; grid-template-columns: 1fr auto; gap: 24px; margin-top: 24px; align-items: start;">
+
+                    <!-- JE Preview -->
+                    <div id="jePreviewSection">
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Journal Entry</div>
+                        <table class="table" style="font-size: 12px;" id="jePreviewTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 14%; color: var(--text-2);">Code</th>
+                                    <th>Account Title</th>
+                                    <th style="text-align: right; width: 18%;">Debit</th>
+                                    <th style="text-align: right; width: 18%;">Credit</th>
+                                </tr>
+                            </thead>
+                            <tbody id="jePreviewBody"></tbody>
+                            <tfoot id="jePreviewFoot"></tfoot>
+                        </table>
+                    </div>
+
+                    <!-- AP Voucher Summary Panel -->
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">AP Voucher Summary</div>
+                        <div class="bill-summary-panel">
+
+                        <!-- Row 1: Gross Amount -->
+                        <div class="bsr">
+                            <span class="bsr-label">Gross Amount</span>
+                            <span id="subtotalDisplay" class="bsr-amt">0.00</span>
+                        </div>
+
+                        <!-- Row 2: Less: Input VAT — pencil-click override -->
+                        <div id="vatDisplayMode" class="bsr">
+                            <span class="bsr-label">Less: Input VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">✏️</button></span>
+                            <span id="vatDisplay" class="bsr-amt">0.00</span>
+                        </div>
+                        <div id="vatEditMode" class="bsr" style="display:none">
+                            <span class="bsr-label">Less: Input VAT <button type="button" class="totals-revert" onclick="revertVatOverride()" title="Revert to auto">↺</button><span id="vatAutoHint" style="display:none"></span></span>
+                            <input type="text" id="vatOverrideInput" class="bsr-input"
+                                   onfocus="amtFocus(this)"
+                                   oninput="onVatOverrideInput(this.value)"
+                                   onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
+                        </div>
+
+                        <!-- Row 3: Net of VAT -->
+                        <div class="bsr bsr--sep">
+                            <span class="bsr-label">Net of VAT</span>
+                            <span id="netOfVatDisplay" class="bsr-amt">0.00</span>
+                        </div>
+
+                        <!-- Row 4: Add: Input VAT (mirrors row 2, no edit) -->
+                        <div class="bsr">
+                            <span class="bsr-label">Add: Input VAT</span>
+                            <span id="vatAddBackDisplay" class="bsr-amt">0.00</span>
+                        </div>
+
+                        <!-- Row 5: Less: Withholding Tax -->
+                        <div id="wtDisplayMode" class="bsr">
+                            <span class="bsr-label">Less: Withholding Tax <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button></span>
+                            <span id="wtDisplay" class="bsr-amt bsr-amt--red">0.00</span>
+                        </div>
+                        <div id="wtEditMode" class="bsr" style="display:none">
+                            <span class="bsr-label">Less: Withholding Tax <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">↺</button><span id="wtAutoHint" style="display:none"></span></span>
+                            <input type="text" id="wtOverrideInput" class="bsr-input"
+                                   onfocus="amtFocus(this)"
+                                   oninput="onWtOverrideInput(this.value)"
+                                   onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
+                        </div>
+
+                        <!-- Row 6: Net Amount Payable -->
+                        <div class="bsr bsr--total">
+                            <span class="bsr-label bsr-label--total">Net Amount Payable</span>
+                            <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
+                        </div>
+                        </div><!-- end .bill-summary-panel -->
+                    </div><!-- end wrapper -->
+
+                </div>
+
+                <div class="form-actions" style="margin-top: 32px;">
+                    <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
+                        {{ 'Update Bill' if bill else 'Enter Bill' }}
+                    </button>
+                    <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Back</a>
+                </div>
+                <p id="saveHint"></p>
+            </div>
+
+            <input type="hidden" name="vat_override" id="vatOverrideFlag" value="0">
+            <input type="hidden" name="vat_override_value" id="vatOverrideValue" value="0">
+            <input type="hidden" name="wt_override" id="wtOverrideFlag" value="0">
+            <input type="hidden" name="wt_override_value" id="wtOverrideValue" value="0">
+        </form>
+    </div>
+</div>
+
+{% if bill %}
+{% for att in bill.attachments %}{% if att.is_image %}
+<div id="previewModal-{{ att.id }}"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+            z-index:1100; align-items:center; justify-content:center; overflow:auto;">
+  <div style="background:var(--card); border-radius:8px; padding:24px;
+              max-width:90vw; max-height:90vh; display:flex; flex-direction:column; gap:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:600; font-size:14px;">{{ att.original_filename }}</span>
+      <button type="button"
+              onclick="document.getElementById('previewModal-{{ att.id }}').style.display='none'"
+              style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-1);">&times;</button>
+    </div>
+    <img src="{{ url_for('purchase_bills.preview_attachment', attachment_id=att.id) }}"
+         alt="{{ att.original_filename }}"
+         style="max-width:80vw; max-height:70vh; object-fit:contain; border-radius:4px;">
+    <div style="text-align:right;">
+      <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
+         class="btn btn-secondary" style="font-size:13px;">Download</a>
+    </div>
+  </div>
+</div>
+{% endif %}{% endfor %}
+
+{% for att in bill.attachments %}
+<div id="deleteAttModal-{{ att.id }}"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+            z-index:1100; align-items:center; justify-content:center;">
+  <div style="background:var(--card); border-radius:8px; padding:32px; max-width:400px; width:90%;">
+    <h3 style="margin:0 0 12px 0;">Delete attachment?</h3>
+    <p style="color:var(--text-2); margin-bottom:24px;">
+      <strong>{{ att.original_filename }}</strong> will be permanently deleted.
+    </p>
+    <div style="display:flex; gap:12px; justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary"
+              onclick="document.getElementById('deleteAttModal-{{ att.id }}').style.display='none'">
+        Cancel</button>
+      <form method="POST"
+            action="{{ url_for('purchase_bills.delete_attachment', attachment_id=att.id) }}"
+            style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit" class="btn btn-danger">Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<!-- ── Attachments ────────────────────────────────────────────────── -->
+<div class="card" style="margin-top:16px;">
+  <div class="card-body">
+    <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
+      Attachments
+      <span style="font-weight:400; color:var(--text-3);">({{ bill.attachments|length }} file{{ 's' if bill.attachments|length != 1 else '' }})</span>
+    </h3>
+
+    <form method="POST" enctype="multipart/form-data"
+          action="{{ url_for('purchase_bills.upload_attachment', id=bill.id) }}"
+          style="display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="file" name="attachment" style="flex:1; min-width:200px;"
+             accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt">
+      <button type="submit" class="btn btn-secondary" style="white-space:nowrap;">Upload File</button>
+    </form>
+
+    {% if bill.attachments %}
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);">
+            <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Filename</th>
+            <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Type</th>
+            <th style="text-align:right; padding:8px 12px; color:var(--text-2); font-weight:600;">Size</th>
+            <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Uploaded By</th>
+            <th style="text-align:left; padding:8px 12px; color:var(--text-2); font-weight:600;">Date</th>
+            <th style="padding:8px 12px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for att in bill.attachments %}
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:8px 12px;">{{ att.original_filename }}</td>
+            <td style="padding:8px 12px;">
+              {% if att.is_image %}
+              <span style="background:var(--alert-info-bg); color:var(--alert-info-text); padding:2px 8px; border-radius:4px; font-size:12px; font-weight:600;">IMAGE</span>
+              {% else %}
+              <span style="background:var(--surface); color:var(--text-2); padding:2px 8px; border-radius:4px; font-size:12px;">{{ att.mime_type.split('/')[-1]|upper }}</span>
+              {% endif %}
+            </td>
+            <td style="padding:8px 12px; text-align:right;">{{ att.file_size_human }}</td>
+            <td style="padding:8px 12px;">{{ att.uploaded_by.username }}</td>
+            <td style="padding:8px 12px;">{{ att.uploaded_at.strftime('%b %d, %Y %H:%M') }}</td>
+            <td style="padding:8px 12px; text-align:right; white-space:nowrap;">
+              {% if att.is_image %}
+              <button type="button" class="btn btn-secondary" style="font-size:12px; padding:4px 10px; margin-right:4px;"
+                      onclick="document.getElementById('previewModal-{{ att.id }}').style.display='flex'">
+                Preview
+              </button>
+              {% endif %}
+              <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
+                 class="btn btn-secondary" style="font-size:12px; padding:4px 10px;">Download</a>
+              <button type="button" class="btn btn-danger" style="font-size:12px; padding:4px 10px; margin-left:4px;"
+                      onclick="document.getElementById('deleteAttModal-{{ att.id }}').style.display='flex'">
+                Delete
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p style="color:var(--text-2); font-size:13px; font-style:italic;">No attachments.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
+<script>
+const vatCategories = {{ vat_categories | tojson }};
+const allAccounts = {{ all_accounts | tojson }};
+const glAccounts = {{ gl_accounts | tojson }};
+
+let currentVendorWHTs = [];
+let currentVendorVatCategory = '';
+let currentVendorName = '';
+let lineItems = [];
+let lineCounter = 0;
+let lineChoices = {};
+let autoVat = 0;
+let autoWt = 0;
+let currentVendorLastAccountId = null;
+let paymentTermsChoices = null;
+let vatOverrideActive = false;
+let wtOverrideActive = false;
+
+// ── Helper functions ──────────────────────────────────────────────────────────
+
+function buildWhtOptions(selectedId) {
+    if (currentVendorWHTs.length === 0) {
+        return '<option value="">None</option>';
+    }
+    return '<option value="">None</option>' +
+        currentVendorWHTs.map(wt => {
+            const long = `${escHtml(wt.code)} — ${escHtml(wt.name)} (${wt.rate}%)`;
+            const cp = escHtml(JSON.stringify({ code: wt.code }));
+            return `<option value="${wt.id}" data-rate="${wt.rate}" data-custom-properties="${cp}" ${selectedId == wt.id ? 'selected' : ''}>${long}</option>`;
+        }).join('');
+}
+
+function rebuildAllWhtSelects() {
+    const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
+    lineItems.forEach(item => {
+        const lc = lineChoices[item.id];
+        if (!lc) return;
+        const prev = item.wt_id;
+        const stillValid = prev && currentVendorWHTs.some(wt => wt.id == prev);
+        if (!stillValid) {
+            item.wt_id = autoWht ? autoWht.id : null;
+            item.wt_rate = autoWht ? autoWht.rate : null;
+        }
+        const choices = [{ value: '', label: 'None', customProperties: { code: '' } }].concat(
+            currentVendorWHTs.map(wt => ({
+                value: String(wt.id),
+                label: `${wt.code} — ${wt.name} (${wt.rate}%)`,
+                customProperties: { code: wt.code }
+            }))
+        );
+        lc.wht.clearChoices();
+        lc.wht.setChoices(choices, 'value', 'label', false);
+        lc.wht.setChoiceByValue(item.wt_id ? String(item.wt_id) : '');
+    });
+}
+
+function rebuildAllVatSelects() {
+    if (!currentVendorVatCategory) return;
+    lineItems.forEach(item => {
+        const lc = lineChoices[item.id];
+        if (!lc) return;
+        lc.vat.setChoiceByValue(currentVendorVatCategory);
+        item.vat_category = currentVendorVatCategory;
+    });
+    calculateTotals();
+}
+
+function addFirstLineItem() {
+    const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
+    addLineItem(null, {
+        wt_id: autoWht ? autoWht.id : null,
+        wt_rate: autoWht ? autoWht.rate : null,
+        account_id: currentVendorLastAccountId,
+    });
+}
+
+function applyVendorTerms(terms) {
+    if (paymentTermsChoices) paymentTermsChoices.setChoiceByValue(terms);
+    const match = terms.match(/Net (\d+)/);
+    if (!match) return;
+    const days = parseInt(match[1]);
+    const billDateVal = document.getElementById('bill_date').value;
+    if (!billDateVal) return;
+    const due = new Date(billDateVal);
+    if (isNaN(due.getTime())) return;
+    due.setDate(due.getDate() + days);
+    const dueDateField = document.getElementById('due_date');
+    if (dueDateField) dueDateField.value = due.toISOString().split('T')[0];
+}
+
+function addLineItem(existingItem, firstDefaults) {
+    lineCounter++;
+    const id = lineCounter;
+    let item;
+    if (existingItem) {
+        item = { ...existingItem, id };
+    } else if (firstDefaults) {
+        item = {
+            id,
+            description: '',
+            amount: 0.00,
+            vat_category: currentVendorVatCategory || '',
+            account_id: firstDefaults.account_id || null,
+            wt_id: firstDefaults.wt_id || null,
+            wt_rate: firstDefaults.wt_rate || null,
+        };
+    } else {
+        const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
+        item = {
+            id,
+            description: '',
+            amount: 0.00,
+            vat_category: currentVendorVatCategory || '',
+            account_id: null,
+            wt_id: autoWht ? autoWht.id : null,
+            wt_rate: autoWht ? autoWht.rate : null,
+        };
+    }
+
+    const row = document.createElement('tr');
+    row.id = `line-${id}`;
+    row.innerHTML = `
+        <td><input type="text" class="form-control" value="${escHtml(item.description || '')}"
+                   onchange="updateLineItem(${id}, 'description', this.value)"></td>
+        <td><input type="text" class="form-control" value="${amtFmt(item.amount || 0)}"
+                   style="text-align:right; font-family: var(--mono);"
+                   onfocus="amtFocus(this)" onblur="amtBlur(this, ${id})"></td>
+        <td>
+            <select class="form-control vat-select">
+                <option value="">No VAT</option>
+                ${vatCategories.map(v => {
+                    const long = `${escHtml(v.code)} — ${escHtml(v.name)}`;
+                    return `<option value="${escHtml(v.code)}" ${item.vat_category === v.code ? 'selected' : ''}>${long}</option>`;
+                }).join('')}
+            </select>
+        </td>
+        <td>
+            <select class="form-control wht-select">
+                ${buildWhtOptions(item.wt_id)}
+            </select>
+        </td>
+        <td>
+            <select class="form-control acct-select">
+                <option value="">Select Account</option>
+                ${allAccounts.map(a => {
+                    const label = escHtml(a.code) + ' : ' + escHtml(a.name);
+                    if (a.is_group) return `<option disabled value="${a.id}">${label}</option>`;
+                    return `<option value="${a.id}" ${item.account_id === a.id ? 'selected' : ''}>${label}</option>`;
+                }).join('')}
+            </select>
+        </td>
+        <td><button type="button" class="li-btn-action" onclick="removeLineItem(${id})" title="Remove">🗑️</button></td>
+    `;
+    document.getElementById('lineItemsBody').appendChild(row);
+    const newRow = document.getElementById(`line-${id}`);
+    const vatSel = newRow.querySelector('.vat-select');
+    const whtSel = newRow.querySelector('.wht-select');
+    const acctSel = newRow.querySelector('.acct-select');
+    const codeOnlyOpts = {
+        searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
+        allowHTML: false,
+        callbackOnCreateTemplates: function(tmpl) {
+            return {
+                item: function(cfg, data) {
+                    const cn = cfg.classNames;
+                    const code = (data.customProperties && data.customProperties.code) || data.value || '—';
+                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(code))}</div>`);
+                }
+            };
+        }
+    };
+    const acctOpts = { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 100, allowHTML: false };
+    const vatC = new Choices(vatSel, codeOnlyOpts);
+    const whtC = new Choices(whtSel, codeOnlyOpts);
+    const acctC = new Choices(acctSel, acctOpts);
+    vatSel.addEventListener('change', () => updateLineItem(id, 'vat_category', vatSel.value));
+    whtSel.addEventListener('change', () => updateWht(id, whtSel));
+    acctSel.addEventListener('change', () => updateLineItem(id, 'account_id', parseInt(acctSel.value) || null));
+    lineChoices[id] = { vat: vatC, wht: whtC, acct: acctC };
+    lineItems.push(item);
+    calculateTotals();
+}
+
+function updateWht(id, sel) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    item.wt_id = sel.value ? parseInt(sel.value) : null;
+    const whtData = currentVendorWHTs.find(wt => wt.id == sel.value);
+    item.wt_rate = whtData ? whtData.rate : null;
+    if (wtOverrideActive) revertWtOverride();
+    calculateTotals();
+}
+
+function updateLineItem(id, field, value) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    item[field] = value;
+    if (['amount', 'vat_category'].includes(field)) revertVatOverride();
+    calculateTotals();
+}
+
+function removeLineItem(id) {
+    if (lineChoices[id]) {
+        lineChoices[id].vat.destroy();
+        lineChoices[id].wht.destroy();
+        lineChoices[id].acct.destroy();
+        delete lineChoices[id];
+    }
+    document.getElementById(`line-${id}`).remove();
+    lineItems = lineItems.filter(i => i.id !== id);
+    calculateTotals();
+}
+
+function calculateTotals() {
+    let subtotal = 0;
+    autoVat = 0;
+    autoWt = 0;
+
+    lineItems.forEach(item => {
+        const amt = item.amount || 0;
+        subtotal += amt;
+        const vat = vatCategories.find(v => v.code === item.vat_category);
+        const vatRate = vat ? vat.rate : 0;
+        if (vatRate > 0) {
+            const netBase = amt / (1 + vatRate / 100);
+            autoVat += amt - netBase;
+            if (item.wt_rate) autoWt += netBase * (item.wt_rate / 100);
+        } else {
+            if (item.wt_rate) autoWt += amt * (item.wt_rate / 100);
+        }
+    });
+
+    autoVat = Math.round(autoVat * 100) / 100;
+    autoWt = Math.round(autoWt * 100) / 100;
+
+    const vatUsed = vatOverrideActive
+        ? (parseFloat(document.getElementById('vatOverrideInput').value.replace(/,/g, '')) || 0)
+        : autoVat;
+    const wtUsed = wtOverrideActive
+        ? (parseFloat(document.getElementById('wtOverrideInput').value.replace(/,/g, '')) || 0)
+        : autoWt;
+    const netPayable = subtotal - wtUsed;
+    const netOfVat = subtotal - vatUsed;
+
+    document.getElementById('subtotalDisplay').textContent = fmt(subtotal);
+
+    if (!vatOverrideActive) {
+        document.getElementById('vatDisplay').textContent = fmt(autoVat);
+    }
+    if (!wtOverrideActive) {
+        document.getElementById('wtDisplay').textContent = autoWt > 0.004 ? '-' + fmt(autoWt) : '0.00';
+    }
+    document.getElementById('totalDisplay').textContent = fmt(netPayable);
+    document.getElementById('netOfVatDisplay').textContent = fmt(netOfVat);
+    document.getElementById('vatAddBackDisplay').textContent = fmt(vatUsed);
+
+    renderJEPreview(subtotal, vatUsed, wtUsed);
+    validateForm();
+}
+
+// ── Form validation gate ──────────────────────────────────────────────────────
+
+function validateForm() {
+    const btn = document.getElementById('submitBtn');
+    const hint = document.getElementById('saveHint');
+    if (!btn || !hint) return;
+
+    function block(msg) { btn.disabled = true; hint.textContent = msg; }
+    function allow()     { btn.disabled = false; hint.textContent = ''; }
+
+    const billDateVal = document.getElementById('bill_date')?.value;
+    const dueDateVal = document.getElementById('due_date')?.value;
+    if (billDateVal && dueDateVal && dueDateVal < billDateVal) {
+        block('Due date cannot be earlier than the voucher date.'); return;
+    }
+
+    const invoiceNo = (document.getElementById('vendor_invoice_number')?.value || '').trim();
+    if (!invoiceNo) { block('Enter the vendor invoice number before saving.'); return; }
+
+    if (lineItems.length === 0) { block('Add at least one line item.'); return; }
+
+    for (let i = 0; i < lineItems.length; i++) {
+        const item = lineItems[i];
+        const n = i + 1;
+        if (!item.account_id)                    { block(`Line ${n}: select an account title.`); return; }
+        if (!item.amount || item.amount <= 0)     { block(`Line ${n}: enter an amount greater than zero.`); return; }
+        if (lineItems.length > 1 && !(item.description || '').trim()) {
+            block(`Line ${n}: enter a description.`); return;
+        }
+    }
+
+    allow();
+}
+
+// ── VAT override UX ───────────────────────────────────────────────────────────
+
+function startVatOverride() {
+    vatOverrideActive = true;
+    const input = document.getElementById('vatOverrideInput');
+    input.value = autoVat.toFixed(2);
+    document.getElementById('vatAutoHint').textContent = 'auto: ' + fmt(autoVat);
+    document.getElementById('vatDisplayMode').style.display = 'none';
+    document.getElementById('vatEditMode').style.display = '';
+    document.getElementById('vatOverrideFlag').value = '1';
+    document.getElementById('vatOverrideValue').value = autoVat.toFixed(2);
+    input.focus();
+    input.select();
+    calculateTotals();
+}
+
+function onVatOverrideInput(val) {
+    const v = parseFloat(String(val).replace(/,/g, '')) || 0;
+    document.getElementById('vatOverrideFlag').value = '1';
+    document.getElementById('vatOverrideValue').value = v.toFixed(2);
+    document.getElementById('vatDisplay').textContent = fmt(v);
+    calculateTotals();
+}
+
+function revertVatOverride() {
+    vatOverrideActive = false;
+    document.getElementById('vatOverrideFlag').value = '0';
+    document.getElementById('vatOverrideValue').value = '0';
+    document.getElementById('vatDisplayMode').style.display = '';
+    document.getElementById('vatEditMode').style.display = 'none';
+    document.getElementById('vatDisplay').textContent = fmt(autoVat);
+    calculateTotals();
+}
+
+// ── WHT override UX ───────────────────────────────────────────────────────────
+
+function startWtOverride() {
+    wtOverrideActive = true;
+    const input = document.getElementById('wtOverrideInput');
+    input.value = autoWt.toFixed(2);
+    document.getElementById('wtAutoHint').textContent = 'auto: ' + fmt(autoWt);
+    document.getElementById('wtDisplayMode').style.display = 'none';
+    document.getElementById('wtEditMode').style.display = '';
+    document.getElementById('wtOverrideFlag').value = '1';
+    document.getElementById('wtOverrideValue').value = autoWt.toFixed(2);
+    input.focus();
+    input.select();
+    calculateTotals();
+}
+
+function onWtOverrideInput(val) {
+    const v = parseFloat(String(val).replace(/,/g, '')) || 0;
+    document.getElementById('wtOverrideFlag').value = '1';
+    document.getElementById('wtOverrideValue').value = v.toFixed(2);
+    document.getElementById('wtDisplay').textContent = v > 0.004 ? '-' + fmt(v) : '0.00';
+    calculateTotals();
+}
+
+function revertWtOverride() {
+    wtOverrideActive = false;
+    document.getElementById('wtOverrideFlag').value = '0';
+    document.getElementById('wtOverrideValue').value = '0';
+    document.getElementById('wtDisplayMode').style.display = '';
+    document.getElementById('wtEditMode').style.display = 'none';
+    document.getElementById('wtDisplay').textContent = autoWt > 0.004 ? '-' + fmt(autoWt) : '0.00';
+    calculateTotals();
+}
+
+// ── JE Preview ────────────────────────────────────────────────────────────────
+
+function renderJEPreview(subtotal, vatUsed, wtUsed) {
+    const rows = [];
+    let firstExpenseIdx = -1;
+    const vatBuckets = {};  // input VAT account id -> {code, name, amt} (B-014)
+
+    lineItems.forEach(item => {
+        if (!item.account_id) return;
+        const acct = allAccounts.find(a => a.id === item.account_id);
+        const vat = vatCategories.find(v => v.code === item.vat_category);
+        const vatRate = vat ? vat.rate : 0;
+        const amt = item.amount || 0;
+        const vatAmt = vatRate > 0 ? Math.round((amt - amt / (1 + vatRate / 100)) * 100) / 100 : 0;
+        const netBase = amt - vatAmt;
+        if (vatAmt > 0) {
+            const acctId = (vat && vat.input_vat_account_id) ? vat.input_vat_account_id : '??';
+            const code = (vat && vat.input_vat_account_code) ? vat.input_vat_account_code : '??';
+            const name = (vat && vat.input_vat_account_name) ? vat.input_vat_account_name : 'No Input Tax account configured';
+            if (!vatBuckets[acctId]) vatBuckets[acctId] = { code: code, name: name, amt: 0 };
+            vatBuckets[acctId].amt += vatAmt;
+        }
+        if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
+        rows.push({
+            code: acct ? acct.code : '—',
+            name: item.description || (acct ? acct.name : '—'),
+            debit: netBase,
+            credit: 0
+        });
+    });
+
+    // Per-category input VAT rows, mirroring server _input_vat_buckets():
+    // sorted by account code, override difference applied to the largest
+    // bucket, zero buckets dropped, no rows at all when vatUsed <= 0.
+    let bucketList = [];
+    if (vatUsed > 0) {
+        bucketList = Object.values(vatBuckets).sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
+        const bucketTotal = bucketList.reduce((s, b) => s + b.amt, 0);
+        const overrideDiff = vatUsed - bucketTotal;
+        if (Math.abs(overrideDiff) > 0.004 && bucketList.length) {
+            bucketList.reduce((max, b) => (b.amt > max.amt ? b : max), bucketList[0]).amt += overrideDiff;
+        }
+        bucketList = bucketList.filter(b => Math.abs(b.amt) > 0.004);
+    }
+
+    // Residual absorber: the first expense line soaks up the difference between
+    // the VAT actually booked and the per-line VAT baked into the net bases,
+    // so the preview always balances.
+    const vatRowsTotal = bucketList.reduce((s, b) => s + b.amt, 0);
+    if (firstExpenseIdx >= 0) {
+        rows[firstExpenseIdx].debit -= (vatRowsTotal - autoVat);
+    }
+
+    bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: b.amt, credit: 0 }));
+    if (wtUsed > 0 && glAccounts && glAccounts.wt) {
+        rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: 0, credit: wtUsed });
+    }
+    const netPayable = subtotal - wtUsed;
+    if (glAccounts && glAccounts.ap) {
+        rows.push({ code: glAccounts.ap.code, name: glAccounts.ap.name, debit: 0, credit: netPayable });
+    }
+
+    const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
+    const totalCredit = rows.reduce((s, r) => s + r.credit, 0);
+
+    document.getElementById('jePreviewBody').innerHTML = rows.map(r => `
+        <tr>
+            <td style="color: var(--text-2); font-family: var(--mono); font-size: 11px;">${escHtml(r.code)}</td>
+            <td>${escHtml(r.name)}</td>
+            <td style="text-align: right; font-family: var(--mono);">${fmtNum(r.debit)}</td>
+            <td style="text-align: right; font-family: var(--mono);">${fmtNum(r.credit)}</td>
+        </tr>`).join('');
+
+    document.getElementById('jePreviewFoot').innerHTML = `
+        <tr style="border-top: 2px solid var(--border); font-weight: 700;">
+            <td colspan="2" style="font-size: 11px; color: var(--text-2);">Total</td>
+            <td style="text-align: right; font-family: var(--mono);">${totalDebit.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+            <td style="text-align: right; font-family: var(--mono);">${totalCredit.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+        </tr>`;
+}
+
+// ── Form submit ───────────────────────────────────────────────────────────────
+
+document.getElementById('billForm').addEventListener('submit', function () {
+    document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(item => ({
+        description: item.description,
+        amount: item.amount,
+        vat_category: item.vat_category,
+        account_id: item.account_id,
+        wt_id: item.wt_id,
+        wt_rate: item.wt_rate,
+    })));
+});
+
+// Endpoint stores VAT category name; resolve to code for the line-item select.
+function resolveVatCode(nameOrCode) {
+    const match = vatCategories.find(v => v.code === nameOrCode || v.name === nameOrCode);
+    return match ? match.code : nameOrCode;
+}
+
+// ── Vendor card state management ──────────────────────────────────────────────
+
+function setVendorDone(vendorName, defaults) {
+    const card = document.getElementById('vendorCard');
+    const label = document.getElementById('vendorCardLabel');
+    const badges = document.getElementById('vendorBadges');
+
+    currentVendorName = vendorName;
+
+    card.classList.add('vendor-step-card--done');
+    label.textContent = '✓ ' + vendorName;
+
+    badges.textContent = '';
+    (defaults.withholding_taxes || []).forEach(wt => {
+        const span = document.createElement('span');
+        span.className = 'vendor-badge';
+        span.textContent = wt.code;
+        badges.appendChild(span);
+    });
+    if (defaults.default_vat_category) {
+        const span = document.createElement('span');
+        span.className = 'vendor-badge';
+        span.textContent = 'VAT: ' + defaults.default_vat_category;
+        badges.appendChild(span);
+    }
+
+    document.querySelectorAll('.header-fields').forEach(el => el.classList.add('header-fields--active'));
+    document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
+    document.getElementById('lineItemsSection').style.display = '';
+}
+
+// ── Vendor change handler ─────────────────────────────────────────────────────
+
+document.getElementById('vendor_id').addEventListener('change', function () {
+    const vendorId = this.value;
+    const vendorName = this.options[this.selectedIndex].text;
+    if (!vendorId || vendorId == '0') return;
+
+    fetch(`/vendors/${vendorId}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentVendorWHTs = data.withholding_taxes || [];
+            currentVendorVatCategory = resolveVatCode(data.default_vat_category || '');
+            currentVendorLastAccountId = data.last_account_id || null;
+            applyVendorTerms(data.payment_terms || 'Net 30');
+
+            const hadItems = lineItems.length > 0;
+            setVendorDone(vendorName, data);
+
+            if (hadItems) {
+                rebuildAllWhtSelects();
+                rebuildAllVatSelects();
+                calculateTotals();
+            } else {
+                addFirstLineItem();
+            }
+        });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+function initItems() {
+    {% if bill and line_items %}
+    const existingItems = {{ line_items | tojson }};
+    existingItems.forEach(item => addLineItem(item));
+    {% endif %}
+    // Create mode: no auto-add — first row added when vendor is selected
+}
+
+function initOverrides() {
+    {% if bill and bill.vat_override %}
+    vatOverrideActive = true;
+    document.getElementById('vatOverrideFlag').value = '1';
+    const savedVat = {{ bill.vat_amount | float }};
+    document.getElementById('vatOverrideValue').value = savedVat.toFixed(2);
+    document.getElementById('vatAutoHint').textContent = 'auto: ' + fmt(autoVat);
+    document.getElementById('vatDisplayMode').style.display = 'none';
+    document.getElementById('vatEditMode').style.display = '';
+    document.getElementById('vatOverrideInput').value = savedVat.toFixed(2);
+    {% endif %}
+    {% if bill and bill.wt_override %}
+    wtOverrideActive = true;
+    document.getElementById('wtOverrideFlag').value = '1';
+    const savedWt = {{ bill.withholding_tax_amount | float }};
+    document.getElementById('wtOverrideValue').value = savedWt.toFixed(2);
+    document.getElementById('wtAutoHint').textContent = 'auto: ' + fmt(autoWt);
+    document.getElementById('wtDisplayMode').style.display = 'none';
+    document.getElementById('wtEditMode').style.display = '';
+    document.getElementById('wtOverrideInput').value = savedWt.toFixed(2);
+    {% endif %}
+    calculateTotals();
+}
+
+// ── Vendor search-select ──────────────────────────────────────────────────────
+const vendorSel = document.getElementById('vendor_id');
+if (vendorSel) {
+    new Choices(vendorSel, {
+        searchEnabled: true, itemSelectText: '', shouldSort: false,
+        searchResultLimit: 50, allowHTML: false,
+    });
+}
+
+// ── Payment Terms search-select ───────────────────────────────────────────────
+const ptSel = document.getElementById('payment_terms');
+if (ptSel) {
+    paymentTermsChoices = new Choices(ptSel, {
+        searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false
+    });
+}
+
+// Date fields and vendor invoice # trigger validation
+for (const id of ['bill_date', 'due_date']) {
+    document.getElementById(id)?.addEventListener('change', validateForm);
+}
+const _invInput = document.getElementById('vendor_invoice_number');
+if (_invInput) _invInput.addEventListener('input', validateForm);
+const _invDate = document.getElementById('vendor_invoice_date');
+if (_invDate) _invDate.addEventListener('change', validateForm);
+
+{% if bill %}
+const initVendorId = document.getElementById('vendor_id').value;
+const initVendorSel = document.getElementById('vendor_id');
+const initVendorName = initVendorSel.options[initVendorSel.selectedIndex]
+    ? initVendorSel.options[initVendorSel.selectedIndex].text
+    : '{{ bill.vendor_name | e }}';
+
+currentVendorName = initVendorName;
+
+if (initVendorId && initVendorId !== '0') {
+    fetch(`/vendors/${initVendorId}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentVendorWHTs = data.withholding_taxes || [];
+            currentVendorVatCategory = resolveVatCode(data.default_vat_category || '');
+            currentVendorLastAccountId = data.last_account_id || null;
+            setVendorDone(initVendorName, data);
+            initItems();
+            initOverrides();
+        })
+        .catch(() => {
+            initItems();
+            initOverrides();
+        });
+} else {
+    initItems();
+    initOverrides();
+}
+{% else %}
+initItems();
+{% endif %}
+</script>
+
+
+{% endblock %}
