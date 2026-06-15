@@ -41,7 +41,7 @@ class AccountsPayable(db.Model):
 
     # Vendor reference
     vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False, index=True)
-    vendor = db.relationship('Vendor', backref='purchase_bills')
+    vendor = db.relationship('Vendor', backref='accounts_payable')
 
     # Vendor details snapshot (for historical accuracy)
     vendor_name = db.Column(db.String(200), nullable=False)
@@ -89,9 +89,9 @@ class AccountsPayable(db.Model):
 
     # Audit fields
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_purchase_bills')
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_accounts_payable')
     posted_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    posted_by = db.relationship('User', foreign_keys=[posted_by_id], backref='posted_purchase_bills')
+    posted_by = db.relationship('User', foreign_keys=[posted_by_id], backref='posted_accounts_payable')
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
@@ -100,7 +100,7 @@ class AccountsPayable(db.Model):
     cancelled_at = db.Column(db.DateTime)
     voided_at = db.Column(db.DateTime)
     voided_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    voided_by = db.relationship('User', foreign_keys=[voided_by_id], backref='voided_purchase_bills')
+    voided_by = db.relationship('User', foreign_keys=[voided_by_id], backref='voided_accounts_payable')
     void_reason = db.Column(db.String(255))
     cancel_reason = db.Column(db.String(500), nullable=True)
 
@@ -240,7 +240,7 @@ class AccountsPayableItem(db.Model):
 class AccountsPayableAttachment(db.Model):
     """File attachment for an Accounts Payable (AP Voucher).
 
-    Stored at: instance/uploads/purchase_bills/<ap_id>/<stored_filename>
+    Stored at: instance/uploads/accounts_payable/<ap_id>/<stored_filename>
     Images (mime_type starting with 'image/') can be previewed in the UI.
     Files are locked when the AP is posted and deleted when the AP is voided.
     """
@@ -255,7 +255,7 @@ class AccountsPayableAttachment(db.Model):
     file_size         = db.Column(db.Integer, nullable=False)   # bytes
     uploaded_by_id    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     uploaded_by       = db.relationship('User', foreign_keys=[uploaded_by_id],
-                                         backref='uploaded_bill_attachments')
+                                         backref='uploaded_ap_attachments')
     uploaded_at       = db.Column(db.DateTime, default=ph_now, nullable=False)
 
     def __repr__(self):
