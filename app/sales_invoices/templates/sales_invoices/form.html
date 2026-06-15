@@ -149,7 +149,7 @@
                             <!-- Row 5: Less: WHT (customer deducts on payment) — pencil override -->
                             <div id="wtDisplayMode" class="bsr">
                                 <span class="bsr-label">Less: WHT (customer) <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">&#9999;</button></span>
-                                <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
+                                <span id="wtDisplay" class="bsr-amt bsr-amt--red">0.00</span>
                             </div>
                             <div id="wtEditMode" class="bsr" style="display:none">
                                 <span class="bsr-label">Less: WHT (customer) <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">&#8634;</button><span id="wtAutoHint" style="display:none; font-size:11px; color:var(--text-2); margin-left:4px;"></span></span>
@@ -535,7 +535,7 @@ function calculateTotals() {
     document.getElementById('totalDisplay').textContent     = fmt(netReceivable);
 
     if (!vatOverrideActive) document.getElementById('vatDisplay').textContent = fmt(autoVat);
-    if (!wtOverrideActive)  document.getElementById('wtDisplay').textContent  = '-' + fmt(autoWt);
+    if (!wtOverrideActive)  document.getElementById('wtDisplay').textContent  = autoWt > 0 ? '-' + fmt(autoWt) : '0.00';
 
     renderJEPreview(subtotal, vatUsed, wtUsed);
     validateForm();
@@ -706,7 +706,7 @@ function onWtOverrideInput(val) {
     const v = parseFloat(String(val).replace(/,/g, '')) || 0;
     document.getElementById('wtOverrideFlag').value  = '1';
     document.getElementById('wtOverrideValue').value = v.toFixed(2);
-    document.getElementById('wtDisplay').textContent  = '-' + fmt(v);
+    document.getElementById('wtDisplay').textContent  = v > 0 ? '-' + fmt(v) : '0.00';
     calculateTotals();
 }
 
@@ -716,7 +716,7 @@ function revertWtOverride() {
     document.getElementById('wtOverrideValue').value = '0';
     document.getElementById('wtDisplayMode').style.display = '';
     document.getElementById('wtEditMode').style.display    = 'none';
-    document.getElementById('wtDisplay').textContent       = '-' + fmt(autoWt);
+    document.getElementById('wtDisplay').textContent       = autoWt > 0 ? '-' + fmt(autoWt) : '0.00';
     calculateTotals();
 }
 
