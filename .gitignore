@@ -75,7 +75,6 @@ htmlcov/
 /*.jpeg
 
 # Development-only — not needed on PythonAnywhere
-/docs/
 /tests/
 /scripts/
 pytest.ini

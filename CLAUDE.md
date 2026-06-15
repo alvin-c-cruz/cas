@@ -15,6 +15,9 @@ python flask_app.py
 # Seed the database (admin user, main branch, 173-account COA, VAT categories, WHT codes, settings)
 flask seed-db
 
+# Seed minimal data for demos/quick local setup (admin, 1 branch, 6 accounts, 4 VAT categories, 3 WHT codes)
+flask seed-minimal
+
 # Migrations (Flask-Migrate / Alembic)
 flask db migrate -m "describe change"
 flask db upgrade
@@ -48,6 +51,24 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 
 **Exports.** `app/utils/export.py` provides `export_to_excel` / `export_to_csv` (openpyxl-backed).
 
+**Cache helpers (`app/utils/cache_helpers.py`).** Active accounts, VAT categories, WHT codes, and branches are memoized for 1 hour. After mutating any of these entities, call the matching `clear_*_cache()` function (e.g. `clear_account_cache()`) — otherwise callers see stale data until the TTL expires.
+
+**Branch session validation.** A `before_request` hook in `create_app` validates `session['selected_branch_id']` on every request: if the stored branch is inaccessible, it is cleared and the user is redirected to the branch picker (`users.select_branch`). If the user has exactly one accessible branch it is auto-selected. Exempt endpoints: `users.login`, `users.logout`, `users.register`, `users.select_branch`, `static`. This means any view that assumes a valid branch in session is already guarded — do not duplicate the check.
+
+**Branch access by role.** Admins and accountants can access all active branches. Staff and viewers can access only their explicitly assigned branches (many-to-many `User.branches`). Use `get_accessible_branches(current_user)` from `app/users/utils.py` whenever building branch selectors or scoping queries; never assume all branches are visible.
+
+**VAT mechanics (Philippine BIR).** Line amounts in Sales Invoices and Accounts Payable are **VAT-inclusive** — VAT is *extracted* from the amount, not added on top. The `vat_amount` is derived from `subtotal` using the line's VAT category percentage. `vat_override` / `wt_override` flags allow manual adjustment when the auto-calc doesn't match a counterparty agreement.
+
+**Accounting periods (`app/periods/`).** The `AccountingPeriod` model tracks open/closed fiscal periods. Posting a journal entry to a closed period must be blocked at the view layer; check period status before accepting a posted date.
+
+**Notifications (`app/notifications/`).** When a change request is approved or rejected, create a `Notification` record for the requestor (`category` = `'success'` or `'error'`, `related_type`/`related_id` pointing to the change request). Notifications are in-app only; no email.
+
+**User registration guard.** `ApprovedEmail` model (in `app/users/`) is a whitelist of email addresses allowed to self-register. New registrants are created with `role='viewer'` and must be promoted by an admin. Tests that create users directly bypass this; integration tests that hit `/register` need an `ApprovedEmail` row first.
+
+**Account lockout.** `User.is_account_locked()` checks `account_locked_until`; `User.increment_failed_attempts()` locks after 5 failures for 15 minutes. Login tests that expect a success response must use unlocked, active accounts.
+
+**Jinja filter.** A `from_json` filter is registered globally — `{{ some_field | from_json }}` parses a JSON string in a template and returns a dict (returns `{}` on parse error).
+
 ## Project Conventions (non-negotiable)
 
 - **No JavaScript popups.** Never use `confirm()`, `alert()`, or `prompt()`. Build custom HTML modal forms with a `{{ csrf_token() }}` hidden input.
@@ -61,9 +82,10 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 
 ## Testing Notes
 
-- Fixtures live in `tests/conftest.py`: `app` (session-scoped, testing config), `db_session` (function-scoped, creates/drops all tables per test), `client`, plus per-role user fixtures (`admin_user`, `accountant_user`, `staff_user`, `viewer_user`).
+- Fixtures live in `tests/conftest.py`: `app` (session-scoped, testing config), `db_session` (function-scoped, creates/drops all tables per test), `client`, plus per-role user fixtures (`admin_user`, `accountant_user`, `staff_user`, `viewer_user`). Additional helpers: `db_with_data` (admin + branch + cash/revenue accounts pre-populated), `branch_manila` (second branch), `login_user()` / `logout_user()` helpers.
 - Layout: `tests/unit/`, `tests/integration/`, `tests/performance/`, `tests/test_smoke.py`.
 - For browser/Playwright tests, the login password field is `readonly` (anti-autofill) — `click('#password')` to clear it before `fill`/`type`.
+- Integration tests that exercise registration need an `ApprovedEmail` row; tests that exercise lockout logic need an account with `failed_login_attempts < 5` and `account_locked_until` unset.
 
 ## Deployment
 

@@ -1,0 +1,1188 @@
+# CAS Manual Test Runbook
+
+## 1. Purpose & How to Use
+
+This runbook is a **repeatable full acceptance test** of CAS, executed manually in a browser against a **clean starting-company state** (fresh database, one admin, one branch, no master data, no transactions).
+
+How to use it:
+
+1. Confirm every item in **Preconditions** before starting. Do not skip.
+2. Execute the scenarios **in order** — later scenarios depend on data and role changes made by earlier ones.
+3. Each scenario has a **Goal**, numbered **Steps** (concrete browser actions with real URLs), an **Expected Result**, **Pass Criteria** checkboxes (every DB write includes an audit-log check), a short **UX Review** checklist, and a **Workflow Clarity** verdict.
+4. Scenarios marked **⏸** are **User-Approval Gates**: pause, present the proposed data to the product owner, and wait for sign-off before writing anything to the database (see section 4).
+5. If a bug is found, log it in the **Bug Log** (section 9). A cross-module bug **stops the run** — fix it first, re-run the affected scenario, then continue.
+6. At the end, fill in the **Workflow Clarity Summary** and add a row to the **Test Run Log**.
+7. On the first run, fill in the **Appendix: Test Data** tables so later runs reuse the same data.
+
+> **Code-reality notes:** Where the codebase currently differs from the intended behavior, scenarios carry a **Note (code reality)** box. Treat divergences as findings — record them in the Bug Log rather than silently adjusting expectations.
+
+## 2. Test Run Log
+
+| Date | Tester | Result | Notes |
+|------|--------|--------|-------|
+| 2026-06-11 | Claude + Alvin | In progress | First run. **Phases 0–2 complete**; ⏸ gates signed off 2026-06-12 (9 COA accounts w/ hierarchy, 4 VAT categories incl. INV, 3 WHT codes, vendor MOS). **Phase 3:** 19 PASS (AP-2026-06-0001 draft; computations exact; B-013 found+fixed; B-014 logged). 20 PASS (.svg/.exe/413 rejected; anonymous → login; cross-branch → 404). 21 PASS (edit audited old→new; attachment delete removes disk file + re-upload; hints visible). 22 PASS after B-015 fix. 23 PASS after B-016 fix. 24 PASS (immutability; "Approve" N/A — no approve flow). B-017+B-018 found & fixed. 24b PASS (cancel: reversal JE CANCEL-AP-…-0003, attachments RETAINED on disk, audited with reason). 25 PASS (QC: payables ₱5,550/1 bill — cancelled excluded; expenses ₱5,000 net of reversal; Main branch all zeros; matches empty baseline + B-001 charts working). 26 PASS (audit UI filters work; **full reconciliation exact** — accounts 13 CRs ↔ 25 create + 1 reject rows; VAT 4↔8; WHT 3↔6; bills 3 ↔ create3/update3/post2/void1/cancel1; JE writes covered via parent bill events — noted). **RUN 1 COMPLETE: 30/30 scenarios PASS** after fixes B-001..B-018. Post-run polish 2026-06-12: B-004 fixed (+ auto-branch-select audit, permission_granted noise, is/are grammar, JE-preview column). Open: B-005, B-011, B-014 (input-VAT mapping deferred per owner 2026-06-12). |
+
+## 3. Preconditions
+
+Clean-state database checklist (verify via DB browser or `flask shell` before starting):
+
+- [ ] `users` = 1 (the seeded `admin` user)
+- [ ] `branches` = 1 (Main Branch)
+- [ ] `user_branches` = 1 (admin assigned to Main Branch)
+- [ ] `app_settings` rows present (seeded keys: `company_name`, `company_tin`, `company_address`, `fiscal_year_start`, `environment`)
+- [ ] `accounts` = 0
+- [ ] `vat_categories` = 0
+- [ ] `withholding_tax` = 0
+- [ ] `vendors` = 0
+- [ ] `purchase_bills` = 0
+- [ ] Dev server running at `http://127.0.0.1:5000` (`python flask_app.py`)
+- [ ] Admin credentials available: username `admin` — the password is known to the team and is **never written in this document**
+
+> **Important sequencing fact:** the COA used by AP Vouchers requires accounts `20101` (Accounts Payable - Trade), `10501` (Input VAT - Current), and `20301` (WHT Payable - Expanded) to exist before any APV can be saved (the create view builds a journal entry immediately). These are created in Phase 2 (scenarios 11–13, gated).
+
+## 4. User-Approval Gates ⏸
+
+Per project rules (propose-before-seeding / model-change approval), the test run **PAUSES** and prompts the user (product owner) with the **proposed data for review**, and waits for explicit sign-off, **before** any of the following writes:
+
+1. **Creating VAT Categories** (scenario 16)
+2. **Creating Withholding Tax codes** (scenario 17)
+3. **Creating VAT/WHT-related accounts** — Input VAT (10501), WHT Payable (20301), and any related accounts, wherever they are created within scenarios 11–13
+
+Gated scenarios are marked with **⏸** in their headers. The prompt must show the exact codes, names, rates, and account types to be created. Do not proceed without sign-off; record the sign-off (who/when) in the scenario notes.
+
+## 5. Per-Scenario Qualitative Checks
+
+Each scenario ends with two qualitative checks. They are explained once here; the scenarios carry the short versions.
+
+**UX Review** — inspect the page(s) touched by the scenario for:
+
+- Layout/alignment correct (no overlapping or misaligned elements)
+- Responsive behavior (resize to tablet ~768px and mobile ~375px widths)
+- Design-token consistency — no visibly hardcoded one-off styles
+- Readable labels (clear field names, no truncation, sensible casing)
+- Sensible empty states (helpful message + call-to-action, not a bare table)
+- No broken styling (missing CSS, unstyled buttons, broken icons)
+- **Regression (B-002):** every flash message appears **exactly once** (the app previously double-rendered flashes on ~42 pages)
+- UX notes: ___ (free text)
+
+**Workflow Clarity** — could a **first-time user** figure out the next action without help? Consider visible buttons, hints, flash messages, and sidebar badges.
+
+- **Verdict: Clear / Needs hint / Confusing** + one-line note
+
+## 6. Dashboard Baseline
+
+Right after the first login (scenario 1), open `http://127.0.0.1:5000/dashboard` and record the **empty state** for comparison in scenario 25:
+
+- [ ] Revenue MTD / YTD = 0.00
+- [ ] Expenses MTD / YTD = 0.00
+- [ ] Receivables total / count / overdue = 0
+- [ ] Payables total / count / overdue = 0
+- [ ] Top Customers and Top Vendors panels show a sensible empty state (no errors, no broken charts)
+- [ ] Revenue trend / expense breakdown charts render without errors on zero data
+- [ ] **Regression (B-001):** browser console shows no CSP/script-loading errors; Chart.js loads from `/static/chart.umd.min.js`, not a CDN
+- [ ] Screenshot saved as `dashboard-baseline.png` (or values recorded here): ___
+
+## 7. Test Scenarios
+
+---
+
+### Phase 0 — Initial Company Setup
+
+---
+
+#### Scenario 1 — Login
+
+**Goal:** Admin can log in; failed access control redirects; logins are audited.
+
+**Steps:**
+1. While logged out, navigate directly to `http://127.0.0.1:5000/users` (a protected admin page).
+2. Confirm you are redirected to `http://127.0.0.1:5000/login`.
+3. On `/login`, enter username `admin` and the team-known password. Click **Sign In**.
+4. Confirm redirect to the dashboard (`/dashboard`) with a "Welcome back" flash (admin has one branch, so no branch-selection page appears).
+5. Capture the **Dashboard Baseline** (section 6).
+6. Open `http://127.0.0.1:5000/audit-log` and filter module `auth`.
+
+**Expected Result:** Logged-out access to protected pages redirects to `/login`; valid login lands on the dashboard with a welcome flash; audit log shows `login_success` for `admin`.
+
+**Pass Criteria:**
+- [ ] Protected URL while logged out → redirected to `/login`
+- [ ] Valid credentials → dashboard with welcome flash
+- [ ] Audit log entry: module `auth`, action `login_success`, record identifier `admin`
+- [ ] Sidebar shows "Current Branch: Main Branch"
+
+**UX Review:**
+- [ ] Login page layout/alignment, responsive, design tokens, readable labels, no broken styling
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 2 — Logout
+
+**Goal:** Logout works, is audited, and the browser back-button does not reveal protected content.
+
+**Steps:**
+1. While logged in as `admin`, navigate to `http://127.0.0.1:5000/logout`.
+2. Confirm redirect to `/login` with a "logged out successfully" flash.
+3. Press the browser **Back** button.
+4. Confirm the protected page is not served from cache as a usable session (any action redirects to `/login`).
+5. Log back in as `admin` and check `/audit-log` (module `auth`).
+
+**Expected Result:** Session ends, flash confirms, back-button does not give access, audit shows `logout`.
+
+**Pass Criteria:**
+- [ ] Logout redirects to `/login` with confirmation flash
+- [ ] Back button does not restore an authenticated session
+- [ ] Audit log entry: module `auth`, action `logout`, identifier `admin`
+
+**UX Review:**
+- [ ] Logout flash visible and styled; login page state clean after logout
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 3 — App Settings — initial setup
+
+> **Note (updated 2026-06-11):** The Company Settings page was built during the first run (Bug B-003). It lives at `/settings` (sidebar: Admin → Company Settings), admin-only, with sections: Company Identity (name, trade name), BIR Registration (TIN, branch code, RDO, VAT type), Address & Contact (address, postal code, phone, email), Company Officers (president, treasurer, secretary), Accounting (fiscal year start), and Logo upload. Saving writes **one** audit entry per save (`module='settings'`, `action='update'`) containing only the changed keys; the sidebar shows the saved company name and logo.
+
+**Goal:** Set initial company settings — company name, TIN, address, fiscal year start — and verify persistence + audit per setting.
+
+**Steps:**
+1. As `admin`, locate the Settings page in the sidebar/Admin section (if absent → Bug Log, N/A).
+2. Enter Company Name, TIN (format `XXX-XXX-XXX-XXX`), Address, and any other available settings. Save.
+3. Reload the page and confirm values persisted.
+4. Verify the values appear wherever the app displays company info (e.g., report headers).
+5. Check `/audit-log` for one entry per changed setting.
+
+**Expected Result:** Each setting persists, displays where used, and produces an audit entry recording the new value.
+
+**Pass Criteria:**
+- [ ] Settings page reachable from navigation (or Bug logged)
+- [ ] All values persist after reload
+- [ ] One audit entry per save (`module='settings'`) listing only the changed keys
+- [ ] `updated_by` on each `app_settings` row = `admin`
+- [ ] Sidebar brand shows the saved company name
+
+**UX Review:**
+- [ ] Form layout, responsive, tokens, labels, validation messages
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 3b — App Settings — change
+
+> **Note (updated 2026-06-11):** Settings UI exists at `/settings` — see scenario 3 note. The audit entry for a change must contain **old → new values for only the changed keys**.
+
+**Goal:** Edit existing settings to new values; new values appear everywhere displayed; audit records old → new.
+
+**Steps:**
+1. As `admin`, open the Settings page again.
+2. Change Company Name and TIN to clearly different values. Save.
+3. Reload and confirm the new values everywhere company info is displayed.
+4. Check `/audit-log`: the update entries must record **old value → new value** for each changed key.
+
+**Expected Result:** Changes persist and propagate; audit shows old and new values.
+
+**Pass Criteria:**
+- [ ] New values persist and display everywhere applicable
+- [ ] Audit entries contain both old and new values
+- [ ] No stale old values remain anywhere in the UI
+
+**UX Review:**
+- [ ] Edit flow obvious; saved confirmation flash shown
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 4 — Approved Emails
+
+**Goal:** Admin pre-approves the new user's email so self-registration is possible.
+
+**Steps:**
+1. As `admin`, open **Admin → Approved Emails** (`http://127.0.0.1:5000/approved-emails`).
+2. Confirm the empty state is sensible.
+3. Click to add (`/approved-emails/add`). Enter the new user's email (record it in Appendix) and an optional note. Submit.
+4. Confirm flash `Email "<email>" has been approved for registration.` and the email listed with status "available"/not used.
+5. Check `/audit-log` for an entry recording the approved-email addition.
+
+**Expected Result:** Email appears in the approved list, available for registration.
+
+> **Note (code reality):** `add_approved_email()` in `app/users/views.py` performs **no audit logging**. If no audit entry appears, that is a code gap — log it in the Bug Log (it will also surface in scenario 26 reconciliation).
+
+**Pass Criteria:**
+- [ ] Email added and listed as unused
+- [ ] Duplicate add of the same email is rejected with a clear message
+- [ ] Audit entry exists for the addition (if missing → Bug Log)
+
+**UX Review:**
+- [ ] List + form layout, responsive, tokens, labels, empty state
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+### Phase 1 — Users & Branches
+
+---
+
+#### Scenario 5 — Registration
+
+**Goal:** Registration enforces approved emails, the password policy, and uniqueness; valid registration goes to pending state.
+
+Password policy under test: **≥12 chars, at least one uppercase, one lowercase, one number, one special character**; must not contain the username; common passwords rejected.
+
+**Steps:**
+1. Log out. Navigate to `http://127.0.0.1:5000/register`.
+2. **Negative — non-approved email:** submit with an email NOT in the approved list. Expect validation error "This email is not pre-approved for registration…".
+3. **Negative — weak password:** use the approved email but password `short1!` (too short), then `alllowercase123!` (no uppercase), then `NoSpecial12345` (no special char). Each must be rejected with a specific policy message.
+4. **Positive:** submit username, full name, the pre-approved email, and a policy-compliant password. Expect flash `Registration successful! Your account is pending admin approval…` and redirect to `/login`.
+5. As `admin`, open `/approved-emails` and confirm the email is now marked **used**.
+6. **Login while pending:** attempt to log in as the new user. Expect a clear message: "Your account is pending approval…".
+7. **Negative — duplicates:** attempt to register again with the same username (different email) and with the same email. Both must be rejected ("Username already exists…" / "Email already registered…").
+8. As `admin`, check `/audit-log` for module `user_registration`, action `registration_success`.
+
+**Expected Result:** Only pre-approved emails with strong passwords can register; account is inactive pending approval; approved email flips to used; duplicates blocked.
+
+**Pass Criteria:**
+- [ ] Non-approved email rejected with explanatory message
+- [ ] Each weak-password variant rejected with the specific policy violation named
+- [ ] Valid registration → "pending admin approval" flash
+- [ ] Approved email marked used (shows the registering username)
+- [ ] Pending user cannot log in; message clearly says pending approval
+- [ ] Duplicate username and duplicate email registrations rejected
+- [ ] Audit: `user_registration` / `registration_success` entry exists
+
+**UX Review:**
+- [ ] Registration form layout, responsive, tokens, labels, inline validation messages readable
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 6 — Admin approves user
+
+**Goal:** Admin activates the pending user, keeping the default `viewer` role.
+
+**Steps:**
+1. As `admin`, open **Admin → User Management** (`http://127.0.0.1:5000/users`).
+2. Confirm the new user is listed as inactive, role `viewer`.
+3. Open `/users/<id>/edit` for the new user. Check **Active**. Do NOT change the role. Save.
+4. Confirm flash `User "<username>" updated successfully!`.
+5. Check `/audit-log`: module `user`, action `update`, with old/new values showing `is_active: false → true`.
+6. Log out; log in as the new user. Login must now succeed (single branch? — the viewer has **no** branch assigned yet, so expect "No branches available. Please contact the administrator." and a bounce back to `/login` — this is correct until scenario 8).
+
+**Expected Result:** User active with role `viewer`; activation audited with old → new values; login blocked only by missing branch assignment (clear message).
+
+**Pass Criteria:**
+- [ ] User activated, role remains `viewer`
+- [ ] Audit `user`/`update` entry with `is_active` change
+- [ ] New user's login attempt gives the "No branches available" message (not a crash)
+
+**UX Review:**
+- [ ] User list and edit form layout, responsive, tokens, labels
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 6b — Account lockout & unlock
+
+**Goal:** 5 wrong passwords lock the new user's account for 15 minutes; admin unlocks; audit trail complete.
+
+**Steps:**
+1. Log out. On `/login`, enter the new user's username with a wrong password **5 times**.
+2. Observe warnings: at ≤2 remaining attempts the flash warns "Warning: N attempts remaining before account lockout."; on the 5th failure: "Too many failed login attempts. Your account has been locked for 15 minutes."
+3. Attempt a 6th login (even with the **correct** password). Expect "Your account is locked… try again in N minutes or contact the administrator."
+4. Log in as `admin`, open `/audit-log`, module `auth`, filter by the new user.
+5. Verify the failure trail: **4 × `login_failed`** ("Invalid password") **+ 1 × `account_locked`** on the 5th attempt, plus `login_failed` ("Account locked…") for the post-lock attempt.
+   > **Note (code reality):** the 5th failed attempt is logged as `account_locked` instead of a 5th `login_failed` — expect 4 `login_failed` + 1 `account_locked`, not 5 + 1.
+6. Open `/users/<id>/edit` for the new user, tick the **Unlock account** checkbox, save.
+7. Check `/audit-log` for module `user`, action `account_unlocked` (notes name the admin).
+8. Log out; log in as the new user with the correct password — must succeed (will still hit "No branches available" until scenario 8; that bounce is acceptable here — the lockout itself must be cleared, i.e., no "locked" message).
+
+**Expected Result:** Lockout engages on the 5th failure with a 15-minute message; admin unlock works; full audit trail present.
+
+**Pass Criteria:**
+- [ ] Remaining-attempts warning shown at ≤2 attempts left
+- [ ] 5th failure locks the account with the 15-minute message
+- [ ] Correct password rejected while locked
+- [ ] Audit: 4 × `login_failed` + 1 × `account_locked` (+ post-lock `login_failed`)
+- [ ] Admin unlock via `/users/<id>/edit` works
+- [ ] Audit: `user` / `account_unlocked` entry exists
+- [ ] User authenticates fine after unlock (no locked message)
+
+**UX Review:**
+- [ ] Lockout warnings clear and non-alarming; unlock control discoverable on the edit form
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 7 — Branch CRUD
+
+**Goal:** Admin creates a second branch and edits it; both writes audited.
+
+**Steps:**
+1. As `admin`, open **Admin → Branch Management** (`http://127.0.0.1:5000/branches`).
+2. Click **Create** (`/branches/create`). Enter code, name (record in Appendix), address, phone, email. Save.
+3. Confirm the new branch appears in the list.
+4. Open `/branches/<id>/edit` for the new branch; change the address. Save.
+5. Check `/audit-log`: module `branch`, action `create` (new values) and action `update` (old → new address).
+
+**Expected Result:** Second branch created and edited; both operations audited with values.
+
+**Pass Criteria:**
+- [ ] Branch created with all fields persisted
+- [ ] Branch edit persists; list reflects changes
+- [ ] Audit: `branch`/`create` with new values
+- [ ] Audit: `branch`/`update` with old and new values
+
+**UX Review:**
+- [ ] Branch list/form layout, responsive, tokens, labels, empty/secondary states
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 8 — Assign user to branch
+
+**Goal:** Map the new user to the **second branch only**.
+
+**Steps:**
+1. As `admin`, open `/branches/<id>/users` for the **second** branch.
+2. Assign the new user (POST via the **Assign** button → `/branches/<id>/assign-user/<user_id>`). Alternatively use the Branch Assignments multi-select on `/users/<id>/edit`, ticking only the second branch.
+3. Confirm the user is listed under the second branch and NOT under Main Branch (`/branches/<main_id>/users`).
+4. Check `/audit-log`: module `branch`, action `assign_user` (or module `user`, action `branch_assigned` if done from the user form).
+
+**Expected Result:** New user is assigned exactly one branch — the second branch.
+
+**Pass Criteria:**
+- [ ] User assigned to second branch only
+- [ ] Main Branch user list does not include the new user
+- [ ] Audit entry for the assignment exists
+- [ ] **Regression (B-009):** the Available Users list on `/branches/<id>/users` includes **viewers**; Assign actually grants access (`user_branches` row exists; user can log in / `has_branch_access()` true) — not just a success flash
+- [ ] **Regression (B-009):** Unassign actually revokes access (M2M row removed); unassigning a user's **last** branch shows the "cannot log in until reassigned" warning flash
+- [ ] **Regression (B-009):** audit `branch`/`assign_user` and `unassign_user` rows carry old → new `branch_ids`; assigning an **admin** is rejected with "Administrators automatically have access to all branches."
+
+**UX Review:**
+- [ ] Assignment UI obvious; current assignments visible at a glance
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 9 — User scope test (viewer)
+
+**Goal:** As the new `viewer` user, confirm role gating: no Action Items, no admin pages, read-only transactions.
+
+**Steps:**
+1. Log in as the new user (now succeeds; lands on dashboard scoped to the second branch).
+2. Confirm the sidebar shows **no Action Items item/badge** (it is rendered only for admin/accountant/staff).
+3. Confirm the sidebar hides: Branch Management, User Management, Approved Emails, Audit Log, VAT Categories, Withholding Tax.
+4. Hit each protected URL directly and confirm redirect + explanatory flash:
+   - `/users` → redirected, "You need administrator or accountant privileges…"
+   - `/approved-emails` → redirected with flash
+   - `/action-items` → page loads but shows no pending-request content for viewers (list is built only for accountant/admin) — record what a viewer actually sees
+   - `/audit-log` → redirected, "Only Accountants and Administrators can view audit logs."
+   - `/branches` → redirected (admin only)
+5. Open `/purchase-bills` and `/vendors`: lists must render read-only. Try `/purchase-bills/create` directly → redirect with flash "Only Accountants and Administrators can manage AP Vouchers."
+
+**Expected Result:** Viewer sees read-only content with explanatory flashes; no admin or approval surfaces.
+
+**Pass Criteria:**
+- [ ] No Action Items nav item or badge for viewer
+- [ ] All admin URLs redirect with explanatory flash (no 500s, no blank pages)
+- [ ] Transaction pages read-only; write URLs blocked with flash
+- [ ] No write buttons (Enter APV / Create / Edit / Delete) visible to the viewer
+- [ ] **Regression (B-010):** topbar "+ New" menu absent for viewers; no Enter/Create buttons on `/purchase-bills`, `/sales-invoices`, `/receipts`, `/journal-entries` (including empty-state buttons); accountant/admin still see them
+
+**UX Review:**
+- [ ] Read-only states look intentional, not broken; flashes explain *why*
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 10 — Branch scope test
+
+> **ORDERING NOTE:** This scenario MUST run **before** scenario 10b. Accountants (and admins) see **all** branches; once the user is promoted, branch scoping can no longer be tested with this account.
+
+**Goal:** Branch data isolation for a branch-scoped user; admin branch switching is audited.
+
+**Steps:**
+1. As the new user (`viewer`, second branch only), confirm the sidebar branch indicator shows the **second branch**.
+2. Navigate to `/select-branch`: only the second branch must be offered (or it auto-redirects because only one branch is accessible).
+3. As `admin` (separate session/browser), note the ID of any Main-Branch-scoped record (after Phase 3 exists this is a purchase bill URL; at this point verify with whatever branch-scoped record exists, and **re-verify in Phase 3**: as the non-assigned user, open `/purchase-bills/<id>` of a Main Branch APV).
+4. As the scoped user, request that Main-Branch record URL directly. Expect access denial.
+   > **Note (code reality):** cross-branch purchase-bill access returns **404 Not Found** (`_get_bill_or_404`), not 403. Treat 404 as a pass for "denied"; record the 403-vs-404 mismatch in notes.
+5. As `admin`, go to `/select-branch`, switch to the second branch, and confirm the dashboard/lists now show second-branch data; switch back to Main Branch.
+6. Check `/audit-log`: module `auth`, action `branch_selected` entries for each admin switch.
+   > **Note:** auto-selection at login is audited as of 2026-06-12 (B-004 fix bundle): a single-branch user's login writes a `branch_selected` row with an "Auto-selected" note — expect it alongside manual selections.
+   > **UX note:** the `/select-branch` option cards show the literal placeholder text "Branch location" instead of each branch's address.
+
+**Expected Result:** Scoped user sees only their branch; direct URLs to other-branch records are denied; admin switching works and is audited.
+
+**Pass Criteria:**
+- [ ] Scoped user offered only the assigned branch in `/select-branch`
+- [ ] Direct URL to other-branch record denied (404/403 — record which)
+- [ ] Admin branch switch changes displayed data
+- [ ] Audit: `auth`/`branch_selected` per switch
+
+**UX Review:**
+- [ ] Current branch always visible; switch flow discoverable
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 10b — Promote to accountant
+
+**Goal:** Admin promotes the new user to `accountant`; promotion audited; user gains Action Items.
+
+**Steps:**
+1. As `admin`, open `/users/<id>/edit` for the new user. Change Role from `Viewer` to `Accountant`. Save.
+2. Check `/audit-log`: module `user`, action `update`, old/new values showing `role: viewer → accountant`.
+3. Log in as the user. Confirm the **Action Items** nav item now appears, and branch selection now offers **all branches** (accountants see all — which is why scenario 10 had to run first).
+4. Confirm the user can now open `/audit-log` and `/users` (accountant-level pages).
+
+**Expected Result:** Role change persisted and audited with old/new role; accountant surfaces unlocked.
+
+**Pass Criteria:**
+- [ ] Role = accountant after save
+- [ ] Audit `user`/`update` entry contains old role and new role
+- [ ] Action Items visible to the user
+- [ ] User now sees all branches in `/select-branch`
+
+**UX Review:**
+- [ ] Role selector clear; consequences of role change communicated
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+### Phase 2 — Reference Data (approval workflow + audit)
+
+> **Approval rules under test:**
+> - Admin submissions always go to **pending** (admins never auto-approve).
+> - A **sole accountant** auto-approves their own submissions instantly.
+> - With **≥2 accountants**, requests go pending and **self-approval is blocked** (`can_be_approved_by` rejects the requester).
+>
+> **B-006 checks apply to every change-request submission in this phase (COA, VAT, WHT):** (a) clear "submitted for approval" feedback, (b) duplicate-pending-submission guard, (c) reason-for-change captured and shown to the reviewer.
+>
+> **Note (fixed 2026-06-12, B-011):** `can_auto_approve()` now implements the documented rule in all three modules — admins are excluded from the count, so the **sole active accountant auto-approves** their own changes even with admins present; admins always go pending. In runs with ≥2 active accountants, scenario 12's submission goes pending instead — expect auto-approval only when exactly one accountant is active.
+
+---
+
+#### Scenario 11 — COA — admin path ⏸ (gate applies to VAT/WHT-related accounts in #11–13)
+
+**Goal:** Admin-created account goes to **pending** (not auto-approved), then is approved from Action Items; audited.
+
+**⏸ Gate:** before creating Input VAT (10501), WHT Payable (20301), or any VAT/WHT-related account in scenarios 11–13, present the proposed codes/names/types to the product owner and wait for sign-off.
+
+> **COA hierarchy (decided 2026-06-12):** the gated VAT/WHT accounts are created as **parent group + leaf child** to exercise the derived hierarchy: `10500 Input VAT` (Asset, group) → `10501 Input VAT - Current` (leaf); `20300 WHT Payable` (Liability, group) → `20301 WHT Payable - Expanded` (leaf). Create and approve the parent first; the child's Parent selector must then offer it. **Hierarchy pass criteria** (check after creation): children indented under parents in `/accounts/`; parent rows render as group headers (non-postable) and are excluded from the postable type counts; re-verify in scenario 19 that the APV account picker shows group accounts **disabled** (only leaves selectable).
+
+**Steps:**
+1. As `admin`, open **Ledger → Chart of Accounts** (`http://127.0.0.1:5000/accounts/`). Confirm sensible empty state.
+2. Click create (`/accounts/create`). Propose the account set needed for APVs (present at the ⏸ gate): at minimum `20101 Accounts Payable - Trade` (Liability), one expense account for line items, plus the gated `10501 Input VAT - Current` (Asset) and `20301 WHT Payable - Expanded` (Liability). Create the **first** account here (e.g., 20101); remaining accounts may be created in scenarios 12–13 (still honoring the gate).
+3. Submit. Expect flash "Account creation request submitted for approval by another accountant." — i.e., **pending**, NOT auto-approved.
+4. Confirm the sidebar **Action Items badge** increments (admin and the accountant both see it).
+5. As the **accountant** user, open `/action-items`, find the request, follow its review link, and approve from `/accounts/pending-approvals` (Approve button → POST `/accounts/approve/<request_id>`). (The requester must not approve — see scenario 13 for the negative.)
+6. Confirm the account now exists in `/accounts/`.
+7. Check `/audit-log`: module `account`, action `create` entries for submission ("Pending approval") and approval ("Approved by <username>").
+
+**Expected Result:** Admin request is pending; another accountant approves; account created; both steps audited.
+
+**Pass Criteria:**
+- [ ] ⏸ Sign-off obtained before VAT/WHT-related account creation (record who/when)
+- [ ] Admin submission → pending (no instant creation)
+- [ ] Action Items badge count correct
+- [ ] Approval by the accountant creates the account
+- [ ] Audit: `account`/`create` with notes "Pending approval"
+- [ ] Audit: `account`/`create` with notes "Approved by …"
+
+**UX Review:**
+- [ ] COA list (hierarchy), create form, pending-approvals page — layout, responsive, tokens, labels, empty states
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 12 — COA — sole accountant path
+
+**Goal:** Verify the auto-approval rule for a sole accountant.
+
+> **Note (code reality):** as implemented, auto-approval requires exactly **one active accountant-or-admin in the entire system**. With `admin` active, this run always has ≥2, so the accountant's request will go **pending**, not auto-approve. Execute the steps, record the actual behavior, and log the discrepancy against the documented rule in the Bug Log (design clarification needed: should admins be excluded from the count?).
+
+**Steps:**
+1. As the **accountant** user, open `/accounts/create` and create the next account from the approved set (e.g., the expense account; if it is VAT/WHT-related, the ⏸ gate from scenario 11 applies).
+2. Observe the flash: auto-approve → "Account created successfully! (Auto-approved - you are the only accountant)"; pending → "…submitted for approval by another accountant."
+3. If pending (expected per code reality), have `admin` approve it via `/accounts/pending-approvals` so the data exists for Phase 3.
+4. Check `/audit-log` for the corresponding `account`/`create` entries (auto-approved entries carry notes "Auto-approved (single accountant)").
+
+**Expected Result (documented rule):** sole accountant → instant auto-approval, no pending request. **Actual (code):** record what happens.
+
+**Pass Criteria:**
+- [ ] Behavior recorded (auto-approved vs pending) with screenshot
+- [ ] Account ends up created (via auto-approve or admin approval)
+- [ ] Audit entries present for every step taken
+- [ ] Discrepancy (if any) logged in Bug Log
+
+**UX Review:**
+- [ ] Flash wording matches what actually happened
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 13 — COA — multi-accountant path
+
+**Goal:** With 2 accountants, requests go pending and self-approval is blocked; the second accountant approves.
+
+**Steps:**
+1. As `admin`: add a 2nd approved email (`/approved-emails/add`).
+2. Register the 2nd accountant via `/register` (policy-compliant password), then as `admin` activate them and set role `accountant` via `/users/<id>/edit` (audit checks as in scenarios 6/10b).
+3. As the **1st accountant**, create the next account from the approved set (gate ⏸ applies if VAT/WHT-related) via `/accounts/create`. Expect **pending**.
+4. Still as the 1st accountant, open `/accounts/pending-approvals`: the own request must show **no Approve button** (or approving must fail with "You cannot approve your own request when there are other accountants available.") — record which safeguard fires.
+5. As the **2nd accountant**, open `/action-items` → review → approve the request.
+6. Check `/audit-log` for submission and approval entries; also for the 2nd accountant's registration/activation/role-change entries.
+
+**Expected Result:** Pending request, requester blocked from self-approval, peer approves; full audit trail.
+
+**Pass Criteria:**
+- [ ] 2nd accountant registered, activated, promoted (each step audited)
+- [ ] 1st accountant's request → pending
+- [ ] Self-approval blocked (UI hides button and/or POST rejected with flash)
+- [ ] 2nd accountant approves successfully; account created
+- [ ] Audit: submission + approval entries present
+
+**UX Review:**
+- [ ] Pending list clearly distinguishes own requests vs reviewable ones
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 14 — Action Items page
+
+**Goal:** The Action Items hub gives reviewers everything needed to decide.
+
+**Steps:**
+1. Queue up pending requests: have one accountant submit 1 COA request (`/accounts/create`), 1 VAT request (`/vat-categories/create` — ⏸ gate, see scenario 16; you may reuse its approved data and submit it here), and 1 WHT request (`/withholding-tax/create` — ⏸ gate, see scenario 17). (If you prefer, run 16/17 first and return here while their requests are pending.)
+2. As the other accountant (or `admin`), verify the sidebar **badge count equals the number of pending requests** and updates after each approve/reject (page reload acceptable).
+3. Open `http://127.0.0.1:5000/action-items`. For **each** item verify: request type (AccountChange / VATChange / WTChange), change type (create/update/delete), record identifier (code), proposed values/description, requester username, timestamp, and a working **review link**.
+   > **Note (updated 2026-06-11, B-007):** the COA review link previously pointed to a dead route; fixed in `724dcad` — COA items now link to `/accounts/pending-approvals`. VAT/WHT links (`/vat-categories/change-requests/<id>/review`, `/withholding-tax/change-requests/<id>/review`) work. Each item must also show the **reason for change** (B-006c).
+4. Approve one item and reject another **with notes** from their review pages.
+5. As the `viewer`-style negative: confirm a non-accountant cannot reach the pending content (already covered in scenario 9 — re-verify quickly).
+6. Clarity question to answer explicitly: **could a reviewer decide from this page alone**, without opening other modules?
+
+**Expected Result:** Badge accurate, items complete and reviewable, approve/reject reachable, page restricted to accountant/admin.
+
+**Pass Criteria:**
+- [ ] Badge count matches pending requests and updates after each action
+- [ ] Each item shows type, change type, identifier, proposed values, requester, timestamp, review link
+- [ ] Review links navigate to working pages (COA link bug recorded if 404)
+- [ ] Approve and reject (with notes) both work from the review surfaces
+- [ ] Page content restricted to accountant/admin
+- [ ] Audit entries for the approve and the reject
+
+**UX Review:**
+- [ ] Scannable list, statuses obvious, empty state when queue is clear
+- UX notes: ___
+
+**Clarity verdict:** ___ (include the "decide from this page alone?" answer)
+
+---
+
+#### Scenario 15 — Reject flow
+
+**Goal:** Rejection with notes leaves the record unchanged and is fully audited; requester can see the outcome.
+
+**Steps:**
+1. As one accountant, submit an account **change** request (e.g., edit an existing account's name via `/accounts/<id>/edit`) → pending.
+2. As the other accountant, open `/accounts/pending-approvals` and **Reject** it, entering a rejection reason in the modal (POST `/accounts/reject/<request_id>`).
+3. Confirm flash "Account update request rejected." and that the underlying account is **unchanged**.
+4. As the requester, verify they can see the rejection and the notes (pending-approvals/history list, and notification if present).
+5. Check `/audit-log` for the rejection entry.
+   > **Note (updated 2026-06-11):** the accounts module previously logged rejections as `action=<change_type>`; fixed in `d5f1913` — all three modules now log `action='reject'` per convention. Expect `action='reject'` everywhere.
+
+**Expected Result:** Request → rejected with notes; record untouched; audit entry present; requester informed.
+
+**Pass Criteria:**
+- [ ] Reject requires/accepts notes; status becomes `rejected`
+- [ ] Target account unchanged after rejection
+- [ ] Audit entry for the rejection exists with `action='reject'`
+- [ ] Requester can see rejection + notes
+
+**UX Review:**
+- [ ] Reject modal (custom HTML, no JS popups), reason field, outcome visibility
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 16 — ⏸ VAT category
+
+**Goal:** Gated creation of VAT categories through the approval workflow.
+
+**⏸ Gate:** PAUSE. Present the proposed VAT categories (code, name, rate, description) to the product owner — e.g., `VAT12 / VAT 12% / 12.00` and `EXEMPT / VAT Exempt / 0.00` — and wait for sign-off. Record sign-off.
+
+**Steps:**
+1. As one accountant, open **Maintenance → VAT Categories** (`http://127.0.0.1:5000/vat-categories/`). Confirm empty state.
+2. Create the approved categories via `/vat-categories/create`. Expect each submission → **pending** change request.
+3. As the other accountant, open `/vat-categories/change-requests`, review each (`/vat-categories/change-requests/<id>/review`), and **approve**.
+4. Confirm the categories now appear in the list with correct rates.
+5. Check `/audit-log`: `vat_category`/`create` entries with notes "Approved by …" (and submission entries).
+
+**Expected Result:** Create → pending → approve; categories live; audited.
+
+**Pass Criteria:**
+- [ ] ⏸ Sign-off recorded before any DB write
+- [ ] Submission produces pending request (no instant create)
+- [ ] **(B-006a)** Submission shows a clear confirmation that a change request is now pending review
+- [ ] **(B-006b)** Re-submitting the same change while one is pending is blocked or warned (no duplicate requests in Action Items)
+- [ ] **(B-006c)** Submission captures a "reason for change" visible to the reviewer
+- [ ] Peer approval creates the category with correct code/name/rate
+- [ ] Requester cannot review own request ("You cannot review your own change request.")
+- [ ] Audit entries for submission and approval
+
+**UX Review:**
+- [ ] List, form, change-requests, review pages — layout, responsive, tokens, labels, empty states
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 17 — ⏸ Withholding tax code
+
+**Goal:** Gated creation of WHT codes through the approval workflow.
+
+**⏸ Gate:** PAUSE. Present the proposed WHT codes (code, name, rate) — e.g., `WC158 / EWT - Professional fees / 10.00` or per BIR table as the owner directs — and wait for sign-off. Record sign-off.
+
+**Steps:**
+1. As one accountant, open **Maintenance → Withholding Tax** (`http://127.0.0.1:5000/withholding-tax/`). Confirm empty state.
+2. Create the approved code(s) via `/withholding-tax/create`. Expect pending change request(s).
+3. As the other accountant, review and approve via `/withholding-tax/change-requests` → `/withholding-tax/change-requests/<id>/review`.
+4. Confirm codes live with correct rates.
+5. Check `/audit-log`: `withholding_tax` submission + approval entries.
+
+**Expected Result:** Create → pending → approve; codes live; audited.
+
+**Pass Criteria:**
+- [ ] ⏸ Sign-off recorded before any DB write
+- [ ] Pending → approved flow works; self-review blocked
+- [ ] Codes/rates correct in the list
+- [ ] Audit entries for submission and approval
+
+**UX Review:**
+- [ ] Same surfaces as VAT — consistent with scenario 16's design
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 18 — Vendor
+
+**Goal:** Vendor master data uses direct CRUD (no approval workflow); fully audited.
+
+**Steps:**
+1. As an accountant, open **Maintenance → Vendors** (`http://127.0.0.1:5000/vendors`). Confirm empty state and that the button says **Create** (master data) not "Enter".
+2. Create a vendor via `/vendors/create`: code, name, TIN, address, contact details, payment terms (record in Appendix). Save — vendor must appear **immediately** (no pending request).
+3. Edit via `/vendors/<id>/edit` (e.g., change phone). Save.
+4. View `/vendors/<id>` and confirm all details render.
+5. Check `/audit-log`: `vendor`/`create` (new values) and `vendor`/`update` (old → new).
+
+**Expected Result:** Instant create/edit, detail view correct, both writes audited.
+
+**Pass Criteria:**
+- [ ] Create is immediate (no approval step)
+- [ ] Edit persists; view shows current data
+- [ ] Audit: `vendor`/`create` with new values
+- [ ] Audit: `vendor`/`update` with old and new values
+
+**UX Review:**
+- [ ] Vendor list/form/detail — layout, responsive, tokens, labels, empty state
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+### Phase 3 — AP Voucher Flow
+
+> The UI calls purchase bills **"AP Voucher / APV"**. Sidebar: **Transactions → AP Vouchers**. Buttons: **➕ Enter APV**, **Post APV**, **Void APV**, **Cancel APV**. Numbering: `AP-YYYY-MM-NNNN`, resetting monthly (voided numbers are skipped/not reused).
+>
+> Prereq from Phase 2: accounts `20101`, `10501`, `20301` + at least one expense account exist; VAT categories and WHT codes live; vendor created. The APV save will fail with an explicit error if `20101/10501/20301` are missing.
+
+---
+
+#### Scenario 19 — Enter APV (draft)
+
+**Goal:** Accountant enters a draft APV with VAT + WHT lines and an image attachment; numbering, computations, and validations correct.
+
+**Steps:**
+1. As the accountant, ensure the working branch is their branch (sidebar indicator; `/select-branch` if needed).
+2. Open `/purchase-bills` and click **➕ Enter APV** (`/purchase-bills/create`).
+3. Verify the **AP Number** is pre-filled as `AP-<current year>-<current month>-0001` (first APV of the period).
+4. Select the vendor; set Voucher Date = today, Due Date per terms. Leave **Vendor Invoice #** and **Vendor Invoice Date** **empty** (allowed for drafts).
+5. Add 2 line items: each with description, amount, an expense account from the picker, a VAT category (12%), and a WHT code on at least one line. Record exact values in the Appendix.
+   - **Hierarchy check (from scenario 11 decision):** the account picker must list **group accounts disabled** (e.g. 10500 Input VAT, 20300 WHT Payable) — only leaf accounts selectable.
+6. **Computation check:** manually recompute from the entered amounts: VAT amount, WHT amount, gross, and net payable. Compare against the totals panel — must match **exactly** (to the centavo).
+7. Save the draft. Expect flash `AP Voucher "AP-…" entered successfully!` and redirect to `/purchase-bills/<id>`.
+8. Open `/purchase-bills/<id>/edit`, upload a vendor invoice **image** (`.png`/`.jpg`) via the attachment control (POST `/purchase-bills/<id>/attachments/upload`).
+9. Verify the **preview popup** renders the image (`/purchase-bills/attachments/<aid>/preview`) and **download** returns the original file (`/purchase-bills/attachments/<aid>/download`).
+10. **Validation negatives** (each must be blocked with a clear message, nothing saved):
+    - line amount `0` and a negative amount
+    - missing vendor ("-- Select Vendor --" left selected)
+    - Due Date earlier than Voucher Date
+11. Check `/audit-log`: `purchase_bill`/`create` and `purchase_bill_attachment`/`create`.
+
+**Expected Result:** Draft saved without vendor invoice fields; number `AP-YYYY-MM-0001`; totals exact; attachment preview/download work; invalid inputs blocked.
+
+> **Note (code reality, found run 1):** creating a DRAFT APV already writes a journal entry with `status='posted'` (`_post_bill_je` is called in the create route). Verify at scenarios 23/25 whether draft APVs leak into GL-based dashboard stats before the voucher is actually posted.
+> **UX note (run 1):** the edit form's JE preview showed the line *description* in the "Account Title" column — fixed 2026-06-12 (B-004 fix bundle); both pages now show account names.
+
+**Pass Criteria:**
+- [ ] Number follows `AP-YYYY-MM-NNNN` for the current period (0001)
+- [ ] Draft saves without Vendor Invoice #/Date
+- [ ] Manual recomputation of VAT, WHT, gross, net payable matches the totals panel exactly
+- [ ] Image preview popup works; download returns the file
+- [ ] Zero/negative amount blocked with clear message
+- [ ] Missing vendor blocked with clear message
+- [ ] Due date before voucher date blocked with clear message
+- [ ] Audit: `purchase_bill`/`create` entry
+- [ ] Audit: `purchase_bill_attachment`/`create` entry
+
+**UX Review:**
+- [ ] APV form (header, line grid, totals panel, attachments) — layout, responsive, tokens, labels
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 20 — Attachment security negatives
+
+**Goal:** Dangerous/oversized files rejected; attachments not reachable across users/branches.
+
+**Steps:**
+1. On the draft APV's edit page, attempt to upload a `.svg` file → must be rejected ("File type … is not allowed", SVG is deliberately excluded).
+2. Attempt to upload an `.exe` → rejected with the same allowlist message.
+3. Attempt an oversized file (> 16 MB, the `MAX_CONTENT_LENGTH` default) → rejected (HTTP 413 or an error page/flash — record which; an unstyled 413 is a UX bug).
+4. Copy a valid attachment's download URL (`/purchase-bills/attachments/<aid>/download`). As the **other** user working in **another branch** (e.g., admin switched to the second branch, or the 2nd accountant with a different selected branch), request that URL directly.
+5. Expect denial: redirect to login if unauthenticated; for a cross-branch session expect **404** (code uses `_get_bill_or_404`; spec allows 403/redirect — record actual).
+
+**Expected Result:** Allowlist enforced server-side; size cap enforced; no cross-branch/anonymous access to files.
+
+**Pass Criteria:**
+- [ ] `.svg` rejected
+- [ ] `.exe` rejected
+- [ ] Oversized upload rejected (record the response form)
+- [ ] Logged-out request to attachment URL → redirect to `/login`
+- [ ] Cross-branch request to attachment URL → denied (404/403, record which)
+
+**UX Review:**
+- [ ] Rejection messages name the allowed types; no raw stack traces or bare 413 pages
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 21 — Edit APV
+
+**Goal:** Draft edit works; "required to post" hints visible; attachment delete + re-upload audited.
+
+**Steps:**
+1. Open `/purchase-bills/<id>/edit` for the draft.
+2. Confirm the empty **Vendor Invoice #** and **Vendor Invoice Date** fields display a visible "Required to post" hint.
+3. Change a line amount and the notes. Save. Confirm totals recompute and the detail page reflects changes.
+4. Delete the existing attachment (custom modal — POST `/purchase-bills/attachments/<aid>/delete`), then re-upload it.
+5. Check `/audit-log`: `purchase_bill`/`update` (old → new totals), `purchase_bill_attachment`/`delete`, `purchase_bill_attachment`/`create`.
+
+**Expected Result:** Edits persist with recomputed totals; hints guide posting requirements; attachment cycle audited.
+
+**Pass Criteria:**
+- [ ] "Required to post" hints visible on empty vendor-invoice fields
+- [ ] Edit persists; totals recompute correctly
+- [ ] Attachment delete then re-upload both succeed
+- [ ] Audit: `purchase_bill`/`update` with old and new values
+- [ ] Audit: attachment `delete` and `create` entries
+
+**UX Review:**
+- [ ] Edit form parity with create form; hint styling consistent with design tokens
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 22 — Void APV
+
+**Goal:** Voiding the draft removes it from the books and deletes attachment files from disk; audited.
+
+**Steps:**
+1. On `/purchase-bills/<id>` (the draft), click **Void APV**. A custom modal asks for a Void Date and a reason (minimum 10 characters — test a too-short reason first → blocked).
+2. Submit a valid reason. Expect flash `AP Voucher "AP-…" voided.` and status badge **Voided** with the reason shown on the detail page.
+3. On the server, check `instance/uploads/purchase_bills/<id>/` — the attachment file(s) must be **removed from disk** (folder empty or gone).
+4. Confirm the draft's linked journal entry is gone (check `/journal-entries` — no entry referencing this APV).
+5. Check `/audit-log`: `purchase_bill`/`void` with the reason and attachment-deletion note.
+
+**Expected Result:** Draft voided, attachments purged from disk, JE removed, audit entry with reason.
+
+**Pass Criteria:**
+- [ ] Reason < 10 chars blocked with clear message
+- [ ] Status → voided; reason displayed on detail page
+- [ ] Attachment files deleted from `instance/uploads/purchase_bills/<id>/`
+- [ ] No JE remains for the voided draft
+- [ ] Audit: `purchase_bill`/`void` entry (notes include reason and attachment count)
+
+**UX Review:**
+- [ ] Void modal is a custom HTML modal (no `confirm()`), destructive action clearly styled
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 23 — Enter + Post APV
+
+**Goal:** Second APV gets the next number; posting requires vendor invoice fields; posting audited.
+
+**Steps:**
+1. Click **➕ Enter APV** again. Verify the prefilled number is the **next NNNN** for the period (voided numbers are not reused — record the actual number; with #0001 voided, expect `…-0002`).
+2. Enter the same vendor, valid dates, 1–2 lines with VAT + WHT, **leave Vendor Invoice # / Date empty**, save as draft.
+3. On `/purchase-bills/<id>`, click **Post APV** (custom modal → POST `/purchase-bills/<id>/post`). Expect block: `Cannot post: Vendor Invoice # and Vendor Invoice Date is required.`
+4. Edit the draft, fill Vendor Invoice # and Vendor Invoice Date (record in Appendix), save.
+5. Click **Post APV** again. Expect flash `AP Voucher "AP-…" posted successfully!` and status **Posted**.
+6. Verify the journal entry section on the detail page balances (debits = credits; expense net + Input VAT debit vs WHT Payable + AP credit).
+7. Check `/audit-log`: `purchase_bill`/`create` and `purchase_bill`/`post`.
+
+**Expected Result:** Numbering increments; post gate enforced; posted APV with balanced JE; audited.
+
+**Pass Criteria:**
+- [ ] Number is the next NNNN in sequence for the period
+- [ ] Post blocked while vendor invoice fields empty (clear message)
+- [ ] Post succeeds after filling them; status = posted
+- [ ] JE lines balanced and use 20101/10501/20301 + expense accounts
+- [ ] Audit: `purchase_bill`/`create` and `purchase_bill`/`post` entries
+
+**UX Review:**
+- [ ] Post modal communicates finality; status badges distinct
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 24 — Approve APV
+
+> **Note (code reality):** there is **no approve route or "approved" status** for APVs. The lifecycle in `app/purchase_bills/views.py` is `draft → posted → (cancelled)` and `draft → voided` (plus payment statuses `partially_paid`/`paid`). Record the approve step as **N/A — no approval flow implemented** (log a Bug/design item if an approval step was expected), and run the **immutability checks below against the POSTED APV** — they are the real subject of this scenario.
+
+**Goal:** Posted APVs are immutable: no edit/delete, no attachment changes.
+
+**Steps:**
+1. Open `/purchase-bills/<id>` for the **posted** APV. Confirm there are **no Edit / Void / attachment-upload / attachment-delete buttons** (only Cancel APV and download/preview should remain).
+2. Request `/purchase-bills/<id>/edit` directly. Expect redirect with flash "Only draft APVs can be edited."
+3. POST to `/purchase-bills/<id>/void` (e.g., re-submit a crafted form) — expect "Only draft APVs can be voided."
+4. Attempt attachment upload on the posted APV (direct POST to `/purchase-bills/<id>/attachments/upload`) — expect "Attachments can only be uploaded while the APV is in draft status."
+5. Attempt attachment delete — expect "Attachments can only be deleted while the APV is in draft status."
+6. Confirm attachment **download/preview still work** on the posted APV.
+
+**Expected Result:** All mutation paths blocked on posted APVs, with clear flashes; reads still work.
+
+**Pass Criteria:**
+- [ ] Approve step recorded as N/A (no approval flow in code) and noted in Bug Log if it was expected
+- [ ] No edit/void/attachment-mutation buttons on a posted APV
+- [ ] Direct `/edit` URL blocked with flash
+- [ ] Direct void POST blocked
+- [ ] Attachment upload and delete blocked after posting
+- [ ] Attachment download/preview still available
+
+**UX Review:**
+- [ ] Posted state visually distinct; absence of buttons reads as intentional
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 24b — Cancel APV
+
+> **Code check performed:** a **Cancel flow exists** and is distinct from Void — `POST /purchase-bills/<id>/cancel` cancels a **posted** APV, requires a reason (≥10 chars) + reversal date, creates a **reversal journal entry**, and — unlike Void — **retains attachments**. Not applicable to drafts.
+
+**Goal:** Cancel a posted APV; reversal JE created; attachments retained; audited.
+
+**Steps:**
+1. (Use the posted APV from scenario 23, or enter+post a third APV if you want to keep one live for scenario 25 — recommended: enter + post APV #3 quickly and cancel **that** one, keeping #2 posted for the dashboard scenario. Record numbers in the Appendix.)
+2. On the posted APV's detail page, click **Cancel APV**. The modal requires a Reversal Date and a reason ≥ 10 chars (test a short reason → blocked).
+3. Submit. Expect flash `AP Voucher "AP-…" cancelled. Reversal journal entry created.` and status **Cancelled** with reason displayed.
+4. Verify in `/journal-entries`: a reversal entry (`reversal`, reference `CANCEL-AP-…`) exists with mirrored debits/credits.
+5. Check `instance/uploads/purchase_bills/<id>/`: attachment files **still present** (cancel retains; only void deletes).
+6. Confirm a cancelled APV with payments applied is impossible (informational — payments module out of scope here).
+7. Check `/audit-log`: `purchase_bill`/`cancel` with reason.
+
+**Expected Result:** Posted → cancelled with reversal JE; attachments retained; audited.
+
+**Pass Criteria:**
+- [ ] Short reason blocked; valid cancel succeeds
+- [ ] Reversal JE exists and balances
+- [ ] Attachment files RETAINED on disk after cancel
+- [ ] Audit: `purchase_bill`/`cancel` entry with reason
+
+**UX Review:**
+- [ ] Cancel modal explains the reversal consequence; cancelled banner shows who/when/why
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 25 — Dashboard
+
+**Goal:** Dashboard payables stats and Top Vendors reflect the posted APV, scoped to branch; compare to the baseline.
+
+**Steps:**
+1. As the accountant in the branch holding the **posted** APV, open `/dashboard`.
+2. Compare against the **Dashboard Baseline** (section 6): Payables total must equal the posted APV's net payable; payables count = number of open posted APVs; expenses MTD reflects the expense lines.
+3. Verify **Top Vendors** lists the test vendor with the correct amount.
+4. Verify cancelled/voided APVs are **excluded** from the totals.
+5. Switch to the **other** branch (`/select-branch`) and reload `/dashboard`: payables from the first branch must **not** appear (branch scoping).
+6. Use the "as of" date filter (`/dashboard?as_of_date=YYYY-MM-DD`) with a date **before** the APV: totals must drop back to baseline zeros.
+
+**Expected Result:** Stats match the books, scoped by branch and as-of date; baseline deltas explained entirely by the test APVs.
+
+**Pass Criteria:**
+- [ ] Payables total/count match the posted APV exactly
+- [ ] Top Vendors shows the vendor with correct amount
+- [ ] Voided/cancelled APVs excluded
+- [ ] Other branch shows baseline (zero) payables
+- [ ] As-of date before the APV restores baseline values
+
+**UX Review:**
+- [ ] Cards/charts readable with real data; currency formatting consistent
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+#### Scenario 26 — Audit Log UI + full audit reconciliation
+
+**Goal:** The audit log page works, and EVERY DB write performed during this run has an audit entry. **Any DB write with no audit entry = FAIL → Bug Log.**
+
+**Steps:**
+1. As `admin` (or accountant), open `http://127.0.0.1:5000/audit-log`.
+2. Exercise the UI: filter by module, action, user, branch, date range; search; paginate (50/page). Each filter must narrow results correctly.
+3. Reconcile the full run against the log. Tick each event class only when its audit entries are found:
+
+**Reconciliation checklist:**
+- [ ] Logins: `auth`/`login_success` for every successful login this run
+- [ ] Lockout: 4 × `auth`/`login_failed` + `auth`/`account_locked` (scenario 6b)
+- [ ] Unlock: `user`/`account_unlocked`
+- [ ] Logouts: `auth`/`logout`
+- [ ] Settings initial setup + change (scenarios 3/3b) — **known code gap if missing**; record
+- [ ] Approved-email additions (scenario 4) — **known code gap: no audit call in `add_approved_email()`**; record as bug if absent
+- [ ] Registrations: `user_registration`/`registration_success` (×2 users)
+- [ ] Activations + role changes: `user`/`update` with old/new values
+- [ ] Branch create/edit: `branch`/`create`, `branch`/`update`
+- [ ] Branch assignment: `branch`/`assign_user` (or `user`/`branch_assigned`)
+- [ ] Branch selections: `auth`/`branch_selected` for every switch
+- [ ] COA change requests: submissions, approvals, rejection (note: accounts rejection logs `action=<change_type>` with "Rejected by" notes — record actual)
+- [ ] VAT change requests: submission, approval (and `reject` if exercised)
+- [ ] WHT change requests: submission, approval
+- [ ] Vendor: `vendor`/`create`, `vendor`/`update`
+- [ ] APV: `purchase_bill`/`create` (×2–3), `update`, `void`, `post`, `cancel`
+- [ ] Attachments: `purchase_bill_attachment`/`create` (each upload), `delete`
+4. For each entry spot-check: actor (user), timestamp (PH time), record identifier, and old/new values where applicable.
+5. Confirm the page itself is restricted (viewer blocked — verified in scenario 9).
+
+**Expected Result:** Filters work; every write reconciles to an audit entry (or the gap is logged as a bug).
+
+**Pass Criteria:**
+- [ ] All filters and search behave correctly
+- [ ] Every checklist line above reconciled (or bug logged per miss)
+- [ ] Entries carry correct actor, PH timestamp, identifiers, old/new values
+- [ ] No unexplained audit entries (everything maps to a runbook action)
+
+**UX Review:**
+- [ ] Dense data remains scannable; filters discoverable; pagination clear
+- UX notes: ___
+
+**Clarity verdict:** ___
+
+---
+
+## 8. Workflow Clarity Summary
+
+Fill in during the run (verdicts: Clear / Needs hint / Confusing).
+
+| Scenario | Verdict | Note |
+|----------|---------|------|
+| 1 — Login | | |
+| 2 — Logout | | |
+| 3 — App Settings — initial | | |
+| 3b — App Settings — change | | |
+| 4 — Approved Emails | | |
+| 5 — Registration | | |
+| 6 — Approve user | | |
+| 6b — Lockout & unlock | | |
+| 7 — Branch CRUD | | |
+| 8 — Assign user to branch | | |
+| 9 — User scope (viewer) | | |
+| 10 — Branch scope | | |
+| 10b — Promote to accountant | | |
+| 11 — COA admin path | | |
+| 12 — COA sole accountant | | |
+| 13 — COA multi-accountant | | |
+| 14 — Action Items page | | |
+| 15 — Reject flow | | |
+| 16 — VAT category | | |
+| 17 — Withholding tax code | | |
+| 18 — Vendor | | |
+| 19 — Enter APV (draft) | | |
+| 20 — Attachment security | | |
+| 21 — Edit APV | | |
+| 22 — Void APV | | |
+| 23 — Enter + Post APV | | |
+| 24 — Approve APV / immutability | | |
+| 24b — Cancel APV | | |
+| 25 — Dashboard | | |
+| 26 — Audit Log + reconciliation | | |
+
+## 9. Bug Log
+
+**Rule:** a cross-module bug **stops the run**, gets fixed, and the affected test re-runs before continuing. Severity: Critical / High / Medium / Low.
+
+| # | Scenario | Severity | Description | Status |
+|---|----------|----------|-------------|--------|
+| B-001 | Baseline | High | Dashboard charts blank: CSP `script-src 'self'` blocked Chart.js CDN (`Chart is not defined`). Fixed by bundling `chart.umd.min.js` in `app/static/` (commit `e9ae7e1`). | Fixed 2026-06-11 |
+| B-002 | 3 (found) | Medium | Flash messages rendered **twice** on ~42 pages — feature templates called `render_flash_messages()` while `base.html` also renders globally. Per-template calls removed (commit `6d90996`). | Fixed 2026-06-11 |
+| B-003 | 3 | High | No Company Settings UI existed; `set_setting()` wrote no audit entry. Feature built at `/settings` with audit logging, sidebar branding, logo upload (commits `68e729b`, `766161d`). | Fixed 2026-06-11 |
+| B-004 | 1 | Low | `login_success` audit rows have `user_id = NULL` — the audit fires before `login_user()`, so `current_user` is anonymous. Fixed: `log_audit()` accepts an explicit `user_id` override; login passes `user.id`. Bundled minor fixes in the same pass: auto branch-selection at login is now audited (`branch_selected` with "Auto-selected" note); spurious `permission_granted` on permission-less user edits eliminated (empty stored perms now compare equal to the all-False form dict; revokes now log `permission_revoked`); 12 redundant local `log_audit` imports removed from `app/users/views.py` (B-015-class shadowing trap — scanner extended); "Cannot post … is/are required" grammar; edit-form JE preview shows account names (not line descriptions). Tests: `tests/integration/test_auth_audit.py`. | Fixed 2026-06-12 |
+| B-005 | Baseline | Medium | Sidebar report links (Income Statement, Balance Sheet, Cash Flow, Trial Balance, Aging AR/AP, VAT Reports, WHT, Annual ITR, General Ledger, Customers) all point to placeholder `/customers/customers`. | Open |
+| B-006 | 16 (user-reported) | High | Master-data change requests (COA/VAT/WHT): (a) no clear feedback that a change request was submitted — user unknowingly submitted the same VAT change **twice**, both queued in Action Items; (b) no duplicate-pending-request guard; (c) no "reason for change" field for the reviewer. Fixed: required reason field (+`request_reason` column, migration `ec961ef9cd13`), duplicate-pending block, standard "pending review" flash, pending badges on lists, reason shown to reviewers (commits `724dcad`, `d5f1913`). | Fixed 2026-06-11 |
+| B-007 | 14 (found during B-006) | Medium | Dashboard COA action items referenced nonexistent model attributes and a dead review route (`/accounts/review-change-request/<id>`); VAT/WHT auto-approve paths wrote no audit entries; COA approve used `confirm()`; COA reject modal lacked CSRF. All fixed in `724dcad`. | Fixed 2026-06-11 |
+| B-008 | 4 | Critical | Approved-email **delete was completely broken**: JS `confirm()` popup (rule violation) + missing CSRF token → 400 Bad Request. Sweep found 8 `confirm()` popups and **9 POST forms missing CSRF** (customer delete, branch assign/unassign, period close/reopen ×3, error resolve/unresolve) — all would 400 in production. All replaced with the custom-modal pattern + CSRF (commit `c668444`). Also: `add_approved_email`/`delete_approved_email` wrote no audit entries — fixed in `00a362c`. | Fixed 2026-06-11 |
+| B-009 | 8 | High | Branch-users page (`/branches/<id>/users`) operated on the **deprecated `User.branch_id` column** instead of the canonical `user_branches` many-to-many: **Assign** flashed success but granted no real access (login + `has_branch_access()` read only the M2M); **Unassign** silently revoked nothing; the Available list excluded **viewers** entirely (who can't log in without a branch) and showed a misleading "all eligible users already assigned" message. Fixed: assign/unassign now use `add_branch()`/`remove_branch()`, viewers assignable, admins blocked with explanation, audit rows carry old→new `branch_ids`, warning flash when a user loses their last branch. Tests: `tests/integration/test_branch_assignment.py`. | Fixed 2026-06-12 |
+| B-010 | 9 | Medium | Write CTAs rendered for **viewers** (server routes were gated, but the buttons showed): topbar "+ New" quick-create menu (JE/Collection/Payment — all dead `href="#"` placeholders, see also B-005) on every page, "Enter APV"/"Enter First APV" on `/purchase-bills`, "Enter Invoice"/"Enter First Invoice" on `/sales-invoices`, receipt/payment buttons on `/receipts`, "New Journal Entry"/"Create First Entry" on `/journal-entries`. Fixed: all gated to accountant/admin; JE/receipt buttons also renamed to the "Enter" verb per convention. Tests: `tests/integration/test_viewer_readonly_ui.py`. | Fixed 2026-06-12 |
+| B-011 | 12 | Medium (design) | **Sole-accountant auto-approval was unreachable** — `can_auto_approve()` counted active admins, so with `admin` always active every request went pending. Owner decision 2026-06-12: admins are separate from accountants → the sole active accountant auto-approves their own changes; admins never auto-approve. Fixed in all three modules (accounts/VAT/WHT). Tests: `tests/integration/test_sole_accountant_autoapprove.py` (4). | Fixed 2026-06-12 |
+| B-012 | 15 | Medium | **Rejected COA change requests were invisible to the requester** — accounts module had no request-history view (VAT/WHT have `/change-requests`; accounts only had `/pending-approvals`, which empties on rejection). The rejection reason existed only in the audit log. Fixed: new `/accounts/change-requests` "Request History" page (status, reviewer, review notes; linked from the COA header), tests in `tests/integration/test_account_request_history.py`. Related UX note: the **VAT** `/change-requests` page lists all requests but shows **no status column or review notes** and offers Review on already-reviewed rows — check in scenario 16. | Fixed 2026-06-12 |
+| B-013 | 19 | Medium | **Due date before voucher date was accepted** — no validation client-side (the `validateForm()` gate) or server-side (`PurchaseBillForm`). Fixed: form `validate_due_date` + client gate block with "Due date cannot be earlier than the voucher date."; date fields now re-validate on change. Tests: `tests/integration/test_purchase_bill_dates.py`. | Fixed 2026-06-12 |
+| B-014 | 19 | Medium (design) | **Purchase JE input-VAT account is hardcoded to `10501`** (`_get_gl_accounts()` in `app/purchase_bills/views.py`; 20101/20301 also hardcoded). After the 2026-06-12 COA restructure, 10501 = "Input VAT - **Capital Goods**", so ALL purchase input VAT (goods, services, importation) books there; error messages still say "Input VAT - Current". Needs design: per-line or per-voucher input-VAT sub-account selection, or a settings-level default mapping. | Open (design) |
+| B-015 | 22 | High | **Voiding any draft APV crashed**: "cannot access local variable 'current_app'". The void route's `try` block used `current_app` (UPLOAD_FOLDER, logger) while the `except` block did a local `from flask import current_app`, shadowing the module-level import → UnboundLocalError on every void. Fixed: removed the 5 redundant local imports in `app/purchase_bills/views.py`; AST scan (`scripts/find_currentapp_shadowing.py`) confirms no other function in `app/` uses `current_app` before a local import. Test: `tests/integration/test_purchase_bill_void.py`. | Fixed 2026-06-12 |
+| B-016 | 23 | High | **Voided APV numbers were offered for reuse but `bill_number` is `unique=True`** — `generate_bill_number()` excluded voided bills from the sequence, so after voiding AP-2026-06-0001 the create form pre-filled 0001 again; saving would IntegrityError. (Void modal even said "The APV number may be reused.") Fixed per BIR practice: voided numbers stay burned — generator counts ALL bills; modal text now says the voided APV keeps its number. Test: `TestBillNumberAfterVoid` in `tests/integration/test_purchase_bill_void.py`. | Fixed 2026-06-12 |
+| B-017 | 25 (found at 24b) | High | **Dashboard revenue/expense stats assumed hardcoded COA prefixes** (`Account.code.like('4%')` revenue / `'5%'` expense in `dashboard_data.py` ×4). This company's COA uses 6xxxx for expenses → Expenses MTD showed ₱0.00 despite a posted APV with a ₱5,000 expense JE. Fixed: filter by `account_type` ('Revenue'/'Expense'). Test: `tests/integration/test_purchase_bill_je_lifecycle.py`. | Fixed 2026-06-12 |
+| B-018 | 25 (found at 24b) | High | **Draft APVs polluted the GL**: creating a draft wrote a JE with `status='posted'`, so unposted vouchers appeared in JE-based reports (confirmed live: draft 0003's ₱1,000 expense showed in MTD). Fixed: the auto-JE is created as `draft` and promoted to `posted` by the post route; one-off data fix `scripts/fix_draft_je_status.py` demoted existing draft-bill JEs. (Payables stats and Top Vendors were already status-filtered and correct.) Tests: `tests/integration/test_purchase_bill_je_lifecycle.py`. | Fixed 2026-06-12 |
+
+## 10. Appendix: Test Data
+
+Fill these in during the first run; reuse the same data in later runs. **Never record passwords here.**
+
+### Users
+
+| Username | Email | Role (final) | Notes |
+|----------|-------|--------------|-------|
+| admin | admin@cas.local | admin | Seeded |
+| msantos | maria.santos@alvincruzaccounting.ph | accountant | Full name "Maria L. Santos". Registered scenario 5, promoted 10b. Branch: QC |
+| jreyes | jose.reyes@alvincruzaccounting.ph | accountant | Full name "Jose A. Reyes". Registered scenario 13, activated + promoted same day. Branch: Main |
+
+### Company Settings (scenario 3)
+
+| Key | Value |
+|-----|-------|
+| Company name | Alvin Cruz Accounting Services |
+| Trade name | ACAS |
+| TIN / branch code / RDO | 123-456-789 / 000 / 049 → changed to 050 in 3b |
+| VAT registration | VAT |
+| Address | Unit 5, 123 Rizal Street, Poblacion, Makati City, Metro Manila |
+| Postal / phone / email | 1210 / (02) 8123-4567 → changed to (02) 8765-4321 in 3b / info@alvincruzaccounting.ph |
+| Officers | Pres: Alvin C. Cruz; Treas: Maria L. Santos; Sec: Jose P. Dela Cruz |
+| Fiscal year start | January (01) |
+
+### Branches
+
+| Code | Name | Notes |
+|------|------|-------|
+| MAIN | Main Branch | Seeded |
+| QC | Quezon City Branch | Created scenario 7. Address "Unit 5, 88 Timog Avenue, Quezon City" → edited to "3F Crescent Building, 120 Tomas Morato Avenue, Quezon City"; phone (02) 8921-4567; email qc@alvincruzaccounting.ph. msantos assigned here (scenario 8) |
+
+### Accounts (Chart of Accounts)
+
+| Code | Title | Type | Created in |
+|------|-------|------|-----------|
+| 20101 | Accounts Payable - Trade | Liability | Scenario 11 (admin path; approved by msantos). Reason: "Initial COA setup: needed to record vendor bills (AP vouchers)" |
+| 60101 | Office Supplies Expense | Expense | Scenario 12 (sole-accountant path; went pending per B-011, approved by admin) |
+| 10101 | Cash on Hand | Asset | Scenario 13 (multi-accountant path; msantos requested, jreyes approved; self-approval blocked at UI) |
+| 10102 | Petty Cash Fund | Asset (NOT created) | Scenario 15 reject-flow test: msantos requested, jreyes REJECTED with notes; account intentionally does not exist |
+| 10500 | Input VAT | Asset (group) | ⏸ approved 2026-06-12. Parent group — hierarchy test |
+| 10501 | Input VAT - Capital Goods | Asset (child of 10500) | ⏸ approved 2026-06-12. (EOPT Act: capital-goods input VAT now claimable outright) |
+| 10502 | Input VAT - Domestic Goods | Asset (child of 10500) | ⏸ approved 2026-06-12 |
+| 10503 | Input VAT - Services | Asset (child of 10500) | ⏸ approved 2026-06-12 |
+| 10504 | Input VAT - Importation | Asset (child of 10500) | ⏸ approved 2026-06-12 |
+| 10505 | Excess Input Tax Carry-Over | Asset (child of 10500) | ⏸ approved 2026-06-12. Deductible against future VAT payable |
+| 10506 | Deferred Input Tax | Asset (child of 10500) | ⏸ approved 2026-06-12. Legacy balances from pre-EOPT >₱1M capital assets |
+| 20300 | Withholding Tax Payable | Liability (group) | ⏸ approved 2026-06-12. Parent group — hierarchy test. Name spelled out per sign-off |
+| 20301 | Withholding Tax Payable - Expanded | Liability (child of 20300) | ⏸ approved 2026-06-12 |
+
+### VAT Categories
+
+| Code | Name | Rate % | Created in |
+|------|------|--------|-----------|
+| V12 | VAT 12% | 12.00 | Scenario 16 (⏸ approved 2026-06-12) |
+| V0 | VAT Zero-Rated | 0.00 | Scenario 16 (⏸ approved 2026-06-12) |
+| VEX | VAT Exempt | 0.00 | Scenario 16 (⏸ approved 2026-06-12) |
+| INV | Invalid | 0.00 | Owner request 2026-06-12 — purchases from non-VAT-registered individuals (no valid input VAT) |
+
+### WHT Codes
+
+| Code | Name | Rate % | Created in |
+|------|------|--------|-----------|
+| WC158 | Withholding Tax - Goods | 1.00 | Scenario 17 (⏸ approved 2026-06-12; names spell out "Withholding Tax" per sign-off) |
+| WC160 | Withholding Tax - Services | 2.00 | Scenario 17 (⏸ approved 2026-06-12) |
+| WC100 | Withholding Tax - Rentals | 5.00 | Scenario 17 (⏸ approved 2026-06-12) |
+
+### Vendor
+
+| Code | Name | TIN | Terms | Created in |
+|------|------|-----|-------|-----------|
+| MOS | Mega Office Supplies Co. | 987-654-321-000 | Net 30 → edited to Net 15 | Scenario 18. Contact Liza Manalo, (02) 8455-7788, sales@megaofficesupplies.ph, 17 Kamias Road QC 1102; default VAT "VAT 12%"; WHT WC158 (Goods 1%) |
+
+### APV Documents
+
+| Number | Date | Lines (desc / amount / VAT / WHT) | VAT amt | WHT amt | Net payable | Final status |
+|--------|------|-----------------------------------|---------|---------|-------------|--------------|
+| AP-2026-06-0001 | 2026-06-12 (due 2026-06-27, Net 15) | L1 "Bond paper and toner cartridges" / 2,240.00 VAT-incl / V12 / WC158 → 60101; L2 "Delivery fee" / 560.00 VAT-incl / V12 / none → 60101 | 300.00 | 20.00 | 2,780.00 (gross 2,800.00, net of VAT 2,500.00) | Voided (scenario 22) |
+| AP-2026-06-0002 | 2026-06-12 | "A4 copier paper, 50 reams" / 5,600.00 VAT-incl / V12 / WC158 → 60101. Vendor invoice SI-78421 dated 2026-06-10 | 600.00 | 50.00 | 5,550.00 | Posted (scenarios 23–25) |
+| AP-2026-06-0003 | 2026-06-12 | "Toner cartridges bulk order" / 1,120.00 VAT-incl / V12 / WC158 → 60101. Vendor invoice SI-78502 dated 2026-06-11 | 120.00 | 10.00 | 1,110.00 | Cancelled (scenario 24b); reversal JE-2026-0003; attachment retained |
+
+### Attachment Files
+
+| Filename | Type | Size | Used in | Outcome |
+|----------|------|------|---------|---------|
+| test-vendor-invoice.png | image (.png) | 1.0 KB (1,064 bytes) | Scenario 19 | Deleted on void (22) |
+| bad-test.svg | .svg | 76 B | Scenario 20 | Rejected — 'File type ".svg" is not allowed' flash |
+| bad-test.exe | .exe | 204 B | Scenario 20 | Rejected — 'File type ".exe" is not allowed' flash |
+| big-test.png | .png, 17 MB | 17,825,792 B | Scenario 20 | Rejected — HTTP 413 (16 MB `MAX_CONTENT_LENGTH`); raw error page in dev because global error handlers are disabled |
+| test-vendor-invoice.png (re-used) | image (.png) | 1,064 B | Scenario 24b (on AP-2026-06-0003) | Retained on cancel — verified on disk after cancellation |
