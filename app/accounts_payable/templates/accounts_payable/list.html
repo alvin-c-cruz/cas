@@ -86,7 +86,7 @@
 </div>
 
 <!-- Filter bar -->
-<form method="GET" action="{{ url_for('purchase_bills.list_bills') }}" class="pb-filter-bar">
+<form method="GET" action="{{ url_for('accounts_payable.list_ap') }}" class="pb-filter-bar">
     <input type="text" name="q" value="{{ q }}" placeholder="Search APV # or vendor"
            class="form-control form-control-sm pb-filter-search">
     <select name="status" class="form-control form-control-sm">
@@ -113,7 +113,7 @@
         <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
     </label>
     <button type="submit" class="btn btn-primary btn-sm">Filter</button>
-    <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary btn-sm">Clear</a>
+    <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary btn-sm">Clear</a>
 </form>
 
 <div class="card">
@@ -125,17 +125,17 @@
                class="btn btn-secondary btn-sm">View Journal</a>
             <a href="{{ url_for('journals.ap_journal_export') }}"
                class="btn btn-secondary btn-sm">Download Journal</a>
-            <a href="{{ url_for('purchase_bills.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('accounts_payable.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm pb-export-link">Export Excel</a>
-            <a href="{{ url_for('purchase_bills.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('accounts_payable.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary pb-export-link">📄 Export CSV</a>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}
-            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">➕ Enter APV</a>
+            <a href="{{ url_for('accounts_payable.create') }}" class="btn btn-primary">➕ Enter APV</a>
             {% endif %}
         </div>
     </div>
     <div class="card-body">
-        {% if bills %}
+        {% if ap_list %}
         {% set badge_map = {'draft':'draft','posted':'posted','partially_paid':'partial','paid':'paid','voided':'void','cancelled':'cancelled'} %}
         <div class="table-wrap">
         <table class="table">
@@ -152,28 +152,28 @@
                 </tr>
             </thead>
             <tbody>
-                {% for bill in bills %}
+                {% for ap in ap_list %}
                 <tr>
-                    <td><input type="checkbox" class="pb-row-check" value="{{ bill.id }}" aria-label="Select {{ bill.bill_number }}"></td>
-                    <td><a href="{{ url_for('purchase_bills.view', id=bill.id) }}" style="font-weight:600;color:var(--blue);">{{ bill.bill_number }}</a></td>
-                    <td>{{ bill.bill_date.strftime('%b %d, %Y') }}</td>
-                    <td>{{ bill.vendor_name }}</td>
-                    <td {% if bill.due_date and bill.due_date < today and bill.status in ['posted', 'partially_paid'] %}style="color:var(--red);font-weight:600;"{% endif %}>
-                        {{ bill.due_date.strftime('%b %d, %Y') if bill.due_date else '—' }}
+                    <td><input type="checkbox" class="pb-row-check" value="{{ ap.id }}" aria-label="Select {{ ap.ap_number }}"></td>
+                    <td><a href="{{ url_for('accounts_payable.view', id=ap.id) }}" style="font-weight:600;color:var(--blue);">{{ ap.ap_number }}</a></td>
+                    <td>{{ ap.ap_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ ap.vendor_name }}</td>
+                    <td {% if ap.due_date and ap.due_date < today and ap.status in ['posted', 'partially_paid'] %}style="color:var(--red);font-weight:600;"{% endif %}>
+                        {{ ap.due_date.strftime('%b %d, %Y') if ap.due_date else '—' }}
                     </td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.subtotal) }}</td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</td>
-                    <td style="text-align:right;font-family:var(--mono);{% if bill.withholding_tax_amount > 0 %}color:var(--red);{% endif %}">
-                        {% if bill.withholding_tax_amount > 0 %}-₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}{% else %}—{% endif %}
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap.subtotal) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap.vat_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);{% if ap.withholding_tax_amount > 0 %}color:var(--red);{% endif %}">
+                        {% if ap.withholding_tax_amount > 0 %}-₱{{ '{:,.2f}'.format(ap.withholding_tax_amount) }}{% else %}—{% endif %}
                     </td>
-                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(ap.total_amount) }}</td>
                     <td style="text-align:right;font-family:var(--mono);font-weight:600;">
-                        {% if bill.status in ['paid', 'voided', 'cancelled'] %}—{% else %}₱{{ '{:,.2f}'.format(bill.balance) }}{% endif %}
+                        {% if ap.status in ['paid', 'voided', 'cancelled'] %}—{% else %}₱{{ '{:,.2f}'.format(ap.balance) }}{% endif %}
                     </td>
-                    <td><span class="badge badge-{{ badge_map.get(bill.status, 'draft') }}">{{ bill.status|replace('_', ' ')|title }}</span></td>
+                    <td><span class="badge badge-{{ badge_map.get(ap.status, 'draft') }}">{{ ap.status|replace('_', ' ')|title }}</span></td>
                     <td>
-                        <a href="{{ url_for('purchase_bills.view', id=bill.id) }}" class="btn-action">👁️</a>
-                        {% if bill.status == 'draft' %}<a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn-action">✏️</a>{% endif %}
+                        <a href="{{ url_for('accounts_payable.view', id=ap.id) }}" class="btn-action">👁️</a>
+                        {% if ap.status == 'draft' %}<a href="{{ url_for('accounts_payable.edit', id=ap.id) }}" class="btn-action">✏️</a>{% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -185,11 +185,11 @@
         <div class="empty-state">
             {% if filters_active %}
             <p>No APVs match your filters.</p>
-            <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Clear Filters</a>
+            <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary">Clear Filters</a>
             {% else %}
             <p>No AP Vouchers found.</p>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}
-            <a href="{{ url_for('purchase_bills.create') }}" class="btn btn-primary">Enter First APV</a>
+            <a href="{{ url_for('accounts_payable.create') }}" class="btn btn-primary">Enter First APV</a>
             {% endif %}
             {% endif %}
         </div>
@@ -205,11 +205,11 @@
         </div>
         <div style="display:flex;gap:8px">
             {% if pagination.has_prev %}
-            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.prev_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('accounts_payable.list_ap', page=pagination.prev_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">← Previous</a>
             {% endif %}
             {% if pagination.has_next %}
-            <a href="{{ url_for('purchase_bills.list_bills', page=pagination.next_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('accounts_payable.list_ap', page=pagination.next_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">Next →</a>
             {% endif %}
         </div>

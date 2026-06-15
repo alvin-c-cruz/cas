@@ -1,4 +1,4 @@
-/* purchase_bills_form.css — styles specific to the purchase bill create/edit form */
+/* accounts_payable_form.css — styles specific to the accounts payable create/edit form */
 
 /* ── Vendor step card ────────────────────────────────────────────────────── */
 .vendor-step-card {
@@ -36,10 +36,10 @@
 }
 
 /* ── Choices.js vendor/customer search-select — mirror native .form-control select ── */
-/* .page-purchase-bill / .page-sales-invoice prefix gives specificity (0,3,0) > transactions.css (0,2,0) everywhere */
-.page-purchase-bill .vendor-step-card .choices,
+/* .page-accounts-payable / .page-sales-invoice prefix gives specificity (0,3,0) > transactions.css (0,2,0) everywhere */
+.page-accounts-payable .vendor-step-card .choices,
 .page-sales-invoice .vendor-step-card .choices { width: 100%; margin-bottom: 0; }
-.page-purchase-bill .vendor-step-card .choices__inner,
+.page-accounts-payable .vendor-step-card .choices__inner,
 .page-sales-invoice .vendor-step-card .choices__inner {
     display: flex !important;
     align-items: center !important;
@@ -55,10 +55,10 @@
     transition: all 0.2s !important;
 }
 /* Hide <br> tags Choices.js creates from template whitespace in option elements */
-.page-purchase-bill .vendor-step-card .choices__item br,
+.page-accounts-payable .vendor-step-card .choices__item br,
 .page-sales-invoice .vendor-step-card .choices__item br { display: none; }
-.page-purchase-bill .vendor-step-card .choices.is-focused .choices__inner,
-.page-purchase-bill .vendor-step-card .choices.is-open .choices__inner,
+.page-accounts-payable .vendor-step-card .choices.is-focused .choices__inner,
+.page-accounts-payable .vendor-step-card .choices.is-open .choices__inner,
 .page-sales-invoice .vendor-step-card .choices.is-focused .choices__inner,
 .page-sales-invoice .vendor-step-card .choices.is-open .choices__inner {
     border-color: #3b82f6 !important;
@@ -67,13 +67,13 @@
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
 }
 /* Restore caret (transactions.css hides it globally via display:none !important) */
-.page-purchase-bill .vendor-step-card .choices[data-type*='select-one']::after,
+.page-accounts-payable .vendor-step-card .choices[data-type*='select-one']::after,
 .page-sales-invoice .vendor-step-card .choices[data-type*='select-one']::after {
     display: block !important;
     border-color: #64748b transparent transparent !important;
     right: 14px !important;
 }
-.page-purchase-bill .vendor-step-card .choices[data-type*='select-one'].is-open::after,
+.page-accounts-payable .vendor-step-card .choices[data-type*='select-one'].is-open::after,
 .page-sales-invoice .vendor-step-card .choices[data-type*='select-one'].is-open::after {
     border-color: transparent transparent #64748b !important;
 }
@@ -141,8 +141,8 @@
     font-size: 13px; border: 1px solid var(--blue); border-radius: 4px; padding: 3px 7px;
 }
 
-/* ── Bill Summary panel ──────────────────────────────────────────────────── */
-.bill-summary-panel {
+/* ── AP Summary panel ────────────────────────────────────────────────────── */
+.ap-summary-panel {
     background: var(--bg);
     padding: 20px;
     border-radius: 6px;

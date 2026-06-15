@@ -40,7 +40,7 @@
   <div class="card-header">
     <div class="apv-print-actions">
       <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
-      <a href="{{ url_for('purchase_bills.list_bills', status=status_filter, date_from=date_from, date_to=date_to) }}" class="btn btn-secondary btn-sm">Back</a>
+      <a href="{{ url_for('accounts_payable.list_ap', status=status_filter, date_from=date_from, date_to=date_to) }}" class="btn btn-secondary btn-sm">Back</a>
     </div>
   </div>
   <div class="card-body">
@@ -55,7 +55,7 @@
       <div class="period-label">{{ parts | join(' · ') if parts else 'All Records' }}</div>
     </div>
 
-    {% if bills %}
+    {% if ap_list %}
     {% set total_subtotal = namespace(v=0) %}
     {% set total_vat = namespace(v=0) %}
     {% set total_wht = namespace(v=0) %}
@@ -76,27 +76,27 @@
         </tr>
       </thead>
       <tbody>
-        {% for bill in bills %}
-        {% set total_subtotal.v = total_subtotal.v + bill.subtotal %}
-        {% set total_vat.v = total_vat.v + bill.vat_amount %}
-        {% set total_wht.v = total_wht.v + bill.withholding_tax_amount %}
-        {% set total_net.v = total_net.v + bill.total_amount %}
-        <tr {% if bill.status == 'voided' %}style="text-decoration:line-through;background:#ffebee;"{% elif bill.status == 'draft' %}style="background:#fffde7;"{% endif %}>
-          <td>{{ bill.bill_date.strftime('%d-%b-%Y') }}</td>
-          <td>{{ bill.bill_number }}</td>
-          <td>{{ bill.vendor_name }}</td>
-          <td {% if bill.due_date and bill.due_date < today and bill.status in ['posted', 'partially_paid'] %}style="color:#b91c1c;font-weight:700;"{% endif %}>
-            {{ bill.due_date.strftime('%d-%b-%Y') if bill.due_date else '—' }}
+        {% for ap in ap_list %}
+        {% set total_subtotal.v = total_subtotal.v + ap.subtotal %}
+        {% set total_vat.v = total_vat.v + ap.vat_amount %}
+        {% set total_wht.v = total_wht.v + ap.withholding_tax_amount %}
+        {% set total_net.v = total_net.v + ap.total_amount %}
+        <tr {% if ap.status == 'voided' %}style="text-decoration:line-through;background:#ffebee;"{% elif ap.status == 'draft' %}style="background:#fffde7;"{% endif %}>
+          <td>{{ ap.ap_date.strftime('%d-%b-%Y') }}</td>
+          <td>{{ ap.ap_number }}</td>
+          <td>{{ ap.vendor_name }}</td>
+          <td {% if ap.due_date and ap.due_date < today and ap.status in ['posted', 'partially_paid'] %}style="color:#b91c1c;font-weight:700;"{% endif %}>
+            {{ ap.due_date.strftime('%d-%b-%Y') if ap.due_date else '—' }}
           </td>
-          <td class="num">{{ '{:,.2f}'.format(bill.subtotal) }}</td>
-          <td class="num">{{ '{:,.2f}'.format(bill.vat_amount) }}</td>
-          <td class="num">{% if bill.withholding_tax_amount > 0 %}({{ '{:,.2f}'.format(bill.withholding_tax_amount) }}){% else %}—{% endif %}</td>
-          <td class="num">{{ '{:,.2f}'.format(bill.total_amount) }}</td>
-          <td>{{ bill.status | replace('_', ' ') | title }}</td>
+          <td class="num">{{ '{:,.2f}'.format(ap.subtotal) }}</td>
+          <td class="num">{{ '{:,.2f}'.format(ap.vat_amount) }}</td>
+          <td class="num">{% if ap.withholding_tax_amount > 0 %}({{ '{:,.2f}'.format(ap.withholding_tax_amount) }}){% else %}—{% endif %}</td>
+          <td class="num">{{ '{:,.2f}'.format(ap.total_amount) }}</td>
+          <td>{{ ap.status | replace('_', ' ') | title }}</td>
         </tr>
         {% endfor %}
         <tr class="apv-total">
-          <td colspan="4">TOTAL ({{ bills | length }} record{{ 's' if bills | length != 1 else '' }})</td>
+          <td colspan="4">TOTAL ({{ ap_list | length }} record{{ 's' if ap_list | length != 1 else '' }})</td>
           <td class="num">{{ '{:,.2f}'.format(total_subtotal.v) }}</td>
           <td class="num">{{ '{:,.2f}'.format(total_vat.v) }}</td>
           <td class="num">{% if total_wht.v > 0 %}({{ '{:,.2f}'.format(total_wht.v) }}){% else %}—{% endif %}</td>

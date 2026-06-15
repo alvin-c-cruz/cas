@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}APV {{ bill.bill_number }}{% endblock %}
-{% block page_title %}AP Voucher - {{ bill.bill_number }}{% endblock %}
+{% block title %}APV {{ ap.ap_number }}{% endblock %}
+{% block page_title %}AP Voucher - {{ ap.ap_number }}{% endblock %}
 
 {% block content %}
 
-{% for att in bill.attachments %}{% if att.is_image %}
+{% for att in ap.attachments %}{% if att.is_image %}
 <div id="previewModal-{{ att.id }}"
      style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
             z-index:1100; align-items:center; justify-content:center; overflow:auto;">
@@ -17,11 +17,11 @@
               onclick="document.getElementById('previewModal-{{ att.id }}').style.display='none'"
               style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-1);">&times;</button>
     </div>
-    <img src="{{ url_for('purchase_bills.preview_attachment', attachment_id=att.id) }}"
+    <img src="{{ url_for('accounts_payable.preview_attachment', attachment_id=att.id) }}"
          alt="{{ att.original_filename }}"
          style="max-width:80vw; max-height:70vh; object-fit:contain; border-radius:4px;">
     <div style="text-align:right;">
-      <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
+      <a href="{{ url_for('accounts_payable.download_attachment', attachment_id=att.id) }}"
          class="btn btn-secondary" style="font-size:13px;">Download</a>
     </div>
   </div>
@@ -29,7 +29,7 @@
 {% endif %}{% endfor %}
 
 
-{% if bill.status == 'draft' %}
+{% if ap.status == 'draft' %}
 <!-- Post modal -->
 <div id="postModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
@@ -37,7 +37,7 @@
         <p style="color:var(--text-2); margin-bottom:24px;">This will make the APV final and it cannot be edited afterwards.</p>
         <div style="display:flex; gap:12px; justify-content:flex-end;">
             <button type="button" class="btn btn-secondary" onclick="document.getElementById('postModal').style.display='none'">Cancel</button>
-            <form method="POST" action="{{ url_for('purchase_bills.post', id=bill.id) }}" style="display:inline;">
+            <form method="POST" action="{{ url_for('accounts_payable.post', id=ap.id) }}" style="display:inline;">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-success">Post APV</button>
             </form>
@@ -49,9 +49,9 @@
 <div id="voidModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Void this APV?</h3>
-        <p style="color:var(--text-2); margin-bottom:12px;"><strong>{{ bill.bill_number }}</strong> will be marked as voided. No journal entry will be created since this APV has not been posted. The voided APV keeps its number; it will not be reissued.</p>
+        <p style="color:var(--text-2); margin-bottom:12px;"><strong>{{ ap.ap_number }}</strong> will be marked as voided. No journal entry will be created since this APV has not been posted. The voided APV keeps its number; it will not be reissued.</p>
         <p style="color:var(--text-2); margin-bottom:20px;">All attachments will also be permanently deleted.</p>
-        <form method="POST" action="{{ url_for('purchase_bills.void', id=bill.id) }}">
+        <form method="POST" action="{{ url_for('accounts_payable.void', id=ap.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div style="margin-bottom:16px;">
                 <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
@@ -70,13 +70,13 @@
 </div>
 {% endif %}
 
-{% if bill.status == 'posted' and bill.amount_paid == 0 %}
+{% if ap.status == 'posted' and ap.amount_paid == 0 %}
 <!-- Cancel posted APV modal -->
 <div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Cancel this APV?</h3>
-        <p style="color:var(--text-2); margin-bottom:20px;">Cancelling <strong>{{ bill.bill_number }}</strong> will create a reversal journal entry. This cannot be undone.</p>
-        <form method="POST" action="{{ url_for('purchase_bills.cancel', id=bill.id) }}">
+        <p style="color:var(--text-2); margin-bottom:20px;">Cancelling <strong>{{ ap.ap_number }}</strong> will create a reversal journal entry. This cannot be undone.</p>
+        <form method="POST" action="{{ url_for('accounts_payable.cancel', id=ap.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div style="margin-bottom:16px;">
                 <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
@@ -98,39 +98,39 @@
 <div class="card">
     <div class="card-header">
         <div style="display:flex; align-items:center; gap:12px;">
-            <span style="font-size:20px; font-weight:700;">{{ bill.bill_number }}</span>
-            <span class="badge badge-{{ 'secondary' if bill.status=='draft' else 'info' if bill.status=='posted' else 'success' if bill.status=='paid' else 'warning' if bill.status=='partially_paid' else 'danger' if bill.status=='cancelled' else 'dark' }}">
-                {{ bill.status | replace('_', ' ') | title }}
+            <span style="font-size:20px; font-weight:700;">{{ ap.ap_number }}</span>
+            <span class="badge badge-{{ 'secondary' if ap.status=='draft' else 'info' if ap.status=='posted' else 'success' if ap.status=='paid' else 'warning' if ap.status=='partially_paid' else 'danger' if ap.status=='cancelled' else 'dark' }}">
+                {{ ap.status | replace('_', ' ') | title }}
             </span>
             {% set today = now.date() %}
-            {% if bill.status in ('posted', 'partially_paid') and bill.due_date and bill.due_date < today %}
+            {% if ap.status in ('posted', 'partially_paid') and ap.due_date and ap.due_date < today %}
             <span class="badge" style="background:var(--amber); color:white;">Overdue</span>
             {% endif %}
         </div>
         <div class="card-header-actions">
-            {% if (apv_print_access == 'posted_only' and bill.status in ('posted', 'partially_paid', 'paid'))
-               or (apv_print_access == 'draft_and_posted' and bill.status not in ('voided', 'cancelled')) %}
-            <a href="{{ url_for('purchase_bills.print_bill', id=bill.id) }}"
+            {% if (apv_print_access == 'posted_only' and ap.status in ('posted', 'partially_paid', 'paid'))
+               or (apv_print_access == 'draft_and_posted' and ap.status not in ('voided', 'cancelled')) %}
+            <a href="{{ url_for('accounts_payable.print_ap', id=ap.id) }}"
                target="_blank"
                rel="noopener noreferrer"
                class="btn btn-secondary">Print</a>
             {% endif %}
             {# Tier 2: accountant/admin only can post #}
-            {% if current_user.role in ['accountant', 'admin'] and bill.status == 'draft' %}
+            {% if current_user.role in ['accountant', 'admin'] and ap.status == 'draft' %}
             <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post APV</button>
             {% endif %}
             {# Tier 1: staff/accountant/admin can edit draft #}
-            {% if current_user.role in ['staff', 'accountant', 'admin'] and bill.status == 'draft' %}
-            <a href="{{ url_for('purchase_bills.edit', id=bill.id) }}" class="btn btn-primary">Edit</a>
+            {% if current_user.role in ['staff', 'accountant', 'admin'] and ap.status == 'draft' %}
+            <a href="{{ url_for('accounts_payable.edit', id=ap.id) }}" class="btn btn-primary">Edit</a>
             {% endif %}
             {# Tier 1: staff/accountant/admin can void draft #}
-            {% if current_user.role in ['staff', 'accountant', 'admin'] and bill.status == 'draft' %}
+            {% if current_user.role in ['staff', 'accountant', 'admin'] and ap.status == 'draft' %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void APV</button>
             {% endif %}
-            {% if current_user.role in ['accountant', 'admin'] and bill.status == 'posted' and bill.amount_paid == 0 %}
+            {% if current_user.role in ['accountant', 'admin'] and ap.status == 'posted' and ap.amount_paid == 0 %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel APV</button>
             {% endif %}
-            <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">← Back to List</a>
+            <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary">← Back to List</a>
         </div>
     </div>
 
@@ -143,24 +143,24 @@
             <div style="display:flex; flex-direction:column; gap:10px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">AP Number</span>
-                    <span style="font-weight:600; font-family:var(--mono);">{{ bill.bill_number }}</span>
+                    <span style="font-weight:600; font-family:var(--mono);">{{ ap.ap_number }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Voucher Date</span>
-                    <span>{{ bill.bill_date.strftime('%b %d, %Y') if bill.bill_date else '—' }}</span>
+                    <span>{{ ap.ap_date.strftime('%b %d, %Y') if ap.ap_date else '—' }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Due Date</span>
-                    <span>{{ bill.due_date.strftime('%b %d, %Y') if bill.due_date else '—' }}</span>
+                    <span>{{ ap.due_date.strftime('%b %d, %Y') if ap.due_date else '—' }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Payment Terms</span>
-                    <span>{{ bill.payment_terms }}</span>
+                    <span>{{ ap.payment_terms }}</span>
                 </div>
-                {% if bill.reference %}
+                {% if ap.reference %}
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Reference/PO</span>
-                    <span>{{ bill.reference }}</span>
+                    <span>{{ ap.reference }}</span>
                 </div>
                 {% endif %}
                 <div style="margin-top:8px;">
@@ -169,11 +169,11 @@
                         <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
                             <div>
                                 <div style="font-size:10px; color:var(--alert-warning-text); margin-bottom:2px;">Invoice #</div>
-                                <div style="font-weight:700; font-size:16px; color:var(--alert-warning-text); font-family:var(--mono);">{{ bill.vendor_invoice_number if bill.vendor_invoice_number else '— not provided —' }}</div>
+                                <div style="font-weight:700; font-size:16px; color:var(--alert-warning-text); font-family:var(--mono);">{{ ap.vendor_invoice_number if ap.vendor_invoice_number else '— not provided —' }}</div>
                             </div>
                             <div style="text-align:right;">
                                 <div style="font-size:10px; color:var(--alert-warning-text); margin-bottom:2px;">Invoice Date</div>
-                                <div style="font-weight:600; color:var(--alert-warning-text);">{{ bill.vendor_invoice_date.strftime('%b %d, %Y') if bill.vendor_invoice_date else '—' }}</div>
+                                <div style="font-weight:600; color:var(--alert-warning-text);">{{ ap.vendor_invoice_date.strftime('%b %d, %Y') if ap.vendor_invoice_date else '—' }}</div>
                             </div>
                         </div>
                     </div>
@@ -185,19 +185,19 @@
                 <div>
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">Vendor</div>
                     <div style="border:2px solid var(--green, #22c55e); background:var(--alert-success-bg); border-radius:8px; padding:16px 20px;">
-                        <div style="font-weight:700; font-size:15px; margin-bottom:4px;">{{ bill.vendor_name }}</div>
-                        {% if bill.vendor_tin %}
-                        <div style="color:var(--text-2); font-size:12px; margin-bottom:2px;">TIN: {{ bill.vendor_tin }}</div>
+                        <div style="font-weight:700; font-size:15px; margin-bottom:4px;">{{ ap.vendor_name }}</div>
+                        {% if ap.vendor_tin %}
+                        <div style="color:var(--text-2); font-size:12px; margin-bottom:2px;">TIN: {{ ap.vendor_tin }}</div>
                         {% endif %}
-                        {% if bill.vendor_address %}
-                        <div style="color:var(--text-2); font-size:12px;">{{ bill.vendor_address }}</div>
+                        {% if ap.vendor_address %}
+                        <div style="color:var(--text-2); font-size:12px;">{{ ap.vendor_address }}</div>
                         {% endif %}
                     </div>
                 </div>
                 <div style="flex:1;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">Notes</div>
                     <div style="background:var(--bg); border-radius:6px; padding:14px 16px; min-height:48px; height:100%;">
-                        <p style="margin:0; color:var(--text-2); white-space:pre-wrap; font-size:13px;">{{ bill.notes or '' }}</p>
+                        <p style="margin:0; color:var(--text-2); white-space:pre-wrap; font-size:13px;">{{ ap.notes or '' }}</p>
                     </div>
                 </div>
             </div>
@@ -216,7 +216,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for item in bill.line_items %}
+                {% for item in ap.line_items %}
                 <tr>
                     <td>{{ item.line_number }}</td>
                     <td>{{ item.description or '—' }}</td>
@@ -277,44 +277,44 @@
             <div style="background:var(--bg); padding:20px; border-radius:6px;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">Gross Amount:</span>
-                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.subtotal) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(ap.subtotal) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">
                         Less: Input VAT:
-                        {% if bill.vat_override %}<span style="font-size:10px; font-weight:700; color:var(--amber); margin-left:4px; border:1px solid currentColor; border-radius:3px; padding:1px 4px;">MANUAL</span>{% endif %}
+                        {% if ap.vat_override %}<span style="font-size:10px; font-weight:700; color:var(--amber); margin-left:4px; border:1px solid currentColor; border-radius:3px; padding:1px 4px;">MANUAL</span>{% endif %}
                     </span>
-                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(ap.vat_amount) }}</span>
                 </div>
                 <div style="height:1px; background:var(--border); margin:8px 0;"></div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">Net of VAT:</span>
-                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.subtotal - bill.vat_amount) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(ap.subtotal - ap.vat_amount) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">Add: Input VAT:</span>
-                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(ap.vat_amount) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">
                         Less: Withholding Tax:
-                        {% if bill.wt_override %}<span style="font-size:10px; font-weight:700; color:var(--amber); margin-left:4px; border:1px solid currentColor; border-radius:3px; padding:1px 4px;">MANUAL</span>{% endif %}
+                        {% if ap.wt_override %}<span style="font-size:10px; font-weight:700; color:var(--amber); margin-left:4px; border:1px solid currentColor; border-radius:3px; padding:1px 4px;">MANUAL</span>{% endif %}
                     </span>
-                    <span style="font-family:var(--mono); font-weight:600; color:var(--red);">-₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600; color:var(--red);">-₱{{ '{:,.2f}'.format(ap.withholding_tax_amount) }}</span>
                 </div>
                 <div style="height:2px; background:var(--border); margin:10px 0;"></div>
                 <div style="display:flex; justify-content:space-between;">
                     <span style="font-size:16px; font-weight:700;">Net Amount Payable:</span>
-                    <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--blue);">₱{{ '{:,.2f}'.format(bill.total_amount) }}</span>
+                    <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--blue);">₱{{ '{:,.2f}'.format(ap.total_amount) }}</span>
                 </div>
-                {% if bill.amount_paid and bill.amount_paid > 0 %}
+                {% if ap.amount_paid and ap.amount_paid > 0 %}
                 <div style="display:flex; justify-content:space-between; margin-top:10px;">
                     <span style="color:var(--text-2);">Amount Paid:</span>
-                    <span style="font-family:var(--mono);">₱{{ '{:,.2f}'.format(bill.amount_paid) }}</span>
+                    <span style="font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap.amount_paid) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; padding-top:8px; border-top:1px solid var(--border);">
                     <span style="font-weight:600;">Balance:</span>
-                    <span style="font-family:var(--mono); font-weight:600; color:{{ 'var(--red)' if bill.balance > 0 else 'var(--green)' }};">₱{{ '{:,.2f}'.format(bill.balance) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600; color:{{ 'var(--red)' if ap.balance > 0 else 'var(--green)' }};">₱{{ '{:,.2f}'.format(ap.balance) }}</span>
                 </div>
                 {% endif %}
             </div>
@@ -325,10 +325,10 @@
         <div style="margin-top:32px; padding-top:24px; border-top:1px solid var(--border);">
             <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
                 Attachments
-                <span style="font-weight:400; color:var(--text-3);">({{ bill.attachments|length }} file{{ 's' if bill.attachments|length != 1 else '' }})</span>
+                <span style="font-weight:400; color:var(--text-3);">({{ ap.attachments|length }} file{{ 's' if ap.attachments|length != 1 else '' }})</span>
             </h3>
 
-            {% if bill.attachments %}
+            {% if ap.attachments %}
             <div style="overflow-x:auto;">
               <table style="width:100%; border-collapse:collapse; font-size:13px;">
                 <thead>
@@ -342,7 +342,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  {% for att in bill.attachments %}
+                  {% for att in ap.attachments %}
                   <tr style="border-bottom:1px solid var(--border);">
                     <td style="padding:8px 12px;">{{ att.original_filename }}</td>
                     <td style="padding:8px 12px;">
@@ -362,7 +362,7 @@
                         Preview
                       </button>
                       {% endif %}
-                      <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
+                      <a href="{{ url_for('accounts_payable.download_attachment', attachment_id=att.id) }}"
                          class="btn btn-secondary" style="font-size:12px; padding:4px 10px;">Download</a>
                     </td>
                   </tr>
@@ -377,15 +377,15 @@
 
         <!-- ── Audit Trail ─────────────────────────────────────────────────── -->
         <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">
-            Created by {{ bill.created_by.username if bill.created_by else '—' }} on {{ bill.created_at.strftime('%b %d, %Y %H:%M') if bill.created_at else '—' }}
-            {% if bill.posted_by %}
-             &mdash; Posted by {{ bill.posted_by.username }} on {{ bill.posted_at.strftime('%b %d, %Y %H:%M') if bill.posted_at else '—' }}
+            Created by {{ ap.created_by.username if ap.created_by else '—' }} on {{ ap.created_at.strftime('%b %d, %Y %H:%M') if ap.created_at else '—' }}
+            {% if ap.posted_by %}
+             &mdash; Posted by {{ ap.posted_by.username }} on {{ ap.posted_at.strftime('%b %d, %Y %H:%M') if ap.posted_at else '—' }}
             {% endif %}
-            {% if bill.voided_by %}
-             &mdash; Voided by {{ bill.voided_by.username }} on {{ bill.voided_at.strftime('%b %d, %Y %H:%M') if bill.voided_at else '—' }} &mdash; <em>{{ bill.void_reason }}</em>
+            {% if ap.voided_by %}
+             &mdash; Voided by {{ ap.voided_by.username }} on {{ ap.voided_at.strftime('%b %d, %Y %H:%M') if ap.voided_at else '—' }} &mdash; <em>{{ ap.void_reason }}</em>
             {% endif %}
-            {% if bill.cancel_reason %}
-             &mdash; Cancelled on {{ bill.cancelled_at.strftime('%b %d, %Y %H:%M') if bill.cancelled_at else '—' }} &mdash; <em>{{ bill.cancel_reason }}</em>
+            {% if ap.cancel_reason %}
+             &mdash; Cancelled on {{ ap.cancelled_at.strftime('%b %d, %Y %H:%M') if ap.cancelled_at else '—' }} &mdash; <em>{{ ap.cancel_reason }}</em>
             {% endif %}
         </div>
 

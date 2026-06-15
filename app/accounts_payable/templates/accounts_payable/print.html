@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>APV {{ bill.bill_number }}</title>
+<title>APV {{ ap.ap_number }}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
@@ -73,7 +73,7 @@
 
   <div class="print-bar screen-only">
     <button class="btn-print" onclick="window.print()">Print</button>
-    <a class="btn-close" href="{{ url_for('purchase_bills.view', id=bill.id) }}">Close</a>
+    <a class="btn-close" href="{{ url_for('accounts_payable.view', id=ap.id) }}">Close</a>
   </div>
 
   <div class="apv-header">
@@ -86,17 +86,17 @@
 
   <div class="info-row">
     <table>
-      <tr><td class="label">APV No.</td><td><strong>{{ bill.bill_number }}</strong></td></tr>
-      <tr><td class="label">Date</td><td>{{ bill.bill_date.strftime('%d %B %Y') }}</td></tr>
-      <tr><td class="label">Due Date</td><td>{{ bill.due_date.strftime('%d %B %Y') if bill.due_date else '—' }}</td></tr>
-      <tr><td class="label">Terms</td><td>{{ bill.payment_terms or '—' }}</td></tr>
+      <tr><td class="label">APV No.</td><td><strong>{{ ap.ap_number }}</strong></td></tr>
+      <tr><td class="label">Date</td><td>{{ ap.ap_date.strftime('%d %B %Y') }}</td></tr>
+      <tr><td class="label">Due Date</td><td>{{ ap.due_date.strftime('%d %B %Y') if ap.due_date else '—' }}</td></tr>
+      <tr><td class="label">Terms</td><td>{{ ap.payment_terms or '—' }}</td></tr>
     </table>
     <table>
       <tr><td colspan="2" class="label vendor-header">VENDOR</td></tr>
-      <tr><td colspan="2"><strong>{{ bill.vendor_name }}</strong></td></tr>
-      <tr><td class="label">TIN</td><td>{{ bill.vendor_tin or '—' }}</td></tr>
-      <tr><td class="label">Invoice No.</td><td>{{ bill.vendor_invoice_number or '—' }}</td></tr>
-      <tr><td class="label">Invoice Date</td><td>{{ bill.vendor_invoice_date.strftime('%d %B %Y') if bill.vendor_invoice_date else '—' }}</td></tr>
+      <tr><td colspan="2"><strong>{{ ap.vendor_name }}</strong></td></tr>
+      <tr><td class="label">TIN</td><td>{{ ap.vendor_tin or '—' }}</td></tr>
+      <tr><td class="label">Invoice No.</td><td>{{ ap.vendor_invoice_number or '—' }}</td></tr>
+      <tr><td class="label">Invoice Date</td><td>{{ ap.vendor_invoice_date.strftime('%d %B %Y') if ap.vendor_invoice_date else '—' }}</td></tr>
     </table>
   </div>
 
@@ -110,7 +110,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for item in bill.line_items %}
+      {% for item in ap.line_items %}
       <tr>
         <td>{{ item.line_number }}</td>
         <td>{{ item.description or '—' }}</td>
@@ -164,37 +164,37 @@
       <div class="summary-inner">
         <div class="summary-row">
           <span class="slabel">Gross Amount:</span>
-          <span class="sval">{{ '{:,.2f}'.format(bill.subtotal) }}</span>
+          <span class="sval">{{ '{:,.2f}'.format(ap.subtotal) }}</span>
         </div>
         <div class="summary-row">
           <span class="slabel">Less: Input VAT:</span>
-          <span class="sval">{{ '{:,.2f}'.format(bill.vat_amount) }}</span>
+          <span class="sval">{{ '{:,.2f}'.format(ap.vat_amount) }}</span>
         </div>
         <div class="summary-divider"></div>
         <div class="summary-row">
           <span class="slabel">Net of VAT:</span>
-          <span class="sval">{{ '{:,.2f}'.format(bill.subtotal - bill.vat_amount) }}</span>
+          <span class="sval">{{ '{:,.2f}'.format(ap.subtotal - ap.vat_amount) }}</span>
         </div>
         <div class="summary-row">
           <span class="slabel">Add: Input VAT:</span>
-          <span class="sval">{{ '{:,.2f}'.format(bill.vat_amount) }}</span>
+          <span class="sval">{{ '{:,.2f}'.format(ap.vat_amount) }}</span>
         </div>
         <div class="summary-row">
           <span class="slabel">Less: Withholding Tax:</span>
-          <span class="sval red">-{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}</span>
+          <span class="sval red">-{{ '{:,.2f}'.format(ap.withholding_tax_amount) }}</span>
         </div>
         <div class="summary-divider-double"></div>
         <div class="summary-net">
           <span class="netlabel">Net Amount Payable:</span>
-          <span class="netval">{{ '{:,.2f}'.format(bill.total_amount) }}</span>
+          <span class="netval">{{ '{:,.2f}'.format(ap.total_amount) }}</span>
         </div>
       </div>
     </div>
   </div>
 
-  {% if bill.notes %}
+  {% if ap.notes %}
   <div class="notes-box">
-    <span class="notes-label">Notes:</span>{{ bill.notes }}
+    <span class="notes-label">Notes:</span>{{ ap.notes }}
   </div>
   {% endif %}
 
@@ -213,9 +213,9 @@
     </div>
   </div>
 
-  {% if bill.status != 'draft' and bill.posted_by %}
+  {% if ap.status != 'draft' and ap.posted_by %}
   <div class="audit-footer">
-    Posted by: {{ bill.posted_by.username }} &nbsp;·&nbsp; {{ bill.posted_at.strftime('%d %b %Y') if bill.posted_at else '' }}
+    Posted by: {{ ap.posted_by.username }} &nbsp;·&nbsp; {{ ap.posted_at.strftime('%d %b %Y') if ap.posted_at else '' }}
     &nbsp;|&nbsp; Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
   </div>
   {% endif %}

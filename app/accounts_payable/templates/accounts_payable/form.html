@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}{{ 'Update AP Voucher' if bill else 'New AP Voucher' }}{% endblock %}
-{% block page_title %}{{ 'Update AP Voucher' if bill else 'New AP Voucher' }}{% endblock %}
+{% block title %}{{ 'Update AP Voucher' if ap else 'New AP Voucher' }}{% endblock %}
+{% block page_title %}{{ 'Update AP Voucher' if ap else 'New AP Voucher' }}{% endblock %}
 
 {% block content %}
 {% from "macros.html" import render_field, render_flash_messages %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_bills_form.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=7">
 
 {{ render_flash_messages() }}
 
-<div class="card page-purchase-bill">
+<div class="card page-accounts-payable">
     <div class="card-body">
         <form method="POST" novalidate id="billForm">
             {{ form.hidden_tag() }}
@@ -19,9 +19,9 @@
             <!-- Header: 7 fields (1/3) + Vendor + Notes (2/3) -->
             <div class="form-main-grid">
                 <!-- Left 1/3: all 7 inline fields -->
-                <div class="left-col-fields header-fields{% if bill %} header-fields--active{% endif %}">
-                    {{ render_field(form.bill_number) }}
-                    {{ render_field(form.bill_date) }}
+                <div class="left-col-fields header-fields{% if ap %} header-fields--active{% endif %}">
+                    {{ render_field(form.ap_number) }}
+                    {{ render_field(form.ap_date) }}
                     {{ render_field(form.due_date) }}
                     {{ render_field(form.payment_terms) }}
                     {{ render_field(form.vendor_invoice_number) }}
@@ -30,17 +30,17 @@
                 </div>
                 <!-- Right 2/3: vendor card -->
                 <div class="right-col">
-                    <div id="vendorCard" class="vendor-step-card{% if bill %} vendor-step-card--done{% endif %}">
+                    <div id="vendorCard" class="vendor-step-card{% if ap %} vendor-step-card--done{% endif %}">
                         <div class="vendor-step-label" id="vendorCardLabel">
-                            {% if bill %}✓ {{ bill.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
+                            {% if ap %}✓ {{ ap.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
                         </div>
                         <div id="vendorBadges" class="vendor-badges"></div>
                         <select name="vendor_id" id="vendor_id" class="form-control" required
-                                {% if not bill %}autofocus{% endif %}>
+                                {% if not ap %}autofocus{% endif %}>
                             <option value="">Search or select a vendor…</option>
                             {% for choice in form.vendor_id.choices %}
                             <option value="{{ choice[0] }}"
-                                {% if bill and bill.vendor_id == choice[0] %}selected{% endif %}>
+                                {% if ap and ap.vendor_id == choice[0] %}selected{% endif %}>
                                 {{ choice[1] }}
                             </option>
                             {% endfor %}
@@ -51,7 +51,7 @@
                     </div>
                 </div>
                 <!-- Notes: own grid area so it appears last on small screens -->
-                <div class="notes-col header-fields{% if bill %} header-fields--active{% endif %}">
+                <div class="notes-col header-fields{% if ap %} header-fields--active{% endif %}">
                     {{ form.notes.label(class='form-label') }}
                     {{ form.notes(class='form-control', style='resize:vertical', autocomplete='new-password', **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
                     {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
@@ -59,7 +59,7 @@
             </div>
 
             <!-- ③ Line Items Locked Placeholder -->
-            <div id="lineItemsLocked" class="line-items-locked{% if bill %} line-items-locked--hidden{% endif %}">
+            <div id="lineItemsLocked" class="line-items-locked{% if ap %} line-items-locked--hidden{% endif %}">
                 <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
                 <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
                     Select a vendor above to add line items
@@ -70,7 +70,7 @@
             </div>
 
             <!-- ④ Line Items Section (hidden on create, visible on edit) -->
-            <div id="lineItemsSection"{% if not bill %} style="display:none"{% endif %}>
+            <div id="lineItemsSection"{% if not ap %} style="display:none"{% endif %}>
                 <div style="margin-top: 16px;">
                     <table class="table" id="lineItemsTable">
                         <thead>
@@ -113,7 +113,7 @@
                     <!-- AP Voucher Summary Panel -->
                     <div>
                         <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">AP Voucher Summary</div>
-                        <div class="bill-summary-panel">
+                        <div class="ap-summary-panel">
 
                         <!-- Row 1: Gross Amount -->
                         <div class="bsr">
@@ -164,16 +164,16 @@
                             <span class="bsr-label bsr-label--total">Net Amount Payable</span>
                             <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
                         </div>
-                        </div><!-- end .bill-summary-panel -->
+                        </div><!-- end .ap-summary-panel -->
                     </div><!-- end wrapper -->
 
                 </div>
 
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
-                        {{ 'Update Bill' if bill else 'Enter Bill' }}
+                        {{ 'Update Bill' if ap else 'Enter Bill' }}
                     </button>
-                    <a href="{{ url_for('purchase_bills.list_bills') }}" class="btn btn-secondary">Back</a>
+                    <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary">Back</a>
                 </div>
                 <p id="saveHint"></p>
             </div>
@@ -186,8 +186,8 @@
     </div>
 </div>
 
-{% if bill %}
-{% for att in bill.attachments %}{% if att.is_image %}
+{% if ap %}
+{% for att in ap.attachments %}{% if att.is_image %}
 <div id="previewModal-{{ att.id }}"
      style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
             z-index:1100; align-items:center; justify-content:center; overflow:auto;">
@@ -199,18 +199,18 @@
               onclick="document.getElementById('previewModal-{{ att.id }}').style.display='none'"
               style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-1);">&times;</button>
     </div>
-    <img src="{{ url_for('purchase_bills.preview_attachment', attachment_id=att.id) }}"
+    <img src="{{ url_for('accounts_payable.preview_attachment', attachment_id=att.id) }}"
          alt="{{ att.original_filename }}"
          style="max-width:80vw; max-height:70vh; object-fit:contain; border-radius:4px;">
     <div style="text-align:right;">
-      <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
+      <a href="{{ url_for('accounts_payable.download_attachment', attachment_id=att.id) }}"
          class="btn btn-secondary" style="font-size:13px;">Download</a>
     </div>
   </div>
 </div>
 {% endif %}{% endfor %}
 
-{% for att in bill.attachments %}
+{% for att in ap.attachments %}
 <div id="deleteAttModal-{{ att.id }}"
      style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
             z-index:1100; align-items:center; justify-content:center;">
@@ -224,7 +224,7 @@
               onclick="document.getElementById('deleteAttModal-{{ att.id }}').style.display='none'">
         Cancel</button>
       <form method="POST"
-            action="{{ url_for('purchase_bills.delete_attachment', attachment_id=att.id) }}"
+            action="{{ url_for('accounts_payable.delete_attachment', attachment_id=att.id) }}"
             style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <button type="submit" class="btn btn-danger">Delete</button>
@@ -239,11 +239,11 @@
   <div class="card-body">
     <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
       Attachments
-      <span style="font-weight:400; color:var(--text-3);">({{ bill.attachments|length }} file{{ 's' if bill.attachments|length != 1 else '' }})</span>
+      <span style="font-weight:400; color:var(--text-3);">({{ ap.attachments|length }} file{{ 's' if ap.attachments|length != 1 else '' }})</span>
     </h3>
 
     <form method="POST" enctype="multipart/form-data"
-          action="{{ url_for('purchase_bills.upload_attachment', id=bill.id) }}"
+          action="{{ url_for('accounts_payable.upload_attachment', id=ap.id) }}"
           style="display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <input type="file" name="attachment" style="flex:1; min-width:200px;"
@@ -251,7 +251,7 @@
       <button type="submit" class="btn btn-secondary" style="white-space:nowrap;">Upload File</button>
     </form>
 
-    {% if bill.attachments %}
+    {% if ap.attachments %}
     <div style="overflow-x:auto;">
       <table style="width:100%; border-collapse:collapse; font-size:13px;">
         <thead>
@@ -265,7 +265,7 @@
           </tr>
         </thead>
         <tbody>
-          {% for att in bill.attachments %}
+          {% for att in ap.attachments %}
           <tr style="border-bottom:1px solid var(--border);">
             <td style="padding:8px 12px;">{{ att.original_filename }}</td>
             <td style="padding:8px 12px;">
@@ -285,7 +285,7 @@
                 Preview
               </button>
               {% endif %}
-              <a href="{{ url_for('purchase_bills.download_attachment', attachment_id=att.id) }}"
+              <a href="{{ url_for('accounts_payable.download_attachment', attachment_id=att.id) }}"
                  class="btn btn-secondary" style="font-size:12px; padding:4px 10px;">Download</a>
               <button type="button" class="btn btn-danger" style="font-size:12px; padding:4px 10px; margin-left:4px;"
                       onclick="document.getElementById('deleteAttModal-{{ att.id }}').style.display='flex'">
@@ -387,9 +387,9 @@ function applyVendorTerms(terms) {
     const match = terms.match(/Net (\d+)/);
     if (!match) return;
     const days = parseInt(match[1]);
-    const billDateVal = document.getElementById('bill_date').value;
-    if (!billDateVal) return;
-    const due = new Date(billDateVal);
+    const apDateVal = document.getElementById('ap_date').value;
+    if (!apDateVal) return;
+    const due = new Date(apDateVal);
     if (isNaN(due.getTime())) return;
     due.setDate(due.getDate() + days);
     const dueDateField = document.getElementById('due_date');
@@ -576,9 +576,9 @@ function validateForm() {
     function block(msg) { btn.disabled = true; hint.textContent = msg; }
     function allow()     { btn.disabled = false; hint.textContent = ''; }
 
-    const billDateVal = document.getElementById('bill_date')?.value;
+    const apDateVal = document.getElementById('ap_date')?.value;
     const dueDateVal = document.getElementById('due_date')?.value;
-    if (billDateVal && dueDateVal && dueDateVal < billDateVal) {
+    if (apDateVal && dueDateVal && dueDateVal < apDateVal) {
         block('Due date cannot be earlier than the voucher date.'); return;
     }
 
@@ -830,7 +830,7 @@ document.getElementById('vendor_id').addEventListener('change', function () {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 function initItems() {
-    {% if bill and line_items %}
+    {% if ap and line_items %}
     const existingItems = {{ line_items | tojson }};
     existingItems.forEach(item => addLineItem(item));
     {% endif %}
@@ -838,20 +838,20 @@ function initItems() {
 }
 
 function initOverrides() {
-    {% if bill and bill.vat_override %}
+    {% if ap and ap.vat_override %}
     vatOverrideActive = true;
     document.getElementById('vatOverrideFlag').value = '1';
-    const savedVat = {{ bill.vat_amount | float }};
+    const savedVat = {{ ap.vat_amount | float }};
     document.getElementById('vatOverrideValue').value = savedVat.toFixed(2);
     document.getElementById('vatAutoHint').textContent = 'auto: ' + fmt(autoVat);
     document.getElementById('vatDisplayMode').style.display = 'none';
     document.getElementById('vatEditMode').style.display = '';
     document.getElementById('vatOverrideInput').value = savedVat.toFixed(2);
     {% endif %}
-    {% if bill and bill.wt_override %}
+    {% if ap and ap.wt_override %}
     wtOverrideActive = true;
     document.getElementById('wtOverrideFlag').value = '1';
-    const savedWt = {{ bill.withholding_tax_amount | float }};
+    const savedWt = {{ ap.withholding_tax_amount | float }};
     document.getElementById('wtOverrideValue').value = savedWt.toFixed(2);
     document.getElementById('wtAutoHint').textContent = 'auto: ' + fmt(autoWt);
     document.getElementById('wtDisplayMode').style.display = 'none';
@@ -879,7 +879,7 @@ if (ptSel) {
 }
 
 // Date fields and vendor invoice # trigger validation
-for (const id of ['bill_date', 'due_date']) {
+for (const id of ['ap_date', 'due_date']) {
     document.getElementById(id)?.addEventListener('change', validateForm);
 }
 const _invInput = document.getElementById('vendor_invoice_number');
@@ -887,12 +887,12 @@ if (_invInput) _invInput.addEventListener('input', validateForm);
 const _invDate = document.getElementById('vendor_invoice_date');
 if (_invDate) _invDate.addEventListener('change', validateForm);
 
-{% if bill %}
+{% if ap %}
 const initVendorId = document.getElementById('vendor_id').value;
 const initVendorSel = document.getElementById('vendor_id');
 const initVendorName = initVendorSel.options[initVendorSel.selectedIndex]
     ? initVendorSel.options[initVendorSel.selectedIndex].text
-    : '{{ bill.vendor_name | e }}';
+    : '{{ ap.vendor_name | e }}';
 
 currentVendorName = initVendorName;
 
