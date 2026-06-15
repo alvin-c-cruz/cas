@@ -33,7 +33,7 @@ def gl_accounts(db_session):
     for a in accounts.values():
         db_session.add(a)
     db_session.commit()
-    # _post_bill_je buckets input VAT by category account (B-014), so the
+    # _post_ap_je buckets input VAT by category account (B-014), so the
     # VATABLE category used by the bill fixtures must be mapped.
     # _post_invoice_je buckets output VAT similarly, so output_vat_account_id is
     # also required for sales invoice JE tests.
@@ -104,8 +104,8 @@ def posted_bill(db_session, admin_user, main_branch, gl_accounts, test_vendor):
 
     # Posted bills always carry a stored JE (created on save, promoted on
     # post); the reversal helper mirrors it, so the fixture must book one.
-    from app.accounts_payable.views import _post_bill_je
-    je = _post_bill_je(bill, admin_user.id)
+    from app.accounts_payable.views import _post_ap_je
+    je = _post_ap_je(bill, admin_user.id)
     bill.journal_entry_id = je.id
     db_session.commit()
     return bill

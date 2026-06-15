@@ -101,7 +101,7 @@ def gl_accounts_wht(db_session):
     for a in accounts:
         db_session.add(a)
     db_session.commit()
-    # _post_bill_je buckets input VAT by category account (B-014), so the
+    # _post_ap_je buckets input VAT by category account (B-014), so the
     # VATABLE category used by the bill fixture must be mapped.
     from app.vat_categories.models import VATCategory
     db_session.add(VATCategory(code='VATABLE', name='VATable Purchases',
@@ -214,9 +214,9 @@ class TestAccountsPayableWhtIntegration:
                                test_vendor_with_wht, gl_accounts_wht, wht_codes)
         bill.status = 'posted'
         db_session.flush()
-        from app.accounts_payable.views import _post_bill_je, _create_reversal_je
+        from app.accounts_payable.views import _post_ap_je, _create_reversal_je
 
-        source_je = _post_bill_je(bill, admin_user.id)
+        source_je = _post_ap_je(bill, admin_user.id)
         bill.journal_entry_id = source_je.id
         db_session.commit()
 
