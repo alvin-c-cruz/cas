@@ -366,3 +366,38 @@ def test_print_list_get_empty(client, db_session, accountant_user, branch):
     response = client.get('/sales-invoices/print')
     assert response.status_code == 200
     assert b'SALES INVOICES' in response.data
+
+
+def test_si_create_form_vat_context(client, db_session, accountant_user, branch):
+    """SI create form must pass 7 VAT categories and 3 WHT codes to JS globals.
+
+    Regression for BUG-02: empty dropdowns in dynamic line item rows caused by
+    missing seed data. Verify server always sends non-empty arrays.
+    """
+    from app.vat_categories.models import VATCategory
+    from app.withholding_tax.models import WithholdingTax
+
+    # Seed minimal VAT + WHT data mirroring seed_minimal()
+    vat_codes = ['VEX', 'V0', 'INV', 'V12CG', 'V12DG', 'V12SV', 'V12IM']
+    for code in vat_codes:
+        db_session.add(VATCategory(code=code, name=code, rate=0.0,
+                                   description='', is_active=True))
+    for code in ['WC158', 'WC160', 'WC100']:
+        db_session.add(WithholdingTax(code=code, name=code,
+                                      description='', rate=1.0, is_active=True))
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+
+    response = client.get('/sales-invoices/create')
+    assert response.status_code == 200
+
+    # All 7 VAT codes must appear in the rendered JS globals
+    for code in vat_codes:
+        assert code.encode() in response.data, f"VAT code {code} missing from form context"
+
+    # All 3 WHT codes must appear
+    for code in ['WC158', 'WC160', 'WC100']:
+        assert code.encode() in response.data, f"WHT code {code} missing from form context"
