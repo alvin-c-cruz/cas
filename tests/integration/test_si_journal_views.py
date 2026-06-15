@@ -60,7 +60,7 @@ def _si_entry(db_session, branch_id, status, entry_date, number, lines):
     lines = list of (account, debit_amount, credit_amount)
     """
     je = JournalEntry(
-        entry_number=number, entry_type='sale', entry_date=entry_date,
+        entry_number=number, reference=number, entry_type='sale', entry_date=entry_date,
         description=f'SI {number}', status=status, branch_id=branch_id,
         total_debit=sum(d for _, d, _ in lines),
         total_credit=sum(c for _, _, c in lines),
@@ -72,6 +72,7 @@ def _si_entry(db_session, branch_id, status, entry_date, number, lines):
             entry_id=je.id, account_id=acct.id, line_number=i,
             debit_amount=dr, credit_amount=cr, description='',
         ))
+    je.is_balanced = True
     db.session.commit()
     return je
 
@@ -173,6 +174,7 @@ class TestSIJournalViews:
         resp = client.get('/journals/si/print?mode=month&year=2026&month=6')
         assert resp.status_code == 200
         assert b'SALES JOURNAL' in resp.data
+        assert b'SI-0004' in resp.data
 
     def test_si_journal_redirects_without_branch(
             self, client, db_session, accountant_user):
