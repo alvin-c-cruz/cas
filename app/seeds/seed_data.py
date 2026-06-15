@@ -532,10 +532,10 @@ def seed_minimal():
                 role='admin',
                 is_active=True
             )
-            admin.set_password('ac1123581321')
+            admin.set_password('admin123')
             db.session.add(admin)
             db.session.commit()
-            print("  [OK] Admin user created (username: admin, password: ac1123581321)")
+            print("  [OK] Admin user created (username: admin, password: admin123)")
 
         # ------------------------------------------------------------------
         # 2. Main Branch + assign admin
