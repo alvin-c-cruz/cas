@@ -1,5 +1,5 @@
 """
-Forms for Purchase Bill management.
+Forms for Accounts Payable management.
 """
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField
@@ -7,16 +7,16 @@ from wtforms.validators import DataRequired, Length, Optional, ValidationError
 from datetime import date
 
 
-class PurchaseBillForm(FlaskForm):
-    """Form for creating and editing purchase bills."""
+class AccountsPayableForm(FlaskForm):
+    """Form for creating and editing accounts payable."""
 
-    bill_number = StringField('AP Number', validators=[
-        DataRequired(message='Bill number is required.'),
-        Length(max=50, message='Bill number must be 50 characters or less.')
+    ap_number = StringField('AP Number', validators=[
+        DataRequired(message='AP number is required.'),
+        Length(max=50, message='AP number must be 50 characters or less.')
     ])
 
-    bill_date = DateField('Voucher Date', validators=[
-        DataRequired(message='Bill date is required.')
+    ap_date = DateField('Voucher Date', validators=[
+        DataRequired(message='AP date is required.')
     ], format='%Y-%m-%d', default=date.today)
 
     due_date = DateField('Due Date', validators=[
@@ -24,7 +24,7 @@ class PurchaseBillForm(FlaskForm):
     ], format='%Y-%m-%d')
 
     def validate_due_date(self, field):
-        if self.bill_date.data and field.data and field.data < self.bill_date.data:
+        if self.ap_date.data and field.data and field.data < self.ap_date.data:
             raise ValidationError('Due date cannot be earlier than the voucher date.')
 
     vendor_id = SelectField('Vendor', validators=[

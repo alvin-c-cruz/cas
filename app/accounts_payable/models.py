@@ -1,32 +1,32 @@
 """
-Purchase Bill models for supplier invoicing and expense tracking.
+Accounts Payable models for supplier invoicing and expense tracking.
 
 Supports:
-- Bill header with vendor details
+- AP header with vendor details
 - Line items with expenses/purchases
 - VAT input calculation per line
-- Withholding tax calculation per bill
+- Withholding tax calculation per AP
 - Multiple payment terms
-- Bill status tracking
+- AP status tracking
 """
 from app import db
 from app.utils import ph_now
 from decimal import Decimal
 
 
-class PurchaseBill(db.Model):
+class AccountsPayable(db.Model):
     """
-    Purchase Bill header model.
+    Accounts Payable header model.
 
     Philippine SME requirements:
-    - Bill number (PB-2024-0001 format)
+    - AP number (AP-2024-0001 format)
     - Vendor reference (TIN for BIR compliance)
     - Date received and due date
     - VAT input calculation per line
     - Withholding tax calculation on total
     - Total amounts with/without VAT and WT
     """
-    __tablename__ = 'purchase_bills'
+    __tablename__ = 'accounts_payable'
 
     id = db.Column(db.Integer, primary_key=True)
 
@@ -34,9 +34,9 @@ class PurchaseBill(db.Model):
     branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=True, index=True)
     branch = db.relationship('Branch', foreign_keys=[branch_id])
 
-    # Bill identification
-    bill_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
-    bill_date = db.Column(db.Date, nullable=False, index=True)
+    # AP identification
+    ap_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    ap_date = db.Column(db.Date, nullable=False, index=True)
     due_date = db.Column(db.Date, nullable=False)
 
     # Vendor reference
@@ -106,22 +106,22 @@ class PurchaseBill(db.Model):
 
     # Relationship to line items
     # Changed from lazy='dynamic' to lazy='select' to support eager loading (selectinload)
-    line_items = db.relationship('PurchaseBillItem', backref='bill', lazy='select',
-                                 cascade='all, delete-orphan', order_by='PurchaseBillItem.line_number')
+    line_items = db.relationship('AccountsPayableItem', backref='ap', lazy='select',
+                                 cascade='all, delete-orphan', order_by='AccountsPayableItem.line_number')
 
     attachments = db.relationship(
-        'PurchaseBillAttachment',
-        backref='bill',
+        'AccountsPayableAttachment',
+        backref='ap',
         lazy='select',
         cascade='all, delete-orphan',
-        order_by='PurchaseBillAttachment.uploaded_at'
+        order_by='AccountsPayableAttachment.uploaded_at'
     )
 
     def __repr__(self):
-        return f'<PurchaseBill {self.bill_number}>'
+        return f'<AccountsPayable {self.ap_number}>'
 
     def calculate_totals(self):
-        """Compute bill totals from VAT-inclusive line amounts."""
+        """Compute AP totals from VAT-inclusive line amounts."""
         self.subtotal = Decimal('0.00')
         auto_vat = Decimal('0.00')
         auto_wt = Decimal('0.00')
@@ -138,11 +138,11 @@ class PurchaseBill(db.Model):
         self.balance = self.total_amount - self.amount_paid
 
     def to_dict(self):
-        """Convert bill to dictionary for JSON serialization."""
+        """Convert AP to dictionary for JSON serialization."""
         return {
             'id': self.id,
-            'bill_number': self.bill_number,
-            'bill_date': self.bill_date.isoformat() if self.bill_date else None,
+            'ap_number': self.ap_number,
+            'ap_date': self.ap_date.isoformat() if self.ap_date else None,
             'due_date': self.due_date.isoformat() if self.due_date else None,
             'vendor_id': self.vendor_id,
             'vendor_name': self.vendor_name,
@@ -163,21 +163,21 @@ class PurchaseBill(db.Model):
         }
 
 
-class PurchaseBillItem(db.Model):
+class AccountsPayableItem(db.Model):
     """
-    Purchase Bill line item model.
+    Accounts Payable line item model.
 
     Each line represents an expense/purchase with:
     - Description and amount (VAT-inclusive)
     - VAT category and calculation
     - Line total
     """
-    __tablename__ = 'purchase_bill_items'
+    __tablename__ = 'accounts_payable_items'
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Parent bill
-    bill_id = db.Column(db.Integer, db.ForeignKey('purchase_bills.id'), nullable=False, index=True)
+    # Parent AP
+    ap_id = db.Column(db.Integer, db.ForeignKey('accounts_payable.id'), nullable=False, index=True)
 
     # Line ordering
     line_number = db.Column(db.Integer, nullable=False)
@@ -201,11 +201,11 @@ class PurchaseBillItem(db.Model):
     # Withholding tax (per line, vendor-driven)
     wt_id = db.Column(db.Integer, db.ForeignKey('withholding_tax.id'), nullable=True)
     withholding_tax = db.relationship('WithholdingTax', foreign_keys=[wt_id])
-    wt_rate = db.Column(db.Numeric(5, 2), nullable=True)   # snapshot at bill creation time
+    wt_rate = db.Column(db.Numeric(5, 2), nullable=True)   # snapshot at AP creation time
     wt_amount = db.Column(db.Numeric(15, 2), default=Decimal('0.00'), server_default='0.00', nullable=False)
 
     def __repr__(self):
-        return f'<PurchaseBillItem {self.bill_id}-{self.line_number}>'
+        return f'<AccountsPayableItem {self.ap_id}-{self.line_number}>'
 
     def calculate_amounts(self):
         """Calculate line total, extracted VAT, and WHT on net base (BIR EWT standard)."""
@@ -237,17 +237,17 @@ class PurchaseBillItem(db.Model):
         }
 
 
-class PurchaseBillAttachment(db.Model):
-    """File attachment for a Purchase Bill (AP Voucher).
+class AccountsPayableAttachment(db.Model):
+    """File attachment for an Accounts Payable (AP Voucher).
 
-    Stored at: instance/uploads/purchase_bills/<bill_id>/<stored_filename>
+    Stored at: instance/uploads/purchase_bills/<ap_id>/<stored_filename>
     Images (mime_type starting with 'image/') can be previewed in the UI.
-    Files are locked when the bill is posted and deleted when the bill is voided.
+    Files are locked when the AP is posted and deleted when the AP is voided.
     """
-    __tablename__ = 'purchase_bill_attachments'
+    __tablename__ = 'accounts_payable_attachments'
 
     id                = db.Column(db.Integer, primary_key=True)
-    bill_id           = db.Column(db.Integer, db.ForeignKey('purchase_bills.id'),
+    ap_id             = db.Column(db.Integer, db.ForeignKey('accounts_payable.id'),
                                   nullable=False, index=True)
     original_filename = db.Column(db.String(255), nullable=False)
     stored_filename   = db.Column(db.String(255), nullable=False, unique=True)  # uuid4 hex + ext
@@ -259,7 +259,7 @@ class PurchaseBillAttachment(db.Model):
     uploaded_at       = db.Column(db.DateTime, default=ph_now, nullable=False)
 
     def __repr__(self):
-        return f'<PurchaseBillAttachment {self.original_filename} bill={self.bill_id}>'
+        return f'<AccountsPayableAttachment {self.original_filename} ap={self.ap_id}>'
 
     @property
     def is_image(self):

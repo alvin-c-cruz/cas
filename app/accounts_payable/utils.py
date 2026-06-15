@@ -6,26 +6,26 @@ from app.utils import ph_now
 OPEN_STATUSES = ('posted', 'partially_paid')
 
 
-def compute_bills_summary(branch_id):
-    """Return summary metrics for the purchase bills list page cards.
+def compute_ap_summary(branch_id):
+    """Return summary metrics for the accounts payable list page cards.
 
     Keys: outstanding_total/_count, overdue_total/_count,
     due_soon_total/_count (due within 7 days), draft_count.
-    Amounts are Decimal sums of bill.balance over open bills in the branch.
+    Amounts are Decimal sums of ap.balance over open APs in the branch.
     """
     from app import db
-    from app.purchase_bills.models import PurchaseBill
+    from app.accounts_payable.models import AccountsPayable
     today = ph_now().date()
 
     def _agg(*extra_filters):
         total, count = (
             db.session.query(
-                db.func.coalesce(db.func.sum(PurchaseBill.balance), 0),
-                db.func.count(PurchaseBill.id),
+                db.func.coalesce(db.func.sum(AccountsPayable.balance), 0),
+                db.func.count(AccountsPayable.id),
             )
             .filter(
-                PurchaseBill.branch_id == branch_id,
-                PurchaseBill.status.in_(OPEN_STATUSES),
+                AccountsPayable.branch_id == branch_id,
+                AccountsPayable.status.in_(OPEN_STATUSES),
                 *extra_filters,
             )
             .one()
@@ -34,19 +34,19 @@ def compute_bills_summary(branch_id):
 
     outstanding_total, outstanding_count = _agg()
     overdue_total, overdue_count = _agg(
-        PurchaseBill.due_date.isnot(None),
-        PurchaseBill.due_date < today,
+        AccountsPayable.due_date.isnot(None),
+        AccountsPayable.due_date < today,
     )
     due_soon_total, due_soon_count = _agg(
-        PurchaseBill.due_date.isnot(None),
-        PurchaseBill.due_date >= today,
-        PurchaseBill.due_date <= today + timedelta(days=7),
+        AccountsPayable.due_date.isnot(None),
+        AccountsPayable.due_date >= today,
+        AccountsPayable.due_date <= today + timedelta(days=7),
     )
     draft_count = (
-        db.session.query(db.func.count(PurchaseBill.id))
+        db.session.query(db.func.count(AccountsPayable.id))
         .filter(
-            PurchaseBill.branch_id == branch_id,
-            PurchaseBill.status == 'draft',
+            AccountsPayable.branch_id == branch_id,
+            AccountsPayable.status == 'draft',
         )
         .scalar()
     )
