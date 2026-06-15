@@ -50,12 +50,10 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 
 ## Project Conventions (non-negotiable)
 
-These come from `PROJECT_FOUNDATIONS.md` — read it for the full rationale and reusable code patterns (hierarchical leaf-node rule, depth computation, two-pass seeding, COA homepage "Option A").
-
-- **No JavaScript popups.** Never use `confirm()`, `alert()`, or `prompt()`. Build custom HTML modal forms with a `{{ csrf_token() }}` hidden input. The delete-modal pattern is documented in `PROJECT_FOUNDATIONS.md` §3.
+- **No JavaScript popups.** Never use `confirm()`, `alert()`, or `prompt()`. Build custom HTML modal forms with a `{{ csrf_token() }}` hidden input.
 - **Model changes require explicit user approval first.** Before editing any `models.py` or running a migration, describe the change (field name, type, nullable, default, migration impact) and get sign-off.
 - **Propose before seeding/bulk-writing.** Show proposed data for review before running anything that writes to the DB. Do not seed and ask forgiveness.
-- **Hierarchy is derived, not stored.** For tree data (COA), a node is a GROUP if it has children, a LEAF (postable) otherwise — computed from `parent_id`, no `is_header` field. See §3.
+- **Hierarchy is derived, not stored.** For tree data (COA), a node is a GROUP if it has children, a LEAF (postable) otherwise — computed from `parent_id`, no `is_header` field.
 - **No hardcoded styling in templates.** Use design tokens / CSS variables.
 - **Responsive on all UI** (desktop, tablet, mobile).
 - **Verify the audit log in CRUD tests** — after every write, assert an audit entry exists with the correct action, record reference, and actor.
@@ -65,7 +63,7 @@ These come from `PROJECT_FOUNDATIONS.md` — read it for the full rationale and 
 
 - Fixtures live in `tests/conftest.py`: `app` (session-scoped, testing config), `db_session` (function-scoped, creates/drops all tables per test), `client`, plus per-role user fixtures (`admin_user`, `accountant_user`, `staff_user`, `viewer_user`).
 - Layout: `tests/unit/`, `tests/integration/`, `tests/performance/`, `tests/test_smoke.py`.
-- For browser/Playwright tests, the login password field is `readonly` (anti-autofill) — `click('#password')` to clear it before `fill`/`type`. Test credentials and selector guidance are in `PROJECT_FOUNDATIONS.md` §4.
+- For browser/Playwright tests, the login password field is `readonly` (anti-autofill) — `click('#password')` to clear it before `fill`/`type`.
 
 ## Deployment
 
@@ -73,7 +71,6 @@ Production target is PythonAnywhere via `wsgi.py` (set `PYTHONANYWHERE_USERNAME`
 
 ## Gotchas
 
-- **Root-level `*.md` files are gitignored** (`.gitignore` has `/*.md` with only `README.md` whitelisted). `CLAUDE.md` and `PROJECT_FOUNDATIONS.md` won't be tracked unless force-added (`git add -f`). Docs are expected under `../../docs/cas/` and scripts under `../../scripts/cas/`.
 - Global error handlers are currently **disabled** in `create_app` (bottom of the file) to surface full tracebacks during testing — re-enable before production.
 
 ## Workflow Preferences
