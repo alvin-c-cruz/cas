@@ -393,15 +393,15 @@ def export_excel():
     ap_list = _filtered_ap_query(include_ids=True).options(
         selectinload(AccountsPayable.line_items)
     ).order_by(AccountsPayable.ap_date.desc()).all()
-    log_audit('purchase_bill', 'export_excel', None, f'{len(ap_list)} records',
+    log_audit('accounts_payable','export_excel', None, f'{len(ap_list)} records',
               notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     return export_to_excel(
         data=ap_list,
         columns=_EXPORT_COLUMNS,
         headers=_EXPORT_HEADERS,
-        filename=f'purchase_bills_{timestamp}.xlsx',
-        title='Purchase Bills Report',
+        filename=f'accounts_payable_{timestamp}.xlsx',
+        title='Accounts Payable Report',
     )
 
 
@@ -411,14 +411,14 @@ def export_csv_route():
     ap_list = _filtered_ap_query(include_ids=True).options(
         selectinload(AccountsPayable.line_items)
     ).order_by(AccountsPayable.ap_date.desc()).all()
-    log_audit('purchase_bill', 'export_csv', None, f'{len(ap_list)} records',
+    log_audit('accounts_payable','export_csv', None, f'{len(ap_list)} records',
               notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     return export_to_csv(
         data=ap_list,
         columns=_EXPORT_COLUMNS,
         headers=_EXPORT_HEADERS,
-        filename=f'purchase_bills_{timestamp}.csv',
+        filename=f'accounts_payable_{timestamp}.csv',
     )
 
 
@@ -527,7 +527,7 @@ def create():
             db.session.commit()
 
             log_create(
-                module='purchase_bill',
+                module='accounts_payable',
                 record_id=ap.id,
                 record_identifier=f'{ap.ap_number} - {ap.vendor_name}',
                 new_values=model_to_dict(ap, ['ap_number', 'ap_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
@@ -542,7 +542,7 @@ def create():
             # which would otherwise persist the half-saved bill.
             db.session.rollback()
             current_app.logger.error(f"Error creating purchase bill", exc_info=True)
-            log_exception(e, severity='ERROR', module='purchase_bills.create')
+            log_exception(e, severity='ERROR', module='accounts_payable.create')
             flash(f'Error entering AP Voucher: {str(e)}', 'error')
 
     if request.method == 'GET':
@@ -722,7 +722,7 @@ def edit(id):
 
             new_values = model_to_dict(ap, ['ap_number', 'ap_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
             log_update(
-                module='purchase_bill',
+                module='accounts_payable',
                 record_id=ap.id,
                 record_identifier=f'{ap.ap_number} - {ap.vendor_name}',
                 old_values=old_values,
@@ -738,7 +738,7 @@ def edit(id):
             # which would otherwise persist the half-saved changes.
             db.session.rollback()
             current_app.logger.error(f"Error updating purchase bill", exc_info=True)
-            log_exception(e, severity='ERROR', module='purchase_bills.update')
+            log_exception(e, severity='ERROR', module='accounts_payable.update')
             flash(f'Error saving AP Voucher: {str(e)}', 'error')
 
     if request.method == 'GET':
@@ -798,7 +798,7 @@ def post(id):
         db.session.commit()
 
         log_audit(
-            module='purchase_bill',
+            module='accounts_payable',
             action='post',
             record_id=ap.id,
             record_identifier=f'{ap.ap_number} - {ap.vendor_name}',
@@ -812,7 +812,7 @@ def post(id):
         # which would otherwise persist the half-applied status change.
         db.session.rollback()
         current_app.logger.error(f"Error posting purchase bill", exc_info=True)
-        log_exception(e, severity='ERROR', module='purchase_bills.post')
+        log_exception(e, severity='ERROR', module='accounts_payable.post')
         flash(f'Error posting AP Voucher: {str(e)}', 'error')
 
     return redirect(url_for('accounts_payable.view', id=id))
@@ -855,7 +855,7 @@ def cancel(id):
         db.session.commit()
 
         log_audit(
-            module='purchase_bill',
+            module='accounts_payable',
             action='cancel',
             record_id=ap.id,
             record_identifier=f'{ap.ap_number} - {ap.vendor_name}',
@@ -869,7 +869,7 @@ def cancel(id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error('Error cancelling purchase bill', exc_info=True)
-        log_exception(e, severity='ERROR', module='purchase_bills.cancel')
+        log_exception(e, severity='ERROR', module='accounts_payable.cancel')
         flash(f'Error cancelling AP Voucher: {str(e)}', 'error')
 
     return redirect(url_for('accounts_payable.view', id=id))
@@ -1117,7 +1117,7 @@ def void(id):
                     current_app.logger.warning(f'Could not remove attachment file during void: {fp}')
 
         log_audit(
-            module='purchase_bill',
+            module='accounts_payable',
             action='void',
             record_id=ap.id,
             record_identifier=f'{ap.ap_number} - {ap.vendor_name}',
@@ -1129,7 +1129,7 @@ def void(id):
         from app.errors.utils import log_exception
         db.session.rollback()
         current_app.logger.error('Error voiding purchase bill', exc_info=True)
-        log_exception(e, severity='ERROR', module='purchase_bills.void')
+        log_exception(e, severity='ERROR', module='accounts_payable.void')
         flash(f'Error voiding AP Voucher: {str(e)}', 'error')
 
     return redirect(url_for('accounts_payable.view', id=id))
@@ -1184,7 +1184,7 @@ def upload_attachment(id):
         db.session.commit()
 
         log_create(
-            module='purchase_bill_attachment',
+            module='accounts_payable_attachment',
             record_id=attachment.id,
             record_identifier=f'{ap.ap_number} / {original_name}',
             new_values={
@@ -1299,7 +1299,7 @@ def delete_attachment(attachment_id):
             os.remove(file_path)
 
         log_delete(
-            module='purchase_bill_attachment',
+            module='accounts_payable_attachment',
             record_id=attachment_id,
             record_identifier=f'{ap.ap_number} / {original_name}',
             old_values=old_values
