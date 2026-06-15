@@ -535,7 +535,7 @@ function calculateTotals() {
     document.getElementById('totalDisplay').textContent     = fmt(netReceivable);
 
     if (!vatOverrideActive) document.getElementById('vatDisplay').textContent = fmt(autoVat);
-    if (!wtOverrideActive)  document.getElementById('wtDisplay').textContent  = autoWt > 0 ? '-' + fmt(autoWt) : '0.00';
+    if (!wtOverrideActive)  document.getElementById('wtDisplay').textContent  = autoWt > 0.004 ? '-' + fmt(autoWt) : '0.00';
 
     renderJEPreview(subtotal, vatUsed, wtUsed);
     validateForm();
@@ -706,7 +706,7 @@ function onWtOverrideInput(val) {
     const v = parseFloat(String(val).replace(/,/g, '')) || 0;
     document.getElementById('wtOverrideFlag').value  = '1';
     document.getElementById('wtOverrideValue').value = v.toFixed(2);
-    document.getElementById('wtDisplay').textContent  = v > 0 ? '-' + fmt(v) : '0.00';
+    document.getElementById('wtDisplay').textContent  = v > 0.004 ? '-' + fmt(v) : '0.00';
     calculateTotals();
 }
 
@@ -716,7 +716,7 @@ function revertWtOverride() {
     document.getElementById('wtOverrideValue').value = '0';
     document.getElementById('wtDisplayMode').style.display = '';
     document.getElementById('wtEditMode').style.display    = 'none';
-    document.getElementById('wtDisplay').textContent       = autoWt > 0 ? '-' + fmt(autoWt) : '0.00';
+    document.getElementById('wtDisplay').textContent       = autoWt > 0.004 ? '-' + fmt(autoWt) : '0.00';
     calculateTotals();
 }
 
