@@ -145,7 +145,7 @@ def test_build_columnar_voided_rows_excluded_from_totals():
     row = matrix['rows'][0]
     assert row['is_voided'] is True
     assert row['cells'] == {}
-    assert row['bill'] is voided
+    assert row['ap'] is voided
     assert matrix['totals'] == {}
     assert matrix['grand_total'] == Decimal('0')
 
@@ -192,7 +192,7 @@ def test_build_ap_journal_xlsx_voided_row_has_red_fill_and_no_amounts(app):
     ]
     rows = [{
         'entry': None,
-        'bill': bill,
+        'ap': bill,
         'cells': {},
         'is_draft': False,
         'is_voided': True,

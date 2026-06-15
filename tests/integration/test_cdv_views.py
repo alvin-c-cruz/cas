@@ -83,7 +83,7 @@ class TestCDVCreate:
         vendor = make_vendor(db_session)
         bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
 
-        ap_lines = [{'ap_id': bill.id, 'ap_number': bill.ap_number,
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
                      'original_balance': 5000.0, 'amount_applied': 3000.0}]
         create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
 
@@ -117,7 +117,7 @@ class TestCDVPost:
         vendor = make_vendor(db_session)
         bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
 
-        ap_lines = [{'ap_id': bill.id, 'ap_number': bill.ap_number,
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
                      'original_balance': 5000.0, 'amount_applied': 5000.0}]
         create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
         cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
@@ -140,7 +140,7 @@ class TestCDVPost:
         vendor = make_vendor(db_session)
         bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
 
-        ap_lines = [{'ap_id': bill.id, 'ap_number': bill.ap_number,
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
                      'original_balance': 5000.0, 'amount_applied': 2000.0}]
         create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
         cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
@@ -208,7 +208,7 @@ class TestCDVCancel:
         vendor = make_vendor(db_session)
         bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
 
-        ap_lines = [{'ap_id': bill.id, 'ap_number': bill.ap_number,
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
                      'original_balance': 5000.0, 'amount_applied': 5000.0}]
         create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
         cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
