@@ -89,12 +89,7 @@ pytest.ini
 /static_collected/
 
 # Prevent clutter in project root
-# All documentation should be in ../../docs/cas/
 # All scripts should be in ../../scripts/cas/
-/*.md
-!README.md
-!CLAUDE.md
-!PROJECT_FOUNDATIONS.md
 /*.html
 /mockup/
 /seed_*.py
