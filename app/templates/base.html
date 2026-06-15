@@ -1250,10 +1250,6 @@
                         <span class="nav-icon">💼</span>
                         <span class="nav-text">Withholding Tax</span>
                     </a>
-                    <a href="{{ url_for('reference.withholding_atc') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reference.') %}active{% endif %}">
-                        <span class="nav-icon">🧾</span>
-                        <span class="nav-text">WHT ATC Reference</span>
-                    </a>
                     <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
                         <span class="nav-icon">📜</span>
                         <span class="nav-text">Audit Log</span>
