@@ -271,7 +271,7 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     for i, c in enumerate(columns, len(fixed) + 1):
         col_letter = get_column_letter(i)
         cell = ws.cell(row=tot_row, column=i)
-        cell.value = f'=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row})'
+        cell.value = f'=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row + 1})'
         cell.font = Font(bold=True)
         cell.number_format = num_fmt
         cell.alignment = right
