@@ -1067,7 +1067,7 @@
 </head>
 <body>
     <!-- Sidebar Navigation -->
-    <nav class="sidebar">
+    <nav class="sidebar" id="sidebar">
         <div class="brand">
             <div class="brand-logo">
                 {% if company_logo %}
@@ -1310,10 +1310,15 @@
     </nav>
 
     <!-- Main Content Area -->
+    <!-- Mobile drawer backdrop (BUG-V-06) -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
     <div class="main">
         <!-- Topbar -->
         <header class="topbar">
             <div class="topbar-left">
+                <button type="button" class="sidebar-hamburger" id="sidebarToggle"
+                        aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">&#9776;</button>
                 <span class="page-title">{% block page_title %}Dashboard{% endblock %}</span>
             </div>
             <div class="topbar-right">
@@ -1695,5 +1700,45 @@
     </div>
 
     {% block extra_js %}{% endblock %}
+
+    <!-- Mobile sidebar drawer toggle (BUG-V-06) -->
+    <script>
+    (function () {
+        var sidebar  = document.getElementById('sidebar');
+        var backdrop = document.getElementById('sidebarBackdrop');
+        var toggle   = document.getElementById('sidebarToggle');
+        if (!sidebar || !backdrop || !toggle) return;
+
+        function openDrawer() {
+            sidebar.classList.add('is-open');
+            backdrop.classList.add('is-open');
+            toggle.setAttribute('aria-expanded', 'true');
+        }
+        function closeDrawer() {
+            sidebar.classList.remove('is-open');
+            backdrop.classList.remove('is-open');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+        function isOpen() { return sidebar.classList.contains('is-open'); }
+
+        toggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            isOpen() ? closeDrawer() : openDrawer();
+        });
+        backdrop.addEventListener('click', closeDrawer);
+        // Close when a navigation link is chosen (drawer is mobile-only)
+        sidebar.addEventListener('click', function (e) {
+            if (e.target.closest('a.nav-item')) closeDrawer();
+        });
+        // Close on Escape
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && isOpen()) closeDrawer();
+        });
+        // Reset state if resized up to desktop
+        window.addEventListener('resize', function () {
+            if (window.innerWidth > 768 && isOpen()) closeDrawer();
+        });
+    })();
+    </script>
 </body>
 </html>
