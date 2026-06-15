@@ -201,7 +201,7 @@ def create_app(config_name=None):
     app.register_blueprint(vendors_bp)
     app.register_blueprint(vat_categories_bp, url_prefix='/vat-categories')
     app.register_blueprint(withholding_tax_bp, url_prefix='/withholding-tax')
-    app.register_blueprint(customers_bp, url_prefix='/customers')
+    app.register_blueprint(customers_bp)
     app.register_blueprint(audit_bp)
     app.register_blueprint(sales_invoices_bp)
     app.register_blueprint(purchase_bills_bp)

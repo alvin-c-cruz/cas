@@ -18,7 +18,7 @@
         </a>
         {% if current_user.role in ['accountant', 'admin'] %}
         <a href="{{ url_for('customers.create') }}" class="btn btn-primary">
-            + Add Customer
+            + Create Customer
         </a>
         {% endif %}
     </div>
@@ -44,22 +44,31 @@
             <tbody>
                 {% for customer in customers %}
                 <tr>
-                    <td><strong>{{ customer.code }}</strong></td>
-                    <td>{{ customer.name }}</td>
+                    <td><a href="{{ url_for('customers.edit', id=customer.id) }}" class="customer-link"><strong>{{ customer.code }}</strong></a></td>
+                    <td>
+                        <a href="{{ url_for('customers.edit', id=customer.id) }}" class="customer-link">{{ customer.name }}</a>
+                        {% set bir_missing = [] %}
+                        {% if not customer.tin %}{% set bir_missing = bir_missing + ['TIN'] %}{% endif %}
+                        {% if not customer.address %}{% set bir_missing = bir_missing + ['Address'] %}{% endif %}
+                        {% if not customer.postal_code %}{% set bir_missing = bir_missing + ['Postal Code'] %}{% endif %}
+                        {% if bir_missing %}
+                        <br><span class="badge-bir-warn" title="BIR info missing: {{ bir_missing | join(', ') }}">⚠ BIR incomplete</span>
+                        {% endif %}
+                    </td>
                     <td>{{ customer.contact_person or '—' }}</td>
                     <td>{{ customer.phone or '—' }}</td>
                     <td>{{ customer.tin or '—' }}</td>
                     <td>{{ customer.payment_terms }}</td>
                     <td>
-                        {% if customer.default_vat %}
-                        <span class="badge badge-vat">{{ customer.default_vat }}</span>
+                        {% if customer.default_vat_category %}
+                        <span class="badge badge-vat">{{ customer.default_vat_category }}</span>
                         {% else %}
                         —
                         {% endif %}
                     </td>
                     <td>
-                        {% if customer.default_wt %}
-                        <span class="badge badge-wt">{{ customer.default_wt }}</span>
+                        {% if customer.default_wt_code %}
+                        <span class="badge badge-wt">{{ customer.default_wt_code }}</span>
                         {% else %}
                         —
                         {% endif %}
@@ -74,13 +83,31 @@
                     <td>
                         {% if current_user.role in ['accountant', 'admin'] %}
                         <div class="action-buttons">
-                            <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn-action btn-action-edit" title="Edit">
-                                Edit
-                            </a>
-                            <form method="POST" action="{{ url_for('customers.delete', id=customer.id) }}" style="display: inline;" data-confirm="Are you sure you want to delete customer {{ customer.name }}?">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
-                            </form>
+                            <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                            <button type="button" class="btn-action btn-action-delete"
+                                    onclick="document.getElementById('delete-modal-{{ customer.id }}').style.display='flex'">
+                                Delete
+                            </button>
+                        </div>
+                        <!-- Delete confirmation modal -->
+                        <div id="delete-modal-{{ customer.id }}"
+                             style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+                            <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%; box-shadow:0 8px 24px rgba(0,0,0,0.2);">
+                                <h3 style="margin:0 0 12px 0;">Delete Customer</h3>
+                                <p style="color:var(--text-2); margin-bottom:24px;">
+                                    Delete <strong>{{ customer.code }} — {{ customer.name }}</strong>? This cannot be undone.
+                                </p>
+                                <div style="display:flex; gap:12px; justify-content:flex-end;">
+                                    <button type="button" class="btn btn-secondary btn-sm"
+                                            onclick="document.getElementById('delete-modal-{{ customer.id }}').style.display='none'">
+                                        Cancel
+                                    </button>
+                                    <form method="POST" action="{{ url_for('customers.delete', id=customer.id) }}" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
                         {% else %}
                         —
@@ -172,22 +199,64 @@
     font-weight: 600;
     display: inline-block;
 }
+
+.btn-danger {
+    background: var(--red);
+    color: white;
+    border: none;
+    padding: 6px 18px;
+    font-size: 14px;
+    border-radius: 5px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn-danger:hover {
+    background: #dc2626;
+}
+.btn.btn-secondary.btn-sm {
+    background: #6b7280;
+    color: white;
+    border: none;
+    padding: 6px 18px;
+    font-size: 14px;
+    border-radius: 5px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn.btn-secondary.btn-sm:hover {
+    background: #4b5563;
+}
+
+.customer-link {
+    color: inherit;
+    text-decoration: none;
+}
+.customer-link:hover {
+    color: var(--blue);
+    text-decoration: underline;
+}
+
+.badge-bir-warn {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-block;
+    cursor: default;
+    letter-spacing: 0.01em;
+}
 </style>
 
 <script>
-// Simple search functionality
 document.getElementById('searchInput')?.addEventListener('input', function(e) {
     const searchTerm = e.target.value.toLowerCase();
     const table = document.getElementById('customersTable');
     const rows = table.querySelectorAll('tbody tr');
-
     rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        if (text.includes(searchTerm)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
+        row.style.display = row.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
     });
 });
 </script>

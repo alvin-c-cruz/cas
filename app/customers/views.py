@@ -32,7 +32,8 @@ def accountant_or_admin_required(f):
 @customers_bp.route('/customers')
 @login_required
 def list_customers():
-    return redirect(url_for('dashboard.under_development', feature='Customers'))
+    customers = Customer.query.order_by(Customer.code).all()
+    return render_template('customers/list.html', customers=customers)
 
 
 def generate_next_customer_code():
