@@ -58,7 +58,7 @@
                     <td>{{ customer.contact_person or '—' }}</td>
                     <td>{{ customer.phone or '—' }}</td>
                     <td>{{ customer.tin or '—' }}</td>
-                    <td>{{ customer.payment_terms }}</td>
+                    <td>{{ customer.payment_terms or '—' }}</td>
                     <td>
                         {% if customer.default_vat_category %}
                         <span class="badge badge-vat">{{ customer.default_vat_category }}</span>
