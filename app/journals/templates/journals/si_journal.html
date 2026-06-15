@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Sales Journal{% endblock %}
+{% block page_title %}Sales Journal{% endblock %}
+
+{% block extra_css %}
+<style>
+.si-jrnl-toolbar { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap;
+    padding:20px; background:var(--surface-2, #f8fafc); border-bottom:1px solid var(--border, #e2e8f0); }
+.si-jrnl-field label { display:block; font-size:12px; font-weight:600; color:var(--text-2,#64748b);
+    margin-bottom:6px; text-transform:uppercase; }
+.si-jrnl-table { width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap; }
+.si-jrnl-table th, .si-jrnl-table td { padding:6px 8px; border-bottom:1px solid var(--border,#e2e8f0); }
+.si-jrnl-table th { text-align:left; border-bottom:2px solid var(--text-1,#334155); }
+.si-jrnl-num { text-align:right; font-family:var(--mono, monospace); }
+.si-jrnl-total td { border-top:2px solid var(--text-1,#334155); font-weight:700; }
+.si-jrnl-head--credit { background:#fef2f2; }
+.si-jrnl-head--debit { background:#eff6ff; }
+.si-jrnl-draft-badge { font-size:10px; font-weight:600; color:#c2410c; background:#fff7ed;
+    border:1px solid #fed7aa; padding:1px 6px; border-radius:8px; text-transform:uppercase; }
+.si-jrnl-scroll { overflow-x:auto; }
+.si-jrnl-balance-warning { color:var(--red,#dc2626); font-weight:600; margin-top:10px; }
+.si-jrnl-meta { padding:8px 20px 0; }
+.si-jrnl-meta h3 { margin:0; font-size:14px; }
+.si-jrnl-meta p { margin:2px 0 0; font-size:12px; color:var(--text-2,#64748b); }
+.si-jrnl-voided td { text-decoration:line-through; background:var(--red-50, #fef2f2); }
+.si-jrnl-voided-badge { font-size:10px; font-weight:600; color:var(--red-700, #b91c1c);
+    background:var(--red-50, #fef2f2); border:1px solid var(--red-200, #fecaca);
+    padding:1px 6px; border-radius:8px; text-transform:uppercase; }
+.si-jrnl-no-strike { text-decoration:none !important; }
+@media print {
+    .sidebar, .topbar, .si-jrnl-toolbar, .si-jrnl-actions { display:none !important; }
+    .main-content { margin-left:0 !important; }
+    @page { size: landscape; }
+    .si-jrnl-table { font-size:9px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="si-jrnl-actions" style="display:flex; gap:8px; justify-content:flex-end;">
+            <a id="siPrintLink" href="{{ url_for('journals.si_journal_print', **request.args) }}" class="btn btn-secondary btn-sm">Print</a>
+            <a id="siExportLink" href="{{ url_for('journals.si_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Download Excel</a>
+        </div>
+    </div>
+
+    <form method="GET" action="{{ url_for('journals.si_journal') }}" class="si-jrnl-toolbar" id="siFilter">
+        <input type="hidden" name="mode" id="siMode" value="{{ period.mode }}">
+        <div class="si-jrnl-field" id="monthFields" {% if period.mode == 'custom' %}style="display:none"{% endif %}>
+            <label>Month</label>
+            <select name="month" class="form-control form-control-sm">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m == period.month %}selected{% endif %}>
+                    {{ ['January','February','March','April','May','June','July','August','September','October','November','December'][m-1] }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="si-jrnl-field" id="yearField" {% if period.mode == 'custom' %}style="display:none"{% endif %}>
+            <label>Year</label>
+            <input type="number" name="year" value="{{ period.year }}" class="form-control form-control-sm" style="width:100px;">
+        </div>
+        <div class="si-jrnl-field" id="fromField" {% if period.mode != 'custom' %}style="display:none"{% endif %}>
+            <label>From</label>
+            <input type="date" name="date_from" value="{{ period.date_from.isoformat() }}" class="form-control form-control-sm">
+        </div>
+        <div class="si-jrnl-field" id="toField" {% if period.mode != 'custom' %}style="display:none"{% endif %}>
+            <label>To</label>
+            <input type="date" name="date_to" value="{{ period.date_to.isoformat() }}" class="form-control form-control-sm">
+        </div>
+        <div class="si-jrnl-field">
+            <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+            <button type="button" id="toggleCustom" class="btn btn-secondary btn-sm">
+                {% if period.mode == 'custom' %}Use month{% else %}Custom range{% endif %}
+            </button>
+        </div>
+    </form>
+
+    <div id="si-journal-content">
+    <div class="si-jrnl-meta">
+        <h3>Sales Journal</h3>
+        <p>{{ period.label }} &mdash; {{ current_branch.name if current_branch else 'All Branches' }}</p>
+    </div>
+
+    <div class="card-body">
+        {% if matrix.rows %}
+        <div class="si-jrnl-scroll">
+        <table class="si-jrnl-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>SI No.</th>
+                    <th>Customer PO</th>
+                    <th>Customer</th>
+                    <th>Particulars</th>
+                    {% for col in matrix.columns %}
+                    <th class="si-jrnl-num {% if col.group in ['output_vat','revenue'] %}si-jrnl-head--credit{% else %}si-jrnl-head--debit{% endif %}">{{ col.name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in matrix.rows %}
+                {% if row.is_voided %}
+                <tr class="si-jrnl-voided">
+                    <td>{{ row.invoice.invoice_date.strftime('%b %d, %Y') }}</td>
+                    <td>
+                        <a href="{{ url_for('sales_invoices.view', id=row.invoice.id) }}" style="font-weight:600;">{{ row.invoice.invoice_number }}</a>
+                        <span class="si-jrnl-voided-badge si-jrnl-no-strike">VOIDED</span>
+                    </td>
+                    <td>{{ row.invoice.customer_po_number or '' }}</td>
+                    <td>{{ row.invoice.customer_name }}</td>
+                    <td>{{ (row.invoice.notes or '') }}</td>
+                    {% for col in matrix.columns %}<td class="si-jrnl-no-strike"></td>{% endfor %}
+                </tr>
+                {% else %}
+                {% set inv = invoice_map.get(row.entry.reference) %}
+                <tr>
+                    <td>{{ row.entry.entry_date.strftime('%b %d, %Y') }}</td>
+                    <td>
+                        {% if inv %}
+                        <a href="{{ url_for('sales_invoices.view', id=inv.id) }}" style="font-weight:600;">{{ row.entry.reference }}</a>
+                        {% else %}{{ row.entry.reference or '&mdash;' }}{% endif %}
+                        {% if row.is_draft %}<span class="si-jrnl-draft-badge">Draft</span>{% endif %}
+                    </td>
+                    <td>{{ inv.customer_po_number if inv else '' }}</td>
+                    <td>{{ inv.customer_name if inv else '&mdash;' }}</td>
+                    <td>{{ (inv.notes if inv else '') or '' }}</td>
+                    {% for col in matrix.columns %}
+                    <td class="si-jrnl-num">
+                        {%- if row.is_draft -%}
+                        {%- elif col.account_id in row.cells and row.cells[col.account_id] != 0 -%}
+                            {%- set v = row.cells[col.account_id] -%}
+                            {%- if v < 0 -%}({{ '{:,.2f}'.format(-v) }}){%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
+                        {%- endif -%}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endif %}
+                {% endfor %}
+                <tr class="si-jrnl-total">
+                    <td colspan="5">TOTAL</td>
+                    {% for col in matrix.columns %}
+                    <td class="si-jrnl-num">
+                        {%- set t = matrix.totals.get(col.account_id) -%}
+                        {%- if t and t != 0 -%}
+                            {%- if t < 0 -%}({{ '{:,.2f}'.format(-t) }}){%- else -%}{{ '{:,.2f}'.format(t) }}{%- endif -%}
+                        {%- endif -%}
+                    </td>
+                    {% endfor %}
+                </tr>
+            </tbody>
+        </table>
+        </div>
+        {% if not matrix.balanced %}
+        <p class="si-jrnl-balance-warning">
+            Warning: Column totals do not net to zero &mdash; debits and credits are out of balance. Review the underlying entries.
+        </p>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <p>No SI entries found — {{ period.label }}.</p>
+            <p style="font-size:13px; color:var(--text-3);">SI journal entries are created automatically when a sales invoice is posted.</p>
+        </div>
+        {% endif %}
+    </div>{# card-body #}
+    </div>{# si-journal-content #}
+</div>{# card #}
+
+<script>
+(function () {
+    var form   = document.getElementById('siFilter');
+    var toggle = document.getElementById('toggleCustom');
+    var mode   = document.getElementById('siMode');
+    if (!form || !toggle || !mode) return;
+
+    function showFields(isCustom) {
+        document.getElementById('monthFields').style.display = isCustom ? 'none' : '';
+        document.getElementById('yearField').style.display   = isCustom ? 'none' : '';
+        document.getElementById('fromField').style.display   = isCustom ? '' : 'none';
+        document.getElementById('toField').style.display     = isCustom ? '' : 'none';
+        toggle.textContent = isCustom ? 'Use month' : 'Custom range';
+    }
+
+    function fetchAndSwap(params) {
+        var url = '/journals/si?' + params.toString();
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.text();
+            })
+            .then(function (html) {
+                var doc   = new DOMParser().parseFromString(html, 'text/html');
+                var fresh = doc.getElementById('si-journal-content');
+                if (!fresh) throw new Error('no content');
+                document.getElementById('si-journal-content').replaceWith(fresh);
+                var exportLink = document.getElementById('siExportLink');
+                if (exportLink) exportLink.href = '/journals/si/export?' + params.toString();
+                var printLink = document.getElementById('siPrintLink');
+                if (printLink) printLink.href = '/journals/si/print?' + params.toString();
+                history.pushState({}, '', url);
+            })
+            .catch(function () {
+                /* fallback: let the browser do a normal GET */
+                window.location.href = url;
+            });
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        fetchAndSwap(new URLSearchParams(new FormData(form)));
+    });
+
+    toggle.addEventListener('click', function () {
+        var isCustom = mode.value !== 'custom';
+        mode.value = isCustom ? 'custom' : 'month';
+        showFields(isCustom);
+        fetchAndSwap(new URLSearchParams(new FormData(form)));
+    });
+
+    /* restore field visibility on back/forward navigation */
+    window.addEventListener('popstate', function () {
+        var params = new URLSearchParams(window.location.search);
+        var isCustom = params.get('mode') === 'custom';
+        mode.value = isCustom ? 'custom' : 'month';
+        showFields(isCustom);
+        fetchAndSwap(params);
+    });
+})();
+</script>
+{% endblock %}
