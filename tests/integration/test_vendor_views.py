@@ -6,8 +6,19 @@ from decimal import Decimal
 from app.vendors.models import Vendor
 from app.accounts_payable.models import AccountsPayable
 from app.audit.models import AuditLog
+from app.vat_categories.models import VATCategory
 from app.utils import ph_now
 pytestmark = [pytest.mark.vendors, pytest.mark.integration]
+
+
+def make_vat_category(db_session, code='V12DG', name='Input Tax Domestic Goods', rate='12.00'):
+    """Ensure an active VAT category exists (the vendor form requires one)."""
+    cat = VATCategory.query.filter_by(code=code).first()
+    if not cat:
+        cat = VATCategory(code=code, name=name, rate=Decimal(rate), is_active=True)
+        db_session.add(cat)
+        db_session.commit()
+    return cat
 
 
 
@@ -128,11 +139,13 @@ class TestVendorDetail:
 class TestVendorCrud:
     def test_create_vendor_and_audit(self, client, db_session, admin_user, main_branch):
         login(client)
+        make_vat_category(db_session)
         resp = client.post('/vendors/create', data={
             'code': 'NEW001',
             'name': 'New Test Vendor',
             'check_payee_name': 'New Test Vendor',
             'payment_terms': 'Net 30',
+            'default_vat_category': 'V12DG',
             'is_active': '1',
         }, follow_redirects=True)
         assert resp.status_code == 200
@@ -144,12 +157,14 @@ class TestVendorCrud:
 
     def test_edit_vendor_and_audit(self, client, db_session, admin_user, main_branch):
         login(client)
+        make_vat_category(db_session)
         vendor = make_vendor(db_session, code='ED001', name='Edit Me')
         resp = client.post(f'/vendors/{vendor.id}/edit', data={
             'code': 'ED001',
             'name': 'Edited Name',
             'check_payee_name': 'Edited Name',
             'payment_terms': 'Net 15',
+            'default_vat_category': 'V12DG',
             'is_active': '1',
         }, follow_redirects=True)
         assert resp.status_code == 200
@@ -212,9 +227,10 @@ class TestVendorStaffPermissions:
         accountant_user.add_branch(main_branch)
         db_session.commit()
         self._login(client, 'accountant', 'accountant123')
+        make_vat_category(db_session)
         client.post('/vendors/create', data={
             'code': 'V-PERM-TEST', 'name': 'Perm Test Co.',
-            'payment_terms': 'Net 30', 'is_active': '1',
+            'payment_terms': 'Net 30', 'default_vat_category': 'V12DG', 'is_active': '1',
         }, follow_redirects=True)
         vendor = Vendor.query.filter_by(code='V-PERM-TEST').first()
         assert vendor is not None
@@ -232,9 +248,10 @@ class TestVendorStaffPermissions:
         accountant_user.add_branch(main_branch)
         db_session.commit()
         self._login(client, 'accountant', 'accountant123')
+        make_vat_category(db_session)
         client.post('/vendors/create', data={
             'code': 'V-DEL-PERM', 'name': 'Del Perm Co.',
-            'payment_terms': 'Net 30', 'is_active': '1',
+            'payment_terms': 'Net 30', 'default_vat_category': 'V12DG', 'is_active': '1',
         }, follow_redirects=True)
         vendor = Vendor.query.filter_by(code='V-DEL-PERM').first()
         client.get('/logout')
