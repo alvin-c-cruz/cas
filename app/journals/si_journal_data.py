@@ -88,7 +88,7 @@ def build_columnar_si(posted_entries, draft_entries, ar_account_id,
     def _row_sort_key(r):
         if r['is_voided']:
             return (r['invoice'].invoice_date, r['invoice'].invoice_number)
-        return (r['entry'].entry_date, r['entry'].entry_number)
+        return (r['entry'].entry_date, r['entry'].entry_number or '')
 
     rows.sort(key=_row_sort_key)
 
@@ -192,7 +192,7 @@ def build_si_journal_xlsx(columns, rows, totals, period_label, company_name,
                 line.append(None)
             else:
                 val = r['cells'].get(c['account_id'])
-                line.append(float(val) if val else None)
+                line.append(float(val) if val is not None else None)
         ws.append(line)
         cur = ws.max_row
         for i, cell in enumerate(ws[cur], 1):
@@ -217,7 +217,7 @@ def build_si_journal_xlsx(columns, rows, totals, period_label, company_name,
     for i, c in enumerate(columns, len(fixed) + 1):
         col_letter = get_column_letter(i)
         cell = ws.cell(row=tot_row, column=i)
-        cell.value = f'=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row + 1})'
+        cell.value = f'=SUM({col_letter}{first_data_row}:{col_letter}{last_data_row})'
         cell.font = Font(bold=True)
         cell.number_format = num_fmt
         cell.alignment = right
