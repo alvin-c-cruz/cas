@@ -448,6 +448,23 @@ def export_csv_route():
     )
 
 
+@purchase_bills_bp.route('/purchase-bills/print')
+@login_required
+def print_list():
+    from app.settings import AppSettings
+    bills = (_filtered_bills_query(include_ids=True)
+             .order_by(PurchaseBill.bill_date.desc()).all())
+    company_name = AppSettings.get_setting('company_name') or ''
+    return render_template('purchase_bills/list_print.html',
+                           bills=bills,
+                           company_name=company_name,
+                           today=ph_now().date(),
+                           printed_at=ph_now(),
+                           status_filter=request.args.get('status', 'all'),
+                           date_from=request.args.get('date_from', ''),
+                           date_to=request.args.get('date_to', ''))
+
+
 @purchase_bills_bp.route('/purchase-bills/create', methods=['GET', 'POST'])
 @login_required
 @staff_or_above_required

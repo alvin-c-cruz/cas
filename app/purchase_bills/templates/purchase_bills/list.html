@@ -121,8 +121,10 @@
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
             <span id="pb-selected-count" class="pb-selected-count"></span>
             <!-- Future: "Pay selected" button (payment voucher project) renders here -->
+            <a href="{{ url_for('purchase_bills.print_list', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Print</a>
             <a href="{{ url_for('purchase_bills.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
-               class="btn btn-secondary pb-export-link">📊 Export Excel</a>
+               class="btn btn-primary btn-sm">Download Excel</a>
             <a href="{{ url_for('purchase_bills.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary pb-export-link">📄 Export CSV</a>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}
