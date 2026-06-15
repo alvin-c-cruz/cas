@@ -159,7 +159,7 @@
         {% endif %}
         {% else %}
         <div class="empty-state">
-            <p>No SI entries found — {{ period.label }}.</p>
+            <p>No SI entries found for {{ period.label | lower }}.</p>
             <p style="font-size:13px; color:var(--text-3);">SI journal entries are created automatically when a sales invoice is posted.</p>
         </div>
         {% endif %}
