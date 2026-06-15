@@ -120,6 +120,8 @@
     <div class="card-header">
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
             <span id="si-selected-count" class="si-selected-count"></span>
+            <a href="{{ url_for('sales_invoices.print_list', status=status_filter, customer=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Print</a>
             <a href="{{ url_for('sales_invoices.export_excel', status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary si-export-link">&#x1F4CA; Export Excel</a>
             <a href="{{ url_for('sales_invoices.export_csv_route', status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"

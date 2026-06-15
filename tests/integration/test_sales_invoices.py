@@ -356,3 +356,13 @@ def test_void_draft_invoice(client, db_session, accountant_user, customer, reven
     assert inv.status == 'voided'
     audit = AuditLog.query.filter_by(module='sales_invoice', action='void', record_id=inv.id).first()
     assert audit is not None
+
+
+def test_print_list_get_empty(client, db_session, accountant_user, branch):
+    """Print list renders 200 with no invoices."""
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+    response = client.get('/sales-invoices/print')
+    assert response.status_code == 200
+    assert b'SALES INVOICES' in response.data

@@ -553,6 +553,24 @@ def list_invoices():
     )
 
 
+@sales_invoices_bp.route('/sales-invoices/print')
+@login_required
+def print_list():
+    invoices = (_filtered_invoices_query(include_ids=True)
+                .order_by(SalesInvoice.invoice_date.desc()).all())
+    company_name = AppSettings.get_setting('company_name') or ''
+    return render_template(
+        'sales_invoices/list_print.html',
+        invoices=invoices,
+        company_name=company_name,
+        today=ph_now().date(),
+        printed_at=ph_now(),
+        status_filter=request.args.get('status', 'all'),
+        date_from=request.args.get('date_from', ''),
+        date_to=request.args.get('date_to', ''),
+    )
+
+
 @sales_invoices_bp.route('/sales-invoices/export/excel')
 @login_required
 def export_excel():
