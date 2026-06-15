@@ -332,12 +332,22 @@ git commit -m "feat: rewrite accounts_payable templates and CSS (renamed from pu
 
 ## Task 5: Cross-Module References (parallel after Task 1)
 
-**Files:**
+> **SCOPE NOTE (amended during execution):** A full-codebase grep revealed more importers of `PurchaseBill` than the original spec listed. The complete list is below. The rule for every Python importer: change `from app.purchase_bills.models import …` → `from app.accounts_payable.models import …`, rename the imported class symbols (`PurchaseBill`→`AccountsPayable`, `PurchaseBillItem`→`AccountsPayableItem`, `PurchaseBillAttachment`→`AccountsPayableAttachment`), and update every field access (`.bill_number`→`.ap_number`, `.bill_date`→`.ap_date`) and `url_for('purchase_bills.*')`→`url_for('accounts_payable.*')`.
+
+**Python files (imports + usage):**
 - Modify: `app/__init__.py`
-- Modify: `app/cash_disbursements/models.py`
+- Modify: `app/cash_disbursements/models.py` (CDVApLine field rename)
+- Modify: `app/cash_disbursements/views.py`
 - Modify: `app/journals/views.py`
 - Modify: `app/journals/ap_journal_data.py`
 - Modify: `app/reports/views.py`
+- Modify: `app/reports/bir.py`
+- Modify: `app/dashboard/dashboard_data.py`
+- Modify: `app/users/views.py` (imports `PurchaseBillAttachment`)
+- Modify: `app/vendors/views.py` (imports `PurchaseBill, PurchaseBillItem`)
+- Modify: `app/vendors/utils.py` (imports `PurchaseBill`, `PurchaseBillItem`)
+
+**Templates:**
 - Modify: `app/templates/base.html`
 - Modify: `app/dashboard/templates/dashboard/index.html`
 - Modify: `app/vendors/templates/vendors/detail.html`
@@ -702,9 +712,41 @@ git commit -m "feat: update all cross-module references for accounts_payable ren
 
 **Files:**
 - Create: `migrations/versions/<hash>_rename_purchase_bills_to_accounts_payable.py` (auto-generated)
-- Rename + modify: `tests/integration/test_accounts_payable_*.py` (8 files)
+- Modify: `pytest.ini` — rename marker `purchase_bills` → `accounts_payable`
+- Rename + modify test files (see expanded list below)
+- Modify (internals only, no rename) several other test files (see below)
 - Delete: `app/purchase_bills/` directory
 - Delete: `app/static/purchase_bills_form.css`
+
+> **SCOPE NOTE (amended during execution):** A grep of `tests/` found far more affected test files than the original 8. Complete lists:
+>
+> **Rename file + update internals (12):**
+> - `tests/integration/test_purchase_bill_views.py` → `test_accounts_payable_views.py`
+> - `tests/integration/test_purchase_bill_dates.py` → `test_accounts_payable_dates.py`
+> - `tests/integration/test_purchase_bill_je.py` → `test_accounts_payable_je.py`
+> - `tests/integration/test_purchase_bill_je_lifecycle.py` → `test_accounts_payable_je_lifecycle.py`
+> - `tests/integration/test_purchase_bill_override.py` → `test_accounts_payable_override.py`
+> - `tests/integration/test_purchase_bill_vat_buckets.py` → `test_accounts_payable_vat_buckets.py`
+> - `tests/integration/test_purchase_bill_detail.py` → `test_accounts_payable_detail.py`
+> - `tests/integration/test_purchase_bill_void.py` → `test_accounts_payable_void.py`
+> - `tests/unit/test_purchase_bills_utils.py` → `test_accounts_payable_utils.py`
+> - `tests/unit/test_purchase_bill_notes_required.py` → `test_accounts_payable_notes_required.py`
+> - `tests/unit/test_purchase_bill_models.py` → `test_accounts_payable_models.py`
+> - `tests/smoke/test_purchase_bill_form.py` → `test_accounts_payable_form.py`
+>
+> **Update internals only, keep filename (10):**
+> - `tests/unit/test_record_status.py`
+> - `tests/integration/test_sales_invoices.py`
+> - `tests/integration/test_ap_aging_views.py`
+> - `tests/integration/test_cdv_views.py`
+> - `tests/unit/test_ap_journal_data.py`
+> - `tests/unit/test_wht_per_line_item.py`
+> - `tests/integration/test_vendor_views.py`
+> - `tests/unit/test_vendor_model.py`
+> - `tests/integration/test_ap_journal_columnar.py`
+> - `tests/performance/test_database_performance.py`
+>
+> In ALL of these, apply: `from app.purchase_bills.models import …` → `from app.accounts_payable.models import …`; `PurchaseBill`→`AccountsPayable` (and Item/Attachment); `bill_number`→`ap_number`; `bill_date`→`ap_date`; `bill_id`→`ap_id`; `pytest.mark.purchase_bills`→`pytest.mark.accounts_payable`; `'/purchase-bills`→`'/accounts-payable`; `'purchase_bills.`→`'accounts_payable.`; helper `make_bill`→`make_ap`. Field names like `balance`, `due_date`, `vendor_name`, `status` are UNCHANGED.
 
 ### 6a: Generate and verify the migration
 
