@@ -6,6 +6,7 @@ from app.journal_entries.models import JournalEntry
 from app.utils import ph_now
 from app.journals.ap_journal_data import resolve_period, build_columnar, build_ap_journal_xlsx
 from app.journals.cd_journal_data import build_columnar_cd
+from app.journals.si_journal_data import build_columnar_si, build_si_journal_xlsx
 from datetime import datetime
 
 journals_bp = Blueprint('journals', __name__, template_folder='templates')
@@ -44,6 +45,16 @@ def _gl_account_ids():
     wt = Account.query.filter_by(code='20301').first()
     vat_ids = {c.input_vat_account.id for c in VATCategory.query.all() if c.input_vat_account}
     return (ap.id if ap else None, wt.id if wt else None, vat_ids)
+
+
+def _si_gl_account_ids():
+    """Return (ar_id, wht_recv_id, output_vat_ids) for SI column grouping."""
+    from app.accounts.models import Account
+    from app.vat_categories.models import VATCategory
+    ar = Account.query.filter_by(code='10201').first()
+    wht = Account.query.filter_by(code='10212').first()
+    vat_ids = {c.output_vat_account.id for c in VATCategory.query.all() if c.output_vat_account}
+    return (ar.id if ar else None, wht.id if wht else None, vat_ids)
 
 
 def _ap_journal_context(branch_id):
@@ -122,6 +133,47 @@ def _cd_entry_identity(entry, cdv_map):
         (cdv.check_number if cdv and cdv.check_number else '') or '',
         (cdv.vendor_name if cdv else '') or '—',
         (cdv.notes if cdv else '') or '',
+    )
+
+
+def _si_journal_context(branch_id):
+    from app.sales_invoices.models import SalesInvoice
+    period = resolve_period(request.args, today=ph_now().date())
+
+    entries = JournalEntry.query.filter(
+        JournalEntry.entry_type == 'sale',
+        JournalEntry.branch_id == branch_id,
+        JournalEntry.entry_date >= period['date_from'],
+        JournalEntry.entry_date <= period['date_to'],
+    ).order_by(JournalEntry.entry_date).all()
+    posted = [e for e in entries if e.status == 'posted']
+    drafts = [e for e in entries if e.status == 'draft']
+
+    voided_invoices = SalesInvoice.query.filter(
+        SalesInvoice.branch_id == branch_id,
+        SalesInvoice.status == 'voided',
+        SalesInvoice.invoice_date >= period['date_from'],
+        SalesInvoice.invoice_date <= period['date_to'],
+    ).order_by(SalesInvoice.invoice_date, SalesInvoice.invoice_number).all()
+
+    ar_id, wht_id, vat_ids = _si_gl_account_ids()
+    matrix = build_columnar_si(posted, drafts, ar_id, wht_id, vat_ids,
+                               voided_invoices=voided_invoices)
+
+    refs = [e.reference for e in entries if e.reference]
+    invoices = SalesInvoice.query.filter(
+        SalesInvoice.invoice_number.in_(refs)).all() if refs else []
+    invoice_map = {inv.invoice_number: inv for inv in invoices}
+    return period, matrix, invoice_map
+
+
+def _si_entry_identity(entry, invoice_map):
+    inv = invoice_map.get(entry.reference)
+    return (
+        entry.reference or '—',
+        (inv.customer_po_number if inv else '') or '',
+        (inv.customer_name if inv else '') or '—',
+        (inv.notes if inv else '') or '',
     )
 
 
@@ -376,3 +428,60 @@ def cd_journal_print():
                            period=period, matrix=matrix, cdv_map=cdv_map,
                            company_name=company_name, branch_name=branch_name,
                            printed_at=ph_now())
+
+
+@journals_bp.route('/journals/si')
+@login_required
+def si_journal():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to view journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+    period, matrix, invoice_map = _si_journal_context(branch_id)
+    return render_template('journals/si_journal.html',
+                           period=period, matrix=matrix, invoice_map=invoice_map)
+
+
+@journals_bp.route('/journals/si/print')
+@login_required
+def si_journal_print():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    period, matrix, invoice_map = _si_journal_context(branch_id)
+    branch = db.session.get(Branch, branch_id)
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
+    company_name = AppSettings.get_setting('company_name') or ''
+    return render_template('journals/si_journal_print.html',
+                           period=period, matrix=matrix, invoice_map=invoice_map,
+                           company_name=company_name, branch_name=branch_name,
+                           printed_at=ph_now())
+
+
+@journals_bp.route('/journals/si/export')
+@login_required
+def si_journal_export():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to export journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    period, matrix, invoice_map = _si_journal_context(branch_id)
+    branch = db.session.get(Branch, branch_id)
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
+    company_name = AppSettings.get_setting('company_name') or 'Company'
+    if period['mode'] == 'month':
+        filename = f"SI-Journal-{period['year']}-{period['month']:02d}.xlsx"
+    else:
+        filename = f"SI-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
+    return build_si_journal_xlsx(
+        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
+        period_label=period['label'], company_name=company_name,
+        branch_name=branch_name, filename=filename,
+        identity=lambda e: _si_entry_identity(e, invoice_map))
