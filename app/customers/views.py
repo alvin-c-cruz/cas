@@ -11,6 +11,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.customers.forms import CustomerForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.utils.export import export_to_excel, export_to_csv
+from app.utils import ph_now
 from datetime import datetime
 
 customers_bp = Blueprint('customers', __name__, template_folder='templates')
@@ -32,7 +33,8 @@ def accountant_or_admin_required(f):
 @customers_bp.route('/customers')
 @login_required
 def list_customers():
-    return redirect(url_for('dashboard.under_development', feature='Customers'))
+    customers = Customer.query.order_by(Customer.code).all()
+    return render_template('customers/list.html', customers=customers)
 
 
 def generate_next_customer_code():
@@ -273,7 +275,7 @@ def export_excel():
             'is_active': 'Yes' if customer.is_active else 'No'
         })
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     filename = f'customers_{timestamp}.xlsx'
 
     return export_to_excel(
@@ -318,7 +320,7 @@ def export_csv_route():
             'is_active': 'Yes' if customer.is_active else 'No'
         })
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
     filename = f'customers_{timestamp}.csv'
 
     return export_to_csv(

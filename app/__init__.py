@@ -163,7 +163,7 @@ def create_app(config_name=None):
     from app.audit.models import AuditLog
     from app.notifications.models import Notification
     from app.settings import AppSettings
-    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem, SalesInvoiceAttachment
     from app.purchase_bills.models import PurchaseBill, PurchaseBillItem, PurchaseBillAttachment
     from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
     from app.receipts.models import Receipt
@@ -201,7 +201,7 @@ def create_app(config_name=None):
     app.register_blueprint(vendors_bp)
     app.register_blueprint(vat_categories_bp, url_prefix='/vat-categories')
     app.register_blueprint(withholding_tax_bp, url_prefix='/withholding-tax')
-    app.register_blueprint(customers_bp, url_prefix='/customers')
+    app.register_blueprint(customers_bp)
     app.register_blueprint(audit_bp)
     app.register_blueprint(sales_invoices_bp)
     app.register_blueprint(purchase_bills_bp)

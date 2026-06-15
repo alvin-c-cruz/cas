@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Sales Invoices — Print Preview{% endblock %}
+{% block page_title %}Sales Invoices — Print Preview{% endblock %}
+
+{% block extra_css %}
+<style>
+  .si-print-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  .si-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+  .si-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .si-header .doc-title    { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-top: 6px; }
+  .si-header .period-label { font-size: 11px; color: #555; margin-top: 3px; }
+
+  .si-scroll { overflow-x: auto; }
+  .si-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .si-table th, .si-table td { border: 1px solid #aaa; padding: 3px 6px; white-space: nowrap; }
+  .si-table th { background: #222; color: #fff; font-weight: 700; text-align: left; }
+  .si-table td.num { text-align: right; font-family: monospace; }
+  .si-table th.num { text-align: right; }
+  .si-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
+  .audit-footer { margin-top: 8px; font-size: 9px; color: #888; text-align: right;
+                  border-top: 1px solid #ddd; padding-top: 4px; }
+
+  @media print {
+    nav.sidebar, header.topbar, .si-print-actions, .card-header { display: none !important; }
+    .main { margin-left: 0 !important; padding: 0 !important; }
+    .content-wrapper, .card { box-shadow: none !important; border: none !important; }
+    .si-scroll { overflow: visible !important; }
+    @page { size: A4 landscape; margin: 10mm; }
+    .si-table { font-size: 8px; }
+    .si-table thead { display: table-header-group; }
+    .si-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    .si-header { page-break-after: avoid; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="si-print-actions">
+      <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
+      <a href="{{ url_for('sales_invoices.list_invoices', status=status_filter, date_from=date_from, date_to=date_to) }}" class="btn btn-secondary btn-sm">Back</a>
+    </div>
+  </div>
+  <div class="card-body">
+
+    <div class="si-header">
+      {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
+      <div class="doc-title">SALES INVOICES</div>
+      {% set parts = [] %}
+      {% if status_filter and status_filter != 'all' %}{% set _ = parts.append(status_filter | replace('_', ' ') | title) %}{% endif %}
+      {% if date_from %}{% set _ = parts.append('From ' + date_from) %}{% endif %}
+      {% if date_to %}{% set _ = parts.append('To ' + date_to) %}{% endif %}
+      <div class="period-label">{{ parts | join(' · ') if parts else 'All Records' }}</div>
+    </div>
+
+    {% if invoices %}
+    {% set total_subtotal = namespace(v=0) %}
+    {% set total_vat = namespace(v=0) %}
+    {% set total_wht = namespace(v=0) %}
+    {% set total_net = namespace(v=0) %}
+    <div class="si-scroll">
+    <table class="si-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>SI #</th>
+          <th>Customer</th>
+          <th>Due Date</th>
+          <th class="num">Subtotal</th>
+          <th class="num">VAT</th>
+          <th class="num">WHT</th>
+          <th class="num">Net Receivable</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        {% set total_subtotal.v = total_subtotal.v + inv.subtotal %}
+        {% set total_vat.v = total_vat.v + inv.vat_amount %}
+        {% set total_wht.v = total_wht.v + inv.withholding_tax_amount %}
+        {% set total_net.v = total_net.v + inv.total_amount %}
+        <tr {% if inv.status == 'voided' %}style="text-decoration:line-through;background:#ffebee;"{% elif inv.status == 'draft' %}style="background:#fffde7;"{% endif %}>
+          <td>{{ inv.invoice_date.strftime('%d-%b-%Y') }}</td>
+          <td>{{ inv.invoice_number }}</td>
+          <td>{{ inv.customer_name }}</td>
+          <td {% if inv.due_date and inv.due_date < today and inv.status in ['posted', 'partially_paid'] %}style="color:#b91c1c;font-weight:700;"{% endif %}>
+            {{ inv.due_date.strftime('%d-%b-%Y') if inv.due_date else '—' }}
+          </td>
+          <td class="num">{{ '{:,.2f}'.format(inv.subtotal) }}</td>
+          <td class="num">{{ '{:,.2f}'.format(inv.vat_amount) }}</td>
+          <td class="num">{% if inv.withholding_tax_amount > 0 %}({{ '{:,.2f}'.format(inv.withholding_tax_amount) }}){% else %}—{% endif %}</td>
+          <td class="num">{{ '{:,.2f}'.format(inv.total_amount) }}</td>
+          <td>{{ inv.status | replace('_', ' ') | title }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="si-total">
+          <td colspan="4">TOTAL ({{ invoices | length }} record{{ 's' if invoices | length != 1 else '' }})</td>
+          <td class="num">{{ '{:,.2f}'.format(total_subtotal.v) }}</td>
+          <td class="num">{{ '{:,.2f}'.format(total_vat.v) }}</td>
+          <td class="num">{% if total_wht.v > 0 %}({{ '{:,.2f}'.format(total_wht.v) }}){% else %}—{% endif %}</td>
+          <td class="num">{{ '{:,.2f}'.format(total_net.v) }}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p style="margin-top:16px; color:#555;">No Sales Invoices match the selected filters.</p>
+    {% endif %}
+
+    <div class="audit-footer">
+      Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

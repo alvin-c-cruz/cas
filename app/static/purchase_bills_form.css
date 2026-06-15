@@ -35,10 +35,12 @@
     font-weight: 600;
 }
 
-/* ── Choices.js vendor search-select — mirror native .form-control select ── */
-/* .page-purchase-bill prefix gives specificity (0,3,0) > transactions.css (0,2,0) everywhere */
-.page-purchase-bill .vendor-step-card .choices { width: 100%; margin-bottom: 0; }
-.page-purchase-bill .vendor-step-card .choices__inner {
+/* ── Choices.js vendor/customer search-select — mirror native .form-control select ── */
+/* .page-purchase-bill / .page-sales-invoice prefix gives specificity (0,3,0) > transactions.css (0,2,0) everywhere */
+.page-purchase-bill .vendor-step-card .choices,
+.page-sales-invoice .vendor-step-card .choices { width: 100%; margin-bottom: 0; }
+.page-purchase-bill .vendor-step-card .choices__inner,
+.page-sales-invoice .vendor-step-card .choices__inner {
     display: flex !important;
     align-items: center !important;
     border: 1px solid #cbd5e1 !important;
@@ -53,21 +55,26 @@
     transition: all 0.2s !important;
 }
 /* Hide <br> tags Choices.js creates from template whitespace in option elements */
-.page-purchase-bill .vendor-step-card .choices__item br { display: none; }
+.page-purchase-bill .vendor-step-card .choices__item br,
+.page-sales-invoice .vendor-step-card .choices__item br { display: none; }
 .page-purchase-bill .vendor-step-card .choices.is-focused .choices__inner,
-.page-purchase-bill .vendor-step-card .choices.is-open .choices__inner {
+.page-purchase-bill .vendor-step-card .choices.is-open .choices__inner,
+.page-sales-invoice .vendor-step-card .choices.is-focused .choices__inner,
+.page-sales-invoice .vendor-step-card .choices.is-open .choices__inner {
     border-color: #3b82f6 !important;
     border-radius: 6px !important;
     background: white !important;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
 }
 /* Restore caret (transactions.css hides it globally via display:none !important) */
-.page-purchase-bill .vendor-step-card .choices[data-type*='select-one']::after {
+.page-purchase-bill .vendor-step-card .choices[data-type*='select-one']::after,
+.page-sales-invoice .vendor-step-card .choices[data-type*='select-one']::after {
     display: block !important;
     border-color: #64748b transparent transparent !important;
     right: 14px !important;
 }
-.page-purchase-bill .vendor-step-card .choices[data-type*='select-one'].is-open::after {
+.page-purchase-bill .vendor-step-card .choices[data-type*='select-one'].is-open::after,
+.page-sales-invoice .vendor-step-card .choices[data-type*='select-one'].is-open::after {
     border-color: transparent transparent #64748b !important;
 }
 

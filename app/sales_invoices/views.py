@@ -1,45 +1,92 @@
-"""
-Sales Invoice views for managing customer billing transactions.
-"""
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, session, abort
+from flask import (Blueprint, render_template, redirect, url_for, flash,
+                   request, jsonify, session, abort, current_app, send_file)
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
-from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem, SalesInvoiceAttachment
 from app.sales_invoices.forms import SalesInvoiceForm
 from app.customers.models import Customer
 from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
+from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
-from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number
-from datetime import datetime, date, timedelta
+from app.settings import AppSettings
+from app.periods.utils import validate_transaction_date_with_flash
+from datetime import date, timedelta
 from decimal import Decimal
 import json
+import os
+import uuid
+from werkzeug.utils import secure_filename
 
 sales_invoices_bp = Blueprint('sales_invoices', __name__, template_folder='templates')
 
 
+# ---------------------------------------------------------------------------
+# Role decorators
+# ---------------------------------------------------------------------------
+
+def staff_or_above_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if current_user.role not in ['staff', 'accountant', 'admin']:
+            flash('You do not have permission to perform this action.', 'error')
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 def accountant_or_admin_required(f):
-    """Decorator to require accountant or admin role."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('users.login'))
         if current_user.role not in ['accountant', 'admin']:
-            flash('Only Accountants and Administrators can manage sales invoices.', 'error')
+            flash('Only Accountants and Administrators can perform this action.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
 
+
+VALID_INVOICE_STATUSES = {'draft', 'posted', 'partially_paid', 'paid', 'voided', 'cancelled'}
+
+
+# ---------------------------------------------------------------------------
+# Branch guard
+# ---------------------------------------------------------------------------
 
 @sales_invoices_bp.before_request
 def require_branch_selection():
     if current_user.is_authenticated and not session.get('selected_branch_id'):
         flash('Please select a branch to continue.', 'warning')
         return redirect(url_for('users.select_branch'))
+
+
+# ---------------------------------------------------------------------------
+# Non-JE helpers
+# ---------------------------------------------------------------------------
+
+def generate_invoice_number():
+    """SI-YYYY-NNNN, annual reset. Uses PH time."""
+    now = ph_now()
+    prefix = f'SI-{now.year}-'
+    latest = (SalesInvoice.query
+              .filter(SalesInvoice.invoice_number.like(f'{prefix}%'))
+              .order_by(SalesInvoice.invoice_number.desc())
+              .first())
+    if latest:
+        try:
+            next_num = int(latest.invoice_number.split('-')[-1]) + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+    return f'{prefix}{next_num:04d}'
 
 
 def _get_invoice_or_404(id):
@@ -49,505 +96,348 @@ def _get_invoice_or_404(id):
     return invoice
 
 
-def generate_invoice_number():
-    """
-    Generate next invoice number in format: SI-YYYY-####
-    Example: SI-2024-0001
-    """
-    current_year = datetime.now().year
-    prefix = f'SI-{current_year}-'
+def _get_all_accounts_for_select():
+    """Full COA for Choices.js account picker — groups marked non-selectable."""
+    all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    parent_ids = {a.parent_id for a in all_accts if a.parent_id is not None}
+    id_map = {a.id: a for a in all_accts}
 
-    # Get the latest invoice for current year
-    latest_invoice = SalesInvoice.query.filter(
-        SalesInvoice.invoice_number.like(f'{prefix}%')
-    ).order_by(SalesInvoice.invoice_number.desc()).first()
+    def _depth(acct):
+        d, p, visited = 0, acct.parent_id, set()
+        while p and p in id_map and p not in visited:
+            visited.add(p)
+            d += 1
+            p = id_map[p].parent_id
+        return d
 
-    if latest_invoice:
-        # Extract the sequence number
+    result = []
+    for a in all_accts:
+        d = a.to_dict()
+        d['is_group'] = a.id in parent_ids
+        d['depth'] = _depth(a)
+        result.append(d)
+    return result
+
+
+def _apply_overrides(invoice):
+    """Apply manual VAT/WHT overrides from request.form. Returns redirect on error, None on success."""
+    import decimal as _decimal
+    vat_override = request.form.get('vat_override') == '1'
+    wt_override = request.form.get('wt_override') == '1'
+    invoice.vat_override = vat_override
+    invoice.wt_override = wt_override
+    if vat_override:
         try:
-            last_num = int(latest_invoice.invoice_number.split('-')[-1])
-            next_num = last_num + 1
-        except (ValueError, IndexError):
-            next_num = 1
-    else:
-        next_num = 1
-
-    return f'{prefix}{next_num:04d}'
-
-
-@sales_invoices_bp.route('/sales-invoices')
-@login_required
-def list_invoices():
-    return redirect(url_for('dashboard.under_development', feature='Sales Invoices'))
-    # Get filter parameters
-    status_filter = request.args.get('status', 'all')
-    customer_filter = request.args.get('customer', 'all')
-
-    # Base query — scope to current branch
-    current_branch_id = session.get('selected_branch_id')
-    query = SalesInvoice.query.filter_by(branch_id=current_branch_id)
-
-    # Apply filters
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
-
-    if customer_filter != 'all':
-        try:
-            customer_id = int(customer_filter)
-            query = query.filter_by(customer_id=customer_id)
-        except ValueError:
-            pass
-
-    # Order by invoice date (newest first)
-    invoices = query.order_by(SalesInvoice.invoice_date.desc()).all()
-
-    # Get customers for filter dropdown
-    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
-
-    return render_template('sales_invoices/list.html',
-                         invoices=invoices,
-                         customers=customers,
-                         status_filter=status_filter,
-                         customer_filter=customer_filter)
-
-
-@sales_invoices_bp.route('/sales-invoices/export/excel')
-@login_required
-def export_excel():
-    """Export sales invoices to Excel"""
-    # Get filter parameters (same as list view)
-    status_filter = request.args.get('status', 'all')
-    customer_filter = request.args.get('customer', 'all')
-
-    # Build query with same filters — scoped to current branch
-    current_branch_id = session.get('selected_branch_id')
-    query = SalesInvoice.query.filter_by(branch_id=current_branch_id)
-
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
-
-    if customer_filter != 'all':
-        try:
-            customer_id = int(customer_filter)
-            query = query.filter_by(customer_id=customer_id)
-        except ValueError:
-            pass
-
-    invoices = query.order_by(SalesInvoice.invoice_date.desc()).all()
-
-    # Define columns and headers
-    columns = [
-        'invoice_number',
-        'invoice_date',
-        'due_date',
-        'customer_name',
-        'customer_tin',
-        'subtotal',
-        'vat_amount',
-        'withholding_tax_amount',
-        'total_amount',
-        'amount_paid',
-        'balance',
-        'status'
-    ]
-
-    headers = [
-        'Invoice #',
-        'Invoice Date',
-        'Due Date',
-        'Customer',
-        'TIN',
-        'Subtotal',
-        'VAT',
-        'Withholding Tax',
-        'Total',
-        'Paid',
-        'Balance',
-        'Status'
-    ]
-
-    # Generate filename with timestamp
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f'sales_invoices_{timestamp}.xlsx'
-
-    return export_to_excel(
-        data=invoices,
-        columns=columns,
-        headers=headers,
-        filename=filename,
-        title='Sales Invoices Report'
-    )
-
-
-@sales_invoices_bp.route('/sales-invoices/export/csv')
-@login_required
-def export_csv_route():
-    """Export sales invoices to CSV"""
-    # Get filter parameters (same as list view)
-    status_filter = request.args.get('status', 'all')
-    customer_filter = request.args.get('customer', 'all')
-
-    # Build query with same filters — scoped to current branch
-    current_branch_id = session.get('selected_branch_id')
-    query = SalesInvoice.query.filter_by(branch_id=current_branch_id)
-
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
-
-    if customer_filter != 'all':
-        try:
-            customer_id = int(customer_filter)
-            query = query.filter_by(customer_id=customer_id)
-        except ValueError:
-            pass
-
-    invoices = query.order_by(SalesInvoice.invoice_date.desc()).all()
-
-    # Define columns and headers
-    columns = [
-        'invoice_number',
-        'invoice_date',
-        'due_date',
-        'customer_name',
-        'customer_tin',
-        'subtotal',
-        'vat_amount',
-        'withholding_tax_amount',
-        'total_amount',
-        'amount_paid',
-        'balance',
-        'status'
-    ]
-
-    headers = [
-        'Invoice #',
-        'Invoice Date',
-        'Due Date',
-        'Customer',
-        'TIN',
-        'Subtotal',
-        'VAT',
-        'Withholding Tax',
-        'Total',
-        'Paid',
-        'Balance',
-        'Status'
-    ]
-
-    # Generate filename with timestamp
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f'sales_invoices_{timestamp}.csv'
-
-    return export_to_csv(
-        data=invoices,
-        columns=columns,
-        headers=headers,
-        filename=filename
-    )
-
-
-@sales_invoices_bp.route('/sales-invoices/create', methods=['GET', 'POST'])
-@login_required
-@accountant_or_admin_required
-def create():
-    """Create new sales invoice."""
-    form = SalesInvoiceForm()
-
-    # Populate customer choices
-    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
-    form.customer_id.choices = [(0, '-- Select Customer --')] + [(c.id, f'{c.code} - {c.name}') for c in customers]
-
-    if form.validate_on_submit():
-        # Validate that the invoice date is not in a closed period
-        if not validate_transaction_date_with_flash(form.invoice_date.data, 'sales invoice'):
-            return render_template('sales_invoices/form.html', form=form, invoice=None)
-
-        try:
-            # Get customer details
-            customer = Customer.query.get(form.customer_id.data)
-            if not customer:
-                flash('Selected customer not found.', 'error')
-                return render_template('sales_invoices/form.html', form=form, invoice=None)
-
-            # Create invoice
-            invoice = SalesInvoice(
-                branch_id=session.get('selected_branch_id'),
-                invoice_number=form.invoice_number.data,
-                invoice_date=form.invoice_date.data,
-                due_date=form.due_date.data,
-                customer_id=customer.id,
-                customer_name=customer.name,
-                customer_tin=customer.tin,
-                customer_address=customer.address,
-                payment_terms=form.payment_terms.data,
-                reference=form.reference.data,
-                notes=form.notes.data,
-                status='draft',
-                created_by_id=current_user.id
-            )
-
-            # Process line items from request
-            line_items_data = request.form.getlist('line_items')
-            if line_items_data:
-                line_items = json.loads(line_items_data[0]) if line_items_data[0] else []
-
-                for idx, item_data in enumerate(line_items, start=1):
-                    # Get VAT rate from category
-                    vat_rate = Decimal('0.00')
-                    vat_category = item_data.get('vat_category')
-                    if vat_category:
-                        vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
-                        if vat_cat:
-                            vat_rate = Decimal(str(vat_cat.rate))
-
-                    # Create line item
-                    line_item = SalesInvoiceItem(
-                        line_number=idx,
-                        description=item_data.get('description', ''),
-                        quantity=Decimal(str(item_data.get('quantity', 1))),
-                        unit_price=Decimal(str(item_data.get('unit_price', 0))),
-                        vat_category=vat_category,
-                        vat_rate=vat_rate,
-                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None
-                    )
-
-                    # Calculate amounts
-                    line_item.calculate_amounts()
-                    invoice.line_items.append(line_item)
-
-            # Calculate invoice totals
-            invoice.calculate_totals()
-
-            db.session.add(invoice)
-            db.session.commit()
-
-            # Audit log
-            log_create(
-                module='sales_invoice',
-                record_id=invoice.id,
-                record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
-                new_values=model_to_dict(invoice, ['invoice_number', 'invoice_date', 'due_date', 'customer_name', 'subtotal', 'vat_amount', 'total_amount', 'status'])
-            )
-
-            flash(f'Sales Invoice "{invoice.invoice_number}" created successfully!', 'success')
-            return redirect(url_for('sales_invoices.view', id=invoice.id))
-
-        except Exception as e:
-            from flask import current_app
-            from app.errors.utils import log_exception
-            current_app.logger.error(f"Error creating sales invoice", exc_info=True)
-            log_exception(e, severity='ERROR', module='sales_invoices.create')
+            vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
+            if vat_val < 0 or (invoice.subtotal is not None and vat_val > invoice.subtotal):
+                raise ValueError('out of range')
+        except (_decimal.InvalidOperation, ValueError):
             db.session.rollback()
-            flash(f'Error creating sales invoice: {str(e)}', 'error')
-
-    # Set defaults for new invoice
-    if request.method == 'GET':
-        form.invoice_number.data = generate_invoice_number()
-        form.invoice_date.data = date.today()
-        form.due_date.data = date.today() + timedelta(days=30)
-
-    # Get VAT categories and accounts for line items
-    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
-    revenue_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Revenue').order_by(Account.code).all()]
-
-    return render_template('sales_invoices/form.html',
-                         form=form,
-                         invoice=None,
-                         vat_categories=vat_categories,
-                         revenue_accounts=revenue_accounts)
-
-
-@sales_invoices_bp.route('/sales-invoices/<int:id>')
-@login_required
-def view(id):
-    """View sales invoice details."""
-    invoice = _get_invoice_or_404(id)
-    return render_template('sales_invoices/detail.html', invoice=invoice)
-
-
-@sales_invoices_bp.route('/sales-invoices/<int:id>/edit', methods=['GET', 'POST'])
-@login_required
-@accountant_or_admin_required
-def edit(id):
-    """Edit sales invoice (only drafts can be edited)."""
-    invoice = _get_invoice_or_404(id)
-
-    # Only drafts can be edited
-    if invoice.status != 'draft':
-        flash('Only draft invoices can be edited.', 'error')
-        return redirect(url_for('sales_invoices.view', id=id))
-
-    form = SalesInvoiceForm(obj=invoice)
-
-    # Populate customer choices
-    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
-    form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
-
-    if form.validate_on_submit():
-        # Validate that the invoice date is not in a closed period
-        if not validate_transaction_date_with_flash(form.invoice_date.data, 'sales invoice'):
-            return render_template('sales_invoices/form.html', form=form, invoice=invoice)
-
+            flash('Invalid VAT override value.', 'danger')
+            return redirect(url_for('sales_invoices.list_invoices'))
+        invoice.vat_amount = vat_val
+    if wt_override:
         try:
-            # Capture old values
-            old_values = model_to_dict(invoice, ['invoice_number', 'invoice_date', 'due_date', 'customer_name', 'subtotal', 'vat_amount', 'total_amount', 'status'])
-
-            # Get customer details
-            customer = Customer.query.get(form.customer_id.data)
-            if not customer:
-                flash('Selected customer not found.', 'error')
-                return render_template('sales_invoices/form.html', form=form, invoice=invoice)
-
-            # Update invoice header
-            invoice.invoice_number = form.invoice_number.data
-            invoice.invoice_date = form.invoice_date.data
-            invoice.due_date = form.due_date.data
-            invoice.customer_id = customer.id
-            invoice.customer_name = customer.name
-            invoice.customer_tin = customer.tin
-            invoice.customer_address = customer.address
-            invoice.payment_terms = form.payment_terms.data
-            invoice.reference = form.reference.data
-            invoice.notes = form.notes.data
-
-            # Delete existing line items
-            SalesInvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
-
-            # Process new line items
-            line_items_data = request.form.getlist('line_items')
-            if line_items_data:
-                line_items = json.loads(line_items_data[0]) if line_items_data[0] else []
-
-                for idx, item_data in enumerate(line_items, start=1):
-                    # Get VAT rate from category
-                    vat_rate = Decimal('0.00')
-                    vat_category = item_data.get('vat_category')
-                    if vat_category:
-                        vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
-                        if vat_cat:
-                            vat_rate = Decimal(str(vat_cat.rate))
-
-                    # Create line item
-                    line_item = SalesInvoiceItem(
-                        invoice_id=invoice.id,
-                        line_number=idx,
-                        description=item_data.get('description', ''),
-                        quantity=Decimal(str(item_data.get('quantity', 1))),
-                        unit_price=Decimal(str(item_data.get('unit_price', 0))),
-                        vat_category=vat_category,
-                        vat_rate=vat_rate,
-                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None
-                    )
-
-                    # Calculate amounts
-                    line_item.calculate_amounts()
-                    db.session.add(line_item)
-
-            # Recalculate totals
-            invoice.calculate_totals()
-
-            db.session.commit()
-
-            # Audit log
-            new_values = model_to_dict(invoice, ['invoice_number', 'invoice_date', 'due_date', 'customer_name', 'subtotal', 'vat_amount', 'total_amount', 'status'])
-            log_update(
-                module='sales_invoice',
-                record_id=invoice.id,
-                record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
-                old_values=old_values,
-                new_values=new_values
-            )
-
-            flash(f'Sales Invoice "{invoice.invoice_number}" updated successfully!', 'success')
-            return redirect(url_for('sales_invoices.view', id=invoice.id))
-
-        except Exception as e:
-            from flask import current_app
-            from app.errors.utils import log_exception
-            current_app.logger.error(f"Error updating sales invoice", exc_info=True)
-            log_exception(e, severity='ERROR', module='sales_invoices.update')
+            wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
+            if wt_val < 0 or (invoice.subtotal is not None and wt_val > invoice.subtotal):
+                raise ValueError('out of range')
+        except (_decimal.InvalidOperation, ValueError):
             db.session.rollback()
-            flash(f'Error updating sales invoice: {str(e)}', 'error')
-
-    # Pre-populate form on GET
-    if request.method == 'GET':
-        form.customer_id.data = invoice.customer_id
-
-    # Get VAT categories and accounts for line items
-    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
-    revenue_accounts = [a.to_dict() for a in Account.query.filter_by(account_type='Revenue').order_by(Account.code).all()]
-
-    # Get existing line items
-    line_items = [item.to_dict() for item in invoice.line_items.all()]
-
-    return render_template('sales_invoices/form.html',
-                         form=form,
-                         invoice=invoice,
-                         vat_categories=vat_categories,
-                         revenue_accounts=revenue_accounts,
-                         line_items=line_items)
+            flash('Invalid withholding tax override value.', 'danger')
+            return redirect(url_for('sales_invoices.list_invoices'))
+        invoice.withholding_tax_amount = wt_val
+    if vat_override or wt_override:
+        invoice.total_amount = invoice.subtotal - invoice.withholding_tax_amount
+        invoice.balance = invoice.total_amount - invoice.amount_paid
+    return None
 
 
-@sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
-@login_required
-@accountant_or_admin_required
-def post(id):
-    """Post sales invoice (makes it final and immutable)."""
-    invoice = _get_invoice_or_404(id)
+def _invoice_upload_dir(invoice_id):
+    path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices', str(invoice_id))
+    os.makedirs(path, exist_ok=True)
+    return path
 
-    if invoice.status not in ('draft', 'sent'):
-        flash('Only draft or sent invoices can be posted.', 'error')
-        return redirect(url_for('sales_invoices.view', id=id))
 
+_ATTACHMENT_ALLOWED = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.csv': 'text/csv', '.txt': 'text/plain',
+}
+
+_EXPORT_COLUMNS = [
+    'invoice_number', 'invoice_date', 'due_date', 'customer_name', 'customer_tin',
+    'customer_po_number', 'subtotal', 'vat_amount', 'withholding_tax_amount',
+    'total_amount', 'amount_paid', 'balance', 'status',
+]
+
+_EXPORT_HEADERS = [
+    'Invoice #', 'Invoice Date', 'Due Date', 'Customer', 'TIN', 'Customer PO #',
+    'Subtotal', 'VAT', 'Withholding Tax', 'Total', 'Paid', 'Balance', 'Status',
+]
+
+# ---------------------------------------------------------------------------
+# JE helpers (Task 8) and route functions (Tasks 9-12) are appended below
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# JE helpers
+# ---------------------------------------------------------------------------
+
+def _get_gl_accounts():
+    """Return AR-Trade (10201) and Creditable WHT Receivable (10212) accounts."""
+    ar_acct = Account.query.filter_by(code='10201').first()
+    wt_acct = Account.query.filter_by(code='10212').first()
+    return {'ar': ar_acct, 'wt': wt_acct}
+
+
+def _output_vat_buckets(invoice):
+    """Group output VAT amounts by VATCategory.output_vat_account.
+
+    Mirrors APV _input_vat_buckets() but reads output_vat_account.
+    Returns sorted list of (Account, Decimal) pairs.
+    Raises ValueError if a VAT-bearing line's category has no output_vat_account.
+    """
+    if Decimal(str(invoice.vat_amount)) <= 0:
+        return []
+
+    categories = {c.code: c for c in VATCategory.query.all()}
+    buckets = {}
+    for item in invoice.line_items:
+        vat_amt = Decimal(str(item.vat_amount or 0))
+        if vat_amt <= 0:
+            continue
+        cat = categories.get(item.vat_category)
+        acct = cat.output_vat_account if cat else None
+        if acct is None:
+            label = cat.code if cat else (item.vat_category or 'unknown')
+            raise ValueError(
+                f"VAT category '{label}' has no Output Tax account configured. "
+                "Set it in VAT Categories before posting.")
+        if acct.id not in buckets:
+            buckets[acct.id] = [acct, Decimal('0.00')]
+        buckets[acct.id][1] += vat_amt
+
+    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
+    total = sum((amt for _, amt in ordered), Decimal('0.00'))
+    override_diff = Decimal(str(invoice.vat_amount)) - total
+    if override_diff != Decimal('0.00') and ordered:
+        largest_id = max(ordered, key=lambda b: b[1])[0].id
+        ordered = [
+            (acct, amt + override_diff if acct.id == largest_id else amt)
+            for acct, amt in ordered
+        ]
+    ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
+    if any(amt < Decimal('0.00') for _, amt in ordered):
+        raise ValueError(
+            'VAT override is too far below the computed VAT to allocate '
+            'across output tax accounts.')
+    return ordered
+
+
+def _build_je_preview(invoice):
+    """Return [{code, name, debit, credit}] for the detail view JE section.
+
+    If the invoice has a stored JE, read from it.
+    If draft (no stored JE), compute what _post_invoice_je would produce.
+    """
+    if invoice.journal_entry:
+        return [
+            {
+                'code': line.account.code if line.account else '—',
+                'name': line.account.name if line.account else '—',
+                'debit': line.debit_amount,
+                'credit': line.credit_amount,
+            }
+            for line in invoice.journal_entry.lines.all()
+        ]
+
+    # Draft preview: compute inline
+    accts = _get_gl_accounts()
+    entries = []
+
+    # Credit revenue per line (net base)
+    for item in invoice.line_items:
+        if not item.account_id or not item.account:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entries.append({
+            'code': item.account.code,
+            'name': item.account.name,
+            'debit': Decimal('0.00'),
+            'credit': net_base,
+        })
+
+    # Credit output VAT buckets
     try:
-        invoice.status = 'posted'
-        invoice.posted_by_id = current_user.id
-        invoice.posted_at = ph_now()
-        db.session.commit()
+        vat_buckets = _output_vat_buckets(invoice)
+    except ValueError as e:
+        vat_buckets = []
+        vat_amount = Decimal(str(invoice.vat_amount))
+        if vat_amount > 0:
+            entries.append({'code': '—', 'name': str(e),
+                            'debit': Decimal('0.00'), 'credit': vat_amount})
 
-        # Audit log
-        log_audit(
-            module='sales_invoice',
-            action='post',
-            record_id=invoice.id,
-            record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
-            notes=f'Invoice posted by {current_user.username}'
-        )
+    for vat_acct, vat_amt in vat_buckets:
+        if vat_amt <= 0:
+            continue
+        entries.append({'code': vat_acct.code, 'name': vat_acct.name,
+                        'debit': Decimal('0.00'), 'credit': vat_amt})
 
-        flash(f'Sales Invoice "{invoice.invoice_number}" posted successfully!', 'success')
-    except Exception as e:
-        from flask import current_app
-        from app.errors.utils import log_exception
-        current_app.logger.error(f"Error posting sales invoice", exc_info=True)
-        log_exception(e, severity='ERROR', module='sales_invoices.post')
-        db.session.rollback()
-        flash(f'Error posting invoice: {str(e)}', 'error')
+    # Debit Creditable WHT Receivable
+    wt_amount = Decimal(str(invoice.withholding_tax_amount))
+    if wt_amount > 0 and accts['wt']:
+        entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
+                        'debit': wt_amount, 'credit': Decimal('0.00')})
 
-    return redirect(url_for('sales_invoices.view', id=id))
+    # Debit Accounts Receivable
+    if accts['ar']:
+        entries.append({'code': accts['ar'].code, 'name': accts['ar'].name,
+                        'debit': Decimal(str(invoice.total_amount)),
+                        'credit': Decimal('0.00')})
+
+    return entries
 
 
-def _create_invoice_void_je(invoice, reversal_date, user_id):
-    """Create reversal JE when voiding a sales invoice. Raises ValueError if required accounts missing."""
+# ---------------------------------------------------------------------------
+# Journal Entry creation
+# ---------------------------------------------------------------------------
+
+def _post_invoice_je(invoice, user_id):
+    """Create the sales JE. Reverse of APV: Dr AR + Dr Creditable WHT; Cr Revenue + Cr Output VAT."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
-    ar_account = Account.query.filter_by(code='10201').first()
+    accts = _get_gl_accounts()
+    ar_account = accts['ar']
     if not ar_account:
-        raise ValueError("Accounts Receivable - Trade (10201) not found in COA. Cannot void.")
+        raise ValueError("Accounts Receivable - Trade (10201) not found in COA.")
 
-    output_vat_account = None
-    if invoice.vat_amount > 0:
-        output_vat_account = Account.query.filter_by(code='20201').first()
-        if not output_vat_account:
-            raise ValueError("Output VAT - Sales (20201) not found in COA. Cannot void.")
+    wt_account = None
+    if invoice.withholding_tax_amount and Decimal(str(invoice.withholding_tax_amount)) > 0:
+        wt_account = accts['wt']
+        if not wt_account:
+            raise ValueError("Creditable Withholding Tax (10212) not found in COA. "
+                             "Add this account before posting a sales invoice with WHT.")
+
+    je_status = 'posted' if invoice.status == 'posted' else 'draft'
+    entry_number = generate_entry_number(invoice.branch_id)
+    je = JournalEntry(
+        entry_number=entry_number,
+        entry_date=invoice.invoice_date,
+        description=f'Sales Invoice {invoice.invoice_number} — {invoice.customer_name}',
+        reference=invoice.invoice_number,
+        entry_type='sale',
+        branch_id=invoice.branch_id,
+        created_by_id=user_id,
+        status=je_status,
+        posted_by_id=user_id if je_status == 'posted' else None,
+        posted_at=ph_now() if je_status == 'posted' else None,
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00'),
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    line_num = 1
+    first_revenue_line = None
+    all_lines = []
+
+    # Credit: revenue accounts (net base per line item)
+    for item in invoice.line_items:
+        if not item.account_id:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entry_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=item.account_id,
+            description=item.description or '',
+            debit_amount=Decimal('0.00'),
+            credit_amount=net_base,
+        )
+        db.session.add(entry_line)
+        all_lines.append(entry_line)
+        if first_revenue_line is None:
+            first_revenue_line = entry_line
+        line_num += 1
+
+    # Credit: output VAT per bucket
+    for vat_acct, vat_amt in _output_vat_buckets(invoice):
+        if vat_amt <= 0:
+            continue
+        vat_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=vat_acct.id,
+            description=f'Output VAT: {invoice.invoice_number}',
+            debit_amount=Decimal('0.00'),
+            credit_amount=vat_amt,
+        )
+        db.session.add(vat_line)
+        all_lines.append(vat_line)
+        line_num += 1
+
+    # Debit: Creditable WHT Receivable
+    if wt_account:
+        wt_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num,
+            account_id=wt_account.id,
+            description=f'Creditable WHT: {invoice.invoice_number}',
+            debit_amount=Decimal(str(invoice.withholding_tax_amount)),
+            credit_amount=Decimal('0.00'),
+        )
+        db.session.add(wt_line)
+        all_lines.append(wt_line)
+        line_num += 1
+
+    # Debit: Accounts Receivable
+    ar_line = JournalEntryLine(
+        entry_id=je.id, line_number=line_num,
+        account_id=ar_account.id,
+        description=f'AR: {invoice.invoice_number} — {invoice.customer_name}',
+        debit_amount=Decimal(str(invoice.total_amount)),
+        credit_amount=Decimal('0.00'),
+    )
+    db.session.add(ar_line)
+    all_lines.append(ar_line)
+
+    # Absorb rounding residual into first revenue line
+    sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
+    sum_credits = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
+    residual = sum_debits - sum_credits
+    if residual != Decimal('0.00') and first_revenue_line is not None:
+        first_revenue_line.credit_amount += residual
+
+    db.session.flush()
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(
+            f"Sales invoice JE is not balanced "
+            f"(debit={je.total_debit}, credit={je.total_credit}). "
+            "Ensure every line item has a revenue account assigned.")
+    return je
+
+
+def _create_reversal_je(invoice, reversal_date, user_id, label='Cancel'):
+    """Swap debits/credits of the stored JE — used by cancel and void."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    source_je = invoice.journal_entry
+    if source_je is None:
+        raise ValueError(
+            f'Invoice {invoice.invoice_number} has no stored journal entry to reverse.')
 
     entry_number = generate_entry_number(invoice.branch_id)
     je = JournalEntry(
         entry_number=entry_number,
         entry_date=reversal_date,
-        description=f'Sales Invoice Void — {invoice.invoice_number} (reversal)',
-        reference=f'VOID-{invoice.invoice_number}',
+        description=f'Sales Invoice {label} — {invoice.invoice_number} (reversal)',
+        reference=f'{label.upper()[:6]}-{invoice.invoice_number}',
         entry_type='reversal',
         is_reversing=True,
+        reversed_entry_id=source_je.id,
         branch_id=invoice.branch_id,
         created_by_id=user_id,
         status='posted',
@@ -555,134 +445,469 @@ def _create_invoice_void_je(invoice, reversal_date, user_id):
         posted_at=ph_now(),
         is_balanced=False,
         total_debit=Decimal('0.00'),
-        total_credit=Decimal('0.00')
+        total_credit=Decimal('0.00'),
     )
     db.session.add(je)
     db.session.flush()
 
-    line_num = 1
-    for item in invoice.line_items:
-        if item.account_id and item.line_total > 0:
-            db.session.add(JournalEntryLine(
-                entry_id=je.id, line_number=line_num,
-                account_id=item.account_id,
-                description=item.description,
-                debit_amount=item.line_total,
-                credit_amount=Decimal('0.00')
-            ))
-            line_num += 1
+    source_lines = source_je.lines.all()
+    if not source_lines:
+        db.session.rollback()
+        raise ValueError(
+            f'Cannot reverse JE {source_je.entry_number}: it has no lines.')
 
-    if output_vat_account:
+    for i, src in enumerate(source_lines, start=1):
         db.session.add(JournalEntryLine(
-            entry_id=je.id, line_number=line_num,
-            account_id=output_vat_account.id,
-            description=f'Void Output VAT: {invoice.invoice_number}',
-            debit_amount=invoice.vat_amount,
-            credit_amount=Decimal('0.00')
+            entry_id=je.id, line_number=i,
+            account_id=src.account_id,
+            description=f'{label}: {src.description}' if src.description else label,
+            debit_amount=src.credit_amount,   # swap
+            credit_amount=src.debit_amount,   # swap
         ))
-        line_num += 1
-
-    db.session.add(JournalEntryLine(
-        entry_id=je.id, line_number=line_num,
-        account_id=ar_account.id,
-        description=f'Void AR: {invoice.invoice_number}',
-        debit_amount=Decimal('0.00'),
-        credit_amount=invoice.total_amount
-    ))
+    db.session.flush()
 
     je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'Reversal JE is not balanced '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    # Link the source JE to its reversal
+    source_je.reversed_by_id = je.id
+
     return je
 
 
-@sales_invoices_bp.route('/sales-invoices/<int:id>/send', methods=['POST'])
-@login_required
-@accountant_or_admin_required
-def send(id):
-    """Mark a draft invoice as sent to customer."""
-    invoice = _get_invoice_or_404(id)
+# ---------------------------------------------------------------------------
+# List helpers + routes
+# ---------------------------------------------------------------------------
 
+def _filtered_invoices_query(include_ids=False):
+    current_branch_id = session.get('selected_branch_id')
+    query = SalesInvoice.query.filter_by(branch_id=current_branch_id)
+
+    if include_ids:
+        ids_param = request.args.get('ids', '')
+        if ids_param:
+            ids = [int(x) for x in ids_param.split(',') if x.strip().isdigit()]
+            if ids:
+                return query.filter(SalesInvoice.id.in_(ids))
+
+    status_filter = request.args.get('status', 'all')
+    if status_filter in VALID_INVOICE_STATUSES:
+        query = query.filter_by(status=status_filter)
+
+    customer_filter = request.args.get('customer', 'all')
+    if customer_filter != 'all':
+        try:
+            query = query.filter_by(customer_id=int(customer_filter))
+        except ValueError:
+            pass
+
+    q = request.args.get('q', '').strip()
+    if q:
+        like = f'%{q}%'
+        query = query.filter(
+            db.or_(SalesInvoice.invoice_number.ilike(like),
+                   SalesInvoice.customer_name.ilike(like))
+        )
+
+    date_from = request.args.get('date_from', '')
+    if date_from:
+        try:
+            query = query.filter(SalesInvoice.invoice_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', '')
+    if date_to:
+        try:
+            query = query.filter(SalesInvoice.invoice_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    return query
+
+
+@sales_invoices_bp.route('/sales-invoices')
+@login_required
+def list_invoices():
+    from app.sales_invoices.utils import compute_invoices_summary
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    query = _filtered_invoices_query().order_by(SalesInvoice.invoice_date.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    summary = compute_invoices_summary(session.get('selected_branch_id'))
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    return render_template(
+        'sales_invoices/list.html',
+        invoices=pagination.items,
+        pagination=pagination,
+        customers=customers,
+        summary=summary,
+        today=ph_now().date(),
+        status_filter=request.args.get('status', 'all'),
+        customer_filter=request.args.get('customer', 'all'),
+        q=request.args.get('q', ''),
+        date_from=request.args.get('date_from', ''),
+        date_to=request.args.get('date_to', ''),
+    )
+
+
+@sales_invoices_bp.route('/sales-invoices/print')
+@login_required
+def print_list():
+    invoices = (_filtered_invoices_query(include_ids=True)
+                .order_by(SalesInvoice.invoice_date.desc()).all())
+    company_name = AppSettings.get_setting('company_name') or ''
+    return render_template(
+        'sales_invoices/list_print.html',
+        invoices=invoices,
+        company_name=company_name,
+        today=ph_now().date(),
+        printed_at=ph_now(),
+        status_filter=request.args.get('status', 'all'),
+        date_from=request.args.get('date_from', ''),
+        date_to=request.args.get('date_to', ''),
+    )
+
+
+@sales_invoices_bp.route('/sales-invoices/export/excel')
+@login_required
+def export_excel():
+    invoices = (_filtered_invoices_query(include_ids=True)
+                .order_by(SalesInvoice.invoice_date.desc()).all())
+    log_audit('sales_invoice', 'export_excel', None, f'{len(invoices)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_excel(data=invoices, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                           filename=f'sales_invoices_{timestamp}.xlsx',
+                           title='Sales Invoices Report')
+
+
+@sales_invoices_bp.route('/sales-invoices/export/csv')
+@login_required
+def export_csv_route():
+    invoices = (_filtered_invoices_query(include_ids=True)
+                .order_by(SalesInvoice.invoice_date.desc()).all())
+    log_audit('sales_invoice', 'export_csv', None, f'{len(invoices)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_csv(data=invoices, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                         filename=f'sales_invoices_{timestamp}.csv')
+
+
+# ---------------------------------------------------------------------------
+# Create and Edit routes
+# ---------------------------------------------------------------------------
+
+@sales_invoices_bp.route('/sales-invoices/create', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def create():
+    form = SalesInvoiceForm()
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    form.customer_id.choices = [(0, '-- Select Customer --')] + [
+        (c.id, f'{c.code} - {c.name}') for c in customers]
+
+    if form.validate_on_submit():
+        if not validate_transaction_date_with_flash(form.invoice_date.data, 'Sales Invoice'):
+            return render_template('sales_invoices/form.html', form=form, invoice=None,
+                                   vat_categories=_vat_categories_for_form(),
+                                   all_accounts=_get_all_accounts_for_select(),
+                                   line_items=[],
+                                   gl_accounts=_gl_accounts_dict(),
+                                   wht_codes=_wht_codes_for_form())
+        try:
+            cust = Customer.query.get(form.customer_id.data)
+            if not cust:
+                flash('Selected customer not found.', 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=None,
+                                       vat_categories=_vat_categories_for_form(),
+                                       all_accounts=_get_all_accounts_for_select(),
+                                       gl_accounts=_gl_accounts_dict(),
+                                       wht_codes=_wht_codes_for_form())
+
+            invoice = SalesInvoice(
+                branch_id=session.get('selected_branch_id'),
+                invoice_number=form.invoice_number.data,
+                invoice_date=form.invoice_date.data,
+                due_date=form.due_date.data,
+                customer_id=cust.id,
+                customer_name=cust.name,
+                customer_tin=cust.tin,
+                customer_address=cust.address,
+                customer_po_number=form.customer_po_number.data or None,
+                customer_po_date=form.customer_po_date.data or None,
+                payment_terms=form.payment_terms.data,
+                reference=form.reference.data,
+                notes=form.notes.data or '',
+                status='draft',
+                amount_paid=Decimal('0.00'),
+                balance=Decimal('0.00'),
+                created_by_id=current_user.id,
+            )
+            _parse_and_attach_line_items(invoice, request.form.get('line_items', '[]'))
+            invoice.calculate_totals()
+            err = _apply_overrides(invoice)
+            if err:
+                return err
+
+            db.session.add(invoice)
+            db.session.flush()
+
+            je = _post_invoice_je(invoice, current_user.id)
+            invoice.journal_entry_id = je.id
+            db.session.commit()
+
+            log_create(
+                module='sales_invoice',
+                record_id=invoice.id,
+                record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+                new_values=model_to_dict(invoice, [
+                    'invoice_number', 'invoice_date', 'due_date', 'customer_name',
+                    'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+            )
+            flash(f'Sales Invoice "{invoice.invoice_number}" entered successfully!', 'success')
+            # Redirect to detail view; falls back to list if view route not yet registered
+            try:
+                return redirect(url_for('sales_invoices.view', id=invoice.id))
+            except Exception:
+                return redirect(url_for('sales_invoices.list_invoices'))
+
+        except Exception as e:
+            from app.errors.utils import log_exception
+            db.session.rollback()
+            current_app.logger.error('Error creating sales invoice', exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_invoices.create')
+            flash(f'Error entering Sales Invoice: {str(e)}', 'error')
+
+    if request.method == 'GET':
+        form.invoice_number.data = generate_invoice_number()
+        form.invoice_date.data = ph_now().date()
+        form.due_date.data = ph_now().date() + timedelta(days=30)
+
+    return render_template('sales_invoices/form.html', form=form, invoice=None,
+                           vat_categories=_vat_categories_for_form(),
+                           all_accounts=_get_all_accounts_for_select(),
+                           line_items=[],
+                           gl_accounts=_gl_accounts_dict(),
+                           wht_codes=_wht_codes_for_form())
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def edit(id):
+    invoice = _get_invoice_or_404(id)
     if invoice.status != 'draft':
-        flash('Only draft invoices can be marked as sent.', 'error')
-        return redirect(url_for('sales_invoices.view', id=id))
+        flash('Only draft Sales Invoices can be edited.', 'error')
+        try:
+            return redirect(url_for('sales_invoices.view', id=id))
+        except Exception:
+            return redirect(url_for('sales_invoices.list_invoices'))
 
+    form = SalesInvoiceForm(obj=invoice)
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
+
+    if form.validate_on_submit():
+        if not validate_transaction_date_with_flash(form.invoice_date.data, 'Sales Invoice'):
+            return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                                   vat_categories=_vat_categories_for_form(),
+                                   all_accounts=_get_all_accounts_for_select(),
+                                   line_items=[item.to_dict() for item in invoice.line_items],
+                                   gl_accounts=_gl_accounts_dict(),
+                                   wht_codes=_wht_codes_for_form())
+        try:
+            old_values = model_to_dict(invoice, [
+                'invoice_number', 'invoice_date', 'due_date', 'customer_name',
+                'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+
+            cust = Customer.query.get(form.customer_id.data)
+            if not cust:
+                flash('Selected customer not found.', 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                                       vat_categories=_vat_categories_for_form(),
+                                       all_accounts=_get_all_accounts_for_select(),
+                                       line_items=[item.to_dict() for item in invoice.line_items],
+                                       gl_accounts=_gl_accounts_dict(),
+                                       wht_codes=_wht_codes_for_form())
+
+            invoice.invoice_number = form.invoice_number.data
+            invoice.invoice_date = form.invoice_date.data
+            invoice.due_date = form.due_date.data
+            invoice.customer_id = cust.id
+            invoice.customer_name = cust.name
+            invoice.customer_tin = cust.tin
+            invoice.customer_address = cust.address
+            invoice.customer_po_number = form.customer_po_number.data or None
+            invoice.customer_po_date = form.customer_po_date.data or None
+            invoice.payment_terms = form.payment_terms.data
+            invoice.reference = form.reference.data
+            invoice.notes = form.notes.data or ''
+
+            SalesInvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
+            _parse_and_attach_line_items(invoice, request.form.get('line_items', '[]'),
+                                         assign_invoice_id=True)
+            db.session.flush()
+
+            invoice.calculate_totals()
+            err = _apply_overrides(invoice)
+            if err:
+                return err
+
+            if invoice.journal_entry_id:
+                from app.journal_entries.models import JournalEntry as _JE
+                old_je_id = invoice.journal_entry_id
+                invoice.journal_entry_id = None
+                invoice.journal_entry = None
+                db.session.flush()
+                old_je = db.session.get(_JE, old_je_id)
+                if old_je:
+                    db.session.delete(old_je)
+                db.session.flush()
+
+            je = _post_invoice_je(invoice, current_user.id)
+            invoice.journal_entry_id = je.id
+            db.session.commit()
+
+            new_values = model_to_dict(invoice, [
+                'invoice_number', 'invoice_date', 'due_date', 'customer_name',
+                'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
+            log_update(module='sales_invoice', record_id=invoice.id,
+                       record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
+                       old_values=old_values, new_values=new_values)
+
+            flash(f'Sales Invoice "{invoice.invoice_number}" saved successfully!', 'success')
+            # Redirect to detail view; falls back to list if view route not yet registered
+            try:
+                return redirect(url_for('sales_invoices.view', id=invoice.id))
+            except Exception:
+                return redirect(url_for('sales_invoices.list_invoices'))
+
+        except Exception as e:
+            from app.errors.utils import log_exception
+            db.session.rollback()
+            current_app.logger.error('Error updating sales invoice', exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_invoices.edit')
+            flash(f'Error saving Sales Invoice: {str(e)}', 'error')
+
+    if request.method == 'GET':
+        form.customer_id.data = invoice.customer_id
+
+    return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                           vat_categories=_vat_categories_for_form(),
+                           all_accounts=_get_all_accounts_for_select(),
+                           line_items=[item.to_dict() for item in invoice.line_items],
+                           gl_accounts=_gl_accounts_dict(),
+                           wht_codes=_wht_codes_for_form())
+
+
+# ── helpers called by create() and edit() ───────────────────────────────────
+
+def _vat_categories_for_form():
+    return [v.to_dict() for v in
+            VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+
+
+def _gl_accounts_dict():
+    _accts = _get_gl_accounts()
+    return {
+        'ar': {'code': _accts['ar'].code, 'name': _accts['ar'].name} if _accts['ar'] else None,
+        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
+    }
+
+
+def _wht_codes_for_form():
+    return [w.to_dict() for w in
+            WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()]
+
+
+def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=False):
+    """Parse JSON line items string and attach SalesInvoiceItem objects to the invoice."""
     try:
-        invoice.status = 'sent'
-        invoice.sent_at = ph_now()
-        invoice.sent_by_id = current_user.id
-        db.session.commit()
+        items = json.loads(line_items_json) if line_items_json else []
+    except (json.JSONDecodeError, TypeError):
+        items = []
 
-        log_audit(
-            module='sales_invoice',
-            action='send',
-            record_id=invoice.id,
-            record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
-            notes=f'Marked as sent by {current_user.username}'
+    for idx, item_data in enumerate(items, start=1):
+        vat_rate = Decimal('0.00')
+        vat_category = item_data.get('vat_category') or None
+        if vat_category:
+            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+            if vat_cat:
+                vat_rate = Decimal(str(vat_cat.rate))
+
+        raw_wt_id = item_data.get('wt_id')
+        wt_id = int(raw_wt_id) if raw_wt_id and str(raw_wt_id).strip() else None
+        wt_rate = None
+        if wt_id:
+            wt_obj = WithholdingTax.query.get(wt_id)
+            if wt_obj:
+                wt_rate = wt_obj.rate
+
+        raw_account_id = item_data.get('account_id')
+        account_id = int(raw_account_id) if raw_account_id and str(raw_account_id).strip() else None
+        if account_id and not Account.query.get(account_id):
+            account_id = None
+
+        line_item = SalesInvoiceItem(
+            line_number=idx,
+            description=item_data.get('description', ''),
+            amount=Decimal(str(item_data.get('amount', '0') or '0')),
+            vat_category=vat_category,
+            vat_rate=vat_rate,
+            account_id=account_id,
+            wt_id=wt_id,
+            wt_rate=wt_rate,
         )
-
-        flash(f'Invoice "{invoice.invoice_number}" marked as sent.', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error marking invoice as sent: {str(e)}', 'error')
-
-    return redirect(url_for('sales_invoices.view', id=id))
+        if assign_invoice_id:
+            line_item.invoice_id = invoice.id
+        line_item.calculate_amounts()
+        invoice.line_items.append(line_item)
 
 
-@sales_invoices_bp.route('/sales-invoices/<int:id>/void', methods=['POST'])
+# ---------------------------------------------------------------------------
+# View / Post / Cancel / Void routes (Task 12)
+# ---------------------------------------------------------------------------
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>')
 @login_required
-@accountant_or_admin_required
-def void(id):
-    """Void a posted sales invoice and create reversal journal entry."""
-    from flask import current_app
-    from app.errors.utils import log_exception
+def view(id):
     invoice = _get_invoice_or_404(id)
+    je_entries = _build_je_preview(invoice)
+    sv_print_access = AppSettings.get_setting('sv_print_access', 'posted_only')
+    return render_template('sales_invoices/detail.html', invoice=invoice,
+                           je_entries=je_entries, sv_print_access=sv_print_access)
 
-    if invoice.status != 'posted':
-        flash('Only posted invoices with no payments can be voided.', 'error')
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
+@login_required
+@staff_or_above_required
+def post(id):
+    invoice = _get_invoice_or_404(id)
+    if invoice.status != 'draft':
+        flash('Only draft Sales Invoices can be posted.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
-
-    if invoice.amount_paid > 0:
-        flash('Cannot void an invoice with payments applied. Reverse the payments first.', 'error')
-        return redirect(url_for('sales_invoices.view', id=id))
-
-    void_reason = request.form.get('void_reason', '').strip()
-    if len(void_reason) < 10:
-        flash('Void reason must be at least 10 characters.', 'error')
-        return redirect(url_for('sales_invoices.view', id=id))
-
-    reversal_date_str = request.form.get('reversal_date', '')
     try:
-        reversal_date = date.fromisoformat(reversal_date_str)
-    except ValueError:
-        flash('Invalid reversal date.', 'error')
-        return redirect(url_for('sales_invoices.view', id=id))
-
-    try:
-        _create_invoice_void_je(invoice, reversal_date, current_user.id)
-
-        invoice.status = 'voided'
-        invoice.voided_at = ph_now()
-        invoice.voided_by_id = current_user.id
-        invoice.void_reason = void_reason
+        invoice.status = 'posted'
+        invoice.posted_by_id = current_user.id
+        invoice.posted_at = ph_now()
+        if invoice.journal_entry:
+            invoice.journal_entry.status = 'posted'
+            invoice.journal_entry.posted_by_id = current_user.id
+            invoice.journal_entry.posted_at = ph_now()
         db.session.commit()
-
-        log_audit(
-            module='sales_invoice',
-            action='void',
-            record_id=invoice.id,
-            record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
-            notes=f'Voided by {current_user.username}. Reason: {void_reason}'
-        )
-
-        flash(f'Sales Invoice "{invoice.invoice_number}" voided. Reversal journal entry created.', 'success')
-    except ValueError as e:
-        db.session.rollback()
-        flash(str(e), 'error')
+        log_audit('sales_invoice', 'post', invoice.id,
+                  f'{invoice.invoice_number} - {invoice.customer_name}',
+                  notes=f'Invoice posted by {current_user.username}')
+        flash(f'Sales Invoice "{invoice.invoice_number}" posted successfully!', 'success')
     except Exception as e:
+        from app.errors.utils import log_exception
         db.session.rollback()
-        current_app.logger.error("Error voiding sales invoice", exc_info=True)
-        log_exception(e, severity='ERROR', module='sales_invoices.void')
-        flash(f'Error voiding invoice: {str(e)}', 'error')
-
+        current_app.logger.error('Error posting sales invoice', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.post')
+        flash(f'Error posting Sales Invoice: {str(e)}', 'error')
     return redirect(url_for('sales_invoices.view', id=id))
 
 
@@ -690,69 +915,243 @@ def void(id):
 @login_required
 @accountant_or_admin_required
 def cancel(id):
-    """Cancel sales invoice."""
     invoice = _get_invoice_or_404(id)
-
-    if invoice.status == 'cancelled':
-        flash('Invoice is already cancelled.', 'error')
+    if invoice.status != 'posted':
+        flash('Only posted Sales Invoices can be cancelled.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
-
     if invoice.amount_paid > 0:
-        flash('Cannot cancel invoice with payments applied.', 'error')
+        flash('Cannot cancel a Sales Invoice with payments applied. Reverse the payments first.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
-
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Cancellation reason must be at least 10 characters.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    reversal_date_str = request.form.get('reversal_date', '')
     try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    try:
+        _create_reversal_je(invoice, reversal_date, current_user.id, label='Cancel')
         invoice.status = 'cancelled'
         invoice.cancelled_at = ph_now()
+        invoice.cancel_reason = cancel_reason
         db.session.commit()
-
-        # Audit log
-        log_audit(
-            module='sales_invoice',
-            action='cancel',
-            record_id=invoice.id,
-            record_identifier=f'{invoice.invoice_number} - {invoice.customer_name}',
-            notes=f'Invoice cancelled by {current_user.username}'
-        )
-
-        flash(f'Sales Invoice "{invoice.invoice_number}" cancelled.', 'warning')
-    except Exception as e:
+        log_audit('sales_invoice', 'cancel', invoice.id,
+                  f'{invoice.invoice_number} - {invoice.customer_name}',
+                  notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}')
+        flash(f'Sales Invoice "{invoice.invoice_number}" cancelled. Reversal JE created.', 'success')
+    except ValueError as e:
         db.session.rollback()
-        flash(f'Error cancelling invoice: {str(e)}', 'error')
-
+        flash(str(e), 'error')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error cancelling sales invoice', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.cancel')
+        flash(f'Error cancelling Sales Invoice: {str(e)}', 'error')
     return redirect(url_for('sales_invoices.view', id=id))
 
 
-@sales_invoices_bp.route('/sales-invoices/<int:id>/delete', methods=['POST'])
+@sales_invoices_bp.route('/sales-invoices/<int:id>/void', methods=['POST'])
 @login_required
-@accountant_or_admin_required
-def delete(id):
-    """Delete sales invoice (only drafts can be deleted)."""
+@staff_or_above_required
+def void(id):
     invoice = _get_invoice_or_404(id)
-
     if invoice.status != 'draft':
-        flash('Only draft invoices can be deleted.', 'error')
+        flash('Only draft Sales Invoices can be voided.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
-
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
     try:
-        # Capture values before delete
-        old_values = model_to_dict(invoice, ['invoice_number', 'invoice_date', 'customer_name', 'total_amount', 'status'])
-        invoice_number = invoice.invoice_number
+        if invoice.journal_entry_id:
+            from app.journal_entries.models import JournalEntry as _JE
+            je_to_delete = db.session.get(_JE, invoice.journal_entry_id)
+            if je_to_delete:
+                db.session.delete(je_to_delete)
+            invoice.journal_entry_id = None
+            invoice.journal_entry = None
 
-        db.session.delete(invoice)
+        attachment_paths = []
+        for att in list(invoice.attachments):
+            fp = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                              str(invoice.id), att.stored_filename)
+            attachment_paths.append(fp)
+            db.session.delete(att)
+
+        invoice.status = 'voided'
+        invoice.voided_at = ph_now()
+        invoice.voided_by_id = current_user.id
+        invoice.void_reason = void_reason
         db.session.commit()
 
-        # Audit log
-        log_delete(
-            module='sales_invoice',
-            record_id=id,
-            record_identifier=f'{invoice_number}',
-            old_values=old_values
-        )
+        for fp in attachment_paths:
+            if os.path.isfile(fp):
+                try:
+                    os.remove(fp)
+                except OSError:
+                    current_app.logger.warning(f'Could not remove attachment during void: {fp}')
 
-        flash(f'Sales Invoice "{invoice_number}" deleted successfully!', 'success')
+        log_audit('sales_invoice', 'void', invoice.id,
+                  f'{invoice.invoice_number} - {invoice.customer_name}',
+                  notes=f'Draft voided by {current_user.username}. Reason: {void_reason}. {len(attachment_paths)} attachment(s) deleted.')
+        flash(f'Sales Invoice "{invoice.invoice_number}" voided.', 'warning')
+    except Exception as e:
+        from app.errors.utils import log_exception
+        db.session.rollback()
+        current_app.logger.error('Error voiding sales invoice', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_invoices.void')
+        flash(f'Error voiding Sales Invoice: {str(e)}', 'error')
+    return redirect(url_for('sales_invoices.view', id=id))
+
+
+# ---------------------------------------------------------------------------
+# Print + Attachment routes (Task 13)
+# ---------------------------------------------------------------------------
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/print')
+@login_required
+def print_invoice(id):
+    invoice = _get_invoice_or_404(id)
+    je_lines = []
+    if invoice.journal_entry:
+        vat_account_ids = {
+            c.output_vat_account_id
+            for c in VATCategory.query.all()
+            if c.output_vat_account_id
+        }
+        lines = invoice.journal_entry.lines.all()
+        revenue_lines = sorted(
+            [l for l in lines if (l.credit_amount or 0) > 0 and l.account_id not in vat_account_ids],
+            key=lambda l: l.account.code)
+        vat_lines = sorted(
+            [l for l in lines if (l.credit_amount or 0) > 0 and l.account_id in vat_account_ids],
+            key=lambda l: l.account.code)
+        debit_lines = sorted(
+            [l for l in lines if (l.debit_amount or 0) > 0],
+            key=lambda l: l.account.code)
+        je_lines = revenue_lines + vat_lines + debit_lines
+
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    return render_template('sales_invoices/print.html', invoice=invoice,
+                           je_lines=je_lines, company=company, printed_at=ph_now())
+
+
+@sales_invoices_bp.route('/sales-invoices/<int:id>/attachments/upload', methods=['POST'])
+@login_required
+@staff_or_above_required
+def upload_attachment(id):
+    invoice = _get_invoice_or_404(id)
+    if invoice.status != 'draft':
+        flash('Attachments can only be uploaded while the Sales Invoice is in draft status.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
+    uploaded_file = request.files.get('attachment')
+    if not uploaded_file or uploaded_file.filename == '':
+        flash('No file selected.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
+    original_name = secure_filename(uploaded_file.filename)
+    if not original_name:
+        flash('Invalid filename.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
+    _, ext = os.path.splitext(original_name)
+    ext = ext.lower()
+    mime_type = _ATTACHMENT_ALLOWED.get(ext)
+    if mime_type is None:
+        flash(f'File type "{ext or "unknown"}" is not allowed.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=id))
+    stored_name = uuid.uuid4().hex + ext
+    upload_dir = _invoice_upload_dir(id)
+    file_path = os.path.join(upload_dir, stored_name)
+    try:
+        uploaded_file.save(file_path)
+        file_size = os.path.getsize(file_path)
+        attachment = SalesInvoiceAttachment(
+            invoice_id=invoice.id, original_filename=original_name,
+            stored_filename=stored_name, mime_type=mime_type,
+            file_size=file_size, uploaded_by_id=current_user.id)
+        db.session.add(attachment)
+        db.session.commit()
+        log_create('sales_invoice_attachment', attachment.id,
+                   f'{invoice.invoice_number} / {original_name}',
+                   new_values={'invoice_id': invoice.id, 'original_filename': original_name,
+                               'mime_type': mime_type, 'file_size': file_size})
+        flash(f'File "{original_name}" uploaded successfully.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error deleting invoice: {str(e)}', 'error')
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        flash(f'Error uploading file: {str(e)}', 'error')
+    return redirect(url_for('sales_invoices.edit', id=id))
 
-    return redirect(url_for('sales_invoices.list_invoices'))
+
+@sales_invoices_bp.route('/sales-invoices/attachments/<int:attachment_id>/download')
+@login_required
+def download_attachment(attachment_id):
+    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    invoice = _get_invoice_or_404(attachment.invoice_id)
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                             str(invoice.id), attachment.stored_filename)
+    if not os.path.isfile(file_path):
+        flash('File not found on disk.', 'error')
+        return redirect(url_for('sales_invoices.view', id=invoice.id))
+    response = send_file(file_path, mimetype=attachment.mime_type, as_attachment=True,
+                         download_name=attachment.original_filename)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@sales_invoices_bp.route('/sales-invoices/attachments/<int:attachment_id>/preview')
+@login_required
+def preview_attachment(attachment_id):
+    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    if not attachment.is_image:
+        abort(404)
+    invoice = _get_invoice_or_404(attachment.invoice_id)
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                             str(invoice.id), attachment.stored_filename)
+    if not os.path.isfile(file_path):
+        abort(404)
+    response = send_file(file_path, mimetype=attachment.mime_type, as_attachment=False)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    return response
+
+
+@sales_invoices_bp.route('/sales-invoices/attachments/<int:attachment_id>/delete', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def delete_attachment(attachment_id):
+    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    invoice = _get_invoice_or_404(attachment.invoice_id)
+    if invoice.status != 'draft':
+        flash('Attachments can only be deleted while the Sales Invoice is in draft status.', 'error')
+        return redirect(url_for('sales_invoices.edit', id=invoice.id))
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
+                             str(invoice.id), attachment.stored_filename)
+    old_values = {'invoice_id': invoice.id, 'original_filename': attachment.original_filename,
+                  'mime_type': attachment.mime_type, 'file_size': attachment.file_size}
+    original_name = attachment.original_filename
+    try:
+        db.session.delete(attachment)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting file: {str(e)}', 'error')
+        return redirect(url_for('sales_invoices.edit', id=invoice.id))
+    # DB committed — now clean up disk and audit
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            current_app.logger.warning(f'Could not remove attachment file: {file_path}')
+    log_delete('sales_invoice_attachment', attachment_id,
+               f'{invoice.invoice_number} / {original_name}', old_values=old_values)
+    flash(f'File "{original_name}" deleted.', 'success')
+    return redirect(url_for('sales_invoices.edit', id=invoice.id))

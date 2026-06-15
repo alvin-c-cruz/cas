@@ -705,8 +705,10 @@ def edit(id):
 def view(id):
     cdv = _get_cdv_or_404(id)
     je_entries = _build_cdv_je_preview(cdv)
+    cd_print_access = AppSettings.get_setting('cd_print_access', 'posted_only')
     return render_template('cash_disbursements/detail.html',
-                           cdv=cdv, je_entries=je_entries, now=ph_now())
+                           cdv=cdv, je_entries=je_entries, now=ph_now(),
+                           cd_print_access=cd_print_access)
 
 
 def _apply_ap_payments(cdv):

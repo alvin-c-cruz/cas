@@ -507,8 +507,8 @@ def seed_minimal():
     Creates:
     - 1 admin user
     - 1 main branch (assigned to admin)
-    - 14 app settings
-    - 22 accounts (Assets, Liabilities, Expenses with hierarchical structure)
+    - 17 app settings
+    - 28 accounts (Assets, Liabilities, Equity, Revenue, Expenses with hierarchical structure)
     - 7 VAT categories (V12CG/V12DG/V12SV/V12IM/V0/VEX/INV)
     - 3 WHT codes (WC158, WC160, WC100)
     """
@@ -584,14 +584,17 @@ def seed_minimal():
                 {'key': 'officer_president',    'value': 'Alvin C. Cruz'},
                 {'key': 'officer_secretary',    'value': 'Sofia Esperanza M. Cruz'},
                 {'key': 'officer_treasurer',    'value': 'Joan Hazel M. Cruz'},
+                {'key': 'apv_print_access',     'value': 'posted_only'},
+                {'key': 'sv_print_access',      'value': 'posted_only'},
+                {'key': 'cd_print_access',      'value': 'posted_only'},
             ]
             for s in settings:
                 db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
             db.session.commit()
-            print(f"  [OK] 14 app settings created")
+            print(f"  [OK] 17 app settings created")
 
         # ------------------------------------------------------------------
-        # 4. Chart of Accounts (22 accounts, three-pass seed: parents, then children)
+        # 4. Chart of Accounts (28 accounts, three-pass seed: parents, then children)
         # ------------------------------------------------------------------
         print("\n4. Seeding Chart of Accounts...")
         existing_accounts = Account.query.count()
@@ -600,11 +603,22 @@ def seed_minimal():
         else:
             # Pass 1: Root groups/standalones (no parent_id)
             pass1_accounts = [
-                Account(code='10101', name='Cash on Hand', account_type='Asset', normal_balance='debit', is_active=True),
-                Account(code='10500', name='Input VAT', account_type='Asset', normal_balance='debit', is_active=True),
-                Account(code='20101', name='Accounts Payable - Trade', account_type='Liability', normal_balance='credit', is_active=True),
-                Account(code='20300', name='Withholding Tax Payable', account_type='Liability', normal_balance='credit', is_active=True),
-                Account(code='60100', name='Operating Expenses', account_type='Expense', normal_balance='debit', is_active=True),
+                # Assets
+                Account(code='10101', name='Cash on Hand',                account_type='Asset',     normal_balance='debit',  is_active=True),
+                Account(code='10102', name='Cash in Bank',                account_type='Asset',     normal_balance='debit',  is_active=True),
+                Account(code='10201', name='Accounts Receivable - Trade', account_type='Asset',     normal_balance='debit',  is_active=True),
+                Account(code='10212', name='Creditable WHT Receivable',   account_type='Asset',     normal_balance='debit',  is_active=True),
+                Account(code='10500', name='Input VAT',                   account_type='Asset',     normal_balance='debit',  is_active=True),
+                # Liabilities
+                Account(code='20101', name='Accounts Payable - Trade',    account_type='Liability', normal_balance='credit', is_active=True),
+                Account(code='20300', name='Withholding Tax Payable',     account_type='Liability', normal_balance='credit', is_active=True),
+                Account(code='20401', name='Output VAT Payable',          account_type='Liability', normal_balance='credit', is_active=True),
+                # Equity
+                Account(code='30100', name='Owner\'s Equity',             account_type='Equity',    normal_balance='credit', is_active=True),
+                # Revenue
+                Account(code='40000', name='Sales Revenue',               account_type='Revenue',   normal_balance='credit', is_active=True),
+                # Expense
+                Account(code='60100', name='Operating Expenses',          account_type='Expense',   normal_balance='debit',  is_active=True),
             ]
             db.session.add_all(pass1_accounts)
             db.session.flush()  # Assign IDs
@@ -642,7 +656,7 @@ def seed_minimal():
             ]
             db.session.add_all(pass3_accounts)
             db.session.commit()
-            print("  [OK] 22 accounts created in Chart of Accounts")
+            print("  [OK] 28 accounts created in Chart of Accounts")
 
         # ------------------------------------------------------------------
         # 5. VAT Categories
@@ -652,22 +666,24 @@ def seed_minimal():
         if existing_vat > 0:
             print(f"  [SKIP] {existing_vat} VAT categories already exist")
         else:
-            # Look up input VAT accounts by code (seeded above)
+            # Look up input VAT accounts and output VAT account (seeded above)
             vat_accounts = {
                 a.code: a.id
                 for a in Account.query.filter(Account.code.in_(
                     ['10501', '10502', '10503', '10504']
                 )).all()
             }
+            _output_vat = Account.query.filter_by(code='20401').first()
+            output_vat_id = _output_vat.id if _output_vat else None
 
             vat_categories = [
-                {'code': 'VEX',   'name': 'VAT Exempt',               'rate':  0.00, 'input_vat_account_id': None},
-                {'code': 'V0',    'name': 'VAT Zero-Rated',            'rate':  0.00, 'input_vat_account_id': None},
-                {'code': 'INV',   'name': 'Invalid',                   'rate':  0.00, 'input_vat_account_id': None},
-                {'code': 'V12CG', 'name': 'Input Tax Capital Goods',   'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10501')},
-                {'code': 'V12DG', 'name': 'Input Tax Domestic Goods',  'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10502')},
-                {'code': 'V12SV', 'name': 'Input Tax Services',        'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10503')},
-                {'code': 'V12IM', 'name': 'Input Tax Importation',     'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10504')},
+                {'code': 'VEX',   'name': 'VAT Exempt',               'rate':  0.00, 'input_vat_account_id': None,                      'output_vat_account_id': None},
+                {'code': 'V0',    'name': 'VAT Zero-Rated',            'rate':  0.00, 'input_vat_account_id': None,                      'output_vat_account_id': None},
+                {'code': 'INV',   'name': 'Invalid',                   'rate':  0.00, 'input_vat_account_id': None,                      'output_vat_account_id': None},
+                {'code': 'V12CG', 'name': 'Input Tax Capital Goods',   'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10501'), 'output_vat_account_id': output_vat_id},
+                {'code': 'V12DG', 'name': 'Input Tax Domestic Goods',  'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10502'), 'output_vat_account_id': output_vat_id},
+                {'code': 'V12SV', 'name': 'Input Tax Services',        'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10503'), 'output_vat_account_id': output_vat_id},
+                {'code': 'V12IM', 'name': 'Input Tax Importation',     'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10504'), 'output_vat_account_id': output_vat_id},
             ]
             for cat in vat_categories:
                 db.session.add(VATCategory(
@@ -676,6 +692,7 @@ def seed_minimal():
                     rate=cat['rate'],
                     description='',
                     input_vat_account_id=cat['input_vat_account_id'],
+                    output_vat_account_id=cat['output_vat_account_id'],
                     is_active=True
                 ))
             db.session.commit()

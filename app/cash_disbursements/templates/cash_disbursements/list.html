@@ -41,9 +41,6 @@
 .cdv-filter-bar .choices[data-type*='select-one'].is-open::after {
     border-color: transparent transparent #64748b;
 }
-@media (max-width: 640px) {
-    .cdv-filter-bar .choices { width: 100%; }
-}
 .cdv-date-group {
     display: flex;
     flex-direction: column;
@@ -74,8 +71,8 @@
         <div class="cdv-card-detail">to finish</div>
     </div>
     <div class="cdv-card">
-        <div class="cdv-card-label" style="color:var(--text-2);">Cancelled</div>
-        <div class="cdv-card-value">{{ summary.cancelled_count }}</div>
+        <div class="cdv-card-label" style="color:var(--red);">Cancelled</div>
+        <div class="cdv-card-value" style="color:var(--red);">{{ summary.cancelled_count }}</div>
         <div class="cdv-card-detail">this branch</div>
     </div>
 </div>
@@ -102,6 +99,7 @@
         <option value="cash" {% if pm_filter == 'cash' %}selected{% endif %}>Cash</option>
         <option value="check" {% if pm_filter == 'check' %}selected{% endif %}>Check</option>
         <option value="bank_transfer" {% if pm_filter == 'bank_transfer' %}selected{% endif %}>Bank Transfer</option>
+        <option value="online" {% if pm_filter == 'online' %}selected{% endif %}>Online</option>
     </select>
     <label class="cdv-date-group">
         <span class="cdv-date-group__label">From</span>
@@ -254,11 +252,6 @@
 .cdv-filter-bar select.form-control { width: 160px; }
 .cdv-filter-bar input[type="date"].form-control { width: 150px; }
 .cdv-filter-search { flex: 1 1 200px; min-width: 180px; }
-@media (max-width: 640px) {
-    .cdv-filter-bar .form-control,
-    .cdv-filter-bar select.form-control,
-    .cdv-filter-bar input[type="date"].form-control { width: 100%; }
-}
 .btn-action {
     padding: 4px 8px;
     border-radius: 4px;
@@ -271,7 +264,13 @@
 }
 .btn-action:hover { background: var(--border); }
 @media (max-width: 1024px) { .cdv-summary-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 640px)  { .cdv-summary-grid { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+    .cdv-summary-grid { grid-template-columns: 1fr; }
+    .cdv-filter-bar .form-control,
+    .cdv-filter-bar select.form-control,
+    .cdv-filter-bar input[type="date"].form-control { width: 100%; }
+    .cdv-filter-bar .choices { width: 100%; }
+}
 </style>
 
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>

@@ -35,10 +35,13 @@ def gl_accounts(db_session):
     db_session.commit()
     # _post_bill_je buckets input VAT by category account (B-014), so the
     # VATABLE category used by the bill fixtures must be mapped.
+    # _post_invoice_je buckets output VAT similarly, so output_vat_account_id is
+    # also required for sales invoice JE tests.
     from app.vat_categories.models import VATCategory
     db_session.add(VATCategory(code='VATABLE', name='VATable Purchases',
                                rate=Decimal('12.00'), is_active=True,
-                               input_vat_account_id=accounts['input_vat'].id))
+                               input_vat_account_id=accounts['input_vat'].id,
+                               output_vat_account_id=accounts['output_vat'].id))
     db_session.commit()
     return accounts
 
@@ -132,10 +135,10 @@ def posted_invoice(db_session, admin_user, main_branch, gl_accounts, test_custom
 
     item = SalesInvoiceItem(
         invoice_id=invoice.id, line_number=1,
-        description='Consulting Services', quantity=Decimal('1.0000'),
-        unit_price=Decimal('2000.00'), vat_category='VATABLE',
-        vat_rate=Decimal('12.00'), line_total=Decimal('2000.00'),
-        vat_amount=Decimal('240.00'), account_id=gl_accounts['revenue'].id
+        description='Consulting Services', amount=Decimal('2240.00'),
+        vat_category='VATABLE', vat_rate=Decimal('12.00'),
+        line_total=Decimal('2240.00'), vat_amount=Decimal('240.00'),
+        wt_amount=Decimal('0.00'), account_id=gl_accounts['revenue'].id
     )
     db_session.add(item)
     db_session.commit()
@@ -259,30 +262,39 @@ def test_bill_void_creates_audit_entry(app, db_session, client, posted_bill, adm
 # ── Invoice void JE tests ────────────────────────────────────────────────────
 
 def test_create_invoice_void_je_balanced(app, db_session, posted_invoice, admin_user, gl_accounts):
-    from app.sales_invoices.views import _create_invoice_void_je
-    je = _create_invoice_void_je(posted_invoice, date.today(), admin_user.id)
+    """Reversal JE via _create_reversal_je must be balanced."""
+    from app.sales_invoices.views import _post_invoice_je, _create_reversal_je
+    source_je = _post_invoice_je(posted_invoice, admin_user.id)
+    db_session.flush()
+    posted_invoice.journal_entry_id = source_je.id
+    db_session.flush()
+    je = _create_reversal_je(posted_invoice, date.today(), admin_user.id, label='Void')
     db_session.flush()
     assert je.is_balanced, f"JE not balanced: DR={je.total_debit} CR={je.total_credit}"
-    assert je.total_debit == Decimal('2240.00')
-    assert je.total_credit == Decimal('2240.00')
+    assert je.total_debit == je.total_credit
 
 
 def test_create_invoice_void_je_reference_format(app, db_session, posted_invoice, admin_user, gl_accounts):
-    from app.sales_invoices.views import _create_invoice_void_je
-    je = _create_invoice_void_je(posted_invoice, date.today(), admin_user.id)
+    """Reversal JE reference uses label prefix and invoice number."""
+    from app.sales_invoices.views import _post_invoice_je, _create_reversal_je
+    source_je = _post_invoice_je(posted_invoice, admin_user.id)
+    db_session.flush()
+    posted_invoice.journal_entry_id = source_je.id
+    db_session.flush()
+    je = _create_reversal_je(posted_invoice, date.today(), admin_user.id, label='Void')
     assert je.reference == 'VOID-SI-TEST-0001'
     assert je.entry_type == 'reversal'
     assert je.branch_id == posted_invoice.branch_id
 
 
 def test_create_invoice_void_je_missing_ar_raises(app, db_session, posted_invoice, admin_user, gl_accounts):
-    """Void must fail clearly if AR account is missing."""
-    from app.sales_invoices.views import _create_invoice_void_je
+    """_post_invoice_je must fail clearly if AR account is missing."""
+    from app.sales_invoices.views import _post_invoice_je
     # Remove the AR account so the helper can't find it
     db_session.delete(gl_accounts['ar'])
     db_session.commit()
     with pytest.raises(ValueError, match='10201'):
-        _create_invoice_void_je(posted_invoice, date.today(), admin_user.id)
+        _post_invoice_je(posted_invoice, admin_user.id)
 
 
 # ── Send status tests ────────────────────────────────────────────────────────

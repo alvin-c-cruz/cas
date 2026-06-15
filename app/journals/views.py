@@ -5,6 +5,7 @@ from app import db
 from app.journal_entries.models import JournalEntry
 from app.utils import ph_now
 from app.journals.ap_journal_data import resolve_period, build_columnar, build_ap_journal_xlsx
+from app.journals.cd_journal_data import build_columnar_cd
 from datetime import datetime
 
 journals_bp = Blueprint('journals', __name__, template_folder='templates')
@@ -83,6 +84,44 @@ def _entry_identity(entry, bill_map):
         (bill.vendor_invoice_number if bill else '') or '',
         (bill.vendor_name if bill else '') or '—',
         (bill.notes if bill else '') or '',
+    )
+
+
+def _cd_journal_context(branch_id):
+    """Build the columnar CD journal data for a branch + period from request.args."""
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    period = resolve_period(request.args, today=ph_now().date())
+
+    entries = JournalEntry.query.filter(
+        JournalEntry.entry_type == 'disbursement',
+        JournalEntry.branch_id == branch_id,
+        JournalEntry.entry_date >= period['date_from'],
+        JournalEntry.entry_date <= period['date_to'],
+    ).order_by(JournalEntry.entry_date).all()
+    posted = [e for e in entries if e.status == 'posted']
+    drafts = [e for e in entries if e.status == 'draft']
+
+    refs = [e.reference for e in entries if e.reference]
+    cdvs = CashDisbursementVoucher.query.filter(
+        CashDisbursementVoucher.cdv_number.in_(refs)
+    ).all() if refs else []
+    cdv_map = {c.cdv_number: c for c in cdvs}
+    cancelled_refs = {c.cdv_number for c in cdvs if c.status == 'cancelled'}
+
+    ap_id, wt_id, vat_ids = _gl_account_ids()
+    matrix = build_columnar_cd(posted, drafts, ap_id, wt_id, vat_ids,
+                               cancelled_refs=cancelled_refs)
+    return period, matrix, cdv_map
+
+
+def _cd_entry_identity(entry, cdv_map):
+    """Return (cd_no, check_no, vendor, particulars) for the left identifier columns."""
+    cdv = cdv_map.get(entry.reference)
+    return (
+        entry.reference or '—',
+        (cdv.check_number if cdv and cdv.check_number else '') or '',
+        (cdv.vendor_name if cdv else '') or '—',
+        (cdv.notes if cdv else '') or '',
     )
 
 
@@ -188,4 +227,64 @@ def cr_journal():
 @journals_bp.route('/journals/cd')
 @login_required
 def cd_journal():
-    return redirect(url_for('dashboard.under_development', feature='Cash Disbursements Journal'))
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to view journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    period, matrix, cdv_map = _cd_journal_context(branch_id)
+    return render_template('journals/cd_journal.html',
+                           period=period, matrix=matrix, cdv_map=cdv_map)
+
+
+@journals_bp.route('/journals/cd/export')
+@login_required
+def cd_journal_export():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to export journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    from app.journals.cd_journal_data import build_cd_journal_xlsx
+    period, matrix, cdv_map = _cd_journal_context(branch_id)
+
+    branch = db.session.get(Branch, branch_id)
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
+    company_name = AppSettings.get_setting('company_name') or ''
+
+    if period['mode'] == 'month':
+        filename = f"CD-Journal-{period['year']}-{period['month']:02d}.xlsx"
+    else:
+        filename = f"CD-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
+
+    return build_cd_journal_xlsx(
+        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
+        period_label=period['label'], company_name=company_name,
+        branch_name=branch_name, filename=filename,
+        identity=lambda e: _cd_entry_identity(e, cdv_map))
+
+
+@journals_bp.route('/journals/cd/print')
+@login_required
+def cd_journal_print():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    period, matrix, cdv_map = _cd_journal_context(branch_id)
+
+    branch = db.session.get(Branch, branch_id)
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
+    company_name = AppSettings.get_setting('company_name') or ''
+
+    return render_template('journals/cd_journal_print.html',
+                           period=period, matrix=matrix, cdv_map=cdv_map,
+                           company_name=company_name, branch_name=branch_name,
+                           printed_at=ph_now())

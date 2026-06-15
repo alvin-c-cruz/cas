@@ -269,3 +269,26 @@ class TestCompanyLogo:
         # Serving route now 404s
         resp = client.get('/settings/logo')
         assert resp.status_code == 404
+
+
+class TestPrintAccessSettings:
+    def test_sv_print_access_saved_when_posted(
+            self, client, db_session, admin_user, main_branch):
+        login(client)
+        data = dict(VALID_FORM_DATA)
+        data['apv_print_access'] = 'posted_only'
+        data['sv_print_access'] = 'draft_and_posted'
+        data['cd_print_access'] = 'draft_and_posted'
+        resp = client.post('/settings', data=data, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'saved successfully' in resp.data
+        assert AppSettings.get_setting('sv_print_access') == 'draft_and_posted'
+        assert AppSettings.get_setting('cd_print_access') == 'draft_and_posted'
+
+    def test_sv_cd_print_access_fields_rendered_on_settings_page(
+            self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/settings')
+        html = resp.data.decode()
+        assert 'sv_print_access' in html
+        assert 'cd_print_access' in html
