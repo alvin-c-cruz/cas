@@ -130,7 +130,7 @@ def create_app(config_name=None):
 
     # Ensure upload directories exist at startup
     import os as _os
-    _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'purchase_bills'), exist_ok=True)
+    _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'accounts_payable'), exist_ok=True)
     _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'company'), exist_ok=True)
 
     # Initialize caching
@@ -164,7 +164,7 @@ def create_app(config_name=None):
     from app.notifications.models import Notification
     from app.settings import AppSettings
     from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem, SalesInvoiceAttachment
-    from app.purchase_bills.models import PurchaseBill, PurchaseBillItem, PurchaseBillAttachment
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem, AccountsPayableAttachment
     from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
     from app.receipts.models import Receipt
     from app.journal_entries.models import JournalEntry, JournalEntryLine
@@ -183,7 +183,7 @@ def create_app(config_name=None):
     from app.customers.views import customers_bp
     from app.audit.views import audit_bp
     from app.sales_invoices.views import sales_invoices_bp
-    from app.purchase_bills.views import purchase_bills_bp
+    from app.accounts_payable.views import accounts_payable_bp
     from app.receipts.views import receipts_bp
     from app.journal_entries.views import journal_entries_bp
     from app.journals.views import journals_bp
@@ -204,7 +204,7 @@ def create_app(config_name=None):
     app.register_blueprint(customers_bp)
     app.register_blueprint(audit_bp)
     app.register_blueprint(sales_invoices_bp)
-    app.register_blueprint(purchase_bills_bp)
+    app.register_blueprint(accounts_payable_bp)
     app.register_blueprint(receipts_bp)
     app.register_blueprint(journal_entries_bp)
     app.register_blueprint(journals_bp)

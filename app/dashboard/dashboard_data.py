@@ -16,7 +16,7 @@ from app import db
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.accounts.models import Account
 from app.sales_invoices.models import SalesInvoice
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 
 
 def get_revenue_stats(year, month, branch_id=None, as_of_date=None):
@@ -209,20 +209,20 @@ def get_payables_stats(as_of_date=None, branch_id=None):
         as_of_date = date.today()
 
     base_filter = [
-        PurchaseBill.status.in_(['posted', 'partially_paid']),
-        PurchaseBill.bill_date <= as_of_date,
+        AccountsPayable.status.in_(['posted', 'partially_paid']),
+        AccountsPayable.ap_date <= as_of_date,
     ]
     if branch_id is not None:
-        base_filter.append(PurchaseBill.branch_id == branch_id)
+        base_filter.append(AccountsPayable.branch_id == branch_id)
 
     total_payable, count = db.session.query(
-        func.sum(PurchaseBill.total_amount - PurchaseBill.amount_paid),
-        func.count(PurchaseBill.id)
+        func.sum(AccountsPayable.total_amount - AccountsPayable.amount_paid),
+        func.count(AccountsPayable.id)
     ).filter(*base_filter).one()
 
     overdue_amount = db.session.query(
-        func.sum(PurchaseBill.total_amount - PurchaseBill.amount_paid)
-    ).filter(*base_filter, PurchaseBill.due_date < as_of_date).scalar()
+        func.sum(AccountsPayable.total_amount - AccountsPayable.amount_paid)
+    ).filter(*base_filter, AccountsPayable.due_date < as_of_date).scalar()
 
     return {
         'total': float(total_payable or Decimal('0.00')),
@@ -289,19 +289,19 @@ def get_top_vendors(limit=5, as_of_date=None, branch_id=None):
         as_of_date = date.today()
 
     query = db.session.query(
-        PurchaseBill.vendor_name,
-        func.sum(PurchaseBill.total_amount).label('total_purchases'),
-        func.count(PurchaseBill.id).label('bill_count')
+        AccountsPayable.vendor_name,
+        func.sum(AccountsPayable.total_amount).label('total_purchases'),
+        func.count(AccountsPayable.id).label('bill_count')
     ).filter(
-        PurchaseBill.status.in_(['posted', 'paid', 'partially_paid']),
-        PurchaseBill.bill_date <= as_of_date
+        AccountsPayable.status.in_(['posted', 'paid', 'partially_paid']),
+        AccountsPayable.ap_date <= as_of_date
     )
     if branch_id is not None:
-        query = query.filter(PurchaseBill.branch_id == branch_id)
+        query = query.filter(AccountsPayable.branch_id == branch_id)
     top_vendors_data = query.group_by(
-        PurchaseBill.vendor_name
+        AccountsPayable.vendor_name
     ).order_by(
-        func.sum(PurchaseBill.total_amount).desc()
+        func.sum(AccountsPayable.total_amount).desc()
     ).limit(limit).all()
 
     vendors = []

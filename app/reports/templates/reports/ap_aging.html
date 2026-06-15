@@ -88,9 +88,9 @@
                                         {% for bill in vendor.bills %}
                                         <tr>
                                             <td>
-                                                <a href="{{ url_for('purchase_bills.view', id=bill.bill_id) }}" style="color:var(--blue)">{{ bill.bill_number }}</a>
+                                                <a href="{{ url_for('accounts_payable.view', id=bill.ap_id) }}" style="color:var(--blue)">{{ bill.ap_number }}</a>
                                             </td>
-                                            <td>{{ bill.bill_date.strftime('%Y-%m-%d') }}</td>
+                                            <td>{{ bill.ap_date.strftime('%Y-%m-%d') }}</td>
                                             <td>{{ bill.due_date.strftime('%Y-%m-%d') if bill.due_date else 'N/A' }}</td>
                                             <td style="text-align:right;">
                                                 {% if bill.days_overdue > 0 %}

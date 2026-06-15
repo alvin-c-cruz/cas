@@ -575,8 +575,8 @@ def delete_user(id):
         return redirect(url_for('users.list_users'))
 
     # Block deletion if user has NOT-NULL foreign key references
-    from app.purchase_bills.models import PurchaseBillAttachment
-    attachment_count = PurchaseBillAttachment.query.filter_by(uploaded_by_id=user.id).count()
+    from app.accounts_payable.models import AccountsPayableAttachment
+    attachment_count = AccountsPayableAttachment.query.filter_by(uploaded_by_id=user.id).count()
     if attachment_count > 0:
         flash(f'Cannot delete user "{user.username}": {attachment_count} purchase bill attachment(s) uploaded by this user exist.', 'error')
         return redirect(url_for('users.list_users'))

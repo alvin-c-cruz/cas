@@ -145,9 +145,9 @@
         <tbody>
           {% for ap_line in cdv.ap_lines %}
           <tr>
-            <td><a href="{{ url_for('purchase_bills.view', id=ap_line.bill_id) }}"
-                   style="color:var(--blue);font-weight:600;">{{ ap_line.bill_number }}</a></td>
-            <td>{{ ap_line.bill.bill_date.strftime('%b %d, %Y') if ap_line.bill else '—' }}</td>
+            <td><a href="{{ url_for('accounts_payable.view', id=ap_line.ap_id) }}"
+                   style="color:var(--blue);font-weight:600;">{{ ap_line.ap_number }}</a></td>
+            <td>{{ ap_line.accounts_payable.ap_date.strftime('%b %d, %Y') if ap_line.accounts_payable else '—' }}</td>
             <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap_line.original_balance) }}</td>
             <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(ap_line.amount_applied) }}</td>
           </tr>

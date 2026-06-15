@@ -14,7 +14,7 @@ from sqlalchemy import func, extract
 from sqlalchemy.orm import selectinload
 from app import db
 from app.sales_invoices.models import SalesInvoice
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.customers.models import Customer
 from app.vendors.models import Vendor
 
@@ -107,13 +107,13 @@ def get_summary_list_of_purchases(year, month, branch_id=None):
         List of dicts with purchases summary by vendor
     """
     # Query posted purchase bills for the specified month
-    query = PurchaseBill.query.filter(
-        extract('year', PurchaseBill.bill_date) == year,
-        extract('month', PurchaseBill.bill_date) == month,
-        PurchaseBill.status.in_(['posted', 'paid', 'partially_paid'])
+    query = AccountsPayable.query.filter(
+        extract('year', AccountsPayable.ap_date) == year,
+        extract('month', AccountsPayable.ap_date) == month,
+        AccountsPayable.status.in_(['posted', 'paid', 'partially_paid'])
     )
     if branch_id:
-        query = query.filter(PurchaseBill.branch_id == branch_id)
+        query = query.filter(AccountsPayable.branch_id == branch_id)
     bills = query.all()
 
     # Group by vendor and calculate totals
@@ -195,16 +195,16 @@ def get_alphalist_of_payees(year, quarter, branch_id=None):
     end_month = start_month + 2
 
     # Query purchase bills with withholding tax
-    query = PurchaseBill.query.filter(
-        extract('year', PurchaseBill.bill_date) == year,
-        extract('month', PurchaseBill.bill_date) >= start_month,
-        extract('month', PurchaseBill.bill_date) <= end_month,
-        PurchaseBill.status.in_(['posted', 'paid', 'partially_paid']),
-        PurchaseBill.withholding_tax_amount > 0
+    query = AccountsPayable.query.filter(
+        extract('year', AccountsPayable.ap_date) == year,
+        extract('month', AccountsPayable.ap_date) >= start_month,
+        extract('month', AccountsPayable.ap_date) <= end_month,
+        AccountsPayable.status.in_(['posted', 'paid', 'partially_paid']),
+        AccountsPayable.withholding_tax_amount > 0
     )
     if branch_id:
-        query = query.filter(PurchaseBill.branch_id == branch_id)
-    bills = query.options(selectinload(PurchaseBill.line_items)).all()
+        query = query.filter(AccountsPayable.branch_id == branch_id)
+    bills = query.options(selectinload(AccountsPayable.line_items)).all()
 
     # Group by vendor (payee) and calculate totals
     payee_totals = {}
@@ -236,7 +236,7 @@ def get_alphalist_of_payees(year, quarter, branch_id=None):
             payee_totals[row_key]['gross_income'] += sum(i.line_total for i in items)
             payee_totals[row_key]['tax_withheld'] += sum(i.wt_amount for i in items)
 
-            month = bill.bill_date.month
+            month = bill.ap_date.month
             if month not in payee_totals[row_key]['month_paid']:
                 payee_totals[row_key]['month_paid'].append(month)
 

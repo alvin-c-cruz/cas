@@ -1128,7 +1128,7 @@
                         <span class="nav-text">Cash Receipts</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('purchase_bills.list_bills') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('purchase_bills.') %}active{% endif %}">
+                    <a href="{{ url_for('accounts_payable.list_ap') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts_payable.') %}active{% endif %}">
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Accounts Payable</span>
                     </a>
@@ -1358,7 +1358,7 @@
                         <a href="{{ url_for('sales_invoices.create') }}" class="topbar-new-item">
                             📄 New Sales Invoice
                         </a>
-                        <a href="{{ url_for('purchase_bills.create') }}" class="topbar-new-item">
+                        <a href="{{ url_for('accounts_payable.create') }}" class="topbar-new-item">
                             📋 New AP Voucher
                         </a>
                         <a href="{{ url_for('cash_disbursements.create') }}" class="topbar-new-item">

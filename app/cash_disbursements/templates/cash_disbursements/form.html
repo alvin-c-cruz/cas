@@ -631,8 +631,8 @@ function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2).replace(/\B(?=(\
 {% if cdv %}
 {% for ap_line in ap_lines %}
 apLines.push({
-    bill_id:               {{ ap_line.bill_id }},
-    bill_number:           {{ ap_line.bill_number | tojson }},
+    bill_id:               {{ ap_line.ap_id }},
+    bill_number:           {{ ap_line.ap_number | tojson }},
     vendor_invoice_number: '',
     bill_date:             '',
     original_balance:      {{ ap_line.original_balance }},
@@ -641,9 +641,9 @@ apLines.push({
 (function() {
     const tbody = document.getElementById('apLinesBody');
     const tr = document.createElement('tr');
-    tr.id = 'ap-row-{{ ap_line.bill_id }}';
+    tr.id = 'ap-row-{{ ap_line.ap_id }}';
     tr.innerHTML = `
-        <td style="font-family:var(--mono)">{{ ap_line.bill_number }}</td>
+        <td style="font-family:var(--mono)">{{ ap_line.ap_number }}</td>
         <td>-</td>
         <td>-</td>
         <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt({{ ap_line.original_balance }})}</td>
@@ -651,10 +651,10 @@ apLines.push({
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt({{ ap_line.amount_applied }})}"
                    onfocus="amtFocus(this)"
-                   onblur="onApAmountBlur(this, {{ ap_line.bill_id }}, {{ ap_line.original_balance }})"
-                   oninput="onApAmountInput(this, {{ ap_line.bill_id }}, {{ ap_line.original_balance }})">
+                   onblur="onApAmountBlur(this, {{ ap_line.ap_id }}, {{ ap_line.original_balance }})"
+                   oninput="onApAmountInput(this, {{ ap_line.ap_id }}, {{ ap_line.original_balance }})">
         </td>
-        <td><button type="button" class="btn-action" onclick="removeApLine({{ ap_line.bill_id }})">X</button></td>
+        <td><button type="button" class="btn-action" onclick="removeApLine({{ ap_line.ap_id }})">X</button></td>
     `;
     tbody.appendChild(tr);
 })();

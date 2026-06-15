@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from app import db
 from app.sales_invoices.models import SalesInvoice
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 from app.reports.bir import (
     get_summary_list_of_sales,
     get_summary_list_of_purchases,
@@ -156,11 +156,11 @@ def ap_aging():
         as_of_date = date.today()
 
     current_branch_id = session.get('selected_branch_id')
-    bills = PurchaseBill.query.filter(
-        PurchaseBill.status.in_(['posted', 'partially_paid']),
-        PurchaseBill.balance > 0,
-        PurchaseBill.branch_id == current_branch_id
-    ).order_by(PurchaseBill.vendor_name, PurchaseBill.due_date).all()
+    bills = AccountsPayable.query.filter(
+        AccountsPayable.status.in_(['posted', 'partially_paid']),
+        AccountsPayable.balance > 0,
+        AccountsPayable.branch_id == current_branch_id
+    ).order_by(AccountsPayable.vendor_name, AccountsPayable.due_date).all()
 
     vendors = {}
     for bill in bills:
@@ -178,9 +178,9 @@ def ap_aging():
             }
         bucket = calculate_age_bucket(bill.due_date, as_of_date)
         vendors[key]['bills'].append({
-            'bill_id': bill.id,
-            'bill_number': bill.bill_number,
-            'bill_date': bill.bill_date,
+            'ap_id': bill.id,
+            'ap_number': bill.ap_number,
+            'ap_date': bill.ap_date,
             'due_date': bill.due_date,
             'balance_due': bill.balance,
             'bucket': bucket,
@@ -522,25 +522,25 @@ def ap_aging_export_excel():
     except ValueError:
         as_of_date = date.today()
     current_branch_id = session.get('selected_branch_id')
-    bills = PurchaseBill.query.filter(
-        PurchaseBill.status.in_(['posted', 'partially_paid']),
-        PurchaseBill.balance > 0,
-        PurchaseBill.branch_id == current_branch_id,
-    ).order_by(PurchaseBill.vendor_name, PurchaseBill.due_date).all()
+    bills = AccountsPayable.query.filter(
+        AccountsPayable.status.in_(['posted', 'partially_paid']),
+        AccountsPayable.balance > 0,
+        AccountsPayable.branch_id == current_branch_id,
+    ).order_by(AccountsPayable.vendor_name, AccountsPayable.due_date).all()
     rows = []
     for bill in bills:
         bucket = calculate_age_bucket(bill.due_date, as_of_date)
         rows.append({
-            'bill_number': bill.bill_number,
+            'ap_number': bill.ap_number,
             'vendor_name': bill.vendor_name,
-            'bill_date': bill.bill_date,
+            'ap_date': bill.ap_date,
             'due_date': bill.due_date,
             'balance': float(bill.balance),
             'bucket': bucket,
             'days_overdue': max(0, (as_of_date - bill.due_date).days) if bill.due_date else 0,
         })
     headers = ['Bill #', 'Vendor', 'Bill Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
-    columns = ['bill_number', 'vendor_name', 'bill_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    columns = ['ap_number', 'vendor_name', 'ap_date', 'due_date', 'balance', 'bucket', 'days_overdue']
     return export_to_excel(rows, columns, headers,
                            filename=f'ap_aging_{as_of_date.isoformat()}.xlsx',
                            title=f'AP Aging as of {as_of_date}')
@@ -555,24 +555,24 @@ def ap_aging_export_csv():
     except ValueError:
         as_of_date = date.today()
     current_branch_id = session.get('selected_branch_id')
-    bills = PurchaseBill.query.filter(
-        PurchaseBill.status.in_(['posted', 'partially_paid']),
-        PurchaseBill.balance > 0,
-        PurchaseBill.branch_id == current_branch_id,
-    ).order_by(PurchaseBill.vendor_name, PurchaseBill.due_date).all()
+    bills = AccountsPayable.query.filter(
+        AccountsPayable.status.in_(['posted', 'partially_paid']),
+        AccountsPayable.balance > 0,
+        AccountsPayable.branch_id == current_branch_id,
+    ).order_by(AccountsPayable.vendor_name, AccountsPayable.due_date).all()
     rows = []
     for bill in bills:
         bucket = calculate_age_bucket(bill.due_date, as_of_date)
         rows.append({
-            'bill_number': bill.bill_number,
+            'ap_number': bill.ap_number,
             'vendor_name': bill.vendor_name,
-            'bill_date': bill.bill_date,
+            'ap_date': bill.ap_date,
             'due_date': bill.due_date,
             'balance': float(bill.balance),
             'bucket': bucket,
             'days_overdue': max(0, (as_of_date - bill.due_date).days) if bill.due_date else 0,
         })
     headers = ['Bill #', 'Vendor', 'Bill Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
-    columns = ['bill_number', 'vendor_name', 'bill_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    columns = ['ap_number', 'vendor_name', 'ap_date', 'due_date', 'balance', 'bucket', 'days_overdue']
     return export_to_csv(rows, columns, headers,
                          filename=f'ap_aging_{as_of_date.isoformat()}.csv')

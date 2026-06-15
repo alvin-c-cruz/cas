@@ -81,8 +81,8 @@
   <tbody>
     {% for ap_line in cdv.ap_lines %}
     <tr>
-      <td>{{ ap_line.bill_number }}</td>
-      <td>{{ ap_line.bill.bill_date.strftime('%b %d, %Y') if ap_line.bill else '—' }}</td>
+      <td>{{ ap_line.ap_number }}</td>
+      <td>{{ ap_line.accounts_payable.ap_date.strftime('%b %d, %Y') if ap_line.accounts_payable else '—' }}</td>
       <td class="right mono">₱{{ '{:,.2f}'.format(ap_line.original_balance) }}</td>
       <td class="right mono">₱{{ '{:,.2f}'.format(ap_line.amount_applied) }}</td>
     </tr>

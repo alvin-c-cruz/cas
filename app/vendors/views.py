@@ -11,7 +11,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.vendors.forms import VendorForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.utils.export import export_to_excel, export_to_csv
-from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from datetime import datetime
 
 vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
@@ -56,7 +56,7 @@ def list_vendors():
 def detail(id):
     vendor = Vendor.query.get_or_404(id)
     tab = request.args.get('tab', 'overview')
-    total_bills = PurchaseBill.query.filter_by(vendor_id=id).count()
+    total_bills = AccountsPayable.query.filter_by(vendor_id=id).count()
 
     if tab == 'bills':
         page = request.args.get('page', 1, type=int)
@@ -65,21 +65,21 @@ def detail(id):
         status_filter = request.args.get('status', 'all')
 
         from datetime import date as date_type
-        query = PurchaseBill.query.filter_by(vendor_id=id)
+        query = AccountsPayable.query.filter_by(vendor_id=id)
         if date_from_str:
             try:
-                query = query.filter(PurchaseBill.bill_date >= date_type.fromisoformat(date_from_str))
+                query = query.filter(AccountsPayable.ap_date >= date_type.fromisoformat(date_from_str))
             except ValueError:
                 pass
         if date_to_str:
             try:
-                query = query.filter(PurchaseBill.bill_date <= date_type.fromisoformat(date_to_str))
+                query = query.filter(AccountsPayable.ap_date <= date_type.fromisoformat(date_to_str))
             except ValueError:
                 pass
         if status_filter and status_filter != 'all':
-            query = query.filter(PurchaseBill.status == status_filter)
+            query = query.filter(AccountsPayable.status == status_filter)
 
-        pagination = query.order_by(PurchaseBill.bill_date.desc()).paginate(
+        pagination = query.order_by(AccountsPayable.ap_date.desc()).paginate(
             page=page, per_page=20, error_out=False
         )
         return render_template(
@@ -295,7 +295,7 @@ def delete(id):
     """Delete vendor"""
     vendor = Vendor.query.get_or_404(id)
 
-    bill_count = PurchaseBill.query.filter_by(vendor_id=vendor.id).count()
+    bill_count = AccountsPayable.query.filter_by(vendor_id=vendor.id).count()
     if bill_count > 0:
         flash(f'Cannot delete vendor "{vendor.name}": {bill_count} associated purchase bill(s) exist.', 'error')
         return redirect(url_for('vendors.list_vendors'))
@@ -433,10 +433,10 @@ def vendor_defaults(id):
     """Return vendor's WHT codes and default VAT category for AJAX."""
     vendor = Vendor.query.get_or_404(id)
     last_item = (
-        PurchaseBillItem.query
-        .join(PurchaseBill)
-        .filter(PurchaseBill.vendor_id == id, PurchaseBill.status != 'voided')
-        .order_by(PurchaseBill.created_at.desc(), PurchaseBillItem.line_number.asc())
+        AccountsPayableItem.query
+        .join(AccountsPayable)
+        .filter(AccountsPayable.vendor_id == id, AccountsPayable.status != 'voided')
+        .order_by(AccountsPayable.created_at.desc(), AccountsPayableItem.line_number.asc())
         .first()
     )
     return jsonify({

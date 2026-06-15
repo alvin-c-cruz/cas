@@ -103,29 +103,29 @@
                 {% for row in matrix.rows %}
                 {% if row.is_voided %}
                 <tr class="ap-jrnl-voided">
-                    <td>{{ row.bill.bill_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ row.ap.ap_date.strftime('%b %d, %Y') }}</td>
                     <td>
-                        <a href="{{ url_for('purchase_bills.view', id=row.bill.id) }}" style="font-weight:600;">{{ row.bill.bill_number }}</a>
+                        <a href="{{ url_for('accounts_payable.view', id=row.ap.id) }}" style="font-weight:600;">{{ row.ap.ap_number }}</a>
                         <span class="ap-jrnl-voided-badge ap-jrnl-no-strike">VOIDED</span>
                     </td>
-                    <td>{{ row.bill.vendor_invoice_number or '' }}</td>
-                    <td>{{ row.bill.vendor_name }}</td>
-                    <td>{{ (row.bill.notes or '') }}</td>
+                    <td>{{ row.ap.vendor_invoice_number or '' }}</td>
+                    <td>{{ row.ap.vendor_name }}</td>
+                    <td>{{ (row.ap.notes or '') }}</td>
                     {% for col in matrix.columns %}<td class="ap-jrnl-no-strike"></td>{% endfor %}
                 </tr>
                 {% else %}
-                {% set bill = bill_map.get(row.entry.reference) %}
+                {% set ap = ap_map.get(row.entry.reference) %}
                 <tr>
                     <td>{{ row.entry.entry_date.strftime('%b %d, %Y') }}</td>
                     <td>
-                        {% if bill %}
-                        <a href="{{ url_for('purchase_bills.view', id=bill.id) }}" style="font-weight:600;">{{ row.entry.reference }}</a>
+                        {% if ap %}
+                        <a href="{{ url_for('accounts_payable.view', id=ap.id) }}" style="font-weight:600;">{{ row.entry.reference }}</a>
                         {% else %}{{ row.entry.reference or '&mdash;' }}{% endif %}
                         {% if row.is_draft %}<span class="ap-jrnl-draft-badge">Draft</span>{% endif %}
                     </td>
-                    <td>{{ bill.vendor_invoice_number if bill else '' }}</td>
-                    <td>{{ bill.vendor_name if bill else '&mdash;' }}</td>
-                    <td>{{ (bill.notes if bill else '') or '' }}</td>
+                    <td>{{ ap.vendor_invoice_number if ap else '' }}</td>
+                    <td>{{ ap.vendor_name if ap else '&mdash;' }}</td>
+                    <td>{{ (ap.notes if ap else '') or '' }}</td>
                     {% for col in matrix.columns %}
                     <td class="ap-jrnl-num">
                         {%- if row.is_draft -%}

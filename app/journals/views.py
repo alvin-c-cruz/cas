@@ -59,7 +59,7 @@ def _si_gl_account_ids():
 
 def _ap_journal_context(branch_id):
     """Build the columnar AP journal data for a branch + period from request.args."""
-    from app.purchase_bills.models import PurchaseBill
+    from app.accounts_payable.models import AccountsPayable
     period = resolve_period(request.args, today=ph_now().date())
 
     entries = JournalEntry.query.filter(
@@ -71,30 +71,30 @@ def _ap_journal_context(branch_id):
     posted = [e for e in entries if e.status == 'posted']
     drafts = [e for e in entries if e.status == 'draft']
 
-    voided_bills = PurchaseBill.query.filter(
-        PurchaseBill.branch_id == branch_id,
-        PurchaseBill.status == 'voided',
-        PurchaseBill.bill_date >= period['date_from'],
-        PurchaseBill.bill_date <= period['date_to'],
-    ).order_by(PurchaseBill.bill_date, PurchaseBill.bill_number).all()
+    voided_aps = AccountsPayable.query.filter(
+        AccountsPayable.branch_id == branch_id,
+        AccountsPayable.status == 'voided',
+        AccountsPayable.ap_date >= period['date_from'],
+        AccountsPayable.ap_date <= period['date_to'],
+    ).order_by(AccountsPayable.ap_date, AccountsPayable.ap_number).all()
 
     ap_id, wt_id, vat_ids = _gl_account_ids()
-    matrix = build_columnar(posted, drafts, ap_id, wt_id, vat_ids, voided_bills=voided_bills)
+    matrix = build_columnar(posted, drafts, ap_id, wt_id, vat_ids, voided_bills=voided_aps)
 
     refs = [e.reference for e in entries if e.reference]
-    bills = PurchaseBill.query.filter(PurchaseBill.bill_number.in_(refs)).all() if refs else []
-    bill_map = {b.bill_number: b for b in bills}
-    return period, matrix, bill_map
+    aps = AccountsPayable.query.filter(AccountsPayable.ap_number.in_(refs)).all() if refs else []
+    ap_map = {a.ap_number: a for a in aps}
+    return period, matrix, ap_map
 
 
-def _entry_identity(entry, bill_map):
+def _entry_identity(entry, ap_map):
     """Return (no, invoice_no, vendor, particulars) for the left identifier columns."""
-    bill = bill_map.get(entry.reference)
+    ap = ap_map.get(entry.reference)
     return (
         entry.reference or '—',
-        (bill.vendor_invoice_number if bill else '') or '',
-        (bill.vendor_name if bill else '') or '—',
-        (bill.notes if bill else '') or '',
+        (ap.vendor_invoice_number if ap else '') or '',
+        (ap.vendor_name if ap else '') or '—',
+        (ap.notes if ap else '') or '',
     )
 
 
@@ -187,9 +187,9 @@ def ap_journal():
         flash('Please select a branch to view journal entries.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
 
-    period, matrix, bill_map = _ap_journal_context(branch_id)
+    period, matrix, ap_map = _ap_journal_context(branch_id)
     return render_template('journals/ap_journal.html',
-                           period=period, matrix=matrix, bill_map=bill_map)
+                           period=period, matrix=matrix, ap_map=ap_map)
 
 
 @journals_bp.route('/journals/ap/print')
@@ -202,7 +202,7 @@ def ap_journal_print():
 
     from app.branches.models import Branch
     from app.settings import AppSettings
-    period, matrix, bill_map = _ap_journal_context(branch_id)
+    period, matrix, ap_map = _ap_journal_context(branch_id)
 
     branch = db.session.get(Branch, branch_id)
     branch_count = Branch.query.count()
@@ -210,7 +210,7 @@ def ap_journal_print():
     company_name = AppSettings.get_setting('company_name') or ''
 
     return render_template('journals/ap_journal_print.html',
-                           period=period, matrix=matrix, bill_map=bill_map,
+                           period=period, matrix=matrix, ap_map=ap_map,
                            company_name=company_name, branch_name=branch_name,
                            printed_at=ph_now())
 
@@ -225,7 +225,7 @@ def ap_journal_export():
 
     from app.branches.models import Branch
     from app.settings import AppSettings
-    period, matrix, bill_map = _ap_journal_context(branch_id)
+    period, matrix, ap_map = _ap_journal_context(branch_id)
 
     branch = db.session.get(Branch, branch_id)
     branch_count = Branch.query.count()
@@ -241,7 +241,7 @@ def ap_journal_export():
         columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
         period_label=period['label'], company_name=company_name,
         branch_name=branch_name, filename=filename,
-        identity=lambda e: _entry_identity(e, bill_map))
+        identity=lambda e: _entry_identity(e, ap_map))
 
 
 @journals_bp.route('/journals/voucher')

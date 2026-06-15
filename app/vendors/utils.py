@@ -4,11 +4,11 @@ from app.utils import ph_now
 
 def compute_ap_aging(vendor_id):
     """Return AP aging buckets for a vendor (posted and partially-paid bills)."""
-    from app.purchase_bills.models import PurchaseBill
+    from app.accounts_payable.models import AccountsPayable
     today = ph_now().date()
-    bills = PurchaseBill.query.filter(
-        PurchaseBill.vendor_id == vendor_id,
-        PurchaseBill.status.in_(['posted', 'partially_paid'])
+    bills = AccountsPayable.query.filter(
+        AccountsPayable.vendor_id == vendor_id,
+        AccountsPayable.status.in_(['posted', 'partially_paid'])
     ).all()
     buckets = {
         'current': Decimal('0.00'),
@@ -39,23 +39,23 @@ def compute_ap_aging(vendor_id):
 def compute_wht_ytd(vendor_id):
     """Return list of {code, name, total} dicts for WHT withheld this calendar year."""
     from app import db
-    from app.purchase_bills.models import PurchaseBill, PurchaseBillItem
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
     from app.withholding_tax.models import WithholdingTax
     from sqlalchemy import extract
     year = ph_now().year
     rows = (
         db.session.query(
-            PurchaseBillItem.wt_id,
-            db.func.sum(PurchaseBillItem.wt_amount).label('total')
+            AccountsPayableItem.wt_id,
+            db.func.sum(AccountsPayableItem.wt_amount).label('total')
         )
-        .join(PurchaseBill, PurchaseBillItem.bill_id == PurchaseBill.id)
+        .join(AccountsPayable, AccountsPayableItem.ap_id == AccountsPayable.id)
         .filter(
-            PurchaseBill.vendor_id == vendor_id,
-            PurchaseBill.status == 'posted',
-            extract('year', PurchaseBill.bill_date) == year,
-            PurchaseBillItem.wt_id.isnot(None),
+            AccountsPayable.vendor_id == vendor_id,
+            AccountsPayable.status == 'posted',
+            extract('year', AccountsPayable.ap_date) == year,
+            AccountsPayableItem.wt_id.isnot(None),
         )
-        .group_by(PurchaseBillItem.wt_id)
+        .group_by(AccountsPayableItem.wt_id)
         .all()
     )
     wt_ids = [row.wt_id for row in rows]

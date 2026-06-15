@@ -157,12 +157,12 @@
                     {% for bill in pagination.items %}
                     <tr>
                         <td>
-                            <a href="{{ url_for('purchase_bills.view', id=bill.id) }}"
+                            <a href="{{ url_for('accounts_payable.view', id=bill.id) }}"
                                style="color:var(--blue); text-decoration:none;">
-                                {{ bill.bill_number }}
+                                {{ bill.ap_number }}
                             </a>
                         </td>
-                        <td>{{ bill.bill_date.strftime('%b %d, %Y') }}</td>
+                        <td>{{ bill.ap_date.strftime('%b %d, %Y') }}</td>
                         <td>{{ bill.due_date.strftime('%b %d, %Y') }}</td>
                         <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.subtotal) }}</td>
                         <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</td>

@@ -128,8 +128,8 @@ def build_columnar(posted_entries, draft_entries, ap_account_id,
     for je in draft_entries:
         rows.append({'entry': je, 'cells': {}, 'is_draft': True, 'is_voided': False})
 
-    for bill in voided_bills:
-        rows.append({'bill': bill, 'entry': None, 'cells': {}, 'is_draft': False, 'is_voided': True})
+    for ap in voided_bills:
+        rows.append({'ap': ap, 'entry': None, 'cells': {}, 'is_draft': False, 'is_voided': True})
 
     ordered = sorted(
         accounts_by_id.values(),
@@ -144,7 +144,7 @@ def build_columnar(posted_entries, draft_entries, ap_account_id,
 
     def _row_sort_key(r):
         if r['is_voided']:
-            return (r['bill'].bill_date, r['bill'].bill_number)
+            return (r['ap'].ap_date, r['ap'].ap_number)
         return (r['entry'].entry_date, r['entry'].entry_number or '')
 
     rows.sort(key=_row_sort_key)
@@ -218,10 +218,10 @@ def build_ap_journal_xlsx(columns, rows, totals, period_label, company_name,
     first_data_row = hdr_row + 1
     for r in rows:
         if r.get('is_voided'):
-            b = r['bill']
+            b = r['ap']
             line = [
-                b.bill_date.strftime('%d-%b-%Y'),
-                b.bill_number or '',
+                b.ap_date.strftime('%d-%b-%Y'),
+                b.ap_number or '',
                 b.vendor_invoice_number or '',
                 b.vendor_name or '',
                 '[VOIDED] ' + (b.notes or ''),

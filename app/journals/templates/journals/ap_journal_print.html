@@ -91,21 +91,21 @@
         {% for row in matrix.rows %}
         {% if row.is_voided %}
         <tr class="apj-row-voided">
-          <td>{{ row.bill.bill_date.strftime('%d-%b-%Y') }}</td>
-          <td class="no-strike">{{ row.bill.bill_number }}</td>
-          <td>{{ row.bill.vendor_invoice_number or '' }}</td>
-          <td>{{ row.bill.vendor_name }}</td>
-          <td>[VOIDED] {{ row.bill.notes or '' }}</td>
+          <td>{{ row.ap.ap_date.strftime('%d-%b-%Y') }}</td>
+          <td class="no-strike">{{ row.ap.ap_number }}</td>
+          <td>{{ row.ap.vendor_invoice_number or '' }}</td>
+          <td>{{ row.ap.vendor_name }}</td>
+          <td>[VOIDED] {{ row.ap.notes or '' }}</td>
           {% for col in matrix.columns %}<td class="num no-strike"></td>{% endfor %}
         </tr>
         {% else %}
-        {% set bill = bill_map.get(row.entry.reference) %}
+        {% set ap = ap_map.get(row.entry.reference) %}
         <tr {% if row.is_draft %}class="apj-row-draft"{% endif %}>
           <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
           <td>{{ row.entry.reference or '—' }}</td>
-          <td>{{ bill.vendor_invoice_number if bill else '' }}</td>
-          <td>{{ bill.vendor_name if bill else '—' }}</td>
-          <td>{{ ('[DRAFT] ' + ((bill.notes if bill else '') or '')) if row.is_draft else ((bill.notes if bill else '') or '') }}</td>
+          <td>{{ ap.vendor_invoice_number if ap else '' }}</td>
+          <td>{{ ap.vendor_name if ap else '—' }}</td>
+          <td>{{ ('[DRAFT] ' + ((ap.notes if ap else '') or '')) if row.is_draft else ((ap.notes if ap else '') or '') }}</td>
           {% for col in matrix.columns %}
           <td class="num">
             {%- if not row.is_draft and col.account_id in row.cells and row.cells[col.account_id] != 0 -%}

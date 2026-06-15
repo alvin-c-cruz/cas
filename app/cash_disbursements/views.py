@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from app import db
 from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
 from app.cash_disbursements.forms import CashDisbursementForm
-from app.purchase_bills.models import PurchaseBill
+from app.accounts_payable.models import AccountsPayable
 from app.vendors.models import Vendor
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
@@ -185,17 +185,17 @@ def open_bills():
     if not vendor_id:
         return jsonify([])
     branch_id = session.get('selected_branch_id')
-    bills = PurchaseBill.query.filter(
-        PurchaseBill.branch_id == branch_id,
-        PurchaseBill.vendor_id == vendor_id,
-        PurchaseBill.status.in_(['posted', 'partially_paid']),
-        PurchaseBill.balance > 0
-    ).order_by(PurchaseBill.bill_date).all()
+    bills = AccountsPayable.query.filter(
+        AccountsPayable.branch_id == branch_id,
+        AccountsPayable.vendor_id == vendor_id,
+        AccountsPayable.status.in_(['posted', 'partially_paid']),
+        AccountsPayable.balance > 0
+    ).order_by(AccountsPayable.ap_date).all()
     return jsonify([{
         'id': b.id,
-        'bill_number': b.bill_number,
+        'bill_number': b.ap_number,
         'vendor_invoice_number': b.vendor_invoice_number or '',
-        'bill_date': b.bill_date.isoformat(),
+        'bill_date': b.ap_date.isoformat(),
         'balance': float(b.balance),
     } for b in bills])
 
@@ -281,7 +281,7 @@ def _post_cdv_je(cdv, user_id):
         je_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=ap_account.id,
-            description=f'AP Payment: {ap_line.bill_number}',
+            description=f'AP Payment: {ap_line.ap_number}',
             debit_amount=Decimal(str(ap_line.amount_applied)),
             credit_amount=Decimal('0.00')
         )
@@ -478,13 +478,13 @@ def _parse_line_items(cdv):
     ap_lines_data = request.form.getlist('ap_lines')
     ap_lines = json.loads(ap_lines_data[0]) if ap_lines_data and ap_lines_data[0] else []
     for idx, item in enumerate(ap_lines, start=1):
-        bill = PurchaseBill.query.get(int(item['bill_id']))
+        bill = AccountsPayable.query.get(int(item['bill_id']))
         if not bill:
             continue
         ap_line = CDVApLine(
             line_number=idx,
-            bill_id=bill.id,
-            bill_number=bill.bill_number,
+            ap_id=bill.id,
+            ap_number=bill.ap_number,
             original_balance=Decimal(str(item.get('original_balance', bill.balance))),
             amount_applied=Decimal(str(item['amount_applied'])),
         )
@@ -715,7 +715,7 @@ def view(id):
 def _apply_ap_payments(cdv):
     """Increment APV bill amount_paid and reduce balance on CDV post."""
     for ap_line in cdv.ap_lines:
-        bill = ap_line.bill
+        bill = ap_line.accounts_payable
         bill.amount_paid = Decimal(str(bill.amount_paid)) + Decimal(str(ap_line.amount_applied))
         bill.balance = Decimal(str(bill.total_amount)) - bill.amount_paid
         if bill.balance <= 0:
@@ -727,11 +727,11 @@ def _apply_ap_payments(cdv):
 def _reverse_ap_payments(cdv):
     """Reverse APV bill amounts on CDV cancel. Raises ValueError on inconsistency."""
     for ap_line in cdv.ap_lines:
-        bill = ap_line.bill
+        bill = ap_line.accounts_payable
         new_paid = Decimal(str(bill.amount_paid)) - Decimal(str(ap_line.amount_applied))
         if new_paid < 0:
             raise ValueError(
-                f'Cannot cancel: reversing payment on {ap_line.bill_number} '
+                f'Cannot cancel: reversing payment on {ap_line.ap_number} '
                 f'would result in negative amount_paid.'
             )
         bill.amount_paid = new_paid

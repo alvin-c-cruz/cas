@@ -112,20 +112,20 @@ class CDVApLine(db.Model):
     cdv_id = db.Column(db.Integer, db.ForeignKey('cash_disbursement_vouchers.id'),
                        nullable=False, index=True)
     line_number = db.Column(db.Integer, nullable=False)
-    bill_id = db.Column(db.Integer, db.ForeignKey('purchase_bills.id'), nullable=False)
-    bill = db.relationship('PurchaseBill', foreign_keys=[bill_id])
-    bill_number = db.Column(db.String(50), nullable=False)
+    ap_id = db.Column(db.Integer, db.ForeignKey('accounts_payable.id'), nullable=False)
+    accounts_payable = db.relationship('AccountsPayable', foreign_keys=[ap_id])
+    ap_number = db.Column(db.String(50), nullable=False)
     original_balance = db.Column(db.Numeric(15, 2), nullable=False)
     amount_applied = db.Column(db.Numeric(15, 2), nullable=False)
 
     def __repr__(self):
-        return f'<CDVApLine cdv={self.cdv_id} bill={self.bill_number}>'
+        return f'<CDVApLine cdv={self.cdv_id} ap={self.ap_number}>'
 
     def to_dict(self):
         return {
             'id': self.id,
-            'bill_id': self.bill_id,
-            'bill_number': self.bill_number,
+            'ap_id': self.ap_id,
+            'ap_number': self.ap_number,
             'original_balance': float(self.original_balance),
             'amount_applied': float(self.amount_applied),
         }
