@@ -314,6 +314,14 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 /* ─── Tables ────────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; }
 
+/* BUG-V-03: tables inside a card must scroll horizontally on narrow screens
+   rather than being clipped by .card's `overflow: hidden` (which exists for
+   rounded corners). Scoped to card-bodies that directly hold a data table so
+   form cards with dropdown menus are unaffected. `.table-responsive` was
+   referenced by templates but never defined — give it the same behavior. */
+.card-body:has(> table.data-table) { overflow-x: auto; }
+.table-responsive { overflow-x: auto; }
+
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
   padding: 10px 14px;
