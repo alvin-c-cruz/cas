@@ -162,6 +162,9 @@
     padding: 3px 6px; height: 28px; font-size: 13px;
     border-color: transparent; background: transparent; border-radius: 2px;
 }
+#lineItemsTable tbody td input[type="text"].form-control {
+    border-color: var(--border); background: var(--card);
+}
 #lineItemsTable tbody td .form-control:hover {
     border-color: var(--border); background: var(--card);
 }

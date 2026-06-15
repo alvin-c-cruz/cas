@@ -32,28 +32,28 @@ class TestAuthentication:
         assert b'Dashboard' in response.data or b'dashboard' in response.data
 
     def test_failed_login_wrong_password(self, client, admin_user):
-        """Test login failure with wrong password"""
+        """Test login failure with wrong password returns 401"""
         response = client.post('/login', data={
             'username': 'admin',
             'password': 'wrongpassword'
         }, follow_redirects=True)
 
-        assert response.status_code == 200
+        assert response.status_code == 401
         # Should show error message
         assert b'Invalid' in response.data or b'invalid' in response.data
 
     def test_failed_login_nonexistent_user(self, client):
-        """Test login failure with nonexistent user"""
+        """Test login failure with nonexistent user returns 401"""
         response = client.post('/login', data={
             'username': 'nonexistent',
             'password': 'password123'
         }, follow_redirects=True)
 
-        assert response.status_code == 200
+        assert response.status_code == 401
         assert b'Invalid' in response.data or b'invalid' in response.data
 
     def test_failed_login_inactive_user(self, client, db_session, admin_user, main_branch):
-        """Test login failure with inactive user"""
+        """Test login failure with inactive user returns 401"""
         # Set last_login so the view shows "deactivated" rather than "pending approval"
         admin_user.last_login = ph_now()
         admin_user.is_active = False
@@ -64,7 +64,7 @@ class TestAuthentication:
             'password': 'admin123'
         }, follow_redirects=True)
 
-        assert response.status_code == 200
+        assert response.status_code == 401
         assert (b'inactive' in response.data.lower()
                 or b'disabled' in response.data.lower()
                 or b'deactivated' in response.data.lower()

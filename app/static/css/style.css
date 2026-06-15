@@ -906,6 +906,7 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
     gap: 8px;
     padding: 20px;
     background: #fafbfc;
+    overflow-x: auto;
 }
 
 /* Single Audit Entry - Enhanced Design */
@@ -931,7 +932,7 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 /* Main Entry Row - Improved Layout */
 .audit-entry-row {
     display: grid;
-    grid-template-columns: 150px 130px 110px 120px 180px 1fr 110px;
+    grid-template-columns: 150px 130px 110px 120px 220px 1fr 110px;
     gap: 16px;
     padding: 14px 18px;
     align-items: center;
@@ -939,6 +940,7 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
     background-color: white;
     user-select: none;
     transition: background-color 0.15s ease;
+    min-width: 950px;
 }
 
 .audit-entry-row:hover {

@@ -53,7 +53,7 @@ def _check_login_guards(user, form):
                   'error')
         else:
             flash('Your account is locked. Please contact the administrator.', 'error')
-        return render_template('users/login.html', form=form)
+        return render_template('users/login.html', form=form), 401
 
     if user is None or not user.check_password(form.password.data):
         if user:
@@ -78,7 +78,7 @@ def _check_login_guards(user, form):
             log_audit(module='auth', action='login_failed', record_id=None,
                       record_identifier=form.username.data, notes='Invalid username')
             flash('Invalid username or password.', 'error')
-        return render_template('users/login.html', form=form)
+        return render_template('users/login.html', form=form), 401
 
     if not user.is_active:
         log_audit(module='auth', action='login_failed', record_id=user.id,
@@ -87,7 +87,7 @@ def _check_login_guards(user, form):
             flash('Your account is pending approval. Please wait for an administrator to activate your account.', 'error')
         else:
             flash('Your account has been deactivated. Please contact the administrator.', 'error')
-        return render_template('users/login.html', form=form)
+        return render_template('users/login.html', form=form), 401
 
     return None
 
