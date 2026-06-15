@@ -52,9 +52,9 @@ def _si_gl_account_ids():
     from app.accounts.models import Account
     from app.vat_categories.models import VATCategory
     ar = Account.query.filter_by(code='10201').first()
-    wht = Account.query.filter_by(code='10212').first()
+    wht_recv = Account.query.filter_by(code='10212').first()
     vat_ids = {c.output_vat_account.id for c in VATCategory.query.all() if c.output_vat_account}
-    return (ar.id if ar else None, wht.id if wht else None, vat_ids)
+    return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
 
 
 def _ap_journal_context(branch_id):
@@ -156,11 +156,12 @@ def _si_journal_context(branch_id):
         SalesInvoice.invoice_date <= period['date_to'],
     ).order_by(SalesInvoice.invoice_date, SalesInvoice.invoice_number).all()
 
-    ar_id, wht_id, vat_ids = _si_gl_account_ids()
-    matrix = build_columnar_si(posted, drafts, ar_id, wht_id, vat_ids,
+    ar_id, wht_recv_id, vat_ids = _si_gl_account_ids()
+    matrix = build_columnar_si(posted, drafts, ar_id, wht_recv_id, vat_ids,
                                voided_invoices=voided_invoices)
 
     refs = [e.reference for e in entries if e.reference]
+    # No branch filter: invoice_number is UNIQUE and refs come from branch-filtered entries.
     invoices = SalesInvoice.query.filter(
         SalesInvoice.invoice_number.in_(refs)).all() if refs else []
     invoice_map = {inv.invoice_number: inv for inv in invoices}
@@ -168,6 +169,7 @@ def _si_journal_context(branch_id):
 
 
 def _si_entry_identity(entry, invoice_map):
+    """Return (si_no, customer_po, customer_name, notes) for Excel/print identity."""
     inv = invoice_map.get(entry.reference)
     return (
         entry.reference or '—',
