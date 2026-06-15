@@ -1144,38 +1144,6 @@
                 </div>
             </div>
 
-            <!-- Journals Section -->
-            <div class="nav-section">
-                <div class="nav-label nav-label-collapsible" data-section="journals">
-                    <span>Journals</span>
-                    <span class="nav-label-arrow">▼</span>
-                </div>
-                <div class="nav-section-content" id="section-journals">
-                    <a href="{{ url_for('dashboard.under_development', feature='Sales Journal') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Sales Journal' %}active{% endif %}">
-                        <span class="nav-icon">📄</span>
-                        <span class="nav-text">Sales Journal</span>
-                        <span class="nav-coming-soon">Soon</span>
-                    </a>
-                    <a href="{{ url_for('journals.cr_journal') }}" class="nav-item nav-item--soon {% if request.endpoint == 'journals.cr_journal' %}active{% endif %}">
-                        <span class="nav-icon">💰</span>
-                        <span class="nav-text">Cash Receipts Journal</span>
-                        <span class="nav-coming-soon">Soon</span>
-                    </a>
-                    <a href="{{ url_for('journals.ap_journal') }}" class="nav-item {% if request.endpoint == 'journals.ap_journal' %}active{% endif %}">
-                        <span class="nav-icon">📋</span>
-                        <span class="nav-text">Accounts Payable Journal</span>
-                    </a>
-                    <a href="{{ url_for('journals.cd_journal') }}" class="nav-item {% if request.endpoint in ['journals.cd_journal', 'journals.cd_journal_print', 'journals.cd_journal_export'] %}active{% endif %}">
-                        <span class="nav-icon">💸</span>
-                        <span class="nav-text">Cash Disbursements Journal</span>
-                    </a>
-                    <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' %}active{% endif %}">
-                        <span class="nav-icon">📓</span>
-                        <span class="nav-text">Journal Voucher Journal</span>
-                    </a>
-                </div>
-            </div>
-
             <!-- Ledger Section -->
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="ledger">
