@@ -304,8 +304,11 @@
 </div>
 {% endif %}
 
+{% include "vendors/_quick_add_modal.html" %}
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor-form-widgets.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor-quick-add.js') }}"></script>
 <script>
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts = {{ all_accounts | tojson }};
@@ -804,7 +807,7 @@ function setVendorDone(vendorName, defaults) {
 document.getElementById('vendor_id').addEventListener('change', function () {
     const vendorId = this.value;
     const vendorName = this.options[this.selectedIndex].text;
-    if (!vendorId || vendorId == '0') return;
+    if (!vendorId || vendorId == '0' || vendorId === '__add_vendor__') return;
 
     fetch(`/vendors/${vendorId}/defaults`)
         .then(r => r.json())
@@ -864,10 +867,11 @@ function initOverrides() {
 // ── Vendor search-select ──────────────────────────────────────────────────────
 const vendorSel = document.getElementById('vendor_id');
 if (vendorSel) {
-    new Choices(vendorSel, {
+    const vendorChoices = new Choices(vendorSel, {
         searchEnabled: true, itemSelectText: '', shouldSort: false,
         searchResultLimit: 50, allowHTML: false,
     });
+    initVendorQuickAdd({ choices: vendorChoices, selectEl: vendorSel });
 }
 
 // ── Payment Terms search-select ───────────────────────────────────────────────

@@ -9,6 +9,8 @@ from app import db
 from app.accounts_payable.models import AccountsPayable, AccountsPayableItem, AccountsPayableAttachment
 from app.accounts_payable.forms import AccountsPayableForm
 from app.vendors.models import Vendor
+from app.vendors.forms import VendorForm
+from app.vendors.views import populate_vat_category_choices, generate_next_vendor_code
 from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
@@ -452,13 +454,27 @@ def create():
     if form.validate_on_submit():
         # Validate that the bill date is not in a closed period
         if not validate_transaction_date_with_flash(form.ap_date.data, 'AP Voucher'):
-            return render_template('accounts_payable/form.html', form=form, ap=None)
+            quick_add_form = VendorForm()
+            populate_vat_category_choices(quick_add_form)
+            quick_add_form.code.data = generate_next_vendor_code()
+            quick_add_form.is_active.data = '1'
+            quick_add_form.payment_terms.data = 'Net 30'
+            quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+            return render_template('accounts_payable/form.html', form=form, ap=None,
+                                   vendor_quick_add_form=quick_add_form, vendor_quick_add_whts=quick_add_whts)
 
         try:
             vendor = Vendor.query.get(form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
-                return render_template('accounts_payable/form.html', form=form, ap=None)
+                quick_add_form = VendorForm()
+                populate_vat_category_choices(quick_add_form)
+                quick_add_form.code.data = generate_next_vendor_code()
+                quick_add_form.is_active.data = '1'
+                quick_add_form.payment_terms.data = 'Net 30'
+                quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+                return render_template('accounts_payable/form.html', form=form, ap=None,
+                                       vendor_quick_add_form=quick_add_form, vendor_quick_add_whts=quick_add_whts)
 
             ap = AccountsPayable(
                 branch_id=session.get('selected_branch_id'),
@@ -558,12 +574,20 @@ def create():
         'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
         'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
+    quick_add_form = VendorForm()
+    populate_vat_category_choices(quick_add_form)
+    quick_add_form.code.data = generate_next_vendor_code()
+    quick_add_form.is_active.data = '1'
+    quick_add_form.payment_terms.data = 'Net 30'
+    quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
     return render_template('accounts_payable/form.html',
                          form=form,
                          ap=None,
                          vat_categories=vat_categories,
                          all_accounts=all_accounts,
-                         gl_accounts=gl_accounts)
+                         gl_accounts=gl_accounts,
+                         vendor_quick_add_form=quick_add_form,
+                         vendor_quick_add_whts=quick_add_whts)
 
 
 @accounts_payable_bp.route('/accounts-payable/<int:id>')
@@ -638,7 +662,14 @@ def edit(id):
     if form.validate_on_submit():
         # Validate that the bill date is not in a closed period
         if not validate_transaction_date_with_flash(form.ap_date.data, 'AP Voucher'):
-            return render_template('accounts_payable/form.html', form=form, ap=ap)
+            quick_add_form = VendorForm()
+            populate_vat_category_choices(quick_add_form)
+            quick_add_form.code.data = generate_next_vendor_code()
+            quick_add_form.is_active.data = '1'
+            quick_add_form.payment_terms.data = 'Net 30'
+            quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+            return render_template('accounts_payable/form.html', form=form, ap=ap,
+                                   vendor_quick_add_form=quick_add_form, vendor_quick_add_whts=quick_add_whts)
 
         try:
             old_values = model_to_dict(ap, ['ap_number', 'ap_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
@@ -646,7 +677,14 @@ def edit(id):
             vendor = Vendor.query.get(form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
-                return render_template('accounts_payable/form.html', form=form, ap=ap)
+                quick_add_form = VendorForm()
+                populate_vat_category_choices(quick_add_form)
+                quick_add_form.code.data = generate_next_vendor_code()
+                quick_add_form.is_active.data = '1'
+                quick_add_form.payment_terms.data = 'Net 30'
+                quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+                return render_template('accounts_payable/form.html', form=form, ap=ap,
+                                       vendor_quick_add_form=quick_add_form, vendor_quick_add_whts=quick_add_whts)
 
             ap.ap_number = form.ap_number.data
             ap.ap_date = form.ap_date.data
@@ -753,13 +791,21 @@ def edit(id):
         'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
         'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
+    quick_add_form = VendorForm()
+    populate_vat_category_choices(quick_add_form)
+    quick_add_form.code.data = generate_next_vendor_code()
+    quick_add_form.is_active.data = '1'
+    quick_add_form.payment_terms.data = 'Net 30'
+    quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
     return render_template('accounts_payable/form.html',
                          form=form,
                          ap=ap,
                          vat_categories=vat_categories,
                          all_accounts=all_accounts,
                          line_items=line_items,
-                         gl_accounts=gl_accounts)
+                         gl_accounts=gl_accounts,
+                         vendor_quick_add_form=quick_add_form,
+                         vendor_quick_add_whts=quick_add_whts)
 
 
 @accounts_payable_bp.route('/accounts-payable/<int:id>/post', methods=['POST'])
