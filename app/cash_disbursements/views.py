@@ -550,7 +550,7 @@ def _form_context():
 @staff_or_above_required
 def create():
     form = CashDisbursementForm()
-    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
     all_accounts = _get_all_accounts_for_select()
     form.cash_account_id.choices = [(0, '-- Select Account --')] + [
@@ -632,7 +632,7 @@ def edit(id):
         return redirect(url_for('cash_disbursements.view', id=id))
 
     form = CashDisbursementForm(obj=cdv)
-    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
     all_accounts = _get_all_accounts_for_select()
     form.cash_account_id.choices = [

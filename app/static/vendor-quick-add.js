@@ -22,6 +22,65 @@ function addVendorSentinelOption(selectEl) {
     }
 }
 
+/* Make the vendor picker behave like a predictable typeahead: this Choices
+   build re-ranks search results by fuzzy score, which is unintuitive for coded
+   records. After each search, re-order the filtered options back into the
+   list's own (code) order and highlight the first one via Choices' own
+   mechanism, so the top match is highlighted and Enter/arrow keys stay in sync. */
+function enhanceVendorTypeahead(choices, selectEl) {
+    const container = selectEl.closest('.choices');
+    if (!container) return;
+    const input = container.querySelector('input.choices__input--cloned')
+               || container.querySelector('input.choices__input');
+
+    // Track deletions so backspace/delete don't re-complete the field.
+    let isDeleting = false;
+    if (input) {
+        input.addEventListener('keydown', function (e) {
+            isDeleting = (e.key === 'Backspace' || e.key === 'Delete');
+        });
+    }
+
+    function filteredVendorOptions() {
+        const list = container.querySelector('.choices__list--dropdown .choices__list')
+                  || container.querySelector('.choices__list--dropdown');
+        if (!list) return { list: null, opts: [] };
+        const opts = Array.from(list.querySelectorAll('.choices__item--selectable'))
+            .filter(el => {
+                const v = el.getAttribute('data-value');
+                return v && v !== '' && v !== VENDOR_ADD_SENTINEL;
+            });
+        return { list, opts };
+    }
+
+    selectEl.addEventListener('search', function () {
+        // Defer until Choices has rendered the filtered list for this keystroke.
+        requestAnimationFrame(function () {
+            const { list, opts } = filteredVendorOptions();
+            if (!list || opts.length < 1) return;
+            opts.sort((a, b) =>
+                a.textContent.trim().localeCompare(b.textContent.trim(), undefined, { numeric: true }));
+            opts.forEach(el => list.appendChild(el));  // re-order DOM into code order
+            if (typeof choices._highlightChoice === 'function') {
+                choices._highlightChoice(opts[0]);
+            }
+
+            // Inline autocomplete: fill the field with the first match and select
+            // the not-yet-typed remainder, so the next keystroke overwrites it.
+            // Only when the user is adding text and the match starts with it.
+            if (input && !isDeleting) {
+                const typed = input.value;
+                const label = opts[0].textContent.trim();
+                if (typed && label.length > typed.length &&
+                    label.toLowerCase().startsWith(typed.toLowerCase())) {
+                    input.value = typed + label.slice(typed.length);
+                    try { input.setSelectionRange(typed.length, label.length); } catch (e) { /* noop */ }
+                }
+            }
+        });
+    });
+}
+
 function initVendorQuickAdd(opts) {
     const { choices, selectEl } = opts;
     const overlay = document.getElementById('vendorQuickAddOverlay');
@@ -34,6 +93,9 @@ function initVendorQuickAdd(opts) {
 
     // The sentinel option is added to the <select> before Choices init
     // (see addVendorSentinelOption), so it already leads the dropdown here.
+
+    // Predictable typeahead: code-order filtered results + highlight first match.
+    enhanceVendorTypeahead(choices, selectEl);
 
     // Remember the last real selection so opening/cancelling the modal restores it.
     let lastValue = selectEl.value && selectEl.value !== VENDOR_ADD_SENTINEL ? selectEl.value : '';

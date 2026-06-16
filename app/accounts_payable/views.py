@@ -448,7 +448,7 @@ def create():
     """Create new purchase bill."""
     form = AccountsPayableForm()
 
-    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
 
     if form.validate_on_submit():
@@ -656,7 +656,7 @@ def edit(id):
 
     form = AccountsPayableForm(obj=ap)
 
-    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
 
     if form.validate_on_submit():
