@@ -67,14 +67,17 @@ function initVendorQuickAdd(opts) {
             .then(r => r.json().then(body => ({ status: r.status, body })))
             .then(({ status, body }) => {
                 if (status === 200 && body.ok) {
-                    // Add the new vendor and select it; this fires `change`, which
-                    // runs the page's own vendor handler (defaults / open bills).
+                    // Add the new vendor and select it.
                     choices.setChoices(
                         [{ value: String(body.vendor.id), label: body.vendor.label }],
                         'value', 'label', false
                     );
                     lastValue = String(body.vendor.id);
                     choices.setChoiceByValue(String(body.vendor.id));
+                    // setChoiceByValue does not emit a native `change` on the
+                    // underlying <select>, so fire it ourselves — that's what
+                    // the page's vendor handler listens on (AP defaults / CD bills).
+                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
                     closeModal();
                     form.reset();
                     // form.reset() restores native inputs, but the Choices-enhanced
