@@ -1,0 +1,30 @@
+{# Inline "Add Vendor" modal. Requires `vendor_quick_add_form` and
+   `vendor_quick_add_whts` in the template context. Styling: design tokens only. #}
+<div id="vendorQuickAddOverlay"
+     style="display:none; position:fixed; inset:0; background:var(--backdrop);
+            z-index:1200; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
+  <div style="background:var(--card); border-radius:8px; padding:24px; max-width:880px; width:100%;
+              box-shadow:var(--shadow-md);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px;">Add Vendor</h3>
+      <button type="button" id="vendorQuickAddClose"
+              style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text);"
+              aria-label="Close">&times;</button>
+    </div>
+
+    <div id="vendorQuickAddError" class="form-error" style="display:none; margin-bottom:12px; color:var(--alert-error-text);"></div>
+
+    <form id="vendorQuickAddForm" method="POST" action="{{ url_for('vendors.create') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="vendor-form-scope">
+        {% with form = vendor_quick_add_form, withholding_taxes = vendor_quick_add_whts, vendor = None %}
+          {% include "vendors/_form_fields.html" %}
+        {% endwith %}
+      </div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
+        <button type="button" id="vendorQuickAddCancel" class="btn btn-secondary">Cancel</button>
+        <button type="submit" id="vendorQuickAddSubmit" class="btn btn-primary">Create Vendor</button>
+      </div>
+    </form>
+  </div>
+</div>
