@@ -727,7 +727,7 @@ def seed_minimal():
         print("="*60)
         print("\nYou can now log in with:")
         print("  Username: admin")
-        print("  Password: ac1123581321")
+        print("  Password: admin123")
         print("\n")
 
     except Exception as e:
