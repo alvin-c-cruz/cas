@@ -17,6 +17,14 @@ from datetime import datetime
 vendors_bp = Blueprint('vendors', __name__, template_folder='templates')
 
 
+def _wants_json():
+    """True when the request is an AJAX/JSON call (modal quick-add)."""
+    return (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        or request.accept_mimetypes.best == 'application/json'
+    )
+
+
 def accountant_or_admin_required(f):
     """Decorator to require accountant or admin role for vendor management."""
     @wraps(f)
@@ -143,6 +151,8 @@ def create():
         # Check for duplicate vendor code
         existing = Vendor.query.filter_by(code=form.code.data).first()
         if existing:
+            if _wants_json():
+                return jsonify(ok=False, errors={'code': f'Vendor code "{form.code.data}" already exists.'}), 422
             flash(f'Vendor code "{form.code.data}" already exists.', 'error')
             return render_template('vendors/form.html', form=form, vendor=None)
 
@@ -180,6 +190,11 @@ def create():
             )
 
             flash(f'Vendor "{vendor.name}" created successfully!', 'success')
+            if _wants_json():
+                return jsonify(ok=True, vendor={
+                    'id': vendor.id,
+                    'label': f'{vendor.code} - {vendor.name}',
+                })
             return redirect(url_for('vendors.list_vendors'))
         except Exception as e:
             from flask import current_app
@@ -188,6 +203,9 @@ def create():
             log_exception(e, severity='ERROR', module='vendors.create')
             db.session.rollback()
             flash(f'Error creating vendor: {str(e)}', 'error')
+
+    if request.method == 'POST' and _wants_json():
+        return jsonify(ok=False, errors={f: errs[0] for f, errs in form.errors.items()}), 422
 
     # Set defaults for new vendor
     if request.method == 'GET':
