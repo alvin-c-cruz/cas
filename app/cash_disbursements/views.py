@@ -7,6 +7,8 @@ from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CD
 from app.cash_disbursements.forms import CashDisbursementForm
 from app.accounts_payable.models import AccountsPayable
 from app.vendors.models import Vendor
+from app.vendors.forms import VendorForm
+from app.vendors.views import populate_vat_category_choices, generate_next_vendor_code
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
@@ -530,9 +532,17 @@ def _form_context():
         'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
         'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
+    quick_add_form = VendorForm()
+    populate_vat_category_choices(quick_add_form)
+    quick_add_form.code.data = generate_next_vendor_code()
+    quick_add_form.is_active.data = '1'
+    quick_add_form.payment_terms.data = 'Net 30'
+    quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
     return dict(vendors=vendors, all_accounts=all_accounts,
                 vat_categories=vat_categories, wt_codes=wt_codes,
-                gl_accounts=gl_accounts)
+                gl_accounts=gl_accounts,
+                vendor_quick_add_form=quick_add_form,
+                vendor_quick_add_whts=quick_add_whts)
 
 
 @cash_disbursements_bp.route('/cash-disbursements/create', methods=['GET', 'POST'])

@@ -234,8 +234,11 @@
   </div>
 </div>
 
+{% include "vendors/_quick_add_modal.html" %}
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor-form-widgets.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor-quick-add.js') }}"></script>
 <script>
 // ── Data from server ──────────────────────────────────────────────────────────
 const vatCategories = {{ vat_categories | tojson }};
@@ -258,6 +261,7 @@ const vendorChoices = new Choices(vendorSel, {
     searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false,
 });
 vendorSel.addEventListener('change', () => onVendorChange(vendorSel.value));
+initVendorQuickAdd({ choices: vendorChoices, selectEl: vendorSel });
 
 // ── Cash account Choices.js ───────────────────────────────────────────────────
 const cashAccSel = document.getElementById('cash_account_id');
@@ -278,6 +282,7 @@ if (pmSel) {
 
 // ── Vendor change → fetch open bills ─────────────────────────────────────────
 function onVendorChange(vendorId) {
+    if (vendorId === '__add_vendor__') return;
     apLines = [];
     document.getElementById('apLinesBody').innerHTML = '';
     renderApEmpty();
