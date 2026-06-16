@@ -117,3 +117,22 @@ class TestFullVendorPageRegression:
         assert b'vendor-form-scope' in resp.data
         assert b'vat-search-input' not in resp.data
         assert b'choices.min.js' in resp.data
+
+
+class TestQuickAddRendersOnTransactionPages:
+    def test_ap_create_includes_modal_and_assets(self, client, db_session, admin_user, main_branch):
+        login(client)
+        make_vat_category(db_session)
+        resp = client.get('/accounts-payable/create')
+        assert resp.status_code == 200
+        assert b'vendorQuickAddOverlay' in resp.data
+        assert b'vendor-quick-add.js' in resp.data
+        assert b'Add Vendor' in resp.data
+
+    def test_cd_create_includes_modal_and_assets(self, client, db_session, admin_user, main_branch):
+        login(client)
+        make_vat_category(db_session)
+        resp = client.get('/cash-disbursements/create')
+        assert resp.status_code == 200
+        assert b'vendorQuickAddOverlay' in resp.data
+        assert b'vendor-quick-add.js' in resp.data
