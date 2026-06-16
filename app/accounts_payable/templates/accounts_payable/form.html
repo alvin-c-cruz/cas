@@ -698,7 +698,9 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
         rows.push({
             code: acct ? acct.code : '—',
-            name: item.description || (acct ? acct.name : '—'),
+            // Account Title column shows the account name (matches the posted JE
+            // in print.html); the line description lives in the line-items table.
+            name: acct ? acct.name : '—',
             debit: netBase,
             credit: 0
         });
