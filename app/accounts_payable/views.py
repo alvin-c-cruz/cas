@@ -449,7 +449,7 @@ def create():
     form = AccountsPayableForm()
 
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
-    form.vendor_id.choices = [(0, '-- Select Vendor --')] + [(v.id, f'{v.code} - {v.name}') for v in vendors]
+    form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
 
     if form.validate_on_submit():
         # Validate that the bill date is not in a closed period

@@ -551,7 +551,7 @@ def _form_context():
 def create():
     form = CashDisbursementForm()
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
-    form.vendor_id.choices = [(0, '-- Select Vendor --')] + [(v.id, f'{v.code} - {v.name}') for v in vendors]
+    form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
     all_accounts = _get_all_accounts_for_select()
     form.cash_account_id.choices = [(0, '-- Select Account --')] + [
         (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
