@@ -1121,20 +1121,20 @@
                 <div class="nav-section-content" id="section-transactions">
                     <a href="{{ url_for('sales_invoices.list_invoices') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_invoices.') %}active{% endif %}">
                         <span class="nav-icon">📄</span>
-                        <span class="nav-text">Sales Invoices</span>
+                        <span class="nav-text">Sales Invoices (Bill Client)</span>
                     </a>
                     <a href="{{ url_for('receipts.list_receipts') }}?type=collection" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'collection' %}active{% endif %}">
                         <span class="nav-icon">💰</span>
-                        <span class="nav-text">Cash Receipts</span>
+                        <span class="nav-text">Cash Receipts (Collection)</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('accounts_payable.list_ap') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts_payable.') %}active{% endif %}">
                         <span class="nav-icon">📋</span>
-                        <span class="nav-text">Accounts Payable</span>
+                        <span class="nav-text">Accounts Payable (Enter Bill)</span>
                     </a>
                     <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('cash_disbursements.') %}active{% endif %}">
                         <span class="nav-icon">💸</span>
-                        <span class="nav-text">Cash Disbursements</span>
+                        <span class="nav-text">Cash Disbursements (Pay Bill)</span>
                     </a>
                     <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' or (request.endpoint and request.endpoint.startswith('journal_entries.') and request.endpoint != 'journal_entries.list_entries') %}active{% endif %}">
                         <span class="nav-icon">📓</span>
