@@ -1112,35 +1112,47 @@
             </a>
             {% endif %}
 
-            <!-- Transactions Section -->
+            <!-- Transactions Section (per-user module access; hidden entirely if none granted) -->
+            {% if visible_transactions(current_user) %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="transactions">
                     <span>Transactions</span>
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-transactions">
+                    {% if can_access_module(current_user, 'accounts_receivable') %}
                     <a href="{{ url_for('sales_invoices.list_invoices') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_invoices.') %}active{% endif %}">
                         <span class="nav-icon">📄</span>
                         <span class="nav-text">Sales Invoices<span class="nav-subtext">(Bill Client)</span></span>
                     </a>
+                    {% endif %}
+                    {% if can_access_module(current_user, 'collections') %}
                     <a href="{{ url_for('receipts.list_receipts') }}?type=collection" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'collection' %}active{% endif %}">
                         <span class="nav-icon">💰</span>
                         <span class="nav-text">Cash Receipts<span class="nav-subtext">(Collection)</span></span>
                     </a>
+                    {% endif %}
+                    {% if can_access_module(current_user, 'accounts_payable') %}
                     <a href="{{ url_for('accounts_payable.list_ap') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts_payable.') %}active{% endif %}">
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Accounts Payable<span class="nav-subtext">(Enter Bill)</span></span>
                     </a>
+                    {% endif %}
+                    {% if can_access_module(current_user, 'payments') %}
                     <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('cash_disbursements.') %}active{% endif %}">
                         <span class="nav-icon">💸</span>
                         <span class="nav-text">Cash Disbursements<span class="nav-subtext">(Pay Bill)</span></span>
                     </a>
+                    {% endif %}
+                    {% if can_access_module(current_user, 'journal_entries') %}
                     <a href="{{ url_for('journals.voucher') }}" class="nav-item {% if request.endpoint == 'journals.voucher' or (request.endpoint and request.endpoint.startswith('journal_entries.') and request.endpoint != 'journal_entries.list_entries') %}active{% endif %}">
                         <span class="nav-icon">📓</span>
                         <span class="nav-text">Journal Voucher</span>
                     </a>
+                    {% endif %}
                 </div>
             </div>
+            {% endif %}
 
             <!-- Ledger Section -->
             <div class="nav-section">
@@ -1359,18 +1371,26 @@
                         <span>+</span> New <span style="margin-left: 2px;">▼</span>
                     </button>
                     <div class="topbar-new-dropdown" id="topbarNewDropdown">
+                        {% if can_access_module(current_user, 'accounts_receivable') %}
                         <a href="{{ url_for('sales_invoices.create') }}" class="topbar-new-item">
                             📄 New Sales Invoice
                         </a>
+                        {% endif %}
+                        {% if can_access_module(current_user, 'accounts_payable') %}
                         <a href="{{ url_for('accounts_payable.create') }}" class="topbar-new-item">
                             📋 New AP Voucher
                         </a>
+                        {% endif %}
+                        {% if can_access_module(current_user, 'payments') %}
                         <a href="{{ url_for('cash_disbursements.create') }}" class="topbar-new-item">
                             💸 New Cash Disbursement
                         </a>
+                        {% endif %}
+                        {% if can_access_module(current_user, 'journal_entries') %}
                         <a href="{{ url_for('journal_entries.create') }}" class="topbar-new-item">
                             📝 New Journal Voucher
                         </a>
+                        {% endif %}
                         <div class="topbar-new-divider"></div>
                         <a href="{{ url_for('dashboard.under_development', feature='Collections') }}" class="topbar-new-item topbar-new-item--soon">
                             💰 New Collection <span class="soon-badge">Soon</span>

@@ -115,6 +115,11 @@ def create_app(config_name=None):
             company_logo = None
         return {'company_name': company_name, 'company_logo': company_logo}
 
+    # Per-user module access helpers for templates (sidebar gating)
+    from app.users.module_access import can_access_module, visible_transactions
+    app.jinja_env.globals['can_access_module'] = can_access_module
+    app.jinja_env.globals['visible_transactions'] = visible_transactions
+
     # Add custom Jinja2 filter for JSON parsing
     @app.template_filter('from_json')
     def from_json_filter(s):
@@ -339,6 +344,22 @@ def create_app(config_name=None):
             return
 
         return redirect(url_for('users.select_branch', next=request.url))
+
+    @app.before_request
+    def enforce_module_access():
+        """Block staff users from modules they have not been granted (book_permissions).
+        Admin/accountant/viewer are never gated here (staff-only). Nav hiding alone is not
+        access control — this is the server-side half."""
+        from flask import redirect, url_for, request, flash
+        from flask_login import current_user
+        from app.users.module_access import module_key_for_endpoint, can_access_module
+
+        if request.endpoint is None or not current_user.is_authenticated:
+            return
+        key = module_key_for_endpoint(request.endpoint)
+        if key and not can_access_module(current_user, key):
+            flash('You do not have access to this module.', 'error')
+            return redirect(url_for('dashboard.index'))
 
     @app.after_request
     def add_security_headers(response):

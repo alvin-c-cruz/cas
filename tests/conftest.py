@@ -99,7 +99,13 @@ def accountant_user(db_session):
 
 @pytest.fixture
 def staff_user(db_session):
-    """Create a staff user"""
+    """Create a staff user with all transaction books granted.
+
+    Per-module access (book_permissions) is now enforced for staff, so a default-deny
+    staff user would be blocked from the transaction modules. Grant them all here so
+    existing tests that exercise AP/SI/CD as staff keep working; tests that specifically
+    exercise the gating set their own book_permissions.
+    """
     user = User(
         username='staff',
         email='staff@test.com',
@@ -108,6 +114,13 @@ def staff_user(db_session):
         is_active=True
     )
     user.set_password('staff123')
+    user.set_book_permissions({
+        'accounts_receivable': True,
+        'collections': True,
+        'accounts_payable': True,
+        'payments': True,
+        'journal_entries': True,
+    })
     db_session.add(user)
     db_session.commit()
     return user
