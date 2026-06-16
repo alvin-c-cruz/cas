@@ -120,23 +120,73 @@ function initSearchSelect(selectEl, options) {
             || opts[0];
     }
 
+    // Bold the matched run of `query` inside the option's label. Rebuilt with
+    // text nodes + <strong> (no innerHTML), so it stays XSS-safe.
+    function boldMatch(el, query) {
+        if (!query) return;
+        const text = el.textContent;
+        const idx = text.toLowerCase().indexOf(query.toLowerCase());
+        if (idx < 0) return;
+        const strong = document.createElement('strong');
+        strong.textContent = text.slice(idx, idx + query.length);
+        el.textContent = '';
+        if (idx > 0) el.appendChild(document.createTextNode(text.slice(0, idx)));
+        el.appendChild(strong);
+        const tail = text.slice(idx + query.length);
+        if (tail) el.appendChild(document.createTextNode(tail));
+    }
+
+    // Drop everything except the add-action and show a single notice.
+    function showNoResults(list) {
+        Array.from(list.children).forEach(el => {
+            const isAdd = el.classList.contains('search-select-add')
+                || (add && el.getAttribute('data-value') === add.value);
+            if (!isAdd) el.remove();
+        });
+        const notice = document.createElement('div');
+        notice.className = 'choices__item search-select-noresults';
+        notice.textContent = 'No results found';
+        list.appendChild(notice);
+    }
+
     selectEl.addEventListener('search', function () {
         // Defer until Choices has rendered the filtered list for this keystroke.
         requestAnimationFrame(function () {
             const list = dropdownList();
             if (!list) return;
+
+            // The user's typed text = everything before the selection. After an
+            // inline autocomplete the field holds "typed + completion(selected)",
+            // so reading the whole value would mistake the completion for input.
+            const typed = input ? input.value.slice(0, input.selectionStart) : '';
+            const query = typed.trim();
             ensureAddAction(list);
+
+            // Filter to substring matches of the ACTUAL characters typed — this
+            // Choices build's fuzzy search is too loose (e.g. "v002" matches all).
+            if (query) {
+                const q = query.toLowerCase();
+                realOptions(list).forEach(el => {
+                    if (el.textContent.trim().toLowerCase().indexOf(q) === -1) el.remove();
+                });
+            }
+
             const opts = reorderByLabel(list);
+
+            if (query && opts.length < 1) {
+                showNoResults(list);   // keeps the add-action, single notice
+                return;
+            }
             if (opts.length < 1) return;
 
-            const query = input ? input.value : '';
+            if (query) opts.forEach(el => boldMatch(el, query));
+
             const target = pickTarget(opts, query);
             if (target && typeof choices._highlightChoice === 'function') {
                 choices._highlightChoice(target);
             }
 
             if (input && !isDeleting && target) {
-                const typed = input.value;
                 const label = target.textContent.trim();
                 if (typed && label.length > typed.length &&
                     label.toLowerCase().startsWith(typed.toLowerCase())) {
