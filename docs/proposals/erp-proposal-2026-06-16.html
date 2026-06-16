@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ERP System Proposal</title>
+<style>
+  :root {
+    --primary:   #1e3a5f;
+    --accent:    #2563eb;
+    --light:     #f0f4f8;
+    --border:    #d1d5db;
+    --text:      #111827;
+    --muted:     #6b7280;
+    --success:   #059669;
+    --warn-bg:   #fffbeb;
+    --warn-bdr:  #fcd34d;
+    --warn-txt:  #78350f;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text);
+    background: #f3f4f6;
+  }
+
+  .page {
+    max-width: 950px;
+    margin: 0 auto;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+
+  /* ── COVER ─────────────────────────────────────── */
+  .cover {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a9e 100%);
+    color: white;
+    padding: 64px 56px 48px;
+  }
+
+  .cover-logo {
+    width: 72px; height: 72px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: 800; letter-spacing: -1px;
+    margin-bottom: 28px;
+  }
+
+  .cover h1 {
+    font-size: 34px; font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+  }
+
+  .cover .tagline {
+    font-size: 15px; opacity: 0.8; margin-bottom: 8px;
+  }
+
+  .cover .pills {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-top: 16px;
+  }
+
+  .cover .pill {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: 12px; font-weight: 500;
+  }
+
+  .cover-meta {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 20px 40px;
+    margin-top: 40px;
+    padding-top: 32px;
+    border-top: 1px solid rgba(255,255,255,0.2);
+  }
+
+  .cover-meta-item label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 1.2px; opacity: 0.65;
+    display: block; margin-bottom: 4px;
+  }
+
+  .cover-meta-item .fill {
+    border-bottom: 1px solid rgba(255,255,255,0.4);
+    display: block; height: 24px; min-width: 200px;
+  }
+
+  .cover-meta-item .fixed-val {
+    font-size: 15px; font-weight: 600;
+  }
+
+  /* ── BODY CONTENT ───────────────────────────────── */
+  .content { padding: 52px 56px; }
+
+  section { margin-bottom: 52px; }
+
+  .sec-hdr {
+    display: flex; align-items: center; gap: 14px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid var(--primary);
+    margin-bottom: 22px;
+  }
+
+  .sec-num {
+    width: 30px; height: 30px;
+    background: var(--primary); color: white;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; flex-shrink: 0;
+  }
+
+  .sec-hdr h2 { font-size: 19px; font-weight: 700; color: var(--primary); }
+
+  p { color: #374151; margin-bottom: 12px; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ── INFO / NOTE BOXES ──────────────────────────── */
+  .info-box {
+    background: var(--light);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    color: #1e3a5f;
+    font-size: 13.5px;
+  }
+
+  .note-box {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-bdr);
+    border-radius: 8px;
+    padding: 13px 18px;
+    font-size: 12.5px;
+    color: var(--warn-txt);
+    margin-top: 16px;
+  }
+  .note-box strong { color: #92400e; }
+
+  /* ── PLAIN TABLE ────────────────────────────────── */
+  .plain-table {
+    width: 100%; border-collapse: collapse; margin-top: 10px;
+  }
+  .plain-table th {
+    background: var(--light);
+    padding: 9px 14px; text-align: left;
+    font-size: 12px; color: var(--primary);
+    border: 1px solid var(--border);
+  }
+  .plain-table td {
+    padding: 9px 14px; font-size: 13px; color: #374151;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .plain-table tr:nth-child(even) td { background: #fafafa; }
+
+  /* ── MODULE GROUPS ──────────────────────────────── */
+  .module-group { margin-top: 28px; }
+
+  .grp-hdr {
+    padding: 11px 16px;
+    border-radius: 6px 6px 0 0;
+    font-weight: 700; font-size: 12.5px;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--primary); color: white;
+  }
+  .grp-hdr.foundation-hdr { background: var(--success); }
+
+  .grp-hdr .grp-badge {
+    margin-left: auto;
+    background: rgba(255,255,255,0.22);
+    padding: 2px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+  }
+
+  .mod-table {
+    width: 100%; border-collapse: collapse;
+    border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 6px 6px; overflow: hidden;
+  }
+
+  .mod-table thead tr { background: #f8fafc; }
+
+  .mod-table th {
+    padding: 7px 12px;
+    font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--muted);
+    font-weight: 600; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .mod-table th.col-chk  { width: 44px; text-align: center; }
+  .mod-table th.col-cost { width: 110px; text-align: right; }
+
+  .mod-table tbody tr { border-bottom: 1px solid var(--border); }
+  .mod-table tbody tr:last-child { border-bottom: none; }
+  .mod-table tbody tr:hover { background: #f9fafb; }
+  .mod-table tbody tr.fnd-row { background: #f0fdf4; }
+  .mod-table tbody tr.fnd-row:hover { background: #dcfce7; }
+
+  .mod-table td {
+    padding: 13px 12px;
+    vertical-align: top;
+  }
+  .mod-table td.col-chk  { text-align: center; padding-top: 16px; }
+  .mod-table td.col-cost {
+    text-align: right; color: var(--muted);
+    font-size: 12px; padding-top: 16px;
+  }
+
+  .mod-name { font-weight: 600; font-size: 14px; color: var(--text); margin-bottom: 3px; }
+  .mod-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .mod-tags {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 7px; list-style: none; padding: 0;
+  }
+  .mod-tags li {
+    background: #f3f4f6; border: 1px solid #e5e7eb;
+    border-radius: 4px; padding: 1px 7px;
+    font-size: 11px; color: #4b5563;
+  }
+
+  .chk-input {
+    width: 17px; height: 17px;
+    cursor: pointer; accent-color: var(--accent);
+  }
+
+  .incl-mark { color: var(--success); font-size: 18px; font-weight: 700; }
+
+  /* ── SUMMARY TABLE ──────────────────────────────── */
+  .sum-table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+  .sum-table th, .sum-table td {
+    padding: 10px 16px; border: 1px solid var(--border); font-size: 13px;
+  }
+  .sum-table th { background: var(--light); font-weight: 600; color: var(--primary); }
+  .sum-table td.amount { text-align: right; }
+  .sum-table tr.total td {
+    font-weight: 700; font-size: 14px;
+    background: var(--primary); color: white;
+  }
+
+  /* ── TIMELINE ───────────────────────────────────── */
+  .timeline { margin-top: 18px; border-left: 2px solid var(--border); padding-left: 24px; }
+  .tl-item { margin-bottom: 24px; position: relative; }
+  .tl-item::before {
+    content: '';
+    width: 12px; height: 12px;
+    background: var(--accent); border-radius: 50%;
+    position: absolute; left: -30px; top: 5px;
+  }
+  .tl-phase { font-weight: 700; font-size: 14px; color: var(--primary); }
+  .tl-dur   { font-size: 12px; color: var(--accent); font-weight: 600; margin: 2px 0 4px; }
+  .tl-desc  { font-size: 12.5px; color: #4b5563; }
+
+  /* ── TECH TABLE ─────────────────────────────────── */
+  .tech-table { width: 100%; border-collapse: collapse; }
+  .tech-table td {
+    padding: 9px 14px; border: 1px solid var(--border); font-size: 13px;
+  }
+  .tech-table td:first-child {
+    font-weight: 600; background: var(--light); width: 33%; color: var(--primary);
+  }
+
+  /* ── TERMS ──────────────────────────────────────── */
+  ol.terms { padding-left: 20px; }
+  ol.terms li { margin-bottom: 9px; font-size: 13px; color: #374151; }
+
+  /* ── SIGNATURE ──────────────────────────────────── */
+  .sig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 32px; }
+  .sig-label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted); margin-bottom: 44px;
+  }
+  .sig-line-top {
+    border-top: 1px solid var(--text); padding-top: 8px;
+  }
+  .sig-name  { font-weight: 600; font-size: 13px; }
+  .sig-title { font-size: 12px; color: var(--muted); }
+  .sig-date  { font-size: 12px; color: var(--muted); margin-top: 20px; }
+
+  /* ── FOOTER ─────────────────────────────────────── */
+  .footer {
+    background: var(--light); border-top: 1px solid var(--border);
+    padding: 22px 56px; text-align: center;
+    font-size: 12px; color: var(--muted);
+  }
+
+  /* ── PRINT ──────────────────────────────────────── */
+  @media print {
+    body { background: white; font-size: 11px; }
+    .page { box-shadow: none; max-width: 100%; }
+    .cover,
+    .grp-hdr,
+    .sum-table tr.total td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .module-group { page-break-inside: avoid; }
+    section { page-break-inside: avoid; }
+  }
+
+  /* ── MOBILE ─────────────────────────────────────── */
+  @media (max-width: 640px) {
+    .cover  { padding: 40px 24px; }
+    .content { padding: 32px 24px; }
+    .cover-meta { grid-template-columns: 1fr; }
+    .sig-grid   { grid-template-columns: 1fr; }
+    .footer { padding: 20px 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ══════════════════════════════════════════════
+       COVER
+  ═══════════════════════════════════════════════ -->
+  <div class="cover">
+    <div class="cover-logo">ERP</div>
+
+    <h1>Enterprise Resource Planning System</h1>
+    <div class="tagline">Software Proposal &amp; Module Selection</div>
+
+    <div class="pills">
+      <span class="pill">Philippine-Compliant</span>
+      <span class="pill">BIR-Ready</span>
+      <span class="pill">Multi-Branch</span>
+      <span class="pill">Web-Based</span>
+      <span class="pill">TRAIN Act</span>
+      <span class="pill">SSS · PhilHealth · Pag-IBIG</span>
+    </div>
+
+    <div class="cover-meta">
+      <div class="cover-meta-item">
+        <label>Prepared for</label>
+        <span class="fill"></span>
+      </div>
+      <div class="cover-meta-item">
+        <label>Proposal Date</label>
+        <span class="fixed-val">June 16, 2026</span>
+      </div>
+      <div class="cover-meta-item">
+        <label>Prepared by</label>
+        <span class="fill"></span>
+      </div>
+      <div class="cover-meta-item">
+        <label>Valid Until</label>
+        <span class="fill"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════
+       CONTENT
+  ═══════════════════════════════════════════════ -->
+  <div class="content">
+
+    <!-- ─── 1. EXECUTIVE SUMMARY ─────────────────── -->
+    <section>
+      <div class="sec-hdr">
+        <div class="sec-num">1</div>
+        <h2>Executive Summary</h2>
+      </div>
+
+      <div class="info-box">
+        This proposal outlines a fully custom-built <strong>Enterprise Resource Planning (ERP) system</strong>
+        tailored for Philippine small and medium-sized enterprises. The system consolidates all core business
+        functions — accounting, purchasing, sales, inventory, payroll, and production — into a single,
+        integrated, web-based platform accessible from any device.
+      </div>
+
+      <p>
+        The ERP is built around Philippine regulatory requirements from the ground up: BIR VAT and withholding
+        tax rules, TRAIN Act income tax tables, and mandatory government contributions (SSS, PhilHealth,
+        Pag-IBIG). All financial reports and data exports are formatted for BIR compliance.
+      </p>
+      <p>
+        The system is <strong>modular</strong>. A core Foundation package is always included. Every additional
+        module is optional — the client selects only what the business needs today, and more modules can be
+        added at any time without rebuilding the system.
+      </p>
+    </section>
+
+    <!-- ─── 2. SYSTEM OVERVIEW ───────────────────── -->
+    <section>
+      <div class="sec-hdr">
+        <div class="sec-num">2</div>
+        <h2>System Overview</h2>
+      </div>
+
+      <p>
+        All modules share a common foundation: one database, unified user access control, a full audit
+        trail, and a consistent interface across every screen. The table below summarizes the functional
+        areas available.
+      </p>
+
+      <table class="plain-table">
+        <thead>
+          <tr>
+            <th style="width:32%;">Area</th>
+            <th>What It Covers</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Foundation</strong></td>
+            <td>Chart of accounts, double-entry journals, accounting periods, user roles, multi-branch, audit trail</td>
+          </tr>
+          <tr>
+            <td><strong>Financial Management</strong></td>
+            <td>Accounts receivable, accounts payable, cash receipts, disbursements, fixed assets, bank reconciliation, budgeting</td>
+          </tr>
+          <tr>
+            <td><strong>BIR Tax Compliance</strong></td>
+            <td>VAT input/output, withholding tax codes, BIR summary lists, alphalist, form generation</td>
+          </tr>
+          <tr>
+            <td><strong>Sales Cycle</strong></td>
+            <td>Customer master, sales quotations, sales orders, delivery receipts, price lists</td>
+          </tr>
+          <tr>
+            <td><strong>Procurement Cycle</strong></td>
+            <td>Vendor master, purchase requests, purchase orders, receiving reports, 3-way matching</td>
+          </tr>
+          <tr>
+            <td><strong>Inventory Management</strong></td>
+            <td>Item master, stock movements, inventory valuation, physical count, reorder alerts</td>
+          </tr>
+          <tr>
+            <td><strong>Human Resources &amp; Payroll</strong></td>
+            <td>Employee records, payroll computation, government remittances, leave management, payslips</td>
+          </tr>
+          <tr>
+            <td><strong>Production / Manufacturing</strong></td>
+            <td>Bill of materials, work orders, production costing, variance reports</td>
+          </tr>
+          <tr>
+            <td><strong>Reporting &amp; Analytics</strong></td>
+            <td>Financial statements, aging reports, cash flow, management dashboards, Excel/CSV export</td>
+          </tr>
+          <tr>
+            <td><strong>System &amp; Integrations</strong></td>
+            <td>Document attachments, email alerts, bulk import, multi-currency, API access</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ─── 3. MODULE SELECTION ──────────────────── -->
+    <section>
+      <div class="sec-hdr">
+        <div class="sec-num">3</div>
+        <h2>Module Selection</h2>
+      </div>
+
+      <p>
+        Please place a check mark next to every module you wish to include. The <strong>Foundation</strong>
+        block is mandatory and included in all packages. All other modules are optional add-ons.
+      </p>
+
+      <div class="note-box">
+        <strong>Instructions:</strong> Check the modules your business needs. If you are unsure about a
+        module, leave it unchecked — we can discuss it separately. Additional modules may be added in a
+        future phase at any time. Pricing and timeline will be finalized based on your selections.
+      </div>
+
+      <!-- ── FOUNDATION ── -->
+      <div class="module-group">
+        <div class="grp-hdr foundation-hdr">
+          <span>🏛</span> Foundation — Always Included
+          <span class="grp-badge">INCLUDED IN ALL PACKAGES</span>
+        </div>
+        <table class="mod-table">
+          <thead>
+            <tr>
+              <th class="col-chk"></th>
+              <th>Module</th>
+              <th class="col-cost">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="fnd-row">
+              <td class="col-chk"><span class="incl-mark">✓</span></td>
+              <td>
+                <div class="mod-name">Chart of Accounts</div>
+                <div class="mod-desc">Hierarchical general ledger accounts: Asset, Liability, Equity, Revenue, Expense</div>
+                <ul class="mod-tags"><li>Account codes &amp; names</li><li>Parent-child hierarchy</li><li>Account types &amp; classification</li></ul>
+              </td>
+              <td class="col-cost">Included</td>
+            </tr>
+            <tr class="fnd-row">
+              <td class="col-chk"><span class="incl-mark">✓</span></td>
+              <td>
+                <div class="mod-name">Journal Entries &amp; General Ledger</div>
+                <div class="mod-desc">Double-entry bookkeeping, manual adjustments, reversals, and auto-generated entries from all transactions</div>
+                <ul class="mod-tags"><li>Draft → Posted workflow</li><li>Auto-balance validation</li><li>Reversing entries</li><li>Adjustment, closing, reclassification types</li></ul>
+              </td>
+              <td class="col-cost">Included</td>
+            </tr>
+            <tr class="fnd-row">
+              <td class="col-chk"><span class="incl-mark">✓</span></td>
+              <td>
+                <div class="mod-name">Accounting Periods</div>
+                <div class="mod-desc">Monthly open/closed fiscal period management; no transactions can post to a closed period</div>
+                <ul class="mod-tags"><li>Open / Close periods</li><li>Year-end close</li><li>Period-lock enforcement</li></ul>
+              </td>
+              <td class="col-cost">Included</td>
+            </tr>
+            <tr class="fnd-row">
+              <td class="col-chk"><span class="incl-mark">✓</span></td>
+              <td>
+                <div class="mod-name">User Management &amp; Role-Based Access Control</div>
+                <div class="mod-desc">Multi-user system with roles controlling what each person can view or change</div>
+                <ul class="mod-tags"><li>Admin / Accountant / Staff / Viewer roles</li><li>Branch-level access</li><li>Account lockout after failed logins</li></ul>
+              </td>
+              <td class="col-cost">Included</td>
+            </tr>
+            <tr class="fnd-row">
+              <td class="col-chk"><span class="incl-mark">✓</span></td>
+              <td>
+                <div class="mod-name">Multi-Branch Support</div>
+                <div class="mod-desc">Multiple business locations under one system, each with its own data scope and access permissions</div>
+                <ul class="mod-tags"><li>Branch picker per session</li><li>Branch-scoped transactions</li><li>Cross-branch reporting</li></ul>
+              </td>
+              <td class="col-cost">Included</td>
+            </tr>
+            <tr class="fnd-row">
+              <td class="col-chk"><span class="incl-mark">✓</span></td>
+              <td>
+                <div class="mod-name">Audit Trail &amp; Approval Workflow</div>
+                <div class="mod-desc">Every action is permanently recorded. Sensitive changes require approval before taking effect.</div>
+                <ul class="mod-tags"><li>Full audit log (who, when, what changed)</li><li>Pending approval queue</li><li>Self-approval prevention</li></ul>
+              </td>
+              <td class="col-cost">Included</td>
+            </tr>
+            <tr class="fnd-row">
+              <td class="col-chk"><span class="incl-mark">✓</span></td>
+              <td>
+                <div class="mod-name">Dashboard &amp; Company Settings</div>
+                <div class="mod-desc">Home screen with key metrics and pending action items; company profile and system settings</div>
+                <ul class="mod-tags"><li>Pending approvals badge</li><li>Company name &amp; logo</li><li>System notifications</li></ul>
+              </td>
+              <td class="col-cost">Included</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── FINANCIAL MANAGEMENT ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>💰</span> Financial Management</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Accounts Receivable — Sales Invoices</div>
+                <div class="mod-desc">Issue official sales invoices to customers; track outstanding balances; auto-post journal entries</div>
+                <ul class="mod-tags"><li>Invoice numbering (SI-YYYY-MM-####)</li><li>VAT-inclusive line items</li><li>WT receivable per line</li><li>Draft → Posted → Void</li><li>PDF print</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Accounts Payable — Vendor Bills</div>
+                <div class="mod-desc">Record vendor invoices; track outstanding payables; auto-post journal entries with VAT and withholding tax</div>
+                <ul class="mod-tags"><li>Bill numbering (AP-YYYY-MM-####)</li><li>VAT input tax per line</li><li>Withholding tax per line</li><li>Draft → Posted → Void</li><li>Attachment support</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Cash Disbursement Vouchers</div>
+                <div class="mod-desc">Record cash or check payments to vendors; supports full or partial payment against AP bills or direct expenses</div>
+                <ul class="mod-tags"><li>CDV numbering</li><li>Apply to AP bills (partial / full)</li><li>Direct expense lines</li><li>Check number tracking</li><li>Auto journal entry</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Cash Receipts &amp; Collections</div>
+                <div class="mod-desc">Record customer payments via cash, check, or bank transfer; apply collections to outstanding invoices</div>
+                <ul class="mod-tags"><li>Collection receipt numbering</li><li>Cash / check / bank transfer</li><li>Apply to SI invoices</li><li>Auto journal entry</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Fixed Asset Management</div>
+                <div class="mod-desc">Maintain a register of all company assets; automatically compute and post monthly depreciation</div>
+                <ul class="mod-tags"><li>Asset register (code, description, cost, date)</li><li>Straight-line &amp; declining balance</li><li>Auto depreciation journal entries</li><li>Disposal / write-off workflow</li><li>Asset schedule report</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Bank Reconciliation</div>
+                <div class="mod-desc">Match book entries against the bank statement; identify outstanding checks and deposits in transit</div>
+                <ul class="mod-tags"><li>Bank statement import (CSV)</li><li>Match / unmatch entries</li><li>Outstanding check list</li><li>Reconciliation report</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Budgeting &amp; Cost Control</div>
+                <div class="mod-desc">Set annual budgets per account; compare budget vs. actual with variance analysis</div>
+                <ul class="mod-tags"><li>Annual budget entry per account / month</li><li>Budget vs. Actual report</li><li>Over-budget alerts</li><li>Department / cost center tagging</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── BIR COMPLIANCE ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>🧾</span> BIR Tax Compliance</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">VAT Management</div>
+                <div class="mod-desc">Manage VAT categories (12%, 0%, exempt, non-VAT); auto-extract VAT from line amounts; BIR-compliant treatment of input and output tax</div>
+                <ul class="mod-tags"><li>VAT category master</li><li>VAT-inclusive extraction</li><li>Input vs. output VAT accounts</li><li>Summary List of Sales (SLS)</li><li>Summary List of Purchases (SLP)</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Withholding Tax Management</div>
+                <div class="mod-desc">Expanded withholding tax per BIR ATC codes; auto-compute on purchases and payments; track payables to BIR</div>
+                <ul class="mod-tags"><li>WT code master (ATC codes)</li><li>Per-line WT computation</li><li>WT receivable &amp; payable tracking</li><li>Alphalist of Payees (BIR 1604-E)</li><li>BIR 2307 certificate tracking</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">BIR Form Generation</div>
+                <div class="mod-desc">Generate data files and summaries ready for eBIRForms or EFPS submission</div>
+                <ul class="mod-tags"><li>VAT Return summary (BIR 2550M / 2550Q)</li><li>Expanded WT summary (1601-EQ)</li><li>Alphalist data file (1604-CF)</li><li>CSV / Excel export for upload</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── SALES CYCLE ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>📦</span> Customer &amp; Sales Cycle</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Customer Master</div>
+                <div class="mod-desc">Centralized customer database shared across all branches</div>
+                <ul class="mod-tags"><li>Customer code, name, TIN, contact</li><li>Default payment terms</li><li>Default VAT category</li><li>Customer account statement</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Sales Quotation</div>
+                <div class="mod-desc">Prepare and send price quotations to customers; convert approved quotations to Sales Orders</div>
+                <ul class="mod-tags"><li>Quotation numbering</li><li>Line items with pricing</li><li>Validity date</li><li>Convert to Sales Order</li><li>PDF generation</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Sales Order</div>
+                <div class="mod-desc">Record confirmed customer orders; track fulfillment status; trigger Delivery Receipts</div>
+                <ul class="mod-tags"><li>SO numbering (SO-YYYY-MM-####)</li><li>Open / Partial / Fulfilled status</li><li>Backorder management</li><li>Link to Delivery Receipts</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Delivery Receipt</div>
+                <div class="mod-desc">Record goods or services delivered to customers; reduce inventory stock; trigger billing</div>
+                <ul class="mod-tags"><li>DR numbering (DR-YYYY-MM-####)</li><li>Partial delivery support</li><li>Inventory out movement</li><li>Link to Sales Order &amp; Sales Invoice</li><li>PDF delivery slip</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Price Lists</div>
+                <div class="mod-desc">Manage multiple price tiers per item; automatically apply the correct price on sales documents</div>
+                <ul class="mod-tags"><li>Price list by customer tier or group</li><li>Effective date management</li><li>Discount rules</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── PROCUREMENT ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>🛒</span> Vendor &amp; Procurement Cycle</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Vendor Master</div>
+                <div class="mod-desc">Centralized supplier database with BIR-required information and default WT codes</div>
+                <ul class="mod-tags"><li>Vendor code, name, TIN, contact</li><li>Default payment terms</li><li>Default WT codes</li><li>Vendor account statement</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Purchase Request</div>
+                <div class="mod-desc">Internal requisition for goods or services; routed for approval before any purchasing action</div>
+                <ul class="mod-tags"><li>PR numbering (PR-YYYY-MM-####)</li><li>Requestor &amp; department</li><li>Approval workflow</li><li>Convert to Purchase Order</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Purchase Order</div>
+                <div class="mod-desc">Formal order issued to a vendor; tracks ordered vs. received quantities</div>
+                <ul class="mod-tags"><li>PO numbering (PO-YYYY-MM-####)</li><li>Open / Partial / Fulfilled status</li><li>PDF for vendor</li><li>Link to Receiving Report</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Receiving Report</div>
+                <div class="mod-desc">Record goods received from the vendor; increase inventory stock; trigger AP billing</div>
+                <ul class="mod-tags"><li>RR numbering (RR-YYYY-MM-####)</li><li>Partial receipt support</li><li>Inventory in movement</li><li>Link to PO &amp; AP Bill</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">3-Way Matching</div>
+                <div class="mod-desc">Internal control: verify that the Purchase Order quantity, Receiving Report, and AP invoice all agree before authorizing payment</div>
+                <ul class="mod-tags"><li>PO vs. RR vs. AP Bill comparison</li><li>Discrepancy alerts</li><li>Block payment on mismatch</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── INVENTORY ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>📊</span> Inventory Management</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Item / Product Master</div>
+                <div class="mod-desc">Central catalog of all goods and services the business buys and sells</div>
+                <ul class="mod-tags"><li>Item code, name, unit of measure</li><li>Cost method (FIFO / Weighted Average)</li><li>Reorder point &amp; minimum stock level</li><li>Sales price &amp; purchase price</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Stock Movements &amp; Ledger</div>
+                <div class="mod-desc">Every transaction creates a stock movement: receipt, delivery, transfer, adjustment. Running balance maintained per item per branch.</div>
+                <ul class="mod-tags"><li>Stock in / out / transfer / adjustment</li><li>Branch-level tracking</li><li>Running stock balance</li><li>FIFO / Weighted Average valuation</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Physical Count &amp; Stock Take</div>
+                <div class="mod-desc">Conduct periodic inventory counts; compare physical count vs. book balance; post adjustment journal entries</div>
+                <ul class="mod-tags"><li>Count sheet generation</li><li>Variance report (book vs. actual)</li><li>Auto inventory adjustment JE</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Inventory Reports</div>
+                <div class="mod-desc">Inventory aging, valuation, movement history, and low-stock alert reports</div>
+                <ul class="mod-tags"><li>Stock balance by item / branch</li><li>Inventory valuation report</li><li>Slow-moving / fast-moving analysis</li><li>Reorder alert list</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── HR & PAYROLL ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>👥</span> Human Resources &amp; Payroll</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Employee Master</div>
+                <div class="mod-desc">Complete employee records including all government-mandated identification and employment details</div>
+                <ul class="mod-tags"><li>Employee code, name, position, department</li><li>SSS, PhilHealth, Pag-IBIG numbers</li><li>TIN &amp; BIR tax status (S / ME / etc.)</li><li>Employment type (regular / probationary / contractual)</li><li>Bank account for payroll crediting</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Payroll Computation</div>
+                <div class="mod-desc">Semi-monthly or monthly payroll processing; TRAIN Act-compliant income tax tables; all mandated deductions auto-computed</div>
+                <ul class="mod-tags"><li>Basic pay, allowances, overtime, holiday pay</li><li>SSS, PhilHealth, Pag-IBIG deductions</li><li>Withholding tax on compensation (TRAIN table)</li><li>De minimis benefits</li><li>Net pay computation</li><li>Payslip generation (PDF)</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Government Remittances</div>
+                <div class="mod-desc">Generate all required contribution reports and schedules for government agencies</div>
+                <ul class="mod-tags"><li>SSS R-3 report</li><li>PhilHealth RF-1 report</li><li>Pag-IBIG remittance list</li><li>BIR 1601-C (WT on compensation)</li><li>BIR 2316 (employee tax certificate)</li><li>Alphalist of employees (1604-CF)</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">13th Month Pay</div>
+                <div class="mod-desc">Automatically compute 13th month pay per employee based on basic pay earned; pro-rated for new hires and resignees</div>
+                <ul class="mod-tags"><li>Annual 13th month computation</li><li>Pro-rated for partial year</li><li>BIR exemption threshold tracking</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Leave Management</div>
+                <div class="mod-desc">Track employee leave balances and applications; deduct leave without pay from payroll automatically</div>
+                <ul class="mod-tags"><li>Leave type setup (VL, SL, EL, Maternity, Paternity)</li><li>Leave balance tracking</li><li>Leave application &amp; approval</li><li>Leave without pay deduction to payroll</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── PRODUCTION ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>🏭</span> Production / Manufacturing</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Bill of Materials (BOM)</div>
+                <div class="mod-desc">Define the raw materials and components required to produce each finished product</div>
+                <ul class="mod-tags"><li>Multi-level BOM</li><li>Component quantities per unit</li><li>Standard cost computation</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Work Orders</div>
+                <div class="mod-desc">Authorize and track production runs; consume raw materials from inventory; record finished goods produced</div>
+                <ul class="mod-tags"><li>Work order numbering</li><li>Material issuance from inventory</li><li>Finished goods receipt</li><li>Scrap / wastage tracking</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Production Costing &amp; Variance Reports</div>
+                <div class="mod-desc">Compare standard vs. actual production cost; auto-generate WIP and COGS journal entries</div>
+                <ul class="mod-tags"><li>Standard vs. actual cost comparison</li><li>Material &amp; usage variance</li><li>WIP → Finished Goods journal entries</li><li>Production cost report</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── REPORTING ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>📈</span> Reporting &amp; Analytics</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Financial Statements</div>
+                <div class="mod-desc">Trial Balance, Income Statement, Balance Sheet, and Statement of Cash Flows — per period, per branch, or consolidated</div>
+                <ul class="mod-tags"><li>Trial Balance</li><li>Income Statement (P&amp;L)</li><li>Balance Sheet</li><li>Statement of Cash Flows</li><li>Excel / PDF export</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">AR / AP Aging Reports</div>
+                <div class="mod-desc">Outstanding receivables and payables aged by 30 / 60 / 90 / 90+ day buckets; as-of-date aging supported</div>
+                <ul class="mod-tags"><li>AR Aging by customer</li><li>AP Aging by vendor</li><li>As-of-date aging</li><li>Excel export</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Management Reports</div>
+                <div class="mod-desc">Operational reports for management decision-making beyond standard financial statements</div>
+                <ul class="mod-tags"><li>Sales summary by period / branch</li><li>Purchase summary</li><li>Top customers &amp; vendors</li><li>Cash position report</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── SYSTEM & INTEGRATIONS ── -->
+      <div class="module-group">
+        <div class="grp-hdr"><span>⚙</span> System Features &amp; Integrations</div>
+        <table class="mod-table">
+          <thead>
+            <tr><th class="col-chk">✓</th><th>Module</th><th class="col-cost">Cost (PHP)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Document Attachments</div>
+                <div class="mod-desc">Attach scanned receipts, contracts, or photos directly to any transaction record</div>
+                <ul class="mod-tags"><li>File upload per transaction</li><li>PDF, JPG, PNG support</li><li>View / download in-app</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Email Notifications</div>
+                <div class="mod-desc">Automated email alerts for pending approvals, overdue balances, and key system events</div>
+                <ul class="mod-tags"><li>Approval request emails</li><li>Overdue AR / AP alerts</li><li>Low stock alerts</li><li>Payroll processed notification</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Bulk Data Import</div>
+                <div class="mod-desc">Import master data and opening balances from Excel templates to accelerate system setup</div>
+                <ul class="mod-tags"><li>Customer / vendor import</li><li>Chart of accounts import</li><li>Opening balance upload</li><li>Inventory count import</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">Multi-Currency Support</div>
+                <div class="mod-desc">Transact in USD, EUR, and other foreign currencies; auto-post foreign exchange gain or loss on settlement</div>
+                <ul class="mod-tags"><li>Currency master with exchange rates</li><li>BSP rate management</li><li>Forex gain / loss journal entries</li><li>Multi-currency AR / AP</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+            <tr>
+              <td class="col-chk"><input type="checkbox" class="chk-input"></td>
+              <td>
+                <div class="mod-name">API Access &amp; Integration</div>
+                <div class="mod-desc">REST API endpoints for connecting the ERP to POS systems, e-commerce platforms, or third-party tools</div>
+                <ul class="mod-tags"><li>Authenticated REST endpoints</li><li>Read / write access per module</li><li>Webhook support</li></ul>
+              </td>
+              <td class="col-cost"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ─── 4. INVESTMENT SUMMARY ─────────────────── -->
+    <section>
+      <div class="sec-hdr">
+        <div class="sec-num">4</div>
+        <h2>Investment Summary</h2>
+      </div>
+
+      <p>
+        The investment below will be completed based on the modules checked in Section 3.
+        Pricing is presented as a one-time development fee. An optional annual support and maintenance
+        agreement is available separately.
+      </p>
+
+      <table class="sum-table">
+        <thead>
+          <tr>
+            <th style="width:60%;">Item</th>
+            <th style="text-align:right;">Amount (PHP)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Foundation Package (always included)</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>Financial Management — selected modules</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>BIR Tax Compliance — selected modules</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>Sales &amp; Procurement Cycle — selected modules</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>Inventory Management — selected modules</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>Human Resources &amp; Payroll — selected modules</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>Production / Manufacturing — selected modules</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>Reporting, System Features &amp; Integrations — selected modules</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>Data Migration &amp; System Setup</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td>User Training &amp; Go-Live Support</td>
+            <td class="amount">_______________</td>
+          </tr>
+          <tr>
+            <td style="color:var(--muted); font-size:12px;">Annual Support &amp; Maintenance (optional, billed separately)</td>
+            <td class="amount" style="color:var(--muted); font-size:12px;">_______________</td>
+          </tr>
+          <tr class="total">
+            <td>TOTAL PROJECT INVESTMENT</td>
+            <td class="amount">PHP _______________</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note-box" style="margin-top:18px;">
+        <strong>Payment Terms (typical arrangement):</strong> 50% upon contract signing ·
+        30% upon successful User Acceptance Testing (UAT) · 20% upon go-live. Final terms to be agreed in the contract.
+      </div>
+    </section>
+
+    <!-- ─── 5. PROJECT TIMELINE ───────────────────── -->
+    <section>
+      <div class="sec-hdr">
+        <div class="sec-num">5</div>
+        <h2>Estimated Project Timeline</h2>
+      </div>
+
+      <p>
+        The timeline below reflects the full-scope scenario. Phases for modules not selected will be
+        skipped, reducing the total duration proportionally. A core accounting + AR/AP + Sales +
+        Procurement package (without HR or Production) is typically completed in <strong>20–24 weeks</strong>.
+      </p>
+
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-phase">Phase 1 — Foundation &amp; Core Accounting</div>
+          <div class="tl-dur">Weeks 1 – 4</div>
+          <div class="tl-desc">Chart of accounts, journal entries, user accounts and roles, branch setup, accounting period management, audit trail, dashboard</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-phase">Phase 2 — Financial Management &amp; BIR Compliance</div>
+          <div class="tl-dur">Weeks 5 – 10</div>
+          <div class="tl-desc">Accounts receivable, accounts payable, receipts, cash disbursements, VAT management, withholding tax, BIR reports, fixed assets, bank reconciliation</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-phase">Phase 3 — Sales &amp; Procurement Cycles</div>
+          <div class="tl-dur">Weeks 11 – 16</div>
+          <div class="tl-desc">Customer and vendor master, sales quotations, sales orders, delivery receipts, purchase requests, purchase orders, receiving reports, 3-way matching, price lists</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-phase">Phase 4 — Inventory Management</div>
+          <div class="tl-dur">Weeks 17 – 20</div>
+          <div class="tl-desc">Item master, stock movements and ledger, inventory valuation (FIFO / Weighted Average), physical count, reorder alerts, inventory reports</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-phase">Phase 5 — Human Resources &amp; Payroll</div>
+          <div class="tl-dur">Weeks 21 – 27</div>
+          <div class="tl-desc">Employee master, payroll computation (TRAIN Act), government remittances (SSS / PhilHealth / Pag-IBIG), 13th month pay, leave management, payslip generation</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-phase">Phase 6 — Production &amp; Advanced Features</div>
+          <div class="tl-dur">Weeks 28 – 33</div>
+          <div class="tl-desc">Bill of materials, work orders, production costing, variance reports, budgeting, advanced reporting, bulk data import, email notifications, API access, multi-currency</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-phase">Phase 7 — User Acceptance Testing &amp; Go-Live</div>
+          <div class="tl-dur">Weeks 34 – 37</div>
+          <div class="tl-desc">Full UAT with key users per module, bug resolution, historical data migration, user training, go-live support, and post-launch monitoring</div>
+        </div>
+      </div>
+
+      <div class="note-box">
+        <strong>Note:</strong> All timelines are estimates. Final schedule will be confirmed in the
+        project contract based on selected modules, client resource availability, and data migration
+        complexity.
+      </div>
+    </section>
+
+    <!-- ─── 6. TECHNICAL SPECS ────────────────────── -->
+    <section>
+      <div class="sec-hdr">
+        <div class="sec-num">6</div>
+        <h2>Technical Specifications</h2>
+      </div>
+
+      <table class="tech-table">
+        <tbody>
+          <tr>
+            <td>Platform</td>
+            <td>Web-based application — no software installation required on user devices</td>
+          </tr>
+          <tr>
+            <td>Device Access</td>
+            <td>Desktop computer, laptop, tablet, and mobile phone (fully responsive interface)</td>
+          </tr>
+          <tr>
+            <td>Hosting Options</td>
+            <td>Cloud-hosted (managed server) or on-premise installation — client's choice</td>
+          </tr>
+          <tr>
+            <td>Database</td>
+            <td>SQLite for standard SME scale · PostgreSQL available for high-volume or enterprise needs</td>
+          </tr>
+          <tr>
+            <td>Security</td>
+            <td>HTTPS encryption, CSRF protection, role-based access control, account lockout after failed logins, full audit trail of every action</td>
+          </tr>
+          <tr>
+            <td>BIR Compliance</td>
+            <td>BIR CAS-compliant design, TRAIN Act income tax tables, BIR-format reports and data files ready for eBIRForms / EFPS</td>
+          </tr>
+          <tr>
+            <td>Philippine Labor</td>
+            <td>DOLE-aligned leave types, SSS / PhilHealth / Pag-IBIG contribution tables updated per current regulations</td>
+          </tr>
+          <tr>
+            <td>Data Backup</td>
+            <td>Automated daily backups; backup file downloadable by the system administrator at any time</td>
+          </tr>
+          <tr>
+            <td>Browser Support</td>
+            <td>Google Chrome, Microsoft Edge, Mozilla Firefox, Apple Safari (latest versions)</td>
+          </tr>
+          <tr>
+            <td>Data Exports</td>
+            <td>All reports exportable to Microsoft Excel (.xlsx) and CSV; select documents generate PDF</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ─── 7. TERMS ──────────────────────────────── -->
+    <section>
+      <div class="sec-hdr">
+        <div class="sec-num">7</div>
+        <h2>Terms &amp; Conditions</h2>
+      </div>
+
+      <ol class="terms">
+        <li>
+          The scope of this engagement is limited to the modules checked in Section 3. Any module or
+          feature not checked at signing requires a separate change order, which may adjust the price
+          and timeline.
+        </li>
+        <li>
+          The client will designate a project coordinator who will be available for requirements
+          clarification, review of deliverables, UAT participation, and sign-off at each phase milestone.
+        </li>
+        <li>
+          Training will be provided for up to <strong>______</strong> user accounts. Additional training
+          sessions beyond those included are available at a separate rate.
+        </li>
+        <li>
+          Data migration from existing systems (spreadsheets, other software) is included for the
+          agreed data scope. Data preparation, cleaning, and verification before migration is the
+          responsibility of the client.
+        </li>
+        <li>
+          Annual support and maintenance covers bug fixes and minor UI enhancements. Development of
+          new modules or significant new features is scoped and billed separately.
+        </li>
+        <li>
+          The developer retains ownership of the underlying platform and source code. The client
+          receives a perpetual, non-transferable license to operate the deployed system for their
+          own business use.
+        </li>
+        <li>
+          This proposal is valid for <strong>30 days</strong> from the proposal date above. Pricing
+          and timelines are subject to revision after this period.
+        </li>
+        <li>
+          Philippine law governs this agreement. Any disputes shall first be resolved through
+          good-faith negotiation, then mediation, before any formal proceedings.
+        </li>
+      </ol>
+    </section>
+
+    <!-- ─── 8. ACCEPTANCE ─────────────────────────── -->
+    <section>
+      <div class="sec-hdr">
+        <div class="sec-num">8</div>
+        <h2>Acceptance &amp; Authorization</h2>
+      </div>
+
+      <div class="info-box">
+        By signing below, the Client confirms that the modules checked in Section 3 represent the agreed
+        scope of work and authorizes the Developer to proceed on the terms stated in this proposal.
+        Both parties agree that this document, once signed, forms the basis of the project contract.
+      </div>
+
+      <div class="sig-grid">
+        <div>
+          <div class="sig-label">Client — Authorized Representative</div>
+          <div class="sig-line-top">
+            <div class="sig-name">_______________________________________</div>
+            <div class="sig-title">Printed Name &amp; Title</div>
+            <div class="sig-date">Signature: ____________________________</div>
+            <div class="sig-date">Date: _________________________________</div>
+          </div>
+        </div>
+        <div>
+          <div class="sig-label">Developer — Authorized Representative</div>
+          <div class="sig-line-top">
+            <div class="sig-name">_______________________________________</div>
+            <div class="sig-title">Printed Name &amp; Title</div>
+            <div class="sig-date">Signature: ____________________________</div>
+            <div class="sig-date">Date: _________________________________</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- end .content -->
+
+  <div class="footer">
+    <p><strong>CAS Enterprise Resource Planning System · Software Proposal</strong></p>
+    <p style="margin-top:5px;">Prepared June 16, 2026 · This document is confidential and intended solely for the named recipient.</p>
+  </div>
+
+</div><!-- end .page -->
+</body>
+</html>
