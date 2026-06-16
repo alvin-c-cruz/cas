@@ -258,6 +258,7 @@ let vatOverrideActive = false, wtOverrideActive = false;
 
 // ── Vendor Choices.js ─────────────────────────────────────────────────────────
 const vendorSel = document.getElementById('vendor_id');
+addVendorSentinelOption(vendorSel);
 const vendorChoices = new Choices(vendorSel, {
     searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false,
 });

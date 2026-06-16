@@ -4,6 +4,24 @@
    Requires Choices to be loaded and #vendorQuickAddOverlay to be present. */
 const VENDOR_ADD_SENTINEL = '__add_vendor__';
 
+/* Insert the "➕ Add Vendor…" option at the TOP of the vendor <select>
+   (right after the empty placeholder) BEFORE Choices.js is initialized, so it
+   leads the dropdown list rather than trailing the vendor entries. */
+function addVendorSentinelOption(selectEl) {
+    if (!selectEl || selectEl.querySelector('option[value="' + VENDOR_ADD_SENTINEL + '"]')) return;
+    const opt = document.createElement('option');
+    opt.value = VENDOR_ADD_SENTINEL;
+    opt.textContent = '➕ Add Vendor…';
+    const placeholder = selectEl.options[0];
+    if (placeholder && placeholder.nextSibling) {
+        selectEl.insertBefore(opt, placeholder.nextSibling);
+    } else if (placeholder) {
+        selectEl.appendChild(opt);
+    } else {
+        selectEl.appendChild(opt);
+    }
+}
+
 function initVendorQuickAdd(opts) {
     const { choices, selectEl } = opts;
     const overlay = document.getElementById('vendorQuickAddOverlay');
@@ -14,11 +32,8 @@ function initVendorQuickAdd(opts) {
     const submitBtn = document.getElementById('vendorQuickAddSubmit');
     let vatChoices = null;
 
-    // Pin the sentinel choice to the top of the dropdown.
-    choices.setChoices(
-        [{ value: VENDOR_ADD_SENTINEL, label: '➕ Add Vendor…' }],
-        'value', 'label', false
-    );
+    // The sentinel option is added to the <select> before Choices init
+    // (see addVendorSentinelOption), so it already leads the dropdown here.
 
     // Remember the last real selection so opening/cancelling the modal restores it.
     let lastValue = selectEl.value && selectEl.value !== VENDOR_ADD_SENTINEL ? selectEl.value : '';
