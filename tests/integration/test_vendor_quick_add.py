@@ -105,3 +105,15 @@ class TestVendorQuickAddEndpoint:
         }, headers=AJAX, follow_redirects=False)
         assert resp.status_code == 302
         assert Vendor.query.filter_by(code='VWX001').first() is None
+
+
+class TestFullVendorPageRegression:
+    def test_full_create_page_renders_with_choices_vat(self, client, db_session,
+                                                        admin_user, main_branch):
+        login(client)
+        make_vat_category(db_session)
+        resp = client.get('/vendors/create')
+        assert resp.status_code == 200
+        assert b'vendor-form-scope' in resp.data
+        assert b'vat-search-input' not in resp.data
+        assert b'choices.min.js' in resp.data
