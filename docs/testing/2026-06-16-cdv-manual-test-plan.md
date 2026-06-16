@@ -266,7 +266,22 @@ Run through each page at three viewport widths: **1280px (desktop)**, **768px (t
 
 | # | Date | Page / Route | Description | Severity | Status |
 |---|------|--------------|-------------|----------|--------|
-|   |      |              |             |          |        |
+| B01 | 2026-06-16 | `/cash-disbursements/create` (POST) | **T75 — No server-side validation for negative expense amounts.** Submitting `amount: -1000` via JSON expense_lines creates a CDV with `total_amount = -1000.00`. No rejection, no error. | Medium | Open |
+| B02 | 2026-06-16 | `/cash-disbursements/<id>` (detail) | **T90 — Expense-lines table and JE preview table clip on mobile (375px).** Both tables have `overflow: visible` on their wrapper; content beyond the card edge is hidden instead of scrolling. CDV list page wraps tables correctly (overflow-x: auto) but detail page does not. | Low | Open |
+| B03 | 2026-06-16 | Void modal / Cancel modal (detail page) | **T93 — Hardcoded hex colours in modal inline styles.** H3, P, and both buttons in void/cancel modals use raw hex (`#1e293b`, `#475569`, `#e2e8f0`, `#3b82f6`) in `style=""` attributes instead of CSS design-token variables. Violates CLAUDE.md styling convention. | Low | Open |
+| B04 | 2026-06-16 | `/dashboard` (after viewer permission redirect) | **Minor — Flash "You do not have permission" appears 3× on dashboard** after viewer attempts to access `/cash-disbursements/create`. Likely a duplicate `flash()` call or session flush issue. | Low | Open |
+
+---
+
+## Test Run Notes
+
+### Skipped Tests (T70–T72)
+Branch-isolation tests (T70: GET other-branch CDV → 404; T71: POST edit; T72: POST post) were skipped — only one branch (`Main Branch`) exists in this test environment. Branch isolation is enforced at the `_get_cdv_or_404()` helper (filters by `session['selected_branch_id']`) and confirmed by code review.
+
+### Notable Findings (Non-Bug)
+- **Account picker not filtered to expense accounts (create form):** The expense-line account picker shows ALL account types (assets, liabilities, revenue, expenses). Potentially confusing but may be intentional for payment flexibility (e.g., paying a liability directly). Not logged as a bug pending business decision.
+- **AP bill Particulars (Notes) not visually marked required:** Creating an AP bill silently resets the Choices.js vendor picker when Notes is empty. This is a pre-existing AP bill issue; not in CDV scope.
+- **Print page shows CDV even when Cancelled:** Navigating directly to `/cash-disbursements/1/print` on a Cancelled CDV renders the print page with a "CANCELLED" watermark — intentional and correct.
 
 ---
 
@@ -275,10 +290,10 @@ Run through each page at three viewport widths: **1280px (desktop)**, **768px (t
 | Metric | Value |
 |--------|-------|
 | Total test cases | 93 |
-| Passed | |
-| Failed | |
-| Skipped | |
-| Bugs found | |
+| Passed | 87 |
+| Failed | 3 (T75, T90, T93) |
+| Skipped | 3 (T70, T71, T72 — single-branch environment) |
+| Bugs found | 4 (3 test failures + 1 minor flash duplicate) |
 | Run date | 2026-06-16 |
-| Tester | |
-| Overall result | PASS / FAIL |
+| Tester | Claude Code (Playwright automated walk-through) |
+| Overall result | CONDITIONAL PASS — core workflows fully functional; 3 low/medium bugs logged |
