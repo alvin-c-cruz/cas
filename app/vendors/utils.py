@@ -66,3 +66,28 @@ def compute_wht_ytd(vendor_id):
         if wt:
             result.append({'code': wt.code, 'name': wt.name, 'total': row.total or Decimal('0.00')})
     return result
+
+
+def generate_next_vendor_code():
+    """Generate the next vendor code in sequence (V001, V002, etc.)"""
+    from app.vendors.models import Vendor
+    latest_vendor = Vendor.query.order_by(Vendor.code.desc()).first()
+
+    if not latest_vendor or not latest_vendor.code.startswith('V'):
+        return 'V001'
+
+    try:
+        latest_number = int(latest_vendor.code[1:])  # Remove 'V' prefix
+        next_number = latest_number + 1
+        return f'V{next_number:03d}'  # Format as V001, V002, etc.
+    except (ValueError, IndexError):
+        return 'V001'
+
+
+def populate_vat_category_choices(form):
+    """Populate VAT category choices from database"""
+    from app.vat_categories.models import VATCategory
+    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
+    choices = [('', '— Select VAT Category —')]
+    choices.extend([(cat.code, f'{cat.code} — {cat.name}') for cat in vat_categories])
+    form.default_vat_category.choices = choices

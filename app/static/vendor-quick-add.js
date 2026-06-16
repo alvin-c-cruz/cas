@@ -12,6 +12,7 @@ function initVendorQuickAdd(opts) {
     const form = document.getElementById('vendorQuickAddForm');
     const errorBox = document.getElementById('vendorQuickAddError');
     const submitBtn = document.getElementById('vendorQuickAddSubmit');
+    let vatChoices = null;
 
     // Pin the sentinel choice to the top of the dropdown.
     choices.setChoices(
@@ -26,8 +27,11 @@ function initVendorQuickAdd(opts) {
         errorBox.style.display = 'none';
         errorBox.textContent = '';
         overlay.style.display = 'flex';
-        // Init the modal's VAT search-select (idempotent).
-        if (typeof initVendorVatSelect === 'function') initVendorVatSelect(overlay);
+        // Init the modal's VAT search-select once; keep the instance so we can
+        // reset it after a successful save (form.reset() can't touch Choices' DOM).
+        if (!vatChoices && typeof initVendorVatSelect === 'function') {
+            vatChoices = initVendorVatSelect(overlay);
+        }
     }
 
     function closeModal() {
@@ -73,6 +77,9 @@ function initVendorQuickAdd(opts) {
                     choices.setChoiceByValue(String(body.vendor.id));
                     closeModal();
                     form.reset();
+                    // form.reset() restores native inputs, but the Choices-enhanced
+                    // VAT widget keeps its own DOM — clear it explicitly.
+                    if (vatChoices) vatChoices.setChoiceByValue('');
                 } else {
                     const errs = body.errors || {};
                     const first = Object.values(errs)[0] || 'Could not create vendor. Please check the fields.';

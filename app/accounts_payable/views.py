@@ -10,7 +10,7 @@ from app.accounts_payable.models import AccountsPayable, AccountsPayableItem, Ac
 from app.accounts_payable.forms import AccountsPayableForm
 from app.vendors.models import Vendor
 from app.vendors.forms import VendorForm
-from app.vendors.views import populate_vat_category_choices, generate_next_vendor_code
+from app.vendors.utils import populate_vat_category_choices, generate_next_vendor_code
 from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
