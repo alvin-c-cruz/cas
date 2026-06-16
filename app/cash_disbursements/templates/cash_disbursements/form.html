@@ -239,6 +239,7 @@
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor-form-widgets.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor-quick-add.js') }}"></script>
 <script>
 // ── Data from server ──────────────────────────────────────────────────────────
@@ -258,12 +259,10 @@ let vatOverrideActive = false, wtOverrideActive = false;
 
 // ── Vendor Choices.js ─────────────────────────────────────────────────────────
 const vendorSel = document.getElementById('vendor_id');
-addVendorSentinelOption(vendorSel);
-const vendorChoices = new Choices(vendorSel, {
-    searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false,
-});
 vendorSel.addEventListener('change', () => onVendorChange(vendorSel.value));
-initVendorQuickAdd({ choices: vendorChoices, selectEl: vendorSel });
+// The shared search-select (via initVendorQuickAdd) creates the Choices
+// instance and wires typeahead + the "Add Vendor" action.
+initVendorQuickAdd({ selectEl: vendorSel });
 
 // ── Cash account Choices.js ───────────────────────────────────────────────────
 const cashAccSel = document.getElementById('cash_account_id');

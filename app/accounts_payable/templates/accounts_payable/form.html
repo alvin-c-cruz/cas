@@ -309,6 +309,7 @@
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor-form-widgets.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor-quick-add.js') }}"></script>
 <script>
 const vatCategories = {{ vat_categories | tojson }};
@@ -868,12 +869,9 @@ function initOverrides() {
 // ── Vendor search-select ──────────────────────────────────────────────────────
 const vendorSel = document.getElementById('vendor_id');
 if (vendorSel) {
-    addVendorSentinelOption(vendorSel);
-    const vendorChoices = new Choices(vendorSel, {
-        searchEnabled: true, itemSelectText: '', shouldSort: false,
-        searchResultLimit: 50, allowHTML: false,
-    });
-    initVendorQuickAdd({ choices: vendorChoices, selectEl: vendorSel });
+    // The shared search-select (via initVendorQuickAdd) creates the Choices
+    // instance and wires typeahead + the "Add Vendor" action.
+    initVendorQuickAdd({ selectEl: vendorSel });
 }
 
 // ── Payment Terms search-select ───────────────────────────────────────────────
