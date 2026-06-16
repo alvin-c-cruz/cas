@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APV &amp; CDV Manual Testing Guide — CAS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.55;
+    color: #1e293b;
+    background: #fff;
+  }
+
+  /* ── Page layout ── */
+  @page {
+    size: A4;
+    margin: 20mm 18mm 22mm 18mm;
+    @bottom-center { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #94a3b8; }
+  }
+
+  .page-break { page-break-before: always; break-before: page; }
+
+  /* ── Cover ── */
+  .cover {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+    text-align: center;
+    gap: 16px;
+  }
+  .cover-logo { font-size: 48pt; margin-bottom: 8px; }
+  .cover h1 { font-size: 26pt; font-weight: 700; color: #0f172a; line-height: 1.2; }
+  .cover h2 { font-size: 14pt; font-weight: 500; color: #475569; }
+  .cover .meta { margin-top: 32px; font-size: 9pt; color: #64748b; line-height: 2; }
+  .cover .meta span { display: block; }
+  .cover .badge {
+    display: inline-block; margin-top: 24px;
+    padding: 6px 18px; border-radius: 20px;
+    background: #f1f5f9; color: #475569;
+    font-size: 8.5pt; font-weight: 500; letter-spacing: 0.04em;
+  }
+
+  /* ── Typography ── */
+  h1 { font-size: 18pt; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+  h2 { font-size: 14pt; font-weight: 700; color: #0f172a; margin: 28px 0 10px;
+       padding-bottom: 6px; border-bottom: 2px solid #e2e8f0; }
+  h3 { font-size: 11pt; font-weight: 600; color: #1e293b; margin: 20px 0 8px; }
+  h4 { font-size: 10pt; font-weight: 600; color: #334155; margin: 14px 0 6px; }
+  p  { margin-bottom: 8px; }
+  ul, ol { padding-left: 20px; margin-bottom: 8px; }
+  li { margin-bottom: 3px; }
+  code { font-family: 'Courier New', monospace; font-size: 9pt;
+         background: #f8fafc; padding: 1px 4px; border-radius: 3px;
+         border: 1px solid #e2e8f0; color: #7c3aed; }
+  strong { font-weight: 600; }
+
+  /* ── Section header bar ── */
+  .section-header {
+    background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 100%);
+    color: white; padding: 14px 20px; border-radius: 8px;
+    margin-bottom: 18px; margin-top: 8px;
+  }
+  .section-header h1 { font-size: 16pt; color: white; margin: 0; border: none; }
+  .section-header p { color: #bfdbfe; font-size: 9pt; margin: 4px 0 0; }
+
+  .section-header.apv { background: linear-gradient(135deg, #065f46 0%, #059669 100%); }
+  .section-header.cdv { background: linear-gradient(135deg, #7c2d12 0%, #ea580c 100%); }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9.5pt; }
+  th {
+    background: #f1f5f9; color: #374151;
+    padding: 7px 10px; text-align: left; font-weight: 600;
+    border: 1px solid #e2e8f0; font-size: 9pt; letter-spacing: 0.02em;
+  }
+  td { padding: 6px 10px; border: 1px solid #e2e8f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  td code { font-size: 8.5pt; }
+
+  /* role matrix checkmarks */
+  .yes { color: #059669; font-weight: 700; text-align: center; }
+  .no  { color: #dc2626; font-weight: 700; text-align: center; }
+  .gated { color: #d97706; font-weight: 600; font-size: 8.5pt; text-align: center; }
+
+  /* ── Info / warning / tip boxes ── */
+  .box { border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; }
+  .box-info    { background: #eff6ff; border-left: 4px solid #3b82f6; }
+  .box-warn    { background: #fffbeb; border-left: 4px solid #f59e0b; }
+  .box-danger  { background: #fef2f2; border-left: 4px solid #ef4444; }
+  .box-success { background: #f0fdf4; border-left: 4px solid #22c55e; }
+  .box-title { font-weight: 700; font-size: 9pt; text-transform: uppercase;
+               letter-spacing: 0.05em; margin-bottom: 5px; }
+  .box-info .box-title    { color: #1d4ed8; }
+  .box-warn .box-title    { color: #b45309; }
+  .box-danger .box-title  { color: #b91c1c; }
+  .box-success .box-title { color: #15803d; }
+
+  /* ── Lifecycle diagram ── */
+  .lifecycle {
+    display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; margin: 12px 0; font-size: 9pt;
+  }
+  .state {
+    padding: 5px 14px; border-radius: 20px; font-weight: 600;
+    border: 2px solid transparent;
+  }
+  .state-draft    { background: #fef9c3; color: #713f12; border-color: #fde047; }
+  .state-posted   { background: #dcfce7; color: #14532d; border-color: #4ade80; }
+  .state-voided   { background: #fce7f3; color: #831843; border-color: #f9a8d4; }
+  .state-cancelled{ background: #fee2e2; color: #7f1d1d; border-color: #fca5a5; }
+  .state-paid     { background: #e0f2fe; color: #0c4a6e; border-color: #38bdf8; }
+  .state-partial  { background: #fdf4ff; color: #581c87; border-color: #c084fc; }
+  .arrow { color: #64748b; font-size: 13pt; font-weight: 300; }
+
+  /* ── Checklist ── */
+  .checklist li { list-style: none; padding-left: 0; margin-bottom: 5px; }
+  .checklist li::before { content: "☐ "; color: #64748b; font-size: 10pt; }
+
+  /* ── Scenario blocks ── */
+  .scenario {
+    border: 1px solid #e2e8f0; border-radius: 8px;
+    margin-bottom: 16px; overflow: hidden;
+  }
+  .scenario-header {
+    background: #f8fafc; padding: 9px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .scenario-num {
+    background: #3b82f6; color: white;
+    width: 24px; height: 24px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9pt; font-weight: 700; flex-shrink: 0;
+  }
+  .scenario-title { font-weight: 600; font-size: 10pt; }
+  .scenario-body { padding: 12px 14px; }
+  .scenario-body ol, .scenario-body ul { margin-bottom: 6px; }
+
+  .step-label { font-size: 8.5pt; font-weight: 700; text-transform: uppercase;
+                letter-spacing: 0.06em; color: #64748b; margin-top: 8px; margin-bottom: 3px; }
+
+  /* ── Bug table ── */
+  .bug-sev-medium { color: #b45309; font-weight: 700; }
+  .bug-sev-low    { color: #64748b; font-weight: 700; }
+  .bug-sev-high   { color: #b91c1c; font-weight: 700; }
+
+  /* ── Footer (on last page) ── */
+  .footer-note {
+    margin-top: 40px; padding-top: 14px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 8pt; color: #94a3b8; text-align: center;
+  }
+
+  /* ── TOC ── */
+  .toc ol { list-style: decimal; padding-left: 22px; }
+  .toc li { margin-bottom: 5px; }
+  .toc a  { color: #1d4ed8; text-decoration: none; }
+  .toc-section { font-weight: 700; }
+  .toc ol ol { list-style: lower-alpha; margin-top: 4px; }
+
+  /* print helpers */
+  @media print {
+    .no-print { display: none; }
+    h2 { page-break-after: avoid; }
+    .scenario { page-break-inside: avoid; }
+    .box { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ COVER ═══════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">⚖️</div>
+  <h1>APV &amp; CDV<br>Manual Testing Guide</h1>
+  <h2>Computerized Accounting System (CAS)</h2>
+  <div class="meta">
+    <span><strong>Modules:</strong> Accounts Payable Voucher · Cash Disbursement Voucher</span>
+    <span><strong>Environment:</strong> http://127.0.0.1:5000</span>
+    <span><strong>Date:</strong> June 16, 2026</span>
+    <span><strong>Version:</strong> 1.0</span>
+  </div>
+  <div class="badge">BIR-Compliant · Philippine SME ERP</div>
+</div>
+
+<!-- ═══════════════════════════════ TOC ═══════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section-header">
+  <h1>Table of Contents</h1>
+</div>
+
+<div class="toc">
+  <ol>
+    <li class="toc-section">Setup &amp; Prerequisites
+      <ol>
+        <li>Test Environment</li>
+        <li>Required Seed Data</li>
+        <li>Login Credentials</li>
+        <li>General Testing Rules</li>
+      </ol>
+    </li>
+    <li class="toc-section">APV — Accounts Payable Voucher
+      <ol>
+        <li>Overview</li>
+        <li>Route Map &amp; Role Matrix</li>
+        <li>Status Lifecycle</li>
+        <li>VAT &amp; WHT Mechanics</li>
+        <li>Test Scenarios</li>
+        <li>APV Quick Checklist</li>
+      </ol>
+    </li>
+    <li class="toc-section">CDV — Cash Disbursement Voucher
+      <ol>
+        <li>Overview</li>
+        <li>Route Map &amp; Role Matrix</li>
+        <li>Status Lifecycle</li>
+        <li>Expense Lines vs AP Payment Lines</li>
+        <li>Test Scenarios</li>
+        <li>CDV Quick Checklist</li>
+      </ol>
+    </li>
+    <li class="toc-section">Known Bugs &amp; Notes</li>
+    <li class="toc-section">Master Quick-Reference Checklist</li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════ SETUP ═══════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section-header">
+  <h1>1 — Setup &amp; Prerequisites</h1>
+  <p>Complete these steps before starting any test session</p>
+</div>
+
+<h2>1.1 Test Environment</h2>
+<table>
+  <tr><th>Item</th><th>Value</th></tr>
+  <tr><td>Base URL</td><td><code>http://127.0.0.1:5000</code></td></tr>
+  <tr><td>Database</td><td>SQLite — <code>cas.db</code> (local)</td></tr>
+  <tr><td>Config</td><td><code>FLASK_ENV=development</code></td></tr>
+  <tr><td>Start app</td><td><code>python flask_app.py</code></td></tr>
+  <tr><td>Seed DB</td><td><code>flask seed-minimal</code> (admin, 1 branch, 6 accounts, VAT+WHT)</td></tr>
+</table>
+
+<h2>1.2 Required Seed Data</h2>
+<p>Both modules require the following master data to be present before testing:</p>
+
+<table>
+  <tr><th>Entity</th><th>Minimum Needed</th><th>Where to Create</th></tr>
+  <tr>
+    <td>Vendor</td>
+    <td>At least 1 active vendor (e.g., code <code>V001</code>, name "Test Supplier")</td>
+    <td>Maintenance → Vendors → +Create</td>
+  </tr>
+  <tr>
+    <td>Accounts</td>
+    <td>1 Cash/Bank account (asset), 1 Expense account, 1 AP Payable account</td>
+    <td>Ledger → Chart of Accounts → +Create</td>
+  </tr>
+  <tr>
+    <td>VAT Categories</td>
+    <td>At least: Non-VAT (0%), VAT-able 12% (<code>V12DG</code>)</td>
+    <td>Maintenance → VAT Categories</td>
+  </tr>
+  <tr>
+    <td>WHT Codes</td>
+    <td>At least 1 code (e.g., <code>WC010</code> 1% Professional fees)</td>
+    <td>Maintenance → Withholding Tax</td>
+  </tr>
+  <tr>
+    <td>Branch</td>
+    <td>1 active branch selected in session</td>
+    <td>Admin → Branch Management — select after login</td>
+  </tr>
+</table>
+
+<div class="box box-info">
+  <div class="box-title">Tip — seed-minimal</div>
+  Running <code>flask seed-minimal</code> creates admin user, Main Branch, 6 essential accounts,
+  4 VAT categories, and 3 WHT codes automatically. Create at least one vendor manually before testing.
+</div>
+
+<h2>1.3 Login Credentials</h2>
+<table>
+  <tr><th>Role</th><th>Username</th><th>Password</th><th>Typical Use</th></tr>
+  <tr><td>Admin</td><td><code>admin</code></td><td><code>admin123</code></td>
+      <td>Admin-only actions (user mgmt, settings)</td></tr>
+  <tr><td>Accountant</td><td>Create via Admin</td><td>Set on creation</td>
+      <td>Primary tester — can post, cancel, void</td></tr>
+  <tr><td>Staff</td><td>Create via Admin</td><td>Set on creation</td>
+      <td>Test create/edit/void restrictions</td></tr>
+  <tr><td>Viewer</td><td>Create via Admin</td><td>Set on creation</td>
+      <td>Test read-only access</td></tr>
+</table>
+
+<div class="box box-warn">
+  <div class="box-title">Important — password field</div>
+  The login password field is <code>readonly</code> (anti-autofill). You must
+  <strong>click the field first</strong> before typing. In Playwright: <code>click('#password')</code>
+  then <code>fill('#password', 'yourpassword')</code>.
+</div>
+
+<h2>1.4 General Testing Rules</h2>
+<ul>
+  <li><strong>No JavaScript popups</strong> — void/cancel/post actions use custom HTML modals, never <code>window.confirm()</code>.</li>
+  <li><strong>CSRF required</strong> — every POST form includes a hidden <code>csrf_token</code>. Requests without it return 400.</li>
+  <li><strong>Audit log</strong> — after every create/edit/post/void/cancel, verify an entry exists at <code>/audit-log</code>.</li>
+  <li><strong>Branch scoping</strong> — documents belong to the branch in your session. You cannot see another branch's documents.</li>
+  <li><strong>Accounting periods</strong> — posting to a closed period is blocked. Ensure the target date is in an open period.</li>
+  <li><strong>Admin vs Accountant</strong> — use an <em>Accountant</em> user for accounting actions (post, cancel). Admin is for admin-only tasks.</li>
+  <li><strong>Minimum 10 characters</strong> — void and cancel reasons require ≥ 10 characters (browser-side <em>and</em> server-side enforcement).</li>
+</ul>
+
+<!-- ═══════════════════════════════ APV ═══════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section-header apv">
+  <h1>2 — APV: Accounts Payable Voucher</h1>
+  <p>Module path: /accounts-payable · Blueprint: accounts_payable</p>
+</div>
+
+<h2>2.1 Overview</h2>
+<p>
+  An APV records a purchase bill from a vendor. Each bill has line items with amounts,
+  VAT, and optional withholding tax. Once posted, it becomes a payable in the AP aging
+  report and can be paid via a Cash Disbursement Voucher (CDV).
+</p>
+<p>
+  <strong>Document number format:</strong> <code>AP-YYYY-MM-NNNN</code>
+  (e.g., <code>AP-2026-06-0001</code>).
+</p>
+
+<h2>2.2 Route Map</h2>
+<table>
+  <tr><th>Route</th><th>Methods</th><th>Access</th></tr>
+  <tr><td><code>/accounts-payable</code></td><td>GET</td><td>All logged-in roles</td></tr>
+  <tr><td><code>/accounts-payable/create</code></td><td>GET, POST</td><td>Staff, Accountant, Admin</td></tr>
+  <tr><td><code>/accounts-payable/&lt;id&gt;</code></td><td>GET</td><td>All logged-in roles</td></tr>
+  <tr><td><code>/accounts-payable/&lt;id&gt;/edit</code></td><td>GET, POST</td><td>Staff, Accountant, Admin (draft only)</td></tr>
+  <tr><td><code>/accounts-payable/&lt;id&gt;/post</code></td><td>POST</td><td>Accountant, Admin</td></tr>
+  <tr><td><code>/accounts-payable/&lt;id&gt;/void</code></td><td>POST</td><td>Staff, Accountant, Admin (draft only)</td></tr>
+  <tr><td><code>/accounts-payable/&lt;id&gt;/cancel</code></td><td>POST</td><td>Accountant, Admin (posted only)</td></tr>
+  <tr><td><code>/accounts-payable/&lt;id&gt;/print</code></td><td>GET</td><td>All logged-in (gated by <code>ap_print_access</code>)</td></tr>
+  <tr><td><code>/accounts-payable/export/excel</code></td><td>GET</td><td>All logged-in</td></tr>
+  <tr><td><code>/accounts-payable/export/csv</code></td><td>GET</td><td>All logged-in</td></tr>
+  <tr><td><code>/accounts-payable/attachments/upload</code></td><td>POST</td><td>Staff, Accountant, Admin (draft only)</td></tr>
+  <tr><td><code>/accounts-payable/attachments/&lt;id&gt;/download</code></td><td>GET</td><td>All logged-in</td></tr>
+  <tr><td><code>/accounts-payable/attachments/&lt;id&gt;/delete</code></td><td>POST</td><td>Accountant, Admin (draft only)</td></tr>
+</table>
+
+<h2>2.3 Role Matrix</h2>
+<table>
+  <tr><th>Action</th><th>Admin</th><th>Accountant</th><th>Staff</th><th>Viewer</th></tr>
+  <tr><td>View list &amp; detail</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+  <tr><td>Create APV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+  <tr><td>Edit draft APV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+  <tr><td>Post APV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+  <tr><td>Void draft APV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+  <tr><td>Cancel posted APV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+  <tr><td>Upload attachment</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+  <tr><td>Delete attachment</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+  <tr><td>Export Excel / CSV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+  <tr><td>Print APV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="gated">✓ (gated)</td></tr>
+</table>
+
+<h2>2.4 Status Lifecycle</h2>
+<div class="lifecycle">
+  <span class="state state-draft">Draft</span>
+  <span class="arrow">→</span>
+  <span class="state state-posted">Posted</span>
+  <span class="arrow">→</span>
+  <span class="state state-partial">Partially Paid</span>
+  <span class="arrow">→</span>
+  <span class="state state-paid">Paid</span>
+</div>
+<div class="lifecycle">
+  <span class="state state-draft">Draft</span>
+  <span class="arrow">→</span>
+  <span class="state state-voided">Voided</span>
+  &nbsp;&nbsp;&nbsp;
+  <span class="state state-posted">Posted</span>
+  <span class="arrow">→</span>
+  <span class="state state-cancelled">Cancelled</span>
+</div>
+
+<table>
+  <tr><th>Status</th><th>Meaning</th><th>Allowed Actions</th></tr>
+  <tr>
+    <td><strong>Draft</strong></td>
+    <td>Saved but not posted to the books. Journal entry exists as draft.</td>
+    <td>Edit · Void · Post</td>
+  </tr>
+  <tr>
+    <td><strong>Posted</strong></td>
+    <td>Posted to AP ledger. Journal entry posted. Appears in AP Aging.</td>
+    <td>Cancel (reversal JE created)</td>
+  </tr>
+  <tr>
+    <td><strong>Partially Paid</strong></td>
+    <td>CDV has paid part of the balance.</td>
+    <td>Further payment via CDV</td>
+  </tr>
+  <tr>
+    <td><strong>Paid</strong></td>
+    <td>Full balance settled via CDV payments.</td>
+    <td>None (terminal)</td>
+  </tr>
+  <tr>
+    <td><strong>Voided</strong></td>
+    <td>Draft was discarded. Draft JE deleted.</td>
+    <td>None (terminal)</td>
+  </tr>
+  <tr>
+    <td><strong>Cancelled</strong></td>
+    <td>Posted bill reversed. Reversal JE created and posted.</td>
+    <td>None (terminal)</td>
+  </tr>
+</table>
+
+<h2>2.5 VAT &amp; WHT Mechanics (Philippine BIR)</h2>
+
+<div class="box box-warn">
+  <div class="box-title">Critical Rule — VAT is extracted, not added</div>
+  Line amounts in APV are <strong>VAT-inclusive</strong>. The system <em>extracts</em> VAT from the
+  amount using the formula: <code>VAT = Amount × rate ÷ (1 + rate)</code>.
+  Example: ₱11,200 at 12% → VAT = ₱1,200 → Net = ₱10,000. Do <em>not</em> enter the net amount.
+</div>
+
+<table>
+  <tr><th>Field</th><th>Behaviour</th></tr>
+  <tr>
+    <td>Vendor Invoice Date</td>
+    <td><strong>Required</strong> when any line has VAT or WHT. Posting is blocked without it.</td>
+  </tr>
+  <tr>
+    <td>VAT Override</td>
+    <td>Enables manual entry of a different VAT amount when auto-calc doesn't match the counterparty.</td>
+  </tr>
+  <tr>
+    <td>WHT Override</td>
+    <td>Same for withholding tax — use when the rate in the system differs from the actual certificate.</td>
+  </tr>
+  <tr>
+    <td>Particulars (Notes)</td>
+    <td><strong>Required</strong> — form silently resets the vendor picker if left blank.</td>
+  </tr>
+</table>
+
+<!-- ── APV SCENARIOS ── -->
+<h2>2.6 Test Scenarios</h2>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">A1</span>
+    <span class="scenario-title">Create a basic APV (no VAT, no WHT)</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Navigate to <code>/accounts-payable/create</code>.</li>
+      <li>Select a vendor from the Choices.js picker (search by code or name).</li>
+      <li>Enter APV Date and Due Date.</li>
+      <li>Fill in <strong>Notes/Particulars</strong> (required — e.g., "Office supplies purchase").</li>
+      <li>Add one line item: Description, Amount (VAT-inclusive), VAT = <em>Non-VAT (0%)</em>, no WHT.</li>
+      <li>Click <strong>Enter Bill</strong>.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>Redirected to APV detail page with flash "APV AP-YYYY-MM-NNNN entered successfully!"</li>
+      <li>Status badge shows <strong>Draft</strong>.</li>
+      <li>Journal entry preview visible with correct debit/credit accounts.</li>
+      <li>Audit log entry: <code>action=create</code>, <code>module=accounts_payable</code>.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">A2</span>
+    <span class="scenario-title">Create APV with 12% VAT (VAT-inclusive line)</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Create an APV; enter <strong>Vendor Invoice Date</strong> (required for VAT).</li>
+      <li>Add a line: Amount = ₱11,200, VAT = <em>V12DG — Input VAT 12%</em>.</li>
+      <li>Observe the computed VAT amount before submitting.</li>
+      <li>Submit the form.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>VAT amount auto-computed as ₱1,200 (extracted from ₱11,200 at 12%).</li>
+      <li>Net (before WHT) = ₱10,000.</li>
+      <li>JE preview shows correct accounts: AP Payable (credit), Expense (debit), VAT Input (debit).</li>
+    </ul>
+    <div class="step-label">What to watch for</div>
+    <ul>
+      <li>Posting fails if <strong>Vendor Invoice Date</strong> is blank. Fill it before posting.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">A3</span>
+    <span class="scenario-title">Post an APV (Accountant role)</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Log in as <strong>Accountant</strong> (or Admin).</li>
+      <li>Open a <em>Draft</em> APV detail page.</li>
+      <li>Click <strong>Post Bill</strong> — a confirmation modal appears.</li>
+      <li>Confirm the post.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>Status changes to <strong>Posted</strong>.</li>
+      <li>Journal entry status becomes <em>posted</em>.</li>
+      <li>Post Bill and Edit buttons disappear; Cancel appears.</li>
+      <li>Audit log entry: <code>action=post</code>.</li>
+    </ul>
+    <div class="step-label">Verify roles</div>
+    <ul>
+      <li><strong>Staff</strong> — Post Bill button should NOT appear on detail page.</li>
+      <li>If staff submits POST request directly → redirected with "Only Accountants and Administrators" flash.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">A4</span>
+    <span class="scenario-title">Void a Draft APV</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Open a <em>Draft</em> APV.</li>
+      <li>Click <strong>Void</strong> — modal appears.</li>
+      <li>Test 1: Enter fewer than 10 characters → submit → verify still Draft.</li>
+      <li>Test 2: Enter ≥ 10-character reason → submit.</li>
+    </ol>
+    <div class="step-label">Expected (Test 2)</div>
+    <ul>
+      <li>Status changes to <strong>Voided</strong>.</li>
+      <li>Draft journal entry deleted (<code>journal_entry_id = None</code>).</li>
+      <li>Void reason and voided-by displayed in detail footer.</li>
+      <li>No Post/Edit/Void buttons visible.</li>
+      <li>Audit log entry: <code>action=void</code>.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">A5</span>
+    <span class="scenario-title">Cancel a Posted APV</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Post an APV (see A3).</li>
+      <li>On the detail page, click <strong>Cancel Bill</strong> — modal appears.</li>
+      <li>Enter cancellation reason (≥ 10 chars) and reversal date.</li>
+      <li>Confirm.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>Status changes to <strong>Cancelled</strong>.</li>
+      <li>A reversal JE (is_reversing=True) is created and posted.</li>
+      <li>AP balance is restored in AP aging.</li>
+      <li>Audit log entry: <code>action=cancel</code>.</li>
+    </ul>
+    <div class="step-label">What to test</div>
+    <ul>
+      <li>Cancel reason &lt; 10 chars → blocked.</li>
+      <li>Empty reversal date → blocked.</li>
+      <li>Staff cannot cancel (accountant/admin only).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">A6</span>
+    <span class="scenario-title">Attachments (upload, download, delete)</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Open a <em>Draft</em> APV.</li>
+      <li>Upload a PDF or image attachment via the attachment section.</li>
+      <li>Verify the attachment appears in the list (filename, size).</li>
+      <li>Download the attachment and confirm the file opens correctly.</li>
+      <li>Delete the attachment (as Accountant or Admin).</li>
+    </ol>
+    <div class="step-label">Role checks</div>
+    <ul>
+      <li><strong>Staff</strong> can upload but cannot delete attachments.</li>
+      <li>Attachments cannot be added to posted/voided/cancelled APVs.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">A7</span>
+    <span class="scenario-title">Export &amp; Search</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Navigate to <code>/accounts-payable</code>.</li>
+      <li>Use the status filter (Draft / Posted / Voided / Cancelled) and verify table updates.</li>
+      <li>Use the search box (vendor name, AP number) and verify filtering.</li>
+      <li>Click <strong>Export Excel</strong> → file downloads as <code>accounts_payable_YYYYMMDD.xlsx</code>.</li>
+      <li>Click <strong>Export CSV</strong> → file downloads as <code>accounts_payable_YYYYMMDD.csv</code>.</li>
+      <li>Apply a filter (e.g., status=posted) and export — verify export respects the filter.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>Each export contains only the filtered records.</li>
+      <li>Column headers present: AP Number, Date, Vendor, Status, Total, etc.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">A8</span>
+    <span class="scenario-title">Security &amp; Validation</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Checks to perform</div>
+    <ul>
+      <li><strong>Unauthenticated access</strong> — <code>GET /accounts-payable</code> while logged out → redirect to <code>/login</code>.</li>
+      <li><strong>Viewer creates APV</strong> — <code>GET /accounts-payable/create</code> as viewer → redirect to dashboard with permission flash.</li>
+      <li><strong>XSS in Notes</strong> — enter <code>&lt;script&gt;alert('x')&lt;/script&gt;</code> in Notes → stored as plain text, not executed.</li>
+      <li><strong>XSS in Void reason</strong> — enter <code>&lt;img src=x onerror=alert(1)&gt; reason here</code> → escaped in detail footer.</li>
+      <li><strong>CSRF</strong> — inspect any form: hidden <code>csrf_token</code> input must be present. POST without it → 400.</li>
+      <li><strong>Invalid ID</strong> — <code>GET /accounts-payable/9999</code> → 404.</li>
+      <li><strong>No JS confirm()</strong> — triggering Post/Void/Cancel shows custom HTML modal, not browser dialog.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>2.7 APV Quick Checklist</h2>
+<ul class="checklist">
+  <li>APV list loads and shows correct documents for current branch</li>
+  <li>Status filter works (Draft / Posted / Voided / Cancelled)</li>
+  <li>Create form: vendor Choices.js picker works; VAT auto-calculates on line change</li>
+  <li>Notes/Particulars field is filled (required — no visual required marker, but silently fails without it)</li>
+  <li>Vendor Invoice Date filled when using VAT or WHT lines</li>
+  <li>Draft APV shows correct Journal Entry preview (debit/credit match)</li>
+  <li>Post (as accountant) → JE goes to posted; status = Posted; Post/Edit buttons gone</li>
+  <li>Void (valid reason ≥ 10 chars) → Voided; draft JE deleted; no buttons</li>
+  <li>Void (reason &lt; 10 chars) → stays Draft; modal stays open</li>
+  <li>Cancel (posted APV) → Cancelled; reversal JE created and posted</li>
+  <li>Staff cannot Post or Cancel (no button shown; POST blocked server-side)</li>
+  <li>Viewer cannot create, edit, void, or cancel (all blocked with permission flash)</li>
+  <li>Export Excel → valid .xlsx download</li>
+  <li>Export CSV → valid .csv download</li>
+  <li>Print page renders without error (watermark if cancelled/voided)</li>
+  <li>Audit log: create/post/void/cancel entries present with correct actor</li>
+  <li>XSS in text fields: stored as plain text (escaped in Jinja templates)</li>
+  <li>CSRF token present in every form</li>
+</ul>
+
+<!-- ═══════════════════════════════ CDV ═══════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section-header cdv">
+  <h1>3 — CDV: Cash Disbursement Voucher</h1>
+  <p>Module path: /cash-disbursements · Blueprint: cash_disbursements</p>
+</div>
+
+<h2>3.1 Overview</h2>
+<p>
+  A CDV records a cash or check payment. Each CDV can contain two types of lines:
+  <strong>Expense Lines</strong> (direct expenses paid from petty cash or operating funds) and
+  <strong>AP Payment Lines</strong> (payments against posted AP bills that reduce the AP balance).
+  A single CDV can have both types simultaneously.
+</p>
+<p>
+  <strong>Document number format:</strong> <code>CD-YYYY-MM-NNNN</code>
+  (e.g., <code>CD-2026-06-0001</code>).
+</p>
+
+<h2>3.2 Route Map</h2>
+<table>
+  <tr><th>Route</th><th>Methods</th><th>Access</th></tr>
+  <tr><td><code>/cash-disbursements</code></td><td>GET</td><td>All logged-in roles</td></tr>
+  <tr><td><code>/cash-disbursements/create</code></td><td>GET, POST</td><td>Staff, Accountant, Admin</td></tr>
+  <tr><td><code>/cash-disbursements/&lt;id&gt;</code></td><td>GET</td><td>All logged-in roles</td></tr>
+  <tr><td><code>/cash-disbursements/&lt;id&gt;/edit</code></td><td>GET, POST</td><td>Staff, Accountant, Admin (draft only)</td></tr>
+  <tr><td><code>/cash-disbursements/&lt;id&gt;/post</code></td><td>POST</td><td>Accountant, Admin</td></tr>
+  <tr><td><code>/cash-disbursements/&lt;id&gt;/void</code></td><td>POST</td><td>Staff, Accountant, Admin (draft only)</td></tr>
+  <tr><td><code>/cash-disbursements/&lt;id&gt;/cancel</code></td><td>POST</td><td>Accountant, Admin (posted only)</td></tr>
+  <tr><td><code>/cash-disbursements/&lt;id&gt;/print</code></td><td>GET</td><td>All logged-in (gated by <code>cd_print_access</code>)</td></tr>
+  <tr><td><code>/cash-disbursements/export/excel</code></td><td>GET</td><td>All logged-in</td></tr>
+  <tr><td><code>/cash-disbursements/export/csv</code></td><td>GET</td><td>All logged-in</td></tr>
+  <tr><td><code>/cash-disbursements/open-bills</code></td><td>GET (JSON)</td><td>All logged-in (AJAX for AP picker)</td></tr>
+</table>
+
+<h2>3.3 Role Matrix</h2>
+<table>
+  <tr><th>Action</th><th>Admin</th><th>Accountant</th><th>Staff</th><th>Viewer</th></tr>
+  <tr><td>View list &amp; detail</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+  <tr><td>Create CDV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+  <tr><td>Edit draft CDV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+  <tr><td>Post CDV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+  <tr><td>Void draft CDV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td></tr>
+  <tr><td>Cancel posted CDV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+  <tr><td>Export Excel / CSV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+  <tr><td>Print CDV</td>
+      <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="gated">✓ (gated)</td></tr>
+</table>
+
+<h2>3.4 Status Lifecycle</h2>
+<div class="lifecycle">
+  <span class="state state-draft">Draft</span>
+  <span class="arrow">→</span>
+  <span class="state state-posted">Posted</span>
+  <span class="arrow">→</span>
+  <span class="state state-cancelled">Cancelled</span>
+</div>
+<div class="lifecycle">
+  <span class="state state-draft">Draft</span>
+  <span class="arrow">→</span>
+  <span class="state state-voided">Voided</span>
+</div>
+
+<table>
+  <tr><th>Status</th><th>Meaning</th><th>Allowed Actions</th></tr>
+  <tr>
+    <td><strong>Draft</strong></td>
+    <td>Saved but not posted. Draft JE exists.</td>
+    <td>Edit · Void · Post</td>
+  </tr>
+  <tr>
+    <td><strong>Posted</strong></td>
+    <td>Cash disbursed. JE posted. Any AP lines reduce the linked bill balance.</td>
+    <td>Cancel (reversal JE created)</td>
+  </tr>
+  <tr>
+    <td><strong>Voided</strong></td>
+    <td>Draft discarded. Draft JE deleted. Cannot be un-voided.</td>
+    <td>None (terminal)</td>
+  </tr>
+  <tr>
+    <td><strong>Cancelled</strong></td>
+    <td>Posted payment reversed. Reversal JE posted. AP balances restored.</td>
+    <td>None (terminal)</td>
+  </tr>
+</table>
+
+<h2>3.5 Expense Lines vs AP Payment Lines</h2>
+
+<table>
+  <tr><th>Type</th><th>When to use</th><th>What it does in the JE</th></tr>
+  <tr>
+    <td><strong>Expense Line<br>(Section B)</strong></td>
+    <td>Paying a direct cost (supplies, utilities, rent) not through an AP bill.</td>
+    <td>Dr Expense / VAT Input Account · Cr Cash/Bank</td>
+  </tr>
+  <tr>
+    <td><strong>AP Payment Line<br>(Section A)</strong></td>
+    <td>Paying against a previously posted AP bill. Reduces bill's balance.</td>
+    <td>Dr AP Payable Account · Cr Cash/Bank</td>
+  </tr>
+</table>
+
+<div class="box box-info">
+  <div class="box-title">Mix and match</div>
+  A single CDV can have <em>both</em> expense lines and AP payment lines.
+  The total disbursed = sum of both sections. The cash/bank account is credited
+  for the full total.
+</div>
+
+<div class="box box-warn">
+  <div class="box-title">AP Payment Line prerequisites</div>
+  The AP bill must be in <code>posted</code>, <code>partially_paid</code>, or <code>paid</code>
+  status. Only unpaid balance is available for application. The AJAX endpoint
+  <code>/cash-disbursements/open-bills?vendor_id=&lt;id&gt;</code> returns eligible bills.
+</div>
+
+<!-- ── CDV SCENARIOS ── -->
+<h2>3.6 Test Scenarios</h2>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">C1</span>
+    <span class="scenario-title">Create a CDV with expense lines only</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Navigate to <code>/cash-disbursements/create</code>.</li>
+      <li>Select vendor, CDV date, payment method (Cash), cash/bank account.</li>
+      <li>Fill in Particulars/Notes (required).</li>
+      <li>In <strong>Section B — Direct Expenses</strong>, add at least one line:
+        Description, Amount (VAT-inclusive), VAT category, WHT code (optional), Account.</li>
+      <li>Click <strong>Enter CDV</strong>.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>Redirected to detail page. Status = <strong>Draft</strong>.</li>
+      <li>JE preview shows correct Dr/Cr.</li>
+      <li>Audit log: <code>action=create</code>.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">C2</span>
+    <span class="scenario-title">Create a CDV with AP payment lines</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Prerequisites</div>
+    <ul>
+      <li>A posted AP bill must exist for the chosen vendor (see scenario A3).</li>
+    </ul>
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Select the same vendor as the posted AP bill.</li>
+      <li>In <strong>Section A — AP Bills</strong>, click <em>Select Bill</em>.
+          Open bills for that vendor load from the AJAX endpoint.</li>
+      <li>Enter the amount to apply (≤ bill balance).</li>
+      <li>Submit the CDV.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>CDV created as Draft with AP line applied amount.</li>
+      <li>AP bill balance is <em>not yet</em> reduced (only reduces on Post).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">C3</span>
+    <span class="scenario-title">Post a CDV and verify AP bill balance</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Log in as <strong>Accountant</strong>.</li>
+      <li>Open a Draft CDV that has an AP payment line.</li>
+      <li>Click <strong>Post CDV</strong> → modal appears → confirm.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>CDV status = <strong>Posted</strong>.</li>
+      <li>JE status = <em>posted</em>.</li>
+      <li>Linked AP bill: <code>amount_paid</code> increases by the applied amount.</li>
+      <li>If fully paid → bill status = <code>paid</code>. If partial → <code>partially_paid</code>.</li>
+      <li>Audit log: <code>action=post</code>.</li>
+    </ul>
+    <div class="step-label">Role verification</div>
+    <ul>
+      <li><strong>Staff</strong> — "Post CDV" button NOT visible. Direct POST → blocked.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">C4</span>
+    <span class="scenario-title">Void a Draft CDV</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Open a <em>Draft</em> CDV.</li>
+      <li>Click <strong>Void</strong>.</li>
+      <li>Test short reason (e.g., "Short") → submit → verify still Draft.</li>
+      <li>Enter valid reason (≥ 10 chars) → confirm void.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>Status = <strong>Voided</strong>. Draft JE deleted (<code>journal_entry_id = None</code>).</li>
+      <li>Void reason + voided-by shown in footer.</li>
+      <li>Only "← Back" button visible (no Post/Edit/Void).</li>
+      <li>Audit log: <code>action=void</code>.</li>
+    </ul>
+    <div class="step-label">Also verify</div>
+    <ul>
+      <li>Cannot void a <em>Posted</em> CDV — no Void button on posted CDV page.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">C5</span>
+    <span class="scenario-title">Cancel a Posted CDV and verify AP reversal</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Log in as <strong>Accountant</strong>. Open a <em>Posted</em> CDV.</li>
+      <li>Click <strong>Cancel CDV</strong> → modal appears.</li>
+      <li>Enter reason (≥ 10 chars) and reversal date.</li>
+      <li>Confirm cancellation.</li>
+    </ol>
+    <div class="step-label">Expected</div>
+    <ul>
+      <li>Status = <strong>Cancelled</strong>. Flash: "CDV cancelled. Reversal JE created."</li>
+      <li>Reversal JE (<code>is_reversing=True</code>) created with status = posted.</li>
+      <li>Any linked AP bills: <code>amount_paid</code> reduced back, <code>balance</code> restored, status reverts to <code>posted</code>.</li>
+      <li>Audit log: <code>action=cancel</code>.</li>
+    </ul>
+    <div class="step-label">Also test</div>
+    <ul>
+      <li>Cancel reason &lt; 10 chars → blocked.</li>
+      <li>Empty reversal date → blocked.</li>
+      <li>Cannot cancel a <em>Draft</em> CDV (no Cancel button on Draft).</li>
+      <li>Staff cannot cancel (accountant/admin only).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">C6</span>
+    <span class="scenario-title">Export &amp; Search</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Steps</div>
+    <ol>
+      <li>Navigate to <code>/cash-disbursements</code>.</li>
+      <li>Filter by status (Draft / Posted / Voided / Cancelled) — verify table updates.</li>
+      <li>Export Excel → downloads <code>cash_disbursements_YYYYMMDD.xlsx</code>.</li>
+      <li>Export CSV → downloads <code>cash_disbursements_YYYYMMDD.csv</code>.</li>
+      <li>Apply status=posted filter → export → verify CSV contains only Posted records.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">C7</span>
+    <span class="scenario-title">Print Access Settings</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Setting: <code>cd_print_access = posted_only</code> (default)</div>
+    <ul>
+      <li><strong>Draft</strong> CDV detail → no Print link visible.</li>
+      <li><strong>Posted</strong> CDV detail → Print link visible; print page renders with CDV content.</li>
+    </ul>
+    <div class="step-label">Setting: <code>cd_print_access = draft_and_posted</code></div>
+    <ul>
+      <li>Both Draft and Posted CDVs show Print link.</li>
+    </ul>
+    <div class="step-label">How to change the setting</div>
+    <p>Admin → Company Settings → CDV Print Access.</p>
+  </div>
+</div>
+
+<div class="scenario">
+  <div class="scenario-header">
+    <span class="scenario-num">C8</span>
+    <span class="scenario-title">Security &amp; Validation</span>
+  </div>
+  <div class="scenario-body">
+    <div class="step-label">Checks to perform</div>
+    <ul>
+      <li><strong>Unauthenticated</strong> — <code>GET /cash-disbursements</code> while logged out → redirect to <code>/login</code>.</li>
+      <li><strong>Viewer creates CDV</strong> — redirect to dashboard with permission message.</li>
+      <li><strong>Negative amount</strong> in expense line — currently accepted by server (Bug B01). Note actual stored value.</li>
+      <li><strong>Non-numeric amount</strong> (<code>abc</code>) — form rejects; redirected back to create.</li>
+      <li><strong>XSS in Notes</strong> — <code>&lt;script&gt;alert(1)&lt;/script&gt;</code> stored as plain text; not executed.</li>
+      <li><strong>XSS in Void reason</strong> — <code>&lt;img src=x onerror=alert(1)&gt; long reason</code> — escaped in footer.</li>
+      <li><strong>CSRF token</strong> present in post/void/cancel forms.</li>
+      <li><strong>Invalid CDV ID</strong> — <code>GET /cash-disbursements/9999</code> → 404.</li>
+      <li><strong>No JS confirm()</strong> — all actions use custom HTML modals.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>3.7 CDV Quick Checklist</h2>
+<ul class="checklist">
+  <li>CDV list loads; only current branch's CDVs visible</li>
+  <li>Status filter and date filters work correctly</li>
+  <li>Create (expense only): vendor picker, cash account picker, expense line table all functional</li>
+  <li>Create (AP payment): AJAX loads open bills for selected vendor; amount_applied ≤ bill balance</li>
+  <li>Draft CDV shows JE preview with correct Dr/Cr</li>
+  <li>Post (as accountant) → CDV posted; JE posted; AP bill balance updated</li>
+  <li>Post (as staff) → blocked; button not visible; server rejects if submitted directly</li>
+  <li>Void (valid reason ≥ 10 chars) → Voided; draft JE deleted</li>
+  <li>Void (short reason) → stays Draft; modal browser-validates minimum length</li>
+  <li>Cannot void a Posted CDV (no Void button)</li>
+  <li>Cancel (posted CDV) → Cancelled; reversal JE created; AP bills restored</li>
+  <li>Cancel (short reason) → blocked; stays Posted</li>
+  <li>Cannot cancel a Draft CDV (no Cancel button)</li>
+  <li>Export Excel / CSV → correct content, filename includes date</li>
+  <li>Export respects active status filter</li>
+  <li>Print link: shown only when status matches <code>cd_print_access</code> setting</li>
+  <li>Print page renders cleanly; cancelled CDVs show "CANCELLED" watermark</li>
+  <li>Audit log: create/update/post/void/cancel entries with correct actor</li>
+  <li>XSS payloads in text fields rendered as escaped plain text</li>
+  <li>CSRF token present in every action form</li>
+</ul>
+
+<!-- ═══════════════════════════════ BUGS ═══════════════════════════════ -->
+<div class="page-break"></div>
+<div class="section-header">
+  <h1>4 — Known Bugs &amp; Notes (as of 2026-06-16)</h1>
+</div>
+
+<h2>4.1 Open Bugs</h2>
+<table>
+  <tr><th>#</th><th>Module</th><th>Severity</th><th>Description</th><th>Workaround</th></tr>
+  <tr>
+    <td>B01</td>
+    <td>CDV</td>
+    <td class="bug-sev-medium">Medium</td>
+    <td>
+      <strong>No server-side validation for negative expense amounts.</strong><br>
+      Submitting <code>amount: -1000</code> in a CDV expense line creates a CDV with
+      <code>total_amount = -1000.00</code>. The system accepts it without error.
+    </td>
+    <td>Avoid entering negative amounts manually. Add server-side check at <code>views.py</code> CDV create/edit.</td>
+  </tr>
+  <tr>
+    <td>B02</td>
+    <td>CDV</td>
+    <td class="bug-sev-low">Low</td>
+    <td>
+      <strong>Detail page — expense and JE tables clip on mobile (375px).</strong><br>
+      The table wrappers on the CDV detail page use <code>overflow: visible</code>, causing
+      the right columns to be cut off instead of scrolling horizontally.
+      The CDV <em>list</em> page handles this correctly (<code>overflow-x: auto</code>).
+    </td>
+    <td>Add <code>overflow-x: auto</code> to table card wrappers in the CDV detail template.</td>
+  </tr>
+  <tr>
+    <td>B03</td>
+    <td>CDV</td>
+    <td class="bug-sev-low">Low</td>
+    <td>
+      <strong>Void/Cancel modals use hardcoded hex colours in inline styles.</strong><br>
+      H3, P, and button elements in the void/cancel modal HTML use raw hex values
+      (<code>#1e293b</code>, <code>#3b82f6</code>, etc.) violating the project's
+      design-token convention.
+    </td>
+    <td>Replace inline <code>style=""</code> hex values with CSS variable references in detail template.</td>
+  </tr>
+  <tr>
+    <td>B04</td>
+    <td>CDV</td>
+    <td class="bug-sev-low">Low</td>
+    <td>
+      <strong>Flash "no permission" message appears 3× after viewer redirect.</strong><br>
+      When a viewer tries to access <code>/cash-disbursements/create</code>, the resulting
+      dashboard page shows the permission flash message duplicated three times.
+    </td>
+    <td>Investigate whether <code>flash()</code> is called multiple times in the permission decorator chain.</td>
+  </tr>
+</table>
+
+<h2>4.2 Non-Bug Observations</h2>
+<ul>
+  <li><strong>Account picker not filtered:</strong> The CDV expense-line account picker shows <em>all</em>
+      account types (assets, liabilities, revenue, expenses), not just expense accounts.
+      This may be intentional (e.g., direct debit to a liability account). Confirm with business owner before treating as a bug.</li>
+  <li><strong>APV Notes silent failure:</strong> If Notes/Particulars is left blank on the APV create form,
+      the vendor Choices.js picker resets and the form silently fails without a visible error message.
+      Not a security issue, but confusing UX — the field should be visually marked required.</li>
+  <li><strong>Print access setting:</strong> <code>apv_print_access</code> and <code>sv_print_access</code>
+      settings are deferred (not in current Settings UI). The CDV equivalent <code>cd_print_access</code>
+      works correctly.</li>
+  <li><strong>Cancel on CDV shows "CANCELLED" on print:</strong> Direct access to
+      <code>/cash-disbursements/&lt;id&gt;/print</code> for a cancelled CDV shows the print view
+      with a CANCELLED watermark — this is intentional and correct.</li>
+</ul>
+
+<!-- ═══════════════════════════════ MASTER CHECKLIST ═══════════════════ -->
+<div class="page-break"></div>
+<div class="section-header">
+  <h1>5 — Master Quick-Reference Checklist</h1>
+  <p>Use this single-page summary during a rapid test pass</p>
+</div>
+
+<h3>APV — Accounts Payable Voucher</h3>
+<ul class="checklist">
+  <li>List → status filter works; branch scope correct</li>
+  <li>Create: vendor picker, VAT auto-calc, Notes required</li>
+  <li>VAT-incl amount → correct VAT extraction on line entry</li>
+  <li>Vendor Invoice Date required when VAT or WHT present</li>
+  <li>Post (accountant) → JE posted; AP balance visible in Aging</li>
+  <li>Void (draft) → JE deleted; void reason ≥10 chars enforced</li>
+  <li>Cancel (posted) → reversal JE; AP balance restored</li>
+  <li>Staff: can create/edit/void; cannot post/cancel</li>
+  <li>Viewer: read-only; create/edit/void/cancel all blocked</li>
+  <li>Export Excel &amp; CSV download correctly</li>
+  <li>Audit log: all CRUD actions recorded with actor username</li>
+  <li>XSS in text fields → stored escaped; not executed</li>
+  <li>CSRF token in all forms; POST without token → 400</li>
+</ul>
+
+<h3>CDV — Cash Disbursement Voucher</h3>
+<ul class="checklist">
+  <li>List → status filter; only current branch shown</li>
+  <li>Create (expense): expense line table; account picker; VAT/WHT optional</li>
+  <li>Create (AP): open-bills AJAX loads; amount applied ≤ bill balance</li>
+  <li>Post (accountant) → JE posted; linked AP bill balance updated</li>
+  <li>Void (draft, reason ≥10) → JE deleted; status = Voided</li>
+  <li>Cannot void a Posted CDV</li>
+  <li>Cancel (posted, reason ≥10) → reversal JE; AP bills restored; status = Cancelled</li>
+  <li>Cannot cancel a Draft CDV</li>
+  <li>Staff: can create/edit/void; cannot post/cancel</li>
+  <li>Viewer: blocked from create/edit/void/cancel</li>
+  <li>Export Excel &amp; CSV with date-filtered filename</li>
+  <li>Print: shown only per <code>cd_print_access</code> setting</li>
+  <li>Audit log: create/update/post/void/cancel recorded</li>
+  <li>Negative amounts in expense lines currently NOT validated (Bug B01)</li>
+  <li>Non-numeric amounts rejected (form returns to create page)</li>
+  <li>XSS in Notes and Void reason → stored escaped</li>
+  <li>CSRF token in all action forms</li>
+  <li>No JS confirm() dialogs — all confirmations use custom HTML modals</li>
+</ul>
+
+<div class="footer-note">
+  CAS Manual Testing Guide · APV &amp; CDV Modules · Generated 2026-06-16 ·
+  Internal use only — do not distribute outside the team.
+</div>
+
+</body>
+</html>
