@@ -337,6 +337,10 @@ if (pmSel) {
     toggleCheckFields();
 }
 
+// Notes are required — re-validate the save button as the user types.
+const notesField = document.querySelector('textarea[name="notes"]');
+if (notesField) notesField.addEventListener('input', validateForm);
+
 // ── Vendor step card state (mirrors APV) ─────────────────────────────────────
 function setVendorCardState(selected, vendorName) {
     const card  = document.getElementById('vendorCard');
@@ -617,6 +621,10 @@ function validateForm() {
     if (apLines.length === 0 && expenseLines.length === 0) {
         block('Add at least one AP bill or one expense line.'); return;
     }
+
+    // Notes are required server-side (they become the CD Journal particulars).
+    const notesVal = (document.querySelector('textarea[name="notes"]')?.value || '').trim();
+    if (!notesVal) { block('Enter notes / particulars before saving.'); return; }
 
     for (let i = 0; i < apLines.length; i++) {
         const l = apLines[i];
