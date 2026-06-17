@@ -105,9 +105,14 @@ These override default skill behavior:
 - **Skip finishing-branch options menu.** After all tasks are committed and pushed and tests
   pass, summarize what was done in 2-3 sentences. Do not invoke `finishing-a-development-branch`
   or present the 4-option menu.
-- **Testing scope tie-breaker.** If a bug is found during testing:
-  - In a module you are **currently touching** → fix inline and continue.
-  - In a module you are **not touching at all** → stop, scope it separately, then continue.
+- **Discuss bugs before fixing them.** Any bug found during testing MUST be reported and
+  explained to the user, and the user must approve a fix, **before** any fix is made — even in
+  a module you are currently touching. Do NOT fix inline. Continue testing (logging further
+  findings) while waiting; surface them and let the user decide what gets fixed, when, and how.
+  This supersedes the older "fix inline for the current module" tie-breaker.
+  - Triage/scoping still applies (note the module, severity, and blast radius), but the fix
+    itself always waits for the user's go-ahead.
+  - Protected modules (e.g. APV) additionally require approval to modify at all.
 
 ## Session Start Protocol
 
