@@ -86,6 +86,6 @@ def ensure_vendors():
                        default_vat_category=spec['vat_code'],
                        is_active=True)
             db.session.add(v)
-            db.session.commit()
         out.append(v)
+    db.session.commit()
     return out

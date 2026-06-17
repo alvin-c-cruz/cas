@@ -1,7 +1,6 @@
 """Integration tests for the APV/CDV historical seed generator."""
 import pytest
 from datetime import date
-from decimal import Decimal
 
 from app import db
 from app.branches.models import Branch
