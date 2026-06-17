@@ -186,7 +186,7 @@
 
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
-                        {% if invoice %}Update SI{% else %}Save SI{% endif %}
+                        {% if invoice %}Update{% else %}Save{% endif %}
                     </button>
                     {% if invoice %}
                     <a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" class="btn btn-secondary">Cancel</a>

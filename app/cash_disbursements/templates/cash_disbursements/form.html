@@ -272,7 +272,7 @@
 
             <div class="form-actions" style="margin-top: 24px;">
               <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
-                {{ 'Update CDV' if cdv else 'Save CDV' }}
+                {{ 'Update' if cdv else 'Save' }}
               </button>
               <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">Back</a>
             </div>
