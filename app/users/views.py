@@ -339,13 +339,11 @@ def create_user():
                 flash('Password is required for new users.', 'error')
                 return render_template('users/form.html', form=form, user=None)
 
-            # Set book permissions from form
+            # Set book permissions from form (driven by the module registry)
+            from app.users.module_access import MODULE_REGISTRY
             book_permissions = {
-                'journal_entries': request.form.get('book_journal_entries') == '1',
-                'accounts_receivable': request.form.get('book_accounts_receivable') == '1',
-                'collections': request.form.get('book_collections') == '1',
-                'accounts_payable': request.form.get('book_accounts_payable') == '1',
-                'payments': request.form.get('book_payments') == '1'
+                m['key']: request.form.get('book_' + m['key']) == '1'
+                for m in MODULE_REGISTRY
             }
             user.set_book_permissions(book_permissions)
 
@@ -460,13 +458,11 @@ def edit_user(id):
                 user.set_password(form.password.data)
                 password_changed = True
 
-            # Update book permissions from form
+            # Update book permissions from form (driven by the module registry)
+            from app.users.module_access import MODULE_REGISTRY
             book_permissions = {
-                'journal_entries': request.form.get('book_journal_entries') == '1',
-                'accounts_receivable': request.form.get('book_accounts_receivable') == '1',
-                'collections': request.form.get('book_collections') == '1',
-                'accounts_payable': request.form.get('book_accounts_payable') == '1',
-                'payments': request.form.get('book_payments') == '1'
+                m['key']: request.form.get('book_' + m['key']) == '1'
+                for m in MODULE_REGISTRY
             }
             user.set_book_permissions(book_permissions)
 

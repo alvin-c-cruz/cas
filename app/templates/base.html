@@ -1161,10 +1161,12 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-ledger">
+                    {% if can_access_module(current_user, 'chart_of_accounts') %}
                     <a href="{{ url_for('accounts.list_accounts') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('accounts.') %}active{% endif %}">
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Chart of Accounts</span>
                     </a>
+                    {% endif %}
                     <a href="{{ url_for('dashboard.under_development', feature='General Ledger') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'General Ledger' %}active{% endif %}">
                         <span class="nav-icon">📖</span>
                         <span class="nav-text">General Ledger</span>
@@ -1175,10 +1177,12 @@
                         <span class="nav-text">Aging of AR</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
+                    {% if can_access_module(current_user, 'ap_aging') %}
                     <a href="{{ url_for('reports.ap_aging') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.ap_aging') %}active{% endif %}">
                         <span class="nav-icon">📆</span>
                         <span class="nav-text">Aging of AP</span>
                     </a>
+                    {% endif %}
                 </div>
             </div>
 
@@ -1237,21 +1241,26 @@
                 </div>
             </div>
 
-            <!-- Maintenance Section -->
+            <!-- Maintenance Section (hidden entirely if staff has no maintenance access) -->
+            {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="maintenance">
                     <span>Maintenance</span>
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-maintenance">
+                    {% if can_access_module(current_user, 'customers') %}
                     <a href="{{ url_for('customers.list_customers') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('customers.') %}active{% endif %}">
                         <span class="nav-icon">👥</span>
                         <span class="nav-text">Customers</span>
                     </a>
+                    {% endif %}
+                    {% if can_access_module(current_user, 'vendors') %}
                     <a href="{{ url_for('vendors.list_vendors') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vendors.') %}active{% endif %}">
                         <span class="nav-icon">🏢</span>
                         <span class="nav-text">Vendors</span>
                     </a>
+                    {% endif %}
                     {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
                     <a href="{{ url_for('vat_categories.list_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_categories.') %}active{% endif %}">
                         <span class="nav-icon">📊</span>
@@ -1268,6 +1277,7 @@
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
 
             <!-- Admin Section (admin only) -->
             {% if current_user.is_authenticated and current_user.role == 'admin' %}

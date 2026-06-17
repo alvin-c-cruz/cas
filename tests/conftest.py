@@ -120,6 +120,11 @@ def staff_user(db_session):
         'accounts_payable': True,
         'payments': True,
         'journal_entries': True,
+        # Phase 2 master/ledger modules (deny-by-default in prod; granted here for tests)
+        'customers': True,
+        'vendors': True,
+        'chart_of_accounts': True,
+        'ap_aging': True,
     })
     db_session.add(user)
     db_session.commit()

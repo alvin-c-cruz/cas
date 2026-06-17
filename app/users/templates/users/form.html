@@ -162,32 +162,20 @@
                     <label class="form-label">Book Access Permissions</label>
                     <div class="form-hint" style="margin-bottom: 12px;">Select which books this user can access. Admins have access to all books by default.</div>
 
+                    {% for section in ['Transactions', 'Maintenance', 'Ledger'] %}
+                    {% set mods = module_registry | selectattr('section', 'equalto', section) | list %}
+                    {% if mods %}
+                    <div class="form-hint" style="margin: 10px 0 6px; font-weight: 600;">{{ section }}</div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        {% for m in mods %}
                         <label class="checkbox-label">
-                            <input type="checkbox" name="book_journal_entries" id="book_journal_entries" value="1">
-                            <span>Journal Entries</span>
+                            <input type="checkbox" name="book_{{ m.key }}" id="book_{{ m.key }}" value="1">
+                            <span>{{ m.label }}</span>
                         </label>
-
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="book_accounts_receivable" id="book_accounts_receivable" value="1">
-                            <span>Accounts Receivable</span>
-                        </label>
-
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="book_collections" id="book_collections" value="1">
-                            <span>Collections</span>
-                        </label>
-
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="book_accounts_payable" id="book_accounts_payable" value="1">
-                            <span>Accounts Payable</span>
-                        </label>
-
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="book_payments" id="book_payments" value="1">
-                            <span>Payments</span>
-                        </label>
+                        {% endfor %}
                     </div>
+                    {% endif %}
+                    {% endfor %}
                 </div>
             </div>
 
@@ -251,24 +239,15 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleBookPermissions();
 
     {% if user %}
-    // Pre-populate book permissions for existing user
+    // Pre-populate book permissions for existing user (driven by the module registry)
     const userPermissions = {{ user.get_book_permissions()|tojson }};
-
-    if (userPermissions.journal_entries) {
-        document.getElementById('book_journal_entries').checked = true;
-    }
-    if (userPermissions.accounts_receivable) {
-        document.getElementById('book_accounts_receivable').checked = true;
-    }
-    if (userPermissions.collections) {
-        document.getElementById('book_collections').checked = true;
-    }
-    if (userPermissions.accounts_payable) {
-        document.getElementById('book_accounts_payable').checked = true;
-    }
-    if (userPermissions.payments) {
-        document.getElementById('book_payments').checked = true;
-    }
+    const bookKeys = {{ module_registry | map(attribute='key') | list | tojson }};
+    bookKeys.forEach(function(k) {
+        if (userPermissions[k]) {
+            const el = document.getElementById('book_' + k);
+            if (el) el.checked = true;
+        }
+    });
     {% endif %}
 });
 </script>

@@ -57,6 +57,13 @@ def test_staff_gated_by_book_permissions(db_session, branch):
     assert can_access_module(staff, 'payments') is False
 
 
+def test_staff_phase2_modules_denied_by_default(db_session, branch):
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'accounts_payable': True}, username='staffp2')
+    for key in ('customers', 'vendors', 'chart_of_accounts', 'ap_aging'):
+        assert can_access_module(staff, key) is False
+
+
 # ── Server-side route enforcement ────────────────────────────────────────────
 
 def test_staff_granted_module_is_reachable(client, db_session, branch):
@@ -84,6 +91,28 @@ def test_staff_with_no_books_blocked_from_all_transactions(client, db_session, b
     _login(client, staff, branch)
     assert client.get('/accounts-payable').status_code == 302
     assert client.get('/sales-invoices').status_code == 302
+
+
+def test_staff_blocked_from_ungranted_master_data(client, db_session, branch):
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'accounts_payable': True}, username='staffap')
+    _login(client, staff, branch)
+    assert client.get('/vendors').status_code == 302     # Vendors maintenance gated
+    assert client.get('/customers').status_code == 302   # Customers maintenance gated
+
+
+def test_vendor_quick_add_subactions_exempt_for_staff(client, db_session, branch):
+    """Staff with AP but NOT Vendors must still reach the inline quick-add autofill — the
+    vendor sub-actions used by transaction forms are exempt from the module guard."""
+    from app.vendors.models import Vendor
+    v = Vendor(code='V001', name='Acme Supplies', is_active=True)
+    db_session.add(v)
+    db_session.commit()
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'accounts_payable': True}, username='staffap')
+    _login(client, staff, branch)
+    resp = client.get(f'/vendors/{v.id}/defaults')
+    assert resp.status_code != 302   # NOT redirected away by the module guard
 
 
 def test_admin_reaches_ungranted_module(client, db_session, branch):
