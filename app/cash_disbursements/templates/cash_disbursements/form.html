@@ -130,7 +130,7 @@
               <option value="">Search or select account…</option>
               {% for choice in form.cash_account_id.choices %}
               <option value="{{ choice[0] }}"
-                {% if cdv and cdv.cash_account_id == choice[0] %}selected{% endif %}>{{ choice[1] }}</option>
+                {% if (cdv and cdv.cash_account_id == choice[0]) or ((restore_ap_lines or restore_expense_lines) and form.cash_account_id.data == choice[0]) %}selected{% endif %}>{{ choice[1] }}</option>
               {% endfor %}
             </select>
             {% if form.cash_account_id.errors %}<div class="form-error">{{ form.cash_account_id.errors[0] }}</div>{% endif %}
@@ -148,7 +148,7 @@
               <option value="">Search or select a vendor…</option>
               {% for choice in form.vendor_id.choices %}
               <option value="{{ choice[0] }}"
-                {% if cdv and cdv.vendor_id == choice[0] %}selected{% endif %}>{{ choice[1] }}</option>
+                {% if (cdv and cdv.vendor_id == choice[0]) or ((restore_ap_lines or restore_expense_lines) and form.vendor_id.data == choice[0]) %}selected{% endif %}>{{ choice[1] }}</option>
               {% endfor %}
             </select>
             {% if form.vendor_id.errors %}<div class="form-error">{{ form.vendor_id.errors[0] }}</div>{% endif %}
@@ -454,6 +454,39 @@ function addApLine(bill) {
                    oninput="onApAmountInput(this, ${bill.id}, ${bill.balance})">
         </td>
         <td><button type="button" class="btn-action" onclick="removeApLine(${bill.id})">X</button></td>
+    `;
+    tbody.appendChild(tr);
+    renderApEmpty();
+    recalculate();
+}
+
+// Re-create an AP line from a previously-submitted payload (failed-create bounce),
+// preserving the typed amount_applied (addApLine would reset it to the full balance).
+function restoreApLine(line) {
+    apLines.push({
+        bill_id:               line.bill_id,
+        bill_number:           line.bill_number,
+        vendor_invoice_number: line.vendor_invoice_number || '',
+        bill_date:             line.bill_date || '',
+        original_balance:      line.original_balance,
+        amount_applied:        line.amount_applied,
+    });
+    const tbody = document.getElementById('apLinesBody');
+    const tr = document.createElement('tr');
+    tr.id = `ap-row-${line.bill_id}`;
+    tr.innerHTML = `
+        <td style="font-family:var(--mono)">${escHtml(line.bill_number)}</td>
+        <td>${escHtml(line.vendor_invoice_number || '-')}</td>
+        <td>${escHtml(line.bill_date || '-')}</td>
+        <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt(line.original_balance)}</td>
+        <td style="text-align:right">
+            <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
+                   value="${fmt(line.amount_applied)}"
+                   onfocus="amtFocus(this)"
+                   onblur="onApAmountBlur(this, ${line.bill_id}, ${line.original_balance})"
+                   oninput="onApAmountInput(this, ${line.bill_id}, ${line.original_balance})">
+        </td>
+        <td><button type="button" class="btn-action" onclick="removeApLine(${line.bill_id})">X</button></td>
     `;
     tbody.appendChild(tr);
     renderApEmpty();
@@ -779,6 +812,46 @@ if (savedVendorId) {
         .then(r => r.json())
         .then(bills => { openBills = bills; refreshBillPicker(); });
 }
+{% endif %}
+
+{% if restore_ap_lines or restore_expense_lines %}
+// Create POST bounced (validation error) — re-hydrate the typed lines and unlock.
+(function () {
+    const sel = document.getElementById('vendor_id');
+    const vendorId = sel.value;
+    const vendorName = (sel.options[sel.selectedIndex] || {}).text || '';
+    if (vendorId) {
+        setVendorCardState(true, vendorName);
+        document.getElementById('cdvLocked').style.display = 'none';
+        document.getElementById('cdvSections').style.display = '';
+    }
+
+    {% if restore_expense_lines %}
+    try {
+        JSON.parse({{ restore_expense_lines | tojson }}).forEach(item => addExpenseLine(item));
+    } catch (e) { /* malformed payload — skip */ }
+    {% endif %}
+
+    {% if restore_ap_lines %}
+    let _apToRestore = [];
+    try { _apToRestore = JSON.parse({{ restore_ap_lines | tojson }}); } catch (e) { _apToRestore = []; }
+    if (vendorId) {
+        fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${vendorId}`)
+            .then(r => r.json())
+            .then(bills => {
+                openBills = bills;
+                _apToRestore.forEach(line => restoreApLine(line));
+                refreshBillPicker();
+                recalculate();
+            });
+    } else {
+        _apToRestore.forEach(line => restoreApLine(line));
+    }
+    {% endif %}
+
+    renderApEmpty();
+    recalculate();
+})();
 {% endif %}
 </script>
 {% endblock %}

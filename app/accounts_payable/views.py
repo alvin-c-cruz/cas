@@ -451,30 +451,40 @@ def create():
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
 
+    def _render_form(restore_lines=''):
+        """Render the create form with full line-item context. `restore_lines`
+        carries the submitted line_items JSON back so a failed POST keeps the
+        typed lines instead of wiping them."""
+        vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+        all_accounts = _get_all_accounts_for_select()
+        _accts = _get_gl_accounts()
+        gl_accounts = {
+            'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
+            'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
+        }
+        quick_add_form = VendorForm()
+        populate_vat_category_choices(quick_add_form)
+        quick_add_form.code.data = generate_next_vendor_code()
+        quick_add_form.is_active.data = '1'
+        quick_add_form.payment_terms.data = 'Net 30'
+        quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+        return render_template('accounts_payable/form.html',
+                               form=form, ap=None, restore_lines=restore_lines,
+                               vat_categories=vat_categories, all_accounts=all_accounts,
+                               gl_accounts=gl_accounts,
+                               vendor_quick_add_form=quick_add_form,
+                               vendor_quick_add_whts=quick_add_whts)
+
     if form.validate_on_submit():
         # Validate that the bill date is not in a closed period
         if not validate_transaction_date_with_flash(form.ap_date.data, 'AP Voucher'):
-            quick_add_form = VendorForm()
-            populate_vat_category_choices(quick_add_form)
-            quick_add_form.code.data = generate_next_vendor_code()
-            quick_add_form.is_active.data = '1'
-            quick_add_form.payment_terms.data = 'Net 30'
-            quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
-            return render_template('accounts_payable/form.html', form=form, ap=None,
-                                   vendor_quick_add_form=quick_add_form, vendor_quick_add_whts=quick_add_whts)
+            return _render_form(request.form.get('line_items', ''))
 
         try:
             vendor = Vendor.query.get(form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
-                quick_add_form = VendorForm()
-                populate_vat_category_choices(quick_add_form)
-                quick_add_form.code.data = generate_next_vendor_code()
-                quick_add_form.is_active.data = '1'
-                quick_add_form.payment_terms.data = 'Net 30'
-                quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
-                return render_template('accounts_payable/form.html', form=form, ap=None,
-                                       vendor_quick_add_form=quick_add_form, vendor_quick_add_whts=quick_add_whts)
+                return _render_form(request.form.get('line_items', ''))
 
             ap = AccountsPayable(
                 branch_id=session.get('selected_branch_id'),
@@ -566,28 +576,9 @@ def create():
         form.ap_date.data = ph_now().date()
         form.due_date.data = ph_now().date() + timedelta(days=30)
 
-    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
-    all_accounts = _get_all_accounts_for_select()
-
-    _accts = _get_gl_accounts()
-    gl_accounts = {
-        'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
-        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
-    }
-    quick_add_form = VendorForm()
-    populate_vat_category_choices(quick_add_form)
-    quick_add_form.code.data = generate_next_vendor_code()
-    quick_add_form.is_active.data = '1'
-    quick_add_form.payment_terms.data = 'Net 30'
-    quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
-    return render_template('accounts_payable/form.html',
-                         form=form,
-                         ap=None,
-                         vat_categories=vat_categories,
-                         all_accounts=all_accounts,
-                         gl_accounts=gl_accounts,
-                         vendor_quick_add_form=quick_add_form,
-                         vendor_quick_add_whts=quick_add_whts)
+    # On a failed POST, carry the submitted line items back so they aren't lost.
+    restore_lines = request.form.get('line_items', '') if request.method == 'POST' else ''
+    return _render_form(restore_lines)
 
 
 @accounts_payable_bp.route('/accounts-payable/<int:id>')

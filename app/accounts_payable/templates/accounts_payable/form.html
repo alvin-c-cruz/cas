@@ -41,7 +41,7 @@
                             <option value="">Search or select a vendor…</option>
                             {% for choice in form.vendor_id.choices %}
                             <option value="{{ choice[0] }}"
-                                {% if ap and ap.vendor_id == choice[0] %}selected{% endif %}>
+                                {% if (ap and ap.vendor_id == choice[0]) or (restore_lines and form.vendor_id.data == choice[0]) %}selected{% endif %}>
                                 {{ choice[1] }}
                             </option>
                             {% endfor %}
@@ -858,11 +858,16 @@ document.getElementById('vendor_id').addEventListener('change', function () {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 function initItems() {
-    {% if ap and line_items %}
+    {% if restore_lines %}
+    // Create POST bounced (validation error) — re-hydrate the typed line items.
+    try {
+        JSON.parse({{ restore_lines | tojson }}).forEach(item => addLineItem(item));
+    } catch (e) { /* malformed payload — start clean */ }
+    {% elif ap and line_items %}
     const existingItems = {{ line_items | tojson }};
     existingItems.forEach(item => addLineItem(item));
     {% endif %}
-    // Create mode: no auto-add — first row added when vendor is selected
+    // Create mode (no restore): no auto-add — first row added when vendor is selected
 }
 
 function initOverrides() {
@@ -916,12 +921,12 @@ if (_invDate) _invDate.addEventListener('change', validateForm);
 const _notesInput = document.querySelector('textarea[name="notes"]');
 if (_notesInput) _notesInput.addEventListener('input', validateForm);
 
-{% if ap %}
+{% if ap or restore_lines %}
 const initVendorId = document.getElementById('vendor_id').value;
 const initVendorSel = document.getElementById('vendor_id');
 const initVendorName = initVendorSel.options[initVendorSel.selectedIndex]
     ? initVendorSel.options[initVendorSel.selectedIndex].text
-    : '{{ ap.vendor_name | e }}';
+    : '{% if ap %}{{ ap.vendor_name | e }}{% endif %}';
 
 currentVendorName = initVendorName;
 

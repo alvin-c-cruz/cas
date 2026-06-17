@@ -557,16 +557,23 @@ def create():
         (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
     ]
 
+    def _render_form():
+        """Render the create form. On a failed POST, carry the submitted AP/expense
+        lines back so they aren't wiped."""
+        is_post = request.method == 'POST'
+        return render_template('cash_disbursements/form.html', form=form, cdv=None,
+                               restore_ap_lines=request.form.get('ap_lines', '') if is_post else '',
+                               restore_expense_lines=request.form.get('expense_lines', '') if is_post else '',
+                               **_form_context())
+
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
-            ctx = _form_context()
-            return render_template('cash_disbursements/form.html', form=form, cdv=None, **ctx)
+            return _render_form()
         try:
             vendor = Vendor.query.get(form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
-                ctx = _form_context()
-                return render_template('cash_disbursements/form.html', form=form, cdv=None, **ctx)
+                return _render_form()
 
             cdv = CashDisbursementVoucher(
                 branch_id=session.get('selected_branch_id'),
@@ -618,8 +625,7 @@ def create():
         form.cdv_number.data = generate_cdv_number()
         form.cdv_date.data = ph_now().date()
 
-    ctx = _form_context()
-    return render_template('cash_disbursements/form.html', form=form, cdv=None, **ctx)
+    return _render_form()
 
 
 @cash_disbursements_bp.route('/cash-disbursements/<int:id>/edit', methods=['GET', 'POST'])
