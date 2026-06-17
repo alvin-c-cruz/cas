@@ -158,3 +158,93 @@ def build_apv(doc_date, vendor_spec, vendor_obj, refs, creator_id, poster_id,
     ap.journal_entry_id = je.id
     db.session.commit()
     return ap
+
+
+def _new_cdv(doc_date, vendor_obj, refs, creator_id, poster_id, branch_id, counters, method):
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    from app.utils import ph_now
+    cash = refs['cash_in_bank'] if method == 'check' else refs['cash_on_hand']
+    cdv = CashDisbursementVoucher(
+        branch_id=branch_id,
+        cdv_number=next_doc_number('CD', doc_date, counters),
+        cdv_date=doc_date,
+        vendor_id=vendor_obj.id,
+        vendor_name=vendor_obj.name,
+        vendor_tin=vendor_obj.tin,
+        payment_method=method,
+        cash_account_id=cash.id,
+        notes='',
+        status='posted',
+        created_by_id=creator_id,
+        posted_by_id=poster_id,
+        posted_at=ph_now(),
+    )
+    if method == 'check':
+        cdv.check_number = f'{doc_date.year}{doc_date.month:02d}{counters[("CD", doc_date.year, doc_date.month)]:04d}'
+        cdv.check_date = doc_date
+        cdv.check_bank = 'BPI'
+    return cdv
+
+
+def build_cdv_paying(doc_date, apvs, apply_fractions, refs, creator_id, poster_id,
+                     branch_id, counters, method='check'):
+    from app.cash_disbursements.models import CDVApLine
+    from app.cash_disbursements.views import _post_cdv_je, _apply_ap_payments
+    vendor_obj = apvs[0].vendor
+    cdv = _new_cdv(doc_date, vendor_obj, refs, creator_id, poster_id, branch_id, counters, method)
+    for i, ap in enumerate(apvs):
+        frac = apply_fractions[i]
+        applied = _money(Decimal(str(ap.balance)) * frac)
+        cdv.ap_lines.append(CDVApLine(
+            line_number=i + 1,
+            ap_id=ap.id,
+            ap_number=ap.ap_number,
+            original_balance=ap.balance,
+            amount_applied=applied,
+        ))
+    cdv.calculate_totals()
+    db.session.add(cdv)
+    db.session.flush()
+    je = _post_cdv_je(cdv, poster_id)
+    cdv.journal_entry_id = je.id
+    _apply_ap_payments(cdv)
+    db.session.commit()
+    return cdv
+
+
+def build_cdv_expense(doc_date, vendor_spec, vendor_obj, refs, creator_id, poster_id,
+                      branch_id, counters, method='cash', amount=None):
+    from app.cash_disbursements.models import CDVExpenseLine
+    from app.cash_disbursements.views import _post_cdv_je
+    from app.withholding_tax.models import WithholdingTax
+
+    if amount is None:
+        amount = (vendor_spec['amount_min'] + vendor_spec['amount_max']) / 2
+    line_total = _money(amount)
+    vat_amt = _vat_amount(line_total, vendor_spec['vat_code'])
+    net_base = line_total - vat_amt
+    wt = WithholdingTax.query.filter_by(code=vendor_spec['wht_code']).first() if vendor_spec['wht_code'] else None
+    wt_rate = Decimal(str(wt.rate)) if wt else Decimal('0.00')
+    wt_amt = _money(net_base * wt_rate / Decimal('100')) if wt else Decimal('0.00')
+
+    cdv = _new_cdv(doc_date, vendor_obj, refs, creator_id, poster_id, branch_id, counters, method)
+    cdv.expense_lines.append(CDVExpenseLine(
+        line_number=1,
+        description=f'{vendor_spec["category"].title()} — {doc_date.strftime("%b %Y")}',
+        amount=line_total,
+        vat_category=vendor_spec['vat_code'],
+        vat_rate=Decimal('12.00') if vendor_spec['vat_code'] == 'VATABLE' else Decimal('0.00'),
+        line_total=line_total,
+        vat_amount=vat_amt,
+        account_id=refs['expense'][vendor_spec['expense_code']].id,
+        wt_id=wt.id if wt else None,
+        wt_rate=wt_rate,
+        wt_amount=wt_amt,
+    ))
+    cdv.calculate_totals()
+    db.session.add(cdv)
+    db.session.flush()
+    je = _post_cdv_je(cdv, poster_id)
+    cdv.journal_entry_id = je.id
+    db.session.commit()
+    return cdv

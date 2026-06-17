@@ -114,3 +114,56 @@ class TestApvBuilder:
         debit = sum((l.debit_amount for l in je.lines.all()), Decimal('0.00'))
         credit = sum((l.credit_amount for l in je.lines.all()), Decimal('0.00'))
         assert debit == credit
+
+
+def _je_balances(je):
+    d = sum((l.debit_amount for l in je.lines.all()), Decimal('0.00'))
+    c = sum((l.credit_amount for l in je.lines.all()), Decimal('0.00'))
+    return d == c
+
+
+class TestCdvBuilder:
+    def test_full_payment_marks_apv_paid(self, base_db):
+        refs = hs.resolve_refs()
+        admin = _admin(); acct = hs.ensure_accountant_user(); hs.ensure_vendors()
+        from app.vendors.models import Vendor
+        spec = next(v for v in hs.VENDORS if v['code'] == 'HV-SUP1')
+        vobj = Vendor.query.filter_by(code='HV-SUP1').first()
+        counters = {}
+        ap = hs.build_apv(date(2021, 1, 5), spec, vobj, refs, acct.id, admin.id,
+                          base_db.id, counters, amount=Decimal('11200.00'))
+        cdv = hs.build_cdv_paying(date(2021, 1, 25), [ap], [Decimal('1.0')], refs,
+                                  acct.id, admin.id, base_db.id, counters, method='check')
+        assert cdv.cdv_number == 'CD-2021-01-0001'
+        assert cdv.status == 'posted'
+        assert ap.status == 'paid'
+        assert ap.balance == Decimal('0.00')
+        assert _je_balances(cdv.journal_entry)
+
+    def test_partial_payment_marks_partially_paid(self, base_db):
+        refs = hs.resolve_refs()
+        admin = _admin(); acct = hs.ensure_accountant_user(); hs.ensure_vendors()
+        from app.vendors.models import Vendor
+        spec = next(v for v in hs.VENDORS if v['code'] == 'HV-SUP1')
+        vobj = Vendor.query.filter_by(code='HV-SUP1').first()
+        counters = {}
+        ap = hs.build_apv(date(2021, 2, 5), spec, vobj, refs, acct.id, admin.id,
+                          base_db.id, counters, amount=Decimal('10000.00'))
+        total = ap.total_amount
+        cdv = hs.build_cdv_paying(date(2021, 2, 20), [ap], [Decimal('0.5')], refs,
+                                  acct.id, admin.id, base_db.id, counters, method='cash')
+        assert ap.status == 'partially_paid'
+        assert Decimal('0.00') < ap.balance < total
+        assert _je_balances(cdv.journal_entry)
+
+    def test_direct_expense_cdv_balances(self, base_db):
+        refs = hs.resolve_refs()
+        admin = _admin(); acct = hs.ensure_accountant_user(); hs.ensure_vendors()
+        from app.vendors.models import Vendor
+        spec = next(v for v in hs.VENDORS if v['code'] == 'HV-FUEL')
+        vobj = Vendor.query.filter_by(code='HV-FUEL').first()
+        cdv = hs.build_cdv_expense(date(2021, 1, 12), spec, vobj, refs, acct.id, admin.id,
+                                   base_db.id, {}, method='cash', amount=Decimal('5600.00'))
+        assert cdv.cdv_number == 'CD-2021-01-0001'
+        assert cdv.status == 'posted'
+        assert _je_balances(cdv.journal_entry)
