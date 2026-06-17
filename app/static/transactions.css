@@ -125,3 +125,17 @@
         overflow-x: auto;
     }
 }
+
+/* ── Inline loading spinner (async vendor fetches: APV defaults, CDV open bills) ─ */
+.inline-spinner {
+    display: inline-block;
+    width: 26px;
+    height: 26px;
+    border: 3px solid var(--border);
+    border-top-color: var(--amber, #f59e0b);
+    border-radius: 50%;
+    animation: inline-spinner-rot 0.7s linear infinite;
+}
+@keyframes inline-spinner-rot {
+    to { transform: rotate(360deg); }
+}

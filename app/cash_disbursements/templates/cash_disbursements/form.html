@@ -5,7 +5,7 @@
 {% block content %}
 {% from "macros.html" import render_field, render_flash_messages %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor-form.css') }}">
 
 {{ render_flash_messages() }}
@@ -378,13 +378,29 @@ function onVendorChange(vendorId) {
     document.getElementById('cdvLocked').style.display = 'none';
     document.getElementById('cdvSections').style.display = '';
 
+    setBillPickerLoading(true);
     fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${vendorId}`)
         .then(r => r.json())
         .then(bills => {
             openBills = bills;
+            setBillPickerLoading(false);
             refreshBillPicker();
             recalculate();
-        });
+        })
+        .catch(() => setBillPickerLoading(false, true));
+}
+
+// Loading / error state for the AP-bill picker while open bills load.
+function setBillPickerLoading(loading, error) {
+    const picker = document.getElementById('apBillPicker');
+    const addBtn = picker.closest('.cdv-bill-picker-row')?.querySelector('button');
+    picker.disabled = loading;
+    if (addBtn) addBtn.disabled = loading;
+    if (loading) {
+        picker.innerHTML = '<option value="">⏳ Loading open bills…</option>';
+    } else if (error) {
+        picker.innerHTML = '<option value="">⚠️ Could not load bills — re-select vendor</option>';
+    }
 }
 
 function refreshBillPicker() {

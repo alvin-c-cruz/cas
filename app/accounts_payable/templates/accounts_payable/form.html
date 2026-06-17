@@ -6,7 +6,7 @@
 {% block content %}
 {% from "macros.html" import render_field, render_flash_messages %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor-form.css') }}">
 
@@ -811,11 +811,28 @@ function setVendorDone(vendorName, defaults) {
 
 // ── Vendor change handler ─────────────────────────────────────────────────────
 
+// Loading / error states for the line-items placeholder while vendor defaults load.
+function setLineItemsLoading() {
+    const locked = document.getElementById('lineItemsLocked');
+    locked.classList.remove('line-items-locked--hidden');
+    locked.innerHTML =
+        '<div class="inline-spinner" style="margin:0 auto 12px;"></div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Loading vendor details…</div>';
+}
+function setLineItemsLoadError() {
+    const locked = document.getElementById('lineItemsLocked');
+    locked.classList.remove('line-items-locked--hidden');
+    locked.innerHTML =
+        '<div style="font-size:28px;margin-bottom:10px;">⚠️</div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Could not load vendor details — please re-select the vendor.</div>';
+}
+
 document.getElementById('vendor_id').addEventListener('change', function () {
     const vendorId = this.value;
     const vendorName = this.options[this.selectedIndex].text;
     if (!vendorId || vendorId == '0' || vendorId === '__add_vendor__') return;
 
+    setLineItemsLoading();
     fetch(`/vendors/${vendorId}/defaults`)
         .then(r => r.json())
         .then(data => {
@@ -834,7 +851,8 @@ document.getElementById('vendor_id').addEventListener('change', function () {
             } else {
                 addFirstLineItem();
             }
-        });
+        })
+        .catch(() => setLineItemsLoadError());
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
