@@ -11,22 +11,67 @@
 {{ render_flash_messages() }}
 
 <style>
-.cdv-form-grid {
-    display: grid;
-    grid-template-columns: 280px 1fr;
-    gap: 24px;
-    align-items: start;
+/* ── Header layout mirrors APV (vendor step card + dimmed header fields). ──
+   The grid classes (form-main-grid / left-col-fields / right-col / notes-col)
+   come from the shared transactions.css; the card/dimming/locked rules below
+   are copied from accounts_payable_form.css and re-scoped to this page so the
+   protected APV stylesheet is never linked or edited. */
+.vendor-step-card {
+    border: 2px solid var(--amber, #f59e0b);
+    background: #fffbeb;
+    border-radius: 8px;
+    padding: 20px 24px;
+    transition: border-color .2s ease, background .2s ease;
 }
-.cdv-left-col { display: flex; flex-direction: column; gap: 14px; }
-.cdv-right-col { display: flex; flex-direction: column; gap: 20px; }
+.vendor-step-card--done { border-color: var(--green, #22c55e); background: var(--card); }
+.right-col .vendor-step-card { margin-bottom: 0; }
+.vendor-step-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: #92400e; margin-bottom: 10px; transition: color .2s ease;
+}
+.vendor-step-card--done .vendor-step-label { color: var(--text-2); }
+
+/* Choices in the vendor card — look like a form-control */
+.page-cash-disbursement .vendor-step-card .choices { width: 100%; margin-bottom: 0; }
+.page-cash-disbursement .vendor-step-card .choices__inner {
+    display: flex !important; align-items: center !important;
+    border: 1px solid #cbd5e1 !important; border-radius: 6px !important;
+    background: white !important; min-height: unset !important;
+    padding: 7px 36px 7px 14px !important; font-size: 14px !important;
+    font-family: 'Inter', sans-serif !important; box-sizing: border-box !important;
+    overflow: hidden !important; transition: all .2s !important;
+}
+.page-cash-disbursement .vendor-step-card .choices__item br { display: none; }
+.page-cash-disbursement .vendor-step-card .choices.is-focused .choices__inner,
+.page-cash-disbursement .vendor-step-card .choices.is-open .choices__inner {
+    border-color: #3b82f6 !important; box-shadow: 0 0 0 3px rgba(59,130,246,.1) !important;
+}
+.page-cash-disbursement .vendor-step-card .choices[data-type*='select-one']::after {
+    display: block !important; border-color: #64748b transparent transparent !important; right: 14px !important;
+}
+.page-cash-disbursement .vendor-step-card .choices[data-type*='select-one'].is-open::after {
+    border-color: transparent transparent #64748b !important;
+}
+
+/* Choices in header fields (cash account) — look like a form-control */
+.left-col-fields .choices { flex: 1; border: 1px solid var(--border); border-radius: 6px; background: var(--card); }
+.left-col-fields .choices__inner { border: none !important; background: transparent !important; height: 38px !important; border-radius: 0 !important; }
+.left-col-fields .choices.is-focused, .left-col-fields .choices.is-open { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(59,130,246,.15); }
+
+/* Header fields dimmed until a vendor is chosen */
+.header-fields { opacity: .65; pointer-events: none; transition: opacity .2s ease; }
+.header-fields--active { opacity: 1; pointer-events: auto; }
+
+/* Line items locked placeholder (full-width banner) */
+.line-items-locked {
+    border: 2px dashed var(--amber, #f59e0b); background: #fffbeb;
+    border-radius: 8px; padding: 40px 24px; text-align: center; margin-top: 24px;
+}
+.line-items-locked--hidden { display: none; }
+
 .cdv-section-label {
     font-size: 11px; font-weight: 700; text-transform: uppercase;
     letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;
-}
-.cdv-locked {
-    background: var(--alert-warning-bg); border: 1px dashed var(--alert-warning-border);
-    border-radius: var(--radius); padding: 32px; text-align: center;
-    font-size: 14px; color: var(--alert-warning-text);
 }
 .cdv-bill-picker-row {
     display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;
@@ -55,36 +100,20 @@
 }
 .totals-pencil:hover, .totals-revert:hover { opacity: 1; }
 .check-fields { display: flex; flex-direction: column; gap: 10px; }
-@media (max-width: 900px) {
-    .cdv-form-grid { grid-template-columns: 1fr; }
-}
 </style>
 
-<div class="card">
+<div class="card page-cash-disbursement">
   <div class="card-body">
     <form method="POST" novalidate id="cdvForm" onsubmit="serializeData()">
       {{ form.hidden_tag() }}
 
-      <div class="cdv-form-grid">
+      <!-- Header: scalar fields (1/3) + Vendor step card (2/3) + Notes -->
+      <div class="form-main-grid">
 
-        <!-- ── Left column: header fields ── -->
-        <div class="cdv-left-col">
+        <!-- ── Left 1/3: header fields (label beside field) ── -->
+        <div class="left-col-fields header-fields{% if cdv %} header-fields--active{% endif %}">
           {{ render_field(form.cdv_number) }}
           {{ render_field(form.cdv_date) }}
-
-          <!-- Vendor (Choices.js) -->
-          <div>
-            {{ form.vendor_id.label(class='form-label') }}
-            <select name="vendor_id" id="vendor_id" class="form-control" required>
-              <option value="">Search or select a vendor…</option>
-              {% for choice in form.vendor_id.choices %}
-              <option value="{{ choice[0] }}"
-                {% if cdv and cdv.vendor_id == choice[0] %}selected{% endif %}>{{ choice[1] }}</option>
-              {% endfor %}
-            </select>
-            {% if form.vendor_id.errors %}<div class="form-error">{{ form.vendor_id.errors[0] }}</div>{% endif %}
-          </div>
-
           {{ render_field(form.payment_method) }}
 
           <!-- Check fields — shown when method = check -->
@@ -95,7 +124,7 @@
           </div>
 
           <!-- Cash/Bank Account (Choices.js) -->
-          <div>
+          <div class="form-group">
             {{ form.cash_account_id.label(class='form-label') }}
             <select name="cash_account_id" id="cash_account_id" class="form-control" required>
               <option value="">Search or select account…</option>
@@ -106,19 +135,48 @@
             </select>
             {% if form.cash_account_id.errors %}<div class="form-error">{{ form.cash_account_id.errors[0] }}</div>{% endif %}
           </div>
-
-          {{ render_field(form.notes) }}
         </div>
 
-        <!-- ── Right column: sections + summary ── -->
-        <div class="cdv-right-col">
-
-          <!-- Locked placeholder (no vendor yet on create) -->
-          <div id="cdvLocked" {% if cdv %}style="display:none"{% endif %} class="cdv-locked">
-            Select a vendor above to add lines
+        <!-- ── Right 2/3: vendor step card ── -->
+        <div class="right-col">
+          <div id="vendorCard" class="vendor-step-card{% if cdv %} vendor-step-card--done{% endif %}">
+            <div class="vendor-step-label" id="vendorCardLabel">
+              {% if cdv %}✓ {{ cdv.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
+            </div>
+            <select name="vendor_id" id="vendor_id" class="form-control" required
+                    {% if not cdv %}autofocus{% endif %}>
+              <option value="">Search or select a vendor…</option>
+              {% for choice in form.vendor_id.choices %}
+              <option value="{{ choice[0] }}"
+                {% if cdv and cdv.vendor_id == choice[0] %}selected{% endif %}>{{ choice[1] }}</option>
+              {% endfor %}
+            </select>
+            {% if form.vendor_id.errors %}<div class="form-error">{{ form.vendor_id.errors[0] }}</div>{% endif %}
           </div>
+        </div>
 
-          <div id="cdvSections" {% if not cdv %}style="display:none"{% endif %}>
+        <!-- ── Notes: own grid area (wide) ── -->
+        <div class="notes-col header-fields{% if cdv %} header-fields--active{% endif %}">
+          {{ form.notes.label(class='form-label') }}
+          {{ form.notes(class='form-control', style='resize:vertical') }}
+          {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
+        </div>
+
+      </div><!-- end .form-main-grid -->
+
+      <!-- Line items locked placeholder (no vendor yet on create) -->
+      <div id="cdvLocked" class="line-items-locked{% if cdv %} line-items-locked--hidden{% endif %}"
+           {% if cdv %}style="display:none"{% endif %}>
+        <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
+        <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
+          Select a vendor above to add lines
+        </div>
+        <div style="font-size: 12px; color: var(--text-2); margin-top: 6px;">
+          Open bills and expense lines will load for the chosen vendor.
+        </div>
+      </div>
+
+      <div id="cdvSections" {% if not cdv %}style="display:none"{% endif %}>
 
             <!-- Section A: Pay AP Bills -->
             <div>
@@ -220,9 +278,7 @@
             </div>
             <p id="saveHint" style="font-size:12px;color:var(--text-3);margin-top:6px;"></p>
 
-          </div><!-- end #cdvSections -->
-        </div><!-- end right col -->
-      </div><!-- end grid -->
+      </div><!-- end #cdvSections -->
 
       <!-- Hidden serialized data -->
       <input type="hidden" name="ap_lines"      id="apLinesData">
@@ -281,6 +337,21 @@ if (pmSel) {
     toggleCheckFields();
 }
 
+// ── Vendor step card state (mirrors APV) ─────────────────────────────────────
+function setVendorCardState(selected, vendorName) {
+    const card  = document.getElementById('vendorCard');
+    const label = document.getElementById('vendorCardLabel');
+    if (selected) {
+        card.classList.add('vendor-step-card--done');
+        label.textContent = '✓ ' + vendorName;
+        document.querySelectorAll('.header-fields').forEach(el => el.classList.add('header-fields--active'));
+    } else {
+        card.classList.remove('vendor-step-card--done');
+        label.textContent = 'Step 1 — Select Vendor';
+        document.querySelectorAll('.header-fields').forEach(el => el.classList.remove('header-fields--active'));
+    }
+}
+
 // ── Vendor change → fetch open bills ─────────────────────────────────────────
 function onVendorChange(vendorId) {
     if (vendorId === '__add_vendor__') return;
@@ -289,12 +360,17 @@ function onVendorChange(vendorId) {
     renderApEmpty();
     document.getElementById('apBillPicker').innerHTML = '<option value="">-- Select an open bill --</option>';
 
+    const sel = document.getElementById('vendor_id');
+    const vendorName = (sel.options[sel.selectedIndex] || {}).text || '';
+
     if (!vendorId) {
+        setVendorCardState(false, '');
         document.getElementById('cdvLocked').style.display = '';
         document.getElementById('cdvSections').style.display = 'none';
         recalculate();
         return;
     }
+    setVendorCardState(true, vendorName);
     document.getElementById('cdvLocked').style.display = 'none';
     document.getElementById('cdvSections').style.display = '';
 
