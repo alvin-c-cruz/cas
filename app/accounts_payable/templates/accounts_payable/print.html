@@ -58,8 +58,9 @@
   .sig-row { display: flex; margin-top: 8px; }
   .sig-box { flex: 1; border: 1px solid #aaa; border-right: none; padding: 5px 7px; min-height: 56px; }
   .sig-box:last-child { border-right: 1px solid #aaa; }
-  .sig-box .sig-title { font-size: 9px; font-weight: 700; color: #555; margin-bottom: 24px; }
-  .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px; font-size: 9px; color: #555; }
+  .sig-box .sig-title { font-size: 9px; font-weight: 700; color: #555; margin-bottom: 4px; }
+  .sig-box .sig-name { margin-top: 22px; text-align: center; font-size: 11px; min-height: 14px; }
+  .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px; font-size: 9px; color: #555; text-align: center; }
 
   .audit-footer { margin-top: 6px; font-size: 9px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 4px; }
 
@@ -164,7 +165,7 @@
       <div class="summary-inner">
         <div class="summary-row">
           <span class="slabel">Gross Amount:</span>
-          <span class="sval">{{ '{:,.2f}'.format(ap.subtotal) }}</span>
+          <span class="sval">₱{{ '{:,.2f}'.format(ap.subtotal) }}</span>
         </div>
         <div class="summary-row">
           <span class="slabel">Less: Input VAT:</span>
@@ -173,7 +174,7 @@
         <div class="summary-divider"></div>
         <div class="summary-row">
           <span class="slabel">Net of VAT:</span>
-          <span class="sval">{{ '{:,.2f}'.format(ap.subtotal - ap.vat_amount) }}</span>
+          <span class="sval">₱{{ '{:,.2f}'.format(ap.subtotal - ap.vat_amount) }}</span>
         </div>
         <div class="summary-row">
           <span class="slabel">Add: Input VAT:</span>
@@ -186,7 +187,7 @@
         <div class="summary-divider-double"></div>
         <div class="summary-net">
           <span class="netlabel">Net Amount Payable:</span>
-          <span class="netval">{{ '{:,.2f}'.format(ap.total_amount) }}</span>
+          <span class="netval">₱{{ '{:,.2f}'.format(ap.total_amount) }}</span>
         </div>
       </div>
     </div>
@@ -201,15 +202,18 @@
   <div class="sig-row">
     <div class="sig-box">
       <div class="sig-title">PREPARED BY</div>
-      <div class="sig-line">Name &amp; Date</div>
+      <div class="sig-name">{{ ap.created_by.full_name if ap.created_by else '' }}</div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
     </div>
     <div class="sig-box">
-      <div class="sig-title">REVIEWED BY</div>
-      <div class="sig-line">Name &amp; Date</div>
+      <div class="sig-title">CHECKED BY</div>
+      <div class="sig-name"></div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
     </div>
     <div class="sig-box">
       <div class="sig-title">APPROVED BY</div>
-      <div class="sig-line">Name &amp; Date</div>
+      <div class="sig-name">{{ ap.posted_by.full_name if ap.posted_by else '' }}</div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
     </div>
   </div>
 
