@@ -112,7 +112,6 @@ These override default skill behavior:
   This supersedes the older "fix inline for the current module" tie-breaker.
   - Triage/scoping still applies (note the module, severity, and blast radius), but the fix
     itself always waits for the user's go-ahead.
-  - Protected modules (e.g. APV) additionally require approval to modify at all.
 
 ## Session Start Protocol
 
