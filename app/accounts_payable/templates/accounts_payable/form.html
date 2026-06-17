@@ -172,7 +172,7 @@
 
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
-                        {{ 'Update Bill' if ap else 'Enter Bill' }}
+                        {{ 'Update Bill' if ap else 'Save APV' }}
                     </button>
                     <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary">Back</a>
                 </div>
@@ -590,6 +590,9 @@ function validateForm() {
     const invoiceNo = (document.getElementById('vendor_invoice_number')?.value || '').trim();
     if (!invoiceNo) { block('Enter the vendor invoice number before saving.'); return; }
 
+    const notesVal = (document.querySelector('textarea[name="notes"]')?.value || '').trim();
+    if (!notesVal) { block('Enter notes / particulars before saving.'); return; }
+
     if (lineItems.length === 0) { block('Add at least one line item.'); return; }
 
     for (let i = 0; i < lineItems.length; i++) {
@@ -892,6 +895,8 @@ const _invInput = document.getElementById('vendor_invoice_number');
 if (_invInput) _invInput.addEventListener('input', validateForm);
 const _invDate = document.getElementById('vendor_invoice_date');
 if (_invDate) _invDate.addEventListener('change', validateForm);
+const _notesInput = document.querySelector('textarea[name="notes"]');
+if (_notesInput) _notesInput.addEventListener('input', validateForm);
 
 {% if ap %}
 const initVendorId = document.getElementById('vendor_id').value;
