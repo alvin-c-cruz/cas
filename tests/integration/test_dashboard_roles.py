@@ -103,28 +103,30 @@ class TestDashboardMetricsAllRoles:
 # ---------------------------------------------------------------------------
 
 class TestDashboardNewButton:
-    # The CSS class name and the JS variable name both appear for all roles.
-    # id="topbarNewBtn" only appears as an HTML attribute inside the role conditional.
-    def test_admin_sees_new_button(self, client, db_session, admin_user, main_branch):
+    # The topbar "+ New" quick-create dropdown was removed in commit 1b8c659
+    # (feat(ui): remove the topbar + New quick-create dropdown). The button must
+    # now be absent for EVERY role; document creation is reached via the
+    # list-page "Enter ..." launch buttons instead.
+    def test_admin_no_new_button(self, client, db_session, admin_user, main_branch):
         admin_user.add_branch(main_branch)
         db_session.commit()
         login(client, 'admin', 'admin123')
-        assert b'id="topbarNewBtn"' in get_dashboard(client).data
+        assert b'id="topbarNewBtn"' not in get_dashboard(client).data
 
-    def test_accountant_sees_new_button(self, client, db_session, admin_user, accountant_user,
-                                        main_branch):
+    def test_accountant_no_new_button(self, client, db_session, admin_user, accountant_user,
+                                      main_branch):
         admin_user.add_branch(main_branch)
         accountant_user.add_branch(main_branch)
         db_session.commit()
         login(client, 'accountant', 'accountant123')
-        assert b'id="topbarNewBtn"' in get_dashboard(client).data
+        assert b'id="topbarNewBtn"' not in get_dashboard(client).data
 
-    def test_staff_sees_new_button(self, client, db_session, admin_user, staff_user, main_branch):
+    def test_staff_no_new_button(self, client, db_session, admin_user, staff_user, main_branch):
         admin_user.add_branch(main_branch)
         staff_user.add_branch(main_branch)
         db_session.commit()
         login(client, 'staff', 'staff123')
-        assert b'id="topbarNewBtn"' in get_dashboard(client).data
+        assert b'id="topbarNewBtn"' not in get_dashboard(client).data
 
     def test_viewer_no_new_button(self, client, db_session, admin_user, viewer_user, main_branch):
         admin_user.add_branch(main_branch)

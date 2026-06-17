@@ -94,6 +94,7 @@ Production target is PythonAnywhere via `wsgi.py` (set `PYTHONANYWHERE_USERNAME`
 ## Gotchas
 
 - Global error handlers are currently **disabled** in `create_app` (bottom of the file) to surface full tracebacks during testing — re-enable before production.
+- `app/templates/base.html` has an inline `<style>` block that **duplicates** rules from `app/static/css/style.css` (with hardcoded values, not design tokens) and it loads **after** style.css — so its duplicates win the cascade and can silently override the real rule (this is what hid the dashboard hero gradient, fixed in `e7e1fde`). Before adding or editing a selector in that inline block, grep `style.css` for it and edit there using design tokens.
 
 ## Workflow Preferences
 
