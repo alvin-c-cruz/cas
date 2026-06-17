@@ -87,7 +87,7 @@ class TestCDVCreate:
                      'original_balance': 5000.0, 'amount_applied': 3000.0}]
         create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
 
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
         assert cdv is not None
         assert cdv.status == 'draft'
         assert cdv.total_ap_applied == Decimal('3000.00')
@@ -120,7 +120,7 @@ class TestCDVPost:
         ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
                      'original_balance': 5000.0, 'amount_applied': 5000.0}]
         create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
 
         resp = client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
         assert resp.status_code == 200
@@ -143,7 +143,7 @@ class TestCDVPost:
         ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
                      'original_balance': 5000.0, 'amount_applied': 2000.0}]
         create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
         client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
 
         db_session.refresh(bill)
@@ -158,7 +158,7 @@ class TestCDVPost:
         expense_lines = [{'description': 'Supplies', 'amount': 500.0,
                           'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
         create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
         client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
 
         log = AuditLog.query.filter_by(module='cash_disbursement', action='post').first()
@@ -173,7 +173,7 @@ class TestCDVVoid:
         expense_lines = [{'description': 'Supplies', 'amount': 1000.0,
                           'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
         create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
         je_id = cdv.journal_entry_id
 
         client.post(f'/cash-disbursements/{cdv.id}/void',
@@ -192,7 +192,7 @@ class TestCDVVoid:
         expense_lines = [{'description': 'X', 'amount': 100.0,
                           'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
         create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
 
         client.post(f'/cash-disbursements/{cdv.id}/void',
                     data={'void_reason': 'short'},
@@ -211,7 +211,7 @@ class TestCDVCancel:
         ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
                      'original_balance': 5000.0, 'amount_applied': 5000.0}]
         create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
         client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
 
         today = ph_now().date().isoformat()
@@ -241,7 +241,7 @@ class TestCDVCancel:
         expense_lines = [{'description': 'Test', 'amount': 500.0,
                           'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
         create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-TEST-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
         client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
         today = ph_now().date().isoformat()
         client.post(f'/cash-disbursements/{cdv.id}/cancel', data={
@@ -251,3 +251,82 @@ class TestCDVCancel:
 
         log = AuditLog.query.filter_by(module='cash_disbursement', action='cancel').first()
         assert log is not None
+
+
+class TestCDVLineValidation:
+    """Server-side validation of client-submitted CDV lines (analyze-page F-001/005/006).
+
+    The AJAX bill loader is branch+vendor scoped, but the POST handler is the real
+    trust boundary — a crafted body must be rejected, not persisted.
+    """
+
+    def test_rejects_bill_from_another_vendor(self, client, db_session, admin_user, main_branch):
+        """F-001: a bill_id belonging to a different vendor cannot be applied."""
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        other = Vendor(code='CDV02', name='Other Vendor', check_payee_name='Other Vendor', is_active=True)
+        db_session.add(other)
+        db_session.commit()
+        bill = make_posted_bill(db_session, other, ap, main_branch.id)  # belongs to `other`
+
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
+                     'original_balance': 5000.0, 'amount_applied': 1000.0}]
+        resp = create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)  # CDV is for `vendor`
+        assert resp.status_code == 200
+        assert b'not available for this vendor' in resp.data
+        assert CashDisbursementVoucher.query.count() == 0
+
+    def test_rejects_overpayment(self, client, db_session, admin_user, main_branch):
+        """F-005: amount_applied cannot exceed the bill's open balance."""
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        bill = make_posted_bill(db_session, vendor, ap, main_branch.id)  # balance 5000
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
+                     'original_balance': 5000.0, 'amount_applied': 6000.0}]
+        resp = create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+        assert resp.status_code == 200
+        assert b'open balance' in resp.data
+        assert CashDisbursementVoucher.query.count() == 0
+
+    def test_rejects_nonpositive_amount(self, client, db_session, admin_user, main_branch):
+        """F-005: amount_applied must be positive."""
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
+                     'original_balance': 5000.0, 'amount_applied': 0}]
+        resp = create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+        assert resp.status_code == 200
+        assert CashDisbursementVoucher.query.count() == 0
+
+    def test_rejects_unknown_expense_account(self, client, db_session, admin_user, main_branch):
+        """F-006: an expense line must reference a real account."""
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        expense_lines = [{'description': 'Bogus', 'amount': 1000.0,
+                          'vat_category': '', 'account_id': 999999, 'wt_id': None}]
+        resp = create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
+        assert resp.status_code == 200
+        assert b'postable account' in resp.data
+        assert CashDisbursementVoucher.query.count() == 0
+
+    def test_rejects_group_expense_account(self, client, db_session, admin_user, main_branch):
+        """F-006: a GROUP (non-leaf) account is not postable."""
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        # Giving `exp` a child makes it a GROUP (hierarchy is derived from parent_id).
+        child = Account(code='60101-01', name='Supplies — Paper', account_type='Expense',
+                        normal_balance='debit', is_active=True, parent_id=exp.id)
+        db_session.add(child)
+        db_session.commit()
+        expense_lines = [{'description': 'On a group acct', 'amount': 1000.0,
+                          'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
+        resp = create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
+        assert resp.status_code == 200
+        assert b'postable account' in resp.data
+        assert CashDisbursementVoucher.query.count() == 0

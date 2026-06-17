@@ -19,7 +19,7 @@ from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import json
 
 cash_disbursements_bp = Blueprint('cash_disbursements', __name__,
@@ -51,6 +51,13 @@ def staff_or_above_required(f):
 
 
 VALID_CDV_STATUSES = {'draft', 'posted', 'voided', 'cancelled'}
+
+
+class CDVLineError(Exception):
+    """Raised when a submitted CDV line fails server-side validation.
+
+    Carries a user-facing message that is safe to flash (no internal/DB detail).
+    """
 
 
 @cash_disbursements_bp.before_request
@@ -181,6 +188,7 @@ def list_cdvs():
 
 @cash_disbursements_bp.route('/cash-disbursements/open-bills')
 @login_required
+@staff_or_above_required
 def open_bills():
     """Return JSON list of open APV bills for the given vendor in the current branch."""
     vendor_id = request.args.get('vendor_id', type=int)
@@ -476,25 +484,56 @@ def _build_cdv_je_preview(cdv):
 
 
 def _parse_line_items(cdv):
-    """Parse ap_lines and expense_lines from request.form JSON. Mutates cdv in place."""
+    """Parse ap_lines and expense_lines from request.form JSON. Mutates cdv in place.
+
+    Every client-supplied reference is re-validated server-side — the AJAX bill
+    loader (open_bills) is only a UI convenience, not the trust boundary:
+      * AP bills must belong to THIS CDV's branch and vendor;
+      * amount_applied must be within 0 < x <= the bill's open balance;
+      * expense accounts must be active, postable (leaf) accounts.
+    Raises CDVLineError (user-facing message) on any invalid line. Requires
+    cdv.branch_id and cdv.vendor_id to already be set on the passed-in cdv.
+    """
     ap_lines_data = request.form.getlist('ap_lines')
     ap_lines = json.loads(ap_lines_data[0]) if ap_lines_data and ap_lines_data[0] else []
     for idx, item in enumerate(ap_lines, start=1):
-        bill = AccountsPayable.query.get(int(item['bill_id']))
+        try:
+            bill_id = int(item['bill_id'])
+            amount_applied = Decimal(str(item['amount_applied']))
+        except (KeyError, ValueError, TypeError, InvalidOperation):
+            raise CDVLineError('A payable line is malformed — please re-select the bill and try again.')
+        # F-001: re-scope the bill to this branch + vendor; never trust the raw id.
+        bill = AccountsPayable.query.filter_by(
+            id=bill_id, branch_id=cdv.branch_id, vendor_id=cdv.vendor_id
+        ).first()
         if not bill:
-            continue
-        ap_line = CDVApLine(
+            raise CDVLineError('A selected bill is not available for this vendor and branch.')
+        # F-005: amount must be positive and within the open balance.
+        if amount_applied <= 0 or amount_applied > bill.balance:
+            raise CDVLineError(
+                f'Amount to pay for {bill.ap_number} must be between 0.01 and the '
+                f'open balance ({bill.balance:,.2f}).'
+            )
+        cdv.ap_lines.append(CDVApLine(
             line_number=idx,
             ap_id=bill.id,
             ap_number=bill.ap_number,
-            original_balance=Decimal(str(item.get('original_balance', bill.balance))),
-            amount_applied=Decimal(str(item['amount_applied'])),
-        )
-        cdv.ap_lines.append(ap_line)
+            original_balance=bill.balance,
+            amount_applied=amount_applied,
+        ))
 
     exp_lines_data = request.form.getlist('expense_lines')
     exp_lines = json.loads(exp_lines_data[0]) if exp_lines_data and exp_lines_data[0] else []
+    # F-006: only active, postable (leaf) accounts may receive an expense line.
+    leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
     for idx, item in enumerate(exp_lines, start=1):
+        try:
+            amount = Decimal(str(item.get('amount', 0)))
+        except (ValueError, TypeError, InvalidOperation):
+            raise CDVLineError('An expense line amount is invalid.')
+        account_id = int(item['account_id']) if item.get('account_id') else None
+        if account_id not in leaf_account_ids:
+            raise CDVLineError('Each expense line must use a valid, postable account.')
         vat_rate = Decimal('0.00')
         vat_category = item.get('vat_category')
         if vat_category:
@@ -510,10 +549,10 @@ def _parse_line_items(cdv):
         exp_line = CDVExpenseLine(
             line_number=idx,
             description=item.get('description', ''),
-            amount=Decimal(str(item.get('amount', 0))),
+            amount=amount,
             vat_category=vat_category,
             vat_rate=vat_rate,
-            account_id=int(item['account_id']) if item.get('account_id') else None,
+            account_id=account_id,
             wt_id=wt_id,
             wt_rate=wt_rate,
         )
@@ -577,7 +616,8 @@ def create():
 
             cdv = CashDisbursementVoucher(
                 branch_id=session.get('selected_branch_id'),
-                cdv_number=form.cdv_number.data,
+                # F-007: regenerate server-side; the read-only form value is never trusted.
+                cdv_number=generate_cdv_number(),
                 cdv_date=form.cdv_date.data,
                 vendor_id=vendor.id,
                 vendor_name=vendor.name,
@@ -614,12 +654,17 @@ def create():
             flash(f'CDV "{cdv.cdv_number}" entered successfully!', 'success')
             return redirect(url_for('cash_disbursements.view', id=cdv.id))
 
+        except CDVLineError as ce:
+            db.session.rollback()
+            flash(str(ce), 'error')
+            return _render_form()
         except Exception as e:
             from app.errors.utils import log_exception
             db.session.rollback()
             current_app.logger.error('Error creating CDV', exc_info=True)
             log_exception(e, severity='ERROR', module='cash_disbursements.create')
-            flash(f'Error entering CDV: {str(e)}', 'error')
+            flash('An unexpected error occurred while entering the CDV. Please try '
+                  'again; if it persists, contact your administrator.', 'error')
 
     if request.method == 'GET':
         form.cdv_number.data = generate_cdv_number()
@@ -713,12 +758,19 @@ def edit(id):
             flash(f'CDV "{cdv.cdv_number}" updated successfully!', 'success')
             return redirect(url_for('cash_disbursements.view', id=cdv.id))
 
+        except CDVLineError as ce:
+            db.session.rollback()
+            flash(str(ce), 'error')
+            ctx = _form_context()
+            return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
+                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
         except Exception as e:
             from app.errors.utils import log_exception
             db.session.rollback()
             current_app.logger.error('Error editing CDV', exc_info=True)
             log_exception(e, severity='ERROR', module='cash_disbursements.edit')
-            flash(f'Error updating CDV: {str(e)}', 'error')
+            flash('An unexpected error occurred while updating the CDV. Please try '
+                  'again; if it persists, contact your administrator.', 'error')
 
     ctx = _form_context()
     return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
@@ -796,7 +848,8 @@ def post(id):
         db.session.rollback()
         current_app.logger.error('Error posting CDV', exc_info=True)
         log_exception(e, severity='ERROR', module='cash_disbursements.post')
-        flash(f'Error posting CDV: {str(e)}', 'error')
+        flash('An unexpected error occurred while posting the CDV. Please try '
+              'again; if it persists, contact your administrator.', 'error')
     return redirect(url_for('cash_disbursements.view', id=id))
 
 
@@ -837,7 +890,8 @@ def void(id):
         db.session.rollback()
         current_app.logger.error('Error voiding CDV', exc_info=True)
         log_exception(e, severity='ERROR', module='cash_disbursements.void')
-        flash(f'Error voiding CDV: {str(e)}', 'error')
+        flash('An unexpected error occurred while voiding the CDV. Please try '
+              'again; if it persists, contact your administrator.', 'error')
     return redirect(url_for('cash_disbursements.view', id=id))
 
 
@@ -881,7 +935,8 @@ def cancel(id):
         db.session.rollback()
         current_app.logger.error('Error cancelling CDV', exc_info=True)
         log_exception(e, severity='ERROR', module='cash_disbursements.cancel')
-        flash(f'Error cancelling CDV: {str(e)}', 'error')
+        flash('An unexpected error occurred while cancelling the CDV. Please try '
+              'again; if it persists, contact your administrator.', 'error')
     return redirect(url_for('cash_disbursements.view', id=id))
 
 

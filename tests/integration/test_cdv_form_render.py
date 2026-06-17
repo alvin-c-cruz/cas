@@ -85,7 +85,7 @@ class TestCDVFormRender:
         resp = create_draft_cdv(client, vendor, cash, expense_lines)
         assert resp.status_code == 200
 
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-REND-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
         assert cdv is not None and cdv.status == 'draft'
 
         # Audit: create logged.
@@ -156,7 +156,7 @@ class TestCDVFormRender:
         expense_lines = [{'description': 'Supplies', 'amount': 500.0,
                           'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
         create_draft_cdv(client, vendor, cash, expense_lines)
-        cdv = CashDisbursementVoucher.query.filter_by(cdv_number='CD-REND-0001').first()
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
 
         client.post(f'/cash-disbursements/{cdv.id}/void',
                     data={'void_reason': 'Render-test cleanup — voiding'},
