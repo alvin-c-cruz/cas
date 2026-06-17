@@ -1374,44 +1374,6 @@
                     </div>
                 </div>
 
-                <!-- New Button (write actions — hidden from read-only viewers) -->
-                {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant', 'staff'] %}
-                <div class="topbar-new-btn-wrapper">
-                    <button class="topbar-new-btn" id="topbarNewBtn">
-                        <span>+</span> New <span style="margin-left: 2px;">▼</span>
-                    </button>
-                    <div class="topbar-new-dropdown" id="topbarNewDropdown">
-                        {% if can_access_module(current_user, 'accounts_receivable') %}
-                        <a href="{{ url_for('sales_invoices.create') }}" class="topbar-new-item">
-                            📄 New Sales Invoice
-                        </a>
-                        {% endif %}
-                        {% if can_access_module(current_user, 'accounts_payable') %}
-                        <a href="{{ url_for('accounts_payable.create') }}" class="topbar-new-item">
-                            📋 New AP Voucher
-                        </a>
-                        {% endif %}
-                        {% if can_access_module(current_user, 'payments') %}
-                        <a href="{{ url_for('cash_disbursements.create') }}" class="topbar-new-item">
-                            💸 New Cash Disbursement
-                        </a>
-                        {% endif %}
-                        {% if can_access_module(current_user, 'journal_entries') %}
-                        <a href="{{ url_for('journal_entries.create') }}" class="topbar-new-item">
-                            📝 New Journal Voucher
-                        </a>
-                        {% endif %}
-                        <div class="topbar-new-divider"></div>
-                        <a href="{{ url_for('dashboard.under_development', feature='Collections') }}" class="topbar-new-item topbar-new-item--soon">
-                            💰 New Collection <span class="soon-badge">Soon</span>
-                        </a>
-                        <a href="{{ url_for('dashboard.under_development', feature='Payments') }}" class="topbar-new-item topbar-new-item--soon">
-                            💸 New Payment <span class="soon-badge">Soon</span>
-                        </a>
-                    </div>
-                </div>
-                {% endif %}
-
                 <!-- Current Date -->
                 <div class="topbar-date">
                     {{ now.strftime('%b %d, %Y') if now else '' }}
@@ -1472,39 +1434,12 @@
                 topbarUserInfoBtn.addEventListener('click', function(e) {
                     e.stopPropagation();
                     topbarUserDropdown.classList.toggle('show');
-                    // Close other dropdowns
-                    const topbarNewDropdown = document.getElementById('topbarNewDropdown');
-                    if (topbarNewDropdown) {
-                        topbarNewDropdown.classList.remove('show');
-                    }
                 });
 
                 // Close dropdown when clicking outside
                 document.addEventListener('click', function(e) {
                     if (!topbarUserInfoBtn.contains(e.target) && !topbarUserDropdown.contains(e.target)) {
                         topbarUserDropdown.classList.remove('show');
-                    }
-                });
-            }
-
-            // Topbar New button dropdown
-            const topbarNewBtn = document.getElementById('topbarNewBtn');
-            const topbarNewDropdown = document.getElementById('topbarNewDropdown');
-
-            if (topbarNewBtn && topbarNewDropdown) {
-                topbarNewBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    topbarNewDropdown.classList.toggle('show');
-                    // Close other dropdowns
-                    if (topbarUserDropdown) {
-                        topbarUserDropdown.classList.remove('show');
-                    }
-                });
-
-                // Close dropdown when clicking outside
-                document.addEventListener('click', function(e) {
-                    if (!topbarNewBtn.contains(e.target) && !topbarNewDropdown.contains(e.target)) {
-                        topbarNewDropdown.classList.remove('show');
                     }
                 });
             }
