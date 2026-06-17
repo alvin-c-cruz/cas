@@ -946,8 +946,14 @@ def cancel(id):
 def print_cdv(id):
     cdv = _get_cdv_or_404(id)
     je_entries = _build_cdv_je_preview(cdv)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
     return render_template('cash_disbursements/print.html',
-                           cdv=cdv, je_entries=je_entries, now=ph_now)
+                           cdv=cdv, je_entries=je_entries,
+                           company=company, printed_at=ph_now())
 
 
 def _cdv_export_data(branch_id):
