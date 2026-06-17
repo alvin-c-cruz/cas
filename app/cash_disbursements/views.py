@@ -13,6 +13,7 @@ from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
+from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.settings import AppSettings
@@ -560,10 +561,15 @@ def _parse_line_items(cdv):
         cdv.expense_lines.append(exp_line)
 
 
-def _form_context():
-    """Shared context for create/edit form rendering."""
+def _form_context(all_accounts=None):
+    """Shared context for create/edit form rendering.
+
+    Pass the already-built `all_accounts` list (callers need it for the cash /
+    expense account selects) so the hierarchy isn't recomputed a second time.
+    """
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
-    all_accounts = _get_all_accounts_for_select()
+    if all_accounts is None:
+        all_accounts = _get_all_accounts_for_select()
     vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
     wt_codes = [w.to_dict() for w in WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()]
     _accts = _get_gl_accounts()
@@ -603,7 +609,7 @@ def create():
         return render_template('cash_disbursements/form.html', form=form, cdv=None,
                                restore_ap_lines=request.form.get('ap_lines', '') if is_post else '',
                                restore_expense_lines=request.form.get('expense_lines', '') if is_post else '',
-                               **_form_context())
+                               **_form_context(all_accounts=all_accounts))
 
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
@@ -659,7 +665,6 @@ def create():
             flash(str(ce), 'error')
             return _render_form()
         except Exception as e:
-            from app.errors.utils import log_exception
             db.session.rollback()
             current_app.logger.error('Error creating CDV', exc_info=True)
             log_exception(e, severity='ERROR', module='cash_disbursements.create')
@@ -697,14 +702,14 @@ def edit(id):
 
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
-            ctx = _form_context()
+            ctx = _form_context(all_accounts=all_accounts)
             return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
         try:
             vendor = Vendor.query.get(form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
-                ctx = _form_context()
+                ctx = _form_context(all_accounts=all_accounts)
                 return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
 
@@ -761,18 +766,17 @@ def edit(id):
         except CDVLineError as ce:
             db.session.rollback()
             flash(str(ce), 'error')
-            ctx = _form_context()
+            ctx = _form_context(all_accounts=all_accounts)
             return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
         except Exception as e:
-            from app.errors.utils import log_exception
             db.session.rollback()
             current_app.logger.error('Error editing CDV', exc_info=True)
             log_exception(e, severity='ERROR', module='cash_disbursements.edit')
             flash('An unexpected error occurred while updating the CDV. Please try '
                   'again; if it persists, contact your administrator.', 'error')
 
-    ctx = _form_context()
+    ctx = _form_context(all_accounts=all_accounts)
     return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                            ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
 
@@ -844,7 +848,6 @@ def post(id):
         )
         flash(f'CDV "{cdv.cdv_number}" posted successfully!', 'success')
     except Exception as e:
-        from app.errors.utils import log_exception
         db.session.rollback()
         current_app.logger.error('Error posting CDV', exc_info=True)
         log_exception(e, severity='ERROR', module='cash_disbursements.post')
@@ -886,7 +889,6 @@ def void(id):
         )
         flash(f'CDV "{cdv.cdv_number}" voided.', 'warning')
     except Exception as e:
-        from app.errors.utils import log_exception
         db.session.rollback()
         current_app.logger.error('Error voiding CDV', exc_info=True)
         log_exception(e, severity='ERROR', module='cash_disbursements.void')
@@ -899,7 +901,6 @@ def void(id):
 @login_required
 @accountant_or_admin_required
 def cancel(id):
-    from app.errors.utils import log_exception
     cdv = _get_cdv_or_404(id)
     if cdv.status != 'posted':
         flash('Only posted CDVs can be cancelled.', 'error')
