@@ -77,6 +77,25 @@
     display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;
 }
 .cdv-bill-picker-row select { flex: 1; min-width: 200px; }
+
+/* AP-bill picker — Choices.js (shared look with the rest of the form; CRV will reuse) */
+.cdv-bill-picker-row .choices { flex: 1; min-width: 240px; margin-bottom: 0; }
+.cdv-bill-picker-row .choices__inner {
+    border: 1px solid var(--border) !important; border-radius: 6px !important;
+    background: var(--card) !important; min-height: 38px !important;
+    padding: 5px 28px 5px 12px !important; font-size: 14px !important;
+}
+.cdv-bill-picker-row .choices.is-focused .choices__inner,
+.cdv-bill-picker-row .choices.is-open .choices__inner {
+    border-color: var(--blue) !important; box-shadow: 0 0 0 2px rgba(59,130,246,.15) !important;
+}
+.cdv-bill-picker-row .choices__list--dropdown .choices__item { padding: 8px 12px; }
+/* Per-option layout: AP No. · invoice # · right-aligned balance */
+.bill-opt { display: grid; grid-template-columns: 130px 1fr auto; gap: 12px; align-items: baseline; width: 100%; }
+.bill-opt__no  { font-family: var(--mono); font-weight: 600; color: var(--text-1); }
+.bill-opt__inv { color: var(--text-3); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bill-opt__bal { font-family: var(--mono); text-align: right; color: var(--text-1); white-space: nowrap; }
+.choices__item--disabled .bill-opt { opacity: .6; }
 .bill-summary-panel { min-width: 240px; }
 .bsr {
     display: grid; grid-template-columns: 1fr auto;
@@ -178,21 +197,20 @@
 
       <div id="cdvSections" {% if not cdv %}style="display:none"{% endif %}>
 
-            <!-- Section A: Pay AP Bills -->
+            <!-- Section A: Payables -->
             <div>
-              <div class="cdv-section-label">Section A — Pay AP Bills</div>
+              <div class="cdv-section-label">Section A — Payables</div>
               <div class="cdv-bill-picker-row">
                 <select id="apBillPicker" class="form-control form-control-sm">
-                  <option value="">-- Select an open bill --</option>
+                  <option value="">-- Select payable --</option>
                 </select>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="addSelectedBill()">+ Add Bill</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addSelectedBill()">+ Add APV</button>
               </div>
               <table class="table" id="apLinesTable">
                 <thead>
                   <tr>
                     <th>AP No.</th>
                     <th>Invoice #</th>
-                    <th>Bill Date</th>
                     <th style="text-align:right;">Balance</th>
                     <th style="text-align:right;">Amount to Pay</th>
                     <th></th>
@@ -200,7 +218,7 @@
                 </thead>
                 <tbody id="apLinesBody"></tbody>
               </table>
-              <p id="apEmptyHint" style="font-size:13px;color:var(--text-3);">No AP bills added — this CDV will record a direct cash expense only.</p>
+              <p id="apEmptyHint" style="font-size:13px;color:var(--text-3);">No payable selected.</p>
             </div>
 
             <!-- Section B: Direct Expenses -->
@@ -326,6 +344,28 @@ new Choices(cashAccSel, {
     searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false,
 });
 
+// ── AP-bill picker Choices.js ─────────────────────────────────────────────────
+// Rich, searchable option rows (AP No. · invoice # · balance). allowHTML is on
+// for the column layout, but every interpolated value is run through escHtml.
+// CRV will reuse this picker, so the rebuild logic is driven entirely via the
+// Choices API (setChoices) — never innerHTML, which Choices would strip.
+const BILL_PLACEHOLDER = { value: '', label: '-- Select payable --', selected: true, disabled: false };
+const billChoices = new Choices(document.getElementById('apBillPicker'), {
+    searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: true,
+    searchFields: ['label'],
+});
+function billOptionHtml(b) {
+    return `<span class="bill-opt">`
+         + `<span class="bill-opt__no">${escHtml(b.bill_number)}</span>`
+         + `<span class="bill-opt__inv">${escHtml(b.vendor_invoice_number || '—')}</span>`
+         + `<span class="bill-opt__bal">&#8369;${escHtml(fmt(b.balance))}</span>`
+         + `</span>`;
+}
+// Replace all choices with [placeholder, ...items] and reset selection to the placeholder.
+function setBillChoices(items) {
+    billChoices.setChoices([BILL_PLACEHOLDER, ...items], 'value', 'label', true);
+}
+
 // ── Payment method toggle ────────────────────────────────────────────────────
 const pmSel = document.getElementById('payment_method');
 function toggleCheckFields() {
@@ -362,7 +402,7 @@ function onVendorChange(vendorId) {
     apLines = [];
     document.getElementById('apLinesBody').innerHTML = '';
     renderApEmpty();
-    document.getElementById('apBillPicker').innerHTML = '<option value="">-- Select an open bill --</option>';
+    setBillChoices([]);
 
     const sel = document.getElementById('vendor_id');
     const vendorName = (sel.options[sel.selectedIndex] || {}).text || '';
@@ -392,39 +432,39 @@ function onVendorChange(vendorId) {
 
 // Loading / error state for the AP-bill picker while open bills load.
 function setBillPickerLoading(loading, error) {
-    const picker = document.getElementById('apBillPicker');
-    const addBtn = picker.closest('.cdv-bill-picker-row')?.querySelector('button');
-    picker.disabled = loading;
+    const addBtn = document.querySelector('.cdv-bill-picker-row button');
     if (addBtn) addBtn.disabled = loading;
     if (loading) {
-        picker.innerHTML = '<option value="">⏳ Loading open bills…</option>';
+        billChoices.disable();
+        billChoices.setChoices(
+            [{ value: '', label: '⏳ Loading open bills…', selected: true, disabled: true }],
+            'value', 'label', true);
     } else if (error) {
-        picker.innerHTML = '<option value="">⚠️ Could not load bills — re-select vendor</option>';
+        billChoices.enable();
+        billChoices.setChoices(
+            [{ value: '', label: '⚠️ Could not load bills — re-select vendor', selected: true, disabled: true }],
+            'value', 'label', true);
+    } else {
+        billChoices.enable();
     }
 }
 
 function refreshBillPicker() {
     const addedIds = new Set(apLines.map(l => l.bill_id));
-    const picker = document.getElementById('apBillPicker');
-    picker.innerHTML = '<option value="">-- Select an open bill --</option>';
-    openBills.filter(b => !addedIds.has(b.id)).forEach(b => {
-        const opt = document.createElement('option');
-        opt.value = b.id;
-        opt.textContent = `${b.bill_number} | ${b.vendor_invoice_number || '-'} | ${b.bill_date} | ${fmt(b.balance)}`;
-        picker.appendChild(opt);
-    });
+    const items = openBills
+        .filter(b => !addedIds.has(b.id))
+        .map(b => ({ value: String(b.id), label: billOptionHtml(b) }));
+    setBillChoices(items);
 }
 
 // ── Section A: AP Lines ───────────────────────────────────────────────────────
 function addSelectedBill() {
-    const picker = document.getElementById('apBillPicker');
-    const billId = parseInt(picker.value);
+    const billId = parseInt(billChoices.getValue(true));
     if (!billId) return;
     const bill = openBills.find(b => b.id === billId);
     if (!bill) return;
     addApLine(bill);
-    picker.value = '';
-    refreshBillPicker();
+    refreshBillPicker();   // rebuilds choices (sans added bill) and resets to placeholder
 }
 
 function addApLine(bill) {
@@ -444,7 +484,6 @@ function addApLine(bill) {
     tr.innerHTML = `
         <td style="font-family:var(--mono)">${escHtml(bill.bill_number)}</td>
         <td>${escHtml(bill.vendor_invoice_number || '-')}</td>
-        <td>${escHtml(bill.bill_date)}</td>
         <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt(bill.balance)}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
@@ -477,7 +516,6 @@ function restoreApLine(line) {
     tr.innerHTML = `
         <td style="font-family:var(--mono)">${escHtml(line.bill_number)}</td>
         <td>${escHtml(line.vendor_invoice_number || '-')}</td>
-        <td>${escHtml(line.bill_date || '-')}</td>
         <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt(line.original_balance)}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
