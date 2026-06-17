@@ -195,7 +195,7 @@ def create():
             current_app.logger.error(f"Error creating withholding tax", exc_info=True)
             log_exception(e, severity='ERROR', module='withholding_tax.create')
             db.session.rollback()
-            flash(f'Error creating withholding tax: {str(e)}', 'error')
+            flash('An error occurred while creating the withholding tax. Please try again.', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=None)
 
     return render_template('withholding_tax/form.html', form=form, withholding_tax=None)
@@ -308,7 +308,7 @@ def edit(id):
             current_app.logger.error(f"Error updating withholding tax", exc_info=True)
             log_exception(e, severity='ERROR', module='withholding_tax.update')
             db.session.rollback()
-            flash(f'Error updating withholding tax: {str(e)}', 'error')
+            flash('An error occurred while updating the withholding tax. Please try again.', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=withholding_tax)
 
     # Pre-fill form with existing data
@@ -404,7 +404,7 @@ def delete(id):
         current_app.logger.error(f"Error deleting withholding tax", exc_info=True)
         log_exception(e, severity='ERROR', module='withholding_tax.delete')
         db.session.rollback()
-        flash(f'Error deleting withholding tax: {str(e)}', 'error')
+        flash('An error occurred while deleting the withholding tax. Please try again.', 'error')
         return redirect(url_for('withholding_tax.list_withholding_tax'))
 
 
@@ -594,7 +594,7 @@ def review_change_request(id):
             current_app.logger.error(f"Error reviewing withholding tax change request", exc_info=True)
             log_exception(e, severity='ERROR', module='withholding_tax.review_change_request')
             db.session.rollback()
-            flash(f'Error processing change request: {str(e)}', 'error')
+            flash('An error occurred while processing the change request. Please try again.', 'error')
             return render_template('withholding_tax/review_change_request.html',
                                  change_request=change_request,
                                  form=form)

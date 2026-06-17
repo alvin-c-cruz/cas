@@ -223,7 +223,7 @@ def create():
             current_app.logger.error(f"Error creating VAT category", exc_info=True)
             log_exception(e, severity='ERROR', module='vat_categories.create')
             db.session.rollback()
-            flash(f'Error creating VAT category: {str(e)}', 'error')
+            flash('An error occurred while creating the VAT category. Please try again.', 'error')
             return render_template('vat_categories/form.html', form=form, vat_category=None)
 
     return render_template('vat_categories/form.html', form=form, vat_category=None)
@@ -342,7 +342,7 @@ def edit(id):
             current_app.logger.error(f"Error updating VAT category", exc_info=True)
             log_exception(e, severity='ERROR', module='vat_categories.update')
             db.session.rollback()
-            flash(f'Error updating VAT category: {str(e)}', 'error')
+            flash('An error occurred while updating the VAT category. Please try again.', 'error')
             return render_template('vat_categories/form.html', form=form, vat_category=vat_category)
 
     # Pre-fill form with existing data
@@ -440,7 +440,7 @@ def delete(id):
         current_app.logger.error(f"Error deleting VAT category", exc_info=True)
         log_exception(e, severity='ERROR', module='vat_categories.delete')
         db.session.rollback()
-        flash(f'Error deleting VAT category: {str(e)}', 'error')
+        flash('An error occurred while deleting the VAT category. Please try again.', 'error')
         return redirect(url_for('vat_categories.list_vat_categories'))
 
 
@@ -667,7 +667,7 @@ def review_change_request(id):
             current_app.logger.error(f"Error reviewing VAT category change request", exc_info=True)
             log_exception(e, severity='ERROR', module='vat_categories.review_change_request')
             db.session.rollback()
-            flash(f'Error processing change request: {str(e)}', 'error')
+            flash('An error occurred while processing the change request. Please try again.', 'error')
             return render_template('vat_categories/review_change_request.html',
                                  change_request=change_request,
                                  proposed_data=proposed_data,

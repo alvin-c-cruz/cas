@@ -135,7 +135,7 @@ def edit_settings():
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error saving company settings', exc_info=True)
-            flash(f'Error saving settings: {str(e)}', 'error')
+            flash('An error occurred while saving the settings. Please try again.', 'error')
 
     elif request.method == 'GET':
         # Populate form from stored settings
@@ -246,7 +246,7 @@ def upload_logo():
         if os.path.exists(file_path):
             os.remove(file_path)
         current_app.logger.error('Error uploading company logo', exc_info=True)
-        flash(f'Error uploading logo: {str(e)}', 'error')
+        flash('An error occurred while uploading the logo. Please try again.', 'error')
 
     return redirect(url_for('company_settings.edit_settings'))
 
@@ -280,7 +280,7 @@ def remove_logo():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error('Error removing company logo', exc_info=True)
-        flash(f'Error removing logo: {str(e)}', 'error')
+        flash('An error occurred while removing the logo. Please try again.', 'error')
 
     return redirect(url_for('company_settings.edit_settings'))
 

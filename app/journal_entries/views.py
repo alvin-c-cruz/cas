@@ -146,7 +146,7 @@ def create():
             current_app.logger.error(f"Error creating journal entry", exc_info=True)
             log_exception(e, severity='ERROR', module='journal_entries.create')
             db.session.rollback()
-            flash(f'Error creating journal entry: {str(e)}', 'error')
+            flash('An error occurred while creating the journal entry. Please try again.', 'error')
 
     if request.method == 'GET':
         # Get current branch from session for entry number generation
@@ -216,7 +216,7 @@ def post(id):
         current_app.logger.error(f"Error posting journal entry", exc_info=True)
         log_exception(e, severity='ERROR', module='journal_entries.post')
         db.session.rollback()
-        flash(f'Error posting journal entry: {str(e)}', 'error')
+        flash('An error occurred while posting the journal entry. Please try again.', 'error')
 
     return redirect(url_for('journal_entries.view', id=id))
 
@@ -252,7 +252,7 @@ def cancel(id):
         current_app.logger.error(f"Error cancelling journal entry", exc_info=True)
         log_exception(e, severity='ERROR', module='journal_entries.cancel')
         db.session.rollback()
-        flash(f'Error cancelling journal entry: {str(e)}', 'error')
+        flash('An error occurred while cancelling the journal entry. Please try again.', 'error')
 
     return redirect(url_for('journal_entries.view', id=id))
 
@@ -289,6 +289,6 @@ def delete(id):
         current_app.logger.error(f"Error deleting journal entry", exc_info=True)
         log_exception(e, severity='ERROR', module='journal_entries.delete')
         db.session.rollback()
-        flash(f'Error deleting journal entry: {str(e)}', 'error')
+        flash('An error occurred while deleting the journal entry. Please try again.', 'error')
 
     return redirect(url_for('journal_entries.list_entries'))

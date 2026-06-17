@@ -117,7 +117,7 @@ def create():
             })
             log_exception(e, severity='ERROR', module='customers.create')
             db.session.rollback()
-            flash(f'Error creating customer: {str(e)}', 'error')
+            flash('An error occurred while creating the customer. Please try again.', 'error')
 
     if request.method == 'GET':
         form.code.data = generate_next_customer_code()
@@ -183,7 +183,7 @@ def edit(id):
             current_app.logger.error(f"Error updating customer", exc_info=True)
             log_exception(e, severity='ERROR', module='customers.update')
             db.session.rollback()
-            flash(f'Error updating customer: {str(e)}', 'error')
+            flash('An error occurred while updating the customer. Please try again.', 'error')
 
     if request.method == 'GET':
         form.code.data = customer.code
@@ -237,7 +237,7 @@ def delete(id):
         current_app.logger.error(f"Error deleting customer", exc_info=True)
         log_exception(e, severity='ERROR', module='customers.delete')
         db.session.rollback()
-        flash(f'Error deleting customer: {str(e)}', 'error')
+        flash('An error occurred while deleting the customer. Please try again.', 'error')
 
     return redirect(url_for('customers.list_customers'))
 

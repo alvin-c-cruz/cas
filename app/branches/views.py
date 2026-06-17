@@ -75,7 +75,7 @@ def create():
             current_app.logger.error(f"Error creating branch", exc_info=True)
             log_exception(e, severity='ERROR', module='branches.create')
             db.session.rollback()
-            flash(f'Error creating branch: {str(e)}', 'error')
+            flash('An error occurred while creating the branch. Please try again.', 'error')
 
     # Set default for is_active checkbox
     if request.method == 'GET':
@@ -130,7 +130,7 @@ def edit(id):
             current_app.logger.error(f"Error updating branch", exc_info=True)
             log_exception(e, severity='ERROR', module='branches.update')
             db.session.rollback()
-            flash(f'Error updating branch: {str(e)}', 'error')
+            flash('An error occurred while updating the branch. Please try again.', 'error')
 
     return render_template('branches/form.html', form=form, branch=branch)
 
@@ -244,7 +244,7 @@ def assign_user(id, user_id):
         current_app.logger.error(f"Error assigning user to branch", exc_info=True)
         log_exception(e, severity='ERROR', module='branches.assign_user')
         db.session.rollback()
-        flash(f'Error assigning user: {str(e)}', 'error')
+        flash('An error occurred while assigning the user. Please try again.', 'error')
 
     return redirect(url_for('branches.branch_users', id=id))
 
@@ -283,6 +283,6 @@ def unassign_user(id, user_id):
         current_app.logger.error(f"Error unassigning user from branch", exc_info=True)
         log_exception(e, severity='ERROR', module='branches.unassign_user')
         db.session.rollback()
-        flash(f'Error unassigning user: {str(e)}', 'error')
+        flash('An error occurred while unassigning the user. Please try again.', 'error')
 
     return redirect(url_for('branches.branch_users', id=id))
