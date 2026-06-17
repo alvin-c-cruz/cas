@@ -89,3 +89,72 @@ def ensure_vendors():
         out.append(v)
     db.session.commit()
     return out
+
+
+def _vat_amount(line_total, vat_code):
+    if vat_code == 'VATABLE':
+        return _money(Decimal(line_total) * Decimal(12) / Decimal(112))
+    return Decimal('0.00')
+
+
+def build_apv(doc_date, vendor_spec, vendor_obj, refs, creator_id, poster_id,
+              branch_id, counters, amount=None):
+    """Create one posted APV (single line) + its balanced posted JE."""
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    from app.accounts_payable.views import _post_ap_je
+    from app.withholding_tax.models import WithholdingTax
+    from app.utils import ph_now
+
+    if amount is None:
+        amount = (vendor_spec['amount_min'] + vendor_spec['amount_max']) / 2
+    line_total = _money(amount)
+    vat_amt = _vat_amount(line_total, vendor_spec['vat_code'])
+    net_base = line_total - vat_amt
+
+    wt = None
+    wt_rate = Decimal('0.00')
+    wt_amt = Decimal('0.00')
+    if vendor_spec['wht_code']:
+        wt = WithholdingTax.query.filter_by(code=vendor_spec['wht_code']).first()
+        if wt:
+            wt_rate = Decimal(str(wt.rate))
+            wt_amt = _money(net_base * wt_rate / Decimal('100'))
+
+    ap = AccountsPayable(
+        branch_id=branch_id,
+        ap_number=next_doc_number('AP', doc_date, counters),
+        ap_date=doc_date,
+        due_date=date.fromordinal(doc_date.toordinal() + 30),
+        vendor_id=vendor_obj.id,
+        vendor_name=vendor_obj.name,
+        vendor_tin=vendor_obj.tin,
+        vendor_invoice_number=f'INV-{doc_date.year}-{counters[("AP", doc_date.year, doc_date.month)]:04d}',
+        payment_terms='Net 30',
+        status='posted',
+        amount_paid=Decimal('0.00'),
+        created_by_id=creator_id,
+        posted_by_id=poster_id,
+        posted_at=ph_now(),
+    )
+    item = AccountsPayableItem(
+        line_number=1,
+        description=f'{vendor_spec["category"].title()} — {doc_date.strftime("%b %Y")}',
+        amount=line_total,
+        vat_category=vendor_spec['vat_code'],
+        vat_rate=Decimal('12.00') if vendor_spec['vat_code'] == 'VATABLE' else Decimal('0.00'),
+        line_total=line_total,
+        vat_amount=vat_amt,
+        account_id=refs['expense'][vendor_spec['expense_code']].id,
+        wt_id=wt.id if wt else None,
+        wt_rate=wt_rate,
+        wt_amount=wt_amt,
+    )
+    ap.line_items.append(item)
+    ap.calculate_totals()        # sets subtotal, vat_amount, withholding_tax_amount, total_amount, balance
+    db.session.add(ap)
+    db.session.flush()           # need ap.id before JE
+
+    je = _post_ap_je(ap, poster_id)   # status='posted' -> JE posted
+    ap.journal_entry_id = je.id
+    db.session.commit()
+    return ap

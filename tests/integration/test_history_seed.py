@@ -1,6 +1,7 @@
 """Integration tests for the APV/CDV historical seed generator."""
 import pytest
 from datetime import date
+from decimal import Decimal
 
 from app import db
 from app.branches.models import Branch
@@ -10,6 +11,17 @@ from app.seeds.seed_data import (
 from app.seeds import history_seed as hs
 
 pytestmark = [pytest.mark.integration]
+
+
+def _admin():
+    from app.users.models import User
+    u = User.query.filter_by(username='admin').first()
+    if u is None:
+        u = User(username='admin', email='admin@cas.local',
+                 full_name='System Administrator', role='admin', is_active=True)
+        u.set_password('admin123')
+        db.session.add(u); db.session.commit()
+    return u
 
 
 @pytest.fixture
@@ -57,3 +69,48 @@ class TestRefsAndHelpers:
         assert u.username == 'accountant'
         assert u.role == 'accountant'
         assert u.check_password('cas-accountant')
+
+
+class TestApvBuilder:
+    def test_build_apv_posts_balanced_je(self, base_db):
+        refs = hs.resolve_refs()
+        admin = _admin(); acct = hs.ensure_accountant_user()
+        hs.ensure_vendors()
+        from app.vendors.models import Vendor
+        spec = next(v for v in hs.VENDORS if v['code'] == 'HV-LAW')   # VATABLE + WC010 10%
+        vobj = Vendor.query.filter_by(code='HV-LAW').first()
+        counters = {}
+        ap = hs.build_apv(date(2021, 3, 4), spec, vobj, refs,
+                          creator_id=acct.id, poster_id=admin.id,
+                          branch_id=base_db.id, counters=counters, amount=Decimal('56000.00'))
+        assert ap.ap_number == 'AP-2021-03-0001'
+        assert ap.status == 'posted'
+        # VAT extracted from 56,000 inclusive @12%
+        assert ap.vat_amount == Decimal('6000.00')
+        # WHT 10% of net (50,000)
+        assert ap.withholding_tax_amount == Decimal('5000.00')
+        # Net payable = subtotal - WHT
+        assert ap.total_amount == Decimal('51000.00')
+        # JE exists and balances
+        je = ap.journal_entry
+        assert je is not None and je.status == 'posted'
+        debit = sum((l.debit_amount for l in je.lines.all()), Decimal('0.00'))
+        credit = sum((l.credit_amount for l in je.lines.all()), Decimal('0.00'))
+        assert debit == credit
+
+    def test_build_apv_exempt_no_vat(self, base_db):
+        refs = hs.resolve_refs()
+        admin = _admin(); acct = hs.ensure_accountant_user()
+        hs.ensure_vendors()
+        from app.vendors.models import Vendor
+        spec = next(v for v in hs.VENDORS if v['code'] == 'HV-WATR')  # VAT-EXEMPT, no WHT
+        vobj = Vendor.query.filter_by(code='HV-WATR').first()
+        ap = hs.build_apv(date(2021, 3, 6), spec, vobj, refs, acct.id, admin.id,
+                          base_db.id, {}, amount=Decimal('2000.00'))
+        assert ap.vat_amount == Decimal('0.00')
+        assert ap.withholding_tax_amount == Decimal('0.00')
+        assert ap.total_amount == Decimal('2000.00')
+        je = ap.journal_entry
+        debit = sum((l.debit_amount for l in je.lines.all()), Decimal('0.00'))
+        credit = sum((l.credit_amount for l in je.lines.all()), Decimal('0.00'))
+        assert debit == credit
