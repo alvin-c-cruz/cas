@@ -21,7 +21,7 @@ from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import json
 import os
 import uuid
@@ -219,6 +219,69 @@ def staff_or_above_required(f):
 
 
 VALID_AP_STATUSES = {'draft', 'posted', 'partially_paid', 'paid', 'voided', 'cancelled'}
+
+
+class APVLineError(Exception):
+    """Raised when a submitted AP line fails server-side validation.
+
+    Carries a user-facing message that is safe to flash (no internal/DB detail).
+    """
+
+
+def _build_validated_ap_lines():
+    """Parse line_items JSON from request.form, validate each line server-side,
+    and return a list of (unattached) AccountsPayableItem objects.
+
+    The account picker disables group accounts in the UI, but the POST body is
+    the real trust boundary, so every line is re-validated here:
+      * account_id must be an active, postable (leaf) account;
+      * amount must be > 0.
+    Raises APVLineError (user-facing message) on any invalid line.
+    """
+    line_items_data = request.form.getlist('line_items')
+    if not line_items_data or not line_items_data[0]:
+        return []
+    line_items = json.loads(line_items_data[0])
+    leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
+    built = []
+    for idx, item_data in enumerate(line_items, start=1):
+        try:
+            amount = Decimal(str(item_data.get('amount', 0)))
+        except (ValueError, TypeError, InvalidOperation):
+            raise APVLineError('A line amount is invalid.')
+        if amount <= 0:
+            raise APVLineError('Each line amount must be greater than zero.')
+        account_id = int(item_data.get('account_id')) if item_data.get('account_id') else None
+        if account_id not in leaf_account_ids:
+            raise APVLineError('Each line must use a valid, postable account.')
+
+        vat_rate = Decimal('0.00')
+        vat_category = item_data.get('vat_category')
+        if vat_category:
+            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+            if vat_cat:
+                vat_rate = Decimal(str(vat_cat.rate))
+
+        wt_id = int(item_data['wt_id']) if item_data.get('wt_id') else None
+        wt_rate = None
+        if wt_id:
+            wt_obj = WithholdingTax.query.get(wt_id)
+            if wt_obj:
+                wt_rate = wt_obj.rate
+
+        line_item = AccountsPayableItem(
+            line_number=idx,
+            description=item_data.get('description', ''),
+            amount=amount,
+            vat_category=vat_category,
+            vat_rate=vat_rate,
+            account_id=account_id,
+            wt_id=wt_id,
+            wt_rate=wt_rate,
+        )
+        line_item.calculate_amounts()
+        built.append(line_item)
+    return built
 
 
 @accounts_payable_bp.before_request
@@ -488,7 +551,8 @@ def create():
 
             ap = AccountsPayable(
                 branch_id=session.get('selected_branch_id'),
-                ap_number=form.ap_number.data,
+                # Regenerate server-side; the read-only form value is never trusted.
+                ap_number=generate_ap_number(),
                 ap_date=form.ap_date.data,
                 due_date=form.due_date.data,
                 vendor_id=vendor.id,
@@ -507,37 +571,8 @@ def create():
                 created_by_id=current_user.id
             )
 
-            line_items_data = request.form.getlist('line_items')
-            if line_items_data:
-                line_items = json.loads(line_items_data[0]) if line_items_data[0] else []
-
-                for idx, item_data in enumerate(line_items, start=1):
-                    vat_rate = Decimal('0.00')
-                    vat_category = item_data.get('vat_category')
-                    if vat_category:
-                        vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
-                        if vat_cat:
-                            vat_rate = Decimal(str(vat_cat.rate))
-
-                    wt_id = int(item_data['wt_id']) if item_data.get('wt_id') else None
-                    wt_rate = None
-                    if wt_id:
-                        wt_obj = WithholdingTax.query.get(wt_id)
-                        if wt_obj:
-                            wt_rate = wt_obj.rate
-
-                    line_item = AccountsPayableItem(
-                        line_number=idx,
-                        description=item_data.get('description', ''),
-                        amount=Decimal(str(item_data.get('amount', 0))),
-                        vat_category=vat_category,
-                        vat_rate=vat_rate,
-                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None,
-                        wt_id=wt_id,
-                        wt_rate=wt_rate,
-                    )
-                    line_item.calculate_amounts()
-                    ap.line_items.append(line_item)
+            for line_item in _build_validated_ap_lines():
+                ap.line_items.append(line_item)
 
             ap.calculate_totals()
 
@@ -562,6 +597,16 @@ def create():
             flash(f'AP Voucher "{ap.ap_number}" entered successfully!', 'success')
             return redirect(url_for('accounts_payable.view', id=ap.id))
 
+        except APVLineError as le:
+            db.session.rollback()
+            flash(str(le), 'error')
+        except ValueError as e:
+            # Deliberate, user-facing validation raised during JE assembly
+            # (e.g. _input_vat_buckets: unmapped Input Tax account, override
+            # too far below computed VAT). These messages are curated and safe
+            # to surface — mirror the cancel() handler.
+            db.session.rollback()
+            flash(str(e), 'error')
         except Exception as e:
             from app.errors.utils import log_exception
             # Roll back BEFORE logging — log_exception commits the session,
@@ -569,7 +614,8 @@ def create():
             db.session.rollback()
             current_app.logger.error(f"Error creating purchase bill", exc_info=True)
             log_exception(e, severity='ERROR', module='accounts_payable.create')
-            flash(f'Error entering AP Voucher: {str(e)}', 'error')
+            flash('An unexpected error occurred while entering the AP Voucher. Please '
+                  'try again; if it persists, contact your administrator.', 'error')
 
     if request.method == 'GET':
         form.ap_number.data = generate_ap_number()
@@ -677,7 +723,7 @@ def edit(id):
                 return render_template('accounts_payable/form.html', form=form, ap=ap,
                                        vendor_quick_add_form=quick_add_form, vendor_quick_add_whts=quick_add_whts)
 
-            ap.ap_number = form.ap_number.data
+            # ap_number is immutable after creation — never trust the client value.
             ap.ap_date = form.ap_date.data
             ap.due_date = form.due_date.data
             ap.vendor_id = vendor.id
@@ -691,40 +737,13 @@ def edit(id):
             ap.reference = form.reference.data
             ap.notes = form.notes.data
 
+            # Build + validate the new lines BEFORE deleting the old ones, so an
+            # invalid submission rejects without destroying the existing lines.
+            new_lines = _build_validated_ap_lines()
             AccountsPayableItem.query.filter_by(ap_id=ap.id).delete()
-
-            line_items_data = request.form.getlist('line_items')
-            if line_items_data:
-                line_items = json.loads(line_items_data[0]) if line_items_data[0] else []
-
-                for idx, item_data in enumerate(line_items, start=1):
-                    vat_rate = Decimal('0.00')
-                    vat_category = item_data.get('vat_category')
-                    if vat_category:
-                        vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
-                        if vat_cat:
-                            vat_rate = Decimal(str(vat_cat.rate))
-
-                    wt_id = int(item_data['wt_id']) if item_data.get('wt_id') else None
-                    wt_rate = None
-                    if wt_id:
-                        wt_obj = WithholdingTax.query.get(wt_id)
-                        if wt_obj:
-                            wt_rate = wt_obj.rate
-
-                    line_item = AccountsPayableItem(
-                        ap_id=ap.id,
-                        line_number=idx,
-                        description=item_data.get('description', ''),
-                        amount=Decimal(str(item_data.get('amount', 0))),
-                        vat_category=vat_category,
-                        vat_rate=vat_rate,
-                        account_id=int(item_data.get('account_id')) if item_data.get('account_id') else None,
-                        wt_id=wt_id,
-                        wt_rate=wt_rate,
-                    )
-                    line_item.calculate_amounts()
-                    db.session.add(line_item)
+            for line_item in new_lines:
+                line_item.ap_id = ap.id
+                db.session.add(line_item)
 
             ap.calculate_totals()
 
@@ -761,6 +780,14 @@ def edit(id):
             flash(f'AP Voucher "{ap.ap_number}" saved successfully!', 'success')
             return redirect(url_for('accounts_payable.view', id=ap.id))
 
+        except APVLineError as le:
+            db.session.rollback()
+            flash(str(le), 'error')
+        except ValueError as e:
+            # Deliberate, user-facing validation raised during JE assembly
+            # (e.g. _input_vat_buckets). Curated messages — safe to surface.
+            db.session.rollback()
+            flash(str(e), 'error')
         except Exception as e:
             from app.errors.utils import log_exception
             # Roll back BEFORE logging — log_exception commits the session,
@@ -768,7 +795,8 @@ def edit(id):
             db.session.rollback()
             current_app.logger.error(f"Error updating purchase bill", exc_info=True)
             log_exception(e, severity='ERROR', module='accounts_payable.update')
-            flash(f'Error saving AP Voucher: {str(e)}', 'error')
+            flash('An unexpected error occurred while saving the AP Voucher. Please '
+                  'try again; if it persists, contact your administrator.', 'error')
 
     if request.method == 'GET':
         form.vendor_id.data = ap.vendor_id
@@ -850,7 +878,8 @@ def post(id):
         db.session.rollback()
         current_app.logger.error(f"Error posting purchase bill", exc_info=True)
         log_exception(e, severity='ERROR', module='accounts_payable.post')
-        flash(f'Error posting AP Voucher: {str(e)}', 'error')
+        flash('An unexpected error occurred while posting the AP Voucher. Please '
+              'try again; if it persists, contact your administrator.', 'error')
 
     return redirect(url_for('accounts_payable.view', id=id))
 
@@ -907,7 +936,8 @@ def cancel(id):
         db.session.rollback()
         current_app.logger.error('Error cancelling purchase bill', exc_info=True)
         log_exception(e, severity='ERROR', module='accounts_payable.cancel')
-        flash(f'Error cancelling AP Voucher: {str(e)}', 'error')
+        flash('An unexpected error occurred while cancelling the AP Voucher. Please '
+              'try again; if it persists, contact your administrator.', 'error')
 
     return redirect(url_for('accounts_payable.view', id=id))
 
@@ -1167,7 +1197,8 @@ def void(id):
         db.session.rollback()
         current_app.logger.error('Error voiding purchase bill', exc_info=True)
         log_exception(e, severity='ERROR', module='accounts_payable.void')
-        flash(f'Error voiding AP Voucher: {str(e)}', 'error')
+        flash('An unexpected error occurred while voiding the AP Voucher. Please '
+              'try again; if it persists, contact your administrator.', 'error')
 
     return redirect(url_for('accounts_payable.view', id=id))
 
@@ -1240,7 +1271,8 @@ def upload_attachment(id):
         if os.path.exists(file_path):
             os.remove(file_path)
         current_app.logger.error(f'Error uploading attachment: {e}', exc_info=True)
-        flash(f'Error uploading file: {str(e)}', 'error')
+        flash('An unexpected error occurred while uploading the file. Please '
+              'try again; if it persists, contact your administrator.', 'error')
 
     return redirect(url_for('accounts_payable.edit', id=id))
 
@@ -1347,7 +1379,8 @@ def delete_attachment(attachment_id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'Error deleting attachment: {e}', exc_info=True)
-        flash(f'Error deleting file: {str(e)}', 'error')
+        flash('An unexpected error occurred while deleting the file. Please '
+              'try again; if it persists, contact your administrator.', 'error')
 
     return redirect(url_for('accounts_payable.edit', id=ap.id))
 

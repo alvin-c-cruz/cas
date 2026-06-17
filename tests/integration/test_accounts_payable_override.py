@@ -94,7 +94,7 @@ class TestBillPencilOverride:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='OVR-001').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None
         assert bill.vat_override is True
         assert bill.vat_amount == Decimal('1200.01')
@@ -120,7 +120,7 @@ class TestBillPencilOverride:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='OVR-002').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None
         assert bill.vat_override is True
         assert bill.vat_amount == Decimal('1199.99')
@@ -146,7 +146,7 @@ class TestBillPencilOverride:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='OVR-003').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         lines = JournalEntryLine.query.filter_by(entry_id=je.id).all()
@@ -185,7 +185,7 @@ class TestBillPencilOverride:
             'wt_override_value': '100.01',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='OVR-004').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None
         assert bill.wt_override is True
         assert bill.withholding_tax_amount == Decimal('100.01')
@@ -212,7 +212,7 @@ class TestBillPencilOverride:
             'wt_override_value': '99.99',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='OVR-005').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         lines = JournalEntryLine.query.filter_by(entry_id=je.id).all()
@@ -248,7 +248,7 @@ class TestBillPencilOverride:
             'wt_override_value': '99.99',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='OVR-006').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None
         assert bill.vat_override is True
         assert bill.vat_amount == Decimal('1200.01')
@@ -282,7 +282,7 @@ class TestBillPencilOverride:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='OVR-BAD').first()
+        bill = AccountsPayable.query.first()
         assert bill is None  # rejected, not persisted
 
     def test_wt_override_out_of_range_rejected(
@@ -307,5 +307,5 @@ class TestBillPencilOverride:
             'wt_override_value': '99999.99',  # exceeds subtotal (10000)
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='OVR-BAD2').first()
+        bill = AccountsPayable.query.first()
         assert bill is None

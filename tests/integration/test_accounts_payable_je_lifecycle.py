@@ -62,7 +62,7 @@ class TestJELifecycle:
         expense, vendor = setup_gl(db_session)
         create_draft(client, vendor, expense)
 
-        bill = AccountsPayable.query.filter_by(ap_number='AP-JETEST-0001').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None and bill.status == 'draft'
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         assert je.status == 'draft'
@@ -72,7 +72,7 @@ class TestJELifecycle:
         login(client)
         expense, vendor = setup_gl(db_session)
         create_draft(client, vendor, expense)
-        bill = AccountsPayable.query.filter_by(ap_number='AP-JETEST-0001').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
 
         client.post(f'/accounts-payable/{bill.id}/post', follow_redirects=True)
 
@@ -86,7 +86,7 @@ class TestJELifecycle:
         login(client)
         expense, vendor = setup_gl(db_session)
         create_draft(client, vendor, expense)
-        bill = AccountsPayable.query.filter_by(ap_number='AP-JETEST-0001').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
 
         now = ph_now()
         # while draft: nothing in expense stats

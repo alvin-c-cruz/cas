@@ -64,7 +64,7 @@ class TestDueDateValidation:
         html = resp.data.decode('utf-8')
         # once in the client-validation JS source, once as the rendered form error
         assert html.count('Due date cannot be earlier than the voucher date.') >= 2
-        assert AccountsPayable.query.filter_by(ap_number='AP-2026-06-9999').first() is None
+        assert AccountsPayable.query.first() is None
 
     def test_due_date_equal_or_after_voucher_date_allowed(self, client, db_session,
                                                           admin_user, main_branch):
@@ -74,6 +74,6 @@ class TestDueDateValidation:
         resp = self._post_bill(client, vendor, account,
                                '2026-06-12', '2026-06-12')
         assert resp.status_code == 200
-        bill = AccountsPayable.query.filter_by(ap_number='AP-2026-06-9999').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None
         assert bill.status == 'draft'

@@ -82,7 +82,7 @@ class TestBillCreatePostsJE:
 
         assert resp.status_code == 200
 
-        bill = AccountsPayable.query.filter_by(ap_number='PBJ-001').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None
         assert bill.journal_entry_id is not None
 
@@ -123,7 +123,7 @@ class TestBillCreatePostsJE:
             'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='PBJ-002').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None, "Bill PBJ-002 not created"
         je = db_session.get(JournalEntry, bill.journal_entry_id)
         lines = JournalEntryLine.query.filter_by(entry_id=je.id).all()
@@ -183,7 +183,7 @@ class TestBillCreatePostsJE:
         }, follow_redirects=True)
         assert resp.status_code == 200
 
-        bill = AccountsPayable.query.filter_by(ap_number='PBJ-004').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None, "Bill PBJ-004 not created (JE likely failed to balance)"
         assert bill.journal_entry_id is not None
 
@@ -222,7 +222,7 @@ class TestBillCreatePostsJE:
             'wt_override': '0', 'wt_override_value': '0',
         }, follow_redirects=True)
 
-        bill = AccountsPayable.query.filter_by(ap_number='PBJ-003').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         assert bill is not None, "Bill PBJ-003 not created"
         old_je_id = bill.journal_entry_id
         assert old_je_id is not None
@@ -242,7 +242,7 @@ class TestBillCreatePostsJE:
         }, follow_redirects=True)
 
         db_session.expire_all()
-        bill = AccountsPayable.query.filter_by(ap_number='PBJ-003').first()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
         new_je_id = bill.journal_entry_id
         assert new_je_id is not None
 
