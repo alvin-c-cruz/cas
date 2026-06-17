@@ -248,3 +248,195 @@ def build_cdv_expense(doc_date, vendor_spec, vendor_obj, refs, creator_id, poste
     cdv.journal_entry_id = je.id
     db.session.commit()
     return cdv
+
+
+import random
+
+
+def _month_iter(start, end):
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        yield y, m
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+
+
+def _clamp_day(year, month, day, end):
+    import calendar
+    last = calendar.monthrange(year, month)[1]
+    d = date(year, month, min(day, last))
+    return min(d, end)
+
+
+def generate_history(branch_id, admin_id, *, start=date(2021, 1, 1),
+                     end=date(2026, 6, 18), rng_seed=20210101):
+    rng = random.Random(rng_seed)
+    refs = resolve_refs()
+    acct = ensure_accountant_user()
+    vendors = ensure_vendors()
+    vmap = {v['code']: vendors[i] for i, v in enumerate(VENDORS)}
+    counters = {}
+
+    summary = {'apv': 0, 'cdv': 0, 'paid': 0, 'partially_paid': 0,
+               'outstanding': 0, 'draft': 0, 'voided': 0, 'unbalanced': 0}
+
+    monthly = [v for v in VENDORS if v['cadence'] == 'monthly']
+    frequent = [v for v in VENDORS if v['cadence'] == 'frequent']
+    occasional = [v for v in VENDORS if v['cadence'] == 'occasional']
+
+    # "recent window" = last 12 months before end; those APVs get the aging spread.
+    recent_cutoff = date(end.year - 1, end.month, 1)
+
+    for (y, m) in _month_iter(start, end):
+        month_apvs = []   # (ap, vendor_spec) posted this month, candidates for payment
+
+        # recurring monthly vendors: one bill near a fixed day
+        for spec in monthly:
+            d = _clamp_day(y, m, rng.randint(2, 8), end)
+            amt = _money(rng.uniform(spec['amount_min'], spec['amount_max']))
+            ap = build_apv(d, spec, vmap[spec['code']], refs, acct.id, admin_id,
+                           branch_id, counters, amount=amt)
+            summary['apv'] += 1
+            month_apvs.append((ap, spec))
+
+        # frequent vendors: 2-3 bills/month each
+        for spec in frequent:
+            for _ in range(rng.randint(2, 3)):
+                d = _clamp_day(y, m, rng.randint(1, 28), end)
+                amt = _money(rng.uniform(spec['amount_min'], spec['amount_max']))
+                ap = build_apv(d, spec, vmap[spec['code']], refs, acct.id, admin_id,
+                               branch_id, counters, amount=amt)
+                summary['apv'] += 1
+                month_apvs.append((ap, spec))
+
+        # occasional vendors: 0-1 bill/month each
+        for spec in occasional:
+            if rng.random() < 0.6:
+                d = _clamp_day(y, m, rng.randint(1, 28), end)
+                amt = _money(rng.uniform(spec['amount_min'], spec['amount_max']))
+                ap = build_apv(d, spec, vmap[spec['code']], refs, acct.id, admin_id,
+                               branch_id, counters, amount=amt)
+                summary['apv'] += 1
+                month_apvs.append((ap, spec))
+
+        # Payment / aging decisions per APV
+        for ap, spec in month_apvs:
+            in_recent = ap.ap_date >= recent_cutoff
+            roll = rng.random()
+            if in_recent and roll < 0.25:
+                # leave outstanding (no CDV) -> aging bucket
+                summary['outstanding'] += 1
+                continue
+            if in_recent and roll < 0.40:
+                frac = Decimal('0.5')
+            else:
+                frac = Decimal('1.0')
+            lag = rng.randint(15, 45)
+            pay_date = _clamp_day(ap.ap_date.year, ap.ap_date.month,
+                                  ap.ap_date.day, end)
+            pay_date = min(date.fromordinal(ap.ap_date.toordinal() + lag), end)
+            if pay_date <= end:
+                method = 'check' if rng.random() < 0.6 else 'cash'
+                hs_cdv = build_cdv_paying(pay_date, [ap], [frac], refs, acct.id,
+                                          admin_id, branch_id, counters, method=method)
+                summary['cdv'] += 1
+                if ap.status == 'paid':
+                    summary['paid'] += 1
+                elif ap.status == 'partially_paid':
+                    summary['partially_paid'] += 1
+                    summary['outstanding'] += 1   # remaining balance still ages
+            else:
+                summary['outstanding'] += 1
+
+        # ~3 direct-expense CDVs per month (Section B)
+        for _ in range(rng.randint(2, 4)):
+            spec = rng.choice(frequent + occasional)
+            d = _clamp_day(y, m, rng.randint(1, 28), end)
+            amt = _money(rng.uniform(spec['amount_min'], spec['amount_max']))
+            method = 'cash' if rng.random() < 0.5 else 'check'
+            build_cdv_expense(d, spec, vmap[spec['code']], refs, acct.id, admin_id,
+                              branch_id, counters, method=method, amount=amt)
+            summary['cdv'] += 1
+
+    # 2026-only status-variety tail: a few drafts + a couple voided
+    _seed_tail(refs, acct, admin_id, branch_id, counters, summary, end)
+
+    # integrity check: count any unbalanced posted JE
+    summary['unbalanced'] = _count_unbalanced_jes()
+    return summary
+
+
+def _seed_tail(refs, acct, admin_id, branch_id, counters, summary, end):
+    """A handful of 2026 draft + voided APVs/CDVs for status variety."""
+    spec = next(v for v in VENDORS if v['code'] == 'HV-SUP2')
+    vobj = Vendor.query.filter_by(code='HV-SUP2').first()
+    for i in range(3):
+        d = date(2026, 6, min(10 + i, end.day))
+        ap = _build_draft_apv(d, spec, vobj, refs, acct.id, branch_id, counters)
+        summary['apv'] += 1
+        summary['draft'] += 1
+    for i in range(2):
+        d = date(2026, 5, 5 + i)
+        _build_voided_apv(d, spec, vobj, refs, acct.id, admin_id, branch_id, counters)
+        summary['apv'] += 1
+        summary['voided'] += 1
+
+
+def _build_draft_apv(doc_date, spec, vobj, refs, creator_id, branch_id, counters):
+    """A draft APV: built like build_apv but status stays 'draft' (no posted JE promotion)."""
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    from app.accounts_payable.views import _post_ap_je
+    amt = _money((spec['amount_min'] + spec['amount_max']) / 2)
+    vat_amt = _vat_amount(amt, spec['vat_code'])
+    ap = AccountsPayable(
+        branch_id=branch_id, ap_number=next_doc_number('AP', doc_date, counters),
+        ap_date=doc_date, due_date=date.fromordinal(doc_date.toordinal() + 30),
+        vendor_id=vobj.id, vendor_name=vobj.name, vendor_tin=vobj.tin,
+        payment_terms='Net 30', status='draft', amount_paid=Decimal('0.00'),
+        created_by_id=creator_id,
+    )
+    ap.line_items.append(AccountsPayableItem(
+        line_number=1, description='Draft bill', amount=amt,
+        vat_category=spec['vat_code'], vat_rate=Decimal('12.00'),
+        line_total=amt, vat_amount=vat_amt,
+        account_id=refs['expense'][spec['expense_code']].id,
+        wt_rate=Decimal('0.00'), wt_amount=Decimal('0.00'),
+    ))
+    ap.calculate_totals()
+    db.session.add(ap)
+    db.session.flush()
+    je = _post_ap_je(ap, creator_id)   # status='draft' -> JE created as draft
+    ap.journal_entry_id = je.id
+    db.session.commit()
+    return ap
+
+
+def _build_voided_apv(doc_date, spec, vobj, refs, creator_id, poster_id, branch_id, counters):
+    ap = _build_draft_apv(doc_date, spec, vobj, refs, creator_id, branch_id, counters)
+    from app.utils import ph_now
+    # void deletes the JE (mirror the void view's effect on GL)
+    if ap.journal_entry_id:
+        from app.journal_entries.models import JournalEntry as _JE
+        je = db.session.get(_JE, ap.journal_entry_id)
+        ap.journal_entry_id = None
+        ap.journal_entry = None
+        if je:
+            db.session.delete(je)
+    ap.status = 'voided'
+    ap.voided_at = ph_now()
+    ap.voided_by_id = poster_id
+    ap.void_reason = 'Seed demo voided document'
+    db.session.commit()
+    return ap
+
+
+def _count_unbalanced_jes():
+    from app.journal_entries.models import JournalEntry
+    bad = 0
+    for je in JournalEntry.query.filter_by(status='posted').all():
+        d = sum((l.debit_amount for l in je.lines.all()), Decimal('0.00'))
+        c = sum((l.credit_amount for l in je.lines.all()), Decimal('0.00'))
+        if d != c:
+            bad += 1
+    return bad
