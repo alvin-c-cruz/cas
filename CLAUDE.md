@@ -78,7 +78,7 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 - **No hardcoded styling in templates.** Use design tokens / CSS variables.
 - **Responsive on all UI** (desktop, tablet, mobile).
 - **Verify the audit log in CRUD tests** — after every write, assert an audit entry exists with the correct action, record reference, and actor.
-- **Transaction buttons say "Enter"; master data says "Create".** Documents that post to the books (purchase bills, sales invoices, receipts, journal entries) use "Enter Bill" / "Enter First Bill" etc.; reference records (vendors, customers, accounts, branches, users) keep "Create".
+- **Transaction document submit buttons say "Save" / "Update"; list/launch buttons say "Enter"; master data says "Create".** The in-form submit button on documents that post to the books (purchase bills, sales invoices, receipts, journal entries) reads **"Save"** (create) / **"Update"** (edit) — plain, no document name. The list-page launch buttons that open those forms keep the **"Enter …"** verb (e.g. "+ Enter APV", "+ Enter CDV") and page titles may still read "Enter …". Reference/master records (vendors, customers, accounts, branches, users) keep **"Create"**.
 
 ## Testing Notes
 
