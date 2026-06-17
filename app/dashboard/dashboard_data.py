@@ -7,12 +7,13 @@ This module calculates real-time business statistics from the database:
 - Top customers and vendors
 - Monthly trends
 """
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, extract, and_, or_
 from decimal import Decimal
 
 from app import db
+from app.utils import ph_now
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.accounts.models import Account
 from app.sales_invoices.models import SalesInvoice
@@ -33,7 +34,7 @@ def get_revenue_stats(year, month, branch_id=None, as_of_date=None):
         dict with 'mtd' and 'ytd' revenue totals
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = ph_now().date()
 
     # Get all revenue accounts (by type — code prefixes vary per company COA)
     revenue_accounts = Account.query.filter(
@@ -99,7 +100,7 @@ def get_expense_stats(year, month, branch_id=None, as_of_date=None):
         dict with 'mtd' and 'ytd' expense totals
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = ph_now().date()
 
     # Get all expense accounts (by type — code prefixes vary per company COA)
     expense_accounts = Account.query.filter(
@@ -166,7 +167,7 @@ def get_receivables_stats(as_of_date=None, branch_id=None):
         - overdue: Amount overdue (past due date)
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = ph_now().date()
 
     base_filter = [
         SalesInvoice.status.in_(['posted', 'partially_paid']),
@@ -206,7 +207,7 @@ def get_payables_stats(as_of_date=None, branch_id=None):
         - overdue: Amount overdue (past due date)
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = ph_now().date()
 
     base_filter = [
         AccountsPayable.status.in_(['posted', 'partially_paid']),
@@ -244,7 +245,7 @@ def get_top_customers(limit=5, as_of_date=None, branch_id=None):
         List of dicts with customer info and sales totals
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = ph_now().date()
 
     query = db.session.query(
         SalesInvoice.customer_name,
@@ -286,7 +287,7 @@ def get_top_vendors(limit=5, as_of_date=None, branch_id=None):
         List of dicts with vendor info and purchase totals
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = ph_now().date()
 
     query = db.session.query(
         AccountsPayable.vendor_name,
@@ -328,7 +329,7 @@ def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None):
         dict with labels and data for Chart.js line chart
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = ph_now().date()
 
     revenue_accounts = Account.query.filter(
         Account.account_type == 'Revenue',
@@ -340,45 +341,39 @@ def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None):
     if not revenue_account_ids:
         return {'labels': [], 'data': []}
 
-    # Calculate months to query
-    months_data = []
-
+    # Build the month buckets (oldest -> newest) and the window's lower bound.
+    buckets = []
     for i in range(months - 1, -1, -1):
-        # Calculate the month/year for this iteration
         target_date = as_of_date - relativedelta(months=i)
-        target_year = target_date.year
-        target_month = target_date.month
+        buckets.append((target_date.year, target_date.month, target_date.strftime('%b %Y')))
 
-        # Get revenue for this month, but only up to as_of_date if it's the current month
-        month_revenue_query = db.session.query(
-            func.sum(JournalEntryLine.credit_amount - JournalEntryLine.debit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntryLine.account_id.in_(revenue_account_ids),
-            extract('year', JournalEntry.entry_date) == target_year,
-            extract('month', JournalEntry.entry_date) == target_month
-        )
+    start_date = (as_of_date - relativedelta(months=months - 1)).replace(day=1)
 
-        if branch_id is not None:
-            month_revenue_query = month_revenue_query.filter(JournalEntry.branch_id == branch_id)
+    # One grouped query over the whole window instead of one query per month.
+    trend_query = db.session.query(
+        extract('year', JournalEntry.entry_date).label('yr'),
+        extract('month', JournalEntry.entry_date).label('mo'),
+        func.sum(JournalEntryLine.credit_amount - JournalEntryLine.debit_amount).label('total')
+    ).join(JournalEntry).filter(
+        JournalEntry.status == 'posted',
+        JournalEntryLine.account_id.in_(revenue_account_ids),
+        JournalEntry.entry_date >= start_date,
+        JournalEntry.entry_date <= as_of_date
+    )
 
-        # If this is the month of as_of_date, only include entries up to that date
-        if target_year == as_of_date.year and target_month == as_of_date.month:
-            month_revenue_query = month_revenue_query.filter(JournalEntry.entry_date <= as_of_date)
+    if branch_id is not None:
+        trend_query = trend_query.filter(JournalEntry.branch_id == branch_id)
 
-        month_revenue = month_revenue_query.scalar() or Decimal('0.00')
+    trend_rows = trend_query.group_by(
+        extract('year', JournalEntry.entry_date),
+        extract('month', JournalEntry.entry_date)
+    ).all()
 
-        # Format month label
-        month_label = target_date.strftime('%b %Y')
-
-        months_data.append({
-            'label': month_label,
-            'value': float(month_revenue)
-        })
+    totals = {(int(row.yr), int(row.mo)): float(row.total or 0) for row in trend_rows}
 
     return {
-        'labels': [m['label'] for m in months_data],
-        'data': [m['value'] for m in months_data]
+        'labels': [label for (_, _, label) in buckets],
+        'data': [totals.get((year, month), 0.0) for (year, month, _) in buckets]
     }
 
 
@@ -394,7 +389,7 @@ def get_expense_breakdown(as_of_date=None, branch_id=None):
         dict with labels and data for Chart.js pie chart
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = ph_now().date()
 
     expense_accounts = Account.query.filter(
         Account.account_type == 'Expense',
