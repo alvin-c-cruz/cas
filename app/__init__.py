@@ -274,6 +274,18 @@ def create_app(config_name=None):
         from app.seeds.seed_data import seed_minimal
         seed_minimal()
 
+    @app.cli.command('seed-history')
+    def seed_history_command():
+        """Reset the DB and seed 2021->present APV + CDV demo history."""
+        from app.seeds.history_seed import run_seed_history
+        summary = run_seed_history(reset=True)
+        print("\n[OK] Historical seed complete:")
+        for k in ('apv', 'cdv', 'paid', 'partially_paid', 'outstanding',
+                  'draft', 'voided', 'unbalanced'):
+            print(f"  {k:>15}: {summary[k]}")
+        if summary['unbalanced']:
+            print("  [WARN] Some posted JEs are unbalanced — investigate before demo.")
+
     # Request/Response logging middleware
     @app.before_request
     def log_request_info():

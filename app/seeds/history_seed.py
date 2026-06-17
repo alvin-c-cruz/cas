@@ -440,3 +440,32 @@ def _count_unbalanced_jes():
         if d != c:
             bad += 1
     return bad
+
+
+def run_seed_history(reset=True, branch_id=None, start=date(2021, 1, 1),
+                     end=date(2026, 6, 18)):
+    """Reset (optional) + ensure base + generate history. Returns the summary dict."""
+    from app.branches.models import Branch
+    from app.users.models import User
+
+    if reset:
+        # Reuse the project's base seed path so COA/VAT/WHT/admin/branch/settings
+        # are created exactly as `seed-db` does. Confirmed: app/seeds/seed_data.py
+        # exposes seed_all(), which seeds admin (admin/ac1123581321), Main branch,
+        # the 173-account COA, VAT categories, WHT codes, and app settings.
+        from app.seeds import seed_data
+        db.drop_all()
+        db.create_all()
+        seed_data.seed_all()
+
+    admin = User.query.filter_by(username='admin').first()
+    if admin is None:
+        raise RuntimeError("admin user missing — base seed did not run.")
+    if branch_id is None:
+        branch = Branch.query.filter_by(code='MAIN').first() or Branch.query.first()
+        if branch is None:
+            raise RuntimeError("No branch found after base seed.")
+        branch_id = branch.id
+
+    summary = generate_history(branch_id, admin.id, start=start, end=end)
+    return summary

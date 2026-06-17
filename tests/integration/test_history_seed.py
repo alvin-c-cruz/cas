@@ -195,3 +195,13 @@ class TestGenerator:
         # fresh DB via a second call in a new test is out of scope — determinism is
         # asserted by fixed counts here.
         assert s1['apv'] >= 30
+
+
+class TestRunEntrypoint:
+    def test_run_seed_history_without_reset_uses_existing_base(self, base_db):
+        # base_db already loaded COA+VAT+WHT+branch; admin must exist
+        _admin()
+        summary = hs.run_seed_history(reset=False, branch_id=base_db.id,
+                                      start=date(2026, 1, 1), end=date(2026, 6, 18))
+        assert summary['apv'] >= 30
+        assert summary['unbalanced'] == 0
