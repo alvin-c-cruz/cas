@@ -75,7 +75,10 @@ htmlcov/
 /*.jpeg
 
 # Development-only — not needed on PythonAnywhere
-/tests/
+# tests/ are versioned; ignore only local artifacts (see retro 2026-06-18)
+/tests/**/__pycache__/
+/tests/.pytest_cache/
+/htmlcov/
 /scripts/
 pytest.ini
 
