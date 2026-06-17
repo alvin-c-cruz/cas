@@ -116,9 +116,12 @@ def _post_login_redirect(user, form):
     if len(accessible_branches) == 1:
         branch = accessible_branches[0]
         session['selected_branch_id'] = branch.id
-        log_audit(module='auth', action='branch_selected', record_id=user.id,
-                  record_identifier=user.username,
-                  notes=f'Auto-selected branch: {branch.name} (ID: {branch.id}) — single accessible branch')
+        # Skip the audit entry when the company has a single branch — the
+        # auto-selection isn't a real choice and just clutters the log.
+        if Branch.query.filter_by(is_active=True).count() > 1:
+            log_audit(module='auth', action='branch_selected', record_id=user.id,
+                      record_identifier=user.username,
+                      notes=f'Auto-selected branch: {branch.name} (ID: {branch.id}) — single accessible branch')
         flash(f'Welcome back, {user.full_name}!', 'success')
         next_page = request.args.get('next')
         if next_page and _is_safe_url(next_page):

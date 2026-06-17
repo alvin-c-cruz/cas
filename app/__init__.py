@@ -105,8 +105,8 @@ def create_app(config_name=None):
             # Hide branch indicators/labels entirely when the company has a
             # single active branch (nothing to disambiguate).
             try:
-                from app.utils.cache_helpers import get_active_branches
-                multi_branch = len(get_active_branches()) > 1
+                from app.branches.models import Branch
+                multi_branch = Branch.query.filter_by(is_active=True).count() > 1
             except Exception:
                 multi_branch = False
         return {'current_branch': current_branch, 'multi_branch': multi_branch}

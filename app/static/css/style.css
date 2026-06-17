@@ -994,6 +994,11 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
     min-width: 950px;
 }
 
+/* Single-branch installs hide the branch column (one fewer grid column). */
+.audit-entry-row--no-branch {
+    grid-template-columns: 150px 110px 120px 220px 1fr 110px;
+}
+
 .audit-entry-row:hover {
     background-color: #f8fafc;
 }

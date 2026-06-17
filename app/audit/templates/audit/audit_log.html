@@ -30,6 +30,7 @@
 
             <!-- Row 2: Dropdown Filters -->
             <div style="display:flex;gap:8px;flex-wrap:wrap">
+                {% if multi_branch %}
                 <select name="branch" class="form-control" style="width:150px">
                     <option value="">All Branches</option>
                     {% for br in branches %}
@@ -38,6 +39,7 @@
                     </option>
                     {% endfor %}
                 </select>
+                {% endif %}
                 <select name="module" class="form-control" style="width:150px">
                     <option value="">All Modules</option>
                     {% for mod in modules %}
@@ -74,8 +76,9 @@
             {% for log in logs %}
             <div class="audit-entry" data-entry-id="{{ log.id }}">
                 <!-- Main Row -->
-                <div class="audit-entry-row">
+                <div class="audit-entry-row{% if not multi_branch %} audit-entry-row--no-branch{% endif %}">
                     <span class="timestamp">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else '—' }}</span>
+                    {% if multi_branch %}
                     <span class="branch">
                         {% if log.branch %}
                         <span class="badge" style="background:#eff6ff;color:#1e40af;font-weight:600">
@@ -85,6 +88,7 @@
                         <span style="color:#94a3b8">—</span>
                         {% endif %}
                     </span>
+                    {% endif %}
                     <span class="user">{{ log.user.username if log.user else '—' }}</span>
                     <span class="module">
                         <span class="badge" style="background:#f1f5f9;color:#475569">
