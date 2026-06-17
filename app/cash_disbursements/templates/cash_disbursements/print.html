@@ -41,7 +41,7 @@
 
 <div class="header">
   <div>
-    <div class="company-name">{{ current_user.branch.name if current_user and current_user.branch else '' }}</div>
+    {% if multi_branch %}<div class="company-name">{{ current_user.branch.name if current_user and current_user.branch else '' }}</div>{% endif %}
     <div class="doc-title">CASH DISBURSEMENT VOUCHER</div>
     <span class="badge">{{ cdv.status|upper }}</span>
     <div class="field-grid" style="margin-top:12px;">

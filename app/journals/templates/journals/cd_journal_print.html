@@ -54,7 +54,7 @@
 
     <div class="cdj-header">
       {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
-      {% if branch_name %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
+      {% if branch_name and multi_branch %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
       <div class="doc-title">CASH DISBURSEMENTS JOURNAL</div>
       <div class="period-label">{{ period.label }}</div>
     </div>

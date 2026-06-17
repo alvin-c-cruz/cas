@@ -1082,8 +1082,8 @@
             </div>
         </div>
 
-        <!-- Branch Indicator -->
-        {% if current_user.is_authenticated and current_branch %}
+        <!-- Branch Indicator (hidden when the company has a single branch) -->
+        {% if current_user.is_authenticated and current_branch and multi_branch %}
         <div class="sidebar-branch-indicator">
             <div class="branch-icon-sidebar">🏢</div>
             <div class="branch-details-sidebar">

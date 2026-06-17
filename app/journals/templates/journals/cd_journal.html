@@ -79,7 +79,7 @@
     <div id="cd-journal-content">
     <div class="cd-jrnl-meta">
         <h3>Cash Disbursements Journal</h3>
-        <p>{{ period.label }} &mdash; {{ current_branch.name if current_branch else 'All Branches' }}</p>
+        <p>{{ period.label }}{% if multi_branch %} &mdash; {{ current_branch.name if current_branch else 'All Branches' }}{% endif %}</p>
     </div>
 
     <div class="card-body">

@@ -96,12 +96,20 @@ def create_app(config_name=None):
         from flask_login import current_user
         from flask import session
         current_branch = None
+        multi_branch = False
         if current_user.is_authenticated:
             branch_id = session.get('selected_branch_id')
             if branch_id:
                 from app.branches.models import Branch
                 current_branch = Branch.query.get(branch_id)
-        return {'current_branch': current_branch}
+            # Hide branch indicators/labels entirely when the company has a
+            # single active branch (nothing to disambiguate).
+            try:
+                from app.utils.cache_helpers import get_active_branches
+                multi_branch = len(get_active_branches()) > 1
+            except Exception:
+                multi_branch = False
+        return {'current_branch': current_branch, 'multi_branch': multi_branch}
 
     # Make company name and logo available in all templates (sidebar brand)
     @app.context_processor

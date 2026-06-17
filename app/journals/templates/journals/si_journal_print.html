@@ -65,7 +65,7 @@
     <!-- Document header (visible on screen and in print) -->
     <div class="sij-header">
       {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
-      {% if branch_name %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
+      {% if branch_name and multi_branch %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
       <div class="doc-title">SALES JOURNAL</div>
       <div class="period-label">{{ period.label }}</div>
     </div>
