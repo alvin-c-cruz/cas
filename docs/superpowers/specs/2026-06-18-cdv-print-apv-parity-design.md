@@ -4,6 +4,7 @@
 **Status:** Design — approved approach (Option A), pending spec review
 **Scope:** 3 files — `app/cash_disbursements/templates/cash_disbursements/print.html`,
 `app/cash_disbursements/views.py` (`print_cdv`), `app/accounts_payable/templates/accounts_payable/print.html`
+(template-only for APV: ₱ summary signs + signature boxes; no APV view change)
 
 ## Goal
 
@@ -17,8 +18,10 @@ Payable Voucher) print experience in **two** ways:
    structure (Option A: *reskin, preserve CDV content* — no flattening of CDV-specific
    data).
 
-Plus a small cross-cutting change: **add the ₱ peso sign to the APV summary** so both
-vouchers follow one shared currency-sign rule (below).
+Two small cross-cutting changes to APV so both vouchers stay consistent:
+- **Add the ₱ peso sign to the APV summary** (shared currency-sign rule, below).
+- **Rework the APV signature boxes** to the shared signatory scheme (named
+  Prepared/Approved, blank Checked) — see Signatures, below.
 
 ## Non-goals (explicitly out of scope)
 
@@ -27,14 +30,15 @@ vouchers follow one shared currency-sign rule (below).
   vouchers, so "matching APV" does not address it. Left logged in the backlog, not
   touched here.
 - Any change to CDV data, JE assembly, or the `_build_cdv_je_preview` ordering.
-- Any APV layout/structure change. APV's **only** change is adding ₱ to its summary
-  (see Peso rule). Its line-item/JE tables stay sign-free (already are).
+- Any APV layout change **other than** the summary ₱ signs and the signature boxes.
+  APV's line-item/JE tables stay sign-free (already are); its header, info-row,
+  particulars, and JE structure are untouched.
 
 ## Approach — Option A (reskin, preserve content)
 
 Adopt APV's visual idiom and wrapper blocks (centered company header, bordered
-info-row tables, JE-beside-Summary row, 3-box signature row, audit footer, screen-only
-Print/Close toolbar) **while keeping every CDV content block** — payment/check fields,
+info-row tables, JE-beside-Summary row, signature row, audit footer, screen-only
+Print/Close toolbar; signature row per Signatures, below) **while keeping every CDV content block** — payment/check fields,
 Section A (AP bills paid), Section B (direct expenses), and the CDV summary. CDV carries
 accounting meaning APV lacks (two payment sections, check details, a different summary
 chain); flattening it into APV's single-particulars skeleton (Option B) was rejected
@@ -50,7 +54,7 @@ because it destroys that information.
 | 4 | `.particulars` table | **Two** APV-`.particulars`-styled tables, each rendered only when non-empty (as today): **"Section A — AP Bills Paid"** (AP Number, Bill Date, Original Balance, Amount Applied) and **"Section B — Direct Expenses"** (#, Description, Account, VAT, WHT, Amount, VAT Amt, WHT Amt). Section headings use APV's `.section-label` / table-header idiom. **No ₱ in any cell** (remove the ₱ currently on Section A's Original Balance / Amount Applied). |
 | 5 | `.je-summary-row` (JE left + Summary right) | Same two-column row. **JE table (left):** restyle the existing `je_entries` loop into APV's `.je-table` (Code / Account Title / Debit / Credit + TOTAL row). Keep dict access — `e.code`, `e.name`, `e.debit`, `e.credit` (the preview helper returns dicts, **not** ORM line objects like APV's `je_lines`) — and keep `_build_cdv_je_preview`'s existing ordering (do **not** impose APV's debit/VAT/credit sort). Keep the indent on credit rows. No ₱ in JE cells. **Summary block (right):** APV `.summary-block` styling, CDV figures — see next section. |
 | 6 | `.notes-box` (if notes) | CDV particulars/notes → APV `.notes-box` styling, rendered only when `cdv.notes`. |
-| 7 | `.sig-row` (3 boxes) | Keep CDV's labels — **Prepared by / Approved by / Received by (Payee)** — in APV's `.sig-box` styling. ("Reviewed" does not fit a disbursement.) |
+| 7 | `.sig-row` (3 boxes) | **Four** boxes in APV's `.sig-row` flex (each `flex:1`): **Prepared by** (named) · **Checked by** (blank) · **Approved by** (named) · **Received by (Payee)** (blank). See Signatures. |
 | 8 | `.audit-footer` | **Always rendered** for CDV (unlike APV's posted-only), because CDV may legitimately print as a draft. APV `.audit-footer` styling. Content: `Printed by {username} · {printed_at}`, plus Created-by / Posted-by when present, plus the CDV **status** (which the dropped header badge previously carried). |
 
 ### CDV summary block (right column, APV styling)
@@ -74,6 +78,44 @@ Order, with the peso rule applied:
     `Net Amount Payable` (after double divider). The `Less: Input VAT`, `Add: Input VAT`,
     and `Less: Withholding Tax` rows get **no** ₱.
   - **CDV summary** ₱ on: `AP Applied` (first), `Net Cash Disbursed` (after divider).
+
+## Signatures (both vouchers)
+
+Both vouchers print named signatories using the user's **`full_name`** (not `username`).
+Both `created_by` and `posted_by` relationships already exist on the `AccountsPayable`
+and `CashDisbursementVoucher` models, so **no view change is needed** for names — the
+templates read them directly. There is no separate approver field: **posting a voucher
+is the authorization**, so `posted_by` is the "Approved by" signatory.
+
+**Box set**
+- **APV** — three boxes: `Prepared by` · `Checked by` · `Approved by`. (Replaces the
+  current `Prepared by / Reviewed by / Approved by`.)
+- **CDV** — four boxes in APV's `.sig-row` flex (`flex:1` each): `Prepared by` ·
+  `Checked by` · `Approved by` · `Received by (Payee)`.
+
+**Name mapping**
+| Box | Printed name |
+|---|---|
+| Prepared by | `created_by.full_name` (empty if unset) |
+| Checked by | always blank (manual signature) |
+| Approved by | `posted_by.full_name` — **blank while the voucher is a draft** (no `posted_by` yet) |
+| Received by (Payee) — CDV only | blank (manual). *Not* pre-filled with `vendor_name`. |
+
+**Box rendering** — keep APV's `.sig-box` styling; place the printed name just above the
+signature line so it reads "signature over printed name":
+
+```
+PREPARED BY
+            ← gap for wet signature
+{{ full_name or '' }}      ← printed name line
+─────────────────────────  (border-top)
+Signature over Printed Name & Date   ← caption
+```
+
+The line caption changes from the current `Name & Date` to
+**`Signature over Printed Name & Date`**. Blank boxes (Checked, Payee) render the same
+caption with an empty name line. Guard every name with a null-safe access
+(`created_by.full_name if created_by else ''`, likewise `posted_by`).
 
 ## `print_cdv` view change
 
@@ -112,7 +154,9 @@ callable and the dead `multi_branch` reference are both removed from the templat
   change. `AppSettings` and `ph_now` are already imported in the module.
 - **Detail pages:** unchanged. The Print buttons (both `target="_blank"`) and the
   `*_print_access` gating already exist and are untouched.
-- **APV:** only `print.html` summary spans gain ₱. `print_ap` view unchanged.
+- **APV:** `print.html` only — summary spans gain ₱ **and** the signature row changes
+  (Reviewed→Checked; named Prepared/Approved via `ap.created_by`/`ap.posted_by`, which
+  already exist). `print_ap` view unchanged — no new context vars needed.
 - **JE helper:** `_build_cdv_je_preview` unchanged (dict shape `{code,name,debit,credit}`
   preserved; template already reads those keys).
 - **Audit log:** none of these are write operations — no audit entries involved.
@@ -123,8 +167,9 @@ callable and the dead `multi_branch` reference are both removed from the templat
   *new* behaviour: (a) CDV print response no longer contains the auto-print
   `addEventListener('load'...` script; (b) CDV print contains a Close link to
   `cash_disbursements.view`; (c) CDV print renders the company name; (d) ₱ appears on the
-  APV `Net Amount Payable` line. Confirm no existing test asserts on the removed
-  auto-print script or the old CDV markup before editing.
+  APV `Net Amount Payable` line; (e) a posted voucher's print renders `created_by.full_name`
+  (Prepared) and `posted_by.full_name` (Approved). Confirm no existing test asserts on the
+  removed auto-print script, the old `Reviewed by` label, or the old CDV markup before editing.
 
 ## Testing notes
 
@@ -133,7 +178,8 @@ callable and the dead `multi_branch` reference are both removed from the templat
 - Manual visual check via the running dev server (Playwright/browser) on one CDV with
   **both** Section A and Section B populated, one check-payment CDV (to verify the check
   fields appear), one draft CDV (to verify footer status + print-access gating), and one
-  APV (to verify the three ₱ summary figures). Compare side-by-side with APV for visual
-  parity.
+  APV (to verify the three ₱ summary figures). Confirm signatories: a **posted** voucher
+  shows Prepared + Approved names; a **draft** shows the Prepared name but a blank Approved
+  box. Compare side-by-side with APV for visual parity.
 - Per project rule: any bug found while testing is reported and fix-approved before
   fixing — not patched inline.
