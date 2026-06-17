@@ -13,7 +13,7 @@ Cache TTL: 1 hour (static data changes infrequently)
 from app import cache
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
-from app.withholding_tax.models import WithholdingTaxCode
+from app.withholding_tax.models import WithholdingTax
 from app.branches.models import Branch
 
 
@@ -47,7 +47,7 @@ def get_vat_categories():
 @cache.memoize(timeout=3600)
 def get_withholding_tax_codes():
     """Get all active withholding tax codes (cached for 1 hour)"""
-    return WithholdingTaxCode.query.filter_by(is_active=True).order_by(WithholdingTaxCode.code).all()
+    return WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
 
 
 @cache.memoize(timeout=3600)
