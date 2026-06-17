@@ -103,6 +103,11 @@ class TestCDVFormRender:
         assert 'vendor-step-card--done' in html
         assert 'header-fields--active' in html
         assert vendor.name in html
+        # Regression: the edit view must pass the existing line items so the
+        # restore script can rebuild them (previously dropped — lines vanished
+        # on edit). The serialized expense line is embedded in the page script.
+        assert 'Office supplies' in html
+        assert str(exp.id) in html
 
     def test_void_removes_draft_and_logs_audit(self, client, db_session, accountant_user, main_branch):
         login(client, 'accountant', 'accountant123')

@@ -639,16 +639,23 @@ def edit(id):
         (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
     ]
 
+    # Serialize existing lines so the form template can restore them in edit mode
+    # (the restore loop iterates `ap_lines` / `expense_lines`).
+    tmpl_ap_lines = [l.to_dict() for l in cdv.ap_lines]
+    tmpl_expense_lines = [l.to_dict() for l in cdv.expense_lines]
+
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
             ctx = _form_context()
-            return render_template('cash_disbursements/form.html', form=form, cdv=cdv, **ctx)
+            return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
+                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
         try:
             vendor = Vendor.query.get(form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
                 ctx = _form_context()
-                return render_template('cash_disbursements/form.html', form=form, cdv=cdv, **ctx)
+                return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
+                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
 
             cdv.cdv_date = form.cdv_date.data
             cdv.vendor_id = vendor.id
@@ -708,7 +715,8 @@ def edit(id):
             flash(f'Error updating CDV: {str(e)}', 'error')
 
     ctx = _form_context()
-    return render_template('cash_disbursements/form.html', form=form, cdv=cdv, **ctx)
+    return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
+                           ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
 
 
 @cash_disbursements_bp.route('/cash-disbursements/<int:id>')
