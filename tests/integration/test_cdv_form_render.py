@@ -109,6 +109,46 @@ class TestCDVFormRender:
         assert 'Office supplies' in html
         assert str(exp.id) in html
 
+    def test_failed_create_preserves_submitted_lines(self, client, db_session, accountant_user, main_branch):
+        """BUG #4 regression: a create that bounces server-side (here: empty
+        notes, which is DataRequired) must carry the submitted AP + expense
+        lines back so the form re-hydrates them instead of wiping the work.
+        Pre-fix the re-render passed cdv=None with no line data."""
+        login(client, 'accountant', 'accountant123')
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+
+        ap_lines = [{'bill_id': 9999, 'bill_number': 'AP-BOUNCE-9',
+                     'vendor_invoice_number': 'INV-9', 'bill_date': '2026-06-17',
+                     'original_balance': 11000.0, 'amount_applied': 11000.0}]
+        expense_lines = [{'description': 'CDV-Bounce-Supplies-XYZ', 'amount': 2240.0,
+                          'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
+
+        resp = client.post('/cash-disbursements/create', data={
+            'cdv_number': 'CD-BOUNCE-0001',
+            'cdv_date': ph_now().date().isoformat(),
+            'vendor_id': vendor.id,
+            'payment_method': 'cash',
+            'cash_account_id': cash.id,
+            'notes': '',  # <-- triggers the server-side bounce
+            'ap_lines': json.dumps(ap_lines),
+            'expense_lines': json.dumps(expense_lines),
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '0', 'wt_override_value': '0',
+        })  # no follow_redirects: a bounce re-renders (200), it does not redirect
+
+        # Re-render, not a redirect; nothing persisted.
+        assert resp.status_code == 200
+        assert CashDisbursementVoucher.query.filter_by(cdv_number='CD-BOUNCE-0001').first() is None
+
+        html = resp.data.decode('utf-8', 'replace')
+        # Both line sets carried back for re-hydration (restore_ap_lines / restore_expense_lines).
+        assert 'CDV-Bounce-Supplies-XYZ' in html
+        assert 'AP-BOUNCE-9' in html
+        assert str(exp.id) in html
+        # Confirms it was a genuine validation bounce.
+        assert 'Notes are required' in html
+
     def test_void_removes_draft_and_logs_audit(self, client, db_session, accountant_user, main_branch):
         login(client, 'accountant', 'accountant123')
         ap, wt, cash, exp = setup_accounts(db_session)
