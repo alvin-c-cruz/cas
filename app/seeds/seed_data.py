@@ -26,7 +26,7 @@ def seed_admin_user():
 
     Credentials:
         Username: admin
-        Password: ac1123581321
+        Password: admin123
         Role: admin
     """
     # Check if admin already exists
@@ -44,12 +44,12 @@ def seed_admin_user():
         role='admin',
         is_active=True
     )
-    admin.set_password('ac1123581321')
+    admin.set_password('admin123')
 
     db.session.add(admin)
     db.session.commit()
 
-    print("  [OK] Admin user created (username: admin, password: ac1123581321)")
+    print("  [OK] Admin user created (username: admin, password: admin123)")
     return True
 
 
@@ -489,7 +489,7 @@ def seed_all(force=False):
         print(f"\nSeeded: {seeded_count}/{total_count} categories")
         print("\nYou can now log in with:")
         print("  Username: admin")
-        print("  Password: ac1123581321")
+        print("  Password: admin123")
         print("\n")
 
         return results
