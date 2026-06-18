@@ -64,6 +64,30 @@ class TestRefsAndHelpers:
         assert len(hs.ensure_vendors()) == 12
         assert Vendor.query.count() == 12
 
+    def test_ensure_vendors_assigns_default_wht_codes(self, base_db):
+        """Each vendor spec with a wht_code must get that code as a default
+        withholding tax, so the APV/CDV form's WT dropdown is populated.
+
+        Regression: ensure_vendors() previously left vendor_withholding_taxes
+        empty, so every vendor's line-item WT dropdown showed only 'None'.
+        """
+        hs.ensure_vendors()
+        from app.vendors.models import Vendor
+        for spec in hs.VENDORS:
+            v = Vendor.query.filter_by(code=spec['code']).first()
+            codes = sorted(wt.code for wt in v.withholding_taxes)
+            if spec['wht_code']:
+                assert codes == [spec['wht_code']], (
+                    f"{spec['code']} should default to [{spec['wht_code']}], got {codes}")
+            else:
+                assert codes == [], f"{spec['code']} should have no WHT defaults, got {codes}"
+        # guard against the all-empty regression: the spec links exactly 6 vendors
+        assert sum(1 for s in hs.VENDORS if s['wht_code']) == 6
+        # idempotent re-run keeps the same single code per linked vendor
+        hs.ensure_vendors()
+        rent = Vendor.query.filter_by(code='HV-RENT').first()
+        assert sorted(wt.code for wt in rent.withholding_taxes) == ['WC040']
+
     def test_ensure_accountant_user(self, base_db):
         u = hs.ensure_accountant_user()
         assert u.username == 'accountant'

@@ -78,6 +78,8 @@ def ensure_accountant_user():
 
 
 def ensure_vendors():
+    from app.withholding_tax.models import WithholdingTax
+
     out = []
     for i, spec in enumerate(VENDORS):
         v = Vendor.query.filter_by(code=spec['code']).first()
@@ -88,6 +90,15 @@ def ensure_vendors():
                        default_vat_category=spec['vat_code'],
                        is_active=True)
             db.session.add(v)
+        # Assign the vendor's default withholding tax code(s) from the spec.
+        # This drives the APV/CDV form's per-line WT dropdown via
+        # /vendors/<id>/defaults; without it that dropdown shows only "None".
+        # Set unconditionally so a re-run repairs existing vendors too.
+        if spec['wht_code']:
+            wt = WithholdingTax.query.filter_by(code=spec['wht_code']).first()
+            v.withholding_taxes = [wt] if wt else []
+        else:
+            v.withholding_taxes = []
         out.append(v)
     db.session.commit()
     return out
