@@ -6,7 +6,7 @@
 
 **Architecture:** Pure browser automation via Playwright MCP. No code changes. Admin user creates all 30 bills as drafts, then applies status changes (post/void/cancel) in a second pass. Task 1 looks up live DB IDs; Tasks 2–4 create drafts; Tasks 5–7 apply statuses; Task 8 verifies.
 
-**Tech Stack:** Playwright MCP (`browser_evaluate`, `browser_navigate`, `browser_click`), Flask app at `http://127.0.0.1:5000`, admin credentials `admin` / `ac1123581321`.
+**Tech Stack:** Playwright MCP (`browser_evaluate`, `browser_navigate`, `browser_click`), Flask app at `http://127.0.0.1:5000`, admin credentials `admin` / `admin123`.
 
 ---
 
@@ -90,7 +90,7 @@ Navigate to `http://127.0.0.1:5000/dashboard`. If redirected to login, log in:
   const u = document.querySelector('#username');
   const p = document.querySelector('#password');
   u.removeAttribute('readonly'); u.value = 'admin';
-  p.removeAttribute('readonly'); p.value = 'ac1123581321';
+  p.removeAttribute('readonly'); p.value = 'admin123';
   return { ready: true };
 }
 ```

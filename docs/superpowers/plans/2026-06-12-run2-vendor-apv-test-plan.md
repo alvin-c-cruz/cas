@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-12-run2-vendor-apv-test-plan-design.md`
 
-**Browser creds:** admin = `admin` / `ac1123581321`  
+**Browser creds:** admin = `admin` / `admin123`  
 **Test user creds:** testaccountant=`TestAcc!Pass123`, teststaff=`TestStf!Pass123`, testviewer=`TestVwr!Pass123`
 
 ---
@@ -363,7 +363,7 @@ git push
 - [ ] **U-01: Admin pre-approves 3 emails**
 
 ```
-Login as: admin / ac1123581321
+Login as: admin / admin123
 Navigate: /approved-emails
 Add email: testaccountant@testcas.com (notes: Run 2)
 Add email: teststaff@testcas.com
@@ -500,7 +500,7 @@ Result: ✅ / ❌
 - [ ] **U-14: Admin full nav check**
 
 ```
-Login as: admin / ac1123581321 → Main Branch
+Login as: admin / admin123 → Main Branch
 Snapshot dashboard
 Verify: "User Management" IN page
 Verify: "Approved Emails" IN page
@@ -1119,7 +1119,7 @@ Result: ✅ / ❌
 - [ ] **C-02: Admin deletes testaccountant user**
 
 ```
-Logout → Login as: admin / ac1123581321
+Logout → Login as: admin / admin123
 Navigate: /users
 Find testaccountant → delete (via edit or delete action)
 Verify: Removed from user list

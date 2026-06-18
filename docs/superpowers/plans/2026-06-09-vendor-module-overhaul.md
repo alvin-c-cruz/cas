@@ -40,7 +40,7 @@
 
 **Login in tests:**
 ```python
-def login(client, username='admin', password='ac1123581321'):
+def login(client, username='admin', password='admin123'):
     client.post('/login', data={'username': username, 'password': password},
                 follow_redirects=True)
 ```
@@ -670,7 +670,7 @@ from app.audit.models import AuditLog
 from app.utils import ph_now
 
 
-def login(client, username='admin', password='ac1123581321'):
+def login(client, username='admin', password='admin123'):
     client.post('/login', data={'username': username, 'password': password},
                 follow_redirects=True)
 
@@ -789,7 +789,7 @@ class TestVendorDetail:
         assert b'PB-SF-001' not in resp.data
 
     def test_staff_can_view_detail(self, client, db_session, staff_user, main_branch):
-        login(client, username='staff', password='ac1123581321')
+        login(client, username='staff', password='admin123')
         vendor = make_vendor(db_session, code='DV006', name='Staff View Vendor')
         resp = client.get(f'/vendors/{vendor.id}')
         assert resp.status_code == 200
@@ -843,7 +843,7 @@ class TestVendorCrud:
         assert audit is not None
 
     def test_staff_cannot_edit(self, client, db_session, staff_user, main_branch):
-        login(client, username='staff', password='ac1123581321')
+        login(client, username='staff', password='admin123')
         vendor = make_vendor(db_session, code='STF001', name='Staff Test')
         resp = client.post(f'/vendors/{vendor.id}/edit', data={
             'code': 'STF001', 'name': 'Changed', 'check_payee_name': 'Changed',
@@ -854,7 +854,7 @@ class TestVendorCrud:
         assert vendor.name == 'Staff Test'  # unchanged
 
     def test_staff_cannot_delete(self, client, db_session, staff_user, main_branch):
-        login(client, username='staff', password='ac1123581321')
+        login(client, username='staff', password='admin123')
         vendor = make_vendor(db_session, code='STF002', name='Staff Delete Test')
         vid = vendor.id
         client.post(f'/vendors/{vid}/delete', follow_redirects=True)

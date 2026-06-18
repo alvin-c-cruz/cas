@@ -592,7 +592,7 @@ python flask_app.py
 
 - [ ] **Step 2: Seed and log in**
 
-If the database is empty: `flask seed-db`, then open `http://localhost:5000` and log in with `admin` / `ac1123581321`.
+If the database is empty: `flask seed-db`, then open `http://localhost:5000` and log in with `admin` / `admin123`.
 
 - [ ] **Step 3: Verify create mode initial state**
 

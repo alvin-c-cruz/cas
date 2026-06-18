@@ -52,7 +52,7 @@
 
 | # | Step | Notes |
 |---|------|-------|
-| S1 | Log in as `admin` | Credentials: `admin` / `ac1123581321` |
+| S1 | Log in as `admin` | Credentials: `admin` / `admin123` |
 | S2 | Navigate to `/approved-emails/add` and add `testuser@example.com` | Required before testing email-approved registration path |
 | S3 | Note current user count at `/users` | Baseline for after-test cleanup |
 | S4 | Confirm Flask server running at port 5000 | |

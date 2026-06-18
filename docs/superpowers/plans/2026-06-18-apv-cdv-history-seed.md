@@ -891,7 +891,7 @@ def run_seed_history(reset=True, branch_id=None, start=date(2021, 1, 1),
     if reset:
         # Reuse the project's base seed path so COA/VAT/WHT/admin/branch/settings
         # are created exactly as `seed-db` does. Confirmed: app/seeds/seed_data.py
-        # exposes seed_all(), which seeds admin (admin/ac1123581321), Main branch,
+        # exposes seed_all(), which seeds admin (admin/admin123), Main branch,
         # the 173-account COA, VAT categories, WHT codes, and app settings.
         from app.seeds import seed_data
         db.drop_all()

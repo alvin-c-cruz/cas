@@ -167,7 +167,7 @@ import pytest
 from flask import session
 
 
-def login(client, password='ac1123581321'):
+def login(client, password='admin123'):
     with client.session_transaction() as sess:
         pass
     resp = client.post('/login', data={'username': 'admin', 'password': password},

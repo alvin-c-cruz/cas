@@ -12,7 +12,7 @@
 
 | # | Step |
 |---|------|
-| S1 | Log in as `admin` / `ac1123581321` |
+| S1 | Log in as `admin` / `admin123` |
 | S2 | Ensure server is running at `http://127.0.0.1:5000/` |
 | S3 | Open browser DevTools (F12) — Network and Console tabs will be needed |
 | S4 | Reset DB if needed: `/reset-database` (clean state avoids false positives) |

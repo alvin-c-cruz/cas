@@ -8,7 +8,7 @@ Seed 30 AP voucher entries spanning April–June 2026 via the browser UI (Playwr
 
 - Use existing 9 vendors from `seed_minimal` (no new vendors).
 - Create through the live app at `http://127.0.0.1:5000` — exercises the actual forms.
-- Admin account (`admin` / `ac1123581321`) performs all actions.
+- Admin account (`admin` / `admin123`) performs all actions.
 - `partially_paid` and `paid` statuses are skipped — receipts module is under construction.
 - The 2 leftover Run 2 bills (AP-2026-06-0001 cancelled, AP-2026-06-0002 voided) remain; new bills continue the sequence starting at AP-2026-04-0001 (bills are backdated to April/May/June).
 

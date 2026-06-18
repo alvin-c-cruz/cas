@@ -99,7 +99,7 @@ Previous reset attempts silently failed because `Remove-Item -ErrorAction Silent
    - Confirmation that DB file was deleted
    - Any `seed_data.py` changes made in Phase 1
    - Full output of `flask seed-minimal`
-   - Login credentials: username `admin` / password `ac1123581321`
+   - Login credentials: username `admin` / password `admin123`
 
 ---
 

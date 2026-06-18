@@ -188,7 +188,7 @@ DB:         instance/cas.db deleted and recreated
 Seed:       flask seed-minimal — all 7 categories seeded fresh
 Seed diff:  [summary of any seed_data.py changes from Phase 1, or "none"]
 
-Login:      admin / ac1123581321
+Login:      admin / admin123
 ```
 
 ---
@@ -304,4 +304,4 @@ App settings: 14
 
 - [ ] **Step 4: Verify login works**
 
-Start the server and confirm login with `admin` / `ac1123581321` succeeds.
+Start the server and confirm login with `admin` / `admin123` succeeds.
