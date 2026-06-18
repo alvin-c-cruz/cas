@@ -4,6 +4,8 @@ Builds documents and posts them through the real posting helpers so every
 journal entry balances exactly like a hand-entered voucher. See
 docs/superpowers/specs/2026-06-18-apv-cdv-history-seed-design.md.
 """
+import calendar
+import random
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -77,11 +79,11 @@ def ensure_accountant_user():
 
 def ensure_vendors():
     out = []
-    for spec in VENDORS:
+    for i, spec in enumerate(VENDORS):
         v = Vendor.query.filter_by(code=spec['code']).first()
         if v is None:
             v = Vendor(code=spec['code'], name=spec['name'],
-                       tin=f"{abs(hash(spec['code'])) % 900 + 100}-000-000-000",
+                       tin=f"{100 + i}-000-000-000",
                        payment_terms='Net 30',
                        default_vat_category=spec['vat_code'],
                        is_active=True)
@@ -250,9 +252,6 @@ def build_cdv_expense(doc_date, vendor_spec, vendor_obj, refs, creator_id, poste
     return cdv
 
 
-import random
-
-
 def _month_iter(start, end):
     y, m = start.year, start.month
     while (y, m) <= (end.year, end.month):
@@ -263,14 +262,16 @@ def _month_iter(start, end):
 
 
 def _clamp_day(year, month, day, end):
-    import calendar
     last = calendar.monthrange(year, month)[1]
     d = date(year, month, min(day, last))
     return min(d, end)
 
 
 def generate_history(branch_id, admin_id, *, start=date(2021, 1, 1),
-                     end=date(2026, 6, 18), rng_seed=20210101):
+                     end=None, rng_seed=20210101):
+    if end is None:
+        from app.utils import ph_now
+        end = ph_now().date()
     rng = random.Random(rng_seed)
     refs = resolve_refs()
     acct = ensure_accountant_user()
@@ -333,13 +334,11 @@ def generate_history(branch_id, admin_id, *, start=date(2021, 1, 1),
             else:
                 frac = Decimal('1.0')
             lag = rng.randint(15, 45)
-            pay_date = _clamp_day(ap.ap_date.year, ap.ap_date.month,
-                                  ap.ap_date.day, end)
-            pay_date = min(date.fromordinal(ap.ap_date.toordinal() + lag), end)
+            pay_date = date.fromordinal(ap.ap_date.toordinal() + lag)
             if pay_date <= end:
                 method = 'check' if rng.random() < 0.6 else 'cash'
-                hs_cdv = build_cdv_paying(pay_date, [ap], [frac], refs, acct.id,
-                                          admin_id, branch_id, counters, method=method)
+                build_cdv_paying(pay_date, [ap], [frac], refs, acct.id,
+                                 admin_id, branch_id, counters, method=method)
                 summary['cdv'] += 1
                 if ap.status == 'paid':
                     summary['paid'] += 1
@@ -368,16 +367,19 @@ def generate_history(branch_id, admin_id, *, start=date(2021, 1, 1),
 
 
 def _seed_tail(refs, acct, admin_id, branch_id, counters, summary, end):
-    """A handful of 2026 draft + voided APVs/CDVs for status variety."""
+    """A handful of draft + voided APVs for status variety, relative to end."""
     spec = next(v for v in VENDORS if v['code'] == 'HV-SUP2')
     vobj = Vendor.query.filter_by(code='HV-SUP2').first()
     for i in range(3):
-        d = date(2026, 6, min(10 + i, end.day))
+        d = _clamp_day(end.year, end.month, 10 + i, end)
         ap = _build_draft_apv(d, spec, vobj, refs, acct.id, branch_id, counters)
         summary['apv'] += 1
         summary['draft'] += 1
+    vy, vm = end.year, end.month - 1
+    if vm == 0:
+        vy, vm = end.year - 1, 12
     for i in range(2):
-        d = date(2026, 5, 5 + i)
+        d = _clamp_day(vy, vm, 5 + i, end)
         _build_voided_apv(d, spec, vobj, refs, acct.id, admin_id, branch_id, counters)
         summary['apv'] += 1
         summary['voided'] += 1
@@ -443,8 +445,11 @@ def _count_unbalanced_jes():
 
 
 def run_seed_history(reset=True, branch_id=None, start=date(2021, 1, 1),
-                     end=date(2026, 6, 18)):
+                     end=None):
     """Reset (optional) + ensure base + generate history. Returns the summary dict."""
+    if end is None:
+        from app.utils import ph_now
+        end = ph_now().date()
     from app.branches.models import Branch
     from app.users.models import User
 
