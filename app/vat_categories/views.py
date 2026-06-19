@@ -12,6 +12,7 @@ from app.accounts.models import Account
 from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
+from app.utils.change_requests import process_create_change_request
 import json
 
 vat_categories_bp = Blueprint('vat_categories', __name__, template_folder='templates')
@@ -160,61 +161,17 @@ def create():
                 'output_vat_account_id': form.output_vat_account_id.data or None
             }
 
-            # Check if auto-approval is allowed
-            if can_auto_approve():
-                # Create VAT category directly
-                vat_category = VATCategory(
-                    code=change_data['code'],
-                    name=change_data['name'],
-                    description=change_data['description'],
-                    rate=change_data['rate'],
-                    is_active=change_data['is_active'],
-                    input_vat_account_id=change_data['input_vat_account_id'],
-                    output_vat_account_id=change_data['output_vat_account_id'],
-                    created_by_id=current_user.id,
-                    updated_by_id=current_user.id
-                )
-                db.session.add(vat_category)
-                db.session.flush()  # Get the ID before commit
-
-                # Audit log for auto-approved creation
-                log_audit(
-                    module='vat_category',
-                    action='create',
-                    record_id=vat_category.id,
-                    record_identifier=f'{vat_category.code} - {vat_category.name}',
-                    new_values=change_data,
-                    notes='Auto-approved (single accountant)'
-                )
-
-                db.session.commit()
-                flash(f'VAT category "{vat_category.name}" has been created successfully.', 'success')
-                return redirect(url_for('vat_categories.list_vat_categories'))
-            else:
-                # Create change request for approval
-                change_request = VATCategoryChangeRequest(
-                    action='create',
-                    status='pending',
-                    proposed_data=json.dumps(change_data),
-                    requested_by_id=current_user.id,
-                    requested_at=ph_now()
-                )
-                db.session.add(change_request)
-                db.session.flush()  # Get the ID before commit
-
-                # Audit log for change request submission
-                log_audit(
-                    module='vat_category',
-                    action='create',
-                    record_id=change_request.id,
-                    record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
-                    new_values=change_data,
-                    notes='Pending approval.'
-                )
-
-                db.session.commit()
-                flash(PENDING_SUBMITTED_MESSAGE, 'success')
-                return redirect(url_for('vat_categories.list_vat_categories'))
+            # Shared create flow (mirrors withholding_tax) — auto-approve or
+            # pending change request, with audit + flash.
+            return process_create_change_request(
+                model_cls=VATCategory,
+                cr_cls=VATCategoryChangeRequest,
+                module='vat_category',
+                noun='VAT category',
+                change_data=change_data,
+                auto_approve=can_auto_approve(),
+                list_endpoint='vat_categories.list_vat_categories'
+            )
 
         except Exception as e:
             from flask import current_app

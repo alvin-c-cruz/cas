@@ -11,6 +11,7 @@ from app.users.models import User
 from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
+from app.utils.change_requests import process_create_change_request
 import json
 
 withholding_tax_bp = Blueprint('withholding_tax', __name__, template_folder='templates')
@@ -134,59 +135,17 @@ def create():
                 'is_active': bool(int(form.is_active.data)) if form.is_active.data else True
             }
 
-            # Check if auto-approval is allowed
-            if can_auto_approve():
-                # Create withholding tax directly
-                withholding_tax = WithholdingTax(
-                    code=change_data['code'],
-                    name=change_data['name'],
-                    description=change_data['description'],
-                    rate=change_data['rate'],
-                    is_active=change_data['is_active'],
-                    created_by_id=current_user.id,
-                    updated_by_id=current_user.id
-                )
-                db.session.add(withholding_tax)
-                db.session.flush()  # Get the ID before commit
-
-                # Audit log for auto-approved creation
-                log_audit(
-                    module='withholding_tax',
-                    action='create',
-                    record_id=withholding_tax.id,
-                    record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
-                    new_values=change_data,
-                    notes='Auto-approved (single accountant)'
-                )
-
-                db.session.commit()
-                flash(f'Withholding tax "{withholding_tax.name}" has been created successfully.', 'success')
-                return redirect(url_for('withholding_tax.list_withholding_tax'))
-            else:
-                # Create change request for approval
-                change_request = WithholdingTaxChangeRequest(
-                    action='create',
-                    status='pending',
-                    proposed_data=json.dumps(change_data),
-                    requested_by_id=current_user.id,
-                    requested_at=ph_now()
-                )
-                db.session.add(change_request)
-                db.session.flush()  # Get the ID before commit
-
-                # Audit log for change request submission
-                log_audit(
-                    module='withholding_tax',
-                    action='create',
-                    record_id=change_request.id,
-                    record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
-                    new_values=change_data,
-                    notes='Pending approval.'
-                )
-
-                db.session.commit()
-                flash(PENDING_SUBMITTED_MESSAGE, 'success')
-                return redirect(url_for('withholding_tax.list_withholding_tax'))
+            # Shared create flow (mirrors vat_categories) — auto-approve or
+            # pending change request, with audit + flash.
+            return process_create_change_request(
+                model_cls=WithholdingTax,
+                cr_cls=WithholdingTaxChangeRequest,
+                module='withholding_tax',
+                noun='Withholding tax',
+                change_data=change_data,
+                auto_approve=can_auto_approve(),
+                list_endpoint='withholding_tax.list_withholding_tax'
+            )
 
         except Exception as e:
             from flask import current_app
