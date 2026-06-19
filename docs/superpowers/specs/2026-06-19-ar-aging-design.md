@@ -1,6 +1,17 @@
 # AR Aging Report Implementation Design
 
 **Date:** 2026-06-19  
+
+> **⚠️ SUPERSEDED (2026-06-19) — do not implement as written.** Two parts of this
+> spec were rejected by the shipped code:
+> - **Task 2 (badge hex):** instructed hardcoded inline hex (`#dcfce7`, `#d97706`,
+>   etc.). This violates the "No hardcoded styling — use design tokens" rule.
+>   Reversed by commit `cd0fb2c` (now uses `--aging-*` CSS variables).
+> - **Task 3 (export columns):** specified a per-invoice export. Shipped as a
+>   per-customer/vendor **bucket summary** in commit `154fbaf`.
+> The view-activation and aging-bucket logic remain accurate; treat the styling
+> and export sections as historical only.
+
 **Goal:** Activate the blocked AR Aging report — remove the blocking redirect, align the template to the current design system (matching AP Aging), add `invoice_id` for deep-links, and wire up Excel/CSV export routes.
 
 ---
