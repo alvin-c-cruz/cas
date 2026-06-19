@@ -4,7 +4,7 @@
 {% block page_title %}{{ 'Edit Withholding Tax' if withholding_tax else 'Create Withholding Tax' }}{% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field %}
+{% from "macros.html" import render_field, status_toggle %}
 
 <div class="card">
     <div class="card-body">
@@ -56,25 +56,7 @@
                         <small class="form-hint">Enter as decimal (e.g., 1.00 for 1%, 2.00 for 2%)</small>
                     </div>
 
-                    <div class="form-group">
-                        {{ form.is_active.label(class="form-label") }}
-                        <div class="toggle-wrapper">
-                            {{ form.is_active(class="toggle-input") }}
-                            <div class="toggle-switch" id="statusToggle" role="switch"
-                                 tabindex="0" aria-checked="false" aria-label="Toggle status">
-                                <span class="toggle-slider"></span>
-                            </div>
-                            <span class="toggle-label" id="toggleLabel">
-                                {% if withholding_tax and withholding_tax.is_active %}Active{% else %}Inactive{% endif %}
-                            </span>
-                        </div>
-                        {% if form.is_active.errors %}
-                            {% for error in form.is_active.errors %}
-                                <div class="form-error">{{ error }}</div>
-                            {% endfor %}
-                        {% endif %}
-                        <small class="form-hint">Only active withholding taxes appear in vendor forms</small>
-                    </div>
+                    {{ status_toggle(form.is_active, hint='Only active withholding taxes appear in vendor forms') }}
                 </div>
             </div>
 
@@ -172,56 +154,6 @@
     box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
 }
 
-/* Toggle Switch Styling */
-.toggle-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 4px;
-}
-
-.toggle-input {
-    display: none;
-}
-
-.toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 48px;
-    height: 26px;
-    background-color: #cbd5e1;
-    border-radius: 34px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
-
-.toggle-slider {
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 20px;
-    height: 20px;
-    background-color: white;
-    border-radius: 50%;
-    transition: transform 0.3s;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.toggle-switch.is-on {
-    background-color: var(--green);
-}
-
-.toggle-switch.is-on .toggle-slider {
-    transform: translateX(22px);
-}
-
-.toggle-label {
-    font-weight: 600;
-    font-size: 13px;
-    color: var(--text-2);
-    min-width: 60px;
-}
-
 .form-hint {
     display: block;
     margin-top: 6px;
@@ -246,32 +178,7 @@ document.addEventListener('DOMContentLoaded', function() {
         updateRatePreview(); // Initialize
     }
 
-    // Status toggle — backed by a <select> (Active/Inactive). A <select> has no
-    // `.checked`, so the visual/label are driven by its `.value` (BUG fix: the
-    // old `this.checked` wiring left the switch stuck on Inactive).
-    const toggleInput = document.getElementById('{{ form.is_active.id }}');
-    const toggleLabel = document.getElementById('toggleLabel');
-    const toggleSwitch = document.getElementById('statusToggle');
-
-    if (toggleInput && toggleLabel && toggleSwitch) {
-        function syncStatusToggle() {
-            const active = toggleInput.value === '1';
-            toggleSwitch.classList.toggle('is-on', active);
-            toggleSwitch.setAttribute('aria-checked', active ? 'true' : 'false');
-            toggleLabel.textContent = active ? 'Active' : 'Inactive';
-            toggleLabel.style.color = active ? 'var(--green)' : 'var(--text-2)';
-        }
-        function flipStatus() {
-            toggleInput.value = toggleInput.value === '1' ? '0' : '1';
-            syncStatusToggle();
-        }
-        toggleSwitch.addEventListener('click', flipStatus);
-        toggleSwitch.addEventListener('keydown', function(e) {
-            if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipStatus(); }
-        });
-        toggleInput.addEventListener('change', syncStatusToggle);
-        syncStatusToggle();
-    }
+    // Status toggle is wired globally by initStatusToggle() in cas-ui.js.
 });
 </script>
 {% endblock %}

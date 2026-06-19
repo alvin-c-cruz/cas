@@ -10,6 +10,7 @@ Covers Chart of Accounts, VAT Categories and Withholding Tax:
 """
 import html
 import json
+from pathlib import Path
 
 import pytest
 
@@ -376,21 +377,41 @@ class TestWithholdingTaxLabels:
         assert b'Back to Withholding Tax Codes' not in resp.data
 
 
+CAS_UI_JS = Path(__file__).resolve().parents[2] / 'app' / 'static' / 'js' / 'cas-ui.js'
+
+
 class TestStatusToggleControl:
     """The Status control is a <select> (Active/Inactive); a <select> has no
     `.checked`, so the toggle visual/label must be driven by its `.value`.
-    Regression guard for the broken `this.checked` wiring (FINDING-001)."""
+    Regression guard for the broken `this.checked` wiring (FINDING-001).
 
-    def test_wht_create_form_toggle_driven_by_select_value(self, client, db_session, two_reviewers):
+    The toggle was extracted into a shared component: markup via the
+    status_toggle() macro, behaviour wired by initStatusToggle() in cas-ui.js.
+    The WHT form is driven by that shared JS (verified here); VAT Categories
+    still carries its own inline copy (asserted inline below)."""
+
+    def test_shared_toggle_js_driven_by_select_value(self):
+        # The shared behaviour lives in cas-ui.js — guard the FINDING-001 fix there.
+        js = CAS_UI_JS.read_text(encoding='utf-8')
+        # broken pattern: <select>.checked is always undefined → label stuck on Inactive
+        assert "this.checked ? 'Active'" not in js
+        # fixed pattern: derive state from the select's value
+        assert "input.value === '1'" in js
+
+    def test_wht_create_form_uses_shared_toggle(self, client, db_session, two_reviewers):
         login(client)
         resp = client.get('/withholding-tax/create')
         assert resp.status_code == 200
-        # broken pattern: <select>.checked is always undefined → label stuck on Inactive
-        assert b"this.checked ? 'Active'" not in resp.data
-        # fixed pattern: derive state from the select's value
-        assert b".value === '1'" in resp.data
+        # Renders the shared toggle markup (the macro) and loads the shared JS,
+        # rather than re-inlining its own toggle script.
+        assert b'class="toggle-input"' in resp.data
+        assert b'class="toggle-switch' in resp.data
+        assert b'cas-ui.js' in resp.data
+        # The old inline wiring must not have crept back into the template.
+        assert b".value === '1'" not in resp.data
 
     def test_vat_create_form_toggle_driven_by_select_value(self, client, db_session, two_reviewers):
+        # VAT Categories still uses its own inline toggle JS (not yet extracted).
         login(client)
         resp = client.get('/vat-categories/create')
         assert resp.status_code == 200

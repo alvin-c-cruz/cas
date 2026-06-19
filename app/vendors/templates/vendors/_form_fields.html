@@ -1,6 +1,7 @@
 {# Vendor form fields. Wrap the include in:
    <div class="vendor-form-scope"> ... </div>
    Requires `form` and (optionally) `withholding_taxes`, `vendor`, `selected_wt_ids`. #}
+{% from "macros.html" import status_toggle %}
 
 <div class="form-row-3col">
     <div class="form-group">
@@ -41,7 +42,7 @@
 <div class="form-row-2col">
     <div class="form-group">
         <label for="{{ form.email.id }}">{{ form.email.label.text }}</label>
-        {{ form.email(class="form-control form-control-sm", type="email", autocomplete="off", **{'data-lpignore': 'true'}) }}
+        {{ form.email(class="form-control form-control-sm", type="text", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
         {% if form.email.errors %}<div class="error-message">{{ form.email.errors[0] }}</div>{% endif %}
     </div>
     <div class="form-group">
@@ -75,11 +76,7 @@
         {{ form.default_vat_category(class="form-control form-control-sm vendor-vat-select", **{'data-lpignore': 'true'}) }}
         {% if form.default_vat_category.errors %}<div class="error-message">{{ form.default_vat_category.errors[0] }}</div>{% endif %}
     </div>
-    <div class="form-group">
-        <label for="{{ form.is_active.id }}">{{ form.is_active.label.text }}</label>
-        {{ form.is_active(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
-        {% if form.is_active.errors %}<div class="error-message">{{ form.is_active.errors[0] }}</div>{% endif %}
-    </div>
+    {{ status_toggle(form.is_active, label_class='') }}
 </div>
 
 <div class="form-group">

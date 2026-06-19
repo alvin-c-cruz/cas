@@ -24,6 +24,30 @@
 </div>
 {% endmacro %}
 
+{# Status toggle — Active/Inactive switch backed by a SelectField with
+   '1'/'0' choices. Styling lives in css/style.css (.toggle-*); behaviour is
+   wired by initStatusToggle() in cas-ui.js (auto-runs on any .toggle-wrapper).
+   Pass a hint string to render help text below the control. #}
+{% macro status_toggle(field, hint=None, label_class='form-label') %}
+{% set _active = field.data in ['1', 1, True, 'True'] %}
+<div class="form-group">
+    {{ field.label(class=label_class) }}
+    <div class="toggle-wrapper">
+        {{ field(class='toggle-input') }}
+        <div class="toggle-switch{{ ' is-on' if _active }}" role="switch"
+             tabindex="0" aria-checked="{{ 'true' if _active else 'false' }}"
+             aria-label="Toggle {{ field.label.text }}">
+            <span class="toggle-slider"></span>
+        </div>
+        <span class="toggle-label">{{ 'Active' if _active else 'Inactive' }}</span>
+    </div>
+    {% if field.errors %}
+        {% for error in field.errors %}<div class="form-error">{{ error }}</div>{% endfor %}
+    {% endif %}
+    {% if hint %}<small class="form-hint">{{ hint }}</small>{% endif %}
+</div>
+{% endmacro %}
+
 {# Macro for rendering flash messages #}
 {% macro render_flash_messages() %}
 {% with messages = get_flashed_messages(with_categories=true) %}

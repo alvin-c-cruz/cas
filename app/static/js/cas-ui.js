@@ -243,6 +243,44 @@
     });
   });
 
+  /* ─── Status toggle switch ───────────────────────────────────────
+     Wires any .toggle-wrapper rendered by the status_toggle() macro.
+     The visual switch is driven by a hidden <select class="toggle-input">
+     whose value is '1' (Active) or '0' (Inactive) — a <select> has no
+     `.checked`, so we read/flip its `.value`. Idempotent: skips wrappers
+     already initialised so it's safe to call again after injecting markup. */
+  function initStatusToggle(root) {
+    root = root || document;
+    root.querySelectorAll('.toggle-wrapper').forEach(wrap => {
+      if (wrap.dataset.toggleReady) return;
+      const input = wrap.querySelector('.toggle-input');
+      const sw    = wrap.querySelector('.toggle-switch');
+      const label = wrap.querySelector('.toggle-label');
+      if (!input || !sw || !label) return;
+      wrap.dataset.toggleReady = 'true';
+
+      function sync() {
+        const active = input.value === '1';
+        sw.classList.toggle('is-on', active);
+        sw.setAttribute('aria-checked', active ? 'true' : 'false');
+        label.textContent = active ? 'Active' : 'Inactive';
+        label.style.color = active ? 'var(--green)' : 'var(--text-2)';
+      }
+      function flip() {
+        input.value = input.value === '1' ? '0' : '1';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      sw.addEventListener('click', flip);
+      sw.addEventListener('keydown', e => {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); }
+      });
+      input.addEventListener('change', sync);
+      sync();
+    });
+  }
+  window.initStatusToggle = initStatusToggle;
+  document.addEventListener('DOMContentLoaded', () => initStatusToggle(document));
+
   /* ─── Form Change Tracking ───────────────────────────────────── */
   /*  Tracks changes in forms and shows/hides Update button accordingly.
       Usage: Add data-track-changes="true" to any form element.
