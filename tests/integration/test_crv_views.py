@@ -389,3 +389,77 @@ class TestOpenInvoices:
         data = json.loads(resp.data)
         ids = [d['id'] for d in data]
         assert inv.id not in ids
+
+
+def login_as(client, username, password):
+    client.post('/login', data={'username': username, 'password': password},
+                follow_redirects=True)
+
+
+class TestCRVRoleGating:
+    """A viewer may not create / post / void / cancel CRVs."""
+
+    def test_viewer_blocked_from_create(self, client, db_session, viewer_user, main_branch):
+        viewer_user.set_branches([main_branch])
+        db_session.commit()
+        ar, wt, cash, rev = setup_accounts(db_session)
+        customer = make_customer(db_session)
+        login_as(client, 'viewer', 'viewer123')
+
+        # GET the create form — viewer is below staff, must be redirected away.
+        resp = client.get('/cash-receipts/create', follow_redirects=False)
+        assert resp.status_code in (302, 303)
+
+        # And a POST must not persist a CRV.
+        revenue_lines = [{'description': 'Service', 'amount': 500.0,
+                          'vat_category': '', 'account_id': rev.id, 'wt_id': None}]
+        create_draft_crv(client, customer, cash, revenue_lines=revenue_lines)
+        assert CashReceiptVoucher.query.count() == 0
+
+    def test_viewer_blocked_from_post(self, client, db_session, admin_user,
+                                      viewer_user, main_branch):
+        # Admin creates a draft CRV first.
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        ar, wt, cash, rev = setup_accounts(db_session)
+        customer = make_customer(db_session)
+        revenue_lines = [{'description': 'Service', 'amount': 500.0,
+                          'vat_category': '', 'account_id': rev.id, 'wt_id': None}]
+        create_draft_crv(client, customer, cash, revenue_lines=revenue_lines)
+        crv = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
+
+        # Viewer attempts to post — blocked; CRV stays draft.
+        viewer_user.set_branches([main_branch])
+        db_session.commit()
+        client.get('/logout', follow_redirects=True)
+        login_as(client, 'viewer', 'viewer123')
+        client.post(f'/cash-receipts/{crv.id}/post', follow_redirects=True)
+        db_session.refresh(crv)
+        assert crv.status == 'draft'
+
+
+class TestCRVBranchScoping:
+    """A CRV in another branch is invisible (404) from the current branch session."""
+
+    def test_cross_branch_detail_returns_404(self, client, db_session, admin_user,
+                                             main_branch, branch_manila):
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        ar, wt, cash, rev = setup_accounts(db_session)
+        customer = make_customer(db_session)
+        revenue_lines = [{'description': 'Service', 'amount': 500.0,
+                          'vat_category': '', 'account_id': rev.id, 'wt_id': None}]
+        create_draft_crv(client, customer, cash, revenue_lines=revenue_lines)
+        crv = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
+
+        # In main_branch the CRV is visible.
+        resp = client.get(f'/cash-receipts/{crv.id}')
+        assert resp.status_code == 200
+
+        # Re-point the session to a different branch — the same CRV must 404.
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = branch_manila.id
+        resp = client.get(f'/cash-receipts/{crv.id}')
+        assert resp.status_code == 404
