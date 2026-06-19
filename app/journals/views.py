@@ -6,6 +6,7 @@ from app.journal_entries.models import JournalEntry
 from app.utils import ph_now
 from app.journals.ap_journal_data import resolve_period, build_columnar, build_ap_journal_xlsx
 from app.journals.cd_journal_data import build_columnar_cd
+from app.journals.cr_journal_data import build_columnar_cr, build_cr_journal_xlsx
 from app.journals.si_journal_data import build_columnar_si, build_si_journal_xlsx
 from datetime import datetime
 
@@ -133,6 +134,55 @@ def _cd_entry_identity(entry, cdv_map):
         (cdv.check_number if cdv and cdv.check_number else '') or '',
         (cdv.vendor_name if cdv else '') or '—',
         (cdv.notes if cdv else '') or '',
+    )
+
+
+def _cr_gl_account_ids():
+    """Return (ar_id, wht_recv_id, output_vat_ids) for CR column grouping."""
+    from app.accounts.models import Account
+    from app.vat_categories.models import VATCategory
+    ar = Account.query.filter_by(code='10201').first()
+    wht_recv = Account.query.filter_by(code='10212').first()
+    vat_ids = {c.output_vat_account.id for c in VATCategory.query.all() if c.output_vat_account}
+    return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
+
+
+def _cr_journal_context(branch_id):
+    """Build the columnar CR journal data for a branch + period from request.args."""
+    from app.cash_receipts.models import CashReceiptVoucher
+    from app.journals.ap_journal_data import resolve_period
+    period = resolve_period(request.args, today=ph_now().date())
+
+    entries = JournalEntry.query.filter(
+        JournalEntry.entry_type == 'receipt',
+        JournalEntry.branch_id == branch_id,
+        JournalEntry.entry_date >= period['date_from'],
+        JournalEntry.entry_date <= period['date_to'],
+    ).order_by(JournalEntry.entry_date).all()
+    posted = [e for e in entries if e.status == 'posted']
+    drafts = [e for e in entries if e.status == 'draft']
+
+    refs = [e.reference for e in entries if e.reference]
+    crvs = CashReceiptVoucher.query.filter(
+        CashReceiptVoucher.crv_number.in_(refs)
+    ).all() if refs else []
+    crv_map = {c.crv_number: c for c in crvs}
+    cancelled_refs = {c.crv_number for c in crvs if c.status == 'cancelled'}
+
+    ar_id, wht_recv_id, vat_ids = _cr_gl_account_ids()
+    matrix = build_columnar_cr(posted, drafts, ar_id, wht_recv_id, vat_ids,
+                               cancelled_refs=cancelled_refs)
+    return period, matrix, crv_map
+
+
+def _cr_entry_identity(entry, crv_map):
+    """Return (cr_no, check_no, customer, particulars) for the left identifier columns."""
+    crv = crv_map.get(entry.reference)
+    return (
+        entry.reference or '—',
+        (crv.check_number if crv and crv.check_number else '') or '',
+        (crv.customer_name if crv else '') or '—',
+        (crv.notes if crv else '') or '',
     )
 
 
@@ -363,7 +413,67 @@ def voucher_export():
 @journals_bp.route('/journals/cr')
 @login_required
 def cr_journal():
-    return redirect(url_for('dashboard.under_development', feature='Cash Receipts Journal'))
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to view journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    period, matrix, crv_map = _cr_journal_context(branch_id)
+    return render_template('journals/cr_journal.html',
+                           period=period, matrix=matrix, crv_map=crv_map)
+
+
+@journals_bp.route('/journals/cr/export')
+@login_required
+def cr_journal_export():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch to export journal entries.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    from app.journals.ap_journal_data import resolve_period
+    period, matrix, crv_map = _cr_journal_context(branch_id)
+
+    branch = db.session.get(Branch, branch_id)
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
+    company_name = AppSettings.get_setting('company_name') or ''
+
+    if period['mode'] == 'month':
+        filename = f"CR-Journal-{period['year']}-{period['month']:02d}.xlsx"
+    else:
+        filename = f"CR-Journal-{period['date_from'].isoformat()}_{period['date_to'].isoformat()}.xlsx"
+
+    return build_cr_journal_xlsx(
+        columns=matrix['columns'], rows=matrix['rows'], totals=matrix['totals'],
+        period_label=period['label'], company_name=company_name,
+        branch_name=branch_name, filename=filename,
+        identity=lambda e: _cr_entry_identity(e, crv_map))
+
+
+@journals_bp.route('/journals/cr/print')
+@login_required
+def cr_journal_print():
+    branch_id = _branch_id()
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    period, matrix, crv_map = _cr_journal_context(branch_id)
+
+    branch = db.session.get(Branch, branch_id)
+    branch_count = Branch.query.count()
+    branch_name = branch.name if (branch and branch_count > 1) else None
+    company_name = AppSettings.get_setting('company_name') or ''
+
+    return render_template('journals/cr_journal_print.html',
+                           period=period, matrix=matrix, crv_map=crv_map,
+                           company_name=company_name, branch_name=branch_name,
+                           printed_at=ph_now())
 
 
 @journals_bp.route('/journals/cd')

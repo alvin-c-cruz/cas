@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}CR Journal Print — {{ period.label }}{% endblock %}
+{% block page_title %}CR Journal — Print Preview{% endblock %}
+
+{% block extra_css %}
+<style>
+  .crj-print-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .crj-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+  .crj-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .crj-header .branch-name  { font-size: 13px; font-weight: 700; color: #444; margin-top: 2px; }
+  .crj-header .doc-title    { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-top: 6px; }
+  .crj-header .period-label { font-size: 11px; color: #555; margin-top: 3px; }
+  .crj-scroll { overflow-x: auto; }
+  .crj-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .crj-table th, .crj-table td { border: 1px solid #aaa; padding: 3px 6px; white-space: nowrap; }
+  .crj-table th { background: #222; color: #fff; font-weight: 700; text-align: left; }
+  .crj-table th.num { text-align: center; width: 120px; min-width: 120px;
+    white-space: normal; word-break: break-word; vertical-align: bottom; }
+  .crj-table td.num { text-align: right; font-family: monospace; width: 120px; min-width: 120px; max-width: 120px; }
+  .crj-table th.credit-col { background: #b71c1c; }
+  .crj-table th.debit-col  { background: #1565c0; }
+  .crj-row-draft td { background: #fffde7; }
+  .crj-row-cancelled td { background: #ffebee; text-decoration: line-through; }
+  .crj-row-cancelled td.no-strike { text-decoration: none; }
+  .crj-total td { border-top: 2px solid #111; font-weight: 700; background: #f0f0f0; }
+  .balance-warning { margin-top: 10px; font-size: 11px; font-weight: 700; color: #b91c1c; }
+  .audit-footer { margin-top: 8px; font-size: 9px; color: #888; text-align: right;
+                  border-top: 1px solid #ddd; padding-top: 4px; }
+  @media print {
+    nav.sidebar, header.topbar, .crj-print-actions, .card-header { display: none !important; }
+    .main { margin-left: 0 !important; padding: 0 !important; }
+    .content-wrapper, .card { box-shadow: none !important; border: none !important; }
+    .crj-scroll { overflow: visible !important; }
+    @page { size: A4 landscape; margin: 10mm; }
+    .crj-table { font-size: 8px; }
+    .crj-table th.num { width: 90px; min-width: 90px; white-space: normal; }
+    .crj-table td.num { width: 90px; min-width: 90px; max-width: 90px; }
+    .crj-table thead { display: table-header-group; }
+    .crj-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    .crj-header { page-break-after: avoid; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="crj-print-actions">
+      <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
+      <a href="{{ url_for('journals.cr_journal') }}" class="btn btn-secondary btn-sm">Back</a>
+    </div>
+  </div>
+  <div class="card-body">
+
+    <div class="crj-header">
+      {% if company_name %}<div class="company-name">{{ company_name | upper }}</div>{% endif %}
+      {% if branch_name and multi_branch %}<div class="branch-name">{{ branch_name }}</div>{% endif %}
+      <div class="doc-title">CASH RECEIPTS JOURNAL</div>
+      <div class="period-label">{{ period.label }}</div>
+    </div>
+
+    {% if matrix.rows %}
+    <div class="crj-scroll">
+    <table class="crj-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>CR No.</th>
+          <th>Check No.</th>
+          <th>Customer</th>
+          <th>Particulars</th>
+          {% for col in matrix.columns %}
+          <th class="num {% if col.group in ['ar_applied','vat','revenue'] %}credit-col{% else %}debit-col{% endif %}">
+            {{ col.name }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix.rows %}
+        {% set crv = crv_map.get(row.entry.reference) %}
+        <tr {% if row.is_cancelled %}class="crj-row-cancelled"{% elif row.is_draft %}class="crj-row-draft"{% endif %}>
+          <td>{{ row.entry.entry_date.strftime('%d-%b-%Y') }}</td>
+          <td class="no-strike">{{ row.entry.reference or '—' }}</td>
+          <td>{{ crv.check_number if crv and crv.check_number else '' }}</td>
+          <td>{{ crv.customer_name if crv else '—' }}</td>
+          <td>
+            {%- if row.is_cancelled -%}[CANCELLED] {% endif -%}
+            {%- if row.is_draft -%}[DRAFT] {% endif -%}
+            {{ (crv.notes if crv else '') or '' }}
+          </td>
+          {% for col in matrix.columns %}
+          <td class="num">
+            {%- if not row.is_draft and col.account_id in row.cells and row.cells[col.account_id] != 0 -%}
+              {%- set v = row.cells[col.account_id] -%}
+              {%- if v < 0 -%}({{ '{:,.2f}'.format(-v) }}){%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+
+        <tr class="crj-total">
+          <td colspan="5">TOTAL</td>
+          {% for col in matrix.columns %}
+          <td class="num">
+            {%- set t = matrix.totals.get(col.account_id) -%}
+            {%- if t and t != 0 -%}
+              {%- if t < 0 -%}({{ '{:,.2f}'.format(-t) }}){%- else -%}{{ '{:,.2f}'.format(t) }}{%- endif -%}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    {% if not matrix.balanced %}
+    <p class="balance-warning">Warning: Column totals do not net to zero — debits and credits are out of balance.</p>
+    {% endif %}
+
+    {% else %}
+    <p style="margin-top:16px; color:#555;">No CR entries found — {{ period.label }}.</p>
+    {% endif %}
+
+    <div class="audit-footer">
+      Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+    </div>
+
+  </div>
+</div>
+{% endblock %}
