@@ -15,7 +15,7 @@ The AR Aging report shows accounts receivable (customer invoices) grouped by cus
 
 ## Architecture
 
-**Data source:** `SalesInvoice` with `status = 'posted'` and `balance > 0`, scoped to the current branch.
+**Data source:** `SalesInvoice` with `status in ('posted', 'partially_paid')` and `balance > 0`, scoped to the current branch.
 
 **Aging buckets:** Calculated by comparing invoice due date to a user-supplied "as of" date (default: today):
 - **Current:** Due date >= as_of_date
@@ -104,8 +104,9 @@ The AR Aging report shows accounts receivable (customer invoices) grouped by cus
 **Changes to `ar_aging()` view:**
 1. Remove the line: `return redirect(url_for('dashboard.under_development', feature='AR Aging'))`
 2. Add `ValueError` guard on `date.fromisoformat()` (fallback to today if invalid)
-3. Add `invoice_id` to the invoice dict (needed for template link to sales invoice detail)
-4. Use `max(0, ...)` guard on `days_overdue` calculation
+3. Change status filter from `== 'posted'` to `.in_(['posted', 'partially_paid'])` — matches AP Aging and SalesInvoice status set
+4. Add `invoice_id` to the invoice dict (needed for template link to sales invoice detail)
+5. Use `max(0, ...)` guard on `days_overdue` calculation
 
 **New export routes:**
 - `GET /reports/ar-aging/export/excel` → Excel file with all invoices
@@ -125,7 +126,8 @@ Both routes accept the same `?as_of=YYYY-MM-DD` query param as the main view.
 - Page loads (GET `/reports/ar-aging` returns 200)
 - Empty state (no invoices → "No outstanding receivables" message)
 - Posted invoice with balance appears in report
-- Paid/draft invoices do NOT appear
+- `partially_paid` invoice with balance appears in report
+- Paid/voided/cancelled/draft invoices do NOT appear
 - Overdue invoices fall into correct aging buckets
 - Date filter works (`?as_of=YYYY-MM-DD`)
 - Invalid as_of date falls back to today without crashing
@@ -135,7 +137,7 @@ Both routes accept the same `?as_of=YYYY-MM-DD` query param as the main view.
 
 **Test fixtures:**
 - Use existing `admin_user`, `main_branch` from `conftest.py`
-- Create helper functions: `login()`, `set_branch()`, `make_customer()`, `make_invoice()`
+- Create helper functions: `login()`, `set_branch()`, `make_invoice()` — no separate `make_customer()` needed since `SalesInvoice.customer_name` is a plain string column (no FK to a Customer model)
 - All tests follow the pattern: login → set branch → create test data → assert response
 
 **Test count:** 10+ integration tests
