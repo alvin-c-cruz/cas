@@ -34,7 +34,8 @@ class TestUnderDevelopmentPage:
         login(client)
         resp = client.get('/under-development')
         assert resp.status_code == 200
-        assert b'This feature' in resp.data
+        # Generic fallback heading rendered as title-case "This Feature"
+        assert b'This Feature' in resp.data
 
 
 class TestDeadLinksWired:

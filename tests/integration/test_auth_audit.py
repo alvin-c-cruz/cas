@@ -22,7 +22,10 @@ class TestAuthAudit:
         assert row.user_id == admin_user.id
 
     def test_auto_branch_selection_is_audited(self, client, db_session,
-                                              viewer_user, main_branch):
+                                              viewer_user, main_branch, branch_manila):
+        # The company must have >1 active branch, otherwise the login view
+        # intentionally skips the auto-select audit (single branch == no real
+        # choice). The viewer is granted only main, so auto-selection still fires.
         viewer_user.add_branch(main_branch)
         db_session.commit()
         client.post('/login', data={'username': 'viewer', 'password': 'viewer123'},

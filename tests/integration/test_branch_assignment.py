@@ -116,6 +116,11 @@ class TestBranchAssignment:
         viewer_user.add_branch(branch_manila)
         db_session.commit()
 
+        # Admin can access both branches, so the branch-session hook won't
+        # auto-select — pin a branch or the GET redirects to the picker.
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+
         resp = client.get(f'/branches/{main_branch.id}/users')
         html = resp.data.decode('utf-8')
         _, available = html.split('Available Users', 1)
