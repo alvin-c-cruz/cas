@@ -4,7 +4,9 @@ Vendor management views (Admin and Accountant only)
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
+from sqlalchemy.orm import selectinload
 from app import db
+from app.utils import ph_now
 from app.vendors.models import Vendor
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
@@ -56,7 +58,10 @@ def staff_or_above_required(f):
 @login_required
 def list_vendors():
     """List all vendors"""
-    vendors = Vendor.query.order_by(Vendor.code).all()
+    vendors = (Vendor.query
+               .options(selectinload(Vendor.withholding_taxes))
+               .order_by(Vendor.code)
+               .all())
     return render_template('vendors/list.html', vendors=vendors)
 
 
@@ -324,28 +329,25 @@ def delete(id):
     return redirect(url_for('vendors.list_vendors'))
 
 
-@vendors_bp.route('/vendors/export/excel')
-@login_required
-def export_excel():
-    """Export vendors to Excel"""
-    vendors = Vendor.query.order_by(Vendor.code).all()
+_VENDOR_EXPORT_COLUMNS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
+                          'payment_terms', 'address', 'postal_code', 'check_payee_name',
+                          'default_vat_category', 'withholding_taxes_str', 'is_active']
 
-    # Define columns and headers
-    columns = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
-               'payment_terms', 'address', 'postal_code', 'check_payee_name',
-               'default_vat_category', 'withholding_taxes_str', 'is_active']
+_VENDOR_EXPORT_HEADERS = ['Vendor Code', 'Vendor Name', 'Contact Person', 'Phone', 'Email',
+                          'TIN', 'Payment Terms', 'Address', 'Postal Code', 'Check Payee Name',
+                          'VAT Category', 'Withholding Taxes', 'Active']
 
-    headers = ['Vendor Code', 'Vendor Name', 'Contact Person', 'Phone', 'Email',
-               'TIN', 'Payment Terms', 'Address', 'Postal Code', 'Check Payee Name',
-               'VAT Category', 'Withholding Taxes', 'Active']
 
-    # Prepare data with proper formatting
-    data = []
+def _vendor_export_rows():
+    """Vendor master as a list of export-ready dicts (WHTs eager-loaded)."""
+    vendors = (Vendor.query
+               .options(selectinload(Vendor.withholding_taxes))
+               .order_by(Vendor.code)
+               .all())
+    rows = []
     for vendor in vendors:
-        # Get withholding taxes as comma-separated string
-        wt_codes = ', '.join([wt.code for wt in vendor.withholding_taxes]) if hasattr(vendor, 'withholding_taxes') and vendor.withholding_taxes else ''
-
-        data.append({
+        wt_codes = ', '.join(wt.code for wt in vendor.withholding_taxes) if vendor.withholding_taxes else ''
+        rows.append({
             'code': vendor.code,
             'name': vendor.name,
             'contact_person': vendor.contact_person or '',
@@ -358,16 +360,20 @@ def export_excel():
             'check_payee_name': vendor.check_payee_name or '',
             'default_vat_category': vendor.default_vat_category or '',
             'withholding_taxes_str': wt_codes,
-            'is_active': 'Yes' if vendor.is_active else 'No'
+            'is_active': 'Yes' if vendor.is_active else 'No',
         })
+    return rows
 
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f'vendors_{timestamp}.xlsx'
 
+@vendors_bp.route('/vendors/export/excel')
+@login_required
+def export_excel():
+    """Export vendors to Excel"""
+    filename = f"vendors_{ph_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     return export_to_excel(
-        data=data,
-        columns=columns,
-        headers=headers,
+        data=_vendor_export_rows(),
+        columns=_VENDOR_EXPORT_COLUMNS,
+        headers=_VENDOR_EXPORT_HEADERS,
         filename=filename,
         title='Vendor List'
     )
@@ -377,46 +383,11 @@ def export_excel():
 @login_required
 def export_csv_route():
     """Export vendors to CSV"""
-    vendors = Vendor.query.order_by(Vendor.code).all()
-
-    # Define columns and headers
-    columns = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
-               'payment_terms', 'address', 'postal_code', 'check_payee_name',
-               'default_vat_category', 'withholding_taxes_str', 'is_active']
-
-    headers = ['Vendor Code', 'Vendor Name', 'Contact Person', 'Phone', 'Email',
-               'TIN', 'Payment Terms', 'Address', 'Postal Code', 'Check Payee Name',
-               'VAT Category', 'Withholding Taxes', 'Active']
-
-    # Prepare data with proper formatting
-    data = []
-    for vendor in vendors:
-        # Get withholding taxes as comma-separated string
-        wt_codes = ', '.join([wt.code for wt in vendor.withholding_taxes]) if hasattr(vendor, 'withholding_taxes') and vendor.withholding_taxes else ''
-
-        data.append({
-            'code': vendor.code,
-            'name': vendor.name,
-            'contact_person': vendor.contact_person or '',
-            'phone': vendor.phone or '',
-            'email': vendor.email or '',
-            'tin': vendor.tin or '',
-            'payment_terms': vendor.payment_terms or '',
-            'address': vendor.address or '',
-            'postal_code': vendor.postal_code or '',
-            'check_payee_name': vendor.check_payee_name or '',
-            'default_vat_category': vendor.default_vat_category or '',
-            'withholding_taxes_str': wt_codes,
-            'is_active': 'Yes' if vendor.is_active else 'No'
-        })
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f'vendors_{timestamp}.csv'
-
+    filename = f"vendors_{ph_now().strftime('%Y%m%d_%H%M%S')}.csv"
     return export_to_csv(
-        data=data,
-        columns=columns,
-        headers=headers,
+        data=_vendor_export_rows(),
+        columns=_VENDOR_EXPORT_COLUMNS,
+        headers=_VENDOR_EXPORT_HEADERS,
         filename=filename
     )
 

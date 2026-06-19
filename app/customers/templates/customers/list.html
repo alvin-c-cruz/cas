@@ -122,7 +122,7 @@
         <div class="empty-state">
             <p>No customers found.</p>
             {% if current_user.role in ['accountant', 'admin'] %}
-            <p><a href="{{ url_for('customers.create') }}" class="btn btn-primary">Add your first customer</a></p>
+            <p><a href="{{ url_for('customers.create') }}" class="btn btn-primary">Create your first customer</a></p>
             {% endif %}
         </div>
         {% endif %}

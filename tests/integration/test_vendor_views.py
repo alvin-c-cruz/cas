@@ -3,12 +3,31 @@ import pytest
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import event
+
+from app import db
 from app.vendors.models import Vendor
 from app.accounts_payable.models import AccountsPayable
 from app.audit.models import AuditLog
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.utils import ph_now
+
+
+class _QueryCounter:
+    """Counts SQL statements issued on db.engine within the block."""
+    def __init__(self):
+        self.count = 0
+
+    def _on_exec(self, *args, **kwargs):
+        self.count += 1
+
+    def __enter__(self):
+        event.listen(db.engine, 'before_cursor_execute', self._on_exec)
+        return self
+
+    def __exit__(self, *exc):
+        event.remove(db.engine, 'before_cursor_execute', self._on_exec)
 pytestmark = [pytest.mark.vendors, pytest.mark.integration]
 
 
@@ -366,3 +385,73 @@ class TestVendorWithholdingTaxPicker:
         resp = client.get(f'/vendors/{vendor.id}/edit')
         assert resp.status_code == 200
         assert f'value="{wt.id}" selected>'.encode() in resp.data
+
+
+class TestVendorListAnalyzeFixes:
+    """Fixes from /analyze-page on /vendors: N+1 eager load, staff Edit
+    affordance, export cleanup, and the create-button verb convention."""
+
+    def _wt(self, db_session, code):
+        wt = WithholdingTax(code=code, name=f'{code} name', rate=Decimal('5.00'), is_active=True)
+        db_session.add(wt)
+        db_session.commit()
+        return wt
+
+    def test_list_has_no_n_plus_one_on_withholding_taxes(self, client, db_session, admin_user, main_branch):
+        login(client)
+        wt = self._wt(db_session, 'WCN1')
+        v1 = make_vendor(db_session, code='NV1', name='NV1')
+        v1.withholding_taxes = [wt]
+        db_session.commit()
+        with _QueryCounter() as qc1:
+            client.get('/vendors')
+        one = qc1.count
+        for code in ('NV2', 'NV3', 'NV4'):
+            v = make_vendor(db_session, code=code, name=code)
+            v.withholding_taxes = [wt]
+            db_session.commit()
+        with _QueryCounter() as qc4:
+            client.get('/vendors')
+        four = qc4.count
+        # Eager loading → WHT fetch count is constant regardless of vendor count.
+        assert four == one, f'N+1 detected: {one} queries for 1 vendor vs {four} for 4'
+
+    def test_staff_sees_edit_button_not_delete(self, client, db_session, admin_user, staff_user, main_branch):
+        admin_user.add_branch(main_branch)
+        staff_user.add_branch(main_branch)
+        # Staff need the Vendors book permission to reach the list (deny-default).
+        staff_user.set_book_permissions({'vendors': True})
+        db_session.commit()
+        make_vendor(db_session, code='SE01', name='Staff Edit Vendor')
+        login(client, 'staff', 'staff123')
+        resp = client.get('/vendors')
+        assert resp.status_code == 200
+        assert b'>Edit</a>' in resp.data          # staff may edit (view allows it)
+        assert b'delete-modal-' not in resp.data  # delete stays accountant/admin
+
+    def test_admin_sees_edit_and_delete(self, client, db_session, admin_user, main_branch):
+        login(client)
+        make_vendor(db_session, code='AE01', name='Admin Edit Vendor')
+        resp = client.get('/vendors')
+        assert b'>Edit</a>' in resp.data
+        assert b'delete-modal-' in resp.data
+
+    def test_csv_export_still_works(self, client, db_session, admin_user, main_branch):
+        login(client)
+        make_vendor(db_session, code='EX01', name='Export Vendor')
+        resp = client.get('/vendors/export/csv')
+        assert resp.status_code == 200
+        assert b'EX01' in resp.data
+
+    def test_excel_export_still_works(self, client, db_session, admin_user, main_branch):
+        login(client)
+        make_vendor(db_session, code='EX02', name='Export Vendor 2')
+        resp = client.get('/vendors/export/excel')
+        assert resp.status_code == 200
+
+    def test_create_launch_button_uses_create_verb(self, client, db_session, admin_user, main_branch):
+        login(client)
+        make_vendor(db_session, code='CV01', name='Verb Vendor')
+        resp = client.get('/vendors')
+        assert b'Create Vendor' in resp.data
+        assert b'Add Vendor' not in resp.data
