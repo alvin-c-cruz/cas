@@ -39,6 +39,17 @@ verbatim-ish, then surface the **"Proposed changes (need approval)"** section pr
 are diffs the agent deliberately did NOT apply (CLAUDE.md / settings.json / app/ / tests / its own
 definition). Ask the user whether to apply each.
 
+**5. Closing URL reminder.** If this retrospective covered a page analysis — i.e. a URL was
+analyzed earlier in this session (via `/analyze-page` or `/cycle`) — end your reply with a final
+line echoing that page so the user is reminded what was analyzed:
+
+```
+Analyzed: <url>
+```
+
+Use the exact URL that was analyzed. If no URL was analyzed this session (a plain `/retro` on
+non-page work), omit this line.
+
 ## Notes
 
 - The agent auto-writes lessons to the memory store and reconciles backlog/bug-tracker on its own —
