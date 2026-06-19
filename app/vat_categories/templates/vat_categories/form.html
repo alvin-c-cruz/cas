@@ -61,9 +61,10 @@
                         {{ form.is_active.label(class="form-label") }}
                         <div class="toggle-wrapper">
                             {{ form.is_active(class="toggle-input") }}
-                            <label for="{{ form.is_active.id }}" class="toggle-switch">
+                            <div class="toggle-switch" id="statusToggle" role="switch"
+                                 tabindex="0" aria-checked="false" aria-label="Toggle status">
                                 <span class="toggle-slider"></span>
-                            </label>
+                            </div>
                             <span class="toggle-label" id="toggleLabel">
                                 {% if vat_category and vat_category.is_active %}Active{% else %}Inactive{% endif %}
                             </span>
@@ -215,11 +216,11 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.toggle-input:checked + .toggle-switch {
+.toggle-switch.is-on {
     background-color: var(--green);
 }
 
-.toggle-input:checked + .toggle-switch .toggle-slider {
+.toggle-switch.is-on .toggle-slider {
     transform: translateX(22px);
 }
 
@@ -255,18 +256,31 @@ document.addEventListener('DOMContentLoaded', function() {
         updateRatePreview(); // Initialize
     }
 
-    // Toggle switch label update
+    // Status toggle — backed by a <select> (Active/Inactive). A <select> has no
+    // `.checked`, so the visual/label are driven by its `.value` (BUG fix: the
+    // old `this.checked` wiring left the switch stuck on Inactive).
     const toggleInput = document.getElementById('{{ form.is_active.id }}');
     const toggleLabel = document.getElementById('toggleLabel');
+    const toggleSwitch = document.getElementById('statusToggle');
 
-    if (toggleInput && toggleLabel) {
-        toggleInput.addEventListener('change', function() {
-            toggleLabel.textContent = this.checked ? 'Active' : 'Inactive';
-            toggleLabel.style.color = this.checked ? 'var(--green)' : 'var(--text-2)';
+    if (toggleInput && toggleLabel && toggleSwitch) {
+        function syncStatusToggle() {
+            const active = toggleInput.value === '1';
+            toggleSwitch.classList.toggle('is-on', active);
+            toggleSwitch.setAttribute('aria-checked', active ? 'true' : 'false');
+            toggleLabel.textContent = active ? 'Active' : 'Inactive';
+            toggleLabel.style.color = active ? 'var(--green)' : 'var(--text-2)';
+        }
+        function flipStatus() {
+            toggleInput.value = toggleInput.value === '1' ? '0' : '1';
+            syncStatusToggle();
+        }
+        toggleSwitch.addEventListener('click', flipStatus);
+        toggleSwitch.addEventListener('keydown', function(e) {
+            if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipStatus(); }
         });
-
-        // Initialize label color
-        toggleLabel.style.color = toggleInput.checked ? 'var(--green)' : 'var(--text-2)';
+        toggleInput.addEventListener('change', syncStatusToggle);
+        syncStatusToggle();
     }
 
     // Input Tax account picker — searchable; hidden when rate is 0

@@ -6,6 +6,7 @@ Covers Chart of Accounts, VAT Categories and Withholding Tax:
 - Submission feedback flash is shown
 - Audit entries are written with the correct action, record reference and actor
 """
+import html
 import json
 
 import pytest
@@ -371,6 +372,70 @@ class TestWithholdingTaxLabels:
         assert resp.status_code == 200
         assert b'Back to Withholding Tax Expanded' in resp.data
         assert b'Back to Withholding Tax Codes' not in resp.data
+
+
+class TestStatusToggleControl:
+    """The Status control is a <select> (Active/Inactive); a <select> has no
+    `.checked`, so the toggle visual/label must be driven by its `.value`.
+    Regression guard for the broken `this.checked` wiring (FINDING-001)."""
+
+    def test_wht_create_form_toggle_driven_by_select_value(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/withholding-tax/create')
+        assert resp.status_code == 200
+        # broken pattern: <select>.checked is always undefined → label stuck on Inactive
+        assert b"this.checked ? 'Active'" not in resp.data
+        # fixed pattern: derive state from the select's value
+        assert b".value === '1'" in resp.data
+
+    def test_vat_create_form_toggle_driven_by_select_value(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/vat-categories/create')
+        assert resp.status_code == 200
+        assert b"this.checked ? 'Active'" not in resp.data
+        assert b".value === '1'" in resp.data
+
+
+class TestWithholdingTaxFlashTerminology:
+    """Duplicate-check and success flashes must use WHT/ATC terminology, not the
+    'VAT code'/'VAT name'/lowercase text copy-pasted from vat_categories
+    (FINDING-003 / FINDING-004)."""
+
+    def test_duplicate_code_flash_uses_atc_terminology(self, client, db_session, two_reviewers):
+        login(client)
+        make_wht(db_session, code='WC010', name='Professional fees')
+        resp = client.post('/withholding-tax/create',
+                           data=wht_form_data(code='WC010', name='A different name'),
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        # Jinja autoescapes the quotes in the flash text, so unescape before matching.
+        body = html.unescape(resp.data.decode())
+        assert 'VAT code' not in body
+        assert 'ATC "WC010" already exists' in body
+
+    def test_duplicate_name_flash_uses_withholding_terminology(self, client, db_session, two_reviewers):
+        login(client)
+        make_wht(db_session, code='WC010', name='Professional fees')
+        resp = client.post('/withholding-tax/create',
+                           data=wht_form_data(code='WCNEW', name='Professional fees'),
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        body = html.unescape(resp.data.decode())
+        assert 'VAT name' not in body
+        assert 'Withholding tax name "Professional fees" already exists' in body
+
+    def test_auto_approved_create_success_flash_is_capitalized(self, client, db_session,
+                                                               accountant_user, main_branch):
+        # Sole active accountant → can_auto_approve() is True → direct create.
+        login(client, username='accountant', password='accountant123')
+        resp = client.post('/withholding-tax/create',
+                           data=wht_form_data(code='WCX', name='Test WHT'),
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        assert WithholdingTax.query.filter_by(code='WCX').count() == 1
+        body = html.unescape(resp.data.decode())
+        assert 'Withholding tax "Test WHT" has been created successfully' in body
+        assert 'withholding tax "Test WHT"' not in body  # lowercase variant gone
 
 
 # ───────────────────────── Chart of Accounts ─────────────────────────

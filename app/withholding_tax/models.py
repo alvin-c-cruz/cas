@@ -2,7 +2,6 @@
 Withholding Tax models for Philippine BIR compliance
 """
 from app import db
-from datetime import datetime
 from app.utils import ph_now
 
 

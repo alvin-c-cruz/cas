@@ -109,13 +109,13 @@ def create():
         # Check for duplicate code
         existing_code = WithholdingTax.query.filter_by(code=form.code.data).first()
         if existing_code:
-            flash(f'VAT code "{form.code.data}" already exists. Please use a different code.', 'error')
+            flash(f'ATC "{form.code.data}" already exists. Please use a different code.', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=None)
 
         # Check for duplicate name
         existing_name = WithholdingTax.query.filter_by(name=form.name.data).first()
         if existing_name:
-            flash(f'VAT name "{form.name.data}" already exists. Please use a different name.', 'error')
+            flash(f'Withholding tax name "{form.name.data}" already exists. Please use a different name.', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=None)
 
         # Block duplicate pending requests for the same proposed code
@@ -160,7 +160,7 @@ def create():
                 )
 
                 db.session.commit()
-                flash(f'withholding tax "{withholding_tax.name}" has been created successfully.', 'success')
+                flash(f'Withholding tax "{withholding_tax.name}" has been created successfully.', 'success')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
             else:
                 # Create change request for approval
@@ -216,7 +216,7 @@ def edit(id):
             WithholdingTax.id != id
         ).first()
         if existing_code:
-            flash(f'VAT code "{form.code.data}" already exists. Please use a different code.', 'error')
+            flash(f'ATC "{form.code.data}" already exists. Please use a different code.', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=withholding_tax)
 
         # Check for duplicate name (excluding current)
@@ -225,7 +225,7 @@ def edit(id):
             WithholdingTax.id != id
         ).first()
         if existing_name:
-            flash(f'VAT name "{form.name.data}" already exists. Please use a different name.', 'error')
+            flash(f'Withholding tax name "{form.name.data}" already exists. Please use a different name.', 'error')
             return render_template('withholding_tax/form.html', form=form, withholding_tax=withholding_tax)
 
         # Block duplicate pending requests for the same record
@@ -270,7 +270,7 @@ def edit(id):
                 )
 
                 db.session.commit()
-                flash(f'withholding tax "{withholding_tax.name}" has been updated successfully.', 'success')
+                flash(f'Withholding tax "{withholding_tax.name}" has been updated successfully.', 'success')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
             else:
                 # Create change request for approval
@@ -367,7 +367,7 @@ def delete(id):
             )
 
             db.session.commit()
-            flash(f'withholding tax "{wt_name}" has been deleted successfully.', 'success')
+            flash(f'Withholding tax "{wt_name}" has been deleted successfully.', 'success')
         else:
             # Create change request for approval
             change_request = WithholdingTaxChangeRequest(
@@ -490,7 +490,7 @@ def review_change_request(id):
                         notes=f'Approved by {current_user.username}'
                     )
 
-                    flash(f'withholding tax "{withholding_tax.name}" has been created successfully.', 'success')
+                    flash(f'Withholding tax "{withholding_tax.name}" has been created successfully.', 'success')
 
                 elif change_request.action == 'update':
                     # Update existing withholding tax
@@ -519,7 +519,7 @@ def review_change_request(id):
                             notes=f'Approved by {current_user.username}'
                         )
 
-                        flash(f'withholding tax "{withholding_tax.name}" has been updated successfully.', 'success')
+                        flash(f'Withholding tax "{withholding_tax.name}" has been updated successfully.', 'success')
 
                 elif change_request.action == 'delete':
                     # Delete withholding tax
@@ -543,7 +543,7 @@ def review_change_request(id):
                             notes=f'Approved by {current_user.username}'
                         )
 
-                        flash(f'withholding tax "{wt_name}" has been deleted successfully.', 'success')
+                        flash(f'Withholding tax "{wt_name}" has been deleted successfully.', 'success')
 
             else:
                 # Log rejection to audit
