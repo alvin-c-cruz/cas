@@ -1,7 +1,8 @@
-{# Macro for rendering form fields with consistent styling #}
-{% macro render_field(field, label_class='', input_class='form-control', wrapper_class='form-group') %}
+{# Macro for rendering form fields with consistent styling.
+   Pass required=True to append a visual required marker to the label. #}
+{% macro render_field(field, label_class='', input_class='form-control', wrapper_class='form-group', required=False) %}
 <div class="{{ wrapper_class }}">
-    {{ field.label(class=label_class or 'form-label') }}
+    {{ field.label(class=label_class or 'form-label') }}{% if required %}<span class="required" aria-hidden="true">*</span>{% endif %}
 
     {# Render the field based on its type with autocomplete prevention #}
     {% if field.type == 'SelectField' %}

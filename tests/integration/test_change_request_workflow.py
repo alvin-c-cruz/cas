@@ -806,3 +806,28 @@ class TestApprovalUniquenessRecheck:
         assert Account.query.filter_by(name='Dup Acct').count() == 1
         db_session.refresh(cr)
         assert cr.status == 'pending'
+
+
+# ───────── Required-field markers on the create forms ─────────
+
+class TestRequiredFieldMarkers:
+    """Required fields on the master-data create forms carry a visual marker
+    (the shared `.required` asterisk)."""
+
+    def test_wht_create_form_marks_required_fields(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/withholding-tax/create')
+        assert resp.status_code == 200
+        assert b'class="required"' in resp.data
+
+    def test_vat_create_form_marks_required_fields(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/vat-categories/create')
+        assert resp.status_code == 200
+        assert b'class="required"' in resp.data
+
+    def test_account_create_form_marks_required_fields(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/accounts/create')
+        assert resp.status_code == 200
+        assert b'class="required"' in resp.data
