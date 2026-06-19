@@ -561,7 +561,7 @@ def _parse_line_items(cdv):
         cdv.expense_lines.append(exp_line)
 
 
-def _form_context(all_accounts=None):
+def _form_context(all_accounts=None, selected_vendor_id=None):
     """Shared context for create/edit form rendering.
 
     Pass the already-built `all_accounts` list (callers need it for the cash /
@@ -583,8 +583,17 @@ def _form_context(all_accounts=None):
     quick_add_form.is_active.data = '1'
     quick_add_form.payment_terms.data = 'Net 30'
     quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+    # The selected vendor's assigned WHT codes drive the direct-expense WT
+    # dropdown (mirrors APV). Empty on create; the vendor's codes on edit/bounce
+    # so the synchronous line-restore builds correctly-scoped selects.
+    vendor_whts = []
+    if selected_vendor_id:
+        _v = Vendor.query.get(selected_vendor_id)
+        if _v:
+            vendor_whts = [w.to_dict() for w in _v.withholding_taxes if w.is_active]
     return dict(vendors=vendors, all_accounts=all_accounts,
                 vat_categories=vat_categories, wt_codes=wt_codes,
+                vendor_whts=vendor_whts,
                 gl_accounts=gl_accounts,
                 vendor_quick_add_form=quick_add_form,
                 vendor_quick_add_whts=quick_add_whts)
@@ -609,7 +618,8 @@ def create():
         return render_template('cash_disbursements/form.html', form=form, cdv=None,
                                restore_ap_lines=request.form.get('ap_lines', '') if is_post else '',
                                restore_expense_lines=request.form.get('expense_lines', '') if is_post else '',
-                               **_form_context(all_accounts=all_accounts))
+                               **_form_context(all_accounts=all_accounts,
+                                               selected_vendor_id=(form.vendor_id.data if is_post else None)))
 
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
@@ -702,14 +712,14 @@ def edit(id):
 
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
-            ctx = _form_context(all_accounts=all_accounts)
+            ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
             return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
         try:
             vendor = Vendor.query.get(form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
-                ctx = _form_context(all_accounts=all_accounts)
+                ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
                 return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
 
@@ -766,7 +776,7 @@ def edit(id):
         except CDVLineError as ce:
             db.session.rollback()
             flash(str(ce), 'error')
-            ctx = _form_context(all_accounts=all_accounts)
+            ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
             return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
         except Exception as e:
@@ -776,7 +786,7 @@ def edit(id):
             flash('An unexpected error occurred while updating the CDV. Please try '
                   'again; if it persists, contact your administrator.', 'error')
 
-    ctx = _form_context(all_accounts=all_accounts)
+    ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
     return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                            ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
 

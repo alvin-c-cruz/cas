@@ -327,6 +327,10 @@ let apLines      = [];
 let expenseLines = [];
 let expenseCounter = 0;
 let expenseChoices = {};
+// Direct-expense WT is scoped to the selected vendor's codes (mirrors APV).
+// Seeded synchronously for edit/bounce; refreshed via /vendors/<id>/defaults on
+// vendor change. `wtCodes` (all codes) is no longer used for the WT dropdown.
+let currentVendorWHTs = {{ vendor_whts | default([], true) | tojson }};
 let openBills = [];
 let autoVat = 0, autoWt = 0;
 let vatOverrideActive = false, wtOverrideActive = false;
@@ -411,12 +415,20 @@ function onVendorChange(vendorId) {
         setVendorCardState(false, '');
         document.getElementById('cdvLocked').style.display = '';
         document.getElementById('cdvSections').style.display = 'none';
-        recalculate();
+        currentVendorWHTs = [];
+        rebuildAllExpenseWhtSelects();   // also recalculates
         return;
     }
     setVendorCardState(true, vendorName);
     document.getElementById('cdvLocked').style.display = 'none';
     document.getElementById('cdvSections').style.display = '';
+
+    // Load this vendor's withholding codes, then re-scope the expense WT selects.
+    fetch(`/vendors/${vendorId}/defaults`)
+        .then(r => r.json())
+        .then(d => { currentVendorWHTs = d.withholding_taxes || []; })
+        .catch(() => { currentVendorWHTs = []; })
+        .finally(() => rebuildAllExpenseWhtSelects());
 
     setBillPickerLoading(true);
     fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${vendorId}`)
@@ -563,6 +575,46 @@ function renderApEmpty() {
 }
 
 // ── Section B: Expense Lines ──────────────────────────────────────────────────
+// Build the WT <option>s for a new expense row, scoped to the vendor's codes.
+// When the vendor has none, show a clear notice (the select is disabled after
+// Choices init) instead of a confusing lone "None".
+function buildExpenseWhtOptions(selectedId) {
+    if (currentVendorWHTs.length === 0) {
+        return '<option value="">No withholding tax</option>';
+    }
+    return '<option value="">None</option>' +
+        currentVendorWHTs.map(w =>
+            `<option value="${w.id}" data-rate="${w.rate}" ${selectedId == w.id ? 'selected' : ''}>${escHtml(w.code)}</option>`
+        ).join('');
+}
+
+// Rebuild every existing expense row's WT Choices after the vendor changes.
+function rebuildAllExpenseWhtSelects() {
+    const noWht = currentVendorWHTs.length === 0;
+    const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
+    const noneChoice = noWht ? { value: '', label: 'No withholding tax' }
+                             : { value: '', label: 'None' };
+    expenseLines.forEach(item => {
+        const ec = expenseChoices[item.id];
+        if (!ec) return;
+        const prev = item.wt_id;
+        const stillValid = prev && currentVendorWHTs.some(w => w.id == prev);
+        if (!stillValid) {
+            item.wt_id = autoWht ? autoWht.id : null;
+            item.wt_rate = autoWht ? autoWht.rate : null;
+        }
+        const choices = [noneChoice].concat(
+            currentVendorWHTs.map(w => ({ value: String(w.id), label: w.code }))
+        );
+        ec.wht.enable();   // must be enabled to accept setChoices
+        ec.wht.clearChoices();
+        ec.wht.setChoices(choices, 'value', 'label', false);
+        ec.wht.setChoiceByValue(item.wt_id ? String(item.wt_id) : '');
+        if (noWht) ec.wht.disable();
+    });
+    recalculate();
+}
+
 function addExpenseLine(existingItem) {
     expenseCounter++;
     const id = expenseCounter;
@@ -587,8 +639,7 @@ function addExpenseLine(existingItem) {
         </td>
         <td>
             <select class="form-control wht-sel">
-                <option value="">None</option>
-                ${wtCodes.map(w => `<option value="${w.id}" data-rate="${w.rate}" ${item.wt_id == w.id ? 'selected' : ''}>${escHtml(w.code)}</option>`).join('')}
+                ${buildExpenseWhtOptions(item.wt_id)}
             </select>
         </td>
         <td>
@@ -612,6 +663,7 @@ function addExpenseLine(existingItem) {
     const codeOpts = { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false };
     const vatC  = new Choices(vatSel,  codeOpts);
     const whtC  = new Choices(whtSel,  codeOpts);
+    if (currentVendorWHTs.length === 0) whtC.disable();   // no codes → locked notice
     const acctC = new Choices(acctSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
     vatSel.addEventListener('change',  () => updateExpense(id, 'vat_category', vatSel.value));
     whtSel.addEventListener('change',  () => updateExpenseWht(id, whtSel));
@@ -638,7 +690,7 @@ function updateExpenseWht(id, sel) {
     const item = expenseLines.find(i => i.id === id);
     if (!item) return;
     item.wt_id   = sel.value ? parseInt(sel.value) : null;
-    const whtObj = wtCodes.find(w => w.id == sel.value);
+    const whtObj = currentVendorWHTs.find(w => w.id == sel.value);
     item.wt_rate = whtObj ? whtObj.rate : null;
     if (wtOverrideActive) revertWtOverride();
     recalculate();
