@@ -83,7 +83,10 @@ def live_url(smoke_app):
     s.close()
 
     t = threading.Thread(
-        target=lambda: smoke_app.run(host='127.0.0.1', port=port, use_reloader=False, threaded=True),
+        # Single-threaded: a threaded dev server lets concurrent requests (page
+        # load + the vendor-defaults XHR) interleave on one SQLite connection,
+        # raising "sqlite3.InterfaceError: bad parameter or other API misuse".
+        target=lambda: smoke_app.run(host='127.0.0.1', port=port, use_reloader=False, threaded=False),
         daemon=True,
     )
     t.start()

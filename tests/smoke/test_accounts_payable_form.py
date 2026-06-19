@@ -4,6 +4,20 @@ from playwright.sync_api import expect
 pytestmark = [pytest.mark.accounts_payable, pytest.mark.smoke]
 
 
+def _select_vendor(page, label='SUP001 - Test Supplier'):
+    """Pick a vendor through the Choices.js UI.
+
+    #vendor_id is a Choices picker, which strips the native <option>s — so
+    page.select_option() times out. Open the widget and click the item instead.
+    Selecting fires a native 'change' that reveals the line-items section.
+    """
+    scope = page.locator('.choices:has(#vendor_id)')
+    scope.locator('.choices__inner').click()
+    scope.locator('.choices__list--dropdown .choices__item--choice',
+                  has_text=label).first.click()
+    page.wait_for_selector('#lineItemsSection', state='visible', timeout=5000)
+
+
 def test_page_loads_with_disabled_submit(logged_in_page):
     page, base = logged_in_page
     page.goto(f'{base}/accounts-payable/create')
@@ -11,21 +25,25 @@ def test_page_loads_with_disabled_submit(logged_in_page):
     expect(page.locator('#lineItemsSection')).to_be_hidden()
 
 
-def test_submit_still_disabled_after_vendor_no_invoice(logged_in_page):
+def test_submit_still_disabled_after_vendor_no_notes(logged_in_page):
     page, base = logged_in_page
     page.goto(f'{base}/accounts-payable/create')
-    page.select_option('#vendor_id', label='SUP001 - Test Supplier')
-    page.wait_for_selector('#lineItemsSection', state='visible', timeout=5000)
+    _select_vendor(page)
+    # Vendor invoice # is intentionally NOT required to save a draft (it is
+    # enforced at POST when VAT/WHT applies). The first remaining blocker after
+    # selecting a vendor is the required notes / particulars field.
     expect(page.locator('#submitBtn')).to_be_disabled()
-    expect(page.locator('#saveHint')).to_contain_text('vendor invoice number')
+    expect(page.locator('#saveHint')).to_contain_text('notes')
 
 
-def test_submit_still_disabled_with_invoice_but_no_account(logged_in_page):
+def test_submit_still_disabled_with_notes_but_no_account(logged_in_page):
     page, base = logged_in_page
     page.goto(f'{base}/accounts-payable/create')
-    page.select_option('#vendor_id', label='SUP001 - Test Supplier')
-    page.wait_for_selector('#lineItemsSection', state='visible', timeout=5000)
-    page.fill('#vendor_invoice_number', 'INV-001')
+    _select_vendor(page)
+    page.fill('textarea[name="notes"]', 'Test particulars')
+    # Clear the line's account so the account-title blocker is what surfaces
+    # (updateLineItem re-runs validateForm). Account is checked before amount.
+    page.evaluate("() => { if (lineItems.length) updateLineItem(lineItems[0].id, 'account_id', null); }")
     expect(page.locator('#submitBtn')).to_be_disabled()
     expect(page.locator('#saveHint')).to_contain_text('account title')
 
@@ -33,9 +51,8 @@ def test_submit_still_disabled_with_invoice_but_no_account(logged_in_page):
 def test_submit_enabled_when_all_required_fields_present(logged_in_page):
     page, base = logged_in_page
     page.goto(f'{base}/accounts-payable/create')
-    page.select_option('#vendor_id', label='SUP001 - Test Supplier')
-    page.wait_for_selector('#lineItemsSection', state='visible', timeout=5000)
-    page.fill('#vendor_invoice_number', 'INV-001')
+    _select_vendor(page)
+    page.fill('textarea[name="notes"]', 'Test particulars')
 
     # Enter amount on first row — td:nth-child(2) holds the amount input
     amount_input = page.locator('#lineItemsBody tr:first-child td:nth-child(2) input[type="text"]')
