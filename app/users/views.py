@@ -4,6 +4,8 @@ from datetime import timezone, timedelta
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_user, logout_user, login_required, current_user
+from sqlalchemy import func
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import db, limiter
 from app.branches.models import Branch
@@ -14,6 +16,11 @@ from app.audit.utils import log_audit, log_create, log_update, log_delete, model
 
 
 users_bp = Blueprint('users', __name__, template_folder='templates')
+
+# A throwaway hash compared against when the submitted username matches no user,
+# so the unknown-user path spends the same time hashing as the wrong-password
+# path and cannot be distinguished by response timing (BUG-SEC-06).
+_DUMMY_PASSWORD_HASH = generate_password_hash('cas-login-timing-equalizer')
 
 
 def admin_required(f):
@@ -55,7 +62,16 @@ def _check_login_guards(user, form):
             flash('Your account is locked. Please contact the administrator.', 'error')
         return render_template('users/login.html', form=form), 401
 
-    if user is None or not user.check_password(form.password.data):
+    # Always run a password-hash comparison, even when the username matched no
+    # user, so the unknown-user and wrong-password paths take the same time and
+    # cannot be told apart by response timing (BUG-SEC-06).
+    if user is None:
+        check_password_hash(_DUMMY_PASSWORD_HASH, form.password.data)
+        password_ok = False
+    else:
+        password_ok = user.check_password(form.password.data)
+
+    if not password_ok:
         if user:
             account_locked = user.increment_failed_attempts(max_attempts=5, lockout_minutes=15)
             try:
@@ -69,11 +85,10 @@ def _check_login_guards(user, form):
             if account_locked:
                 flash('Too many failed login attempts. Your account has been locked for 15 minutes.', 'error')
             else:
-                remaining_attempts = 5 - user.failed_login_attempts
-                if remaining_attempts <= 2:
-                    flash(f'Invalid username or password. Warning: {remaining_attempts} attempts remaining before account lockout.', 'error')
-                else:
-                    flash('Invalid username or password.', 'error')
+                # Uniform message for every bad-credential outcome — never reveal
+                # whether the username exists or how many attempts remain, which
+                # would let an attacker enumerate valid usernames (BUG-SEC-04).
+                flash('Invalid username or password.', 'error')
         else:
             log_audit(module='auth', action='login_failed', record_id=None,
                       record_identifier=form.username.data, notes='Invalid username')
@@ -146,7 +161,12 @@ def login():
     form = LoginForm()
 
     if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
+        # Case-insensitive, whitespace-trimmed lookup so 'Admin', 'admin' and
+        # ' admin ' all resolve to the same account — otherwise case/space
+        # variants create distinct rows and bypass the lockout counter
+        # (BUG-SEC-05).
+        username = form.username.data.strip()
+        user = User.query.filter(func.lower(User.username) == username.lower()).first()
         guard_response = _check_login_guards(user, form)
         if guard_response is not None:
             return guard_response
