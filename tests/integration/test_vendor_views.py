@@ -295,3 +295,33 @@ class TestVendorBirNotes:
         assert resp.status_code == 200
         assert self.NAME_NOTE not in resp.data
         assert self.TIN_NOTE not in resp.data
+
+
+class TestVendorFormSections:
+    """The vendor form fields are grouped into labelled sections. The sections
+    render on the create/edit pages AND in the shared AP quick-add modal."""
+
+    SECTION_TITLES = [b'Vendor Details', b'Tax Information',
+                      b'Contact Information', b'Payment Information']
+
+    def test_create_form_has_sections(self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/vendors/create')
+        assert resp.status_code == 200
+        for title in self.SECTION_TITLES:
+            assert title in resp.data
+
+    def test_edit_form_has_sections(self, client, db_session, admin_user, main_branch):
+        login(client)
+        vendor = make_vendor(db_session, code='SEC001', name='Section Vendor')
+        resp = client.get(f'/vendors/{vendor.id}/edit')
+        assert resp.status_code == 200
+        for title in self.SECTION_TITLES:
+            assert title in resp.data
+
+    def test_quick_add_modal_has_sections(self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/accounts-payable/create')
+        assert resp.status_code == 200
+        for title in self.SECTION_TITLES:
+            assert title in resp.data

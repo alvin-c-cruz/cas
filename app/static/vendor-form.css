@@ -13,6 +13,19 @@
     gap: 12px;
 }
 .vendor-form-scope .form-group { margin-bottom: 0; }
+/* Field group sections (Vendor Details / Tax / Contact / Payment). */
+.vendor-form-scope .vendor-section { margin-bottom: 24px; }
+.vendor-form-scope .vendor-section:last-child { margin-bottom: 0; }
+.vendor-form-scope .vendor-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-2);
+    margin: 0 0 14px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+}
 /* Informational helper text under a field (e.g. BIR notes on create/edit). */
 .vendor-form-scope .field-hint {
     display: block;
