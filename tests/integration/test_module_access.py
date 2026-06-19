@@ -157,3 +157,41 @@ def test_staff_with_ar_aging_reaches_report(client, db_session, branch):
                        books={'ar_aging': True}, username='staffar')
     _login(client, staff, branch)
     assert client.get('/reports/ar-aging').status_code == 200
+
+
+# ── FIX 6: explicit export endpoint gating ───────────────────────────────────
+
+def test_module_registry_lists_ar_aging_export_endpoints():
+    """MODULE_REGISTRY ar_aging entry must explicitly name the export endpoints (FIX 6)."""
+    from app.users.module_access import MODULE_REGISTRY
+    ar_entry = next(m for m in MODULE_REGISTRY if m['key'] == 'ar_aging')
+    assert 'reports.ar_aging_export_excel' in ar_entry['endpoints'], (
+        'ar_aging registry must explicitly include reports.ar_aging_export_excel')
+    assert 'reports.ar_aging_export_csv' in ar_entry['endpoints'], (
+        'ar_aging registry must explicitly include reports.ar_aging_export_csv')
+
+
+def test_module_registry_lists_ap_aging_export_endpoints():
+    """MODULE_REGISTRY ap_aging entry must explicitly name the export endpoints (FIX 6)."""
+    from app.users.module_access import MODULE_REGISTRY
+    ap_entry = next(m for m in MODULE_REGISTRY if m['key'] == 'ap_aging')
+    assert 'reports.ap_aging_export_excel' in ap_entry['endpoints'], (
+        'ap_aging registry must explicitly include reports.ap_aging_export_excel')
+    assert 'reports.ap_aging_export_csv' in ap_entry['endpoints'], (
+        'ap_aging registry must explicitly include reports.ap_aging_export_csv')
+
+
+def test_staff_without_ar_aging_blocked_from_export_excel(client, db_session, branch):
+    """Staff user without ar_aging is blocked from the Excel export route."""
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'accounts_payable': True}, username='staffnoarx')
+    _login(client, staff, branch)
+    assert client.get('/reports/ar-aging/export/excel').status_code == 302
+
+
+def test_staff_with_ar_aging_reaches_export_excel(client, db_session, branch):
+    """Staff user with ar_aging granted can reach the Excel export route."""
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'ar_aging': True}, username='staffarx')
+    _login(client, staff, branch)
+    assert client.get('/reports/ar-aging/export/excel').status_code == 200
