@@ -368,12 +368,17 @@ function rebuildAllWhtSelects() {
     const noneChoice = noWht
         ? { value: '', label: 'No withholding tax for this vendor', customProperties: { code: 'No withholding tax' } }
         : { value: '', label: 'None', customProperties: { code: '' } };
+    const dropped = [];   // codes removed because they aren't valid for the new vendor
     lineItems.forEach(item => {
         const lc = lineChoices[item.id];
         if (!lc) return;
         const prev = item.wt_id;
         const stillValid = prev && currentVendorWHTs.some(wt => wt.id == prev);
         if (!stillValid) {
+            if (prev) {
+                const cur = lc.wht.getValue();
+                dropped.push((cur && cur.customProperties && cur.customProperties.code) || 'a withholding code');
+            }
             item.wt_id = autoWht ? autoWht.id : null;
             item.wt_rate = autoWht ? autoWht.rate : null;
         }
@@ -392,6 +397,10 @@ function rebuildAllWhtSelects() {
         // mistaken for a pickable option.
         if (noWht) lc.wht.disable();
     });
+    if (dropped.length && typeof showToast === 'function') {
+        const uniq = [...new Set(dropped)];
+        showToast(`Removed ${uniq.join(', ')} — not valid for the selected vendor.`, 'warn');
+    }
 }
 
 function rebuildAllVatSelects() {

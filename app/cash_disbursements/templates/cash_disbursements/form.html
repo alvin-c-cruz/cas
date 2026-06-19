@@ -606,14 +606,17 @@ function rebuildAllExpenseWhtSelects() {
     const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
     const noneChoice = noWht ? { value: '', label: 'No withholding tax' }
                              : { value: '', label: 'None' };
+    const dropped = [];   // codes removed because they aren't valid for the new vendor
     expenseLines.forEach(item => {
         const ec = expenseChoices[item.id];
         if (!ec) return;
         const prev = item.wt_id;
         const stillValid = prev && currentVendorWHTs.some(w => w.id == prev);
         if (!stillValid) {
+            if (prev) dropped.push(item.wt_code || 'a withholding code');
             item.wt_id = autoWht ? autoWht.id : null;
             item.wt_rate = autoWht ? autoWht.rate : null;
+            item.wt_code = autoWht ? autoWht.code : null;
         }
         const choices = [noneChoice].concat(
             currentVendorWHTs.map(w => ({ value: String(w.id), label: w.code }))
@@ -625,6 +628,10 @@ function rebuildAllExpenseWhtSelects() {
         if (noWht) ec.wht.disable();
     });
     recalculate();
+    if (dropped.length && typeof showToast === 'function') {
+        const uniq = [...new Set(dropped)];
+        showToast(`Removed ${uniq.join(', ')} — not valid for the selected vendor.`, 'warn');
+    }
 }
 
 function addExpenseLine(existingItem) {
