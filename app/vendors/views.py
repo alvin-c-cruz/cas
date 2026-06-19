@@ -57,12 +57,20 @@ def staff_or_above_required(f):
 @vendors_bp.route('/vendors')
 @login_required
 def list_vendors():
-    """List all vendors"""
-    vendors = (Vendor.query
-               .options(selectinload(Vendor.withholding_taxes))
-               .order_by(Vendor.code)
-               .all())
-    return render_template('vendors/list.html', vendors=vendors)
+    """List vendors with optional server-side search and pagination."""
+    q = (request.args.get('q') or '').strip()
+    page = request.args.get('page', 1, type=int)
+    query = Vendor.query.options(selectinload(Vendor.withholding_taxes))
+    if q:
+        like = f'%{q}%'
+        query = query.filter(db.or_(
+            Vendor.code.ilike(like),
+            Vendor.name.ilike(like),
+            Vendor.tin.ilike(like),
+        ))
+    pagination = query.order_by(Vendor.code).paginate(page=page, per_page=25, error_out=False)
+    return render_template('vendors/list.html', vendors=pagination.items,
+                           pagination=pagination, search_query=q)
 
 
 @vendors_bp.route('/vendors/<int:id>')
@@ -367,6 +375,7 @@ def _vendor_export_rows():
 
 @vendors_bp.route('/vendors/export/excel')
 @login_required
+@staff_or_above_required
 def export_excel():
     """Export vendors to Excel"""
     filename = f"vendors_{ph_now().strftime('%Y%m%d_%H%M%S')}.xlsx"
@@ -381,6 +390,7 @@ def export_excel():
 
 @vendors_bp.route('/vendors/export/csv')
 @login_required
+@staff_or_above_required
 def export_csv_route():
     """Export vendors to CSV"""
     filename = f"vendors_{ph_now().strftime('%Y%m%d_%H%M%S')}.csv"

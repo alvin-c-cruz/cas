@@ -7,7 +7,10 @@
 
 <div class="content-header">
     <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Search by name, code, or TIN..." class="search-input">
+        <form method="get" action="{{ url_for('vendors.list_vendors') }}">
+            <input type="text" name="q" value="{{ search_query or '' }}"
+                   placeholder="Search by name, code, or TIN..." class="search-input">
+        </form>
     </div>
     <div class="page-actions" style="display: flex; gap: 8px;">
         <a href="{{ url_for('vendors.export_excel') }}" class="btn btn-secondary">
@@ -128,9 +131,26 @@
 
         {% if not vendors %}
         <div class="empty-state">
+            {% if search_query %}
+            <p>No vendors match "{{ search_query }}".</p>
+            <p><a href="{{ url_for('vendors.list_vendors') }}" class="btn btn-secondary">Clear search</a></p>
+            {% else %}
             <p>No vendors found.</p>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}
             <p><a href="{{ url_for('vendors.create') }}" class="btn btn-primary">Create your first vendor</a></p>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if pagination and pagination.pages > 1 %}
+        <div class="vendor-pagination">
+            {% if pagination.has_prev %}
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('vendors.list_vendors', page=pagination.prev_num, q=search_query) }}">← Prev</a>
+            {% endif %}
+            <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+            {% if pagination.has_next %}
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('vendors.list_vendors', page=pagination.next_num, q=search_query) }}">Next →</a>
             {% endif %}
         </div>
         {% endif %}
@@ -154,7 +174,7 @@
 .search-input {
     width: 100%;
     padding: 10px 15px;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--border);
     border-radius: 6px;
     font-size: 14px;
     font-family: inherit;
@@ -162,14 +182,14 @@
 
 .search-input:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--blue);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .badge-vat {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #bbf7d0;
+    background: var(--alert-success-bg);
+    color: var(--alert-success-text);
+    border: 1px solid var(--border);
     padding: 4px 10px;
     border-radius: 12px;
     font-size: 12px;
@@ -178,9 +198,9 @@
 }
 
 .badge-wt {
-    background: #dbeafe;
-    color: #1e40af;
-    border: 1px solid #bfdbfe;
+    background: var(--alert-info-bg);
+    color: var(--alert-info-text);
+    border: 1px solid var(--border);
     padding: 4px 10px;
     border-radius: 12px;
     font-size: 12px;
@@ -189,15 +209,15 @@
 }
 
 .badge-success {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #bbf7d0;
+    background: var(--alert-success-bg);
+    color: var(--alert-success-text);
+    border: 1px solid var(--border);
 }
 
 .badge-inactive {
-    background: #f3f4f6;
-    color: #6b7280;
-    border: 1px solid #e5e7eb;
+    background: var(--bg);
+    color: var(--text-2);
+    border: 1px solid var(--border);
 }
 
 .badge {
@@ -210,7 +230,7 @@
 
 .btn-danger {
     background: var(--red);
-    color: white;
+    color: #fff;
     border: none;
     padding: 6px 18px;
     font-size: 14px;
@@ -218,12 +238,10 @@
     font-weight: 500;
     cursor: pointer;
 }
-.btn-danger:hover {
-    background: #dc2626;
-}
+.btn-danger:hover { filter: brightness(0.92); }
 .btn.btn-secondary.btn-sm {
-    background: #6b7280;
-    color: white;
+    background: var(--text-2);
+    color: #fff;
     border: none;
     padding: 6px 18px;
     font-size: 14px;
@@ -231,9 +249,7 @@
     font-weight: 500;
     cursor: pointer;
 }
-.btn.btn-secondary.btn-sm:hover {
-    background: #4b5563;
-}
+.btn.btn-secondary.btn-sm:hover { filter: brightness(0.92); }
 
 .vendor-link {
     color: inherit;
@@ -245,9 +261,9 @@
 }
 
 .badge-bir-warn {
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fde68a;
+    background: var(--alert-warning-bg);
+    color: var(--alert-warning-text);
+    border: 1px solid var(--border);
     padding: 2px 7px;
     border-radius: 10px;
     font-size: 11px;
@@ -256,23 +272,15 @@
     cursor: default;
     letter-spacing: 0.01em;
 }
+
+.vendor-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--text-2);
+}
 </style>
-
-<script>
-// Simple search functionality
-document.getElementById('searchInput')?.addEventListener('input', function(e) {
-    const searchTerm = e.target.value.toLowerCase();
-    const table = document.getElementById('vendorsTable');
-    const rows = table.querySelectorAll('tbody tr');
-
-    rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        if (text.includes(searchTerm)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
-    });
-});
-</script>
 {% endblock %}

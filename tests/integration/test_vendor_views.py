@@ -455,3 +455,61 @@ class TestVendorListAnalyzeFixes:
         resp = client.get('/vendors')
         assert b'Create Vendor' in resp.data
         assert b'Add Vendor' not in resp.data
+
+
+class TestVendorListSearchPagination:
+    """F006 (pagination + server-side search), F002 (no-results), F004 (export gate)."""
+
+    def test_server_side_search_filters(self, client, db_session, admin_user, main_branch):
+        login(client)
+        make_vendor(db_session, code='AAA001', name='Alpha Co')
+        make_vendor(db_session, code='BBB001', name='Bravo Co')
+        resp = client.get('/vendors?q=Alpha')
+        assert resp.status_code == 200
+        assert b'Alpha Co' in resp.data
+        assert b'Bravo Co' not in resp.data
+
+    def test_search_by_tin(self, client, db_session, admin_user, main_branch):
+        login(client)
+        v = make_vendor(db_session, code='TINV1', name='Tin Vendor')
+        v.tin = '123-456-789-000'
+        db_session.commit()
+        resp = client.get('/vendors?q=456-789')
+        assert resp.status_code == 200
+        assert b'Tin Vendor' in resp.data
+
+    def test_search_no_match_shows_message(self, client, db_session, admin_user, main_branch):
+        login(client)
+        make_vendor(db_session, code='REAL1', name='Real Vendor')
+        resp = client.get('/vendors?q=zzz-no-such-vendor')
+        assert resp.status_code == 200
+        assert b'Real Vendor' not in resp.data
+        assert b'No vendors match' in resp.data
+
+    def test_pagination_caps_page_size(self, client, db_session, admin_user, main_branch):
+        login(client)
+        for i in range(30):
+            make_vendor(db_session, code=f'PG{i:03d}', name=f'Page Vendor {i:03d}')
+        resp = client.get('/vendors')
+        assert resp.status_code == 200
+        # 25 per page → page 1 has PG000..PG024, not PG029
+        assert b'PG000' in resp.data
+        assert b'PG029' not in resp.data
+        resp2 = client.get('/vendors?page=2')
+        assert b'PG029' in resp2.data
+
+    def test_viewer_blocked_from_csv_export(self, client, db_session, admin_user, viewer_user, main_branch):
+        admin_user.add_branch(main_branch)
+        viewer_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'viewer', 'viewer123')
+        resp = client.get('/vendors/export/csv')
+        assert resp.status_code == 302  # staff_or_above_required redirects viewers
+
+    def test_viewer_blocked_from_excel_export(self, client, db_session, admin_user, viewer_user, main_branch):
+        admin_user.add_branch(main_branch)
+        viewer_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'viewer', 'viewer123')
+        resp = client.get('/vendors/export/excel')
+        assert resp.status_code == 302
