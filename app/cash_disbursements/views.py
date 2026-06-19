@@ -571,7 +571,6 @@ def _form_context(all_accounts=None, selected_vendor_id=None):
     if all_accounts is None:
         all_accounts = _get_all_accounts_for_select()
     vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
-    wt_codes = [w.to_dict() for w in WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()]
     _accts = _get_gl_accounts()
     gl_accounts = {
         'ap': {'code': _accts['ap'].code, 'name': _accts['ap'].name} if _accts['ap'] else None,
@@ -592,7 +591,7 @@ def _form_context(all_accounts=None, selected_vendor_id=None):
         if _v:
             vendor_whts = [w.to_dict() for w in _v.withholding_taxes if w.is_active]
     return dict(vendors=vendors, all_accounts=all_accounts,
-                vat_categories=vat_categories, wt_codes=wt_codes,
+                vat_categories=vat_categories,
                 vendor_whts=vendor_whts,
                 gl_accounts=gl_accounts,
                 vendor_quick_add_form=quick_add_form,

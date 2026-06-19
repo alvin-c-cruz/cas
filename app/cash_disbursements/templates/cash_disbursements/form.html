@@ -320,16 +320,15 @@
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts   = {{ all_accounts   | tojson }};
 const glAccounts    = {{ gl_accounts    | tojson }};
-const wtCodes       = {{ wt_codes       | tojson }};
 
 // ── State ────────────────────────────────────────────────────────────────────
 let apLines      = [];
 let expenseLines = [];
 let expenseCounter = 0;
 let expenseChoices = {};
-// Direct-expense WT is scoped to the selected vendor's codes (mirrors APV).
-// Seeded synchronously for edit/bounce; refreshed via /vendors/<id>/defaults on
-// vendor change. `wtCodes` (all codes) is no longer used for the WT dropdown.
+// Direct-expense WT is scoped to the selected vendor's codes (mirrors APV):
+// seeded synchronously for edit/bounce; refreshed via /vendors/<id>/defaults on
+// vendor change.
 let currentVendorWHTs = {{ vendor_whts | default([], true) | tojson }};
 let openBills = [];
 let autoVat = 0, autoWt = 0;
