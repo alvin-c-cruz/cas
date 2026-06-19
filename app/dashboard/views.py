@@ -10,7 +10,8 @@ from app.dashboard.dashboard_data import (
     get_revenue_stats, get_expense_stats,
     get_receivables_stats, get_payables_stats,
     get_top_customers, get_top_vendors,
-    get_monthly_revenue_trend, get_expense_breakdown
+    get_monthly_revenue_trend, get_expense_breakdown,
+    get_active_accounts
 )
 
 dashboard_bp = Blueprint('dashboard', __name__, template_folder='templates')
@@ -51,9 +52,14 @@ def home():
         current_branch_id = first_branch.id
         session['selected_branch_id'] = current_branch_id
 
+    # Fetch the active Revenue/Expense account lists once and share them across
+    # the helpers below, instead of each helper re-querying them (FINDING-002).
+    revenue_accounts = get_active_accounts('Revenue')
+    expense_accounts = get_active_accounts('Expense')
+
     # Get real financial statistics (filtered by current branch and as_of_date)
-    revenue_stats = get_revenue_stats(current_year, current_month, branch_id=current_branch_id, as_of_date=as_of_date)
-    expense_stats = get_expense_stats(current_year, current_month, branch_id=current_branch_id, as_of_date=as_of_date)
+    revenue_stats = get_revenue_stats(current_year, current_month, branch_id=current_branch_id, as_of_date=as_of_date, revenue_accounts=revenue_accounts)
+    expense_stats = get_expense_stats(current_year, current_month, branch_id=current_branch_id, as_of_date=as_of_date, expense_accounts=expense_accounts)
     receivables_stats = get_receivables_stats(as_of_date=as_of_date, branch_id=current_branch_id)
     payables_stats = get_payables_stats(as_of_date=as_of_date, branch_id=current_branch_id)
 
@@ -75,9 +81,9 @@ def home():
     top_customers = get_top_customers(limit=5, as_of_date=as_of_date, branch_id=current_branch_id)
     top_vendors = get_top_vendors(limit=5, as_of_date=as_of_date, branch_id=current_branch_id)
 
-    # Get chart data
-    revenue_trend = get_monthly_revenue_trend(months=6, as_of_date=as_of_date, branch_id=current_branch_id)
-    expense_breakdown = get_expense_breakdown(as_of_date=as_of_date, branch_id=current_branch_id)
+    # Get chart data (reuse the account lists fetched above — FINDING-002)
+    revenue_trend = get_monthly_revenue_trend(months=6, as_of_date=as_of_date, branch_id=current_branch_id, revenue_accounts=revenue_accounts)
+    expense_breakdown = get_expense_breakdown(as_of_date=as_of_date, branch_id=current_branch_id, expense_accounts=expense_accounts)
 
     return render_template('dashboard/index.html',
                          stats=stats,

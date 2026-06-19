@@ -20,7 +20,20 @@ from app.sales_invoices.models import SalesInvoice
 from app.accounts_payable.models import AccountsPayable
 
 
-def get_revenue_stats(year, month, branch_id=None, as_of_date=None):
+def get_active_accounts(account_type):
+    """Return active accounts of a given type.
+
+    Exposed so the dashboard view can fetch the Revenue/Expense lists once and
+    pass them into the helpers below, instead of each helper re-querying them
+    (FINDING-002).
+    """
+    return Account.query.filter(
+        Account.account_type == account_type,
+        Account.is_active == True
+    ).all()
+
+
+def get_revenue_stats(year, month, branch_id=None, as_of_date=None, revenue_accounts=None):
     """
     Get revenue statistics for MTD and YTD from revenue accounts (4xxxx)
 
@@ -36,11 +49,15 @@ def get_revenue_stats(year, month, branch_id=None, as_of_date=None):
     if as_of_date is None:
         as_of_date = ph_now().date()
 
-    # Get all revenue accounts (by type — code prefixes vary per company COA)
-    revenue_accounts = Account.query.filter(
-        Account.account_type == 'Revenue',
-        Account.is_active == True
-    ).all()
+    # No branch in scope → return nothing rather than silently aggregating
+    # every branch's figures (defense-in-depth; FINDING-001).
+    if branch_id is None:
+        return {'mtd': 0.0, 'ytd': 0.0}
+
+    # Active revenue accounts (accept a pre-fetched list so the dashboard
+    # fetches it once and shares it across helpers — FINDING-002).
+    if revenue_accounts is None:
+        revenue_accounts = get_active_accounts('Revenue')
 
     revenue_account_ids = [acc.id for acc in revenue_accounts]
 
@@ -86,7 +103,7 @@ def get_revenue_stats(year, month, branch_id=None, as_of_date=None):
     }
 
 
-def get_expense_stats(year, month, branch_id=None, as_of_date=None):
+def get_expense_stats(year, month, branch_id=None, as_of_date=None, expense_accounts=None):
     """
     Get expense statistics for MTD and YTD from expense accounts (5xxxx)
 
@@ -102,11 +119,14 @@ def get_expense_stats(year, month, branch_id=None, as_of_date=None):
     if as_of_date is None:
         as_of_date = ph_now().date()
 
-    # Get all expense accounts (by type — code prefixes vary per company COA)
-    expense_accounts = Account.query.filter(
-        Account.account_type == 'Expense',
-        Account.is_active == True
-    ).all()
+    # No branch in scope → return nothing rather than silently aggregating
+    # every branch's figures (defense-in-depth; FINDING-001).
+    if branch_id is None:
+        return {'mtd': 0.0, 'ytd': 0.0}
+
+    # Active expense accounts (accept a pre-fetched list — FINDING-002).
+    if expense_accounts is None:
+        expense_accounts = get_active_accounts('Expense')
 
     expense_account_ids = [acc.id for acc in expense_accounts]
 
@@ -169,6 +189,11 @@ def get_receivables_stats(as_of_date=None, branch_id=None):
     if as_of_date is None:
         as_of_date = ph_now().date()
 
+    # No branch in scope → return nothing rather than aggregating all branches
+    # (defense-in-depth; FINDING-001).
+    if branch_id is None:
+        return {'total': 0.0, 'count': 0, 'overdue': 0.0}
+
     base_filter = [
         SalesInvoice.status.in_(['posted', 'partially_paid']),
         SalesInvoice.invoice_date <= as_of_date,
@@ -209,6 +234,11 @@ def get_payables_stats(as_of_date=None, branch_id=None):
     if as_of_date is None:
         as_of_date = ph_now().date()
 
+    # No branch in scope → return nothing rather than aggregating all branches
+    # (defense-in-depth; FINDING-001).
+    if branch_id is None:
+        return {'total': 0.0, 'count': 0, 'overdue': 0.0}
+
     base_filter = [
         AccountsPayable.status.in_(['posted', 'partially_paid']),
         AccountsPayable.ap_date <= as_of_date,
@@ -246,6 +276,11 @@ def get_top_customers(limit=5, as_of_date=None, branch_id=None):
     """
     if as_of_date is None:
         as_of_date = ph_now().date()
+
+    # No branch in scope → return nothing rather than ranking across all
+    # branches (defense-in-depth; FINDING-001).
+    if branch_id is None:
+        return []
 
     query = db.session.query(
         SalesInvoice.customer_name,
@@ -289,6 +324,11 @@ def get_top_vendors(limit=5, as_of_date=None, branch_id=None):
     if as_of_date is None:
         as_of_date = ph_now().date()
 
+    # No branch in scope → return nothing rather than ranking across all
+    # branches (defense-in-depth; FINDING-001).
+    if branch_id is None:
+        return []
+
     query = db.session.query(
         AccountsPayable.vendor_name,
         func.sum(AccountsPayable.total_amount).label('total_purchases'),
@@ -316,7 +356,7 @@ def get_top_vendors(limit=5, as_of_date=None, branch_id=None):
     return vendors
 
 
-def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None):
+def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None, revenue_accounts=None):
     """
     Get revenue trend for the last N months
 
@@ -331,10 +371,14 @@ def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None):
     if as_of_date is None:
         as_of_date = ph_now().date()
 
-    revenue_accounts = Account.query.filter(
-        Account.account_type == 'Revenue',
-        Account.is_active == True
-    ).all()
+    # No branch in scope → return nothing rather than trending all branches
+    # (defense-in-depth; FINDING-001).
+    if branch_id is None:
+        return {'labels': [], 'data': []}
+
+    # Active revenue accounts (accept a pre-fetched list — FINDING-002).
+    if revenue_accounts is None:
+        revenue_accounts = get_active_accounts('Revenue')
 
     revenue_account_ids = [acc.id for acc in revenue_accounts]
 
@@ -377,7 +421,7 @@ def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None):
     }
 
 
-def get_expense_breakdown(as_of_date=None, branch_id=None):
+def get_expense_breakdown(as_of_date=None, branch_id=None, expense_accounts=None):
     """
     Get expense breakdown by category for pie chart
 
@@ -391,10 +435,14 @@ def get_expense_breakdown(as_of_date=None, branch_id=None):
     if as_of_date is None:
         as_of_date = ph_now().date()
 
-    expense_accounts = Account.query.filter(
-        Account.account_type == 'Expense',
-        Account.is_active == True
-    ).all()
+    # No branch in scope → return nothing rather than aggregating all branches
+    # (defense-in-depth; FINDING-001).
+    if branch_id is None:
+        return {'labels': [], 'data': []}
+
+    # Active expense accounts (accept a pre-fetched list — FINDING-002).
+    if expense_accounts is None:
+        expense_accounts = get_active_accounts('Expense')
 
     if not expense_accounts:
         return {'labels': [], 'data': []}
