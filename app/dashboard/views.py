@@ -1,5 +1,5 @@
 import json
-from flask import Blueprint, render_template, redirect, url_for, jsonify, request
+from flask import Blueprint, render_template, redirect, url_for, jsonify, request, session
 from flask_login import login_required, current_user
 from datetime import datetime
 from app.utils import ph_now
@@ -25,8 +25,6 @@ def index():
 @login_required
 def home():
     """Main dashboard page with real business metrics"""
-    from flask import session, request
-
     # Get "as of" date from query parameter or default to today
     today = ph_now().date()
     as_of_date_str = request.args.get('as_of_date')

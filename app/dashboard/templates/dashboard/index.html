@@ -131,7 +131,13 @@
       <div class="card-title">Revenue Trend (6 Months)</div>
     </div>
     <div class="card-body">
+      {% if revenue_trend.data and revenue_trend.data | sum %}
       <canvas id="revenueTrendChart" class="dashboard-chart"></canvas>
+      {% else %}
+      <div class="empty-state">
+        <p>No revenue data available</p>
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -141,7 +147,13 @@
       <div class="card-title">Expense Breakdown (YTD)</div>
     </div>
     <div class="card-body">
+      {% if expense_breakdown.data and expense_breakdown.data | sum %}
       <canvas id="expenseBreakdownChart" class="dashboard-chart"></canvas>
+      {% else %}
+      <div class="empty-state">
+        <p>No expense data available</p>
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -224,17 +236,23 @@
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 
 <script>
-// Revenue Trend Chart
+// Chart colors: pull the single-hue line color from the design tokens; the
+// doughnut below uses an intentional categorical palette (no per-slice token).
+const chartBlue = (getComputedStyle(document.documentElement)
+                    .getPropertyValue('--blue') || '#3b82f6').trim();
+
+// Revenue Trend Chart (guarded — the canvas is absent when there is no data)
 const revenueTrendCtx = document.getElementById('revenueTrendChart');
-new Chart(revenueTrendCtx, {
+if (revenueTrendCtx) {
+  new Chart(revenueTrendCtx, {
     type: 'line',
     data: {
         labels: {{ revenue_trend.labels | tojson }},
         datasets: [{
             label: 'Revenue',
             data: {{ revenue_trend.data | tojson }},
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderColor: chartBlue,
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',  /* --blue @ 10% */
             borderWidth: 2,
             tension: 0.3,
             fill: true
@@ -266,11 +284,13 @@ new Chart(revenueTrendCtx, {
             }
         }
     }
-});
+  });
+}
 
-// Expense Breakdown Pie Chart
+// Expense Breakdown Pie Chart (guarded — canvas absent when there is no data)
 const expenseBreakdownCtx = document.getElementById('expenseBreakdownChart');
-new Chart(expenseBreakdownCtx, {
+if (expenseBreakdownCtx) {
+  new Chart(expenseBreakdownCtx, {
     type: 'doughnut',
     data: {
         labels: {{ expense_breakdown.labels | tojson }},
@@ -318,7 +338,8 @@ new Chart(expenseBreakdownCtx, {
             }
         }
     }
-});
+  });
+}
 </script>
 
 {% endblock %}
