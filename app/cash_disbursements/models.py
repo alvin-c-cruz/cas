@@ -180,6 +180,7 @@ class CDVExpenseLine(db.Model):
             'vat_amount': float(self.vat_amount),
             'account_id': self.account_id,
             'wt_id': self.wt_id,
+            'wt_code': self.withholding_tax.code if self.withholding_tax else None,
             'wt_rate': float(self.wt_rate) if self.wt_rate is not None else None,
             'wt_amount': float(self.wt_amount),
         }

@@ -577,13 +577,26 @@ function renderApEmpty() {
 // Build the WT <option>s for a new expense row, scoped to the vendor's codes.
 // When the vendor has none, show a clear notice (the select is disabled after
 // Choices init) instead of a confusing lone "None".
-function buildExpenseWhtOptions(selectedId) {
-    if (currentVendorWHTs.length === 0) {
+function expenseWhtOrphan(item) {
+    // A saved code that isn't among the vendor's current codes (e.g. a legacy CDV
+    // entered before WT was vendor-scoped). True when there IS such a value.
+    return item && item.wt_id && !currentVendorWHTs.some(w => w.id == item.wt_id);
+}
+
+function buildExpenseWhtOptions(item) {
+    const sel = item ? item.wt_id : null;
+    // Keep an orphaned saved code visible + selected so opening a line for edit
+    // never silently drops or mismatches a previously-recorded withholding.
+    const orphan = expenseWhtOrphan(item)
+        ? `<option value="${sel}" data-rate="${item.wt_rate || 0}" selected>${escHtml(item.wt_code || 'WT')} — not for this vendor</option>`
+        : '';
+    if (currentVendorWHTs.length === 0 && !orphan) {
         return '<option value="">No withholding tax</option>';
     }
-    return '<option value="">None</option>' +
+    return orphan +
+        '<option value="">None</option>' +
         currentVendorWHTs.map(w =>
-            `<option value="${w.id}" data-rate="${w.rate}" ${selectedId == w.id ? 'selected' : ''}>${escHtml(w.code)}</option>`
+            `<option value="${w.id}" data-rate="${w.rate}" ${sel == w.id ? 'selected' : ''}>${escHtml(w.code)}</option>`
         ).join('');
 }
 
@@ -638,7 +651,7 @@ function addExpenseLine(existingItem) {
         </td>
         <td>
             <select class="form-control wht-sel">
-                ${buildExpenseWhtOptions(item.wt_id)}
+                ${buildExpenseWhtOptions(item)}
             </select>
         </td>
         <td>
@@ -662,7 +675,9 @@ function addExpenseLine(existingItem) {
     const codeOpts = { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false };
     const vatC  = new Choices(vatSel,  codeOpts);
     const whtC  = new Choices(whtSel,  codeOpts);
-    if (currentVendorWHTs.length === 0) whtC.disable();   // no codes → locked notice
+    // Lock to the notice only when the vendor has no codes AND this line has no
+    // orphaned saved code to preserve.
+    if (currentVendorWHTs.length === 0 && !expenseWhtOrphan(item)) whtC.disable();
     const acctC = new Choices(acctSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
     vatSel.addEventListener('change',  () => updateExpense(id, 'vat_category', vatSel.value));
     whtSel.addEventListener('change',  () => updateExpenseWht(id, whtSel));
