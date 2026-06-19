@@ -615,8 +615,9 @@ function validateForm() {
         block('Due date cannot be earlier than the voucher date.'); return;
     }
 
-    const invoiceNo = (document.getElementById('vendor_invoice_number')?.value || '').trim();
-    if (!invoiceNo) { block('Enter the vendor invoice number before saving.'); return; }
+    // Vendor invoice # / date are intentionally NOT required to SAVE a draft —
+    // they may not be known yet. They are enforced at POST time (when VAT or
+    // withholding tax applies) by the post() view.
 
     const notesVal = (document.querySelector('textarea[name="notes"]')?.value || '').trim();
     if (!notesVal) { block('Enter notes / particulars before saving.'); return; }
