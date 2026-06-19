@@ -14,7 +14,7 @@ class CustomerForm(FlaskForm):
         Length(max=20, message='Customer code must be 20 characters or less.')
     ])
 
-    name = StringField('Name', validators=[
+    name = StringField('Registered Name', validators=[
         DataRequired(message='Customer name is required.'),
         Length(max=200, message='Customer name must be 200 characters or less.')
     ])
@@ -61,6 +61,6 @@ class CustomerForm(FlaskForm):
         Length(max=20, message='Postal code must be 20 characters or less.')
     ])
 
-    default_vat_category = SelectField('Default VAT Category', choices=[], validators=[Optional()])
+    default_vat_category = SelectField('Registration Type', choices=[], validators=[Optional()])
 
-    default_wt_code = SelectField('Default Withholding Tax', choices=[], validators=[Optional()])
+    default_wt_code = SelectField('Withholding Tax', choices=[], validators=[Optional()])

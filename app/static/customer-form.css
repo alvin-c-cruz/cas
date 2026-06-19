@@ -1,0 +1,75 @@
+/* Customer form-field styling. Mirrors vendor-form.css but customer-scoped under
+   .customer-form-scope so the two never collide. Design tokens only. */
+.customer-form-scope { display: flex; flex-direction: column; gap: 12px; }
+
+.customer-form-scope .form-row-3col {
+    display: grid;
+    grid-template-columns: 150px 1fr 1fr;
+    gap: 12px;
+}
+.customer-form-scope .form-row-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.customer-form-scope .form-group { margin-bottom: 0; }
+/* Field group sections (Customer Details / Tax / Contact / Payment).
+   Each section is a boxed card. */
+.customer-form-scope .customer-section {
+    margin-bottom: 16px;
+    padding: 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.customer-form-scope .customer-section:last-child { margin-bottom: 0; }
+.customer-form-scope .customer-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-2);
+    margin: 0 0 14px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+}
+.customer-form-scope .form-group label {
+    display: block;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 3px;
+}
+.customer-form-scope .section-label {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 9px;
+}
+.customer-form-scope .form-control-sm {
+    width: 100%;
+    padding: 6px 9px;
+    font-size: 16px;
+    line-height: 1.4;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    transition: border-color 0.15s ease-in-out;
+}
+.customer-form-scope .form-control-sm:focus {
+    outline: none;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+.customer-form-scope textarea.form-control-sm { resize: vertical; min-height: 60px; }
+
+.customer-form-scope .error-message { color: var(--alert-error-text); font-size: 15px; margin-top: 3px; }
+.customer-form-scope .field-locked {
+    background: var(--bg) !important; cursor: not-allowed !important;
+    color: var(--text-2); pointer-events: none;
+}
+
+@media (max-width: 768px) {
+    .customer-form-scope .form-row-3col,
+    .customer-form-scope .form-row-2col { grid-template-columns: 1fr; }
+}
