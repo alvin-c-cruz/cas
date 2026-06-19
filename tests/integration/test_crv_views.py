@@ -465,6 +465,46 @@ class TestCRVBranchScoping:
         assert resp.status_code == 404
 
 
+class TestCRVTOCTOU:
+    """Re-validation of over-application at POST time (TOCTOU guard)."""
+
+    def test_second_crv_post_rejected_when_invoice_already_paid(
+            self, client, db_session, admin_user, main_branch):
+        """Two drafts against the same invoice; first post succeeds, second is rejected."""
+        login(client)
+        ar, wt, cash, rev = setup_accounts(db_session)
+        customer = make_customer(db_session)
+        inv = make_posted_invoice(db_session, customer, ar, main_branch.id)  # balance=5000
+
+        # Draft CRV 1 — applies full balance
+        ar_lines = [{'invoice_id': inv.id, 'invoice_number': inv.invoice_number,
+                     'original_balance': 5000.0, 'amount_applied': 5000.0}]
+        create_draft_crv(client, customer, cash, ar_lines=ar_lines)
+        crv1 = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
+
+        # Draft CRV 2 — also applies full balance (TOCTOU: passes draft-time check)
+        create_draft_crv(client, customer, cash, ar_lines=ar_lines)
+        crv2 = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
+        assert crv2.id != crv1.id, 'Two distinct CRVs must have been created'
+
+        # Post CRV 1 — succeeds; invoice is now paid
+        client.post(f'/cash-receipts/{crv1.id}/post', follow_redirects=True)
+        db_session.refresh(inv)
+        assert inv.status == 'paid'
+        assert inv.balance == Decimal('0.00')
+
+        # Post CRV 2 — must be rejected (over-application)
+        resp = client.post(f'/cash-receipts/{crv2.id}/post', follow_redirects=True)
+        assert resp.status_code == 200
+        db_session.refresh(crv2)
+        db_session.refresh(inv)
+        assert crv2.status == 'draft', 'CRV 2 must stay draft after rejection'
+        assert inv.balance == Decimal('0.00'), 'Invoice balance must not go negative'
+        assert inv.amount_paid == Decimal('5000.00'), 'Invoice amount_paid must be unchanged'
+        # Error message must appear in the response
+        assert b'exceeds' in resp.data or b'Cannot post' in resp.data
+
+
 class TestCRVCustomerTin:
     """CRV create/edit must copy customer.tin onto customer_tin (FIX 5)."""
 

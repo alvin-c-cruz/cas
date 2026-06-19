@@ -805,7 +805,13 @@ def _apply_ap_payments(cdv):
     """Increment APV bill amount_paid and reduce balance on CDV post."""
     for ap_line in cdv.ap_lines:
         bill = ap_line.accounts_payable
-        bill.amount_paid = Decimal(str(bill.amount_paid)) + Decimal(str(ap_line.amount_applied))
+        amount_applied = Decimal(str(ap_line.amount_applied))
+        current_balance = Decimal(str(bill.balance))
+        if amount_applied > current_balance:
+            raise ValueError(
+                f'Cannot post: payment on {ap_line.ap_number} ({amount_applied}) '
+                f'exceeds its current open balance ({current_balance}).')
+        bill.amount_paid = Decimal(str(bill.amount_paid)) + amount_applied
         bill.balance = Decimal(str(bill.total_amount)) - bill.amount_paid
         if bill.balance <= 0:
             bill.status = 'paid'
@@ -858,6 +864,9 @@ def post(id):
             notes=f'Posted by {current_user.username}'
         )
         flash(f'CDV "{cdv.cdv_number}" posted successfully!', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
     except Exception as e:
         db.session.rollback()
         current_app.logger.error('Error posting CDV', exc_info=True)

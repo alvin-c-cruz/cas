@@ -412,7 +412,13 @@ def _apply_ar_collections(crv):
     """Increase invoice amount_paid and reduce balance on CRV post."""
     for ar_line in crv.ar_lines:
         inv = ar_line.sales_invoice
-        inv.amount_paid = Decimal(str(inv.amount_paid)) + Decimal(str(ar_line.amount_applied))
+        amount_applied = Decimal(str(ar_line.amount_applied))
+        current_balance = Decimal(str(inv.balance))
+        if amount_applied > current_balance:
+            raise ValueError(
+                f'Cannot post: collection on {ar_line.invoice_number} ({amount_applied}) '
+                f'exceeds its current open balance ({current_balance}).')
+        inv.amount_paid = Decimal(str(inv.amount_paid)) + amount_applied
         inv.balance = Decimal(str(inv.total_amount)) - inv.amount_paid
         if inv.balance <= 0:
             inv.status = 'paid'
@@ -859,6 +865,9 @@ def post(id):
             notes=f'Posted by {current_user.username}'
         )
         flash(f'CRV "{crv.crv_number}" posted successfully!', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
     except Exception as e:
         db.session.rollback()
         current_app.logger.error('Error posting CRV', exc_info=True)

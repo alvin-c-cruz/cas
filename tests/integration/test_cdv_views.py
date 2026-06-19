@@ -253,6 +253,45 @@ class TestCDVCancel:
         assert log is not None
 
 
+class TestCDVTOCTOU:
+    """Re-validation of over-payment at POST time (TOCTOU guard)."""
+
+    def test_second_cdv_post_rejected_when_bill_already_paid(
+            self, client, db_session, admin_user, main_branch):
+        """Two drafts against the same bill; first post succeeds, second is rejected."""
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        bill = make_posted_bill(db_session, vendor, ap, main_branch.id)  # balance=5000
+
+        # Draft CDV 1 — applies full balance
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
+                     'original_balance': 5000.0, 'amount_applied': 5000.0}]
+        create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+        cdv1 = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
+
+        # Draft CDV 2 — also applies full balance (TOCTOU: passes draft-time check)
+        create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+        cdv2 = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
+        assert cdv2.id != cdv1.id, 'Two distinct CDVs must have been created'
+
+        # Post CDV 1 — succeeds; bill is now paid
+        client.post(f'/cash-disbursements/{cdv1.id}/post', follow_redirects=True)
+        db_session.refresh(bill)
+        assert bill.status == 'paid'
+        assert bill.balance == Decimal('0.00')
+
+        # Post CDV 2 — must be rejected (over-payment)
+        resp = client.post(f'/cash-disbursements/{cdv2.id}/post', follow_redirects=True)
+        assert resp.status_code == 200
+        db_session.refresh(cdv2)
+        db_session.refresh(bill)
+        assert cdv2.status == 'draft', 'CDV 2 must stay draft after rejection'
+        assert bill.balance == Decimal('0.00'), 'Bill balance must not go negative'
+        assert bill.amount_paid == Decimal('5000.00'), 'Bill amount_paid must be unchanged'
+        assert b'exceeds' in resp.data or b'Cannot post' in resp.data
+
+
 class TestCDVLineValidation:
     """Server-side validation of client-submitted CDV lines (analyze-page F-001/005/006).
 
