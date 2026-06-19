@@ -298,3 +298,76 @@ class TestCRVPosting:
 
         with pytest.raises(ValueError, match="no Output Tax account"):
             _post_crv_je(crv, admin_user.id)
+
+    def test_vat_override_absorbed_into_output_vat_bucket(self, db_session, admin_user, main_branch):
+        """When vat_override is active and total_vat > sum(per-line VAT), the diff
+        is absorbed into the largest output-VAT bucket, not left as a residual."""
+        from app.cash_receipts.views import _output_vat_buckets
+
+        output_vat_acct = make_account(db_session, '20401', 'Output VAT',
+                                       account_type='Liability',
+                                       classification='Current Liability',
+                                       normal_balance='Credit')
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        revenue_acct = make_account(db_session, '4001', 'Sales Revenue',
+                                    account_type='Income', classification='Operating Revenue',
+                                    normal_balance='Credit')
+        customer = make_customer(db_session)
+        make_vat_category(db_session, 'VAT12', rate=12, output_vat_account=output_vat_acct)
+        self._setup_base_accounts(db_session)
+
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        revenue_lines=[{
+                            'description': 'Service',
+                            'amount': 1120,
+                            'line_total': 1120,
+                            'vat_category': 'VAT12',
+                            'vat_rate': 12,
+                            'vat_amount': Decimal('120.00'),
+                            'account_id': revenue_acct.id,
+                        }], status='draft')
+        # Override: user manually set total_vat to 130 (10 more than auto)
+        crv.total_vat = Decimal('130.00')
+        db_session.flush()
+
+        buckets = _output_vat_buckets(crv)
+        total_bucket_vat = sum(amt for _, amt in buckets)
+        assert total_bucket_vat == Decimal('130.00'), (
+            f'Expected bucket total 130.00, got {total_bucket_vat}')
+
+    def test_vat_override_negative_bucket_raises(self, db_session, admin_user, main_branch):
+        """If override drives a bucket negative, ValueError is raised."""
+        from app.cash_receipts.views import _output_vat_buckets
+
+        output_vat_acct = make_account(db_session, '20401', 'Output VAT',
+                                       account_type='Liability',
+                                       classification='Current Liability',
+                                       normal_balance='Credit')
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        revenue_acct = make_account(db_session, '4001', 'Sales Revenue',
+                                    account_type='Income', classification='Operating Revenue',
+                                    normal_balance='Credit')
+        customer = make_customer(db_session)
+        make_vat_category(db_session, 'VAT12', rate=12, output_vat_account=output_vat_acct)
+        self._setup_base_accounts(db_session)
+
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        revenue_lines=[{
+                            'description': 'Service',
+                            'amount': 1120,
+                            'line_total': 1120,
+                            'vat_category': 'VAT12',
+                            'vat_rate': 12,
+                            'vat_amount': Decimal('120.00'),
+                            'account_id': revenue_acct.id,
+                        }], status='draft')
+        # Override: user manually set total_vat to -5 (impossible — bucket is 120, diff = -5-120 = -125 → bucket goes negative)
+        crv.total_vat = Decimal('-5.00')
+        db_session.flush()
+
+        with pytest.raises(ValueError, match='too far below'):
+            _output_vat_buckets(crv)

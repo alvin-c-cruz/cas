@@ -121,7 +121,7 @@ def _get_all_accounts_for_select():
 def _output_vat_buckets(crv):
     """Group output VAT by VATCategory.output_vat_account. Raises if a VAT-bearing
     revenue line's category has no output account."""
-    if Decimal(str(crv.total_vat)) <= 0:
+    if Decimal(str(crv.total_vat)) == 0:
         return []
     categories = {c.code: c for c in VATCategory.query.all()}
     buckets = {}
@@ -140,7 +140,18 @@ def _output_vat_buckets(crv):
             buckets[acct.id] = [acct, Decimal('0.00')]
         buckets[acct.id][1] += vat_amt
     ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
-    return [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
+    total = sum((amt for _, amt in ordered), Decimal('0.00'))
+    override_diff = Decimal(str(crv.total_vat)) - total
+    if override_diff != Decimal('0.00') and ordered:
+        largest_id = max(ordered, key=lambda b: b[1])[0].id
+        ordered = [
+            (acct, amt + override_diff if acct.id == largest_id else amt)
+            for acct, amt in ordered
+        ]
+    ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
+    if any(amt < Decimal('0.00') for _, amt in ordered):
+        raise ValueError('VAT override is too far below computed VAT to allocate.')
+    return ordered
 
 
 def _post_crv_je(crv, user_id):
