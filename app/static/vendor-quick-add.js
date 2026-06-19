@@ -12,15 +12,20 @@ function initVendorQuickAdd(opts) {
     const errorBox = document.getElementById('vendorQuickAddError');
     const submitBtn = document.getElementById('vendorQuickAddSubmit');
     let vatChoices = null;
+    let wtChoices = null;
 
     function openModal() {
         errorBox.style.display = 'none';
         errorBox.textContent = '';
         overlay.style.display = 'flex';
-        // Init the modal's VAT search-select once; keep the instance so we can
-        // reset it after a successful save (form.reset() can't touch Choices' DOM).
+        // Init the modal's VAT + WT search-selects once; keep the instances so we
+        // can reset them after a successful save (form.reset() can't touch the
+        // Choices-managed DOM).
         if (!vatChoices && typeof initVendorVatSelect === 'function') {
             vatChoices = initVendorVatSelect(overlay);
+        }
+        if (!wtChoices && typeof initVendorWtSelect === 'function') {
+            wtChoices = initVendorWtSelect(overlay);
         }
     }
 
@@ -68,8 +73,9 @@ function initVendorQuickAdd(opts) {
                     closeModal();
                     form.reset();
                     // form.reset() restores native inputs, but the Choices-enhanced
-                    // VAT widget keeps its own DOM — clear it explicitly.
+                    // VAT/WT widgets keep their own DOM — clear them explicitly.
                     if (vatChoices) vatChoices.setChoiceByValue('');
+                    if (wtChoices) wtChoices.removeActiveItems();
                 } else {
                     const errs = body.errors || {};
                     const first = Object.values(errs)[0] || 'Could not create vendor. Please check the fields.';

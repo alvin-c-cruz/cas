@@ -5,7 +5,7 @@
 
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='vendor-form.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor-form.css') }}?v=3">
 
 <div class="vendor-form-container">
     <form method="POST" novalidate autocomplete="off" data-track-changes="{{ 'true' if vendor else 'false' }}">
@@ -46,10 +46,11 @@
 </style>
 
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
-<script src="{{ url_for('static', filename='vendor-form-widgets.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor-form-widgets.js') }}?v=2"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     initVendorVatSelect(document);
+    initVendorWtSelect(document);
 
     // Unsaved-change tracking for the dynamic WHT checkboxes (edit mode).
     const trackedForm = document.querySelector('form[data-track-changes="true"]');

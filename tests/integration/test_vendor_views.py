@@ -7,6 +7,7 @@ from app.vendors.models import Vendor
 from app.accounts_payable.models import AccountsPayable
 from app.audit.models import AuditLog
 from app.vat_categories.models import VATCategory
+from app.withholding_tax.models import WithholdingTax
 from app.utils import ph_now
 pytestmark = [pytest.mark.vendors, pytest.mark.integration]
 
@@ -331,5 +332,37 @@ class TestVendorFormSections:
         login(client)
         resp = client.get('/vendors/create')
         assert resp.status_code == 200
-        assert b'class="section-label">Withholding Tax<' in resp.data
+        assert b'>Withholding Tax</label>' in resp.data
         assert b'Default Withholding Tax' not in resp.data
+
+
+class TestVendorWithholdingTaxPicker:
+    """Withholding Tax is a searchable multi-select (Choices.js), not a flat
+    checkbox grid — it must scale to many WT codes. Backend still reads the
+    repeated `withholding_tax_ids` params, so submission is unchanged."""
+
+    def _make_wt(self, db_session, code='WC999', name='Test WT', rate='5.00'):
+        wt = WithholdingTax(code=code, name=name, rate=Decimal(rate), is_active=True)
+        db_session.add(wt)
+        db_session.commit()
+        return wt
+
+    def test_create_form_wt_is_searchable_multiselect(self, client, db_session, admin_user, main_branch):
+        login(client)
+        self._make_wt(db_session)
+        resp = client.get('/vendors/create')
+        assert resp.status_code == 200
+        assert b'vendor-wt-select" multiple' in resp.data
+        assert b'name="withholding_tax_ids"' in resp.data
+        # The old checkbox grid is gone.
+        assert b'class="form-checkbox"' not in resp.data
+
+    def test_edit_form_preselects_assigned_wt(self, client, db_session, admin_user, main_branch):
+        login(client)
+        wt = self._make_wt(db_session, code='WC777')
+        vendor = make_vendor(db_session, code='WTV01', name='WT Vendor')
+        vendor.withholding_taxes = [wt]
+        db_session.commit()
+        resp = client.get(f'/vendors/{vendor.id}/edit')
+        assert resp.status_code == 200
+        assert f'value="{wt.id}" selected>'.encode() in resp.data
