@@ -10,6 +10,7 @@
     "app/static/vendor-form.css":          ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
     "app/static/choices.min.js":           ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
     "app/static/choices.min.css":          ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
+    "app/templates/base.html":             ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
     "app/vendors/utils.py":                ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
     "app/vendors/models.py":               ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
     "app/vat_categories/models.py":        ["accounts_payable", "cash_disbursements", "sales_invoices"],
