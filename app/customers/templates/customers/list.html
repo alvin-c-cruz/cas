@@ -7,7 +7,10 @@
 
 <div class="content-header">
     <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Search by name, code, or TIN..." class="search-input">
+        <form method="get" action="{{ url_for('customers.list_customers') }}">
+            <input type="text" name="q" value="{{ search_query or '' }}"
+                   placeholder="Search by name, code, or TIN..." class="search-input">
+        </form>
     </div>
     <div class="page-actions" style="display: flex; gap: 8px;">
         <a href="{{ url_for('customers.export_excel') }}" class="btn btn-secondary">
@@ -75,7 +78,7 @@
                     </td>
                     <td>
                         {% if customer.is_active %}
-                            <span class="badge badge-success">Active</span>
+                            <span class="badge badge-active">Active</span>
                         {% else %}
                             <span class="badge badge-inactive">Inactive</span>
                         {% endif %}
@@ -120,9 +123,26 @@
 
         {% if not customers %}
         <div class="empty-state">
+            {% if search_query %}
+            <p>No customers match "{{ search_query }}".</p>
+            <p><a href="{{ url_for('customers.list_customers') }}" class="btn btn-secondary">Clear search</a></p>
+            {% else %}
             <p>No customers found.</p>
             {% if current_user.role in ['accountant', 'admin'] %}
             <p><a href="{{ url_for('customers.create') }}" class="btn btn-primary">Create your first customer</a></p>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if pagination and pagination.pages > 1 %}
+        <div class="customer-pagination">
+            {% if pagination.has_prev %}
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('customers.list_customers', page=pagination.prev_num, q=search_query) }}">← Prev</a>
+            {% endif %}
+            <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+            {% if pagination.has_next %}
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('customers.list_customers', page=pagination.next_num, q=search_query) }}">Next →</a>
             {% endif %}
         </div>
         {% endif %}
@@ -156,48 +176,6 @@
     outline: none;
     border-color: var(--blue);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.badge-vat {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #bbf7d0;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    display: inline-block;
-}
-
-.badge-wt {
-    background: #dbeafe;
-    color: #1e40af;
-    border: 1px solid #bfdbfe;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    display: inline-block;
-}
-
-.badge-success {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #bbf7d0;
-}
-
-.badge-inactive {
-    background: #f3f4f6;
-    color: #6b7280;
-    border: 1px solid #e5e7eb;
-}
-
-.badge {
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    display: inline-block;
 }
 
 .btn-danger {
@@ -236,28 +214,14 @@
     text-decoration: underline;
 }
 
-.badge-bir-warn {
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fde68a;
-    padding: 2px 7px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    display: inline-block;
-    cursor: default;
-    letter-spacing: 0.01em;
+.customer-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--text-2);
 }
 </style>
-
-<script>
-document.getElementById('searchInput')?.addEventListener('input', function(e) {
-    const searchTerm = e.target.value.toLowerCase();
-    const table = document.getElementById('customersTable');
-    const rows = table.querySelectorAll('tbody tr');
-    rows.forEach(row => {
-        row.style.display = row.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
-    });
-});
-</script>
 {% endblock %}

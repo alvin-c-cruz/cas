@@ -50,3 +50,134 @@ def test_customer_list_delete_modal_present(client, db_session, accountant_user,
     # base.html JS contains 'data-confirm' as a string literal in script; the real
     # check is that no HTML element uses the attribute assignment form data-confirm="
     assert b'data-confirm="' not in response.data
+
+
+def _login_accountant(client, accountant_user, main_branch):
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    client.post('/login', data={'username': accountant_user.username,
+                                'password': 'accountant123'}, follow_redirects=True)
+
+
+def test_customer_delete_blocked_when_referenced_by_sales_invoice(
+        client, db_session, accountant_user, main_branch):
+    """A customer linked to a sales invoice cannot be deleted (would orphan the SI)."""
+    from datetime import date
+    from app.customers.models import Customer
+    from app.sales_invoices.models import SalesInvoice
+    from app.audit.models import AuditLog
+
+    cust = Customer(code='C001', name='Linked Corp', payment_terms='Net 30', is_active=True)
+    db_session.add(cust)
+    db_session.commit()
+    si = SalesInvoice(invoice_number='SI-2026-06-0001', invoice_date=date(2026, 6, 1),
+                      due_date=date(2026, 7, 1), customer_id=cust.id,
+                      customer_name='Linked Corp', branch_id=main_branch.id)
+    db_session.add(si)
+    db_session.commit()
+
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.post(f'/customers/{cust.id}/delete', follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert Customer.query.get(cust.id) is not None, 'customer must not be deleted'
+    assert AuditLog.query.filter_by(module='customer', action='delete').count() == 0
+    assert 'Cannot delete' in resp.data.decode()
+
+
+def test_customer_delete_blocked_when_referenced_by_cash_receipt(
+        client, db_session, accountant_user, main_branch, cash_account):
+    """A customer linked to a cash receipt cannot be deleted (would orphan the CRV)."""
+    from datetime import date
+    from app.customers.models import Customer
+    from app.cash_receipts.models import CashReceiptVoucher
+    from app.audit.models import AuditLog
+
+    cust = Customer(code='C002', name='Payer Corp', payment_terms='Net 30', is_active=True)
+    db_session.add(cust)
+    db_session.commit()
+    crv = CashReceiptVoucher(crv_number='CR-2026-06-0001', crv_date=date(2026, 6, 1),
+                             customer_id=cust.id, customer_name='Payer Corp',
+                             branch_id=main_branch.id, cash_account_id=cash_account.id)
+    db_session.add(crv)
+    db_session.commit()
+
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.post(f'/customers/{cust.id}/delete', follow_redirects=True)
+
+    assert Customer.query.get(cust.id) is not None, 'customer must not be deleted'
+    assert AuditLog.query.filter_by(module='customer', action='delete').count() == 0
+    assert 'Cannot delete' in resp.data.decode()
+
+
+def test_customer_create_records_acting_user(
+        client, db_session, accountant_user, main_branch):
+    """Creating a customer stamps created_by_id / updated_by_id with the actor."""
+    from app.customers.models import Customer
+
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.post('/customers/create', data={
+        'code': 'C001', 'name': 'Authored Corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'default_vat_category': '', 'default_wt_code': '',
+    }, follow_redirects=True)
+
+    assert resp.status_code == 200
+    cust = Customer.query.filter_by(code='C001').first()
+    assert cust is not None
+    assert cust.created_by_id == accountant_user.id
+    assert cust.updated_by_id == accountant_user.id
+
+
+def test_customer_list_search_filters_server_side(
+        client, db_session, accountant_user, main_branch):
+    """?q= filters the rows returned by the server, not just client-side JS."""
+    from app.customers.models import Customer
+    db_session.add(Customer(code='C001', name='Alpha Trading',
+                            payment_terms='Net 30', is_active=True))
+    db_session.add(Customer(code='C002', name='Beta Supplies',
+                            payment_terms='Net 30', is_active=True))
+    db_session.commit()
+
+    _login_accountant(client, accountant_user, main_branch)
+    body = client.get('/customers?q=Alpha').data.decode()
+
+    assert 'Alpha Trading' in body
+    assert 'Beta Supplies' not in body
+
+
+def test_customer_list_paginates_at_25_per_page(
+        client, db_session, accountant_user, main_branch):
+    """The list caps at 25 rows per page; page 2 shows the overflow."""
+    from app.customers.models import Customer
+    for i in range(30):
+        db_session.add(Customer(code=f'C{i:03d}', name=f'Cust {i:03d}',
+                                payment_terms='Net 30', is_active=True))
+    db_session.commit()
+
+    _login_accountant(client, accountant_user, main_branch)
+    page1 = client.get('/customers').data.decode()
+    assert 'Cust 000' in page1
+    assert 'Cust 025' not in page1
+
+    page2 = client.get('/customers?page=2').data.decode()
+    assert 'Cust 025' in page2
+
+
+def test_customer_delete_succeeds_without_dependents(
+        client, db_session, accountant_user, main_branch):
+    """A customer with no transactions is deleted and the delete is audit-logged."""
+    from app.customers.models import Customer
+    from app.audit.models import AuditLog
+
+    cust = Customer(code='C003', name='Free Corp', payment_terms='Net 30', is_active=True)
+    db_session.add(cust)
+    db_session.commit()
+    cust_id = cust.id
+
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.post(f'/customers/{cust_id}/delete', follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert Customer.query.get(cust_id) is None
+    assert AuditLog.query.filter_by(
+        module='customer', action='delete', record_id=cust_id).count() == 1

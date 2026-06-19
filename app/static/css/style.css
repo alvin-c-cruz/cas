@@ -472,6 +472,16 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .badge-revenue  { background: #dcfce7; color: #15803d; }
 .badge-expense  { background: #fef3c7; color: #92400e; }
 
+/* Master-data list badges (customers / vendors). badge-vat/badge-wt ride on the
+   base .badge for sizing; badge-bir-warn is used standalone so it is self-contained. */
+.badge-vat       { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.badge-wt        { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+.badge-bir-warn  {
+  background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+  padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  display: inline-block; cursor: default; letter-spacing: 0.01em;
+}
+
 /* ─── WT checkbox list ──────────────────────────────────────── */
 .wt-check-list {
   display: grid; grid-template-columns: 1fr 1fr;

@@ -12,7 +12,6 @@ from app.customers.forms import CustomerForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils import ph_now
-from datetime import datetime
 
 customers_bp = Blueprint('customers', __name__, template_folder='templates')
 
@@ -33,8 +32,21 @@ def accountant_or_admin_required(f):
 @customers_bp.route('/customers')
 @login_required
 def list_customers():
-    customers = Customer.query.order_by(Customer.code).all()
-    return render_template('customers/list.html', customers=customers)
+    """List customers with optional server-side search and pagination."""
+    q = (request.args.get('q') or '').strip()
+    page = request.args.get('page', 1, type=int)
+    query = Customer.query
+    if q:
+        like = f'%{q}%'
+        query = query.filter(db.or_(
+            Customer.code.ilike(like),
+            Customer.name.ilike(like),
+            Customer.tin.ilike(like),
+        ))
+    pagination = query.order_by(Customer.code).paginate(
+        page=page, per_page=25, error_out=False)
+    return render_template('customers/list.html', customers=pagination.items,
+                           pagination=pagination, search_query=q)
 
 
 def generate_next_customer_code():
@@ -94,7 +106,9 @@ def create():
                 postal_code=form.postal_code.data,
                 default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
                 default_wt_code=form.default_wt_code.data if form.default_wt_code.data else None,
-                is_active=bool(int(form.is_active.data)) if form.is_active.data else True
+                is_active=bool(int(form.is_active.data)) if form.is_active.data else True,
+                created_by_id=current_user.id,
+                updated_by_id=current_user.id
             )
             db.session.add(customer)
             db.session.commit()
@@ -124,12 +138,7 @@ def create():
         form.is_active.data = '1'
         form.payment_terms.data = 'Net 30'
 
-    # Get VAT categories and withholding taxes for dynamic dropdowns
-    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
-    withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
-
-    return render_template('customers/form.html', form=form, customer=None,
-                         vat_categories=vat_categories, withholding_taxes=withholding_taxes)
+    return render_template('customers/form.html', form=form, customer=None)
 
 
 @customers_bp.route('/customers/<int:id>/edit', methods=['GET', 'POST'])
@@ -163,6 +172,7 @@ def edit(id):
             customer.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
             customer.default_wt_code = form.default_wt_code.data if form.default_wt_code.data else None
             customer.is_active = bool(int(form.is_active.data))
+            customer.updated_by_id = current_user.id
             db.session.commit()
 
             # Audit log
@@ -199,12 +209,7 @@ def edit(id):
         form.default_wt_code.data = customer.default_wt_code
         form.is_active.data = '1' if customer.is_active else '0'
 
-    # Get VAT categories and withholding taxes for dynamic dropdowns
-    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
-    withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
-
-    return render_template('customers/form.html', form=form, customer=customer,
-                         vat_categories=vat_categories, withholding_taxes=withholding_taxes)
+    return render_template('customers/form.html', form=form, customer=customer)
 
 
 @customers_bp.route('/customers/<int:id>/delete', methods=['POST'])
@@ -213,6 +218,25 @@ def edit(id):
 def delete(id):
     """Delete customer"""
     customer = Customer.query.get_or_404(id)
+
+    # Block deletion when the customer is still referenced by transactions.
+    # SQLite does not enforce FK constraints by default, so the only thing
+    # standing between a delete and an orphaned/ rejected row is this check
+    # plus the child's NOT NULL column — make the guard explicit and the
+    # message clear rather than relying on an IntegrityError fallback.
+    from app.sales_invoices.models import SalesInvoice
+    from app.cash_receipts.models import CashReceiptVoucher
+    si_count = SalesInvoice.query.filter_by(customer_id=customer.id).count()
+    cr_count = CashReceiptVoucher.query.filter_by(customer_id=customer.id).count()
+    if si_count or cr_count:
+        parts = []
+        if si_count:
+            parts.append(f'{si_count} sales invoice(s)')
+        if cr_count:
+            parts.append(f'{cr_count} cash receipt(s)')
+        flash(f'Cannot delete customer "{customer.name}": it is referenced by '
+              f'{" and ".join(parts)}. Set it inactive instead.', 'error')
+        return redirect(url_for('customers.list_customers'))
 
     try:
         # Capture values before delete
