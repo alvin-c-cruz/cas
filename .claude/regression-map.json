@@ -1,0 +1,33 @@
+{
+  "_comment": "Blast-radius map for the CAS regression guard. Maps high-blast-radius SHARED files to the 'done' modules that silently inherit their changes. /guard and the pre-push hook read this: for each changed file, union its dependents, then run those modules' pytest markers + e2e smoke. Maintained by the retro-agent and humans. See .claude/skills/guard/SKILL.md.",
+  "version": 1,
+  "blast_radius": {
+    "app/static/search-select.js":        ["accounts_payable", "cash_disbursements"],
+    "app/static/vendor-quick-add.js":      ["accounts_payable", "cash_disbursements"],
+    "app/static/vendor-form-widgets.js":   ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/static/transaction-utils.js":     ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/static/transactions.css":         ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/static/vendor-form.css":          ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
+    "app/static/choices.min.js":           ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
+    "app/static/choices.min.css":          ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
+    "app/vendors/utils.py":                ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
+    "app/vendors/models.py":               ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
+    "app/vat_categories/models.py":        ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/withholding_tax/models.py":       ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/journal_entries/utils.py":        ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/accounts/models.py":              ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/audit/utils.py":                  ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
+    "app/utils/__init__.py":               ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
+    "app/periods/utils.py":                ["accounts_payable", "cash_disbursements", "sales_invoices"]
+  },
+  "modules": {
+    "accounts_payable":  { "marker": "accounts_payable", "e2e": "tests/e2e/test_ap_smoke.py" },
+    "cash_disbursements": { "marker": "cash_disbursements", "e2e": null },
+    "sales_invoices":    { "marker": "sales_invoices", "e2e": null },
+    "vendors":           { "marker": "vendors", "e2e": null }
+  },
+  "notes": [
+    "Only the JS/browser layer is e2e-covered (pytest renders HTML but never executes JS). accounts_payable has the first smoke suite; mirror it to cash_disbursements/sales_invoices as they get verified, then set their 'e2e' path here.",
+    "When you ADD a new shared file or a new module dependency, add it here in the SAME commit — a stale map is a silent coverage hole."
+  ]
+}

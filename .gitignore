@@ -60,12 +60,12 @@ logs/
 .coverage
 htmlcov/
 
-# Playwright MCP artifacts (snapshots, console/network logs)
-.playwright-mcp/
+# Claude Code files are intentionally VERSIONED (not ignored):
+# .claude/ (skills, agents, hooks, settings, regression map), .superpowers/,
+# and .analyze-page/ are tracked so a fresh clone gets them.
 
-# Claude Code project files (memory, settings, session artifacts)
-.claude/
-!.claude/settings.local.json
+# Playwright MCP artifacts (transient snapshots, console/network logs, screenshots)
+.playwright-mcp/
 
 # Session screenshots and test artifacts in project root
 /*.png
@@ -102,6 +102,3 @@ pytest.ini
 /verify_*.py
 /generate_*.py
 nul
-.superpowers/
-
-.analyze-page/

@@ -1,0 +1,112 @@
+{
+  "url_path": "/login",
+  "page_type": "auth",
+  "runs": [
+    {
+      "run_id": "2026-06-13T17:31:57",
+      "findings": [
+        {
+          "fingerprint": "QUERIES|MEDIUM|app/users/views.py|elif current_user.branches: always true in select_branch",
+          "dimension": "QUERIES",
+          "severity": "MEDIUM",
+          "description": "elif current_user.branches: always True in select_branch — dead else branch",
+          "file": "app/users/views.py",
+          "line": 169
+        },
+        {
+          "fingerprint": "CODE QUALITY|MEDIUM|app/users/views.py|commented-out try/except in delete_user() leaves delete",
+          "dimension": "CODE QUALITY",
+          "severity": "MEDIUM",
+          "description": "Commented-out try/except in delete_user() leaves delete without error handling",
+          "file": "app/users/views.py",
+          "line": 586
+        },
+        {
+          "fingerprint": "CODE QUALITY|MEDIUM|app/users/views.py|edit_user() is ~175 lines handling 5 separate audit",
+          "dimension": "CODE QUALITY",
+          "severity": "MEDIUM",
+          "description": "edit_user() is ~175 lines handling 5 separate audit concerns",
+          "file": "app/users/views.py",
+          "line": 386
+        },
+        {
+          "fingerprint": "ATTACKER PERSPECTIVE|HIGH|app/users/views.py|lockout warning messages only shown for existing users",
+          "dimension": "ATTACKER PERSPECTIVE",
+          "severity": "HIGH",
+          "description": "Lockout warning messages only shown for existing users — username enumeration after 3 attempts",
+          "file": "app/users/views.py",
+          "line": 72
+        },
+        {
+          "fingerprint": "ATTACKER PERSPECTIVE|HIGH|app/users/views.py|no username case normalization lockout counter bypass",
+          "dimension": "ATTACKER PERSPECTIVE",
+          "severity": "HIGH",
+          "description": "No username case normalization — lockout counter bypass via Admin/admin variants",
+          "file": "app/users/views.py",
+          "line": 146
+        },
+        {
+          "fingerprint": "ATTACKER PERSPECTIVE|MEDIUM|app/users/views.py|timing leak bcrypt short-circuits when user is",
+          "dimension": "ATTACKER PERSPECTIVE",
+          "severity": "MEDIUM",
+          "description": "Timing leak — bcrypt short-circuits when user is None",
+          "file": "app/users/views.py",
+          "line": 58
+        }
+      ]
+    },
+    {
+      "run_id": "2026-06-19T17:10:00",
+      "findings": [
+        {
+          "fingerprint": "ATTACKER PERSPECTIVE|HIGH|app/users/views.py|lockout warning messages only shown for existing users",
+          "dimension": "ATTACKER PERSPECTIVE",
+          "severity": "HIGH",
+          "description": "Username enumeration: lockout/warning/inactive-state messages differ for real vs non-existent users",
+          "file": "app/users/views.py",
+          "line": 72
+        },
+        {
+          "fingerprint": "ATTACKER PERSPECTIVE|HIGH|app/users/views.py|no username case normalization lockout counter bypass",
+          "dimension": "ATTACKER PERSPECTIVE",
+          "severity": "HIGH",
+          "description": "No username case normalization on lookup — Admin/admin treated as distinct accounts",
+          "file": "app/users/views.py",
+          "line": 149
+        },
+        {
+          "fingerprint": "ATTACKER PERSPECTIVE|MEDIUM|app/users/views.py|timing leak bcrypt short-circuits when user is",
+          "dimension": "ATTACKER PERSPECTIVE",
+          "severity": "MEDIUM",
+          "description": "Timing leak — check_password short-circuited (never called) when user is None",
+          "file": "app/users/views.py",
+          "line": 58
+        },
+        {
+          "fingerprint": "SECURITY|MEDIUM|app/__init__.py|csp allows unsafe-inline and unsafe-eval for script-src",
+          "dimension": "SECURITY",
+          "severity": "MEDIUM",
+          "description": "CSP allows 'unsafe-inline' and 'unsafe-eval' on script-src — weakens XSS protection app-wide",
+          "file": "app/__init__.py",
+          "line": 410
+        },
+        {
+          "fingerprint": "QUERIES|LOW|app/users/views.py|redundant active-branch count query in single-branch",
+          "dimension": "QUERIES",
+          "severity": "LOW",
+          "description": "Redundant active-branch COUNT query in single-branch post-login path",
+          "file": "app/users/views.py",
+          "line": 121
+        },
+        {
+          "fingerprint": "ATTACKER PERSPECTIVE|LOW|app/__init__.py|global error handlers disabled re-enable before production",
+          "dimension": "ATTACKER PERSPECTIVE",
+          "severity": "LOW",
+          "description": "Global error handlers disabled (dev) — stack-trace disclosure risk; re-enable before production",
+          "file": "app/__init__.py",
+          "line": null
+        }
+      ]
+    }
+  ]
+}

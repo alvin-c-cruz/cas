@@ -1,0 +1,59 @@
+{
+  "url_path": "/select-branch",
+  "page_type": "auth",
+  "runs": [
+    {
+      "run_id": "2026-06-13T17:45:00",
+      "findings": [
+        {
+          "fingerprint": "UX|MEDIUM|app/users/views.py|multi-branch users lose intended destination post_login_redirect",
+          "dimension": "UX",
+          "severity": "MEDIUM",
+          "description": "Multi-branch users lose intended destination — _post_login_redirect doesn't pass ?next= to select-branch",
+          "file": "app/users/views.py",
+          "line": 133
+        },
+        {
+          "fingerprint": "CODE QUALITY|MEDIUM|app/users/views.py|elif current_user.branches: always true lazy dynamic",
+          "dimension": "CODE QUALITY",
+          "severity": "MEDIUM",
+          "description": "elif current_user.branches: always True (lazy='dynamic' BaseQuery always truthy); else: accessible_branches = [] is dead code",
+          "file": "app/users/views.py",
+          "line": 168
+        },
+        {
+          "fingerprint": "CODE QUALITY|MEDIUM|app/users/templates/users/select_branch.html|200 lines inline style hardcoded hex colors",
+          "dimension": "CODE QUALITY",
+          "severity": "MEDIUM",
+          "description": "200+ lines of inline <style> with hardcoded hex values violates design tokens convention; login.html uses external CSS correctly",
+          "file": "app/users/templates/users/select_branch.html",
+          "line": 11
+        },
+        {
+          "fingerprint": "QUERY|MEDIUM|app/users/views.py|branch query.get redundant second query deprecated sqlalchemy",
+          "dimension": "QUERY",
+          "severity": "MEDIUM",
+          "description": "Branch.query.get(branch_id) is a redundant second query — branch already validated in accessible_branches; also uses deprecated Query.get() API",
+          "file": "app/users/views.py",
+          "line": 200
+        },
+        {
+          "fingerprint": "UI|LOW|app/users/templates/users/select_branch.html|continue button starts disabled javascript required",
+          "dimension": "UI",
+          "severity": "LOW",
+          "description": "Continue button starts disabled; form requires JavaScript to function — no <noscript> fallback",
+          "file": "app/users/templates/users/select_branch.html",
+          "line": 266
+        },
+        {
+          "fingerprint": "INTEGRITY|LOW|app/users/views.py|forced logout no accessible branches no audit log",
+          "dimension": "INTEGRITY",
+          "severity": "LOW",
+          "description": "Forced logout on no-accessible-branches case has no audit log entry",
+          "file": "app/users/views.py",
+          "line": 184
+        }
+      ]
+    }
+  ]
+}

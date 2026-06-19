@@ -1,0 +1,306 @@
+{
+  "url_path": "/dashboard",
+  "page_type": "report",
+  "runs": [
+    {
+      "run_id": "2026-06-13T18:10:00",
+      "findings": [
+        {
+          "fingerprint": "UI|MEDIUM|app/templates/base.html|soon soon text visible in topbar collapsed dropdown",
+          "dimension": "UI",
+          "severity": "MEDIUM",
+          "description": "\"soon soon\" text visible in topbar next to + New button — collapsed dropdown labels leaking as plain text",
+          "file": "app/templates/base.html",
+          "line": null
+        },
+        {
+          "fingerprint": "UX|MEDIUM|app/templates/base.html|three nav links route to under-development without visual",
+          "dimension": "UX",
+          "severity": "MEDIUM",
+          "description": "Three nav links (General Ledger, Cash Flow, Annual ITR) route to /under-development with no visual distinction from functional links",
+          "file": "app/templates/base.html",
+          "line": null
+        },
+        {
+          "fingerprint": "QUERY|HIGH|app/dashboard/dashboard_data.py|n+1 query in get_expense_breakdown one db query per account",
+          "dimension": "QUERY",
+          "severity": "HIGH",
+          "description": "N+1 in get_expense_breakdown(): one DB query per expense account in a loop — 50+ queries per dashboard load",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 416
+        },
+        {
+          "fingerprint": "QUERY|HIGH|app/dashboard/dashboard_data.py|python-level aggregation in get_receivables_stats loads all",
+          "dimension": "QUERY",
+          "severity": "HIGH",
+          "description": "Python-level aggregation in get_receivables_stats() and get_payables_stats() — loads all open documents into memory",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 181
+        },
+        {
+          "fingerprint": "QUERY|MEDIUM|app/dashboard/dashboard_data.py|monthly trend uses timedelta days 30 approximation wrong month",
+          "dimension": "QUERY",
+          "severity": "MEDIUM",
+          "description": "get_monthly_revenue_trend uses timedelta(days=i*30) approximation — can produce wrong month labels near year boundaries",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 353
+        },
+        {
+          "fingerprint": "DATA INTEGRITY|HIGH|app/dashboard/views.py|datetime.now() instead of ph_now() wrong date after midnight",
+          "dimension": "DATA INTEGRITY",
+          "severity": "HIGH",
+          "description": "datetime.now() used for today's date — wrong on UTC server between 00:00-08:00 PHT; use ph_now().date()",
+          "file": "app/dashboard/views.py",
+          "line": 29
+        },
+        {
+          "fingerprint": "CODE QUALITY|MEDIUM|app/dashboard/templates/dashboard/index.html|inline style block hardcoded hex values design tokens violation",
+          "dimension": "CODE QUALITY",
+          "severity": "MEDIUM",
+          "description": "Inline <style> block and style= attributes with hardcoded hex values violate design tokens convention",
+          "file": "app/dashboard/templates/dashboard/index.html",
+          "line": 9
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/dashboard/views.py|import json inside function bodies three times pep8",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "import json appears inside function bodies 3 times — PEP 8 requires module-level imports",
+          "file": "app/dashboard/views.py",
+          "line": 100
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/dashboard/views.py|action_items hardcoded empty list passed to template never rendered",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "action_items = [] hardcoded placeholder passed to template but index.html never renders it — dead variable",
+          "file": "app/dashboard/views.py",
+          "line": 83
+        }
+      ]
+    },
+    {
+      "run_id": "2026-06-14T00:00:00",
+      "findings": [
+        {
+          "fingerprint": "UI|MEDIUM|app/dashboard/templates/dashboard/index.html|nested card-header inside card-header in ap card",
+          "dimension": "UI",
+          "severity": "MEDIUM",
+          "description": "Nested <div class=\"card-header\"> inside <div class=\"card-header\"> in the Accounts Payable card — inconsistent with AR card structure",
+          "file": "app/dashboard/templates/dashboard/index.html",
+          "line": 100
+        },
+        {
+          "fingerprint": "UI|MEDIUM|app/dashboard/templates/dashboard/index.html|charts revenue trend expense breakdown have no no",
+          "dimension": "UI",
+          "severity": "MEDIUM",
+          "description": "No \"no data\" state for Revenue Trend and Expense Breakdown charts — blank canvas renders when data arrays are empty",
+          "file": "app/dashboard/templates/dashboard/index.html",
+          "line": 130
+        },
+        {
+          "fingerprint": "UX|MEDIUM|app/templates/base.html|customers customers url doubles path segment likely blueprint",
+          "dimension": "UX",
+          "severity": "MEDIUM",
+          "description": "\"/customers/customers\" URL in sidebar Customers nav link doubles the path segment — likely blueprint prefix + route naming collision",
+          "file": "app/templates/base.html",
+          "line": null
+        },
+        {
+          "fingerprint": "UX|LOW|n/a|responsive check could not be completed browser tab was",
+          "dimension": "UX",
+          "severity": "LOW",
+          "description": "Responsive check (768px) could not be completed — browser tab lost during resize",
+          "file": null,
+          "line": null
+        },
+        {
+          "fingerprint": "SECURITY|MEDIUM|app/dashboard/views.py|no branch guard when current_branch_id is none dashboard",
+          "dimension": "SECURITY",
+          "severity": "MEDIUM",
+          "description": "No branch guard when current_branch_id is None — all dashboard queries run without branch filter, exposing cross-branch aggregate financials",
+          "file": "app/dashboard/views.py",
+          "line": 47
+        },
+        {
+          "fingerprint": "QUERY|HIGH|app/dashboard/dashboard_data.py|get_monthly_revenue_trend fires n separate queries in a",
+          "dimension": "QUERY",
+          "severity": "HIGH",
+          "description": "get_monthly_revenue_trend() fires N separate DB queries in a loop (default N=6) instead of one GROUP BY year/month query",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 348
+        },
+        {
+          "fingerprint": "QUERY|MEDIUM|app/dashboard/dashboard_data.py|revenue account ids fetched twice per request get_revenue_stats",
+          "dimension": "QUERY",
+          "severity": "MEDIUM",
+          "description": "Revenue account IDs fetched twice per request (get_revenue_stats + get_monthly_revenue_trend); expense account IDs also fetched twice",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 39
+        },
+        {
+          "fingerprint": "CODE QUALITY|MEDIUM|app/dashboard/templates/dashboard/index.html|inline style hardcoded hex color values 667eea",
+          "dimension": "CODE QUALITY",
+          "severity": "MEDIUM",
+          "description": "Inline style= and Chart.js backgroundColor use hardcoded hex values (#667eea, #3b82f6, etc.) — violates design-tokens convention",
+          "file": "app/dashboard/templates/dashboard/index.html",
+          "line": 9
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/dashboard/views.py|from flask import session request inside home function body",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "from flask import session, request inside home() function body — should be module-level imports",
+          "file": "app/dashboard/views.py",
+          "line": 28
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/dashboard/dashboard_data.py|account_code_map dict built in get_expense_breakdown but",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "account_code_map dict built in get_expense_breakdown() but never referenced — dead code",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 285
+        },
+        {
+          "fingerprint": "DATA INTEGRITY|LOW|app/dashboard/dashboard_data.py|date today utc used as default fallback in all dashboard_data",
+          "dimension": "DATA INTEGRITY",
+          "severity": "LOW",
+          "description": "date.today() (UTC server-local) used as default fallback in all dashboard_data.py functions — should be ph_now().date(); mitigated since view always passes explicit as_of_date",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 36
+        }
+      ]
+    },
+    {
+      "run_id": "2026-06-18T05:40:00",
+      "findings": [
+        {
+          "fingerprint": "TESTS|HIGH|app/templates/base.html|topbar new button id=topbarnewbtn removed three dashboard role tests fail",
+          "dimension": "TESTS",
+          "severity": "HIGH",
+          "description": "topbar New button (id=\"topbarNewBtn\") removed from base.html — 3 TestDashboardNewButton tests fail; dead .topbar-new-btn CSS left behind",
+          "file": "app/templates/base.html",
+          "line": 870
+        },
+        {
+          "fingerprint": "QUERY|HIGH|app/dashboard/dashboard_data.py|get_monthly_revenue_trend fires n separate queries in a",
+          "dimension": "QUERY",
+          "severity": "HIGH",
+          "description": "get_monthly_revenue_trend() fires N separate DB queries in a loop (default N=6) instead of one GROUP BY year/month query",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 346
+        },
+        {
+          "fingerprint": "UI|MEDIUM|app/dashboard/templates/dashboard/index.html|charts revenue trend expense breakdown have no no",
+          "dimension": "UI",
+          "severity": "MEDIUM",
+          "description": "No \"no data\" state for Revenue Trend and Expense Breakdown charts — blank canvas renders when data arrays are empty",
+          "file": "app/dashboard/templates/dashboard/index.html",
+          "line": 134
+        },
+        {
+          "fingerprint": "SECURITY|MEDIUM|app/dashboard/views.py|no branch guard when current_branch_id is none dashboard",
+          "dimension": "SECURITY",
+          "severity": "MEDIUM",
+          "description": "No branch guard when current_branch_id is None — dashboard queries run unfiltered, exposing cross-branch aggregates (mitigated by global before_request branch hook)",
+          "file": "app/dashboard/views.py",
+          "line": 47
+        },
+        {
+          "fingerprint": "QUERY|MEDIUM|app/dashboard/dashboard_data.py|revenue account ids fetched twice per request get_revenue_stats",
+          "dimension": "QUERY",
+          "severity": "MEDIUM",
+          "description": "Revenue account IDs fetched twice per request (get_revenue_stats + get_monthly_revenue_trend); expense account IDs also fetched twice (get_expense_stats + get_expense_breakdown)",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 39
+        },
+        {
+          "fingerprint": "CODE QUALITY|MEDIUM|app/dashboard/templates/dashboard/index.html|chart.js backgroundColor bordercolor hardcoded hex values design tokens",
+          "dimension": "CODE QUALITY",
+          "severity": "MEDIUM",
+          "description": "Chart.js borderColor/backgroundColor use hardcoded hex values (#3b82f6, #8b5cf6, etc.) — violates design-tokens convention (inline <style> block previously flagged is now resolved)",
+          "file": "app/dashboard/templates/dashboard/index.html",
+          "line": 236
+        },
+        {
+          "fingerprint": "UX|LOW|app/templates/base.html|aging of ar labeled soon but links to",
+          "dimension": "UX",
+          "severity": "LOW",
+          "description": "\"Aging of AR\" nav link shows a Soon badge but points to real route /reports/ar-aging, while \"Aging of AP\" (also a real route) has no Soon badge — inconsistent badging",
+          "file": "app/templates/base.html",
+          "line": null
+        },
+        {
+          "fingerprint": "DATA INTEGRITY|LOW|app/dashboard/dashboard_data.py|date today utc used as default fallback in all dashboard_data",
+          "dimension": "DATA INTEGRITY",
+          "severity": "LOW",
+          "description": "date.today() (UTC server-local) used as default fallback in all dashboard_data.py functions — should be ph_now().date(); mitigated since view always passes explicit as_of_date",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 36
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/dashboard/views.py|from flask import session request inside home function body",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "from flask import session, request inside home() body — request is already imported at module level (line 2); session should be hoisted too",
+          "file": "app/dashboard/views.py",
+          "line": 28
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/dashboard/dashboard_data.py|account_code_map dict built in get_expense_breakdown but",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "account_code_map dict built in get_expense_breakdown() (line 408) but never referenced — dead code",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 408
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/templates/base.html|dead .topbar-new-btn css rules remain after button removed",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "Dead .topbar-new-btn / .topbar-new-dropdown / .topbar-new-item CSS rules remain in base.html after the New button HTML was removed",
+          "file": "app/templates/base.html",
+          "line": 864
+        }
+      ]
+    },
+    {
+      "run_id": "2026-06-19T17:30:00",
+      "findings": [
+        {
+          "fingerprint": "SECURITY|MEDIUM|app/dashboard/views.py|no branch guard when current_branch_id is none dashboard",
+          "dimension": "SECURITY",
+          "severity": "MEDIUM",
+          "description": "No branch guard when current_branch_id is None — every dashboard aggregation runs unscoped across all branches (mitigated by global before_request branch hook; practically unreachable, defense-in-depth)",
+          "file": "app/dashboard/views.py",
+          "line": 46
+        },
+        {
+          "fingerprint": "QUERY|MEDIUM|app/dashboard/dashboard_data.py|revenue account ids fetched twice per request get_revenue_stats",
+          "dimension": "QUERY",
+          "severity": "MEDIUM",
+          "description": "Revenue & expense account-ID lists each fetched twice per request (get_revenue_stats+get_monthly_revenue_trend; get_expense_stats+get_expense_breakdown) — 4 Account queries that could be 2",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 40
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/dashboard/templates/dashboard/index.html|doughnut expense palette uses ten hardcoded hex colors",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "Doughnut expense-breakdown palette uses ten hardcoded hex colors — intentional/commented (no design token for a categorical scale); accept or add palette tokens",
+          "file": "app/dashboard/templates/dashboard/index.html",
+          "line": 300
+        },
+        {
+          "fingerprint": "CODE QUALITY|LOW|app/dashboard/dashboard_data.py|near-duplicate helpers revenue/expense and customers/vendors could share",
+          "dimension": "CODE QUALITY",
+          "severity": "LOW",
+          "description": "Near-duplicate helpers: get_revenue_stats/get_expense_stats are sign-flipped twins and get_top_customers/get_top_vendors are structurally identical — could share a parameterized helper",
+          "file": "app/dashboard/dashboard_data.py",
+          "line": 23
+        }
+      ]
+    }
+  ]
+}
