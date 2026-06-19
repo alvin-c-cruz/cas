@@ -839,6 +839,8 @@ def post(id):
     if cdv.status != 'draft':
         flash('Only draft CDVs can be posted.', 'error')
         return redirect(url_for('cash_disbursements.view', id=id))
+    if not validate_transaction_date_with_flash(cdv.cdv_date, 'Cash Disbursement'):
+        return redirect(url_for('cash_disbursements.view', id=id))
     try:
         cdv.status = 'posted'
         cdv.posted_by_id = current_user.id

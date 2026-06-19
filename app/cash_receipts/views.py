@@ -832,6 +832,8 @@ def post(id):
     if crv.status != 'draft':
         flash('Only draft CRVs can be posted.', 'error')
         return redirect(url_for('cash_receipts.view', id=id))
+    if not validate_transaction_date_with_flash(crv.crv_date, 'Cash Receipt'):
+        return redirect(url_for('cash_receipts.view', id=id))
     try:
         crv.status = 'posted'
         crv.posted_by_id = current_user.id

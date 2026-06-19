@@ -890,6 +890,8 @@ def post(id):
     if invoice.status != 'draft':
         flash('Only draft Sales Invoices can be posted.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
+    if not validate_transaction_date_with_flash(invoice.invoice_date, 'Sales Invoice'):
+        return redirect(url_for('sales_invoices.view', id=id))
     try:
         invoice.status = 'posted'
         invoice.posted_by_id = current_user.id
@@ -932,6 +934,8 @@ def cancel(id):
         reversal_date = date.fromisoformat(reversal_date_str)
     except ValueError:
         flash('Invalid reversal date.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+    if not validate_transaction_date_with_flash(reversal_date, 'Reversal'):
         return redirect(url_for('sales_invoices.view', id=id))
     try:
         _create_reversal_je(invoice, reversal_date, current_user.id, label='Cancel')
