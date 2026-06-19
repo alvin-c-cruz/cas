@@ -331,6 +331,7 @@ class TestWithholdingTaxLabels:
         resp = client.get('/withholding-tax/')
         assert resp.status_code == 200
         assert b'Withholding Tax Expanded' in resp.data
+        assert b'Manage Philippine BIR Expanded Withholding Alphanumeric Tax Codes' in resp.data
         assert b'Withholding Tax Codes' not in resp.data
 
     def test_list_table_uses_atc_header(self, client, db_session, two_reviewers):
