@@ -566,6 +566,17 @@ def approve_request(request_id):
         old_values = None
 
         if change_request.change_type == 'create':
+            # Re-check uniqueness at approval time (TOCTOU): the code/name may
+            # have been taken since this request was submitted.
+            if Account.query.filter_by(code=change_data.get('code')).first():
+                flash(f'Account code "{change_data.get("code")}" already exists. '
+                      f'This request cannot be approved.', 'error')
+                return redirect(url_for('accounts.pending_approvals'))
+            if Account.query.filter_by(name=change_data.get('name')).first():
+                flash(f'Account name "{change_data.get("name")}" already exists. '
+                      f'This request cannot be approved.', 'error')
+                return redirect(url_for('accounts.pending_approvals'))
+
             # Create new account
             account = Account(**change_data)
             db.session.add(account)

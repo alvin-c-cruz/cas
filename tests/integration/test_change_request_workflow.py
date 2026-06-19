@@ -712,3 +712,97 @@ class TestReasonRequiredOnEditNotCreate:
         resp = client.get(f'/accounts/{account.id}/edit')
         assert resp.status_code == 200
         assert b'Reason for Change' in resp.data
+
+
+# ───── Approval-time uniqueness re-check (TOCTOU on create) ─────
+
+class TestApprovalUniquenessRecheck:
+    """A pending create request whose code/name has since been taken (by another
+    approved request or a direct create) must NOT be approved into a duplicate —
+    block with a clean message and leave the request pending."""
+
+    # --- Withholding Tax ---
+
+    def test_wht_approve_create_blocked_when_code_taken(self, client, db_session, two_reviewers):
+        login(client)
+        client.post('/withholding-tax/create',
+                    data=wht_form_data(code='WCX', name='New WHT'), follow_redirects=True)
+        cr = WithholdingTaxChangeRequest.query.one()
+        make_wht(db_session, code='WCX', name='Pre-existing')   # code now taken
+        resp = client.post(f'/withholding-tax/change-requests/{cr.id}/review',
+                           data={'action': 'approve', 'review_notes': ''}, follow_redirects=True)
+        assert 'already exists' in html.unescape(resp.data.decode())
+        assert WithholdingTax.query.filter_by(code='WCX').count() == 1
+        db_session.refresh(cr)
+        assert cr.status == 'pending'
+
+    def test_wht_approve_create_blocked_when_name_taken(self, client, db_session, two_reviewers):
+        login(client)
+        client.post('/withholding-tax/create',
+                    data=wht_form_data(code='WCY', name='Dup Name'), follow_redirects=True)
+        cr = WithholdingTaxChangeRequest.query.one()
+        make_wht(db_session, code='WCZ', name='Dup Name')       # name now taken (diff code)
+        resp = client.post(f'/withholding-tax/change-requests/{cr.id}/review',
+                           data={'action': 'approve', 'review_notes': ''}, follow_redirects=True)
+        assert 'already exists' in html.unescape(resp.data.decode())
+        assert WithholdingTax.query.filter_by(name='Dup Name').count() == 1
+        db_session.refresh(cr)
+        assert cr.status == 'pending'
+
+    # --- VAT Categories ---
+
+    def test_vat_approve_create_blocked_when_code_taken(self, client, db_session, two_reviewers):
+        login(client)
+        input_vat = make_input_vat_account(db_session)
+        client.post('/vat-categories/create',
+                    data=vat_form_data(code='VATX', name='New VAT', input_vat_account_id=input_vat.id),
+                    follow_redirects=True)
+        cr = VATCategoryChangeRequest.query.one()
+        make_vat(db_session, code='VATX', name='Pre-existing')
+        resp = client.post(f'/vat-categories/change-requests/{cr.id}/review',
+                           data={'action': 'approve', 'review_notes': ''}, follow_redirects=True)
+        assert 'already exists' in html.unescape(resp.data.decode())
+        assert VATCategory.query.filter_by(code='VATX').count() == 1
+        db_session.refresh(cr)
+        assert cr.status == 'pending'
+
+    def test_vat_approve_create_blocked_when_name_taken(self, client, db_session, two_reviewers):
+        login(client)
+        input_vat = make_input_vat_account(db_session)
+        client.post('/vat-categories/create',
+                    data=vat_form_data(code='VATY', name='Dup VAT', input_vat_account_id=input_vat.id),
+                    follow_redirects=True)
+        cr = VATCategoryChangeRequest.query.one()
+        make_vat(db_session, code='VATZ', name='Dup VAT')
+        resp = client.post(f'/vat-categories/change-requests/{cr.id}/review',
+                           data={'action': 'approve', 'review_notes': ''}, follow_redirects=True)
+        assert 'already exists' in html.unescape(resp.data.decode())
+        assert VATCategory.query.filter_by(name='Dup VAT').count() == 1
+        db_session.refresh(cr)
+        assert cr.status == 'pending'
+
+    # --- Chart of Accounts ---
+
+    def test_account_approve_create_blocked_when_code_taken(self, client, db_session, two_reviewers):
+        login(client)
+        client.post('/accounts/create',
+                    data=account_form_data(code='1901', name='New Acct'), follow_redirects=True)
+        cr = AccountChangeRequest.query.one()
+        make_account(db_session, code='1901', name='Pre-existing Acct')
+        resp = client.post(f'/accounts/approve/{cr.id}', data={}, follow_redirects=True)
+        assert 'already exists' in html.unescape(resp.data.decode())
+        assert Account.query.filter_by(code='1901').count() == 1
+        db_session.refresh(cr)
+        assert cr.status == 'pending'
+
+    def test_account_approve_create_blocked_when_name_taken(self, client, db_session, two_reviewers):
+        login(client)
+        client.post('/accounts/create',
+                    data=account_form_data(code='1902', name='Dup Acct'), follow_redirects=True)
+        cr = AccountChangeRequest.query.one()
+        make_account(db_session, code='1903', name='Dup Acct')
+        resp = client.post(f'/accounts/approve/{cr.id}', data={}, follow_redirects=True)
+        assert 'already exists' in html.unescape(resp.data.decode())
+        assert Account.query.filter_by(name='Dup Acct').count() == 1
+        db_session.refresh(cr)
+        assert cr.status == 'pending'

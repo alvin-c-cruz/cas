@@ -466,6 +466,19 @@ def review_change_request(id):
                 proposed_data = json.loads(change_request.proposed_data)
 
                 if change_request.action == 'create':
+                    # Re-check uniqueness at approval time (TOCTOU): the code/name
+                    # may have been taken since this request was submitted.
+                    if WithholdingTax.query.filter_by(code=proposed_data['code']).first():
+                        db.session.rollback()
+                        flash(f'ATC "{proposed_data["code"]}" already exists. '
+                              f'This request cannot be approved.', 'error')
+                        return redirect(url_for('withholding_tax.change_requests'))
+                    if WithholdingTax.query.filter_by(name=proposed_data['name']).first():
+                        db.session.rollback()
+                        flash(f'Withholding tax name "{proposed_data["name"]}" already exists. '
+                              f'This request cannot be approved.', 'error')
+                        return redirect(url_for('withholding_tax.change_requests'))
+
                     # Create new withholding tax
                     withholding_tax = WithholdingTax(
                         code=proposed_data['code'],
