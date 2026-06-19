@@ -534,25 +534,30 @@ def ap_aging_export_excel():
     except ValueError:
         as_of_date = date.today()
     current_branch_id = session.get('selected_branch_id')
-    bills = AccountsPayable.query.filter(
-        AccountsPayable.status.in_(['posted', 'partially_paid']),
-        AccountsPayable.balance > 0,
-        AccountsPayable.branch_id == current_branch_id,
-    ).order_by(AccountsPayable.vendor_name, AccountsPayable.due_date).all()
-    rows = []
-    for bill in bills:
-        bucket = calculate_age_bucket(bill.due_date, as_of_date)
-        rows.append({
-            'ap_number': bill.ap_number,
-            'vendor_name': bill.vendor_name,
-            'ap_date': bill.ap_date,
-            'due_date': bill.due_date,
-            'balance': float(bill.balance),
-            'bucket': bucket,
-            'days_overdue': max(0, (as_of_date - bill.due_date).days) if bill.due_date else 0,
-        })
-    headers = ['Bill #', 'Vendor', 'Bill Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
-    columns = ['ap_number', 'vendor_name', 'ap_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    vendors_list, grand_totals = _build_ap_aging_data(as_of_date, current_branch_id)
+    rows = [
+        {
+            'name': v['name'],
+            'current': v['current'],
+            '1-30': v['1-30'],
+            '31-60': v['31-60'],
+            '61-90': v['61-90'],
+            '90+': v['90+'],
+            'total': v['total'],
+        }
+        for v in vendors_list
+    ]
+    rows.append({
+        'name': 'GRAND TOTAL',
+        'current': grand_totals['current'],
+        '1-30': grand_totals['1-30'],
+        '31-60': grand_totals['31-60'],
+        '61-90': grand_totals['61-90'],
+        '90+': grand_totals['90+'],
+        'total': grand_totals['total'],
+    })
+    columns = ['name', 'current', '1-30', '31-60', '61-90', '90+', 'total']
+    headers = ['Vendor', 'Current', '1-30', '31-60', '61-90', '90+', 'Total']
     return export_to_excel(rows, columns, headers,
                            filename=f'ap_aging_{as_of_date.isoformat()}.xlsx',
                            title=f'AP Aging as of {as_of_date}')
@@ -567,25 +572,30 @@ def ap_aging_export_csv():
     except ValueError:
         as_of_date = date.today()
     current_branch_id = session.get('selected_branch_id')
-    bills = AccountsPayable.query.filter(
-        AccountsPayable.status.in_(['posted', 'partially_paid']),
-        AccountsPayable.balance > 0,
-        AccountsPayable.branch_id == current_branch_id,
-    ).order_by(AccountsPayable.vendor_name, AccountsPayable.due_date).all()
-    rows = []
-    for bill in bills:
-        bucket = calculate_age_bucket(bill.due_date, as_of_date)
-        rows.append({
-            'ap_number': bill.ap_number,
-            'vendor_name': bill.vendor_name,
-            'ap_date': bill.ap_date,
-            'due_date': bill.due_date,
-            'balance': float(bill.balance),
-            'bucket': bucket,
-            'days_overdue': max(0, (as_of_date - bill.due_date).days) if bill.due_date else 0,
-        })
-    headers = ['Bill #', 'Vendor', 'Bill Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
-    columns = ['ap_number', 'vendor_name', 'ap_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    vendors_list, grand_totals = _build_ap_aging_data(as_of_date, current_branch_id)
+    rows = [
+        {
+            'name': v['name'],
+            'current': v['current'],
+            '1-30': v['1-30'],
+            '31-60': v['31-60'],
+            '61-90': v['61-90'],
+            '90+': v['90+'],
+            'total': v['total'],
+        }
+        for v in vendors_list
+    ]
+    rows.append({
+        'name': 'GRAND TOTAL',
+        'current': grand_totals['current'],
+        '1-30': grand_totals['1-30'],
+        '31-60': grand_totals['31-60'],
+        '61-90': grand_totals['61-90'],
+        '90+': grand_totals['90+'],
+        'total': grand_totals['total'],
+    })
+    columns = ['name', 'current', '1-30', '31-60', '61-90', '90+', 'total']
+    headers = ['Vendor', 'Current', '1-30', '31-60', '61-90', '90+', 'Total']
     return export_to_csv(rows, columns, headers,
                          filename=f'ap_aging_{as_of_date.isoformat()}.csv')
 
@@ -599,25 +609,30 @@ def ar_aging_export_excel():
     except ValueError:
         as_of_date = date.today()
     current_branch_id = session.get('selected_branch_id')
-    invoices = SalesInvoice.query.filter(
-        SalesInvoice.status.in_(['posted', 'partially_paid']),
-        SalesInvoice.balance > 0,
-        SalesInvoice.branch_id == current_branch_id,
-    ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
-    rows = []
-    for invoice in invoices:
-        bucket = calculate_age_bucket(invoice.due_date, as_of_date)
-        rows.append({
-            'invoice_number': invoice.invoice_number,
-            'customer_name': invoice.customer_name,
-            'invoice_date': invoice.invoice_date,
-            'due_date': invoice.due_date,
-            'balance': float(invoice.balance),
-            'bucket': bucket,
-            'days_overdue': max(0, (as_of_date - invoice.due_date).days) if invoice.due_date else 0,
-        })
-    headers = ['Invoice #', 'Customer', 'Invoice Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
-    columns = ['invoice_number', 'customer_name', 'invoice_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    customers_list, grand_totals = _build_ar_aging_data(as_of_date, current_branch_id)
+    rows = [
+        {
+            'name': c['name'],
+            'current': c['current'],
+            '1-30': c['1-30'],
+            '31-60': c['31-60'],
+            '61-90': c['61-90'],
+            '90+': c['90+'],
+            'total': c['total'],
+        }
+        for c in customers_list
+    ]
+    rows.append({
+        'name': 'GRAND TOTAL',
+        'current': grand_totals['current'],
+        '1-30': grand_totals['1-30'],
+        '31-60': grand_totals['31-60'],
+        '61-90': grand_totals['61-90'],
+        '90+': grand_totals['90+'],
+        'total': grand_totals['total'],
+    })
+    columns = ['name', 'current', '1-30', '31-60', '61-90', '90+', 'total']
+    headers = ['Customer', 'Current', '1-30', '31-60', '61-90', '90+', 'Total']
     return export_to_excel(rows, columns, headers,
                            filename=f'ar_aging_{as_of_date.isoformat()}.xlsx',
                            title=f'AR Aging as of {as_of_date}')
@@ -632,24 +647,29 @@ def ar_aging_export_csv():
     except ValueError:
         as_of_date = date.today()
     current_branch_id = session.get('selected_branch_id')
-    invoices = SalesInvoice.query.filter(
-        SalesInvoice.status.in_(['posted', 'partially_paid']),
-        SalesInvoice.balance > 0,
-        SalesInvoice.branch_id == current_branch_id,
-    ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
-    rows = []
-    for invoice in invoices:
-        bucket = calculate_age_bucket(invoice.due_date, as_of_date)
-        rows.append({
-            'invoice_number': invoice.invoice_number,
-            'customer_name': invoice.customer_name,
-            'invoice_date': invoice.invoice_date,
-            'due_date': invoice.due_date,
-            'balance': float(invoice.balance),
-            'bucket': bucket,
-            'days_overdue': max(0, (as_of_date - invoice.due_date).days) if invoice.due_date else 0,
-        })
-    headers = ['Invoice #', 'Customer', 'Invoice Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
-    columns = ['invoice_number', 'customer_name', 'invoice_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    customers_list, grand_totals = _build_ar_aging_data(as_of_date, current_branch_id)
+    rows = [
+        {
+            'name': c['name'],
+            'current': c['current'],
+            '1-30': c['1-30'],
+            '31-60': c['31-60'],
+            '61-90': c['61-90'],
+            '90+': c['90+'],
+            'total': c['total'],
+        }
+        for c in customers_list
+    ]
+    rows.append({
+        'name': 'GRAND TOTAL',
+        'current': grand_totals['current'],
+        '1-30': grand_totals['1-30'],
+        '31-60': grand_totals['31-60'],
+        '61-90': grand_totals['61-90'],
+        '90+': grand_totals['90+'],
+        'total': grand_totals['total'],
+    })
+    columns = ['name', 'current', '1-30', '31-60', '61-90', '90+', 'total']
+    headers = ['Customer', 'Current', '1-30', '31-60', '61-90', '90+', 'Total']
     return export_to_csv(rows, columns, headers,
                          filename=f'ar_aging_{as_of_date.isoformat()}.csv')

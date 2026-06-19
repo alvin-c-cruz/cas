@@ -247,7 +247,12 @@ class TestAPAgingExport:
         assert found, "Vendor name not found in any XLSX XML part"
 
     def test_csv_export_contains_bill_data(self, client, db_session, accountant_user, main_branch):
-        """CSV export includes vendor name and bill number for outstanding bills."""
+        """CSV export (summary format) includes vendor name and GRAND TOTAL row.
+
+        NOTE: The export was changed from a flat per-bill dump to a vendor-summary
+        bucket-columnar layout (matching the screen). Bill numbers are no longer
+        exported; vendor names and the GRAND TOTAL row are the contract instead.
+        """
         vendor = make_vendor(db_session, code='APV-CSV1', name='CSV Export Vendor')
         make_ap(db_session, vendor, main_branch.id,
                   ap_number='AP-2026-05-0001', status='posted',
@@ -258,7 +263,74 @@ class TestAPAgingExport:
         assert resp.status_code == 200
         body = resp.data.decode('utf-8')
         assert 'CSV Export Vendor' in body
-        assert 'AP-2026-05-0001' in body
+        assert 'GRAND TOTAL' in body
+
+    def test_excel_export_is_vendor_summary_with_grand_total(
+            self, client, db_session, accountant_user, main_branch):
+        """Excel export mirrors the screen summary: one row per vendor + GRAND TOTAL row."""
+        import io
+        import zipfile
+
+        # Two vendors in different aging buckets
+        vendor1 = make_vendor(db_session, code='APV-SUM1', name='Summary Vendor Alpha')
+        vendor2 = make_vendor(db_session, code='APV-SUM2', name='Summary Vendor Beta')
+        today = date.today()
+        make_ap(db_session, vendor1, main_branch.id,
+                ap_number='AP-SUM-CUR', status='posted',
+                due_date=today + timedelta(days=10),      # current
+                balance=Decimal('1000.00'))
+        make_ap(db_session, vendor2, main_branch.id,
+                ap_number='AP-SUM-45D', status='posted',
+                due_date=today - timedelta(days=45),      # 31-60 bucket
+                balance=Decimal('2000.00'))
+
+        login(client)
+        set_branch(client, main_branch.id)
+        resp = client.get('/reports/ap-aging/export/excel')
+
+        assert resp.status_code == 200
+        assert resp.data[:2] == b'PK'
+        assert len(resp.data) > 0
+
+        with zipfile.ZipFile(io.BytesIO(resp.data)) as zf:
+            all_xml = b''.join(zf.read(name) for name in zf.namelist())
+
+        assert b'GRAND TOTAL' in all_xml, "GRAND TOTAL row not found in xlsx"
+        assert b'Summary Vendor Alpha' in all_xml, "vendor1 name not found in xlsx"
+        assert b'Summary Vendor Beta' in all_xml, "vendor2 name not found in xlsx"
+
+    def test_csv_export_is_vendor_summary_with_grand_total(
+            self, client, db_session, accountant_user, main_branch):
+        """CSV export mirrors the screen summary: one row per vendor + GRAND TOTAL row."""
+        vendor1 = make_vendor(db_session, code='APV-SUM3', name='CSV Summary Vendor One')
+        vendor2 = make_vendor(db_session, code='APV-SUM4', name='CSV Summary Vendor Two')
+        today = date.today()
+        make_ap(db_session, vendor1, main_branch.id,
+                ap_number='AP-CSV-CUR', status='posted',
+                due_date=today + timedelta(days=10),
+                balance=Decimal('1500.00'))
+        make_ap(db_session, vendor2, main_branch.id,
+                ap_number='AP-CSV-45D', status='posted',
+                due_date=today - timedelta(days=45),
+                balance=Decimal('2500.00'))
+
+        login(client)
+        set_branch(client, main_branch.id)
+        resp = client.get('/reports/ap-aging/export/csv')
+
+        assert resp.status_code == 200
+        body = resp.data.decode('utf-8')
+
+        # Header row must use summary columns
+        assert 'Vendor' in body
+        assert 'Current' in body
+        assert '1-30' in body
+        assert 'Total' in body
+        # Both vendor names must appear
+        assert 'CSV Summary Vendor One' in body, "vendor1 name not found in CSV"
+        assert 'CSV Summary Vendor Two' in body, "vendor2 name not found in CSV"
+        # Grand total row must appear
+        assert 'GRAND TOTAL' in body, "GRAND TOTAL row not found in CSV"
 
 
 # ---------------------------------------------------------------------------

@@ -204,13 +204,70 @@ class TestARAgingExport:
         assert r.data[:2] == b'PK'
 
     def test_csv_export_contains_headers(self, client, db_session, admin_user, main_branch):
-        """CSV response body should contain the header columns."""
+        """CSV response body should contain the Customer header column (summary format)."""
         login(client)
         set_branch(client, main_branch.id)
         r = client.get('/reports/ar-aging/export/csv')
         assert r.status_code == 200
         body = r.data.decode('utf-8', errors='replace')
-        assert 'Invoice #' in body or 'Customer' in body
+        assert 'Customer' in body
+
+    def test_excel_export_is_customer_summary_with_grand_total(
+            self, client, db_session, admin_user, main_branch):
+        """Excel export mirrors the screen summary: one row per customer + GRAND TOTAL row."""
+        import io
+        import zipfile
+
+        # Two customers in different aging buckets
+        c1 = make_customer(db_session, code='SUM-C01')
+        c2 = make_customer(db_session, code='SUM-C02')
+        make_invoice(db_session, c1, main_branch.id, 'posted', 1000,
+                     due_days_ago=0, invoice_number='SI-SUM-CUR')   # current
+        make_invoice(db_session, c2, main_branch.id, 'posted', 2000,
+                     due_days_ago=45, invoice_number='SI-SUM-45D')  # 31-60 bucket
+
+        login(client)
+        set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging/export/excel')
+
+        assert r.status_code == 200
+        assert r.data[:2] == b'PK'
+        assert len(r.data) > 0
+
+        with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
+            all_xml = b''.join(zf.read(name) for name in zf.namelist())
+
+        assert b'GRAND TOTAL' in all_xml, "GRAND TOTAL row not found in xlsx"
+        assert c1.name.encode() in all_xml, f"{c1.name} not found in xlsx"
+        assert c2.name.encode() in all_xml, f"{c2.name} not found in xlsx"
+
+    def test_csv_export_is_customer_summary_with_grand_total(
+            self, client, db_session, admin_user, main_branch):
+        """CSV export mirrors the screen summary: one row per customer + GRAND TOTAL row."""
+        c1 = make_customer(db_session, code='SUM-C03')
+        c2 = make_customer(db_session, code='SUM-C04')
+        make_invoice(db_session, c1, main_branch.id, 'posted', 1500,
+                     due_days_ago=0, invoice_number='SI-CSV-CUR')   # current
+        make_invoice(db_session, c2, main_branch.id, 'posted', 2500,
+                     due_days_ago=45, invoice_number='SI-CSV-45D')  # 31-60 bucket
+
+        login(client)
+        set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging/export/csv')
+
+        assert r.status_code == 200
+        body = r.data.decode('utf-8')
+
+        # Header row must use summary columns
+        assert 'Customer' in body
+        assert 'Current' in body
+        assert '1-30' in body
+        assert 'Total' in body
+        # Both customer names must appear
+        assert c1.name in body, f"{c1.name} not found in CSV"
+        assert c2.name in body, f"{c2.name} not found in CSV"
+        # Grand total row must appear
+        assert 'GRAND TOTAL' in body, "GRAND TOTAL row not found in CSV"
 
 
 # ── Builder unit tests ────────────────────────────────────────────────────────
