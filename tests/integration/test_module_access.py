@@ -60,7 +60,7 @@ def test_staff_gated_by_book_permissions(db_session, branch):
 def test_staff_phase2_modules_denied_by_default(db_session, branch):
     staff = _make_user(db_session, branch, 'staff',
                        books={'accounts_payable': True}, username='staffp2')
-    for key in ('customers', 'vendors', 'chart_of_accounts', 'ap_aging'):
+    for key in ('customers', 'vendors', 'chart_of_accounts', 'ap_aging', 'ar_aging'):
         assert can_access_module(staff, key) is False
 
 
@@ -141,3 +141,19 @@ def test_sidebar_hides_ungranted_transactions_for_staff(client, db_session, bran
     assert start != -1 and end != -1
     assert 'accounts-payable' in section       # granted -> nav link present
     assert 'sales-invoices' not in section     # ungranted -> nav item hidden
+
+
+def test_staff_without_ar_aging_blocked_from_report(client, db_session, branch):
+    """A staff user not granted ar_aging is redirected away from /reports/ar-aging."""
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'accounts_payable': True}, username='staffnoar')
+    _login(client, staff, branch)
+    assert client.get('/reports/ar-aging').status_code == 302
+
+
+def test_staff_with_ar_aging_reaches_report(client, db_session, branch):
+    """A staff user granted ar_aging can open /reports/ar-aging."""
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'ar_aging': True}, username='staffar')
+    _login(client, staff, branch)
+    assert client.get('/reports/ar-aging').status_code == 200

@@ -32,6 +32,8 @@ MODULE_REGISTRY = [
      'endpoints': ('accounts.',)},
     {'key': 'ap_aging', 'label': 'Aging of AP', 'section': 'Ledger',
      'endpoints': ('reports.ap_aging',)},
+    {'key': 'ar_aging', 'label': 'Aging of AR', 'section': 'Ledger',
+     'endpoints': ('reports.ar_aging',)},
 ]
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY if m['section'] == 'Transactions']

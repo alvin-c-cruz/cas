@@ -125,6 +125,7 @@ def staff_user(db_session):
         'vendors': True,
         'chart_of_accounts': True,
         'ap_aging': True,
+        'ar_aging': True,
     })
     db_session.add(user)
     db_session.commit()

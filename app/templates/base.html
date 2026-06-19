@@ -1100,11 +1100,12 @@
                         <span class="nav-text">General Ledger</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('reports.ar_aging') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.ar_aging' %}active{% endif %}">
+                    {% if can_access_module(current_user, 'ar_aging') %}
+                    <a href="{{ url_for('reports.ar_aging') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.ar_aging') %}active{% endif %}">
                         <span class="nav-icon">📅</span>
                         <span class="nav-text">Aging of AR</span>
-                        <span class="nav-coming-soon">Soon</span>
                     </a>
+                    {% endif %}
                     {% if can_access_module(current_user, 'ap_aging') %}
                     <a href="{{ url_for('reports.ap_aging') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.ap_aging') %}active{% endif %}">
                         <span class="nav-icon">📆</span>
