@@ -17,7 +17,9 @@
         <input type="text" name="prevent_autofill" style="position:absolute;top:-9999px;left:-9999px;" autocomplete="off" tabindex="-1" aria-hidden="true">
 
         <div class="vendor-form-scope">
-            {% include "vendors/_form_fields.html" %}
+            {% with show_bir_notes = true %}
+                {% include "vendors/_form_fields.html" %}
+            {% endwith %}
         </div>
 
         <div class="form-actions">
