@@ -13,8 +13,15 @@
     gap: 12px;
 }
 .vendor-form-scope .form-group { margin-bottom: 0; }
-/* Field group sections (Vendor Details / Tax / Contact / Payment). */
-.vendor-form-scope .vendor-section { margin-bottom: 24px; }
+/* Field group sections (Vendor Details / Tax / Contact / Payment).
+   Each section is a boxed card. */
+.vendor-form-scope .vendor-section {
+    margin-bottom: 16px;
+    padding: 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
 .vendor-form-scope .vendor-section:last-child { margin-bottom: 0; }
 .vendor-form-scope .vendor-section-title {
     font-size: 13px;
@@ -25,14 +32,6 @@
     margin: 0 0 14px;
     padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
-}
-/* Informational helper text under a field (e.g. BIR notes on create/edit). */
-.vendor-form-scope .field-hint {
-    display: block;
-    margin-top: 4px;
-    font-size: 12px;
-    line-height: 1.35;
-    color: var(--text-3);
 }
 .vendor-form-scope .form-group label {
     display: block;

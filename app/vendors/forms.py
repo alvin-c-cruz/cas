@@ -66,6 +66,6 @@ class VendorForm(FlaskForm):
         Length(max=20, message='Postal code must be 20 characters or less.')
     ])
 
-    default_vat_category = SelectField('Default VAT Category', choices=[], validators=[
+    default_vat_category = SelectField('Registration Type', choices=[], validators=[
         DataRequired(message='Default VAT category is required.')
     ])

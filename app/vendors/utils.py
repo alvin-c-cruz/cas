@@ -88,6 +88,6 @@ def populate_vat_category_choices(form):
     """Populate VAT category choices from database"""
     from app.vat_categories.models import VATCategory
     vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
-    choices = [('', '— Select VAT Category —')]
+    choices = [('', '— Select Registration Type —')]
     choices.extend([(cat.code, f'{cat.code} — {cat.name}') for cat in vat_categories])
     form.default_vat_category.choices = choices

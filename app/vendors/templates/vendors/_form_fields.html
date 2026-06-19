@@ -1,8 +1,6 @@
 {# Vendor form fields. Wrap the include in:
    <div class="vendor-form-scope"> ... </div>
-   Requires `form` and (optionally) `withholding_taxes`, `vendor`, `selected_wt_ids`.
-   Pass `show_bir_notes=true` to render the informational BIR notes (create/edit
-   pages); the AP quick-add modal omits them. #}
+   Requires `form` and (optionally) `withholding_taxes`, `vendor`, `selected_wt_ids`. #}
 {% from "macros.html" import status_toggle %}
 
 {# ── Vendor Details ─────────────────────────────────────────── #}
@@ -23,7 +21,6 @@
             <label for="{{ form.name.id }}">{{ form.name.label.text }}</label>
             {{ form.name(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
             {% if form.name.errors %}<div class="error-message">{{ form.name.errors[0] }}</div>{% endif %}
-            {% if show_bir_notes %}<small class="field-hint">Use the vendor's BIR-registered name, exactly as shown on their Certificate of Registration (BIR Form 2303).</small>{% endif %}
         </div>
         {{ status_toggle(form.is_active, label_class='') }}
     </div>
@@ -34,10 +31,21 @@
     <h4 class="vendor-section-title">Tax Information</h4>
     <div class="form-row-2col">
         <div class="form-group">
+            <label for="{{ form.address.id }}">{{ form.address.label.text }}</label>
+            {{ form.address(class="form-control form-control-sm", rows="2", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+            {% if form.address.errors %}<div class="error-message">{{ form.address.errors[0] }}</div>{% endif %}
+        </div>
+        <div class="form-group">
+            <label for="{{ form.postal_code.id }}">{{ form.postal_code.label.text }}</label>
+            {{ form.postal_code(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+            {% if form.postal_code.errors %}<div class="error-message">{{ form.postal_code.errors[0] }}</div>{% endif %}
+        </div>
+    </div>
+    <div class="form-row-2col">
+        <div class="form-group">
             <label for="{{ form.tin.id }}">{{ form.tin.label.text }}</label>
             {{ form.tin(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
             {% if form.tin.errors %}<div class="error-message">{{ form.tin.errors[0] }}</div>{% endif %}
-            {% if show_bir_notes %}<small class="field-hint">Required on BIR Form 2307 and the vendor's official receipts/invoices. Enter the TIN as registered with the BIR.</small>{% endif %}
         </div>
         <div class="form-group">
             <label for="{{ form.default_vat_category.id }}">{{ form.default_vat_category.label.text }}</label>
@@ -47,7 +55,7 @@
     </div>
 
     <div class="form-group">
-        <label class="section-label">Default Withholding Tax</label>
+        <label class="section-label">Withholding Tax</label>
         <div class="wt-checkbox-grid">
             {% if withholding_taxes %}
                 {% for wt in withholding_taxes %}
@@ -88,21 +96,6 @@
             <label for="{{ form.email.id }}">{{ form.email.label.text }}</label>
             {{ form.email(class="form-control form-control-sm", type="text", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
             {% if form.email.errors %}<div class="error-message">{{ form.email.errors[0] }}</div>{% endif %}
-        </div>
-    </div>
-
-    <div class="form-row-2col">
-        <div class="form-group">
-            <label for="{{ form.address.id }}">{{ form.address.label.text }}</label>
-            {{ form.address(class="form-control form-control-sm", rows="2", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
-            {% if form.address.errors %}<div class="error-message">{{ form.address.errors[0] }}</div>{% endif %}
-            {% if show_bir_notes %}<small class="field-hint">Registered business address as printed on the vendor's BIR documents.</small>{% endif %}
-        </div>
-        <div class="form-group">
-            <label for="{{ form.postal_code.id }}">{{ form.postal_code.label.text }}</label>
-            {{ form.postal_code(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
-            {% if form.postal_code.errors %}<div class="error-message">{{ form.postal_code.errors[0] }}</div>{% endif %}
-            {% if show_bir_notes %}<small class="field-hint">Part of the registered address used on BIR forms.</small>{% endif %}
         </div>
     </div>
 </div>

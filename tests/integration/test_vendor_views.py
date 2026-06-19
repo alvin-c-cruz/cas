@@ -260,41 +260,20 @@ class TestVendorStaffPermissions:
         assert Vendor.query.get(vendor.id) is not None
 
 
-class TestVendorBirNotes:
-    """The vendor create/edit form carries informational BIR notes under the
-    TIN, Name, Address and Postal Code fields. They must NOT appear in the
-    AP quick-add vendor modal (which shares the same field partial)."""
+class TestVendorNoBirNotes:
+    """The per-field BIR notes were removed once the fields were grouped into
+    labelled sections. Guard against them being re-introduced."""
 
-    # Quote-free fragments (Jinja autoescapes apostrophes in the copy).
-    TIN_NOTE = b'Required on BIR Form 2307'
-    NAME_NOTE = b'Certificate of Registration'
-    ADDRESS_NOTE = b'Registered business address as printed'
+    NOTE_FRAGMENTS = [b'Required on BIR Form 2307',
+                      b'Certificate of Registration',
+                      b'Registered business address as printed']
 
-    def test_create_form_shows_bir_notes(self, client, db_session, admin_user, main_branch):
+    def test_create_form_has_no_bir_notes(self, client, db_session, admin_user, main_branch):
         login(client)
         resp = client.get('/vendors/create')
         assert resp.status_code == 200
-        assert self.TIN_NOTE in resp.data
-        assert self.NAME_NOTE in resp.data
-        assert self.ADDRESS_NOTE in resp.data
-
-    def test_edit_form_shows_bir_notes(self, client, db_session, admin_user, main_branch):
-        login(client)
-        vendor = make_vendor(db_session, code='BIR001', name='BIR Notes Vendor')
-        resp = client.get(f'/vendors/{vendor.id}/edit')
-        assert resp.status_code == 200
-        assert self.TIN_NOTE in resp.data
-        assert self.NAME_NOTE in resp.data
-        assert self.ADDRESS_NOTE in resp.data
-
-    def test_quick_add_modal_omits_bir_notes(self, client, db_session, admin_user, main_branch):
-        # The AP create page renders the shared vendor field partial inside the
-        # quick-add modal; the BIR notes must be suppressed there.
-        login(client)
-        resp = client.get('/accounts-payable/create')
-        assert resp.status_code == 200
-        assert self.NAME_NOTE not in resp.data
-        assert self.TIN_NOTE not in resp.data
+        for fragment in self.NOTE_FRAGMENTS:
+            assert fragment not in resp.data
 
 
 class TestVendorFormSections:
@@ -333,3 +312,24 @@ class TestVendorFormSections:
         assert b'>Registered Name<' in resp.data
         # The "Check Payee Name" twin label must be left untouched.
         assert b'>Check Payee Name<' in resp.data
+
+    def test_vat_category_label_is_registration_type(self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/vendors/create')
+        assert resp.status_code == 200
+        assert b'>Registration Type<' in resp.data
+        assert b'Default VAT Category' not in resp.data
+
+    def test_customer_vat_label_unchanged(self, client, db_session, admin_user, main_branch):
+        # The customer form's 'Default VAT Category' twin must NOT be renamed.
+        login(client)
+        resp = client.get('/customers/create')
+        assert resp.status_code == 200
+        assert b'Default VAT Category' in resp.data
+
+    def test_withholding_tax_section_label(self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/vendors/create')
+        assert resp.status_code == 200
+        assert b'class="section-label">Withholding Tax<' in resp.data
+        assert b'Default Withholding Tax' not in resp.data
