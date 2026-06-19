@@ -42,47 +42,50 @@ def test_ap_journal_requires_login(client, setup):
     assert res.status_code in (302, 401)
 
 
-def test_ap_journal_accessible_all_roles(client, setup):
-    users, branch = setup
-    for role in ['admin', 'accountant', 'staff', 'viewer']:
+# admin/accountant/viewer are ungated for journals; staff is gated per-module
+# (each /journals/* endpoint maps to a book permission in module_access.py), so
+# a staff user without that permission is redirected. The positive
+# staff-with-permission path is covered in test_module_access.py.
+UNGATED_ROLES = ['admin', 'accountant', 'viewer']
+
+
+def _assert_journal_access(client, branch, path):
+    for role in UNGATED_ROLES:
         with client.session_transaction() as sess:
             sess['selected_branch_id'] = branch.id
         login(client, role)
-        res = client.get('/journals/ap')
-        assert res.status_code == 200, f"{role} got {res.status_code} on /journals/ap"
+        res = client.get(path)
+        assert res.status_code == 200, f"{role} got {res.status_code} on {path}"
         client.get('/logout')
-
-
-def test_voucher_accessible_all_roles(client, setup):
-    users, branch = setup
-    for role in ['admin', 'accountant', 'staff', 'viewer']:
-        with client.session_transaction() as sess:
-            sess['selected_branch_id'] = branch.id
-        login(client, role)
-        res = client.get('/journals/voucher')
-        assert res.status_code == 200, f"{role} got {res.status_code} on /journals/voucher"
-        client.get('/logout')
-
-
-def test_cr_redirects_to_under_development(client, setup):
-    users, branch = setup
+    # staff without the book permission is redirected (per-module access gate)
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch.id
     login(client, 'staff')
-    res = client.get('/journals/cr')
-    assert res.status_code == 302
-    assert 'under_development' in res.location or 'Cash+Receipts' in res.location or 'Cash' in res.location
+    res = client.get(path)
+    assert res.status_code == 302, f"staff should be gated on {path}, got {res.status_code}"
+    client.get('/logout')
 
 
-def test_cd_journal_accessible_all_roles(client, setup):
+def test_ap_journal_access_by_role(client, setup):
     users, branch = setup
-    for role in ['admin', 'accountant', 'staff', 'viewer']:
-        with client.session_transaction() as sess:
-            sess['selected_branch_id'] = branch.id
-        login(client, role)
-        res = client.get('/journals/cd')
-        assert res.status_code == 200, f"{role} got {res.status_code} on /journals/cd"
-        client.get('/logout')
+    _assert_journal_access(client, branch, '/journals/ap')
+
+
+def test_voucher_access_by_role(client, setup):
+    users, branch = setup
+    _assert_journal_access(client, branch, '/journals/voucher')
+
+
+def test_cd_journal_access_by_role(client, setup):
+    users, branch = setup
+    _assert_journal_access(client, branch, '/journals/cd')
+
+
+def test_cr_journal_access_by_role(client, setup):
+    """CR journal was activated (cash_receipts module) — it no longer redirects to
+    under-development; it is a live journal gated like the others."""
+    users, branch = setup
+    _assert_journal_access(client, branch, '/journals/cr')
 
 
 def test_journal_entries_redirects_to_voucher(client, setup):

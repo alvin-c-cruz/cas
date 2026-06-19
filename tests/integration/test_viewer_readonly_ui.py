@@ -43,5 +43,7 @@ class TestViewerReadOnlyUI:
 
         resp = client.get('/accounts-payable', follow_redirects=True)
         html = resp.data.decode('utf-8')
+        # Accountant sees the write CTA on the AP list (viewer does not).
+        # NOTE: the topbar "+ New" quick-create button (id="topbarNewBtn") was
+        # intentionally removed in 1b8c659 — no longer asserted here.
         assert 'Enter APV' in html or 'Enter First APV' in html
-        assert 'id="topbarNewBtn"' in html

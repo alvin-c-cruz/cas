@@ -63,14 +63,16 @@ class TestReceiptLinks:
         db_session.commit()
         login(client, 'admin', 'admin123')
         resp = client.get('/under-development')
-        assert b'Collections' in resp.data
+        # Sidebar nav label is now "Cash Receipts (Collection)" (was "Collections")
+        assert b'Cash Receipts' in resp.data
 
     def test_payments_link_present(self, client, db_session, admin_user, main_branch):
         admin_user.add_branch(main_branch)
         db_session.commit()
         login(client, 'admin', 'admin123')
         resp = client.get('/under-development')
-        assert b'Payments' in resp.data
+        # Sidebar nav label is now "Cash Disbursements (Pay Bill)" (was "Payments")
+        assert b'Cash Disbursements' in resp.data
 
     def test_receipts_and_payments_single_link_gone(self, client, db_session,
                                                      admin_user, main_branch):
