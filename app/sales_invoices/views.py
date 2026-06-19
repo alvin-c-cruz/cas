@@ -72,21 +72,16 @@ def require_branch_selection():
 # ---------------------------------------------------------------------------
 
 def generate_invoice_number():
-    """SI-YYYY-NNNN, annual reset. Uses PH time."""
-    now = ph_now()
-    prefix = f'SI-{now.year}-'
-    latest = (SalesInvoice.query
-              .filter(SalesInvoice.invoice_number.like(f'{prefix}%'))
-              .order_by(SalesInvoice.invoice_number.desc())
-              .first())
-    if latest:
-        try:
-            next_num = int(latest.invoice_number.split('-')[-1]) + 1
-        except (ValueError, IndexError):
-            next_num = 1
-    else:
-        next_num = 1
-    return f'{prefix}{next_num:04d}'
+    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+
+    Each invoice gets the next number after the highest existing purely-numeric
+    invoice_number. Legacy prefixed numbers (e.g. 'SI-2026-0030') are ignored, so
+    new numbering starts cleanly at 00001 and never collides with old rows.
+    """
+    rows = SalesInvoice.query.with_entities(SalesInvoice.invoice_number).all()
+    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
+    next_num = (max(nums) + 1) if nums else 1
+    return f'{next_num:05d}'
 
 
 def _get_invoice_or_404(id):

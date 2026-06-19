@@ -66,21 +66,16 @@ def require_branch_selection():
 
 
 def generate_crv_number():
-    """Generate next CRV number: CR-YYYY-MM-NNNN, sequential per month."""
-    now = ph_now()
-    prefix = f'CR-{now.year}-{now.month:02d}-'
-    latest = CashReceiptVoucher.query.filter(
-        CashReceiptVoucher.crv_number.like(f'{prefix}%')
-    ).order_by(CashReceiptVoucher.crv_number.desc()).first()
-    if latest:
-        try:
-            last_num = int(latest.crv_number.split('-')[-1])
-            next_num = last_num + 1
-        except (ValueError, IndexError):
-            next_num = 1
-    else:
-        next_num = 1
-    return f'{prefix}{next_num:04d}'
+    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+
+    Independent running sequence from Sales Invoices (separate table). Each CRV gets
+    the next number after the highest existing purely-numeric crv_number; legacy
+    prefixed numbers (e.g. 'CR-2026-06-0007') are ignored.
+    """
+    rows = CashReceiptVoucher.query.with_entities(CashReceiptVoucher.crv_number).all()
+    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
+    next_num = (max(nums) + 1) if nums else 1
+    return f'{next_num:05d}'
 
 
 def _get_crv_or_404(id):
