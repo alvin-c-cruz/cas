@@ -116,22 +116,22 @@ def get_changes(old_obj, new_data, fields):
     old_values = {}
     new_values = {}
 
+    def _normalize(v):
+        # Match the stored representation so comparison and storage agree:
+        # booleans stay booleans; everything else is stringified (None stays None).
+        # This stops typed fields (date/Decimal/int) from registering as "changed"
+        # purely because new_data arrives as a form string (BUG-AUDIT-DIFF-NOISE).
+        if isinstance(v, bool) or v is None:
+            return v
+        return str(v)
+
     for field in fields:
-        old_val = getattr(old_obj, field, None)
-        new_val = new_data.get(field)
+        old_norm = _normalize(getattr(old_obj, field, None))
+        new_norm = _normalize(new_data.get(field))
 
-        # Convert to comparable types
-        if old_val != new_val:
-            # Keep booleans as booleans, don't convert to string
-            if isinstance(old_val, bool):
-                old_values[field] = old_val
-            else:
-                old_values[field] = str(old_val) if old_val is not None else None
-
-            if isinstance(new_val, bool):
-                new_values[field] = new_val
-            else:
-                new_values[field] = str(new_val) if new_val is not None else None
+        if old_norm != new_norm:
+            old_values[field] = old_norm
+            new_values[field] = new_norm
 
     return old_values, new_values
 
