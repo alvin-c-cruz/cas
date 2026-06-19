@@ -259,3 +259,34 @@ class TestAPAgingExport:
         body = resp.data.decode('utf-8')
         assert 'CSV Export Vendor' in body
         assert 'AP-2026-05-0001' in body
+
+
+# ---------------------------------------------------------------------------
+# TestAPAgingBuilder
+# ---------------------------------------------------------------------------
+
+class TestAPAgingBuilder:
+    """Direct tests for the _build_ap_aging_data private builder function."""
+
+    def test_ap_builder_empty(self, client, db_session, accountant_user, main_branch):
+        """With no bills, builder returns empty list and zero grand totals."""
+        from app.reports.views import _build_ap_aging_data
+        vendors_list, grand_totals = _build_ap_aging_data(date.today(), main_branch.id)
+        assert vendors_list == []
+        for key in ('current', '1-30', '31-60', '61-90', '90+', 'total'):
+            assert grand_totals[key] == Decimal('0.00'), f"Expected 0 for {key}"
+
+    def test_ap_builder_buckets_correct(self, client, db_session, accountant_user, main_branch):
+        """A bill 50 days overdue lands in the '31-60' bucket."""
+        from app.reports.views import _build_ap_aging_data
+        today = date.today()
+        vendor = make_vendor(db_session, code='APV-BLD001', name='Builder Test Vendor')
+        make_ap(db_session, vendor, main_branch.id,
+                ap_number='AP-BLD-0001', status='posted',
+                due_date=today - timedelta(days=50),
+                balance=Decimal('3000.00'))
+        vendors_list, grand_totals = _build_ap_aging_data(today, main_branch.id)
+        assert len(vendors_list) == 1
+        entry = vendors_list[0]
+        assert entry['31-60'] == Decimal('3000.00')
+        assert grand_totals['31-60'] == Decimal('3000.00')

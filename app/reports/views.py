@@ -64,27 +64,20 @@ def calculate_age_bucket(due_date, as_of_date):
         return '90+'
 
 
-@reports_bp.route('/reports')
-@login_required
-def index():
-    """Reports dashboard."""
-    return render_template('reports/index.html')
+def _build_ar_aging_data(as_of_date, branch_id):
+    """Build AR aging data for the given as_of_date and branch.
 
-
-@reports_bp.route('/reports/ar-aging')
-@login_required
-def ar_aging():
-    as_of_str = request.args.get('as_of', date.today().isoformat())
-    try:
-        as_of_date = date.fromisoformat(as_of_str)
-    except ValueError:
-        as_of_date = date.today()
-
-    current_branch_id = session.get('selected_branch_id')
+    Returns (customers_list, grand_totals).
+    customers_list: list of dicts, each:
+      {'name': str, 'invoices': [...], 'current': Decimal, '1-30': Decimal,
+       '31-60': Decimal, '61-90': Decimal, '90+': Decimal, 'total': Decimal}
+      sorted by total desc.
+    grand_totals: dict with keys 'current','1-30','31-60','61-90','90+','total' as Decimals.
+    """
     invoices = SalesInvoice.query.filter(
         SalesInvoice.status.in_(['posted', 'partially_paid']),
         SalesInvoice.balance > 0,
-        SalesInvoice.branch_id == current_branch_id
+        SalesInvoice.branch_id == branch_id
     ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
 
     customers = {}
@@ -124,26 +117,23 @@ def ar_aging():
             grand_totals[k] += c[k]
 
     customers_list = sorted(customers.values(), key=lambda x: x['total'], reverse=True)
-    return render_template('reports/ar_aging.html',
-                           customers=customers_list,
-                           grand_totals=grand_totals,
-                           as_of_date=as_of_date)
+    return customers_list, grand_totals
 
 
-@reports_bp.route('/reports/ap-aging')
-@login_required
-def ap_aging():
-    as_of_str = request.args.get('as_of', date.today().isoformat())
-    try:
-        as_of_date = date.fromisoformat(as_of_str)
-    except ValueError:
-        as_of_date = date.today()
+def _build_ap_aging_data(as_of_date, branch_id):
+    """Build AP aging data for the given as_of_date and branch.
 
-    current_branch_id = session.get('selected_branch_id')
+    Returns (vendors_list, grand_totals).
+    vendors_list: list of dicts, each:
+      {'name': str, 'bills': [...], 'current': Decimal, '1-30': Decimal,
+       '31-60': Decimal, '61-90': Decimal, '90+': Decimal, 'total': Decimal}
+      sorted by total desc.
+    grand_totals: dict with keys 'current','1-30','31-60','61-90','90+','total' as Decimals.
+    """
     bills = AccountsPayable.query.filter(
         AccountsPayable.status.in_(['posted', 'partially_paid']),
         AccountsPayable.balance > 0,
-        AccountsPayable.branch_id == current_branch_id
+        AccountsPayable.branch_id == branch_id
     ).order_by(AccountsPayable.vendor_name, AccountsPayable.due_date).all()
 
     vendors = {}
@@ -183,6 +173,44 @@ def ap_aging():
             grand_totals[k] += v[k]
 
     vendors_list = sorted(vendors.values(), key=lambda x: x['total'], reverse=True)
+    return vendors_list, grand_totals
+
+
+@reports_bp.route('/reports')
+@login_required
+def index():
+    """Reports dashboard."""
+    return render_template('reports/index.html')
+
+
+@reports_bp.route('/reports/ar-aging')
+@login_required
+def ar_aging():
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+
+    current_branch_id = session.get('selected_branch_id')
+    customers_list, grand_totals = _build_ar_aging_data(as_of_date, current_branch_id)
+    return render_template('reports/ar_aging.html',
+                           customers=customers_list,
+                           grand_totals=grand_totals,
+                           as_of_date=as_of_date)
+
+
+@reports_bp.route('/reports/ap-aging')
+@login_required
+def ap_aging():
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+
+    current_branch_id = session.get('selected_branch_id')
+    vendors_list, grand_totals = _build_ap_aging_data(as_of_date, current_branch_id)
     return render_template('reports/ap_aging.html',
                            vendors=vendors_list,
                            grand_totals=grand_totals,

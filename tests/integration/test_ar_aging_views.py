@@ -211,3 +211,60 @@ class TestARAgingExport:
         assert r.status_code == 200
         body = r.data.decode('utf-8', errors='replace')
         assert 'Invoice #' in body or 'Customer' in body
+
+
+# ── Builder unit tests ────────────────────────────────────────────────────────
+
+class TestARAgingBuilder:
+    """Direct tests for the _build_ar_aging_data private builder function."""
+
+    def test_builder_empty_returns_empty(self, client, db_session, admin_user, main_branch):
+        """With no invoices, builder returns empty list and zero grand totals."""
+        from app.reports.views import _build_ar_aging_data
+        customers_list, grand_totals = _build_ar_aging_data(date.today(), main_branch.id)
+        assert customers_list == []
+        for key in ('current', '1-30', '31-60', '61-90', '90+', 'total'):
+            assert grand_totals[key] == Decimal('0.00'), f"Expected 0 for {key}"
+
+    def test_builder_buckets_correct(self, client, db_session, admin_user, main_branch):
+        """Builder places invoices into the correct aging buckets."""
+        from app.reports.views import _build_ar_aging_data
+        c = make_customer(db_session, code='BLD-C001')
+        inv_current = make_invoice(db_session, c, main_branch.id, 'posted', 1000,
+                                   due_days_ago=0, invoice_number='SI-BLD-CUR')
+        inv_overdue = make_invoice(db_session, c, main_branch.id, 'posted', 2000,
+                                   due_days_ago=45, invoice_number='SI-BLD-45D')
+        customers_list, grand_totals = _build_ar_aging_data(date.today(), main_branch.id)
+        assert len(customers_list) == 1
+        entry = customers_list[0]
+        assert entry['31-60'] == Decimal('2000.00')
+        assert entry['current'] == Decimal('1000.00')
+        assert grand_totals['31-60'] == Decimal('2000.00')
+        assert grand_totals['current'] == Decimal('1000.00')
+
+    def test_builder_grand_totals_reconcile(self, client, db_session, admin_user, main_branch):
+        """Sum of all per-customer totals equals grand_totals['total']."""
+        from app.reports.views import _build_ar_aging_data
+        c1 = make_customer(db_session, code='BLD-C002')
+        c2 = make_customer(db_session, code='BLD-C003')
+        make_invoice(db_session, c1, main_branch.id, 'posted', 1500,
+                     due_days_ago=5, invoice_number='SI-REC-001')
+        make_invoice(db_session, c2, main_branch.id, 'posted', 2500,
+                     due_days_ago=35, invoice_number='SI-REC-002')
+        customers_list, grand_totals = _build_ar_aging_data(date.today(), main_branch.id)
+        customer_total_sum = sum(c['total'] for c in customers_list)
+        assert customer_total_sum == grand_totals['total']
+
+    def test_builder_sorted_by_total_desc(self, client, db_session, admin_user, main_branch):
+        """Builder returns customers sorted by total descending."""
+        from app.reports.views import _build_ar_aging_data
+        c1 = make_customer(db_session, code='BLD-C004')
+        c2 = make_customer(db_session, code='BLD-C005')
+        make_invoice(db_session, c1, main_branch.id, 'posted', 500,
+                     due_days_ago=0, invoice_number='SI-SRT-001')
+        make_invoice(db_session, c2, main_branch.id, 'posted', 3000,
+                     due_days_ago=0, invoice_number='SI-SRT-002')
+        customers_list, grand_totals = _build_ar_aging_data(date.today(), main_branch.id)
+        assert len(customers_list) == 2
+        assert customers_list[0]['total'] >= customers_list[1]['total']
+        assert customers_list[0]['name'] == c2.name
