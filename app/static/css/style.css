@@ -45,6 +45,14 @@
   --blue-hover: #2563eb;
   --blue-btn-shadow: 0 4px 12px rgba(59,130,246,.4);
   --backdrop: rgba(0,0,0,.5);
+  /* Aging-bucket badge colours */
+  --aging-warn: #d97706;
+  --aging-warn-bg: #fef9c3;
+  --aging-warn-fg: #854d0e;
+  --aging-danger-bg: #fee2e2;
+  --aging-danger-fg: #991b1b;
+  --aging-ok-bg: #dcfce7;
+  --aging-ok-fg: #166534;
 }
 
 body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }

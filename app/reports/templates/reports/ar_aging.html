@@ -55,10 +55,10 @@
                             <span id="customer-{{ loop.index }}-icon" style="margin-left:8px;color:var(--text-2);">&#9654;</span>
                         </td>
                         <td style="text-align:right;">&#8369;{{ "{:,.2f}".format(customer.current) }}</td>
-                        <td style="text-align:right;{% if customer['1-30'] > 0 %}color:#d97706;{% endif %}">
+                        <td style="text-align:right;{% if customer['1-30'] > 0 %}color:var(--aging-warn);{% endif %}">
                             &#8369;{{ "{:,.2f}".format(customer['1-30']) }}
                         </td>
-                        <td style="text-align:right;{% if customer['31-60'] > 0 %}color:#d97706;{% endif %}">
+                        <td style="text-align:right;{% if customer['31-60'] > 0 %}color:var(--aging-warn);{% endif %}">
                             &#8369;{{ "{:,.2f}".format(customer['31-60']) }}
                         </td>
                         <td style="text-align:right;{% if customer['61-90'] > 0 %}color:var(--red);{% endif %}">
@@ -94,23 +94,23 @@
                                             <td>{{ invoice.due_date.strftime('%Y-%m-%d') if invoice.due_date else 'N/A' }}</td>
                                             <td style="text-align:right;">
                                                 {% if invoice.days_overdue > 0 %}
-                                                <span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">{{ invoice.days_overdue }} days</span>
+                                                <span style="background:var(--aging-warn-bg);color:var(--aging-warn-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">{{ invoice.days_overdue }} days</span>
                                                 {% else %}
-                                                <span style="background:#dcfce7;color:#166534;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Current</span>
+                                                <span style="background:var(--aging-ok-bg);color:var(--aging-ok-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Current</span>
                                                 {% endif %}
                                             </td>
                                             <td style="text-align:right;">&#8369;{{ "{:,.2f}".format(invoice.balance_due) }}</td>
                                             <td>
                                                 {% if invoice.bucket == 'current' %}
-                                                <span style="background:#dcfce7;color:#166534;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Current</span>
+                                                <span style="background:var(--aging-ok-bg);color:var(--aging-ok-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Current</span>
                                                 {% elif invoice.bucket == '1-30' %}
-                                                <span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">1-30 Days</span>
+                                                <span style="background:var(--aging-warn-bg);color:var(--aging-warn-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">1-30 Days</span>
                                                 {% elif invoice.bucket == '31-60' %}
-                                                <span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">31-60 Days</span>
+                                                <span style="background:var(--aging-warn-bg);color:var(--aging-warn-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">31-60 Days</span>
                                                 {% elif invoice.bucket == '61-90' %}
-                                                <span style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">61-90 Days</span>
+                                                <span style="background:var(--aging-danger-bg);color:var(--aging-danger-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">61-90 Days</span>
                                                 {% else %}
-                                                <span style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">90+ Days</span>
+                                                <span style="background:var(--aging-danger-bg);color:var(--aging-danger-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">90+ Days</span>
                                                 {% endif %}
                                             </td>
                                         </tr>
@@ -126,10 +126,10 @@
                     <tr style="background:var(--bg);">
                         <td><strong>GRAND TOTAL</strong></td>
                         <td style="text-align:right;">&#8369;{{ "{:,.2f}".format(grand_totals.current) }}</td>
-                        <td style="text-align:right;{% if grand_totals['1-30'] > 0 %}color:#d97706;{% endif %}">
+                        <td style="text-align:right;{% if grand_totals['1-30'] > 0 %}color:var(--aging-warn);{% endif %}">
                             &#8369;{{ "{:,.2f}".format(grand_totals['1-30']) }}
                         </td>
-                        <td style="text-align:right;{% if grand_totals['31-60'] > 0 %}color:#d97706;{% endif %}">
+                        <td style="text-align:right;{% if grand_totals['31-60'] > 0 %}color:var(--aging-warn);{% endif %}">
                             &#8369;{{ "{:,.2f}".format(grand_totals['31-60']) }}
                         </td>
                         <td style="text-align:right;{% if grand_totals['61-90'] > 0 %}color:var(--red);{% endif %}">
