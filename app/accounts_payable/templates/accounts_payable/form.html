@@ -349,7 +349,10 @@ let wtOverrideActive = false;
 
 function buildWhtOptions(selectedId) {
     if (currentVendorWHTs.length === 0) {
-        return '<option value="">None</option>';
+        // Vendor has no withholding tax codes — show a clear notice instead of a
+        // confusing empty "None". The select is disabled after Choices init.
+        const cp = escHtml(JSON.stringify({ code: 'No withholding tax' }));
+        return `<option value="" data-custom-properties="${cp}">No withholding tax for this vendor</option>`;
     }
     return '<option value="">None</option>' +
         currentVendorWHTs.map(wt => {
@@ -360,7 +363,11 @@ function buildWhtOptions(selectedId) {
 }
 
 function rebuildAllWhtSelects() {
+    const noWht = currentVendorWHTs.length === 0;
     const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
+    const noneChoice = noWht
+        ? { value: '', label: 'No withholding tax for this vendor', customProperties: { code: 'No withholding tax' } }
+        : { value: '', label: 'None', customProperties: { code: '' } };
     lineItems.forEach(item => {
         const lc = lineChoices[item.id];
         if (!lc) return;
@@ -370,16 +377,20 @@ function rebuildAllWhtSelects() {
             item.wt_id = autoWht ? autoWht.id : null;
             item.wt_rate = autoWht ? autoWht.rate : null;
         }
-        const choices = [{ value: '', label: 'None', customProperties: { code: '' } }].concat(
+        const choices = [noneChoice].concat(
             currentVendorWHTs.map(wt => ({
                 value: String(wt.id),
                 label: `${wt.code} — ${wt.name} (${wt.rate}%)`,
                 customProperties: { code: wt.code }
             }))
         );
+        lc.wht.enable();   // must be enabled to accept setChoices
         lc.wht.clearChoices();
         lc.wht.setChoices(choices, 'value', 'label', false);
         lc.wht.setChoiceByValue(item.wt_id ? String(item.wt_id) : '');
+        // No codes for this vendor → lock the control so the notice can't be
+        // mistaken for a pickable option.
+        if (noWht) lc.wht.disable();
     });
 }
 
@@ -501,6 +512,7 @@ function addLineItem(existingItem, firstDefaults) {
     const acctOpts = { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 100, allowHTML: false };
     const vatC = new Choices(vatSel, codeOnlyOpts);
     const whtC = new Choices(whtSel, codeOnlyOpts);
+    if (currentVendorWHTs.length === 0) whtC.disable();   // no codes → locked notice
     const acctC = new Choices(acctSel, acctOpts);
     vatSel.addEventListener('change', () => updateLineItem(id, 'vat_category', vatSel.value));
     whtSel.addEventListener('change', () => updateWht(id, whtSel));
