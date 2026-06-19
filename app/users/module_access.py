@@ -16,7 +16,7 @@ MODULE_REGISTRY = [
     {'key': 'accounts_receivable', 'label': 'Sales Invoices', 'section': 'Transactions',
      'endpoints': ('sales_invoices.', 'journals.si_journal')},
     {'key': 'collections', 'label': 'Cash Receipts', 'section': 'Transactions',
-     'endpoints': ('receipts.',)},
+     'endpoints': ('cash_receipts.', 'journals.cr_journal')},
     {'key': 'accounts_payable', 'label': 'Accounts Payable', 'section': 'Transactions',
      'endpoints': ('accounts_payable.', 'journals.ap_journal')},
     {'key': 'payments', 'label': 'Cash Disbursements', 'section': 'Transactions',

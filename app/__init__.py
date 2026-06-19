@@ -181,7 +181,6 @@ def create_app(config_name=None):
     from app.accounts_payable.models import AccountsPayable, AccountsPayableItem, AccountsPayableAttachment
     from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
     from app.cash_receipts.models import CashReceiptVoucher, CRVArLine, CRVRevenueLine
-    from app.receipts.models import Receipt
     from app.journal_entries.models import JournalEntry, JournalEntryLine
     from app.errors.models import ErrorLog
     from app.periods.models import AccountingPeriod
@@ -199,7 +198,6 @@ def create_app(config_name=None):
     from app.audit.views import audit_bp
     from app.sales_invoices.views import sales_invoices_bp
     from app.accounts_payable.views import accounts_payable_bp
-    from app.receipts.views import receipts_bp
     from app.journal_entries.views import journal_entries_bp
     from app.journals.views import journals_bp
     from app.reports.views import reports_bp
@@ -221,7 +219,6 @@ def create_app(config_name=None):
     app.register_blueprint(audit_bp)
     app.register_blueprint(sales_invoices_bp)
     app.register_blueprint(accounts_payable_bp)
-    app.register_blueprint(receipts_bp)
     app.register_blueprint(journal_entries_bp)
     app.register_blueprint(journals_bp)
     app.register_blueprint(reports_bp)

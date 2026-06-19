@@ -1055,7 +1055,7 @@
                     </a>
                     {% endif %}
                     {% if can_access_module(current_user, 'collections') %}
-                    <a href="{{ url_for('receipts.list_receipts') }}?type=collection" class="nav-item {% if request.endpoint and request.endpoint.startswith('receipts.') and request.args.get('type') == 'collection' %}active{% endif %}">
+                    <a href="{{ url_for('cash_receipts.list_crvs') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('cash_receipts.') %}active{% endif %}">
                         <span class="nav-icon">💰</span>
                         <span class="nav-text">Cash Receipts<span class="nav-subtext">(Collection)</span></span>
                     </a>
