@@ -95,6 +95,7 @@ Production target is PythonAnywhere via `wsgi.py` (set `PYTHONANYWHERE_USERNAME`
 
 - Global error handlers are currently **disabled** in `create_app` (bottom of the file) to surface full tracebacks during testing — re-enable before production.
 - `app/templates/base.html` has an inline `<style>` block that **duplicates** rules from `app/static/css/style.css` (with hardcoded values, not design tokens) and it loads **after** style.css — so its duplicates win the cascade and can silently override the real rule (this is what hid the dashboard hero gradient, fixed in `e7e1fde`). Before adding or editing a selector in that inline block, grep `style.css` for it and edit there using design tokens.
+- Static assets are linked with a **manual `?v=N` query string, not a content hash**. After editing any file under `app/static/`, grep all templates for its filename and **bump the `?v=N` on every `<link>`/`<script>`** that loads it (a shared asset is linked from multiple forms — bump them all). A file linked with no `?v=` caches indefinitely; add one. If a static-asset change "isn't showing" in the browser or Playwright, suspect the stale cache **before** re-editing already-correct code.
 
 ## Workflow Preferences
 
