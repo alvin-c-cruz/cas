@@ -187,23 +187,6 @@
             margin-top: 4px;
         }
 
-        .info-box {
-            background: #eff6ff;
-            border-left: 4px solid #3b82f6;
-            padding: 14px 16px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-            font-size: 13px;
-            color: #1e40af;
-            line-height: 1.6;
-        }
-
-        .info-box strong {
-            display: block;
-            margin-bottom: 4px;
-            font-weight: 600;
-        }
-
         .password-strength {
             margin-top: 8px;
             margin-bottom: 4px;
@@ -295,11 +278,6 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-
-        <div class="info-box">
-            <strong>Account Approval Required</strong>
-            Your account will be reviewed by a system administrator before activation. You will be able to log in once your account has been approved.
-        </div>
 
         <form method="POST" novalidate autocomplete="off">
             {{ form.hidden_tag() }}
