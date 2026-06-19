@@ -323,6 +323,67 @@ _ATTACHMENT_ALLOWED = {
 }
 
 
+def _save_ap_attachment(ap, file_storage, user):
+    """Validate and persist one uploaded file as an AccountsPayableAttachment.
+
+    Saves to _ap_upload_dir(ap.id), creates the DB row, writes an audit entry,
+    and commits this attachment atomically (mirrors edit-mode upload). Returns
+    (True, None) on success or (False, message) on a disallowed type / invalid
+    name / error — after rolling back and removing any written file. Never
+    raises for those cases, so a bad file can be skipped by the caller.
+    """
+    original_name = secure_filename(file_storage.filename or '')
+    if not original_name:
+        return False, 'Invalid filename.'
+
+    _, ext = os.path.splitext(original_name)
+    ext = ext.lower()
+    mime_type = _ATTACHMENT_ALLOWED.get(ext)
+    if mime_type is None:
+        allowed = ', '.join(sorted(_ATTACHMENT_ALLOWED))
+        return False, f'File type "{ext or "unknown"}" is not allowed. Accepted: {allowed}'
+
+    stored_name = uuid.uuid4().hex + ext
+    file_path = os.path.join(_ap_upload_dir(ap.id), stored_name)
+    try:
+        file_storage.save(file_path)
+        file_size = os.path.getsize(file_path)
+
+        attachment = AccountsPayableAttachment(
+            ap_id=ap.id,
+            original_filename=original_name,
+            stored_filename=stored_name,
+            mime_type=mime_type,
+            file_size=file_size,
+            uploaded_by_id=user.id,
+        )
+        db.session.add(attachment)
+        db.session.commit()
+
+        log_create(
+            module='accounts_payable_attachment',
+            record_id=attachment.id,
+            record_identifier=f'{ap.ap_number} / {original_name}',
+            new_values={
+                'ap_id': ap.id,
+                'original_filename': original_name,
+                'stored_filename': stored_name,
+                'mime_type': mime_type,
+                'file_size': file_size,
+            },
+        )
+        return True, None
+    except Exception:
+        db.session.rollback()
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+        current_app.logger.error('Error saving AP attachment', exc_info=True)
+        return False, 'An unexpected error occurred while saving the file.'
+
+
 _EXPORT_COLUMNS = [
     'ap_number', 'ap_date', 'due_date', 'vendor_name', 'vendor_tin',
     'vendor_invoice_number', 'subtotal', 'vat_amount', 'withholding_tax_amount',
@@ -1207,7 +1268,7 @@ def void(id):
 @login_required
 @staff_or_above_required
 def upload_attachment(id):
-    """Upload a file attachment to a draft AP Voucher."""
+    """Upload a file attachment to a draft AP Voucher (edit mode)."""
     ap = _get_ap_or_404(id)
 
     if ap.status != 'draft':
@@ -1219,60 +1280,11 @@ def upload_attachment(id):
         flash('No file selected.', 'error')
         return redirect(url_for('accounts_payable.edit', id=id))
 
-    original_name = secure_filename(uploaded_file.filename)
-    if not original_name:
-        flash('Invalid filename.', 'error')
-        return redirect(url_for('accounts_payable.edit', id=id))
-
-    _, ext = os.path.splitext(original_name)
-    ext = ext.lower()
-    mime_type = _ATTACHMENT_ALLOWED.get(ext)
-    if mime_type is None:
-        allowed = ', '.join(sorted(_ATTACHMENT_ALLOWED))
-        flash(f'File type "{ext or "unknown"}" is not allowed. Accepted: {allowed}', 'error')
-        return redirect(url_for('accounts_payable.edit', id=id))
-    stored_name = uuid.uuid4().hex + ext
-
-    upload_dir = _ap_upload_dir(id)
-    file_path = os.path.join(upload_dir, stored_name)
-
-    try:
-        uploaded_file.save(file_path)
-        file_size = os.path.getsize(file_path)
-
-        attachment = AccountsPayableAttachment(
-            ap_id=ap.id,
-            original_filename=original_name,
-            stored_filename=stored_name,
-            mime_type=mime_type,
-            file_size=file_size,
-            uploaded_by_id=current_user.id,
-        )
-        db.session.add(attachment)
-        db.session.commit()
-
-        log_create(
-            module='accounts_payable_attachment',
-            record_id=attachment.id,
-            record_identifier=f'{ap.ap_number} / {original_name}',
-            new_values={
-                'ap_id': ap.id,
-                'original_filename': original_name,
-                'stored_filename': stored_name,
-                'mime_type': mime_type,
-                'file_size': file_size,
-            }
-        )
-
-        flash(f'File "{original_name}" uploaded successfully.', 'success')
-
-    except Exception as e:
-        db.session.rollback()
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        current_app.logger.error(f'Error uploading attachment: {e}', exc_info=True)
-        flash('An unexpected error occurred while uploading the file. Please '
-              'try again; if it persists, contact your administrator.', 'error')
+    ok, err = _save_ap_attachment(ap, uploaded_file, current_user)
+    if ok:
+        flash(f'File "{secure_filename(uploaded_file.filename)}" uploaded successfully.', 'success')
+    else:
+        flash(err, 'error')
 
     return redirect(url_for('accounts_payable.edit', id=id))
 
