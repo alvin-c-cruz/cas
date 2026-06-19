@@ -8,9 +8,9 @@ from wtforms.validators import DataRequired, Length, NumberRange, Optional
 
 class WithholdingTaxForm(FlaskForm):
     """Form for creating/editing withholding tax codes"""
-    code = StringField('WT Code', validators=[
-        DataRequired(message='WT code is required'),
-        Length(max=20, message='WT code must be 20 characters or less')
+    code = StringField('ATC', validators=[
+        DataRequired(message='ATC is required'),
+        Length(max=20, message='ATC must be 20 characters or less')
     ])
     name = StringField('Name', validators=[
         DataRequired(message='Name is required'),

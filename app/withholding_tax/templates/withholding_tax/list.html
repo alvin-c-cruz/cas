@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Withholding Tax Codes{% endblock %}
-{% block page_title %}Withholding Tax Codes{% endblock %}
+{% block title %}Withholding Tax Expanded{% endblock %}
+{% block page_title %}Withholding Tax Expanded{% endblock %}
 
 {% block content %}
 
 <div class="content-header">
     <div class="page-header-actions">
         <div>
-            <h1 class="page-heading">Withholding Tax Codes</h1>
-            <p class="page-subheading">Manage Philippine BIR Withholding Tax Codes</p>
+            <h1 class="page-heading">Withholding Tax Expanded</h1>
+            <p class="page-subheading">Manage Philippine BIR Expanded Withholding Tax codes</p>
         </div>
         <div class="page-actions">
             {% if current_user.role in ['accountant', 'admin'] %}
@@ -29,7 +29,7 @@
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Code</th>
+                    <th>ATC</th>
                     <th>Name</th>
                     <th>Description</th>
                     <th>Rate (%)</th>

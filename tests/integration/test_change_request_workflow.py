@@ -322,6 +322,46 @@ class TestWithholdingTaxChangeRequests:
         assert b'Pending change' in resp.data
 
 
+class TestWithholdingTaxLabels:
+    """BIR terminology: page is 'Withholding Tax Expanded' (EWT); code column is 'ATC'."""
+
+    def test_list_page_uses_expanded_label(self, client, db_session, two_reviewers):
+        login(client)
+        make_wht(db_session)
+        resp = client.get('/withholding-tax/')
+        assert resp.status_code == 200
+        assert b'Withholding Tax Expanded' in resp.data
+        assert b'Withholding Tax Codes' not in resp.data
+
+    def test_list_table_uses_atc_header(self, client, db_session, two_reviewers):
+        login(client)
+        make_wht(db_session)
+        resp = client.get('/withholding-tax/')
+        assert b'<th>ATC</th>' in resp.data
+        assert b'<th>Code</th>' not in resp.data
+
+    def test_maintenance_nav_uses_expanded_label(self, client, db_session, two_reviewers):
+        """Only the Maintenance nav item is renamed; the BIR-Reports one stays 'Withholding Tax'."""
+        login(client)
+        resp = client.get('/withholding-tax/')
+        assert b'<span class="nav-text">Withholding Tax Expanded</span>' in resp.data
+        assert b'<span class="nav-text">Withholding Tax</span>' in resp.data
+
+    def test_create_form_uses_atc_field_label(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/withholding-tax/create')
+        assert resp.status_code == 200
+        assert b'>ATC<' in resp.data
+        assert b'WT Code' not in resp.data
+
+    def test_change_requests_back_link_uses_expanded_label(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/withholding-tax/change-requests')
+        assert resp.status_code == 200
+        assert b'Back to Withholding Tax Expanded' in resp.data
+        assert b'Back to Withholding Tax Codes' not in resp.data
+
+
 # ───────────────────────── Chart of Accounts ─────────────────────────
 
 def make_account(db_session, code='1900', name='Test Asset Account'):
