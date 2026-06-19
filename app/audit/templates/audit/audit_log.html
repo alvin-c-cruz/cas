@@ -137,13 +137,27 @@
                         {% set old = log.old_values|from_json if log.old_values else {} %}
                         {% set new = log.new_values|from_json if log.new_values else {} %}
 
-                        {% if new %}
+                        {% if new or old %}
                         <div class="details-grid">
                             {% for key, value in new.items() %}
                             {% if not key.startswith('wt_') %}
                             <div class="detail-field">
                                 <label>{{ key.replace('_', ' ').title() }}:</label>
+                                {% if old and key in old and old[key] != value %}
+                                {# update: show before → after (only when the value actually changed) #}
+                                <value><span style="color:var(--text-2); text-decoration:line-through;">{{ old[key] if old[key] != None else '—' }}</span> <span style="color:var(--text-2);">→</span> {{ value if value != None else '—' }}</value>
+                                {% else %}
                                 <value>{{ value if value != None else '—' }}</value>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                            {# old-only fields (delete, or a value cleared on update) #}
+                            {% for key, value in old.items() %}
+                            {% if key not in new and not key.startswith('wt_') %}
+                            <div class="detail-field">
+                                <label>{{ key.replace('_', ' ').title() }}:</label>
+                                <value><span style="color:var(--text-2); text-decoration:line-through;">{{ value if value != None else '—' }}</span></value>
                             </div>
                             {% endif %}
                             {% endfor %}
