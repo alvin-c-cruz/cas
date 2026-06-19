@@ -31,6 +31,9 @@ def vat_data(account_id, code='V12T', rate='12.00'):
         'code': code, 'name': f'Test {code}', 'description': 'test',
         'rate': rate, 'is_active': '1',
         'input_vat_account_id': str(account_id),
+        # VAT-bearing categories (rate > 0) now require an output tax account too;
+        # the single test account doubles as both (pickers accept any leaf account).
+        'output_vat_account_id': str(account_id),
         'request_reason': 'B-014 workflow test',
     }
 

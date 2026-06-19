@@ -68,6 +68,9 @@ def vat_form_data(code='VATX', name='Test VAT', reason='Needed for BIR complianc
     }
     if input_vat_account_id is not None:
         data['input_vat_account_id'] = str(input_vat_account_id)
+        # rate > 0 now also requires an output tax account; reuse the same leaf
+        # account (the VAT pickers accept any active leaf account).
+        data['output_vat_account_id'] = str(input_vat_account_id)
     if reason is not None:
         data['request_reason'] = reason
     return data
