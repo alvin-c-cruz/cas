@@ -463,3 +463,47 @@ class TestCRVBranchScoping:
             sess['selected_branch_id'] = branch_manila.id
         resp = client.get(f'/cash-receipts/{crv.id}')
         assert resp.status_code == 404
+
+
+class TestCRVCustomerTin:
+    """CRV create/edit must copy customer.tin onto customer_tin (FIX 5)."""
+
+    def test_create_crv_copies_customer_tin(self, client, db_session, admin_user, main_branch):
+        """When a customer has a TIN, the saved CRV.customer_tin must equal customer.tin."""
+        login(client)
+        ar, wt, cash, rev = setup_accounts(db_session)
+
+        customer_with_tin = Customer(
+            code='CRV-TIN-01', name='TIN Customer', is_active=True, tin='123-456-789-000'
+        )
+        db_session.add(customer_with_tin)
+        db_session.commit()
+
+        revenue_lines = [{'description': 'Service with TIN', 'amount': 1000.0,
+                          'vat_category': '', 'account_id': rev.id, 'wt_id': None}]
+        create_draft_crv(client, customer_with_tin, cash, revenue_lines=revenue_lines)
+
+        crv = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
+        assert crv is not None, 'CRV was not created'
+        assert crv.customer_tin == '123-456-789-000', (
+            f'Expected customer_tin=123-456-789-000, got {crv.customer_tin!r}')
+
+    def test_create_crv_null_tin_customer_is_null(
+            self, client, db_session, admin_user, main_branch):
+        """When a customer has no TIN, customer_tin stays NULL (no error)."""
+        login(client)
+        ar, wt, cash, rev = setup_accounts(db_session)
+
+        customer_no_tin = Customer(
+            code='CRV-NOTIN-01', name='No TIN Customer', is_active=True
+        )
+        db_session.add(customer_no_tin)
+        db_session.commit()
+
+        revenue_lines = [{'description': 'Service no tin', 'amount': 500.0,
+                          'vat_category': '', 'account_id': rev.id, 'wt_id': None}]
+        create_draft_crv(client, customer_no_tin, cash, revenue_lines=revenue_lines)
+
+        crv = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
+        assert crv is not None
+        assert crv.customer_tin is None

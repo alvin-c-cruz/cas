@@ -653,6 +653,7 @@ def create():
                 crv_date=form.crv_date.data,
                 customer_id=customer.id,
                 customer_name=customer.name,
+                customer_tin=customer.tin,
                 payment_method=form.payment_method.data,
                 check_number=form.check_number.data or None,
                 check_date=form.check_date.data or None,
@@ -743,6 +744,7 @@ def edit(id):
             crv.crv_date = form.crv_date.data
             crv.customer_id = customer.id
             crv.customer_name = customer.name
+            crv.customer_tin = customer.tin
             crv.payment_method = form.payment_method.data
             crv.check_number = form.check_number.data or None
             crv.check_date = form.check_date.data or None
