@@ -252,6 +252,42 @@ class TestCDVCancel:
         log = AuditLog.query.filter_by(module='cash_disbursement', action='cancel').first()
         assert log is not None
 
+    def test_cancel_does_not_resurrect_voided_bill(
+            self, client, db_session, admin_user, main_branch):
+        """If the underlying bill was voided after the CDV paid it,
+        cancelling the CDV must NOT change bill status back to posted/partially_paid."""
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        bill = make_posted_bill(db_session, vendor, ap, main_branch.id)
+
+        # Create and post a CDV paying the full bill
+        ap_lines = [{'bill_id': bill.id, 'bill_number': bill.ap_number,
+                     'original_balance': 5000.0, 'amount_applied': 5000.0}]
+        create_draft_cdv(client, vendor, cash, ap_lines=ap_lines)
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
+        client.post(f'/cash-disbursements/{cdv.id}/post', follow_redirects=True)
+
+        # Simulate the bill being voided out-of-band
+        db_session.refresh(bill)
+        bill.status = 'voided'
+        db_session.commit()
+
+        # Cancel the CDV — should reverse amount_paid/balance but NOT change status
+        today = ph_now().date().isoformat()
+        client.post(f'/cash-disbursements/{cdv.id}/cancel', data={
+            'cancel_reason': 'Bill was voided — reversing the payment',
+            'reversal_date': today,
+        }, follow_redirects=True)
+
+        db_session.refresh(cdv)
+        db_session.refresh(bill)
+        assert cdv.status == 'cancelled'
+        assert bill.status == 'voided', (
+            f'Expected bill to stay voided, got {bill.status!r}')
+        assert bill.amount_paid == Decimal('0.00'), 'amount_paid must be reversed'
+        assert bill.balance == Decimal('5000.00'), 'balance must be restored'
+
 
 class TestCDVTOCTOU:
     """Re-validation of over-payment at POST time (TOCTOU guard)."""

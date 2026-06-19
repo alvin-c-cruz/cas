@@ -255,6 +255,42 @@ class TestCRVCancel:
         log = AuditLog.query.filter_by(module='cash_receipt', action='cancel').first()
         assert log is not None
 
+    def test_cancel_does_not_resurrect_voided_invoice(
+            self, client, db_session, admin_user, main_branch):
+        """If the underlying invoice was voided after the CRV collected it,
+        cancelling the CRV must NOT change invoice status back to posted/partially_paid."""
+        login(client)
+        ar, wt, cash, rev = setup_accounts(db_session)
+        customer = make_customer(db_session)
+        inv = make_posted_invoice(db_session, customer, ar, main_branch.id)
+
+        # Create and post a CRV collecting the full invoice
+        ar_lines = [{'invoice_id': inv.id, 'invoice_number': inv.invoice_number,
+                     'original_balance': 5000.0, 'amount_applied': 5000.0}]
+        create_draft_crv(client, customer, cash, ar_lines=ar_lines)
+        crv = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
+        client.post(f'/cash-receipts/{crv.id}/post', follow_redirects=True)
+
+        # Simulate the invoice being voided out-of-band
+        db_session.refresh(inv)
+        inv.status = 'voided'
+        db_session.commit()
+
+        # Cancel the CRV — should reverse amount_paid/balance but NOT change status
+        today = ph_now().date().isoformat()
+        client.post(f'/cash-receipts/{crv.id}/cancel', data={
+            'cancel_reason': 'Invoice was voided — reversing the receipt',
+            'reversal_date': today,
+        }, follow_redirects=True)
+
+        db_session.refresh(crv)
+        db_session.refresh(inv)
+        assert crv.status == 'cancelled'
+        assert inv.status == 'voided', (
+            f'Expected invoice to stay voided, got {inv.status!r}')
+        assert inv.amount_paid == Decimal('0.00'), 'amount_paid must be reversed'
+        assert inv.balance == Decimal('5000.00'), 'balance must be restored'
+
 
 class TestCRVLineValidation:
 

@@ -831,10 +831,11 @@ def _reverse_ap_payments(cdv):
             )
         bill.amount_paid = new_paid
         bill.balance = Decimal(str(bill.total_amount)) - new_paid
-        if bill.amount_paid <= 0:
-            bill.status = 'posted'
-        else:
-            bill.status = 'partially_paid'
+        if bill.status in ('paid', 'partially_paid'):
+            if bill.amount_paid <= 0:
+                bill.status = 'posted'
+            else:
+                bill.status = 'partially_paid'
 
 
 @cash_disbursements_bp.route('/cash-disbursements/<int:id>/post', methods=['POST'])

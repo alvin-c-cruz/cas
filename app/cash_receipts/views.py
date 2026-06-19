@@ -437,7 +437,8 @@ def _reverse_ar_collections(crv):
                 f'would result in negative amount_paid.')
         inv.amount_paid = new_paid
         inv.balance = Decimal(str(inv.total_amount)) - new_paid
-        inv.status = 'posted' if inv.amount_paid <= 0 else 'partially_paid'
+        if inv.status in ('paid', 'partially_paid'):
+            inv.status = 'posted' if inv.amount_paid <= 0 else 'partially_paid'
 
 
 # ---------------------------------------------------------------------------
