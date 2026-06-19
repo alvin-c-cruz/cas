@@ -1,6 +1,7 @@
 import json
-from flask import Blueprint, render_template, redirect, url_for, jsonify, request, session
+from flask import Blueprint, render_template, redirect, url_for, jsonify, request, session, flash
 from flask_login import login_required, current_user
+from app.dashboard.action_items_service import gather_draft_items, gather_approval_items
 from datetime import datetime
 from app.utils import ph_now
 from app.accounts.approval_models import AccountChangeRequest
@@ -98,132 +99,27 @@ def home():
 @dashboard_bp.route('/action-items')
 @login_required
 def action_items():
-    """Action Items page - shows all items needing user's action"""
-    items = []
+    """Action Items page — drafts to finish and change requests to approve."""
+    # Viewers have no action items; keep them off the page entirely.
+    if current_user.role == 'viewer':
+        flash('You do not have access to Action Items.', 'warning')
+        return redirect(url_for('dashboard.home'))
 
-    # Only accountants and admins see pending change requests
-    if current_user.role in ['accountant', 'admin']:
-        # Chart of Accounts change requests
-        coa_requests = AccountChangeRequest.query.filter_by(status='pending').all()
-        for req in coa_requests:
-            change_data = req.get_change_data()
-            items.append({
-                'type': 'AccountChange',
-                'id': change_data.get('code', req.id),
-                'desc': f"{change_data.get('name', 'Account')} — {req.change_type}",
-                'by': req.requested_by or '—',
-                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
-                'state': 'Pending',
-                'reason': req.request_reason,
-                'reviewUrl': '/accounts/pending-approvals'
-            })
-
-        # VAT Category change requests
-        vat_requests = VATCategoryChangeRequest.query.filter_by(status='pending').all()
-        for req in vat_requests:
-            proposed = json.loads(req.proposed_data) if req.proposed_data else {}
-            items.append({
-                'type': 'VATChange',
-                'id': proposed.get('code', req.id),
-                'desc': f"{proposed.get('name', 'VAT Category')} — {req.action}",
-                'by': req.requested_by.username if req.requested_by else '—',
-                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
-                'state': 'Pending',
-                'reason': req.request_reason,
-                'reviewUrl': f'/vat-categories/change-requests/{req.id}/review'
-            })
-
-        # Withholding Tax change requests
-        wt_requests = WithholdingTaxChangeRequest.query.filter_by(status='pending').all()
-        for req in wt_requests:
-            proposed = json.loads(req.proposed_data) if req.proposed_data else {}
-            items.append({
-                'type': 'WTChange',
-                'id': proposed.get('code', req.id),
-                'desc': f"{proposed.get('name', 'Withholding Tax')} — {req.action}",
-                'by': req.requested_by.username if req.requested_by else '—',
-                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
-                'state': 'Pending',
-                'reason': req.request_reason,
-                'reviewUrl': f'/withholding-tax/change-requests/{req.id}/review'
-            })
-
-    return render_template('dashboard/action_items.html', action_items=items)
+    branch_id = session.get('selected_branch_id')
+    draft_items = gather_draft_items(current_user, branch_id)
+    approval_items = gather_approval_items(current_user)
+    return render_template('dashboard/action_items.html',
+                           draft_items=draft_items, approval_items=approval_items)
 
 @dashboard_bp.route('/api/action-items')
 @login_required
 def get_action_items():
-    """API endpoint to get action items for the current user"""
-    items = []
-
-    # Only accountants and admins see pending change requests
-    if current_user.role in ['accountant', 'admin']:
-        # Chart of Accounts change requests
-        coa_requests = AccountChangeRequest.query.filter_by(status='pending').all()
-        for req in coa_requests:
-            change_data = req.get_change_data()
-            # For create action, just show the name. For update/delete, show "name — action"
-            if req.change_type == 'create':
-                desc = change_data.get('name', 'Account')
-            else:
-                desc = f"{change_data.get('name', 'Account')} — {req.change_type}"
-            items.append({
-                'type': 'AccountChange',
-                'id': change_data.get('code', req.id),
-                'desc': desc,
-                'by': req.requested_by or '—',
-                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
-                'state': 'Pending',
-                'reason': req.request_reason,
-                'recId': req.id,
-                'module': 'accounts',
-                'reviewUrl': '/accounts/pending-approvals'
-            })
-
-        # VAT Category change requests
-        vat_requests = VATCategoryChangeRequest.query.filter_by(status='pending').all()
-        for req in vat_requests:
-            proposed = json.loads(req.proposed_data) if req.proposed_data else {}
-            # For create action, just show the name. For update/delete, show "name — action"
-            if req.action == 'create':
-                desc = proposed.get('name', 'VAT Category')
-            else:
-                desc = f"{proposed.get('name', 'VAT Category')} — {req.action}"
-            items.append({
-                'type': 'VATChange',
-                'id': proposed.get('code', req.id),
-                'desc': desc,
-                'by': req.requested_by.username if req.requested_by else '—',
-                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
-                'state': 'Pending',
-                'reason': req.request_reason,
-                'recId': req.id,
-                'module': 'vat_categories',
-                'reviewUrl': f'/vat-categories/change-requests/{req.id}/review'
-            })
-
-        # Withholding Tax change requests
-        wt_requests = WithholdingTaxChangeRequest.query.filter_by(status='pending').all()
-        for req in wt_requests:
-            proposed = json.loads(req.proposed_data) if req.proposed_data else {}
-            # For create action, just show the name. For update/delete, show "name — action"
-            if req.action == 'create':
-                desc = proposed.get('name', 'Withholding Tax')
-            else:
-                desc = f"{proposed.get('name', 'Withholding Tax')} — {req.action}"
-            items.append({
-                'type': 'WTChange',
-                'id': proposed.get('code', req.id),
-                'desc': desc,
-                'by': req.requested_by.username if req.requested_by else '—',
-                'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
-                'state': 'Pending',
-                'reason': req.request_reason,
-                'recId': req.id,
-                'module': 'withholding_tax',
-                'reviewUrl': f'/withholding-tax/change-requests/{req.id}/review'
-            })
-
+    """API endpoint: the current user's drafts + approvals (same rules as the
+    Action Items page)."""
+    if current_user.role == 'viewer':
+        return jsonify([])
+    branch_id = session.get('selected_branch_id')
+    items = gather_draft_items(current_user, branch_id) + gather_approval_items(current_user)
     return jsonify(items)
 
 @dashboard_bp.route('/under-development')

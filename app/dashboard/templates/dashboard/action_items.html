@@ -4,47 +4,56 @@
 {% block page_title %}Action Items{% endblock %}
 
 {% block content %}
+
+{% macro action_row(item, action_label, action_url) %}
+<div class="action-row" style="display:flex;align-items:center;padding:16px;border-bottom:1px solid var(--border)">
+    <div style="font-size:24px;margin-right:16px">{{ item.icon or '•' }}</div>
+    <div style="flex:1">
+        <div style="font-weight:600;color:var(--text);margin-bottom:4px">{{ item.type }} · {{ item.id }}</div>
+        <div style="color:var(--text-2);margin-bottom:4px">{{ item.desc }}</div>
+        {% if item.reason %}
+        <div style="font-size:12px;color:var(--text-3);margin-bottom:4px"><strong>Reason:</strong> {{ item.reason }}</div>
+        {% endif %}
+        <div style="font-size:12px;color:var(--text-3)">
+            <span class="badge" style="background:var(--bg);color:var(--text-2);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">{{ item.state }}</span>
+            by {{ item.by }} · {{ item.when }}
+        </div>
+    </div>
+    <div style="margin-left:16px">
+        <a href="{{ action_url }}" class="btn btn-sm btn-primary">{{ action_label }}</a>
+    </div>
+</div>
+{% endmacro %}
+
+<div class="card" style="margin-bottom:16px">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Drafts</div>
+            <div class="card-sub">{{ draft_items|length }} unfinished document{{ 's' if draft_items|length != 1 else '' }}</div>
+        </div>
+    </div>
+    {% if draft_items %}
+        {% for item in draft_items %}{{ action_row(item, 'Continue', item.editUrl) }}{% endfor %}
+    {% else %}
+    <div style="padding:32px;text-align:center;color:var(--text-3)">No draft documents.</div>
+    {% endif %}
+</div>
+
+{# "For Approval" is admin/accountant only — staff never see it. #}
+{% if current_user.role in ['admin', 'accountant'] %}
 <div class="card">
     <div class="card-header">
         <div>
-            <div class="card-title">Items Needing Your Action</div>
-            <div class="card-sub">{{ action_items|length }} item{{ 's' if action_items|length != 1 else '' }}</div>
+            <div class="card-title">For Approval</div>
+            <div class="card-sub">{{ approval_items|length }} pending change request{{ 's' if approval_items|length != 1 else '' }}</div>
         </div>
     </div>
-
-    {% if action_items %}
-        {% for item in action_items %}
-        <div class="action-row" style="display:flex;align-items:center;padding:16px;border-bottom:1px solid var(--border)">
-            <div class="action-icon" style="font-size:24px;margin-right:16px">
-                {% if item.type == 'VATChange' %}📊
-                {% elif item.type == 'WTChange' %}💼
-                {% elif item.type == 'AccountChange' %}📋
-                {% else %}•{% endif %}
-            </div>
-            <div class="action-body" style="flex:1">
-                <div class="action-id" style="font-weight:600;color:#0f172a;margin-bottom:4px">
-                    {{ item.type }} · {{ item.id }}
-                </div>
-                <div class="action-desc" style="color:#475569;margin-bottom:4px">
-                    {{ item.desc }}
-                </div>
-                <div class="action-reason" style="font-size:12px;color:#64748b;margin-bottom:4px">
-                    <strong>Reason:</strong> {{ item.reason or '—' }}
-                </div>
-                <div class="action-state" style="font-size:12px;color:#64748b">
-                    <span class="badge badge-{{ item.state|lower }}" style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">{{ item.state }}</span>
-                    by {{ item.by }} · {{ item.when }}
-                </div>
-            </div>
-            <div class="action-buttons" style="margin-left:16px">
-                <a href="{{ item.reviewUrl }}" class="btn btn-sm btn-primary">Review</a>
-            </div>
-        </div>
-        {% endfor %}
+    {% if approval_items %}
+        {% for item in approval_items %}{{ action_row(item, 'Review', item.reviewUrl) }}{% endfor %}
     {% else %}
-    <div class="action-empty" style="padding:40px;text-align:center;color:#64748b">
-        🎉 Nothing needs your action right now.
-    </div>
+    <div style="padding:32px;text-align:center;color:var(--text-3)">Nothing awaiting approval.</div>
     {% endif %}
 </div>
+{% endif %}
+
 {% endblock %}

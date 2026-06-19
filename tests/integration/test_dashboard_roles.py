@@ -313,7 +313,8 @@ class TestDashboardAdminSection:
 # ---------------------------------------------------------------------------
 
 class TestActionItemsPage:
-    """Accountant/admin see pending change requests; staff sees empty page; viewer gets 200."""
+    """Accountant/admin see drafts + approvals; staff sees drafts only; viewer
+    is blocked from the page entirely."""
 
     def test_accountant_can_access_action_items(self, client, db_session, admin_user,
                                                 accountant_user, main_branch):
@@ -333,11 +334,13 @@ class TestActionItemsPage:
         resp = client.get('/action-items')
         assert resp.status_code == 200
 
-    def test_viewer_can_access_action_items(self, client, db_session, admin_user, viewer_user,
-                                            main_branch):
+    def test_viewer_blocked_from_action_items(self, client, db_session, admin_user, viewer_user,
+                                              main_branch):
         admin_user.add_branch(main_branch)
         viewer_user.add_branch(main_branch)
         db_session.commit()
         login(client, 'viewer', 'viewer123')
         resp = client.get('/action-items')
-        assert resp.status_code == 200
+        # Viewers have no action items — the route redirects them away.
+        assert resp.status_code == 302
+        assert '/action-items' not in resp.headers.get('Location', '')

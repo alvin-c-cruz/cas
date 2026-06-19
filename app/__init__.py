@@ -82,17 +82,12 @@ def create_app(config_name=None):
     # Make action items count available in all templates for sidebar badge
     @app.context_processor
     def inject_action_items_count():
+        from flask import session
         from flask_login import current_user
         count = 0
-        if current_user.is_authenticated and current_user.role in ['accountant', 'admin']:
-            from app.accounts.approval_models import AccountChangeRequest
-            from app.vat_categories.models import VATCategoryChangeRequest
-            from app.withholding_tax.models import WithholdingTaxChangeRequest
-
-            count += AccountChangeRequest.query.filter_by(status='pending').count()
-            count += VATCategoryChangeRequest.query.filter_by(status='pending').count()
-            count += WithholdingTaxChangeRequest.query.filter_by(status='pending').count()
-
+        if current_user.is_authenticated:
+            from app.dashboard.action_items_service import count_action_items
+            count = count_action_items(current_user, session.get('selected_branch_id'))
         return {'action_items_count': count}
 
     # Make current branch available in all templates
