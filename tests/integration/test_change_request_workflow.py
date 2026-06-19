@@ -1,7 +1,9 @@
 """Integration tests for the master-data change-request workflow (B-006).
 
 Covers Chart of Accounts, VAT Categories and Withholding Tax:
-- "Reason for change" is required and persisted on the change request
+- "Reason for change" is required and persisted on EDIT and DELETE change
+  requests; CREATE is exempt (nothing is being changed — the reviewer judges
+  the proposed data), so the create form omits the field entirely
 - Duplicate pending requests for the same record are blocked
 - Submission feedback flash is shown
 - Audit entries are written with the correct action, record reference and actor
@@ -92,16 +94,15 @@ class TestVATCategoryChangeRequests:
         assert len(requests) == 1
         cr = requests[0]
         assert cr.status == 'pending'
-        assert cr.request_reason == 'New VAT type required'
 
         audit = AuditLog.query.filter_by(module='vat_category', action='create',
                                          record_id=cr.id).first()
         assert audit is not None
         assert 'VATX' in audit.record_identifier
         assert audit.user_id == two_reviewers[0].id
-        assert 'New VAT type required' in audit.notes
 
-    def test_create_reason_is_required(self, client, db_session, two_reviewers):
+    def test_create_does_not_require_reason(self, client, db_session, two_reviewers):
+        """Creating master data needs no reason — the reviewer judges the proposed data."""
         login(client)
         input_vat = make_input_vat_account(db_session)
         resp = client.post('/vat-categories/create',
@@ -109,7 +110,8 @@ class TestVATCategoryChangeRequests:
                                               input_vat_account_id=input_vat.id),
                            follow_redirects=True)
         assert resp.status_code == 200
-        assert VATCategoryChangeRequest.query.count() == 0
+        assert PENDING_FLASH in resp.data
+        assert VATCategoryChangeRequest.query.count() == 1
 
     def test_duplicate_pending_create_is_blocked(self, client, db_session, two_reviewers):
         login(client)
@@ -239,22 +241,22 @@ class TestWithholdingTaxChangeRequests:
 
         cr = WithholdingTaxChangeRequest.query.one()
         assert cr.status == 'pending'
-        assert cr.request_reason == 'New WHT code required'
 
         audit = AuditLog.query.filter_by(module='withholding_tax', action='create',
                                          record_id=cr.id).first()
         assert audit is not None
         assert 'WCX' in audit.record_identifier
         assert audit.user_id == two_reviewers[0].id
-        assert 'New WHT code required' in audit.notes
 
-    def test_create_reason_is_required(self, client, db_session, two_reviewers):
+    def test_create_does_not_require_reason(self, client, db_session, two_reviewers):
+        """Creating master data needs no reason — the reviewer judges the proposed data."""
         login(client)
         resp = client.post('/withholding-tax/create',
                            data=wht_form_data(reason=None),
                            follow_redirects=True)
         assert resp.status_code == 200
-        assert WithholdingTaxChangeRequest.query.count() == 0
+        assert PENDING_FLASH in resp.data
+        assert WithholdingTaxChangeRequest.query.count() == 1
 
     def test_duplicate_pending_create_is_blocked(self, client, db_session, two_reviewers):
         login(client)
@@ -476,22 +478,22 @@ class TestAccountChangeRequests:
         cr = AccountChangeRequest.query.one()
         assert cr.status == 'pending'
         assert cr.change_type == 'create'
-        assert cr.request_reason == 'Adding petty cash account'
 
         audit = AuditLog.query.filter_by(module='account', action='create',
                                          record_id=cr.id).first()
         assert audit is not None
         assert '1901' in audit.record_identifier
         assert audit.user_id == two_reviewers[0].id
-        assert 'Adding petty cash account' in audit.notes
 
-    def test_create_reason_is_required(self, client, db_session, two_reviewers):
+    def test_create_does_not_require_reason(self, client, db_session, two_reviewers):
+        """Creating master data needs no reason — the reviewer judges the proposed data."""
         login(client)
         resp = client.post('/accounts/create',
                            data=account_form_data(reason=None),
                            follow_redirects=True)
         assert resp.status_code == 200
-        assert AccountChangeRequest.query.count() == 0
+        assert PENDING_FLASH in resp.data
+        assert AccountChangeRequest.query.count() == 1
 
     def test_duplicate_pending_create_is_blocked(self, client, db_session, two_reviewers):
         login(client)
@@ -630,3 +632,83 @@ class TestActionItemsShowReason:
         assert b'Account restructure' in resp.data
         # Legacy NULL reason renders as an em dash
         assert '—'.encode('utf-8') in resp.data
+
+
+# ───────── Reason required on EDIT/DELETE but NOT on CREATE ─────────
+
+class TestReasonRequiredOnEditNotCreate:
+    """Master-data CREATE drops the 'Reason for Change' field; EDIT keeps it
+    required (a genuine change the reviewer/audit trail must have justified)."""
+
+    # --- EDIT still requires a reason ---
+
+    def test_wht_edit_requires_reason(self, client, db_session, two_reviewers):
+        login(client)
+        wht = make_wht(db_session)
+        resp = client.post(f'/withholding-tax/{wht.id}/edit',
+                           data=wht_form_data(code=wht.code, name='Renamed WHT', reason=None),
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        assert WithholdingTaxChangeRequest.query.count() == 0
+
+    def test_vat_edit_requires_reason(self, client, db_session, two_reviewers):
+        login(client)
+        vat = make_vat(db_session)
+        input_vat = make_input_vat_account(db_session)
+        resp = client.post(f'/vat-categories/{vat.id}/edit',
+                           data=vat_form_data(code=vat.code, name='Renamed VAT', reason=None,
+                                              input_vat_account_id=input_vat.id),
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        assert VATCategoryChangeRequest.query.count() == 0
+
+    def test_account_edit_requires_reason(self, client, db_session, two_reviewers):
+        login(client)
+        account = make_account(db_session)
+        resp = client.post(f'/accounts/{account.id}/edit',
+                           data=account_form_data(code=account.code, name='Renamed Account',
+                                                  reason=None),
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        assert AccountChangeRequest.query.count() == 0
+
+    # --- CREATE form omits the reason section; EDIT form shows it ---
+
+    def test_wht_create_form_omits_reason_section(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/withholding-tax/create')
+        assert resp.status_code == 200
+        assert b'Reason for Change' not in resp.data
+
+    def test_wht_edit_form_shows_reason_section(self, client, db_session, two_reviewers):
+        login(client)
+        wht = make_wht(db_session)
+        resp = client.get(f'/withholding-tax/{wht.id}/edit')
+        assert resp.status_code == 200
+        assert b'Reason for Change' in resp.data
+
+    def test_vat_create_form_omits_reason_section(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/vat-categories/create')
+        assert resp.status_code == 200
+        assert b'Reason for Change' not in resp.data
+
+    def test_vat_edit_form_shows_reason_section(self, client, db_session, two_reviewers):
+        login(client)
+        vat = make_vat(db_session)
+        resp = client.get(f'/vat-categories/{vat.id}/edit')
+        assert resp.status_code == 200
+        assert b'Reason for Change' in resp.data
+
+    def test_account_create_form_omits_reason_section(self, client, db_session, two_reviewers):
+        login(client)
+        resp = client.get('/accounts/create')
+        assert resp.status_code == 200
+        assert b'Reason for Change' not in resp.data
+
+    def test_account_edit_form_shows_reason_section(self, client, db_session, two_reviewers):
+        login(client)
+        account = make_account(db_session)
+        resp = client.get(f'/accounts/{account.id}/edit')
+        assert resp.status_code == 200
+        assert b'Reason for Change' in resp.data

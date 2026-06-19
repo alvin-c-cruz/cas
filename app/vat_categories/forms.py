@@ -54,9 +54,17 @@ class VATCategoryForm(FlaskForm):
         ('0', 'Inactive')
     ], validators=[DataRequired()])
     request_reason = TextAreaField('Reason for Change', validators=[
-        DataRequired(message='Please explain why this change is needed'),
+        Optional(),
         Length(max=500, message='Reason must be 500 characters or less')
     ], render_kw={'placeholder': 'Why is this change needed?', 'rows': 3})
+
+    def __init__(self, *args, require_reason=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if require_reason:
+            self.request_reason.validators = [
+                DataRequired(message='Please explain why this change is needed'),
+                Length(max=500, message='Reason must be 500 characters or less')
+            ]
 
 
 class VATCategoryChangeReviewForm(FlaskForm):

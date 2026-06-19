@@ -183,14 +183,15 @@ def create():
                 'description': form.description.data
             }
 
-            # Create change request
+            # Create change request (no reason needed when creating master data —
+            # the reviewer judges the proposed data itself)
             change_request = AccountChangeRequest(
                 change_type='create',
                 change_data=json.dumps(change_data),
                 requested_by=current_user.username,
                 requested_at=ph_now(),
                 status='pending',
-                request_reason=form.request_reason.data.strip()
+                request_reason=None
             )
 
             # Check if can auto-approve
@@ -229,7 +230,7 @@ def create():
                     record_id=change_request.id,
                     record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
                     new_values=change_data,
-                    notes=f'Pending approval. Reason: {change_request.request_reason}'
+                    notes='Pending approval.'
                 )
 
                 flash(PENDING_SUBMITTED_MESSAGE, 'success')
@@ -280,7 +281,7 @@ def edit(id):
 
     # Initialize form - on GET, populate from account; on POST, use form data
     if request.method == 'GET':
-        form = AccountForm(obj=account)
+        form = AccountForm(obj=account, require_reason=True)
         # Debug: Print account values
         print(f"DEBUG - Account {account.code}: type={account.account_type}, balance={account.normal_balance}, class={account.classification}, parent={account.parent_id}")
         # Explicitly set SelectField values for GET requests
@@ -291,7 +292,7 @@ def edit(id):
         # Debug: Print form data after setting
         print(f"DEBUG - Form data set: type={form.account_type.data}, balance={form.normal_balance.data}, class={form.classification.data}, parent={form.parent_id.data}")
     else:
-        form = AccountForm()
+        form = AccountForm(require_reason=True)
 
     # Populate parent account choices (exclude current account)
     all_accounts = Account.query.filter(Account.id != id).order_by(Account.code).all()

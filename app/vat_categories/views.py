@@ -184,7 +184,7 @@ def create():
                     record_id=vat_category.id,
                     record_identifier=f'{vat_category.code} - {vat_category.name}',
                     new_values=change_data,
-                    notes=f'Auto-approved (single accountant). Reason: {form.request_reason.data.strip()}'
+                    notes='Auto-approved (single accountant)'
                 )
 
                 db.session.commit()
@@ -197,8 +197,7 @@ def create():
                     status='pending',
                     proposed_data=json.dumps(change_data),
                     requested_by_id=current_user.id,
-                    requested_at=ph_now(),
-                    request_reason=form.request_reason.data.strip()
+                    requested_at=ph_now()
                 )
                 db.session.add(change_request)
                 db.session.flush()  # Get the ID before commit
@@ -210,7 +209,7 @@ def create():
                     record_id=change_request.id,
                     record_identifier=f'Change Request: {change_data["code"]} - {change_data["name"]}',
                     new_values=change_data,
-                    notes=f'Pending approval. Reason: {change_request.request_reason}'
+                    notes='Pending approval.'
                 )
 
                 db.session.commit()
@@ -235,7 +234,7 @@ def create():
 def edit(id):
     """Edit VAT category - submits for approval"""
     vat_category = VATCategory.query.get_or_404(id)
-    form = VATCategoryForm(obj=vat_category)
+    form = VATCategoryForm(obj=vat_category, require_reason=True)
     form.input_vat_account_id.choices = _input_vat_account_choices()
     form.output_vat_account_id.choices = _output_vat_account_choices()
 

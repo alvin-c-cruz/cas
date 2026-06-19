@@ -91,6 +91,8 @@
                 {% endif %}
             </div>
 
+            {# Reason for Change — only when editing; creating needs no reason #}
+            {% if account %}
             <div class="form-group">
                 {{ form.request_reason.label(class='form-label') }}
                 {{ form.request_reason(class='form-control', rows=3, maxlength=500) }}
@@ -101,6 +103,7 @@
                     {% endfor %}
                 {% endif %}
             </div>
+            {% endif %}
 
             <div style="display: flex; gap: 12px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid #e2e8f0; margin-top: 8px;">
                 <a href="{{ url_for('accounts.list_accounts') }}" class="btn btn-secondary">Cancel</a>
