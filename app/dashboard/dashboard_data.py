@@ -400,7 +400,6 @@ def get_expense_breakdown(as_of_date=None, branch_id=None):
         return {'labels': [], 'data': []}
 
     expense_account_ids = [acc.id for acc in expense_accounts]
-    account_code_map = {acc.id: acc.code for acc in expense_accounts}
 
     totals_query = db.session.query(
         JournalEntryLine.account_id,
