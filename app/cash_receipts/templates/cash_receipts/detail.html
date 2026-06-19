@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}CRV {{ crv.crv_number }}{% endblock %}
+{% block page_title %}Cash Receipt Voucher — {{ crv.crv_number }}{% endblock %}
+
+{% block content %}
+
+<!-- Post modal (draft only) -->
+{% if crv.status == 'draft' %}
+<div id="postModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Post this CRV?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">Posting will make the CRV final, update AR invoice balances, and enter it in the GL.</p>
+    <div style="display:flex;gap:12px;justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('postModal').style.display='none'">Cancel</button>
+      <form method="POST" action="{{ url_for('cash_receipts.post', id=crv.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit" class="btn btn-success">Post CRV</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Void modal (draft only) -->
+<div id="voidModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:480px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Void this CRV?</h3>
+    <p style="color:var(--text-2);margin-bottom:20px;"><strong>{{ crv.crv_number }}</strong> will be voided. The draft journal entry will be deleted. This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('cash_receipts.void', id=crv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+        <textarea name="void_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('voidModal').style.display='none'">Keep CRV</button>
+        <button type="submit" class="btn btn-danger">Void CRV</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Cancel modal (posted only) -->
+{% if crv.status == 'posted' %}
+<div id="cancelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:480px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Cancel this CRV?</h3>
+    <p style="color:var(--text-2);margin-bottom:20px;">Cancelling <strong>{{ crv.crv_number }}</strong> will create a reversal JE and restore all AR invoice balances. This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('cash_receipts.cancel', id=crv.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+        <textarea name="cancel_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
+      </div>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reversal Date <span style="color:var(--red);">*</span></label>
+        <input type="date" name="reversal_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required style="width:100%;">
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">Keep CRV</button>
+        <button type="submit" class="btn btn-danger">Cancel CRV</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:20px;font-weight:700;">{{ crv.crv_number }}</span>
+      {% set badge = {'draft':'secondary','posted':'info','voided':'dark','cancelled':'danger'} %}
+      <span class="badge badge-{{ badge.get(crv.status, 'secondary') }}">{{ crv.status|title }}</span>
+    </div>
+    <div class="card-header-actions">
+      {% if (cr_print_access == 'posted_only' and crv.status == 'posted')
+         or (cr_print_access == 'draft_and_posted' and crv.status not in ('voided', 'cancelled')) %}
+      <a href="{{ url_for('cash_receipts.print_crv', id=crv.id) }}" target="_blank"
+         rel="noopener noreferrer" class="btn btn-secondary">Print</a>
+      {% endif %}
+      {% if current_user.role in ['accountant','admin'] and crv.status == 'draft' %}
+      <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post CRV</button>
+      {% endif %}
+      {% if current_user.role in ['staff','accountant','admin'] and crv.status == 'draft' %}
+      <a href="{{ url_for('cash_receipts.edit', id=crv.id) }}" class="btn btn-primary">Edit</a>
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void</button>
+      {% endif %}
+      {% if current_user.role in ['accountant','admin'] and crv.status == 'posted' %}
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel CRV</button>
+      {% endif %}
+      <a href="{{ url_for('cash_receipts.list_crvs') }}" class="btn btn-secondary">&#8592; Back</a>
+    </div>
+  </div>
+
+  <div class="card-body">
+
+    <!-- Header info grid -->
+    <div style="display:grid;grid-template-columns:1fr 1.5fr;gap:24px;margin-bottom:28px;">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        {% macro field(label, val) %}
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:var(--text-2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">{{ label }}</span>
+          <span>{{ val }}</span>
+        </div>
+        {% endmacro %}
+        {{ field('CR Number', crv.crv_number) }}
+        {{ field('CRV Date', crv.crv_date.strftime('%b %d, %Y')) }}
+        {{ field('Payment Method', crv.payment_method|replace('_',' ')|title) }}
+        {% if crv.payment_method == 'check' %}
+        {{ field('Check #', crv.check_number or '—') }}
+        {{ field('Check Date', crv.check_date.strftime('%b %d, %Y') if crv.check_date else '—') }}
+        {{ field('Bank', crv.check_bank or '—') }}
+        {% endif %}
+        {{ field('Cash / Bank Acct', (crv.cash_account.code ~ ' — ' ~ crv.cash_account.name) if crv.cash_account else '—') }}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;">Customer</div>
+          <div style="border:2px solid var(--green,#22c55e);background:var(--alert-success-bg);border-radius:8px;padding:16px 20px;">
+            <div style="font-weight:700;font-size:15px;margin-bottom:4px;">{{ crv.customer_name }}</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;">Notes (Particulars)</div>
+          <div style="background:var(--bg);border-radius:6px;padding:14px 16px;min-height:48px;">
+            <p style="margin:0;color:var(--text-2);white-space:pre-wrap;font-size:13px;">{{ crv.notes or '' }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section A: AR Lines -->
+    {% if crv.ar_lines %}
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Section A — AR Collections</div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Invoice #</th><th>Invoice Date</th>
+            <th style="text-align:right;">Original Balance</th>
+            <th style="text-align:right;">Amount Applied</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ar_line in crv.ar_lines %}
+          <tr>
+            <td><a href="{{ url_for('sales_invoices.view', id=ar_line.invoice_id) }}"
+                   style="color:var(--blue);font-weight:600;">{{ ar_line.invoice_number }}</a></td>
+            <td>{{ ar_line.sales_invoice.invoice_date.strftime('%b %d, %Y') if ar_line.sales_invoice else '—' }}</td>
+            <td style="text-align:right;font-family:var(--mono);">&#8369;{{ '{:,.2f}'.format(ar_line.original_balance) }}</td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:600;">&#8369;{{ '{:,.2f}'.format(ar_line.amount_applied) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <!-- Section B: Revenue Lines -->
+    {% if crv.revenue_lines %}
+    <div style="margin-bottom:24px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Section B — Direct Revenue</div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th><th>Description</th>
+            <th style="text-align:right;">Amount (VAT-incl.)</th>
+            <th>VAT</th><th>WHT</th><th>Account</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rev in crv.revenue_lines %}
+          <tr>
+            <td>{{ rev.line_number }}</td>
+            <td>{{ rev.description or '—' }}</td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:600;">&#8369;{{ '{:,.2f}'.format(rev.line_total) }}</td>
+            <td>{{ rev.vat_category or 'None' }} ({{ '{:.2f}'.format(rev.vat_rate) }}%)</td>
+            <td style="font-size:12px;">
+              {% if rev.withholding_tax %}{{ rev.withholding_tax.code }} ({{ '{:.2f}'.format(rev.wt_rate) }}%){% else %}—{% endif %}
+            </td>
+            <td style="font-size:12px;color:var(--text-2);">{{ rev.account.code ~ ' : ' ~ rev.account.name if rev.account else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <!-- JE + Summary grid -->
+    <div style="display:grid;grid-template-columns:1fr 300px;gap:24px;">
+
+      <!-- Journal Entry -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Journal Entry</div>
+        <table class="table" style="font-size:13px;">
+          <thead>
+            <tr><th>Code</th><th>Account Title</th><th style="text-align:right;">Debit</th><th style="text-align:right;">Credit</th></tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(td=0, tc=0) %}
+            {% for e in je_entries %}
+            {% set ns.td = ns.td + e.debit %}
+            {% set ns.tc = ns.tc + e.credit %}
+            <tr>
+              <td style="color:var(--text-2);font-size:12px;">{{ e.code }}</td>
+              <td {{ 'style="padding-left:24px;"' | safe if e.credit > 0 }}>{{ e.name }}</td>
+              <td style="text-align:right;font-family:var(--mono);">{% if e.debit > 0 %}{{ '{:,.2f}'.format(e.debit) }}{% else %}—{% endif %}</td>
+              <td style="text-align:right;font-family:var(--mono);">{% if e.credit > 0 %}{{ '{:,.2f}'.format(e.credit) }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+            <tr style="font-weight:700;border-top:2px solid var(--border);">
+              <td colspan="2">Total</td>
+              <td style="text-align:right;font-family:var(--mono);">{{ '{:,.2f}'.format(ns.td) }}</td>
+              <td style="text-align:right;font-family:var(--mono);">{{ '{:,.2f}'.format(ns.tc) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- CRV Summary -->
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">CRV Summary</div>
+        <div style="background:var(--bg);padding:20px;border-radius:6px;">
+          {% macro sumrow(label, val, red=false, bold=false) %}
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+            <span style="color:var(--text-2);">{{ label }}</span>
+            <span style="font-family:var(--mono);font-weight:{{ '700' if bold else '600' }};{{ 'color:var(--red);' if red }}">{{ val }}</span>
+          </div>
+          {% endmacro %}
+          {{ sumrow('AR Applied:', '&#8369;' ~ '{:,.2f}'.format(crv.total_ar_applied)) }}
+          {{ sumrow('Direct Revenue:', '&#8369;' ~ '{:,.2f}'.format(crv.total_revenue)) }}
+          {{ sumrow('Output VAT:' ~ (' ⚙' if crv.vat_override else ''), '&#8369;' ~ '{:,.2f}'.format(crv.total_vat)) }}
+          <div style="height:1px;background:var(--border);margin:8px 0;"></div>
+          {{ sumrow('Less: WHT:' ~ (' ⚙' if crv.wt_override else ''), '-&#8369;' ~ '{:,.2f}'.format(crv.total_wt), red=true) }}
+          <div style="height:2px;background:var(--border);margin:10px 0;"></div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="font-size:15px;font-weight:700;">Net Cash Received:</span>
+            <span style="font-family:var(--mono);font-size:17px;font-weight:700;color:var(--blue);">&#8369;{{ '{:,.2f}'.format(crv.total_amount) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audit trail -->
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3);">
+      Created by {{ crv.created_by.username if crv.created_by else '—' }}
+      on {{ crv.created_at.strftime('%b %d, %Y %H:%M') if crv.created_at else '—' }}
+      {% if crv.posted_by %}
+       &mdash; Posted by {{ crv.posted_by.username }} on {{ crv.posted_at.strftime('%b %d, %Y %H:%M') if crv.posted_at else '—' }}
+      {% endif %}
+      {% if crv.voided_by %}
+       &mdash; Voided by {{ crv.voided_by.username }} on {{ crv.voided_at.strftime('%b %d, %Y %H:%M') if crv.voided_at else '—' }}
+       &mdash; <em>{{ crv.void_reason }}</em>
+      {% endif %}
+      {% if crv.cancel_reason %}
+       &mdash; Cancelled on {{ crv.cancelled_at.strftime('%b %d, %Y %H:%M') if crv.cancelled_at else '—' }}
+       &mdash; <em>{{ crv.cancel_reason }}</em>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<style>
+.badge { padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase; }
+.badge-secondary { background:var(--text-3);color:white; }
+.badge-info { background:var(--blue);color:white; }
+.badge-dark { background:var(--text-1,#374151);color:white; }
+.badge-danger { background:var(--red);color:white; }
+</style>
+{% endblock %}

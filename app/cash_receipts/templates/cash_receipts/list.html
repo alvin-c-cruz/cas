@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Cash Receipts{% endblock %}
+{% block page_title %}Cash Receipts{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<style>
+.choices__list--dropdown { min-width: 220px; }
+.choices__list--dropdown .choices__list { max-height: 200px; overflow-y: auto; }
+
+.crv-filter-bar .choices {
+    width: 160px;
+    margin-bottom: 0;
+}
+.crv-filter-bar .choices__inner {
+    padding: 10px 36px 10px 14px;
+    font-size: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: white;
+    min-height: unset;
+    font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+.crv-filter-bar .choices.is-focused .choices__inner,
+.crv-filter-bar .choices.is-open .choices__inner {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    outline: none;
+}
+.crv-filter-bar .choices__list--single { padding: 0; }
+.crv-filter-bar .choices__list--single .choices__item {
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+}
+.crv-filter-bar .choices[data-type*='select-one']::after {
+    border-color: #64748b transparent transparent;
+    right: 14px;
+}
+.crv-filter-bar .choices[data-type*='select-one'].is-open::after {
+    border-color: transparent transparent #64748b;
+}
+.crv-date-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.crv-date-group__label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    padding-left: 2px;
+}
+</style>
+{% endblock %}
+{% block content %}
+
+<!-- Summary cards -->
+<div class="crv-summary-grid">
+    <div class="crv-card">
+        <div class="crv-card-label">Received This Month</div>
+        <div class="crv-card-value">&#8369;{{ '{:,.2f}'.format(summary.received_this_month) }}</div>
+        <div class="crv-card-detail">posted CRVs</div>
+    </div>
+    <div class="crv-card">
+        <div class="crv-card-label">Drafts</div>
+        <div class="crv-card-value">{{ summary.draft_count }}</div>
+        <div class="crv-card-detail">to finish</div>
+    </div>
+    <div class="crv-card">
+        <div class="crv-card-label" style="color:var(--red);">Cancelled</div>
+        <div class="crv-card-value" style="color:var(--red);">{{ summary.cancelled_count }}</div>
+        <div class="crv-card-detail">this branch</div>
+    </div>
+</div>
+
+<!-- Filter bar -->
+<form method="GET" action="{{ url_for('cash_receipts.list_crvs') }}" class="crv-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search CRV # or customer"
+           class="form-control form-control-sm crv-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+        <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+    <select name="customer" id="customer-filter" class="form-control form-control-sm">
+        <option value="all">All Customers</option>
+        {% for c in customers %}
+        <option value="{{ c.id }}" {% if customer_filter == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+    </select>
+    <select name="payment_method" class="form-control form-control-sm">
+        <option value="all" {% if pm_filter == 'all' %}selected{% endif %}>All Methods</option>
+        <option value="cash" {% if pm_filter == 'cash' %}selected{% endif %}>Cash</option>
+        <option value="check" {% if pm_filter == 'check' %}selected{% endif %}>Check</option>
+        <option value="bank_transfer" {% if pm_filter == 'bank_transfer' %}selected{% endif %}>Bank Transfer</option>
+        <option value="online" {% if pm_filter == 'online' %}selected{% endif %}>Online</option>
+    </select>
+    <label class="crv-date-group">
+        <span class="crv-date-group__label">From</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </label>
+    <label class="crv-date-group">
+        <span class="crv-date-group__label">To</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('cash_receipts.list_crvs') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
+            <a href="{{ url_for('cash_receipts.export_excel') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
+               class="btn btn-secondary crv-export-link" style="font-size:13px;">&#11015; Export Excel</a>
+            <a href="{{ url_for('cash_receipts.export_csv') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
+               class="btn btn-secondary crv-export-link" style="font-size:13px;">&#11015; Export CSV</a>
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-primary">&#10133; Enter CRV</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        {% if crvs %}
+        {% set badge_map = {'draft':'draft','posted':'posted','voided':'void','cancelled':'cancelled'} %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>CRV #</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>Payment Method</th>
+                    <th style="text-align:right;">AR Applied</th>
+                    <th style="text-align:right;">Revenue</th>
+                    <th style="text-align:right;">VAT</th>
+                    <th style="text-align:right;">WHT</th>
+                    <th style="text-align:right;">Net Received</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for crv in crvs %}
+                <tr>
+                    <td><a href="{{ url_for('cash_receipts.view', id=crv.id) }}" style="font-weight:600;color:var(--blue);">{{ crv.crv_number }}</a></td>
+                    <td>{{ crv.crv_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ crv.customer_name }}</td>
+                    <td>{{ crv.payment_method.replace('_', ' ').title() if crv.payment_method else '—' }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">
+                        {% if crv.total_ar_applied %}&#8369;{{ '{:,.2f}'.format(crv.total_ar_applied) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);">
+                        {% if crv.total_revenue %}&#8369;{{ '{:,.2f}'.format(crv.total_revenue) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);">
+                        {% if crv.total_vat %}&#8369;{{ '{:,.2f}'.format(crv.total_vat) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);{% if crv.total_wt > 0 %}color:var(--red);{% endif %}">
+                        {% if crv.total_wt > 0 %}-&#8369;{{ '{:,.2f}'.format(crv.total_wt) }}{% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">&#8369;{{ '{:,.2f}'.format(crv.total_amount) }}</td>
+                    <td><span class="badge badge-{{ badge_map.get(crv.status, 'draft') }}">{{ crv.status|replace('_', ' ')|title }}</span></td>
+                    <td>
+                        <a href="{{ url_for('cash_receipts.view', id=crv.id) }}" class="btn-action">&#128065;</a>
+                        {% if crv.status == 'draft' %}<a href="{{ url_for('cash_receipts.edit', id=crv.id) }}" class="btn-action">&#9999;</a>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        {% set filters_active = q or status_filter != 'all' or customer_filter != 'all' or pm_filter != 'all' or date_from or date_to %}
+        <div class="empty-state">
+            {% if filters_active %}
+            <p>No CRVs match your filters.</p>
+            <a href="{{ url_for('cash_receipts.list_crvs') }}" class="btn btn-secondary">Clear Filters</a>
+            {% else %}
+            <p>No Cash Receipt Vouchers found.</p>
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-primary">Enter First CRV</a>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} CRVs
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('cash_receipts.list_crvs', page=pagination.prev_num, status=status_filter, customer=customer_filter, payment_method=pm_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">&#8592; Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('cash_receipts.list_crvs', page=pagination.next_num, status=status_filter, customer=customer_filter, payment_method=pm_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next &#8594;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.crv-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.crv-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
+}
+.crv-card-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+}
+.crv-card-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--mono);
+    margin: 4px 0 2px;
+}
+.crv-card-detail { font-size: 12px; color: var(--text-3); }
+.crv-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+}
+.crv-filter-bar .form-control { width: auto; }
+.crv-filter-bar select.form-control { width: 160px; }
+.crv-filter-bar input[type="date"].form-control { width: 150px; }
+.crv-filter-search { flex: 1 1 200px; min-width: 180px; }
+.btn-action {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 14px;
+    text-decoration: none;
+    display: inline-block;
+}
+.btn-action:hover { background: var(--border); }
+@media (max-width: 1024px) { .crv-summary-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) {
+    .crv-summary-grid { grid-template-columns: 1fr; }
+    .crv-filter-bar .form-control,
+    .crv-filter-bar select.form-control,
+    .crv-filter-bar input[type="date"].form-control { width: 100%; }
+    .crv-filter-bar .choices { width: 100%; }
+}
+</style>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const customerSel = document.getElementById('customer-filter');
+    if (customerSel) {
+        new Choices(customerSel, {
+            searchEnabled: true,
+            itemSelectText: '',
+            shouldSort: false,
+            allowHTML: false,
+        });
+    }
+})();
+</script>
+
+{% endblock %}

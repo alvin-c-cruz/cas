@@ -359,3 +359,705 @@ def _build_crv_je_preview(crv):
                         'debit': Decimal(str(crv.total_amount)), 'credit': Decimal('0.00')})
 
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Import form
+# ---------------------------------------------------------------------------
+from app.cash_receipts.forms import CashReceiptForm
+
+
+# ---------------------------------------------------------------------------
+# Override helpers
+# ---------------------------------------------------------------------------
+
+def _apply_crv_overrides(crv):
+    """Apply VAT/WT manual overrides from request.form to crv."""
+    import decimal as _decimal
+    vat_override = request.form.get('vat_override') == '1'
+    wt_override = request.form.get('wt_override') == '1'
+    crv.vat_override = vat_override
+    crv.wt_override = wt_override
+    if vat_override:
+        try:
+            vat_val = Decimal(request.form.get('vat_override_value', '0') or '0')
+            if vat_val < 0:
+                raise ValueError('negative')
+        except (_decimal.InvalidOperation, ValueError):
+            db.session.rollback()
+            flash('Invalid VAT override value.', 'danger')
+            return redirect(url_for('cash_receipts.list_crvs'))
+        crv.total_vat = vat_val
+    if wt_override:
+        try:
+            wt_val = Decimal(request.form.get('wt_override_value', '0') or '0')
+            if wt_val < 0:
+                raise ValueError('negative')
+        except (_decimal.InvalidOperation, ValueError):
+            db.session.rollback()
+            flash('Invalid WHT override value.', 'danger')
+            return redirect(url_for('cash_receipts.list_crvs'))
+        crv.total_wt = wt_val
+    crv.total_amount = crv.total_ar_applied + crv.total_revenue - crv.total_wt
+    return None
+
+
+def _apply_ar_collections(crv):
+    """Increase invoice amount_paid and reduce balance on CRV post."""
+    for ar_line in crv.ar_lines:
+        inv = ar_line.sales_invoice
+        inv.amount_paid = Decimal(str(inv.amount_paid)) + Decimal(str(ar_line.amount_applied))
+        inv.balance = Decimal(str(inv.total_amount)) - inv.amount_paid
+        if inv.balance <= 0:
+            inv.status = 'paid'
+        elif inv.amount_paid > 0:
+            inv.status = 'partially_paid'
+
+
+def _reverse_ar_collections(crv):
+    """Reverse invoice amounts on CRV cancel. Raises ValueError on inconsistency."""
+    for ar_line in crv.ar_lines:
+        inv = ar_line.sales_invoice
+        new_paid = Decimal(str(inv.amount_paid)) - Decimal(str(ar_line.amount_applied))
+        if new_paid < 0:
+            raise ValueError(
+                f'Cannot cancel: reversing collection on {ar_line.invoice_number} '
+                f'would result in negative amount_paid.')
+        inv.amount_paid = new_paid
+        inv.balance = Decimal(str(inv.total_amount)) - new_paid
+        inv.status = 'posted' if inv.amount_paid <= 0 else 'partially_paid'
+
+
+# ---------------------------------------------------------------------------
+# Open invoices JSON endpoint
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts/open-invoices')
+@login_required
+@staff_or_above_required
+def open_invoices():
+    """JSON list of open sales invoices for a customer in the current branch."""
+    customer_id = request.args.get('customer_id', type=int)
+    if not customer_id:
+        return jsonify([])
+    branch_id = session.get('selected_branch_id')
+    invs = SalesInvoice.query.filter(
+        SalesInvoice.branch_id == branch_id,
+        SalesInvoice.customer_id == customer_id,
+        SalesInvoice.status.in_(['posted', 'partially_paid']),
+        SalesInvoice.balance > 0,
+    ).order_by(SalesInvoice.invoice_date).all()
+    return jsonify([{
+        'id': i.id,
+        'invoice_number': i.invoice_number,
+        'invoice_date': i.invoice_date.isoformat(),
+        'due_date': i.due_date.isoformat() if i.due_date else None,
+        'balance': float(i.balance),
+    } for i in invs])
+
+
+# ---------------------------------------------------------------------------
+# Line-item parsing
+# ---------------------------------------------------------------------------
+
+def _parse_line_items(crv):
+    ar_lines_data = request.form.getlist('ar_lines')
+    ar_lines = json.loads(ar_lines_data[0]) if ar_lines_data and ar_lines_data[0] else []
+    for idx, item in enumerate(ar_lines, start=1):
+        try:
+            invoice_id = int(item['invoice_id'])
+            amount_applied = Decimal(str(item['amount_applied']))
+        except (KeyError, ValueError, TypeError, InvalidOperation):
+            raise CRVLineError('An AR line is malformed — please re-select the invoice and try again.')
+        inv = SalesInvoice.query.filter_by(
+            id=invoice_id, branch_id=crv.branch_id, customer_id=crv.customer_id
+        ).first()
+        if not inv:
+            raise CRVLineError('A selected invoice is not available for this customer and branch.')
+        if amount_applied <= 0 or amount_applied > inv.balance:
+            raise CRVLineError(
+                f'Amount to collect for {inv.invoice_number} must be between 0.01 and the '
+                f'open balance ({inv.balance:,.2f}).'
+            )
+        crv.ar_lines.append(CRVArLine(
+            line_number=idx,
+            invoice_id=inv.id,
+            invoice_number=inv.invoice_number,
+            original_balance=inv.balance,
+            amount_applied=amount_applied,
+        ))
+
+    revenue_lines_data = request.form.getlist('revenue_lines')
+    revenue_lines = json.loads(revenue_lines_data[0]) if revenue_lines_data and revenue_lines_data[0] else []
+    leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
+    for idx, item in enumerate(revenue_lines, start=1):
+        try:
+            amount = Decimal(str(item.get('amount', 0)))
+        except (ValueError, TypeError, InvalidOperation):
+            raise CRVLineError('A revenue line amount is invalid.')
+        account_id = int(item['account_id']) if item.get('account_id') else None
+        if account_id not in leaf_account_ids:
+            raise CRVLineError('Each revenue line must use a valid, postable account.')
+        vat_rate = Decimal('0.00')
+        vat_category = item.get('vat_category')
+        if vat_category:
+            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+            if vat_cat:
+                vat_rate = Decimal(str(vat_cat.rate))
+        wt_id = int(item['wt_id']) if item.get('wt_id') else None
+        wt_rate = None
+        if wt_id:
+            wt_obj = WithholdingTax.query.get(wt_id)
+            if wt_obj:
+                wt_rate = wt_obj.rate
+        rev_line = CRVRevenueLine(
+            line_number=idx,
+            description=item.get('description', ''),
+            amount=amount,
+            vat_category=vat_category,
+            vat_rate=vat_rate,
+            account_id=account_id,
+            wt_id=wt_id,
+            wt_rate=wt_rate,
+        )
+        rev_line.calculate_amounts()
+        crv.revenue_lines.append(rev_line)
+
+
+# ---------------------------------------------------------------------------
+# Form context helper
+# ---------------------------------------------------------------------------
+
+def _form_context(all_accounts=None):
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    if all_accounts is None:
+        all_accounts = _get_all_accounts_for_select()
+    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+    _accts = _get_gl_accounts()
+    gl_accounts = {
+        'ar': {'code': _accts['ar'].code, 'name': _accts['ar'].name} if _accts['ar'] else None,
+        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
+    }
+    all_whts = [w.to_dict() for w in WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()]
+    return dict(customers=customers, all_accounts=all_accounts,
+                vat_categories=vat_categories,
+                all_whts=all_whts,
+                gl_accounts=gl_accounts)
+
+
+# ---------------------------------------------------------------------------
+# List
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts')
+@login_required
+def list_crvs():
+    from app.cash_receipts.utils import compute_crv_summary
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    branch_id = session.get('selected_branch_id')
+    query = CashReceiptVoucher.query.filter_by(branch_id=branch_id)
+
+    status_filter = request.args.get('status', 'all')
+    if status_filter in VALID_CRV_STATUSES:
+        query = query.filter_by(status=status_filter)
+
+    customer_filter = request.args.get('customer', 'all')
+    if customer_filter != 'all':
+        try:
+            query = query.filter_by(customer_id=int(customer_filter))
+        except ValueError:
+            pass
+
+    q = request.args.get('q', '').strip()
+    if q:
+        like = f'%{q}%'
+        query = query.filter(db.or_(
+            CashReceiptVoucher.crv_number.ilike(like),
+            CashReceiptVoucher.customer_name.ilike(like)
+        ))
+
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
+    if date_from:
+        try:
+            query = query.filter(CashReceiptVoucher.crv_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', f'{year}-12-31')
+    if date_to:
+        try:
+            query = query.filter(CashReceiptVoucher.crv_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    pm_filter = request.args.get('payment_method', 'all')
+    if pm_filter != 'all':
+        query = query.filter_by(payment_method=pm_filter)
+
+    query = query.order_by(CashReceiptVoucher.crv_date.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    summary = compute_crv_summary(branch_id)
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+
+    return render_template('cash_receipts/list.html',
+                           crvs=pagination.items,
+                           pagination=pagination,
+                           customers=customers,
+                           summary=summary,
+                           today=ph_now().date(),
+                           status_filter=status_filter,
+                           customer_filter=customer_filter,
+                           q=q,
+                           date_from=date_from,
+                           date_to=date_to,
+                           pm_filter=pm_filter)
+
+
+# ---------------------------------------------------------------------------
+# Create
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts/create', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def create():
+    form = CashReceiptForm()
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.code).all()
+    form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
+    all_accounts = _get_all_accounts_for_select()
+    form.cash_account_id.choices = [(0, '-- Select Account --')] + [
+        (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
+    ]
+
+    def _render_form():
+        is_post = request.method == 'POST'
+        return render_template('cash_receipts/form.html', form=form, crv=None,
+                               restore_ar_lines=request.form.get('ar_lines', '') if is_post else '',
+                               restore_revenue_lines=request.form.get('revenue_lines', '') if is_post else '',
+                               **_form_context(all_accounts=all_accounts))
+
+    if form.validate_on_submit():
+        if not validate_transaction_date_with_flash(form.crv_date.data, 'Cash Receipt Voucher'):
+            return _render_form()
+        try:
+            customer = Customer.query.get(form.customer_id.data)
+            if not customer:
+                flash('Selected customer not found.', 'error')
+                return _render_form()
+
+            crv = CashReceiptVoucher(
+                branch_id=session.get('selected_branch_id'),
+                crv_number=generate_crv_number(),
+                crv_date=form.crv_date.data,
+                customer_id=customer.id,
+                customer_name=customer.name,
+                payment_method=form.payment_method.data,
+                check_number=form.check_number.data or None,
+                check_date=form.check_date.data or None,
+                check_bank=form.check_bank.data or None,
+                cash_account_id=form.cash_account_id.data,
+                notes=form.notes.data,
+                status='draft',
+                created_by_id=current_user.id
+            )
+            _parse_line_items(crv)
+            crv.calculate_totals()
+            err = _apply_crv_overrides(crv)
+            if err:
+                return err
+
+            db.session.add(crv)
+            db.session.flush()
+
+            je = _post_crv_je(crv, current_user.id)
+            crv.journal_entry_id = je.id
+            db.session.commit()
+
+            log_create(
+                module='cash_receipt',
+                record_id=crv.id,
+                record_identifier=f'{crv.crv_number} - {crv.customer_name}',
+                new_values=model_to_dict(crv, ['crv_number', 'crv_date', 'customer_name',
+                                               'payment_method', 'total_amount', 'status'])
+            )
+            flash(f'CRV "{crv.crv_number}" entered successfully!', 'success')
+            return redirect(url_for('cash_receipts.view', id=crv.id))
+
+        except CRVLineError as ce:
+            db.session.rollback()
+            flash(str(ce), 'error')
+            return _render_form()
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error('Error creating CRV', exc_info=True)
+            log_exception(e, severity='ERROR', module='cash_receipts.create')
+            flash('An unexpected error occurred while entering the CRV. Please try '
+                  'again; if it persists, contact your administrator.', 'error')
+
+    if request.method == 'GET':
+        form.crv_number.data = generate_crv_number()
+        form.crv_date.data = ph_now().date()
+
+    return _render_form()
+
+
+# ---------------------------------------------------------------------------
+# Edit
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def edit(id):
+    crv = _get_crv_or_404(id)
+    if crv.status != 'draft':
+        flash('Only draft CRVs can be edited.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+
+    form = CashReceiptForm(obj=crv)
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.code).all()
+    form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
+    all_accounts = _get_all_accounts_for_select()
+    form.cash_account_id.choices = [
+        (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
+    ]
+
+    tmpl_ar_lines = [l.to_dict() for l in crv.ar_lines]
+    tmpl_revenue_lines = [l.to_dict() for l in crv.revenue_lines]
+
+    if form.validate_on_submit():
+        if not validate_transaction_date_with_flash(form.crv_date.data, 'Cash Receipt Voucher'):
+            ctx = _form_context(all_accounts=all_accounts)
+            return render_template('cash_receipts/form.html', form=form, crv=crv,
+                                   ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+        try:
+            customer = Customer.query.get(form.customer_id.data)
+            if not customer:
+                flash('Selected customer not found.', 'error')
+                ctx = _form_context(all_accounts=all_accounts)
+                return render_template('cash_receipts/form.html', form=form, crv=crv,
+                                       ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+
+            crv.crv_date = form.crv_date.data
+            crv.customer_id = customer.id
+            crv.customer_name = customer.name
+            crv.payment_method = form.payment_method.data
+            crv.check_number = form.check_number.data or None
+            crv.check_date = form.check_date.data or None
+            crv.check_bank = form.check_bank.data or None
+            crv.cash_account_id = form.cash_account_id.data
+            crv.notes = form.notes.data
+
+            for ar in list(crv.ar_lines):
+                db.session.delete(ar)
+            for rev in list(crv.revenue_lines):
+                db.session.delete(rev)
+            crv.ar_lines = []
+            crv.revenue_lines = []
+            db.session.flush()
+
+            _parse_line_items(crv)
+            crv.calculate_totals()
+            err = _apply_crv_overrides(crv)
+            if err:
+                return err
+
+            if crv.journal_entry_id:
+                from app.journal_entries.models import JournalEntry as _JE
+                old_je = db.session.get(_JE, crv.journal_entry_id)
+                crv.journal_entry_id = None
+                crv.journal_entry = None
+                db.session.flush()
+                if old_je:
+                    db.session.delete(old_je)
+                db.session.flush()
+
+            je = _post_crv_je(crv, current_user.id)
+            crv.journal_entry_id = je.id
+            db.session.commit()
+
+            log_update(
+                module='cash_receipt',
+                record_id=crv.id,
+                record_identifier=f'{crv.crv_number} - {crv.customer_name}',
+                old_values={}, new_values={}
+            )
+            flash(f'CRV "{crv.crv_number}" updated successfully!', 'success')
+            return redirect(url_for('cash_receipts.view', id=crv.id))
+
+        except CRVLineError as ce:
+            db.session.rollback()
+            flash(str(ce), 'error')
+            ctx = _form_context(all_accounts=all_accounts)
+            return render_template('cash_receipts/form.html', form=form, crv=crv,
+                                   ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error('Error editing CRV', exc_info=True)
+            log_exception(e, severity='ERROR', module='cash_receipts.edit')
+            flash('An unexpected error occurred while updating the CRV. Please try '
+                  'again; if it persists, contact your administrator.', 'error')
+
+    ctx = _form_context(all_accounts=all_accounts)
+    return render_template('cash_receipts/form.html', form=form, crv=crv,
+                           ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+
+
+# ---------------------------------------------------------------------------
+# View
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts/<int:id>')
+@login_required
+def view(id):
+    crv = _get_crv_or_404(id)
+    je_entries = _build_crv_je_preview(crv)
+    cr_print_access = AppSettings.get_setting('cr_print_access', 'posted_only')
+    return render_template('cash_receipts/detail.html',
+                           crv=crv, je_entries=je_entries, now=ph_now(),
+                           cr_print_access=cr_print_access)
+
+
+# ---------------------------------------------------------------------------
+# Post
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts/<int:id>/post', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def post(id):
+    crv = _get_crv_or_404(id)
+    if crv.status != 'draft':
+        flash('Only draft CRVs can be posted.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    try:
+        crv.status = 'posted'
+        crv.posted_by_id = current_user.id
+        crv.posted_at = ph_now()
+        if crv.journal_entry:
+            crv.journal_entry.status = 'posted'
+            crv.journal_entry.posted_by_id = current_user.id
+            crv.journal_entry.posted_at = ph_now()
+        _apply_ar_collections(crv)
+        db.session.commit()
+        log_audit(
+            module='cash_receipt', action='post',
+            record_id=crv.id,
+            record_identifier=f'{crv.crv_number} - {crv.customer_name}',
+            notes=f'Posted by {current_user.username}'
+        )
+        flash(f'CRV "{crv.crv_number}" posted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error posting CRV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_receipts.post')
+        flash('An unexpected error occurred while posting the CRV. Please try '
+              'again; if it persists, contact your administrator.', 'error')
+    return redirect(url_for('cash_receipts.view', id=id))
+
+
+# ---------------------------------------------------------------------------
+# Void
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts/<int:id>/void', methods=['POST'])
+@login_required
+@staff_or_above_required
+def void(id):
+    crv = _get_crv_or_404(id)
+    if crv.status != 'draft':
+        flash('Only draft CRVs can be voided.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    try:
+        if crv.journal_entry_id:
+            from app.journal_entries.models import JournalEntry as _JE
+            je_to_delete = db.session.get(_JE, crv.journal_entry_id)
+            if je_to_delete:
+                db.session.delete(je_to_delete)
+            crv.journal_entry_id = None
+            crv.journal_entry = None
+        crv.status = 'voided'
+        crv.voided_at = ph_now()
+        crv.voided_by_id = current_user.id
+        crv.void_reason = void_reason
+        db.session.commit()
+        log_audit(
+            module='cash_receipt', action='void',
+            record_id=crv.id,
+            record_identifier=f'{crv.crv_number} - {crv.customer_name}',
+            notes=f'Voided by {current_user.username}. Reason: {void_reason}'
+        )
+        flash(f'CRV "{crv.crv_number}" voided.', 'warning')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error voiding CRV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_receipts.void')
+        flash('An unexpected error occurred while voiding the CRV. Please try '
+              'again; if it persists, contact your administrator.', 'error')
+    return redirect(url_for('cash_receipts.view', id=id))
+
+
+# ---------------------------------------------------------------------------
+# Cancel
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts/<int:id>/cancel', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def cancel(id):
+    crv = _get_crv_or_404(id)
+    if crv.status != 'posted':
+        flash('Only posted CRVs can be cancelled.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Cancellation reason must be at least 10 characters.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+    try:
+        _reverse_ar_collections(crv)
+        _create_crv_reversal_je(crv, reversal_date, current_user.id)
+        crv.status = 'cancelled'
+        crv.cancelled_at = ph_now()
+        crv.cancel_reason = cancel_reason
+        db.session.commit()
+        log_audit(
+            module='cash_receipt', action='cancel',
+            record_id=crv.id,
+            record_identifier=f'{crv.crv_number} - {crv.customer_name}',
+            notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}'
+        )
+        flash(f'CRV "{crv.crv_number}" cancelled. Reversal JE created.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error cancelling CRV', exc_info=True)
+        log_exception(e, severity='ERROR', module='cash_receipts.cancel')
+        flash('An unexpected error occurred while cancelling the CRV. Please try '
+              'again; if it persists, contact your administrator.', 'error')
+    return redirect(url_for('cash_receipts.view', id=id))
+
+
+# ---------------------------------------------------------------------------
+# Print
+# ---------------------------------------------------------------------------
+
+@cash_receipts_bp.route('/cash-receipts/<int:id>/print')
+@login_required
+def print_crv(id):
+    crv = _get_crv_or_404(id)
+    je_entries = _build_crv_je_preview(crv)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    return render_template('cash_receipts/print.html',
+                           crv=crv, je_entries=je_entries,
+                           company=company, printed_at=ph_now())
+
+
+# ---------------------------------------------------------------------------
+# Export helpers
+# ---------------------------------------------------------------------------
+
+def _crv_export_data(branch_id):
+    q = CashReceiptVoucher.query.filter_by(branch_id=branch_id)
+
+    status = request.args.get('status', '')
+    customer_id = request.args.get('customer', '')
+    payment_method = request.args.get('payment_method', '')
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+
+    if status and status != 'all':
+        q = q.filter(CashReceiptVoucher.status == status)
+    if customer_id and customer_id != 'all':
+        try:
+            q = q.filter(CashReceiptVoucher.customer_id == int(customer_id))
+        except ValueError:
+            pass
+    if payment_method and payment_method != 'all':
+        q = q.filter(CashReceiptVoucher.payment_method == payment_method)
+    if date_from:
+        try:
+            q = q.filter(CashReceiptVoucher.crv_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            q = q.filter(CashReceiptVoucher.crv_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    crvs = q.order_by(CashReceiptVoucher.crv_date.desc(),
+                      CashReceiptVoucher.crv_number.desc()).all()
+
+    columns = [
+        'CRV Number', 'Date', 'Customer', 'Payment Method',
+        'Check #', 'Check Date', 'Cash/Bank Account',
+        'AR Applied', 'Direct Revenue', 'Output VAT', 'WHT',
+        'Net Received', 'Status',
+    ]
+    data = []
+    for crv in crvs:
+        data.append({
+            'CRV Number': crv.crv_number,
+            'Date': crv.crv_date.strftime('%Y-%m-%d') if crv.crv_date else '',
+            'Customer': crv.customer_name,
+            'Payment Method': (crv.payment_method.replace('_', ' ').title()
+                               if crv.payment_method else ''),
+            'Check #': crv.check_number or '',
+            'Check Date': crv.check_date.strftime('%Y-%m-%d') if crv.check_date else '',
+            'Cash/Bank Account': (
+                f'{crv.cash_account.code} — {crv.cash_account.name}'
+                if crv.cash_account else ''
+            ),
+            'AR Applied': float(crv.total_ar_applied or 0),
+            'Direct Revenue': float(crv.total_revenue or 0),
+            'Output VAT': float(crv.total_vat or 0),
+            'WHT': float(crv.total_wt or 0),
+            'Net Received': float(crv.total_amount or 0),
+            'Status': crv.status.title() if crv.status else '',
+        })
+    return data, columns, columns
+
+
+@cash_receipts_bp.route('/cash-receipts/export/excel')
+@login_required
+def export_excel():
+    branch_id = session.get('selected_branch_id')
+    data, columns, headers = _crv_export_data(branch_id)
+    return export_to_excel(
+        data=data,
+        columns=columns,
+        headers=headers,
+        filename=f'cash_receipts_{ph_now().strftime("%Y%m%d")}.xlsx',
+        title='Cash Receipts',
+    )
+
+
+@cash_receipts_bp.route('/cash-receipts/export/csv')
+@login_required
+def export_csv():
+    branch_id = session.get('selected_branch_id')
+    data, columns, headers = _crv_export_data(branch_id)
+    return export_to_csv(
+        data=data,
+        columns=columns,
+        headers=headers,
+        filename=f'cash_receipts_{ph_now().strftime("%Y%m%d")}.csv',
+    )

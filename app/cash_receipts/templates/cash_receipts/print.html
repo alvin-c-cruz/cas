@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CRV {{ crv.crv_number }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
+
+  .screen-only { }
+  @media print {
+    .screen-only { display: none !important; }
+    @page { size: A4 portrait; margin: 15mm; }
+  }
+
+  .page-wrap { max-width: 740px; margin: 0 auto; padding: 24px; }
+
+  .doc-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 12px; }
+  .doc-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .doc-header .company-sub { font-size: 10px; color: #444; margin-top: 2px; }
+  .doc-header .doc-title { font-size: 14px; font-weight: 700; letter-spacing: 2px; margin-top: 8px; }
+
+  .info-row { display: flex; gap: 16px; margin-bottom: 10px; }
+  .info-row table { border-collapse: collapse; flex: 1; font-size: 10px; }
+  .info-row td { border: 1px solid #aaa; padding: 3px 7px; }
+  .info-row td.label { background: #f0f0f0; font-weight: 600; width: 42%; }
+  .customer-header { background: #222; color: #fff; font-weight: 700; }
+
+  .section-head { font-weight: 700; font-size: 10px; margin: 10px 0 0; padding: 3px 0; }
+  .particulars { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 10px; }
+  .particulars th { background: #222; color: #fff; padding: 4px 7px; text-align: left; border: 1px solid #555; }
+  .particulars td { border: 1px solid #aaa; padding: 3px 7px; }
+  .particulars td.amount { text-align: right; font-family: monospace; }
+
+  .je-summary-row { display: flex; gap: 12px; margin-bottom: 10px; }
+  .je-block { flex: 1; }
+  .summary-block { flex: 0 0 230px; }
+  .section-label { font-weight: 700; font-size: 10px; border: 1px solid #aaa; border-bottom: none; padding: 3px 7px; background: #f0f0f0; }
+  .je-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .je-table th { background: #ddd; border: 1px solid #aaa; padding: 3px 7px; text-align: left; }
+  .je-table th.num { text-align: right; }
+  .je-table td { border: 1px solid #aaa; padding: 3px 7px; }
+  .je-table td.num { text-align: right; font-family: monospace; }
+  .je-table tr.totals { font-weight: 700; background: #f0f0f0; }
+  .summary-inner { border: 1px solid #aaa; padding: 10px 12px; font-size: 10px; }
+  .summary-row { display: flex; justify-content: space-between; margin-bottom: 7px; }
+  .summary-row .slabel { color: #555; }
+  .summary-row .sval { font-family: monospace; font-weight: 600; }
+  .summary-row .sval.red { color: #c00; }
+  .summary-divider-double { height: 2px; background: #888; margin: 8px 0; }
+  .summary-net { display: flex; justify-content: space-between; }
+  .summary-net .netlabel { font-weight: 700; font-size: 11px; }
+  .summary-net .netval { font-family: monospace; font-weight: 700; font-size: 13px; color: #1565c0; }
+
+  .notes-box { border: 1px solid #aaa; padding: 5px 8px; margin-bottom: 10px; background: #fffde7; font-size: 10px; }
+  .notes-box .notes-label { font-weight: 700; font-size: 9px; color: #555; text-transform: uppercase; margin-right: 8px; }
+
+  .sig-row { display: flex; margin-top: 8px; }
+  .sig-box { flex: 1; border: 1px solid #aaa; border-right: none; padding: 5px 7px; min-height: 56px; }
+  .sig-box:last-child { border-right: 1px solid #aaa; }
+  .sig-box .sig-title { font-size: 9px; font-weight: 700; color: #555; margin-bottom: 4px; }
+  .sig-box .sig-name { margin-top: 22px; text-align: center; font-size: 11px; min-height: 14px; }
+  .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px; font-size: 9px; color: #555; text-align: center; }
+
+  .audit-footer { margin-top: 6px; font-size: 9px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 4px; }
+
+  .print-bar { margin-bottom: 20px; display: flex; gap: 8px; }
+  .btn-print { padding: 8px 20px; background: #1565c0; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .btn-close { padding: 8px 20px; background: #666; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <div class="print-bar screen-only">
+    <button class="btn-print" onclick="window.print()">Print</button>
+    <a class="btn-close" href="{{ url_for('cash_receipts.view', id=crv.id) }}">Close</a>
+  </div>
+
+  <div class="doc-header">
+    <div class="company-name">{{ company.name | upper }}</div>
+    <div class="company-sub">
+      {{ company.address }}{% if company.address and company.tin %} &nbsp;&#183;&nbsp; {% endif %}{% if company.tin %}TIN: {{ company.tin }}{% endif %}
+    </div>
+    <div class="doc-title">CASH RECEIPT VOUCHER</div>
+  </div>
+
+  <div class="info-row">
+    <table>
+      <tr><td class="label">CRV No.</td><td><strong>{{ crv.crv_number }}</strong></td></tr>
+      <tr><td class="label">Date</td><td>{{ crv.crv_date.strftime('%d %B %Y') }}</td></tr>
+      <tr><td class="label">Payment</td><td>{{ crv.payment_method|replace('_',' ')|title }}</td></tr>
+      {% if crv.payment_method == 'check' %}
+      <tr><td class="label">Check No.</td><td>{{ crv.check_number or '—' }}</td></tr>
+      <tr><td class="label">Check Date</td><td>{{ crv.check_date.strftime('%d %B %Y') if crv.check_date else '—' }}</td></tr>
+      <tr><td class="label">Bank</td><td>{{ crv.check_bank or '—' }}</td></tr>
+      {% endif %}
+      <tr><td class="label">Cash/Bank Acct</td><td>{{ (crv.cash_account.code ~ ' : ' ~ crv.cash_account.name) if crv.cash_account else '—' }}</td></tr>
+    </table>
+    <table>
+      <tr><td colspan="2" class="label customer-header">RECEIVED FROM</td></tr>
+      <tr><td colspan="2"><strong>{{ crv.customer_name }}</strong></td></tr>
+    </table>
+  </div>
+
+  {% if crv.ar_lines %}
+  <div class="section-head">SECTION A — AR COLLECTIONS</div>
+  <table class="particulars">
+    <thead>
+      <tr>
+        <th>Invoice Number</th>
+        <th>Invoice Date</th>
+        <th style="text-align:right">Original Balance</th>
+        <th style="text-align:right">Amount Applied</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ar_line in crv.ar_lines %}
+      <tr>
+        <td>{{ ar_line.invoice_number }}</td>
+        <td>{{ ar_line.sales_invoice.invoice_date.strftime('%d %b %Y') if ar_line.sales_invoice else '—' }}</td>
+        <td class="amount">{{ '{:,.2f}'.format(ar_line.original_balance) }}</td>
+        <td class="amount">{{ '{:,.2f}'.format(ar_line.amount_applied) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if crv.revenue_lines %}
+  <div class="section-head">SECTION B — DIRECT REVENUE</div>
+  <table class="particulars">
+    <thead>
+      <tr>
+        <th style="width:4%">#</th>
+        <th>Description</th>
+        <th>Account Title</th>
+        <th>VAT</th>
+        <th>WHT</th>
+        <th style="text-align:right">Amount</th>
+        <th style="text-align:right">VAT Amt</th>
+        <th style="text-align:right">WHT Amt</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rev in crv.revenue_lines %}
+      <tr>
+        <td>{{ rev.line_number }}</td>
+        <td>{{ rev.description or '—' }}</td>
+        <td>{{ (rev.account.code ~ ' : ' ~ rev.account.name) if rev.account else '—' }}</td>
+        <td>{{ rev.vat_category or 'None' }} ({{ '{:.2f}'.format(rev.vat_rate) }}%)</td>
+        <td>{% if rev.withholding_tax %}{{ rev.withholding_tax.code }} ({{ '{:.2f}'.format(rev.wt_rate) }}%){% else %}—{% endif %}</td>
+        <td class="amount">{{ '{:,.2f}'.format(rev.line_total) }}</td>
+        <td class="amount">{{ '{:,.2f}'.format(rev.vat_amount) }}</td>
+        <td class="amount">{{ '{:,.2f}'.format(rev.wt_amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="je-summary-row">
+    <div class="je-block">
+      <div class="section-label">JOURNAL ENTRY</div>
+      <table class="je-table">
+        <thead>
+          <tr>
+            <th style="width:14%">Code</th>
+            <th>Account Title</th>
+            <th class="num" style="width:22%">Debit</th>
+            <th class="num" style="width:22%">Credit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(td=0, tc=0) %}
+          {% for e in je_entries %}
+          {% set dr = e.debit or 0 %}
+          {% set cr = e.credit or 0 %}
+          {% set ns.td = ns.td + dr %}
+          {% set ns.tc = ns.tc + cr %}
+          <tr>
+            <td>{{ e.code }}</td>
+            <td {{ 'style="padding-left:18px;"' | safe if cr > 0 }}>{{ e.name }}</td>
+            <td class="num">{% if dr %}{{ '{:,.2f}'.format(dr) }}{% endif %}</td>
+            <td class="num">{% if cr %}{{ '{:,.2f}'.format(cr) }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="totals">
+            <td colspan="2">TOTAL</td>
+            <td class="num">{{ '{:,.2f}'.format(ns.td) }}</td>
+            <td class="num">{{ '{:,.2f}'.format(ns.tc) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="summary-block">
+      <div class="section-label">SUMMARY</div>
+      <div class="summary-inner">
+        <div class="summary-row">
+          <span class="slabel">AR Applied:</span>
+          <span class="sval">&#8369;{{ '{:,.2f}'.format(crv.total_ar_applied) }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="slabel">Direct Revenue:</span>
+          <span class="sval">{{ '{:,.2f}'.format(crv.total_revenue) }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="slabel">Output VAT{{ ' ⚙' if crv.vat_override }}:</span>
+          <span class="sval">{{ '{:,.2f}'.format(crv.total_vat) }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="slabel">Less: Withholding Tax{{ ' ⚙' if crv.wt_override }}:</span>
+          <span class="sval red">-{{ '{:,.2f}'.format(crv.total_wt) }}</span>
+        </div>
+        <div class="summary-divider-double"></div>
+        <div class="summary-net">
+          <span class="netlabel">Net Cash Received:</span>
+          <span class="netval">&#8369;{{ '{:,.2f}'.format(crv.total_amount) }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if crv.notes %}
+  <div class="notes-box">
+    <span class="notes-label">Notes:</span>{{ crv.notes }}
+  </div>
+  {% endif %}
+
+  <div class="sig-row">
+    <div class="sig-box">
+      <div class="sig-title">PREPARED BY</div>
+      <div class="sig-name">{{ crv.created_by.full_name if crv.created_by else '' }}</div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-title">CHECKED BY</div>
+      <div class="sig-name"></div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-title">APPROVED BY</div>
+      <div class="sig-name">{{ crv.posted_by.full_name if crv.posted_by else '' }}</div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-title">RECEIVED BY (PAYEE)</div>
+      <div class="sig-name"></div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
+    </div>
+  </div>
+
+  <div class="audit-footer">
+    Status: {{ crv.status|upper }}
+    {% if crv.created_by %}&nbsp;&#183;&nbsp; Created by {{ crv.created_by.username }}{% if crv.created_at %} on {{ crv.created_at.strftime('%d %b %Y') }}{% endif %}{% endif %}
+    {% if crv.posted_by %}&nbsp;&#183;&nbsp; Posted by {{ crv.posted_by.username }}{% if crv.posted_at %} on {{ crv.posted_at.strftime('%d %b %Y') }}{% endif %}{% endif %}
+    &nbsp;|&nbsp; Printed by {{ current_user.username }} &middot; {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+  </div>
+
+</div>
+</body>
+</html>
