@@ -579,6 +579,9 @@ def create():
         """Render the create form with full line-item context. `restore_lines`
         carries the submitted line_items JSON back so a failed POST keeps the
         typed lines instead of wiping them."""
+        if request.method == 'POST' and any(
+                f and f.filename for f in request.files.getlist('attachments')):
+            flash('Your attached files were cleared — please re-attach before saving.', 'warning')
         vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
         all_accounts = _get_all_accounts_for_select()
         _accts = _get_gl_accounts()
@@ -654,6 +657,21 @@ def create():
                 record_identifier=f'{ap.ap_number} - {ap.vendor_name}',
                 new_values=model_to_dict(ap, ['ap_number', 'ap_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
             )
+
+            # Persist files queued on the create form (held in the browser until
+            # Save). The APV is already committed, so ap.id is stable; each file
+            # commits atomically. Option (a): a bad file is skipped with a
+            # warning and never blocks the voucher or the other files.
+            skipped = []
+            for f in request.files.getlist('attachments'):
+                if not f or not f.filename:
+                    continue
+                ok, err = _save_ap_attachment(ap, f, current_user)
+                if not ok:
+                    skipped.append(f.filename)
+            if skipped:
+                flash('Some files were not attached and were skipped: '
+                      + ', '.join(skipped), 'warning')
 
             flash(f'AP Voucher "{ap.ap_number}" entered successfully!', 'success')
             return redirect(url_for('accounts_payable.view', id=ap.id))
