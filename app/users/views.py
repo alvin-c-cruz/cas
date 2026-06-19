@@ -5,7 +5,7 @@ from datetime import timezone, timedelta
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_user, logout_user, login_required, current_user
 
-from app import db
+from app import db, limiter
 from app.branches.models import Branch
 from app.users.models import User
 from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
@@ -137,6 +137,7 @@ def _post_login_redirect(user, form):
 
 
 @users_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit('10 per minute; 50 per hour', methods=['POST'])
 def login():
     """User login."""
     if current_user.is_authenticated:
@@ -240,6 +241,7 @@ def logout():
 
 
 @users_bp.route('/register', methods=['GET', 'POST'])
+@limiter.limit('10 per minute; 50 per hour', methods=['POST'])
 def register():
     """User registration (public)."""
     if current_user.is_authenticated:

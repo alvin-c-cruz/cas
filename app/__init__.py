@@ -11,6 +11,8 @@ from flask_login import LoginManager
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from flask_caching import Cache
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
@@ -21,6 +23,9 @@ migrate = Migrate()
 login_manager = LoginManager()
 csrf = CSRFProtect()
 cache = Cache()
+# IP-based rate limiter. No default limits — applied opt-in per route
+# (e.g. auth endpoints) via @limiter.limit(...). Storage/enabled come from config.
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 def create_app(config_name=None):
     """Application factory pattern with secure configuration"""
@@ -141,6 +146,7 @@ def create_app(config_name=None):
     # Initialize extensions
     db.init_app(app)
     csrf.init_app(app)
+    limiter.init_app(app)
 
     # Ensure upload directories exist at startup
     import os as _os
@@ -421,6 +427,24 @@ def create_app(config_name=None):
         response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
 
         return response
+
+    # 429 (rate limit) handler — friendly page + audit trail. This is a specific,
+    # benign handler and is intentionally kept while the generic error handlers
+    # below remain disabled for traceback visibility.
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        from flask import render_template, request, flash
+        from app.users.forms import LoginForm
+        try:
+            from app.audit.utils import log_audit
+            log_audit(module='auth', action='rate_limited', record_id=None,
+                      record_identifier=request.remote_addr,
+                      notes=f'Rate limit exceeded on {request.path}: '
+                            f'{getattr(e, "description", "")}')
+        except Exception:
+            pass
+        flash('Too many attempts from your network. Please wait a minute and try again.', 'error')
+        return render_template('users/login.html', form=LoginForm()), 429
 
     # GLOBAL ERROR HANDLERS DELETED FOR TESTING
     # This allows full Python tracebacks to show in browser

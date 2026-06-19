@@ -48,6 +48,15 @@ class Config:
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_DURATION = timedelta(days=7)
 
+    # Rate Limiting (Flask-Limiter) — IP-based throttle on auth endpoints.
+    # Storage is in-memory and therefore PER WORKER PROCESS: on a multi-worker
+    # deployment (e.g. PythonAnywhere) each worker keeps its own counters, so the
+    # effective limit is looser and resets on reload. Point RATELIMIT_STORAGE_URI
+    # at a shared backend (redis://...) if/when one is available.
+    RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'True').lower() == 'true'
+    RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
+    RATELIMIT_HEADERS_ENABLED = True
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""
@@ -85,6 +94,10 @@ class TestingConfig(Config):
 
     # Disable CSRF for testing
     WTF_CSRF_ENABLED = False
+
+    # Disable rate limiting by default so it does not throttle the suite; the
+    # dedicated rate-limit tests enable it locally (see test_login_rate_limit.py).
+    RATELIMIT_ENABLED = False
 
 
 # Configuration dictionary
