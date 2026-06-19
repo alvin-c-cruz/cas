@@ -74,76 +74,60 @@ def index():
 @reports_bp.route('/reports/ar-aging')
 @login_required
 def ar_aging():
-    return redirect(url_for('dashboard.under_development', feature='AR Aging'))
     as_of_str = request.args.get('as_of', date.today().isoformat())
-    as_of_date = date.fromisoformat(as_of_str)
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
 
-    # Get all posted invoices that are not fully paid — scoped to current branch
     current_branch_id = session.get('selected_branch_id')
     invoices = SalesInvoice.query.filter(
-        SalesInvoice.status == 'posted',
+        SalesInvoice.status.in_(['posted', 'partially_paid']),
         SalesInvoice.balance > 0,
         SalesInvoice.branch_id == current_branch_id
     ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
 
-    # Group by customer
     customers = {}
-
     for invoice in invoices:
-        customer_name = invoice.customer_name
-        if customer_name not in customers:
-            customers[customer_name] = {
-                'name': customer_name,
+        key = invoice.customer_name
+        if key not in customers:
+            customers[key] = {
+                'name': invoice.customer_name,
                 'invoices': [],
                 'current': Decimal('0.00'),
                 '1-30': Decimal('0.00'),
                 '31-60': Decimal('0.00'),
                 '61-90': Decimal('0.00'),
                 '90+': Decimal('0.00'),
-                'total': Decimal('0.00')
+                'total': Decimal('0.00'),
             }
-
-        # Calculate age bucket
         bucket = calculate_age_bucket(invoice.due_date, as_of_date)
-
-        # Add to customer totals
-        customers[customer_name]['invoices'].append({
+        customers[key]['invoices'].append({
+            'invoice_id': invoice.id,
             'invoice_number': invoice.invoice_number,
             'invoice_date': invoice.invoice_date,
             'due_date': invoice.due_date,
             'balance_due': invoice.balance,
             'bucket': bucket,
-            'days_overdue': (as_of_date - invoice.due_date).days if invoice.due_date else 0
+            'days_overdue': max(0, (as_of_date - invoice.due_date).days) if invoice.due_date else 0,
         })
+        customers[key][bucket] += invoice.balance
+        customers[key]['total'] += invoice.balance
 
-        customers[customer_name][bucket] += invoice.balance
-        customers[customer_name]['total'] += invoice.balance
-
-    # Calculate grand totals
     grand_totals = {
-        'current': Decimal('0.00'),
-        '1-30': Decimal('0.00'),
-        '31-60': Decimal('0.00'),
-        '61-90': Decimal('0.00'),
-        '90+': Decimal('0.00'),
-        'total': Decimal('0.00')
+        'current': Decimal('0.00'), '1-30': Decimal('0.00'),
+        '31-60': Decimal('0.00'), '61-90': Decimal('0.00'),
+        '90+': Decimal('0.00'), 'total': Decimal('0.00'),
     }
+    for c in customers.values():
+        for k in grand_totals:
+            grand_totals[k] += c[k]
 
-    for customer_data in customers.values():
-        grand_totals['current'] += customer_data['current']
-        grand_totals['1-30'] += customer_data['1-30']
-        grand_totals['31-60'] += customer_data['31-60']
-        grand_totals['61-90'] += customer_data['61-90']
-        grand_totals['90+'] += customer_data['90+']
-        grand_totals['total'] += customer_data['total']
-
-    # Sort customers by total balance (descending)
     customers_list = sorted(customers.values(), key=lambda x: x['total'], reverse=True)
-
     return render_template('reports/ar_aging.html',
-                         customers=customers_list,
-                         grand_totals=grand_totals,
-                         as_of_date=as_of_date)
+                           customers=customers_list,
+                           grand_totals=grand_totals,
+                           as_of_date=as_of_date)
 
 
 @reports_bp.route('/reports/ap-aging')
@@ -576,3 +560,68 @@ def ap_aging_export_csv():
     columns = ['ap_number', 'vendor_name', 'ap_date', 'due_date', 'balance', 'bucket', 'days_overdue']
     return export_to_csv(rows, columns, headers,
                          filename=f'ap_aging_{as_of_date.isoformat()}.csv')
+
+
+@reports_bp.route('/reports/ar-aging/export/excel')
+@login_required
+def ar_aging_export_excel():
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+    current_branch_id = session.get('selected_branch_id')
+    invoices = SalesInvoice.query.filter(
+        SalesInvoice.status.in_(['posted', 'partially_paid']),
+        SalesInvoice.balance > 0,
+        SalesInvoice.branch_id == current_branch_id,
+    ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
+    rows = []
+    for invoice in invoices:
+        bucket = calculate_age_bucket(invoice.due_date, as_of_date)
+        rows.append({
+            'invoice_number': invoice.invoice_number,
+            'customer_name': invoice.customer_name,
+            'invoice_date': invoice.invoice_date,
+            'due_date': invoice.due_date,
+            'balance': float(invoice.balance),
+            'bucket': bucket,
+            'days_overdue': max(0, (as_of_date - invoice.due_date).days) if invoice.due_date else 0,
+        })
+    headers = ['Invoice #', 'Customer', 'Invoice Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
+    columns = ['invoice_number', 'customer_name', 'invoice_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    return export_to_excel(rows, columns, headers,
+                           filename=f'ar_aging_{as_of_date.isoformat()}.xlsx',
+                           title=f'AR Aging as of {as_of_date}')
+
+
+@reports_bp.route('/reports/ar-aging/export/csv')
+@login_required
+def ar_aging_export_csv():
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+    current_branch_id = session.get('selected_branch_id')
+    invoices = SalesInvoice.query.filter(
+        SalesInvoice.status.in_(['posted', 'partially_paid']),
+        SalesInvoice.balance > 0,
+        SalesInvoice.branch_id == current_branch_id,
+    ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
+    rows = []
+    for invoice in invoices:
+        bucket = calculate_age_bucket(invoice.due_date, as_of_date)
+        rows.append({
+            'invoice_number': invoice.invoice_number,
+            'customer_name': invoice.customer_name,
+            'invoice_date': invoice.invoice_date,
+            'due_date': invoice.due_date,
+            'balance': float(invoice.balance),
+            'bucket': bucket,
+            'days_overdue': max(0, (as_of_date - invoice.due_date).days) if invoice.due_date else 0,
+        })
+    headers = ['Invoice #', 'Customer', 'Invoice Date', 'Due Date', 'Balance', 'Aging Bucket', 'Days Overdue']
+    columns = ['invoice_number', 'customer_name', 'invoice_date', 'due_date', 'balance', 'bucket', 'days_overdue']
+    return export_to_csv(rows, columns, headers,
+                         filename=f'ar_aging_{as_of_date.isoformat()}.csv')
