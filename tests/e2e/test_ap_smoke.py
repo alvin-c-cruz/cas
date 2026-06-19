@@ -98,6 +98,72 @@ def test_je_preview_shows_account_name_not_description(logged_in_page, e2e_serve
         f"JE preview not balanced: debit={data['debit']} credit={data['credit']}"
 
 
+def _first_wht_choices_class(page):
+    """Return the CSS class string of the WT Choices wrapper in the first line item row."""
+    return (
+        page.locator('#lineItemsBody tr:first-child .choices:has(.wht-select)')
+            .get_attribute('class') or ''
+    )
+
+
+def test_wt_scoping_tracks_vendor(logged_in_page, e2e_server):
+    """WT dropdown state must follow vendor selection.
+
+    V001 has WC100 assigned → WT enabled.
+    Switch to V002 (no WHT codes) → WT disabled with an explanatory notice.
+    """
+    page = logged_in_page
+    page.goto(e2e_server + AP_CREATE)
+    page.wait_for_selector('#vendor_id', state='attached')
+
+    # V001 has WC100 — line items unlock, WT dropdown initialises enabled.
+    _pick_in_choices(page, VENDOR_SCOPE, 'V001')
+    page.wait_for_selector('#lineItemsSection', state='visible')
+    page.wait_for_selector('#lineItemsBody tr')
+    page.wait_for_function(
+        "() => !!document.querySelector('#lineItemsBody tr .choices:has(.wht-select)')"
+    )
+    assert 'is-disabled' not in _first_wht_choices_class(page), \
+        'WT dropdown should be ENABLED for V001 which has WC100 assigned'
+
+    # Switch to V002 — no WHT codes assigned.
+    _pick_in_choices(page, VENDOR_SCOPE, 'V002')
+    page.wait_for_function(
+        "() => document.querySelector('#lineItemsBody tr .choices:has(.wht-select)')"
+        "?.classList.contains('is-disabled')"
+    )
+    assert 'is-disabled' in _first_wht_choices_class(page), \
+        'WT dropdown should be DISABLED for V002 which has no WHT codes'
+
+    # The visible label must explain why (not a confusing blank / "None").
+    selected_label = page.locator(
+        '#lineItemsBody tr:first-child .choices:has(.wht-select) '
+        '.choices__list--single .choices__item'
+    ).first.inner_text()
+    assert 'No withholding tax' in selected_label, \
+        f'WT dropdown should display a "No withholding tax" notice, got: {selected_label!r}'
+
+
+def test_presave_upload_card_renders_on_create(logged_in_page, e2e_server):
+    """The file-upload card must be present and wired up before any save."""
+    page = logged_in_page
+    page.goto(e2e_server + AP_CREATE)
+    page.wait_for_selector('#createAttachments')
+
+    upload = page.locator('#createAttachments')
+    assert upload.get_attribute('multiple') is not None, \
+        'File input must carry the multiple attribute'
+    assert upload.get_attribute('name') == 'attachments', \
+        'File input must be named "attachments"'
+
+    form = page.locator('#billForm')
+    assert form.get_attribute('enctype') == 'multipart/form-data', \
+        'Form enctype must be multipart/form-data for file upload to work'
+
+    assert page.locator('#attachmentQueue').count() == 1, \
+        '#attachmentQueue (the JS file-list) must be present'
+
+
 def test_quick_add_modal_opens_and_selects_new_vendor(logged_in_page, e2e_server):
     """The inline '+ Add Vendor' modal must open, create a vendor, auto-select it, and
     leave the line items unlocked."""
