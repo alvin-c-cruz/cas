@@ -14,7 +14,7 @@ class VendorForm(FlaskForm):
         Length(max=20, message='Vendor code must be 20 characters or less.')
     ])
 
-    name = StringField('Name', validators=[
+    name = StringField('Registered Name', validators=[
         DataRequired(message='Vendor name is required.'),
         Length(max=200, message='Vendor name must be 200 characters or less.')
     ])

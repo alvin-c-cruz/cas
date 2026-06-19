@@ -325,3 +325,11 @@ class TestVendorFormSections:
         assert resp.status_code == 200
         for title in self.SECTION_TITLES:
             assert title in resp.data
+
+    def test_name_field_label_is_registered_name(self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/vendors/create')
+        assert resp.status_code == 200
+        assert b'>Registered Name<' in resp.data
+        # The "Check Payee Name" twin label must be left untouched.
+        assert b'>Check Payee Name<' in resp.data
