@@ -408,3 +408,14 @@ class TestStaffPermissions:
         login(client, 'staff', 'staff123')
         resp = client.post('/accounts-payable/99999/cancel', follow_redirects=True)
         assert b'permission' in resp.data or b'Only' in resp.data
+
+
+class TestCreateFormUpload:
+    def test_create_form_has_multipart_upload_control(self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/accounts-payable/create')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'enctype="multipart/form-data"' in html
+        assert 'name="attachments"' in html
+        assert 'multiple' in html

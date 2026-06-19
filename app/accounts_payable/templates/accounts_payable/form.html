@@ -14,7 +14,7 @@
 
 <div class="card page-accounts-payable">
     <div class="card-body">
-        <form method="POST" novalidate id="billForm">
+        <form method="POST" novalidate id="billForm" enctype="multipart/form-data">
             {{ form.hidden_tag() }}
 
             <!-- Header: 7 fields (1/3) + Vendor + Notes (2/3) -->
@@ -183,6 +183,22 @@
             <input type="hidden" name="vat_override_value" id="vatOverrideValue" value="0">
             <input type="hidden" name="wt_override" id="wtOverrideFlag" value="0">
             <input type="hidden" name="wt_override_value" id="wtOverrideValue" value="0">
+
+            {% if not ap %}
+            <!-- ── Attachments (create mode: held in browser, saved on Save) ── -->
+            <div class="card" style="margin-top:16px;">
+              <div class="card-body">
+                <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:8px;">
+                  Attachments
+                  <span style="font-weight:400; color:var(--text-3);">(optional — saved when you click Save)</span>
+                </h3>
+                <input type="file" id="createAttachments" name="attachments" multiple
+                       accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                       style="display:block; margin-bottom:8px;">
+                <ul id="attachmentQueue" style="list-style:none; padding:0; margin:0; font-size:13px;"></ul>
+              </div>
+            </div>
+            {% endif %}
         </form>
     </div>
 </div>
@@ -772,7 +788,6 @@ document.getElementById('billForm').addEventListener('submit', function () {
     })));
 });
 
-// Endpoint stores VAT category name; resolve to code for the line-item select.
 function resolveVatCode(nameOrCode) {
     const match = vatCategories.find(v => v.code === nameOrCode || v.name === nameOrCode);
     return match ? match.code : nameOrCode;
@@ -952,6 +967,56 @@ if (initVendorId && initVendorId !== '0') {
 {% else %}
 initItems();
 {% endif %}
+</script>
+
+<script>
+// ── Create-form attachment queue (held in browser until Save) ────────────────
+(function () {
+    var input = document.getElementById('createAttachments');
+    if (!input) return;                      // edit mode: no create-attachments input
+    var list = document.getElementById('attachmentQueue');
+    var ALLOWED = ['png','jpg','jpeg','gif','webp','pdf','doc','docx','xls','xlsx','csv','txt'];
+
+    function ext(name) {
+        var i = name.lastIndexOf('.');
+        return i >= 0 ? name.slice(i + 1).toLowerCase() : '';
+    }
+    function humanSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+    function render() {
+        list.innerHTML = '';
+        Array.prototype.forEach.call(input.files, function (f, idx) {
+            var bad = ALLOWED.indexOf(ext(f.name)) === -1;
+            var li = document.createElement('li');
+            li.style.cssText = 'display:flex; align-items:center; gap:8px; padding:4px 0;'
+                + (bad ? 'color:var(--danger, #c0392b);' : '');
+            var label = document.createElement('span');
+            label.textContent = f.name + ' (' + humanSize(f.size) + ')'
+                + (bad ? ' — unsupported type, will be skipped' : '');
+            var rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'btn btn-secondary';
+            rm.style.cssText = 'font-size:12px; padding:2px 8px;';
+            rm.textContent = 'Remove';
+            rm.addEventListener('click', function () { removeAt(idx); });
+            li.appendChild(label);
+            li.appendChild(rm);
+            list.appendChild(li);
+        });
+    }
+    function removeAt(idx) {
+        var dt = new DataTransfer();
+        Array.prototype.forEach.call(input.files, function (f, i) {
+            if (i !== idx) dt.items.add(f);
+        });
+        input.files = dt.files;              // keep the real FileList in sync for submit
+        render();
+    }
+    input.addEventListener('change', render);
+})();
 </script>
 
 
