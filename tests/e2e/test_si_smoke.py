@@ -39,3 +39,21 @@ def test_first_line_item_added_when_customer_selected(logged_in_page, e2e_server
     # Selecting a customer auto-adds exactly one blank line.
     page.wait_for_selector('#lineItemsBody tr')
     assert page.locator('#lineItemsBody tr').count() == 1
+
+
+def test_line_items_locked_until_customer_selected(logged_in_page, e2e_server):
+    """The line-items section stays hidden behind a locked placeholder until a
+    customer is chosen, then is revealed (mirrors AP's vendor-select reveal)."""
+    page = logged_in_page
+    page.goto(e2e_server + SI_CREATE)
+    page.wait_for_selector('#customer_id', state='attached')
+
+    # Locked before a customer is chosen.
+    assert page.locator('#lineItemsSection').is_hidden()
+    assert page.locator('#lineItemsLocked').is_visible()
+
+    _pick_in_choices(page, CUSTOMER_SCOPE, 'C001')
+
+    # Revealed after selecting a customer; placeholder gone.
+    page.wait_for_selector('#lineItemsSection', state='visible')
+    assert page.locator('#lineItemsLocked').is_hidden()

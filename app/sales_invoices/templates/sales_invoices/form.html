@@ -68,8 +68,16 @@
                 </div>
             </div>
 
-            <!-- ── Line Items Section ── -->
-            <div id="lineItemsSection" style="margin-top: 24px;">
+            <!-- ── Line Items Locked Placeholder (create only) ── -->
+            <div id="lineItemsLocked" class="line-items-locked{% if invoice %} line-items-locked--hidden{% endif %}">
+                <div style="font-size: 28px; margin-bottom: 10px;">&#128274;</div>
+                <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
+                    Select a customer above to add line items
+                </div>
+            </div>
+
+            <!-- ── Line Items Section (hidden on create, visible on edit) ── -->
+            <div id="lineItemsSection" style="margin-top: 24px;{% if not invoice %}display:none;{% endif %}">
                 <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 12px;">Line Items</h3>
 
                 <table class="table" id="lineItemsTable">
@@ -358,14 +366,19 @@ if (customerSel) {
     });
 }
 
-// ── Customer select: auto-add the first line item ────────────────────────────
-// Mirrors the AP form's vendor-select pattern — no line until a customer is
-// chosen, then the first blank line appears automatically.
-document.getElementById('customer_id').addEventListener('change', function () {
-    const cid = this.value;
-    if (!cid || cid === '0') return;
-    if (lineItems.length === 0) addLineItem();
-});
+// ── Customer select: reveal line items + auto-add the first line ─────────────
+// Mirrors the AP form's vendor-select pattern — the line-items section stays
+// locked behind a placeholder until a customer is chosen, then it is revealed
+// and the first blank line appears automatically.
+if (customerSel) {
+    customerSel.addEventListener('change', function () {
+        const cid = customerSel.value;
+        if (!cid || cid === '0') return;
+        document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
+        document.getElementById('lineItemsSection').style.display = '';
+        if (lineItems.length === 0) addLineItem();
+    });
+}
 
 // ── Choices.js: payment terms ────────────────────────────────────────────────
 const ptSel = document.getElementById('payment_terms');
