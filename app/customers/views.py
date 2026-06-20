@@ -6,7 +6,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from app import db
 from app.customers.models import Customer
-from app.vat_categories.models import VATCategory
+from app.sales_vat_categories.models import SalesVATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.customers.forms import CustomerForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
@@ -67,7 +67,7 @@ def generate_next_customer_code():
 def populate_dropdown_choices(form):
     """Populate VAT and WT dropdown choices from database"""
     # VAT Categories
-    vat_categories = VATCategory.query.filter_by(is_active=True).order_by(VATCategory.name).all()
+    vat_categories = SalesVATCategory.query.filter_by(is_active=True).order_by(SalesVATCategory.name).all()
     vat_choices = [('', '-- Select --')]
     vat_choices.extend([(cat.name, cat.name) for cat in vat_categories])
     form.default_vat_category.choices = vat_choices
