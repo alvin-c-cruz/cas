@@ -29,7 +29,7 @@ class Vendor(db.Model):
     name = db.Column(db.String(200), nullable=False)
     contact_person = db.Column(db.String(200))
     phone = db.Column(db.String(50))
-    tin = db.Column(db.String(20))  # Tax Identification Number
+    tin = db.Column(db.String(50))  # Tax Identification Number
 
     # Payment terms (Net 15, Net 30, Net 45, etc.)
     payment_terms = db.Column(db.String(50), default='Net 30')

@@ -23,7 +23,7 @@ class Customer(db.Model):
     contact_person = db.Column(db.String(200))
     phone = db.Column(db.String(50))
     email = db.Column(db.String(120))
-    tin = db.Column(db.String(20))
+    tin = db.Column(db.String(50))
     payment_terms = db.Column(db.String(50))
     address = db.Column(db.Text)
     postal_code = db.Column(db.String(20))

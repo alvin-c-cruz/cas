@@ -37,7 +37,7 @@ class VendorForm(FlaskForm):
 
     tin = StringField('TIN', validators=[
         Optional(),
-        Length(max=20, message='TIN must be 20 characters or less.')
+        Length(max=50, message='TIN must be 50 characters or less.')
     ])
 
     payment_terms = SelectField('Payment Terms', choices=[
