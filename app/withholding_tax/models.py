@@ -12,6 +12,9 @@ class WithholdingTax(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False)  # e.g., WC010, WC011
     name = db.Column(db.String(100), nullable=False)
+    # Seller/payee-POV name shown on sales documents (SI/CRV/customer). The
+    # buyer-POV `name` stays for AP/CDV/vendor. Nullable + backfilled.
+    sales_name = db.Column(db.String(100), nullable=True)
     description = db.Column(db.Text)
     rate = db.Column(db.Numeric(5, 2), nullable=False)  # e.g., 10.00 for 10%
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -34,6 +37,7 @@ class WithholdingTax(db.Model):
             'id': self.id,
             'code': self.code,
             'name': self.name,
+            'sales_name': self.sales_name,
             'description': self.description,
             'rate': float(self.rate) if self.rate else 0.0,
             'is_active': self.is_active,
