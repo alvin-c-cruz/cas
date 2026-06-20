@@ -2,8 +2,49 @@ import pytest
 from app import create_app, db
 from app.users.models import User
 from app.branches.models import Branch
+from app.journal_entries.models import JournalEntry
+from app.utils import ph_now
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 import os
 pytestmark = [pytest.mark.journals, pytest.mark.integration]
+
+
+class _QueryCounter:
+    """Count every SQL statement executed inside the `with` block."""
+
+    def __init__(self):
+        self.count = 0
+
+    def _on_execute(self, *args, **kwargs):
+        self.count += 1
+
+    def __enter__(self):
+        event.listen(Engine, 'before_cursor_execute', self._on_execute)
+        return self
+
+    def __exit__(self, *exc):
+        event.remove(Engine, 'before_cursor_execute', self._on_execute)
+
+
+def _make_voucher(db_session, branch, n, created_by=None, posted_by=None,
+                  status='posted', entry_type='adjustment'):
+    """Create a journal-voucher-type JournalEntry for list tests."""
+    je = JournalEntry(
+        entry_number=f'JE-2026-{n:04d}',
+        entry_date=ph_now().date(),
+        description=f'Test voucher {n}',
+        entry_type=entry_type,
+        status=status,
+        branch_id=branch.id,
+        total_debit=100,
+        total_credit=100,
+        created_by_id=created_by.id if created_by else None,
+        posted_by_id=posted_by.id if posted_by else None,
+    )
+    db_session.add(je)
+    db_session.commit()
+    return je
 
 
 
@@ -96,3 +137,100 @@ def test_journal_entries_redirects_to_voucher(client, setup):
     res = client.get('/journal-entries')
     assert res.status_code == 302
     assert 'voucher' in res.location
+
+
+def test_voucher_launch_button_uses_enter_verb(client, setup):
+    """List/launch button must use the 'Enter' verb, not 'New' (CLAUDE.md verb rule)."""
+    users, branch = setup
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+    login(client, 'accountant')
+    body = client.get('/journals/voucher').get_data(as_text=True)
+    assert 'Enter Journal Voucher' in body
+    assert 'New Journal Voucher' not in body
+
+
+def test_voucher_status_filter_includes_reversed(client, setup):
+    """The model has a 'reversed' status; the filter must offer it."""
+    users, branch = setup
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+    login(client, 'accountant')
+    body = client.get('/journals/voucher').get_data(as_text=True)
+    assert 'value="reversed"' in body
+
+
+def test_voucher_uses_global_status_badges(client, setup, db_session):
+    """Status badges must reuse the global semantic classes, not local bootstrap-y ones."""
+    users, branch = setup
+    _make_voucher(db_session, branch, 1, posted_by=users['accountant'], status='posted')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+    login(client, 'accountant')
+    body = client.get('/journals/voucher').get_data(as_text=True)
+    assert 'badge-posted' in body
+    assert 'badge-info' not in body
+    assert 'badge-secondary' not in body
+
+
+def test_voucher_list_is_paginated(client, setup, db_session):
+    """A page must cap at per_page rows; the overflow lands on page 2."""
+    users, branch = setup
+    for n in range(1, 52):  # 51 vouchers, per_page = 50
+        _make_voucher(db_session, branch, n, status='posted')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+    login(client, 'accountant')
+    page1 = client.get('/journals/voucher').get_data(as_text=True)
+    assert page1.count('JE-2026-') == 50
+    page2 = client.get('/journals/voucher?page=2').get_data(as_text=True)
+    assert page2.count('JE-2026-') == 1
+
+
+def test_voucher_list_avoids_n_plus_one(client, setup, db_session):
+    """Query count must stay flat as rows grow — posted_by is eager-loaded.
+
+    Each row gets a DISTINCT posted_by user so the identity-map cache can't mask
+    a per-row lazy load. Comparing 1 row vs 10 rows makes a real N+1 (~+9 queries)
+    unmistakable against the small (±1) cross-test SimpleCache jitter, so the
+    threshold is a tolerant constant rather than exact equality.
+    """
+    users, branch = setup
+    posters = []
+    for i in range(10):
+        u = User(username=f'poster{i}', email=f'poster{i}@t.com',
+                 full_name=f'P{i}', role='accountant', is_active=True)
+        u.set_password('pass')
+        u.branches.append(branch)
+        db_session.add(u)
+        posters.append(u)
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+    login(client, 'accountant')
+
+    _make_voucher(db_session, branch, 1, posted_by=posters[0], status='posted')
+    with _QueryCounter() as c1:
+        client.get('/journals/voucher')
+
+    for n in range(2, 11):  # 9 more rows, each a distinct posted_by user
+        _make_voucher(db_session, branch, n, posted_by=posters[n - 1], status='posted')
+    with _QueryCounter() as c10:
+        client.get('/journals/voucher')
+
+    assert c10.count - c1.count <= 2, (
+        f'N+1: {c1.count} queries for 1 row but {c10.count} for 10 rows')
+
+
+def test_voucher_print_and_export_render(client, setup, db_session):
+    """Print/export share the voucher query helper and must still render."""
+    users, branch = setup
+    _make_voucher(db_session, branch, 1, posted_by=users['accountant'], status='posted')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+    login(client, 'accountant')
+    assert client.get('/journals/voucher/print').status_code == 200
+    res = client.get('/journals/voucher/export')
+    assert res.status_code == 200
+    assert 'spreadsheet' in res.headers.get('Content-Type', '')

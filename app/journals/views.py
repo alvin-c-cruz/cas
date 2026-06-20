@@ -1,6 +1,7 @@
 """Journals — filtered list views over JournalEntry for each journal type."""
 from flask import Blueprint, render_template, redirect, url_for, request, session, flash
 from flask_login import login_required
+from sqlalchemy.orm import joinedload
 from app import db
 from app.journal_entries.models import JournalEntry
 from app.utils import ph_now
@@ -36,6 +37,24 @@ def _apply_date_filter(query, date_from, date_to):
         except ValueError:
             pass
     return query
+
+
+def _voucher_query(branch_id, status_filter, date_from, date_to):
+    """Shared filtered + eager-loaded query for the voucher list/print/export.
+
+    Eager-loads posted_by/created_by so the per-row username lookups don't N+1.
+    Callers add their own order_by (list = desc, print/export = asc).
+    """
+    query = JournalEntry.query.options(
+        joinedload(JournalEntry.posted_by),
+        joinedload(JournalEntry.created_by),
+    ).filter(
+        JournalEntry.entry_type.in_(VOUCHER_TYPES),
+        JournalEntry.branch_id == branch_id,
+    )
+    if status_filter != 'all':
+        query = query.filter(JournalEntry.status == status_filter)
+    return _apply_date_filter(query, date_from, date_to)
 
 
 def _gl_account_ids():
@@ -300,23 +319,19 @@ def voucher():
     branch_id = _branch_id()
     date_from, date_to = _date_defaults()
     status_filter = request.args.get('status', 'all')
+    page = request.args.get('page', 1, type=int)
 
     if not branch_id:
         flash('Please select a branch to view journal entries.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
 
-    query = JournalEntry.query.filter(
-        JournalEntry.entry_type.in_(VOUCHER_TYPES),
-        JournalEntry.branch_id == branch_id
-    )
-
-    if status_filter != 'all':
-        query = query.filter(JournalEntry.status == status_filter)
-    query = _apply_date_filter(query, date_from, date_to)
-    entries = query.order_by(JournalEntry.entry_date.desc()).all()
+    query = _voucher_query(branch_id, status_filter, date_from, date_to)
+    pagination = query.order_by(JournalEntry.entry_date.desc()).paginate(
+        page=page, per_page=50, error_out=False)
 
     return render_template('journals/voucher.html',
-                           entries=entries,
+                           entries=pagination.items,
+                           pagination=pagination,
                            date_from=date_from,
                            date_to=date_to,
                            status_filter=status_filter)
@@ -334,13 +349,7 @@ def voucher_print():
     date_from, date_to = _date_defaults()
     status_filter = request.args.get('status', 'all')
 
-    query = JournalEntry.query.filter(
-        JournalEntry.entry_type.in_(VOUCHER_TYPES),
-        JournalEntry.branch_id == branch_id
-    )
-    if status_filter != 'all':
-        query = query.filter(JournalEntry.status == status_filter)
-    query = _apply_date_filter(query, date_from, date_to)
+    query = _voucher_query(branch_id, status_filter, date_from, date_to)
     entries = query.order_by(JournalEntry.entry_date.asc()).all()
 
     company_name = AppSettings.get_setting('company_name') or ''
@@ -369,13 +378,7 @@ def voucher_export():
     date_from, date_to = _date_defaults()
     status_filter = request.args.get('status', 'all')
 
-    query = JournalEntry.query.filter(
-        JournalEntry.entry_type.in_(VOUCHER_TYPES),
-        JournalEntry.branch_id == branch_id
-    )
-    if status_filter != 'all':
-        query = query.filter(JournalEntry.status == status_filter)
-    query = _apply_date_filter(query, date_from, date_to)
+    query = _voucher_query(branch_id, status_filter, date_from, date_to)
     entries = query.order_by(JournalEntry.entry_date.asc()).all()
 
     company_name = AppSettings.get_setting('company_name') or ''

@@ -2,16 +2,8 @@
 {% block title %}Journal Voucher{% endblock %}
 {% block page_title %}Journal Voucher{% endblock %}
 
-{% block extra_css %}
-<style>
-.badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-.badge-secondary { background: var(--text-3); color: white; }
-.badge-info { background: var(--blue); color: white; }
-.badge-danger { background: var(--red); color: white; }
-</style>
-{% endblock %}
-
 {% block content %}
+{% set badge_map = {'draft': 'draft', 'posted': 'posted', 'reversed': 'cancelled', 'cancelled': 'cancelled'} %}
 <div class="card">
     <div class="card-header">
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
@@ -20,27 +12,28 @@
             <a href="{{ url_for('journals.voucher_export', status=status_filter, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">Download Excel</a>
             {% if current_user.role in ['accountant', 'admin'] %}
-            <a href="{{ url_for('journal_entries.create') }}" class="btn btn-primary">📝 New Journal Voucher</a>
+            <a href="{{ url_for('journal_entries.create') }}" class="btn btn-primary">📝 Enter Journal Voucher</a>
             {% endif %}
         </div>
     </div>
 
-    <div style="padding: 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+    <div style="padding: 20px; background: var(--bg); border-bottom: 1px solid var(--border);">
         <form method="GET" action="{{ url_for('journals.voucher') }}" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 150px;">
-                <label style="display: block; font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">From Date</label>
+                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">From Date</label>
                 <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
             </div>
             <div style="flex: 1; min-width: 150px;">
-                <label style="display: block; font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">To Date</label>
+                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">To Date</label>
                 <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
             </div>
             <div style="flex: 1; min-width: 120px;">
-                <label style="display: block; font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 6px; text-transform: uppercase;">Status</label>
+                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; text-transform: uppercase;">Status</label>
                 <select name="status" class="form-control form-control-sm">
                     <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Status</option>
                     <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
                     <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+                    <option value="reversed" {% if status_filter == 'reversed' %}selected{% endif %}>Reversed</option>
                     <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
                 </select>
             </div>
@@ -77,7 +70,7 @@
                     <td>{{ entry.description[:70] }}{% if entry.description | length > 70 %}...{% endif %}</td>
                     <td style="text-align: right; font-family: var(--mono);">₱{{ '{:,.2f}'.format(entry.total_debit) }}</td>
                     <td>
-                        <span class="badge badge-{{ 'secondary' if entry.status == 'draft' else 'info' if entry.status == 'posted' else 'danger' }}">
+                        <span class="badge badge-{{ badge_map.get(entry.status, 'draft') }}">
                             {{ entry.status | title }}
                         </span>
                     </td>
@@ -98,5 +91,25 @@
         </div>
         {% endif %}
     </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} vouchers
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('journals.voucher', page=pagination.prev_num, status=status_filter, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">← Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('journals.voucher', page=pagination.next_num, status=status_filter, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
