@@ -27,7 +27,7 @@
     "app/sales_vat_categories/views.py":   ["sales_vat_categories"],
     "app/utils/admin_approval.py":         ["vat_categories", "withholding_tax", "sales_vat_categories"],
     "app/utils/wt_labels.py":              ["sales_invoices", "cash_receipts", "customers"],
-    "app/customers/views.py":              ["customers", "sales_invoices"],
+    "app/customers/views.py":              ["customers", "sales_invoices", "cash_receipts"],
     "app/customers/models.py":             ["customers", "sales_invoices", "cash_receipts"]
   },
   "modules": {
