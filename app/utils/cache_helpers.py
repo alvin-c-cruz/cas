@@ -15,6 +15,7 @@ from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.branches.models import Branch
+from app.sales_vat_categories.models import SalesVATCategory
 
 
 @cache.memoize(timeout=3600)
@@ -45,6 +46,12 @@ def get_vat_categories():
 
 
 @cache.memoize(timeout=3600)
+def get_sales_vat_categories():
+    """Get all active Sales VAT categories (cached for 1 hour)."""
+    return SalesVATCategory.query.filter_by(is_active=True).order_by(SalesVATCategory.code).all()
+
+
+@cache.memoize(timeout=3600)
 def get_withholding_tax_codes():
     """Get all active withholding tax codes (cached for 1 hour)"""
     return WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
@@ -72,6 +79,11 @@ def clear_account_cache():
 def clear_vat_cache():
     """Clear VAT category cache after updates"""
     cache.delete_memoized(get_vat_categories)
+
+
+def clear_sales_vat_cache():
+    """Clear Sales VAT category cache after updates."""
+    cache.delete_memoized(get_sales_vat_categories)
 
 
 def clear_withholding_tax_cache():
