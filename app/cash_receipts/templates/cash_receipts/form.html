@@ -306,8 +306,8 @@
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts   = {{ all_accounts   | tojson }};
 const glAccounts    = {{ gl_accounts    | tojson }};
-// All active WHT codes (not customer-scoped)
-const currentWHTs = {{ all_whts | tojson }};
+// All active WHT codes (reassigned per-customer at runtime)
+let currentWHTs = {{ all_whts | tojson }};
 
 // State
 let arLines      = [];
@@ -375,7 +375,7 @@ function setCustomerCardState(selected, customerName) {
     }
 }
 
-// Customer change -> fetch open invoices
+// Customer change -> fetch open invoices + customer WHT defaults
 function onCustomerChange(customerId) {
     arLines = [];
     document.getElementById('arLinesBody').innerHTML = '';
@@ -385,7 +385,7 @@ function onCustomerChange(customerId) {
     const sel = document.getElementById('customer_id');
     const customerName = (sel.options[sel.selectedIndex] || {}).text || '';
 
-    if (!customerId || customerId === '__add_customer__') {
+    if (!customerId || customerId === '0' || customerId === '__add_customer__') {
         setCustomerCardState(false, '');
         document.getElementById('crvLocked').style.display = '';
         document.getElementById('crvSections').style.display = 'none';
@@ -405,6 +405,54 @@ function onCustomerChange(customerId) {
             recalculate();
         })
         .catch(() => setInvPickerLoading(false, true));
+
+    // Fetch customer defaults to scope the revenue-line WHT list to this customer
+    fetch(`/customers/${customerId}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentWHTs = data.withholding_taxes || [];
+            rebuildAllRevenueWhtSelects();
+        })
+        .catch(() => {});
+}
+
+function rebuildAllRevenueWhtSelects() {
+    const noWht   = currentWHTs.length === 0;
+    const autoWht = currentWHTs.length === 1 ? currentWHTs[0] : null;
+    const noneChoice = noWht
+        ? { value: '', label: 'No withholding tax for this customer', customProperties: { code: 'No withholding tax' } }
+        : { value: '', label: 'None', customProperties: { code: '' } };
+    const dropped = [];
+    revenueLines.forEach(item => {
+        const rc = revenueChoices[item.id];
+        if (!rc) return;
+        const prev = item.wt_id;
+        const stillValid = prev && currentWHTs.some(wt => wt.id == prev);
+        if (!stillValid) {
+            if (prev) {
+                const cur = rc.wht.getValue();
+                dropped.push((cur && cur.customProperties && cur.customProperties.code) || 'a withholding code');
+            }
+            item.wt_id   = autoWht ? autoWht.id : null;
+            item.wt_rate = autoWht ? autoWht.rate : null;
+        }
+        const choices = [noneChoice].concat(
+            currentWHTs.map(wt => ({
+                value: String(wt.id),
+                label: `${escHtml(wt.code)} — ${escHtml(wt.name || wt.label || '')} (${wt.rate}%)`,
+                customProperties: { code: wt.code }
+            }))
+        );
+        rc.wht.enable();
+        rc.wht.clearChoices();
+        rc.wht.setChoices(choices, 'value', 'label', false);
+        rc.wht.setChoiceByValue(item.wt_id ? String(item.wt_id) : '');
+        if (noWht) rc.wht.disable();
+    });
+    if (dropped.length && typeof showToast === 'function') {
+        const uniq = [...new Set(dropped)];
+        showToast(`Removed ${uniq.join(', ')} — not valid for the selected customer.`, 'warn');
+    }
 }
 
 function setInvPickerLoading(loading, error) {
@@ -828,6 +876,15 @@ if (savedCustomerId) {
     fetch(`{{ url_for('cash_receipts.open_invoices') }}?customer_id=${savedCustomerId}`)
         .then(r => r.json())
         .then(invs => { openInvoices = invs; refreshInvPicker(); });
+
+    // Re-scope the revenue-line WHT list to the saved customer's defaults
+    fetch(`/customers/${savedCustomerId}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentWHTs = data.withholding_taxes || [];
+            rebuildAllRevenueWhtSelects();
+        })
+        .catch(() => {});
 }
 {% endif %}
 
