@@ -108,3 +108,48 @@ class TestListCustomerFilter:
 
         assert 'SI-CF-101' in body
         assert 'SI-CF-102' not in body, "CSV export must honor the customer filter"
+
+
+class TestExportRoleGate:
+    """Export/print of the SI list (customer names, TINs, amounts) is staff+ only;
+    viewers keep the on-screen list but cannot bulk-export."""
+
+    def _login_viewer(self, client, db_session, viewer_user, main_branch):
+        viewer_user.set_branches([main_branch])
+        db_session.commit()
+        login(client, username='viewer', password='viewer123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+
+    def test_viewer_blocked_from_csv_export(self, client, db_session,
+                                            viewer_user, main_branch):
+        self._login_viewer(client, db_session, viewer_user, main_branch)
+        resp = client.get('/sales-invoices/export/csv', follow_redirects=False)
+        assert resp.status_code == 302
+        # role gate redirects to the dashboard root; NOT /login or /select-branch
+        assert resp.headers.get('Location') == '/'
+
+    def test_viewer_blocked_from_excel_export(self, client, db_session,
+                                              viewer_user, main_branch):
+        self._login_viewer(client, db_session, viewer_user, main_branch)
+        resp = client.get('/sales-invoices/export/excel', follow_redirects=False)
+        assert resp.status_code == 302
+        # role gate redirects to the dashboard root; NOT /login or /select-branch
+        assert resp.headers.get('Location') == '/'
+
+    def test_viewer_blocked_from_print(self, client, db_session,
+                                       viewer_user, main_branch):
+        self._login_viewer(client, db_session, viewer_user, main_branch)
+        resp = client.get('/sales-invoices/print', follow_redirects=False)
+        assert resp.status_code == 302
+        # role gate redirects to the dashboard root; NOT /login or /select-branch
+        assert resp.headers.get('Location') == '/'
+
+    def test_staff_can_export_csv(self, client, db_session, staff_user, main_branch):
+        staff_user.set_branches([main_branch])
+        db_session.commit()
+        login(client, username='staff', password='staff123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get('/sales-invoices/export/csv', follow_redirects=False)
+        assert resp.status_code == 200

@@ -552,6 +552,7 @@ def list_invoices():
 
 @sales_invoices_bp.route('/sales-invoices/print')
 @login_required
+@staff_or_above_required
 def print_list():
     invoices = (_filtered_invoices_query(include_ids=True)
                 .order_by(SalesInvoice.invoice_date.desc()).all())
@@ -570,6 +571,7 @@ def print_list():
 
 @sales_invoices_bp.route('/sales-invoices/export/excel')
 @login_required
+@staff_or_above_required
 def export_excel():
     invoices = (_filtered_invoices_query(include_ids=True)
                 .order_by(SalesInvoice.invoice_date.desc()).all())
@@ -583,6 +585,7 @@ def export_excel():
 
 @sales_invoices_bp.route('/sales-invoices/export/csv')
 @login_required
+@staff_or_above_required
 def export_csv_route():
     invoices = (_filtered_invoices_query(include_ids=True)
                 .order_by(SalesInvoice.invoice_date.desc()).all())
