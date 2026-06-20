@@ -227,11 +227,11 @@
             <span style="font-family:var(--mono);font-weight:{{ '700' if bold else '600' }};{{ 'color:var(--red);' if red }}">{{ val }}</span>
           </div>
           {% endmacro %}
-          {{ sumrow('AR Applied:', '&#8369;' ~ '{:,.2f}'.format(crv.total_ar_applied)) }}
-          {{ sumrow('Direct Revenue:', '&#8369;' ~ '{:,.2f}'.format(crv.total_revenue)) }}
-          {{ sumrow('Output VAT:' ~ (' ⚙' if crv.vat_override else ''), '&#8369;' ~ '{:,.2f}'.format(crv.total_vat)) }}
+          {{ sumrow('AR Applied:', '₱' ~ '{:,.2f}'.format(crv.total_ar_applied)) }}
+          {{ sumrow('Direct Revenue:', '₱' ~ '{:,.2f}'.format(crv.total_revenue)) }}
+          {{ sumrow('Output VAT:' ~ (' ⚙' if crv.vat_override else ''), '₱' ~ '{:,.2f}'.format(crv.total_vat)) }}
           <div style="height:1px;background:var(--border);margin:8px 0;"></div>
-          {{ sumrow('Less: WHT:' ~ (' ⚙' if crv.wt_override else ''), '-&#8369;' ~ '{:,.2f}'.format(crv.total_wt), red=true) }}
+          {{ sumrow('Less: WHT:' ~ (' ⚙' if crv.wt_override else ''), '-₱' ~ '{:,.2f}'.format(crv.total_wt), red=true) }}
           <div style="height:2px;background:var(--border);margin:10px 0;"></div>
           <div style="display:flex;justify-content:space-between;">
             <span style="font-size:15px;font-weight:700;">Net Cash Received:</span>
