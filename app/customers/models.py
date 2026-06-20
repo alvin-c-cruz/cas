@@ -5,6 +5,14 @@ from app import db
 from app.utils import ph_now
 
 
+# Association table for the many-to-many between customers and withholding taxes
+# (mirrors vendor_withholding_taxes in app/vendors/models.py).
+customer_withholding_taxes = db.Table('customer_withholding_taxes',
+    db.Column('customer_id', db.Integer, db.ForeignKey('customers.id'), primary_key=True),
+    db.Column('withholding_tax_id', db.Integer, db.ForeignKey('withholding_tax.id'), primary_key=True),
+)
+
+
 class Customer(db.Model):
     """Customer/Client master table (shared across branches)"""
     __tablename__ = 'customers'
@@ -23,6 +31,12 @@ class Customer(db.Model):
     # VAT and WT for customer transactions
     default_vat_category = db.Column(db.String(100))
     default_wt_code = db.Column(db.String(20))
+
+    # Many-to-many WHT list — scopes the SI/CRV line-WT dropdown (parity with Vendor).
+    # default_wt_code is kept for back-compat (exports/audit); the list is the new source of truth.
+    withholding_taxes = db.relationship('WithholdingTax',
+                                        secondary=customer_withholding_taxes,
+                                        backref=db.backref('customers', lazy='dynamic'))
 
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
@@ -53,6 +67,10 @@ class Customer(db.Model):
             'postal_code': self.postal_code,
             'default_vat_category': self.default_vat_category,
             'default_wt_code': self.default_wt_code,
+            'withholding_taxes': [
+                {'id': w.id, 'code': w.code, 'name': w.name, 'rate': float(w.rate)}
+                for w in self.withholding_taxes
+            ],
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
