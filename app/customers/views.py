@@ -30,6 +30,35 @@ def accountant_or_admin_required(f):
     return decorated_function
 
 
+# Single source of truth for the fields snapshotted to the audit trail and exported.
+# Adding a Customer column means editing this one list, not 6 scattered literals.
+CUSTOMER_FIELDS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
+                   'payment_terms', 'address', 'postal_code', 'default_vat_category',
+                   'default_wt_code', 'is_active']
+
+CUSTOMER_EXPORT_HEADERS = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone',
+                           'Email', 'TIN', 'Payment Terms', 'Address', 'Postal Code',
+                           'VAT Category', 'WT Code', 'Active']
+
+
+def _customer_export_rows(customers):
+    """Build the export row dicts shared by the Excel and CSV export routes."""
+    return [{
+        'code': c.code,
+        'name': c.name,
+        'contact_person': c.contact_person or '',
+        'phone': c.phone or '',
+        'email': c.email or '',
+        'tin': c.tin or '',
+        'payment_terms': c.payment_terms or '',
+        'address': c.address or '',
+        'postal_code': c.postal_code or '',
+        'default_vat_category': c.default_vat_category or '',
+        'default_wt_code': c.default_wt_code or '',
+        'is_active': 'Yes' if c.is_active else 'No',
+    } for c in customers]
+
+
 @customers_bp.route('/customers')
 @login_required
 def list_customers():
@@ -121,7 +150,7 @@ def create():
                 module='customer',
                 record_id=customer.id,
                 record_identifier=f'{customer.code} - {customer.name}',
-                new_values=model_to_dict(customer, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'postal_code', 'default_vat_category', 'default_wt_code', 'is_active'])
+                new_values=model_to_dict(customer, CUSTOMER_FIELDS)
             )
 
             flash(f'Customer "{customer.name}" created successfully!', 'success')
@@ -161,7 +190,7 @@ def edit(id):
 
         try:
             # Capture old values before update
-            old_values = model_to_dict(customer, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'postal_code', 'default_vat_category', 'default_wt_code', 'is_active'])
+            old_values = model_to_dict(customer, CUSTOMER_FIELDS)
 
             customer.code = form.code.data
             customer.name = form.name.data
@@ -179,7 +208,7 @@ def edit(id):
             db.session.commit()
 
             # Audit log
-            new_values = model_to_dict(customer, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'postal_code', 'default_vat_category', 'default_wt_code', 'is_active'])
+            new_values = model_to_dict(customer, CUSTOMER_FIELDS)
             log_update(
                 module='customer',
                 record_id=customer.id,
@@ -243,7 +272,7 @@ def delete(id):
 
     try:
         # Capture values before delete
-        old_values = model_to_dict(customer, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'postal_code', 'default_vat_category', 'default_wt_code', 'is_active'])
+        old_values = model_to_dict(customer, CUSTOMER_FIELDS)
         customer_identifier = f'{customer.code} - {customer.name}'
         customer_id = customer.id
 
@@ -275,42 +304,14 @@ def delete(id):
 def export_excel():
     """Export customers to Excel"""
     customers = Customer.query.order_by(Customer.code).all()
-
-    # Define columns and headers
-    columns = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
-               'payment_terms', 'address', 'postal_code', 'default_vat_category',
-               'default_wt_code', 'is_active']
-
-    headers = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone', 'Email',
-               'TIN', 'Payment Terms', 'Address', 'Postal Code', 'VAT Category',
-               'WT Code', 'Active']
-
-    # Prepare data with proper formatting
-    data = []
-    for customer in customers:
-        data.append({
-            'code': customer.code,
-            'name': customer.name,
-            'contact_person': customer.contact_person or '',
-            'phone': customer.phone or '',
-            'email': customer.email or '',
-            'tin': customer.tin or '',
-            'payment_terms': customer.payment_terms or '',
-            'address': customer.address or '',
-            'postal_code': customer.postal_code or '',
-            'default_vat_category': customer.default_vat_category or '',
-            'default_wt_code': customer.default_wt_code or '',
-            'is_active': 'Yes' if customer.is_active else 'No'
-        })
-
+    data = _customer_export_rows(customers)
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
-    filename = f'customers_{timestamp}.xlsx'
 
     return export_to_excel(
         data=data,
-        columns=columns,
-        headers=headers,
-        filename=filename,
+        columns=CUSTOMER_FIELDS,
+        headers=CUSTOMER_EXPORT_HEADERS,
+        filename=f'customers_{timestamp}.xlsx',
         title='Customer List'
     )
 
@@ -321,40 +322,12 @@ def export_excel():
 def export_csv_route():
     """Export customers to CSV"""
     customers = Customer.query.order_by(Customer.code).all()
-
-    # Define columns and headers
-    columns = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
-               'payment_terms', 'address', 'postal_code', 'default_vat_category',
-               'default_wt_code', 'is_active']
-
-    headers = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone', 'Email',
-               'TIN', 'Payment Terms', 'Address', 'Postal Code', 'VAT Category',
-               'WT Code', 'Active']
-
-    # Prepare data with proper formatting
-    data = []
-    for customer in customers:
-        data.append({
-            'code': customer.code,
-            'name': customer.name,
-            'contact_person': customer.contact_person or '',
-            'phone': customer.phone or '',
-            'email': customer.email or '',
-            'tin': customer.tin or '',
-            'payment_terms': customer.payment_terms or '',
-            'address': customer.address or '',
-            'postal_code': customer.postal_code or '',
-            'default_vat_category': customer.default_vat_category or '',
-            'default_wt_code': customer.default_wt_code or '',
-            'is_active': 'Yes' if customer.is_active else 'No'
-        })
-
+    data = _customer_export_rows(customers)
     timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
-    filename = f'customers_{timestamp}.csv'
 
     return export_to_csv(
         data=data,
-        columns=columns,
-        headers=headers,
-        filename=filename
+        columns=CUSTOMER_FIELDS,
+        headers=CUSTOMER_EXPORT_HEADERS,
+        filename=f'customers_{timestamp}.csv'
     )

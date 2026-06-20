@@ -2,7 +2,6 @@
 Customer models for CAS
 """
 from app import db
-from datetime import datetime
 from app.utils import ph_now
 
 

@@ -8,7 +8,7 @@
     <h4 class="customer-section-title">Customer Details</h4>
     <div class="form-row-3col">
         <div class="form-group">
-            <label for="{{ form.code.id }}">{{ form.code.label.text }}</label>
+            <label for="{{ form.code.id }}">{{ form.code.label.text }}<span class="required" aria-hidden="true">*</span></label>
             {{ form.code(
                 class="form-control form-control-sm" + (" field-locked" if customer else ""),
                 autocomplete="new-password",
@@ -18,7 +18,7 @@
             {% if form.code.errors %}<div class="error-message">{{ form.code.errors[0] }}</div>{% endif %}
         </div>
         <div class="form-group">
-            <label for="{{ form.name.id }}">{{ form.name.label.text }}</label>
+            <label for="{{ form.name.id }}">{{ form.name.label.text }}<span class="required" aria-hidden="true">*</span></label>
             {{ form.name(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
             {% if form.name.errors %}<div class="error-message">{{ form.name.errors[0] }}</div>{% endif %}
         </div>

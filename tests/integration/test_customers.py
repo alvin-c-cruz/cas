@@ -163,6 +163,56 @@ def test_customer_list_paginates_at_25_per_page(
     assert 'Cust 025' in page2
 
 
+def test_create_form_marks_required_fields(client, db_session, accountant_user, main_branch):
+    """Code and Name are DataRequired — the form shows the shared required '*' marker."""
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.get('/customers/create')
+    assert resp.status_code == 200
+    assert b'<span class="required"' in resp.data
+
+
+def test_customer_csv_export_includes_customer_row(
+        client, db_session, accountant_user, main_branch):
+    """CSV export carries the customer's code/name/TIN (locks export columns for refactor)."""
+    from app.customers.models import Customer
+    db_session.add(Customer(code='C001', name='Exporter Corp', tin='123-456-789-000',
+                            payment_terms='Net 30', is_active=True))
+    db_session.commit()
+    _login_accountant(client, accountant_user, main_branch)
+
+    resp = client.get('/customers/export/csv')
+
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'C001' in body
+    assert 'Exporter Corp' in body
+    assert '123-456-789-000' in body
+
+
+def test_customer_create_audit_captures_field_values(
+        client, db_session, accountant_user, main_branch):
+    """Create audit new_values snapshot covers the full audited field set (locks CUSTOMER_FIELDS)."""
+    import json
+    from app.audit.models import AuditLog
+    _login_accountant(client, accountant_user, main_branch)
+
+    client.post('/customers/create', data={
+        'code': 'C001', 'name': 'Audited Corp', 'tin': '111-222-333-000',
+        'payment_terms': 'Net 30', 'is_active': '1',
+        'default_vat_category': '', 'default_wt_code': '',
+    }, follow_redirects=True)
+
+    entry = AuditLog.query.filter_by(module='customer', action='create').first()
+    assert entry is not None
+    vals = json.loads(entry.new_values)
+    for field in ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
+                  'payment_terms', 'address', 'postal_code', 'default_vat_category',
+                  'default_wt_code', 'is_active']:
+        assert field in vals, f'audit snapshot missing {field}'
+    assert vals['code'] == 'C001'
+    assert vals['name'] == 'Audited Corp'
+
+
 def test_generate_next_customer_code_is_numeric_safe_past_999(db_session):
     """Code sequencing must be numeric, not lexicographic.
 
