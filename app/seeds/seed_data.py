@@ -19,6 +19,14 @@ from app.withholding_tax.models import WithholdingTax
 from app.settings import AppSettings
 from datetime import datetime
 
+# Seller/payee-facing names for WT codes that appear on sales documents.
+_WT_SALES_NAMES = {
+    'WC010': 'Professional Fees Income - Individual',
+    'WC011': 'Professional Fees Income - Corporation',
+    'WC100': 'Income as Contractor/Subcontractor',
+    'WC158': 'Sale of Goods (subject to 1% CWT)',
+}
+
 
 def seed_admin_user():
     """
@@ -358,15 +366,64 @@ def seed_vat_categories():
     return True
 
 
+def seed_sales_vat_categories():
+    """
+    Seed Sales (output) VAT categories following Philippine BIR requirements.
+    Idempotent — skips if any rows already exist.
+    """
+    from app.sales_vat_categories.models import SalesVATCategory
+
+    existing_count = SalesVATCategory.query.count()
+    if existing_count > 0:
+        print(f"  [SKIP] {existing_count} Sales VAT categories already exist, skipping...")
+        return False
+
+    # Map rated categories to the output VAT account seeded above (code '20401')
+    output_acct = Account.query.filter_by(code='20401').first()
+    output_id = output_acct.id if output_acct else None
+
+    sales_vat_categories = [
+        {'code': 'SVAT-G',   'name': 'Sale of Goods (12%)',            'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': output_id},
+        {'code': 'SVAT-S',   'name': 'Sale of Services (12%)',         'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': output_id},
+        {'code': 'SVAT-EX',  'name': 'VAT-Exempt Sales',               'rate':  0.00, 'transaction_nature': 'exempt',      'output_vat_account_id': None},
+        {'code': 'SVAT-ZR',  'name': 'Zero-Rated Sales (Export)',       'rate':  0.00, 'transaction_nature': 'zero_export', 'output_vat_account_id': None},
+        {'code': 'SVAT-GOV', 'name': 'Sales to Government (12%)',      'rate': 12.00, 'transaction_nature': 'government',  'output_vat_account_id': output_id},
+    ]
+
+    for cat in sales_vat_categories:
+        db.session.add(SalesVATCategory(
+            code=cat['code'],
+            name=cat['name'],
+            rate=cat['rate'],
+            transaction_nature=cat['transaction_nature'],
+            output_vat_account_id=cat['output_vat_account_id'],
+            is_active=True,
+        ))
+
+    db.session.commit()
+    print(f"  [OK] {len(sales_vat_categories)} Sales VAT categories created")
+    return True
+
+
 def seed_withholding_tax_codes():
     """
     Seed common withholding tax codes following Philippine BIR requirements.
+    Idempotent — on re-run, backfills missing sales_name on existing rows.
     """
     # Check if withholding tax codes already exist
-    existing_count = WithholdingTax.query.count()
+    existing = {w.code: w for w in WithholdingTax.query.all()}
 
-    if existing_count > 0:
-        print(f"  [SKIP] {existing_count} withholding tax codes already exist, skipping...")
+    if existing:
+        backfilled = 0
+        for code, sname in _WT_SALES_NAMES.items():
+            if code in existing and not existing[code].sales_name:
+                existing[code].sales_name = sname
+                backfilled += 1
+        if backfilled:
+            db.session.commit()
+            print(f"  [OK] backfilled sales_name on {backfilled} WT codes")
+        else:
+            print(f"  [SKIP] {len(existing)} withholding tax codes already exist, skipping...")
         return False
 
     wt_codes = [
@@ -389,6 +446,7 @@ def seed_withholding_tax_codes():
             name=wt_data['name'],
             description=wt_data['description'],
             rate=wt_data['rate'],
+            sales_name=_WT_SALES_NAMES.get(wt_data['code']),
             is_active=True
         )
         db.session.add(wt_code)
@@ -455,6 +513,7 @@ def seed_all(force=False):
         'main_branch': False,
         'chart_of_accounts': False,
         'vat_categories': False,
+        'sales_vat_categories': False,
         'withholding_tax_codes': False,
         'app_settings': False,
     }
@@ -471,6 +530,9 @@ def seed_all(force=False):
 
         print("\n4. Seeding VAT Categories...")
         results['vat_categories'] = seed_vat_categories()
+
+        print("\n4b. Seeding Sales VAT Categories...")
+        results['sales_vat_categories'] = seed_sales_vat_categories()
 
         print("\n5. Seeding Withholding Tax Codes...")
         results['withholding_tax_codes'] = seed_withholding_tax_codes()
@@ -702,17 +764,56 @@ def seed_minimal():
             print(f"  [OK] {len(vat_categories)} VAT categories created")
 
         # ------------------------------------------------------------------
-        # 6. Withholding Tax Codes
+        # 6. Sales VAT Categories
         # ------------------------------------------------------------------
-        print("\n6. Seeding withholding tax codes...")
-        existing_wht = WithholdingTax.query.count()
-        if existing_wht > 0:
-            print(f"  [SKIP] {existing_wht} withholding tax codes already exist")
+        print("\n6. Seeding Sales VAT categories...")
+        from app.sales_vat_categories.models import SalesVATCategory
+        existing_svat = SalesVATCategory.query.count()
+        if existing_svat > 0:
+            print(f"  [SKIP] {existing_svat} Sales VAT categories already exist")
+        else:
+            _output_svat_acct = Account.query.filter_by(code='20401').first()
+            _output_svat_id = _output_svat_acct.id if _output_svat_acct else None
+            svat_categories = [
+                {'code': 'SVAT-G',   'name': 'Sale of Goods (12%)',       'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': _output_svat_id},
+                {'code': 'SVAT-S',   'name': 'Sale of Services (12%)',    'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': _output_svat_id},
+                {'code': 'SVAT-EX',  'name': 'VAT-Exempt Sales',          'rate':  0.00, 'transaction_nature': 'exempt',      'output_vat_account_id': None},
+                {'code': 'SVAT-ZR',  'name': 'Zero-Rated Sales (Export)', 'rate':  0.00, 'transaction_nature': 'zero_export', 'output_vat_account_id': None},
+                {'code': 'SVAT-GOV', 'name': 'Sales to Government (12%)', 'rate': 12.00, 'transaction_nature': 'government',  'output_vat_account_id': _output_svat_id},
+            ]
+            for cat in svat_categories:
+                db.session.add(SalesVATCategory(
+                    code=cat['code'],
+                    name=cat['name'],
+                    rate=cat['rate'],
+                    transaction_nature=cat['transaction_nature'],
+                    output_vat_account_id=cat['output_vat_account_id'],
+                    is_active=True,
+                ))
+            db.session.commit()
+            print(f"  [OK] {len(svat_categories)} Sales VAT categories created")
+
+        # ------------------------------------------------------------------
+        # 7. Withholding Tax Codes
+        # ------------------------------------------------------------------
+        print("\n7. Seeding withholding tax codes...")
+        existing_wht = {w.code: w for w in WithholdingTax.query.all()}
+        if existing_wht:
+            backfilled = 0
+            for code, sname in _WT_SALES_NAMES.items():
+                if code in existing_wht and not existing_wht[code].sales_name:
+                    existing_wht[code].sales_name = sname
+                    backfilled += 1
+            if backfilled:
+                db.session.commit()
+                print(f"  [OK] backfilled sales_name on {backfilled} WT codes")
+            else:
+                print(f"  [SKIP] {len(existing_wht)} withholding tax codes already exist")
         else:
             wht_codes = [
-                {'code': 'WC158', 'name': 'Withholding Tax - Goods',     'rate': 1.00},
-                {'code': 'WC160', 'name': 'Withholding Tax - Services',   'rate': 2.00},
-                {'code': 'WC100', 'name': 'Withholding Tax - Rentals',    'rate': 5.00},
+                {'code': 'WC158', 'name': 'Withholding Tax - Goods',   'rate': 1.00},
+                {'code': 'WC160', 'name': 'Withholding Tax - Services', 'rate': 2.00},
+                {'code': 'WC100', 'name': 'Withholding Tax - Rentals',  'rate': 5.00},
             ]
             for wt in wht_codes:
                 db.session.add(WithholdingTax(
@@ -720,6 +821,7 @@ def seed_minimal():
                     name=wt['name'],
                     description='',
                     rate=wt['rate'],
+                    sales_name=_WT_SALES_NAMES.get(wt['code']),
                     is_active=True
                 ))
             db.session.commit()

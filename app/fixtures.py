@@ -275,21 +275,68 @@ def load_default_vat_categories():
     return vat_categories
 
 
+def load_default_sales_vat_categories():
+    """Seed default Sales (output) VAT categories. Idempotent."""
+    from app.sales_vat_categories.models import SalesVATCategory
+    if SalesVATCategory.query.count() > 0:
+        print("  [SKIP] Sales VAT categories already exist")
+        return SalesVATCategory.query.all()
+    output_acct = Account.query.filter_by(code='2100').first()
+    output_id = output_acct.id if output_acct else None
+    rows = [
+        SalesVATCategory(code='SVAT-G', name='Sale of Goods (12%)', rate=12.00,
+                         transaction_nature='regular', output_vat_account_id=output_id, is_active=True),
+        SalesVATCategory(code='SVAT-S', name='Sale of Services (12%)', rate=12.00,
+                         transaction_nature='regular', output_vat_account_id=output_id, is_active=True),
+        SalesVATCategory(code='SVAT-EX', name='VAT-Exempt Sales', rate=0.00,
+                         transaction_nature='exempt', is_active=True),
+        SalesVATCategory(code='SVAT-ZR', name='Zero-Rated Sales (Export)', rate=0.00,
+                         transaction_nature='zero_export', is_active=True),
+        SalesVATCategory(code='SVAT-GOV', name='Sales to Government (12%)', rate=12.00,
+                         transaction_nature='government', output_vat_account_id=output_id, is_active=True),
+    ]
+    for r in rows:
+        db.session.add(r)
+    db.session.commit()
+    print(f"  [OK] {len(rows)} default Sales VAT categories loaded")
+    return rows
+
+
 def load_default_withholding_tax():
     """
     Create default Philippine withholding tax codes.
 
     Standard withholding tax codes for Philippine BIR compliance.
+    Idempotent: on re-run, backfills missing sales_name on existing rows.
     """
-    if WithholdingTax.query.count() > 0:
-        print("  [i] Withholding tax codes already exist, skipping...")
-        return []
+    SALES_NAMES = {
+        'WC010': 'Professional Fees Income - Individual',
+        'WC011': 'Professional Fees Income - Corporation',
+        'WC100': 'Income as Contractor/Subcontractor',
+        'WC158': 'Sale of Goods (subject to 1% CWT)',
+    }
+    existing = {w.code: w for w in WithholdingTax.query.all()}
+    if existing:
+        for code, sname in SALES_NAMES.items():
+            if code in existing and not existing[code].sales_name:
+                existing[code].sales_name = sname
+        db.session.commit()
+        print("  [OK] backfilled WT sales_name")
+        return list(existing.values())
 
     withholding_taxes = [
-        WithholdingTax(code='WC010', name='Professional Fees - Individuals', description='Professional and talent fees paid to individuals', rate=10.00, is_active=True),
-        WithholdingTax(code='WC011', name='Professional Fees - Corporations', description='Professional fees paid to corporations', rate=15.00, is_active=True),
-        WithholdingTax(code='WC100', name='Contractors & Subcontractors', description='Payments to contractors and subcontractors', rate=2.00, is_active=True),
-        WithholdingTax(code='WC158', name='Purchases of Goods', description='Purchases of goods or services from suppliers', rate=1.00, is_active=True),
+        WithholdingTax(code='WC010', name='Professional Fees - Individuals',
+                       description='Professional and talent fees paid to individuals',
+                       rate=10.00, sales_name=SALES_NAMES['WC010'], is_active=True),
+        WithholdingTax(code='WC011', name='Professional Fees - Corporations',
+                       description='Professional fees paid to corporations',
+                       rate=15.00, sales_name=SALES_NAMES['WC011'], is_active=True),
+        WithholdingTax(code='WC100', name='Contractors & Subcontractors',
+                       description='Payments to contractors and subcontractors',
+                       rate=2.00, sales_name=SALES_NAMES['WC100'], is_active=True),
+        WithholdingTax(code='WC158', name='Purchases of Goods',
+                       description='Purchases of goods or services from suppliers',
+                       rate=1.00, sales_name=SALES_NAMES['WC158'], is_active=True),
     ]
 
     for wt in withholding_taxes:
@@ -331,6 +378,9 @@ def load_all_fixtures():
 
     print("\n5. Loading default VAT categories...")
     load_default_vat_categories()
+
+    print("\n5b. Loading default Sales VAT categories...")
+    load_default_sales_vat_categories()
 
     print("\n6. Loading default withholding tax codes...")
     load_default_withholding_tax()
