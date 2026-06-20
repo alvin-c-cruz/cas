@@ -163,6 +163,25 @@ def test_customer_list_paginates_at_25_per_page(
     assert 'Cust 025' in page2
 
 
+def test_generate_next_customer_code_is_numeric_safe_past_999(db_session):
+    """Code sequencing must be numeric, not lexicographic.
+
+    With C999 and C1000 both present, the next code must be C1001. A lexicographic
+    order_by(code.desc()) wrongly ranks 'C999' above 'C1000' and re-proposes the
+    already-taken C1000.
+    """
+    from app.customers.models import Customer
+    from app.customers.views import generate_next_customer_code
+
+    db_session.add(Customer(code='C999', name='Niner Corp',
+                            payment_terms='Net 30', is_active=True))
+    db_session.add(Customer(code='C1000', name='Kilo Corp',
+                            payment_terms='Net 30', is_active=True))
+    db_session.commit()
+
+    assert generate_next_customer_code() == 'C1001'
+
+
 def test_customer_export_excel_blocked_for_viewer(
         client, db_session, viewer_user, main_branch):
     """A viewer cannot export the customer list (PII) — export is accountant/admin only."""

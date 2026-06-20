@@ -459,6 +459,21 @@ class TestVendorListAnalyzeFixes:
         assert b'Add Vendor' not in resp.data
 
 
+def test_generate_next_vendor_code_is_numeric_safe_past_999(db_session):
+    """Vendor code sequencing must be numeric, not lexicographic (twin of the
+    customer C### bug). With V999 and V1000 present, the next code must be V1001;
+    a lexicographic order_by(code.desc()) wrongly ranks 'V999' above 'V1000' and
+    re-proposes the already-taken V1000.
+    """
+    from app.vendors.utils import generate_next_vendor_code
+
+    db_session.add(Vendor(code='V999', name='Niner Supply'))
+    db_session.add(Vendor(code='V1000', name='Kilo Supply'))
+    db_session.commit()
+
+    assert generate_next_vendor_code() == 'V1001'
+
+
 class TestVendorListSearchPagination:
     """F006 (pagination + server-side search), F002 (no-results), F004 (export gate)."""
 

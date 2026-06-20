@@ -69,19 +69,21 @@ def compute_wht_ytd(vendor_id):
 
 
 def generate_next_vendor_code():
-    """Generate the next vendor code in sequence (V001, V002, etc.)"""
+    """Generate the next vendor code in sequence (V001, V002, ...).
+
+    Sequences by the numeric suffix, not a lexicographic order_by(code.desc()):
+    a string sort ranks 'V999' above 'V1000' and would re-propose an existing
+    code once the count passes 999.
+    """
     from app.vendors.models import Vendor
-    latest_vendor = Vendor.query.order_by(Vendor.code.desc()).first()
-
-    if not latest_vendor or not latest_vendor.code.startswith('V'):
-        return 'V001'
-
-    try:
-        latest_number = int(latest_vendor.code[1:])  # Remove 'V' prefix
-        next_number = latest_number + 1
-        return f'V{next_number:03d}'  # Format as V001, V002, etc.
-    except (ValueError, IndexError):
-        return 'V001'
+    codes = [v.code for v in Vendor.query.filter(Vendor.code.like('V%')).all()]
+    max_number = 0
+    for code in codes:
+        try:
+            max_number = max(max_number, int(code[1:]))
+        except (ValueError, IndexError):
+            continue
+    return f'V{max_number + 1:03d}'
 
 
 def populate_vat_category_choices(form):

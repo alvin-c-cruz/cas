@@ -51,18 +51,20 @@ def list_customers():
 
 
 def generate_next_customer_code():
-    """Generate the next customer code in sequence (C001, C002, etc.)"""
-    latest_customer = Customer.query.order_by(Customer.code.desc()).first()
+    """Generate the next customer code in sequence (C001, C002, ...).
 
-    if not latest_customer or not latest_customer.code.startswith('C'):
-        return 'C001'
-
-    try:
-        latest_number = int(latest_customer.code[1:])
-        next_number = latest_number + 1
-        return f'C{next_number:03d}'
-    except (ValueError, IndexError):
-        return 'C001'
+    Sequences by the numeric suffix, not a lexicographic order_by(code.desc()):
+    a string sort ranks 'C999' above 'C1000' and would re-propose an existing
+    code once the count passes 999.
+    """
+    codes = [c.code for c in Customer.query.filter(Customer.code.like('C%')).all()]
+    max_number = 0
+    for code in codes:
+        try:
+            max_number = max(max_number, int(code[1:]))
+        except (ValueError, IndexError):
+            continue
+    return f'C{max_number + 1:03d}'
 
 
 def populate_dropdown_choices(form):
