@@ -449,20 +449,15 @@ function addFirstCustomerLine() {
 }
 
 function rebuildCustomerLineDefaults() {
-    // Existing rows (restored after a failed POST) — refresh VAT/WHT to the newly
-    // chosen customer's defaults without discarding typed amounts.
-    const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
+    // Existing rows (restored after a failed POST) — refresh VAT to the newly
+    // chosen customer's default without discarding typed amounts.
+    // WHT re-scoping is owned by rebuildAllWhtSelects() to avoid double-applying.
     lineItems.forEach(item => {
         const lc = lineChoices[item.id];
         if (!lc) return;
         if (currentCustomerVatCategory) {
             lc.vat.setChoiceByValue(currentCustomerVatCategory);
             item.vat_category = currentCustomerVatCategory;
-        }
-        if (autoWht) {
-            lc.wht.setChoiceByValue(String(autoWht.id));
-            item.wt_id = autoWht.id;
-            item.wt_rate = autoWht.rate;
         }
     });
     calculateTotals();
@@ -493,6 +488,7 @@ if (customerSel) {
 
                 if (hadItems) {
                     rebuildCustomerLineDefaults();
+                    rebuildAllWhtSelects();
                 } else {
                     addFirstCustomerLine();
                 }
@@ -513,13 +509,59 @@ if (ptSel) {
 // ── Line item helpers ─────────────────────────────────────────────────────────
 
 function buildWhtOptions(selectedId) {
-    const none = '<option value="">None</option>';
-    if (!whtCodes || whtCodes.length === 0) return none;
-    return none + whtCodes.map(wt => {
-        const label = `${escHtml(wt.label || (wt.code + ' — ' + wt.name))} (${wt.rate}%)`;
-        const cp = escHtml(JSON.stringify({ code: wt.code }));
-        return `<option value="${wt.id}" data-rate="${wt.rate}" data-custom-properties="${cp}" ${selectedId == wt.id ? 'selected' : ''}>${label}</option>`;
-    }).join('');
+    if (currentCustomerWHTs.length === 0) {
+        // Customer has no withholding tax codes — show a clear notice instead of a
+        // confusing empty "None". The select is disabled after Choices init.
+        const cp = escHtml(JSON.stringify({ code: 'No withholding tax' }));
+        return `<option value="" data-custom-properties="${cp}">No withholding tax for this customer</option>`;
+    }
+    return '<option value="">None</option>' +
+        currentCustomerWHTs.map(wt => {
+            const long = `${escHtml(wt.code)} — ${escHtml(wt.name)} (${wt.rate}%)`;
+            const cp = escHtml(JSON.stringify({ code: wt.code }));
+            return `<option value="${wt.id}" data-rate="${wt.rate}" data-custom-properties="${cp}" ${selectedId == wt.id ? 'selected' : ''}>${long}</option>`;
+        }).join('');
+}
+
+function rebuildAllWhtSelects() {
+    const noWht = currentCustomerWHTs.length === 0;
+    const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
+    const noneChoice = noWht
+        ? { value: '', label: 'No withholding tax for this customer', customProperties: { code: 'No withholding tax' } }
+        : { value: '', label: 'None', customProperties: { code: '' } };
+    const dropped = [];   // codes removed because they aren't valid for the new customer
+    lineItems.forEach(item => {
+        const lc = lineChoices[item.id];
+        if (!lc) return;
+        const prev = item.wt_id;
+        const stillValid = prev && currentCustomerWHTs.some(wt => wt.id == prev);
+        if (!stillValid) {
+            if (prev) {
+                const cur = lc.wht.getValue();
+                dropped.push((cur && cur.customProperties && cur.customProperties.code) || 'a withholding code');
+            }
+            item.wt_id = autoWht ? autoWht.id : null;
+            item.wt_rate = autoWht ? autoWht.rate : null;
+        }
+        const choices = [noneChoice].concat(
+            currentCustomerWHTs.map(wt => ({
+                value: String(wt.id),
+                label: `${wt.code} — ${wt.name} (${wt.rate}%)`,
+                customProperties: { code: wt.code }
+            }))
+        );
+        lc.wht.enable();   // must be enabled to accept setChoices
+        lc.wht.clearChoices();
+        lc.wht.setChoices(choices, 'value', 'label', false);
+        lc.wht.setChoiceByValue(item.wt_id ? String(item.wt_id) : '');
+        // No codes for this customer → lock the control so the notice can't be
+        // mistaken for a pickable option.
+        if (noWht) lc.wht.disable();
+    });
+    if (dropped.length && typeof showToast === 'function') {
+        const uniq = [...new Set(dropped)];
+        showToast(`Removed ${uniq.join(', ')} — not valid for the selected customer.`, 'warn');
+    }
 }
 
 function addLineItem(existingItem) {
@@ -592,6 +634,7 @@ function addLineItem(existingItem) {
 
     const vatC  = new Choices(vatSel,  codeOnlyOpts);
     const whtC  = new Choices(whtSel,  codeOnlyOpts);
+    if (currentCustomerWHTs.length === 0) whtC.disable();
     const acctC = new Choices(acctSel, acctOpts);
 
     vatSel.addEventListener('change',  () => { updateLineItem(id, 'vat_category', vatSel.value); revertVatOverride(); });
@@ -939,6 +982,7 @@ initOverrides();
             currentCustomerVatCategory   = resolveVatCode(data.default_vat_category || '');
             currentCustomerLastAccountId = data.last_account_id || null;
             setCustomerDone(name, data);
+            rebuildAllWhtSelects();
         })
         .catch(() => {});
 })();
