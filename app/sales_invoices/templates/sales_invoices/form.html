@@ -358,6 +358,15 @@ if (customerSel) {
     });
 }
 
+// ── Customer select: auto-add the first line item ────────────────────────────
+// Mirrors the AP form's vendor-select pattern — no line until a customer is
+// chosen, then the first blank line appears automatically.
+document.getElementById('customer_id').addEventListener('change', function () {
+    const cid = this.value;
+    if (!cid || cid === '0') return;
+    if (lineItems.length === 0) addLineItem();
+});
+
 // ── Choices.js: payment terms ────────────────────────────────────────────────
 const ptSel = document.getElementById('payment_terms');
 if (ptSel) {

@@ -36,6 +36,11 @@ with app.app_context():
         if v001 and wc100:
             v001.withholding_taxes = [wc100]
             db.session.commit()
+        # A customer for the Sales Invoice create-form e2e smoke (customer picker).
+        from app.customers.models import Customer
+        if not Customer.query.filter_by(code='C001').first():
+            db.session.add(Customer(code='C001', name='Acme Customer Inc', is_active=True))
+            db.session.commit()
 
 if __name__ == '__main__':
     port = int(os.environ.get('E2E_PORT', '5099'))
