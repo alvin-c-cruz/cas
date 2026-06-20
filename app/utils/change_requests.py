@@ -22,7 +22,8 @@ PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '
 
 
 def process_create_change_request(*, model_cls, cr_cls, module, noun,
-                                  change_data, auto_approve, list_endpoint):
+                                  change_data, auto_approve, list_endpoint,
+                                  approved_note='Auto-approved (single accountant)'):
     """Apply a master-data *create*: either directly (sole-accountant
     auto-approve) or as a pending change request, with the matching audit entry
     and flash. Commits and returns a redirect to ``list_endpoint``.
@@ -30,6 +31,9 @@ def process_create_change_request(*, model_cls, cr_cls, module, noun,
     ``change_data`` keys must map 1:1 to ``model_cls`` columns (true for both
     WithholdingTax and VATCategory). Callers handle their own duplicate checks
     and wrap this in their try/except.
+
+    ``approved_note`` allows customizing the audit note for the auto-approve branch
+    (defaults to 'Auto-approved (single accountant)' for backward compatibility).
     """
     if auto_approve:
         record = model_cls(**change_data,
@@ -43,7 +47,7 @@ def process_create_change_request(*, model_cls, cr_cls, module, noun,
             record_id=record.id,
             record_identifier=f'{record.code} - {record.name}',
             new_values=change_data,
-            notes='Auto-approved (single accountant)'
+            notes=approved_note
         )
         db.session.commit()
         flash(f'{noun} "{record.name}" has been created successfully.', 'success')

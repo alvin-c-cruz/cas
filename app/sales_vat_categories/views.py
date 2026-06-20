@@ -114,7 +114,8 @@ def create():
                 noun='Sales VAT category',
                 change_data=change_data,
                 auto_approve=sole_admin_can_auto_approve(),
-                list_endpoint='sales_vat_categories.list_sales_vat_categories'
+                list_endpoint='sales_vat_categories.list_sales_vat_categories',
+                approved_note='Auto-approved (single admin)'
             )
             clear_sales_vat_cache()
             return result

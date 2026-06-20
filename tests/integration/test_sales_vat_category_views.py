@@ -54,6 +54,17 @@ class TestSalesVatCreate:
         ).first()
         assert audit is not None, 'Audit row with module=sales_vat_category, action=create must exist'
 
+    def test_create_audit_note_says_single_admin(self, client, db_session, admin_user, db_with_data):
+        from app.accounts.models import Account
+        acct = Account.query.filter_by(is_active=True).first()
+        _login_admin(client, admin_user)
+        client.post('/sales-vat-categories/create', data={
+            'code': 'SVAT-S', 'name': 'Services', 'description': '', 'rate': '12.00',
+            'transaction_nature': 'regular', 'output_vat_account_id': str(acct.id),
+            'is_active': '1'}, follow_redirects=True)
+        audit = AuditLog.query.filter_by(module='sales_vat_category', action='create').first()
+        assert 'single admin' in (audit.notes or '')
+
 
 class TestSalesVatSelfReviewBlock:
     """Four-eyes rule: with >= 2 active admins, admin A cannot review their own
