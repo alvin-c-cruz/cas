@@ -65,11 +65,11 @@ def build_customer_quick_add_form():
 # Adding a Customer column means editing this one list, not 6 scattered literals.
 CUSTOMER_FIELDS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
                    'payment_terms', 'address', 'postal_code', 'default_vat_category',
-                   'default_wt_code', 'is_active']
+                   'default_wt_code', 'withholding_taxes_str', 'is_active']
 
 CUSTOMER_EXPORT_HEADERS = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone',
                            'Email', 'TIN', 'Payment Terms', 'Address', 'Postal Code',
-                           'VAT Category', 'WT Code', 'Active']
+                           'VAT Category', 'WT Code', 'WT Codes', 'Active']
 
 
 def _customer_export_rows(customers):
@@ -86,6 +86,7 @@ def _customer_export_rows(customers):
         'postal_code': c.postal_code or '',
         'default_vat_category': c.default_vat_category or '',
         'default_wt_code': c.default_wt_code or '',
+        'withholding_taxes_str': ', '.join(w.code for w in c.withholding_taxes),
         'is_active': 'Yes' if c.is_active else 'No',
     } for c in customers]
 
@@ -176,6 +177,14 @@ def create():
                 created_by_id=current_user.id,
                 updated_by_id=current_user.id
             )
+
+            # Handle many-to-many withholding taxes
+            withholding_tax_ids = request.form.getlist('withholding_tax_ids')
+            if withholding_tax_ids:
+                selected_wts = WithholdingTax.query.filter(
+                    WithholdingTax.id.in_(withholding_tax_ids)).all()
+                customer.withholding_taxes = selected_wts
+
             db.session.add(customer)
             db.session.commit()
 
@@ -213,7 +222,9 @@ def create():
         form.is_active.data = '1'
         form.payment_terms.data = 'Net 30'
 
-    return render_template('customers/form.html', form=form, customer=None)
+    withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+    return render_template('customers/form.html', form=form, customer=None,
+                           withholding_taxes=withholding_taxes)
 
 
 @customers_bp.route('/customers/<int:id>/edit', methods=['GET', 'POST'])
@@ -248,6 +259,13 @@ def edit(id):
             customer.default_wt_code = form.default_wt_code.data if form.default_wt_code.data else None
             customer.is_active = bool(int(form.is_active.data))
             customer.updated_by_id = current_user.id
+
+            # Handle many-to-many withholding taxes
+            withholding_tax_ids = request.form.getlist('withholding_tax_ids')
+            selected_wts = WithholdingTax.query.filter(
+                WithholdingTax.id.in_(withholding_tax_ids)).all() if withholding_tax_ids else []
+            customer.withholding_taxes = selected_wts
+
             db.session.commit()
 
             # Audit log
@@ -284,7 +302,11 @@ def edit(id):
         form.default_wt_code.data = customer.default_wt_code
         form.is_active.data = '1' if customer.is_active else '0'
 
-    return render_template('customers/form.html', form=form, customer=customer)
+    withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+    selected_wt_ids = {wt.id for wt in customer.withholding_taxes}
+    return render_template('customers/form.html', form=form, customer=customer,
+                           withholding_taxes=withholding_taxes,
+                           selected_wt_ids=selected_wt_ids)
 
 
 @customers_bp.route('/customers/<int:id>/delete', methods=['POST'])

@@ -379,3 +379,46 @@ def test_staff_can_create_customer(client, db_session, staff_user, main_branch):
 
     assert resp.status_code == 200
     assert Customer.query.filter_by(code='C001').first() is not None
+
+
+def test_customer_create_persists_withholding_taxes(
+        client, db_session, accountant_user, main_branch):
+    """Creating a customer with withholding_tax_ids persists the many-to-many relationship."""
+    from app.customers.models import Customer
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC158', name='Goods', rate=1.00, is_active=True)
+    db_session.add(wt)
+    db_session.commit()
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.post('/customers/create', data={
+        'code': 'C900', 'name': 'WHT Corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'withholding_tax_ids': [str(wt.id)],
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    c = Customer.query.filter_by(code='C900').first()
+    assert c is not None
+    assert [w.code for w in c.withholding_taxes] == ['WC158']
+    assert c.withholding_taxes_str == 'WC158'
+
+
+def test_customer_edit_updates_withholding_taxes(
+        client, db_session, accountant_user, main_branch):
+    """Editing a customer replaces the withholding_taxes relationship."""
+    from app.customers.models import Customer
+    from app.withholding_tax.models import WithholdingTax
+    a = WithholdingTax(code='WC158', name='Goods', rate=1.00, is_active=True)
+    b = WithholdingTax(code='WC160', name='Services', rate=2.00, is_active=True)
+    db_session.add_all([a, b])
+    c = Customer(code='C901', name='Edit Corp', payment_terms='Net 30', is_active=True)
+    c.withholding_taxes = [a]
+    db_session.add(c)
+    db_session.commit()
+    cid = c.id
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.post(f'/customers/{cid}/edit', data={
+        'code': 'C901', 'name': 'Edit Corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'withholding_tax_ids': [str(b.id)],
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    updated = Customer.query.get(cid)
+    assert [w.code for w in updated.withholding_taxes] == ['WC160']

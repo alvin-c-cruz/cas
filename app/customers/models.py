@@ -50,6 +50,11 @@ class Customer(db.Model):
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='customers_created')
     updated_by = db.relationship('User', foreign_keys=[updated_by_id], backref='customers_updated')
 
+    @property
+    def withholding_taxes_str(self):
+        """Comma-joined WHT codes for audit snapshots and exports."""
+        return ', '.join(wt.code for wt in self.withholding_taxes)
+
     def __repr__(self):
         return f'<Customer {self.code} - {self.name}>'
 
