@@ -18,7 +18,7 @@ from app.journal_entries.utils import generate_entry_number
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import json
 import os
 import uuid
@@ -630,6 +630,17 @@ def create():
                                        wht_codes=_wht_codes_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form())
 
+            line_err = _line_items_error(request.form.get('line_items', '[]'))
+            if line_err:
+                flash(line_err, 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=None,
+                                       vat_categories=_vat_categories_for_form(),
+                                       all_accounts=_get_all_accounts_for_select(),
+                                       line_items=[],
+                                       gl_accounts=_gl_accounts_dict(),
+                                       wht_codes=_wht_codes_for_form(),
+                                       customer_quick_add_form=build_customer_quick_add_form())
+
             invoice = SalesInvoice(
                 branch_id=session.get('selected_branch_id'),
                 invoice_number=form.invoice_number.data,
@@ -739,6 +750,17 @@ def edit(id):
                                        wht_codes=_wht_codes_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form())
 
+            line_err = _line_items_error(request.form.get('line_items', '[]'))
+            if line_err:
+                flash(line_err, 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                                       vat_categories=_vat_categories_for_form(),
+                                       all_accounts=_get_all_accounts_for_select(),
+                                       line_items=[item.to_dict() for item in invoice.line_items],
+                                       gl_accounts=_gl_accounts_dict(),
+                                       wht_codes=_wht_codes_for_form(),
+                                       customer_quick_add_form=build_customer_quick_add_form())
+
             invoice.invoice_number = form.invoice_number.data
             invoice.invoice_date = form.invoice_date.data
             invoice.due_date = form.due_date.data
@@ -832,6 +854,37 @@ def _wht_codes_for_form():
         d['label'] = wt_label(d, 'sales')
         codes.append(d)
     return codes
+
+
+def _line_items_error(line_items_json):
+    """Server-side validation of the raw line-items payload. Returns an error
+    message string, or None when the lines are valid.
+
+    Mirrors the create/edit form's client-side guard (Save stays disabled until a
+    valid line exists) so the same rules hold when that guard is bypassed — every
+    line needs a description, and the invoice must carry a positive total amount.
+    """
+    try:
+        items = json.loads(line_items_json) if line_items_json else []
+    except (json.JSONDecodeError, TypeError):
+        items = []
+
+    if not items:
+        return 'Add at least one line item before saving the invoice.'
+
+    total = Decimal('0')
+    for item in items:
+        if not str(item.get('description') or '').strip():
+            return 'Each line item must have a description.'
+        try:
+            total += Decimal(str(item.get('amount') or '0'))
+        except (InvalidOperation, ValueError):
+            return 'Line item amounts must be valid numbers.'
+
+    if total <= 0:
+        return 'Enter an amount greater than zero on at least one line item.'
+
+    return None
 
 
 def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=False):
