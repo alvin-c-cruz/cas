@@ -13,6 +13,7 @@ from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
+from app.utils.wt_labels import wt_label
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number
@@ -551,7 +552,8 @@ def _form_context(all_accounts=None):
         'ar': {'code': _accts['ar'].code, 'name': _accts['ar'].name} if _accts['ar'] else None,
         'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
     }
-    all_whts = [w.to_dict() for w in WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()]
+    _whts_raw = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+    all_whts = [{**w.to_dict(), 'label': wt_label(w.to_dict(), 'sales')} for w in _whts_raw]
     return dict(customers=customers, all_accounts=all_accounts,
                 vat_categories=vat_categories,
                 all_whts=all_whts,

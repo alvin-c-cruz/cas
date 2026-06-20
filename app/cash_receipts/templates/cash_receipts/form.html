@@ -542,7 +542,7 @@ function buildRevenueWhtOptions(item) {
     }
     return '<option value="">None</option>' +
         currentWHTs.map(w =>
-            `<option value="${w.id}" data-rate="${w.rate}" ${sel == w.id ? 'selected' : ''}>${escHtml(w.code)}</option>`
+            `<option value="${w.id}" data-rate="${w.rate}" ${sel == w.id ? 'selected' : ''}>${escHtml(w.label || w.code)} (${w.rate}%)</option>`
         ).join('');
 }
 

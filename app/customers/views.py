@@ -12,6 +12,7 @@ from app.customers.forms import CustomerForm
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils import ph_now
+from app.utils.wt_labels import wt_label
 
 customers_bp = Blueprint('customers', __name__, template_folder='templates')
 
@@ -75,7 +76,7 @@ def populate_dropdown_choices(form):
     # Withholding Tax
     wt_codes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
     wt_choices = [('', '-- Select --')]
-    wt_choices.extend([(wt.code, f'{wt.code} - {wt.name} ({wt.rate}%)') for wt in wt_codes])
+    wt_choices.extend([(wt.code, f'{wt_label(wt.to_dict(), "sales")} ({wt.rate}%)') for wt in wt_codes])
     form.default_wt_code.choices = wt_choices
 
 

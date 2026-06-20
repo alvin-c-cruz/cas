@@ -372,7 +372,7 @@ function buildWhtOptions(selectedId) {
     const none = '<option value="">None</option>';
     if (!whtCodes || whtCodes.length === 0) return none;
     return none + whtCodes.map(wt => {
-        const label = `${escHtml(wt.code)} — ${escHtml(wt.name)} (${wt.rate}%)`;
+        const label = `${escHtml(wt.label || (wt.code + ' — ' + wt.name))} (${wt.rate}%)`;
         const cp = escHtml(JSON.stringify({ code: wt.code }));
         return `<option value="${wt.id}" data-rate="${wt.rate}" data-custom-properties="${cp}" ${selectedId == wt.id ? 'selected' : ''}>${label}</option>`;
     }).join('');

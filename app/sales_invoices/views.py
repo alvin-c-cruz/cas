@@ -12,6 +12,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
+from app.utils.wt_labels import wt_label
 from app.journal_entries.utils import generate_entry_number
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
@@ -815,8 +816,12 @@ def _gl_accounts_dict():
 
 
 def _wht_codes_for_form():
-    return [w.to_dict() for w in
-            WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()]
+    codes = []
+    for w in WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all():
+        d = w.to_dict()
+        d['label'] = wt_label(d, 'sales')
+        codes.append(d)
+    return codes
 
 
 def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=False):
