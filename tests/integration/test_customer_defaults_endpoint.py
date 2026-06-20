@@ -118,6 +118,23 @@ def test_customer_defaults_returns_multiple_whts(
     assert sorted(w['code'] for w in data['withholding_taxes']) == ['WC100', 'WC158']
 
 
+def test_customer_defaults_excludes_inactive_wht(
+        client, db_session, admin_user, main_branch):
+    """An assigned-but-inactive WHT is not returned by the defaults endpoint."""
+    active = WithholdingTax(code='WC158', name='Goods', rate=1.00, is_active=True)
+    inactive = WithholdingTax(code='WC999', name='Retired', rate=9.00, is_active=False)
+    db_session.add_all([active, inactive])
+    cust = Customer(code='C006', name='Mixed', is_active=True)
+    cust.withholding_taxes = [active, inactive]
+    db_session.add(cust)
+    db_session.commit()
+
+    _login(client, admin_user, main_branch)
+    data = client.get(f'/customers/{cust.id}/defaults').get_json()
+
+    assert [w['code'] for w in data['withholding_taxes']] == ['WC158']
+
+
 def test_customer_defaults_requires_login(client, db_session):
     """Anonymous users are redirected to login, not served the JSON."""
     resp = client.get('/customers/1/defaults')

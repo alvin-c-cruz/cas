@@ -598,9 +598,12 @@ function buildRevenueWhtOptions(item) {
 function addRevenueLine(existingItem) {
     revenueCounter++;
     const id = revenueCounter;
+    // Auto-select the customer's sole WHT on a fresh line (parity with SI's first-line auto-add).
+    const autoWht = currentWHTs.length === 1 ? currentWHTs[0] : null;
     const item = existingItem
         ? { ...existingItem, id }
-        : { id, description: '', amount: 0, vat_category: '', account_id: null, wt_id: null, wt_rate: null };
+        : { id, description: '', amount: 0, vat_category: '', account_id: null,
+            wt_id: autoWht ? autoWht.id : null, wt_rate: autoWht ? autoWht.rate : null };
     revenueLines.push(item);
 
     const row = document.createElement('tr');

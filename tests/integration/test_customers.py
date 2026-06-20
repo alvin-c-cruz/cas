@@ -213,6 +213,28 @@ def test_customer_create_audit_captures_field_values(
     assert vals['name'] == 'Audited Corp'
 
 
+def test_customer_create_audit_captures_withholding_taxes_str(
+        client, db_session, accountant_user, main_branch):
+    """The audit new_values snapshot records the assigned WHT codes (withholding_taxes_str)."""
+    import json
+    from app.audit.models import AuditLog
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC158', name='Goods', rate=1.00, is_active=True)
+    db_session.add(wt)
+    db_session.commit()
+    _login_accountant(client, accountant_user, main_branch)
+
+    client.post('/customers/create', data={
+        'code': 'C950', 'name': 'WHT Audited', 'payment_terms': 'Net 30',
+        'is_active': '1', 'withholding_tax_ids': [str(wt.id)],
+    }, follow_redirects=True)
+
+    entry = AuditLog.query.filter_by(module='customer', action='create').first()
+    assert entry is not None
+    vals = json.loads(entry.new_values)
+    assert vals.get('withholding_taxes_str') == 'WC158'
+
+
 def test_generate_next_customer_code_is_numeric_safe_past_999(db_session):
     """Code sequencing must be numeric, not lexicographic.
 

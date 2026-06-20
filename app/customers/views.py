@@ -256,7 +256,8 @@ def edit(id):
             customer.address = form.address.data
             customer.postal_code = form.postal_code.data
             customer.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
-            customer.default_wt_code = form.default_wt_code.data if form.default_wt_code.data else None
+            # default_wt_code is legacy (the WHT multi-select is the source of truth now);
+            # the form no longer exposes its picker, so preserve any existing value here.
             customer.is_active = bool(int(form.is_active.data))
             customer.updated_by_id = current_user.id
 
