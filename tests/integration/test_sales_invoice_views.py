@@ -71,3 +71,40 @@ class TestBranchScoping:
 
         resp = client.get(f'/sales-invoices/{other_inv.id}/edit')
         assert resp.status_code == 404
+
+
+class TestListCustomerFilter:
+    """The customer filter <select> and export links submit `customer_id`; the list
+    query must honor that param (regression: it read `customer` and silently no-op'd)."""
+
+    def test_customer_filter_narrows_list(self, client, db_session,
+                                          accountant_user, main_branch):
+        c1 = make_customer(db_session, code='SCF1', name='Alpha Buyer')
+        c2 = make_customer(db_session, code='SCF2', name='Beta Buyer')
+        make_invoice(db_session, c1, main_branch, 'SI-CF-001')
+        make_invoice(db_session, c2, main_branch, 'SI-CF-002')
+
+        login(client, username='accountant', password='accountant123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+
+        body = client.get(f'/sales-invoices?customer_id={c1.id}').data.decode()
+
+        assert 'SI-CF-001' in body, "selected customer's invoice should be shown"
+        assert 'SI-CF-002' not in body, "other customer's invoice must be filtered out"
+
+    def test_csv_export_respects_customer_filter(self, client, db_session,
+                                                 accountant_user, main_branch):
+        c1 = make_customer(db_session, code='SCF3', name='Gamma Buyer')
+        c2 = make_customer(db_session, code='SCF4', name='Delta Buyer')
+        make_invoice(db_session, c1, main_branch, 'SI-CF-101')
+        make_invoice(db_session, c2, main_branch, 'SI-CF-102')
+
+        login(client, username='accountant', password='accountant123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+
+        body = client.get(f'/sales-invoices/export/csv?customer_id={c1.id}').data.decode()
+
+        assert 'SI-CF-101' in body
+        assert 'SI-CF-102' not in body, "CSV export must honor the customer filter"

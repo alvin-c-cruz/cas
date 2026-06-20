@@ -492,7 +492,7 @@ def _filtered_invoices_query(include_ids=False):
     if status_filter in VALID_INVOICE_STATUSES:
         query = query.filter_by(status=status_filter)
 
-    customer_filter = request.args.get('customer', 'all')
+    customer_filter = request.args.get('customer_id', 'all')
     if customer_filter != 'all':
         try:
             query = query.filter_by(customer_id=int(customer_filter))
@@ -543,7 +543,7 @@ def list_invoices():
         summary=summary,
         today=ph_now().date(),
         status_filter=request.args.get('status', 'all'),
-        customer_filter=request.args.get('customer', 'all'),
+        customer_filter=request.args.get('customer_id', 'all'),
         q=request.args.get('q', ''),
         date_from=request.args.get('date_from', f'{ph_now().year}-01-01'),
         date_to=request.args.get('date_to', f'{ph_now().year}-12-31'),

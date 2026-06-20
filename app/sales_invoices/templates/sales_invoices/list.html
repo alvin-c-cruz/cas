@@ -124,7 +124,7 @@
                class="btn btn-secondary btn-sm">View Journal</a>
             <a href="{{ url_for('journals.si_journal_export') }}"
                class="btn btn-secondary btn-sm">Download Journal</a>
-            <a href="{{ url_for('sales_invoices.print_list', status=status_filter, customer=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('sales_invoices.print_list', status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">Print List</a>
             <a href="{{ url_for('sales_invoices.export_excel', status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary si-export-link">&#x1F4CA; Export Excel</a>
