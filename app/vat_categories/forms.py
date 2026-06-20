@@ -37,18 +37,6 @@ class VATCategoryForm(FlaskForm):
         else:
             field.data = 0
 
-    output_vat_account_id = SelectField('Output Tax Account', coerce=int,
-                                        validators=[], default=0)
-
-    def validate_output_vat_account_id(self, field):
-        rate = self.rate.data
-        if rate is not None and rate > 0:
-            if not field.data or field.data == 0:
-                raise ValidationError(
-                    'Output Tax account is required for VAT-bearing categories.')
-        else:
-            field.data = 0
-
     is_active = SelectField('Status', choices=[
         ('1', 'Active'),
         ('0', 'Inactive')

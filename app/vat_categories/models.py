@@ -21,7 +21,6 @@ class VATCategory(db.Model):
     # NULL is correct for zero-rate categories; the form requires it when rate > 0.
     input_vat_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'),
                                      nullable=True)
-    output_vat_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
 
     # Audit fields
     created_at = db.Column(db.DateTime, default=ph_now)
@@ -33,7 +32,6 @@ class VATCategory(db.Model):
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='vat_categories_created')
     updated_by = db.relationship('User', foreign_keys=[updated_by_id], backref='vat_categories_updated')
     input_vat_account = db.relationship('Account', foreign_keys=[input_vat_account_id])
-    output_vat_account = db.relationship('Account', foreign_keys=[output_vat_account_id])
 
     def __repr__(self):
         return f'<VATCategory {self.code} - {self.name}>'
@@ -48,9 +46,6 @@ class VATCategory(db.Model):
             'input_vat_account_id': self.input_vat_account_id,
             'input_vat_account_code': self.input_vat_account.code if self.input_vat_account else None,
             'input_vat_account_name': self.input_vat_account.name if self.input_vat_account else None,
-            'output_vat_account_id': self.output_vat_account_id,
-            'output_vat_account_code': self.output_vat_account.code if self.output_vat_account else None,
-            'output_vat_account_name': self.output_vat_account.name if self.output_vat_account else None,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
