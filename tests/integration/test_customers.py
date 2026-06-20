@@ -163,6 +163,50 @@ def test_customer_list_paginates_at_25_per_page(
     assert 'Cust 025' in page2
 
 
+def test_customer_export_excel_blocked_for_viewer(
+        client, db_session, viewer_user, main_branch):
+    """A viewer cannot export the customer list (PII) — export is accountant/admin only."""
+    viewer_user.add_branch(main_branch)
+    db_session.commit()
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    client.post('/login', data={'username': viewer_user.username,
+                                'password': 'viewer123'}, follow_redirects=True)
+
+    resp = client.get('/customers/export/excel', follow_redirects=False)
+
+    assert resp.status_code == 302, 'viewer should be redirected by the role gate'
+    assert '/dashboard' in resp.headers.get('Location', ''), \
+        'role gate redirects to dashboard, not the spreadsheet'
+
+
+def test_customer_export_csv_blocked_for_viewer(
+        client, db_session, viewer_user, main_branch):
+    """A viewer cannot export the customer list as CSV."""
+    viewer_user.add_branch(main_branch)
+    db_session.commit()
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    client.post('/login', data={'username': viewer_user.username,
+                                'password': 'viewer123'}, follow_redirects=True)
+
+    resp = client.get('/customers/export/csv', follow_redirects=False)
+
+    assert resp.status_code == 302, 'viewer should be redirected by the role gate'
+    assert '/dashboard' in resp.headers.get('Location', '')
+
+
+def test_customer_export_excel_allowed_for_accountant(
+        client, db_session, accountant_user, main_branch):
+    """An accountant can still export the customer list (gate must not over-block)."""
+    _login_accountant(client, accountant_user, main_branch)
+
+    resp = client.get('/customers/export/excel', follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert 'spreadsheetml' in resp.headers.get('Content-Type', '')
+
+
 def test_customer_delete_succeeds_without_dependents(
         client, db_session, accountant_user, main_branch):
     """A customer with no transactions is deleted and the delete is audit-logged."""

@@ -269,6 +269,7 @@ def delete(id):
 
 @customers_bp.route('/customers/export/excel')
 @login_required
+@accountant_or_admin_required
 def export_excel():
     """Export customers to Excel"""
     customers = Customer.query.order_by(Customer.code).all()
@@ -314,6 +315,7 @@ def export_excel():
 
 @customers_bp.route('/customers/export/csv')
 @login_required
+@accountant_or_admin_required
 def export_csv_route():
     """Export customers to CSV"""
     customers = Customer.query.order_by(Customer.code).all()
