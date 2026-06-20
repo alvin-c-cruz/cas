@@ -3,47 +3,18 @@ Withholding Tax views with approval workflow
 """
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from functools import wraps
 from app import db
 from app.withholding_tax.models import WithholdingTax, WithholdingTaxChangeRequest
 from app.withholding_tax.forms import WithholdingTaxForm, WithholdingTaxChangeReviewForm
-from app.users.models import User
 from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
+from app.utils.admin_approval import admin_required, sole_admin_can_auto_approve, another_active_admin_exists
+from app.utils.cache_helpers import clear_withholding_tax_cache
 import json
 
 withholding_tax_bp = Blueprint('withholding_tax', __name__, template_folder='templates')
-
-
-def accountant_or_admin_required(f):
-    """Decorator to require accountant or admin role."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated:
-            return redirect(url_for('users.login'))
-        if current_user.role not in ['accountant', 'admin']:
-            flash('Only Accountants and Administrators can modify withholding tax.', 'error')
-            return redirect(url_for('withholding_tax.list_withholding_tax'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-def can_auto_approve():
-    """
-    Sole-accountant rule (owner decision 2026-06-12, B-011): admins are
-    separate from accountants. The single active accountant auto-approves
-    their own changes regardless of how many admins exist; admins never
-    auto-approve and always go to pending.
-    """
-    if current_user.role != 'accountant':
-        return False
-    total_accountants = User.query.filter(
-        User.role == 'accountant',
-        User.is_active == True
-    ).count()
-    return total_accountants == 1
 
 
 PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '
@@ -83,6 +54,7 @@ def flash_duplicate_pending(existing_request):
 
 @withholding_tax_bp.route('/')
 @login_required
+@admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def list_withholding_tax():
     """List all withholding tax"""
     withholding_tax = WithholdingTax.query.order_by(WithholdingTax.code).all()
@@ -101,7 +73,7 @@ def list_withholding_tax():
 
 @withholding_tax_bp.route('/create', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def create():
     """Create new withholding tax - submits for approval"""
     form = WithholdingTaxForm()
@@ -130,6 +102,7 @@ def create():
             change_data = {
                 'code': form.code.data,
                 'name': form.name.data,
+                'sales_name': form.sales_name.data,
                 'description': form.description.data,
                 'rate': float(form.rate.data),
                 'is_active': bool(int(form.is_active.data)) if form.is_active.data else True
@@ -137,15 +110,18 @@ def create():
 
             # Shared create flow (mirrors vat_categories) — auto-approve or
             # pending change request, with audit + flash.
-            return process_create_change_request(
+            result = process_create_change_request(
                 model_cls=WithholdingTax,
                 cr_cls=WithholdingTaxChangeRequest,
                 module='withholding_tax',
                 noun='Withholding tax',
                 change_data=change_data,
-                auto_approve=can_auto_approve(),
-                list_endpoint='withholding_tax.list_withholding_tax'
+                auto_approve=sole_admin_can_auto_approve(),
+                list_endpoint='withholding_tax.list_withholding_tax',
+                approved_note='Auto-approved (single admin)'
             )
+            clear_withholding_tax_cache()
+            return result
 
         except Exception as e:
             from flask import current_app
@@ -161,7 +137,7 @@ def create():
 
 @withholding_tax_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def edit(id):
     """Edit withholding tax - submits for approval"""
     withholding_tax = WithholdingTax.query.get_or_404(id)
@@ -197,19 +173,21 @@ def edit(id):
             change_data = {
                 'code': form.code.data,
                 'name': form.name.data,
+                'sales_name': form.sales_name.data,
                 'description': form.description.data,
                 'rate': float(form.rate.data),
                 'is_active': bool(int(form.is_active.data)) if form.is_active.data else True
             }
 
             # Check if auto-approval is allowed
-            if can_auto_approve():
+            if sole_admin_can_auto_approve():
                 # Capture old values before update
-                old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
 
                 # Update withholding tax directly
                 withholding_tax.code = change_data['code']
                 withholding_tax.name = change_data['name']
+                withholding_tax.sales_name = change_data['sales_name']
                 withholding_tax.description = change_data['description']
                 withholding_tax.rate = change_data['rate']
                 withholding_tax.is_active = change_data['is_active']
@@ -224,10 +202,11 @@ def edit(id):
                     record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
                     old_values=old_values,
                     new_values=change_data,
-                    notes=f'Auto-approved (single accountant). Reason: {form.request_reason.data.strip()}'
+                    notes=f'Auto-approved (single admin). Reason: {form.request_reason.data.strip()}'
                 )
 
                 db.session.commit()
+                clear_withholding_tax_cache()
                 flash(f'Withholding tax "{withholding_tax.name}" has been updated successfully.', 'success')
                 return redirect(url_for('withholding_tax.list_withholding_tax'))
             else:
@@ -245,7 +224,7 @@ def edit(id):
                 db.session.flush()  # Get the ID before commit
 
                 # Audit log for update change request submission
-                old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
                 log_audit(
                     module='withholding_tax',
                     action='update',
@@ -273,6 +252,7 @@ def edit(id):
     if request.method == 'GET':
         form.code.data = withholding_tax.code
         form.name.data = withholding_tax.name
+        form.sales_name.data = withholding_tax.sales_name
         form.description.data = withholding_tax.description
         form.rate.data = withholding_tax.rate
         form.is_active.data = '1' if withholding_tax.is_active else '0'
@@ -282,7 +262,7 @@ def edit(id):
 
 @withholding_tax_bp.route('/<int:id>/delete', methods=['POST'])
 @login_required
-@accountant_or_admin_required
+@admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def delete(id):
     """Delete withholding tax - submits for approval"""
     withholding_tax = WithholdingTax.query.get_or_404(id)
@@ -304,9 +284,9 @@ def delete(id):
 
     try:
         # Check if auto-approval is allowed
-        if can_auto_approve():
+        if sole_admin_can_auto_approve():
             # Capture values before delete
-            old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
             wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
             wt_id = withholding_tax.id
             wt_name = withholding_tax.name
@@ -321,10 +301,11 @@ def delete(id):
                 record_id=wt_id,
                 record_identifier=wt_identifier,
                 old_values=old_values,
-                notes=f'Auto-approved (single accountant). Reason: {request_reason}'
+                notes=f'Auto-approved (single admin). Reason: {request_reason}'
             )
 
             db.session.commit()
+            clear_withholding_tax_cache()
             flash(f'Withholding tax "{wt_name}" has been deleted successfully.', 'success')
         else:
             # Create change request for approval
@@ -341,7 +322,7 @@ def delete(id):
             db.session.flush()  # Get the ID before commit
 
             # Audit log for delete change request submission
-            old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
             log_audit(
                 module='withholding_tax',
                 action='delete',
@@ -368,7 +349,7 @@ def delete(id):
 
 @withholding_tax_bp.route('/change-requests')
 @login_required
-@accountant_or_admin_required
+@admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def change_requests():
     """View all change requests (pending, approved, rejected)"""
     all_requests = WithholdingTaxChangeRequest.query.order_by(WithholdingTaxChangeRequest.requested_at.desc()).all()
@@ -395,13 +376,13 @@ def change_requests():
 
 @withholding_tax_bp.route('/change-requests/<int:id>/review', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def review_change_request(id):
     """Review and approve/reject a change request"""
     change_request = WithholdingTaxChangeRequest.query.get_or_404(id)
 
-    # Cannot review own requests (unless admin)
-    if change_request.requested_by_id == current_user.id and current_user.role != 'admin':
+    # Cannot review own requests when another admin exists (four-eyes rule)
+    if change_request.requested_by_id == current_user.id and another_active_admin_exists():
         flash('You cannot review your own change request.', 'error')
         return redirect(url_for('withholding_tax.change_requests'))
 
@@ -442,6 +423,7 @@ def review_change_request(id):
                     withholding_tax = WithholdingTax(
                         code=proposed_data['code'],
                         name=proposed_data['name'],
+                        sales_name=proposed_data.get('sales_name'),
                         description=proposed_data.get('description'),
                         rate=proposed_data['rate'],
                         is_active=proposed_data.get('is_active', True),
@@ -457,9 +439,10 @@ def review_change_request(id):
                         action='create',
                         record_id=withholding_tax.id,
                         record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
-                        new_values=model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active']),
+                        new_values=model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active']),
                         notes=f'Approved by {current_user.username}'
                     )
+                    clear_withholding_tax_cache()
 
                     flash(f'Withholding tax "{withholding_tax.name}" has been created successfully.', 'success')
 
@@ -468,10 +451,11 @@ def review_change_request(id):
                     withholding_tax = change_request.withholding_tax
                     if withholding_tax:
                         # Capture old values before update
-                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
 
                         withholding_tax.code = proposed_data['code']
                         withholding_tax.name = proposed_data['name']
+                        withholding_tax.sales_name = proposed_data.get('sales_name')
                         withholding_tax.description = proposed_data.get('description')
                         withholding_tax.rate = proposed_data['rate']
                         withholding_tax.is_active = proposed_data.get('is_active', True)
@@ -479,7 +463,7 @@ def review_change_request(id):
                         withholding_tax.updated_at = ph_now()
 
                         # Audit log for approved update
-                        new_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+                        new_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
                         log_audit(
                             module='withholding_tax',
                             action='update',
@@ -489,6 +473,7 @@ def review_change_request(id):
                             new_values=new_values,
                             notes=f'Approved by {current_user.username}'
                         )
+                        clear_withholding_tax_cache()
 
                         flash(f'Withholding tax "{withholding_tax.name}" has been updated successfully.', 'success')
 
@@ -497,7 +482,7 @@ def review_change_request(id):
                     withholding_tax = change_request.withholding_tax
                     if withholding_tax:
                         # Capture values before delete
-                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'description', 'rate', 'is_active'])
+                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
                         wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
                         wt_id = withholding_tax.id
                         wt_name = withholding_tax.name
@@ -513,6 +498,7 @@ def review_change_request(id):
                             old_values=old_values,
                             notes=f'Approved by {current_user.username}'
                         )
+                        clear_withholding_tax_cache()
 
                         flash(f'Withholding tax "{wt_name}" has been deleted successfully.', 'success')
 

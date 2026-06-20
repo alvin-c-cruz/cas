@@ -21,6 +21,8 @@ class WithholdingTaxForm(FlaskForm):
         DataRequired(message='Name is required'),
         Length(max=100, message='Name must be 100 characters or less')
     ])
+    sales_name = StringField('Sales Name (Seller POV)', validators=[
+        Optional(), Length(max=100, message='Sales name must be 100 characters or less')])
     description = TextAreaField('Description', validators=[
         Optional(),
         Length(max=500, message='Description must be 500 characters or less')
