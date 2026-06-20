@@ -5,6 +5,7 @@ from app.fixtures import load_default_sales_vat_categories, load_default_withhol
 from app.sales_vat_categories.models import SalesVATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.accounts.models import Account
+import app.seeds.seed_data as seed_data
 
 
 def test_seed_sales_vat_categories(db_session):
@@ -20,6 +21,32 @@ def test_seed_sales_vat_categories(db_session):
     assert goods.output_vat_account.code == '2100'
     exempt = SalesVATCategory.query.filter_by(code='SVAT-EX').first()
     assert exempt.output_vat_account_id is None
+
+
+def test_seed_all_sales_vat_links_to_output_vat_sales(db_session):
+    """
+    seed_sales_vat_categories() (used by seed_all) must link rated rows to
+    account 20201 'Output VAT - Sales', NOT 20401 'Income Tax Payable'.
+    """
+    seed_data.seed_chart_of_accounts()  # builds the full COA including 20201 and 20401
+    seed_data.seed_sales_vat_categories()
+
+    # Rated row must resolve to account 20201 (Output VAT - Sales)
+    svat_g = SalesVATCategory.query.filter_by(code='SVAT-G').first()
+    assert svat_g is not None, "SVAT-G row not created"
+    assert svat_g.output_vat_account is not None, "SVAT-G has no output_vat_account"
+    assert svat_g.output_vat_account.code == '20201', (
+        f"Expected 20201 but got {svat_g.output_vat_account.code} "
+        f"({svat_g.output_vat_account.name!r}) — wrong account linked"
+    )
+    assert 'Output VAT' in svat_g.output_vat_account.name, (
+        f"Account name does not contain 'Output VAT': {svat_g.output_vat_account.name!r}"
+    )
+
+    # Zero-rate row must have no output account
+    svat_ex = SalesVATCategory.query.filter_by(code='SVAT-EX').first()
+    assert svat_ex is not None, "SVAT-EX row not created"
+    assert svat_ex.output_vat_account_id is None, "SVAT-EX should have no output_vat_account"
 
 
 def test_seed_wht_sales_name_backfill(db_session):

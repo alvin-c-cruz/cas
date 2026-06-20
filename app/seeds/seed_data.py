@@ -378,8 +378,8 @@ def seed_sales_vat_categories():
         print(f"  [SKIP] {existing_count} Sales VAT categories already exist, skipping...")
         return False
 
-    # Map rated categories to the output VAT account seeded above (code '20401')
-    output_acct = Account.query.filter_by(code='20401').first()
+    # Map rated categories to the output VAT account seeded above (code '20201' = 'Output VAT - Sales')
+    output_acct = Account.query.filter_by(code='20201').first()
     output_id = output_acct.id if output_acct else None
 
     sales_vat_categories = [
