@@ -1,13 +1,14 @@
-import pytest
+﻿import pytest
 from decimal import Decimal
 from datetime import date
 
 
 def test_output_vat_buckets_raises_if_no_output_account(app, db_session):
-    """_output_vat_buckets raises ValueError when a VAT-bearing line's category has no output account."""
+    """_output_vat_buckets raises ValueError when a VAT-bearing line has no output account.
+    SI now reads SalesVATCategory (not VATCategory) for VAT buckets."""
     with app.app_context():
         from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
-        from app.vat_categories.models import VATCategory
+        from app.sales_vat_categories.models import SalesVATCategory
         from app.branches.models import Branch
         from app.customers.models import Customer
 
@@ -21,9 +22,9 @@ def test_output_vat_buckets_raises_if_no_output_account(app, db_session):
         db_session.add(cust)
         db_session.flush()
 
-        # VAT category with NO output_vat_account
-        cat = VATCategory(code='BADVAT', name='Bad VAT', rate=Decimal('12.00'),
-                          output_vat_account_id=None)
+        # SalesVATCategory with NO output_vat_account -> should raise ValueError
+        cat = SalesVATCategory(code='BADVAT', name='Bad VAT', rate=Decimal('12.00'),
+                               transaction_nature='regular', output_vat_account_id=None)
         db_session.add(cat)
 
         inv = SalesInvoice(
@@ -94,6 +95,6 @@ def test_build_je_preview_draft_no_items(app, db_session):
 
         from app.sales_invoices import views as sv_views
         result = sv_views._build_je_preview(inv)
-        # No line items, no VAT, no WHT → only AR debit (if GL account exists)
+        # No line items, no VAT, no WHT -> only AR debit (if GL account exists)
         # Just assert it returns a list without crashing
         assert isinstance(result, list)

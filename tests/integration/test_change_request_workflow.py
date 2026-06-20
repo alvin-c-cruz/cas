@@ -1,4 +1,4 @@
-"""Integration tests for the master-data change-request workflow (B-006).
+﻿"""Integration tests for the master-data change-request workflow (B-006).
 
 Covers Chart of Accounts, VAT Categories and Withholding Tax:
 - "Reason for change" is required and persisted on EDIT and DELETE change
@@ -35,12 +35,20 @@ def login(client, username='admin', password='admin123'):
 
 
 @pytest.fixture
-def two_reviewers(admin_user, accountant_user, main_branch):
-    """Two active accountant/admin users so can_auto_approve() is False.
+def two_reviewers(admin_user, db_session, main_branch):
+    """Two active admin users so sole_admin_can_auto_approve() is False.
 
+    VAT Categories and Withholding Tax are now admin-only (sole-admin auto-approves).
+    With two admins, all creates/updates go to a pending change request.
     A branch must exist for login to succeed.
     """
-    return admin_user, accountant_user
+    from app.users.models import User
+    second_admin = User(username='admin2', email='admin2@example.com',
+                        full_name='Second Admin', role='admin', is_active=True)
+    second_admin.set_password('admin2pass')
+    db_session.add(second_admin)
+    db_session.commit()
+    return admin_user, second_admin
 
 
 # ───────────────────────── VAT Categories ─────────────────────────
@@ -448,9 +456,9 @@ class TestWithholdingTaxFlashTerminology:
         assert 'Withholding tax name "Professional fees" already exists' in body
 
     def test_auto_approved_create_success_flash_is_capitalized(self, client, db_session,
-                                                               accountant_user, main_branch):
-        # Sole active accountant → can_auto_approve() is True → direct create.
-        login(client, username='accountant', password='accountant123')
+                                                               admin_user, main_branch):
+        # Sole active admin => sole_admin_can_auto_approve() is True => direct create.
+        login(client, username='admin', password='admin123')
         resp = client.post('/withholding-tax/create',
                            data=wht_form_data(code='WCX', name='Test WHT'),
                            follow_redirects=True)
@@ -750,6 +758,9 @@ class TestApprovalUniquenessRecheck:
                     data=wht_form_data(code='WCX', name='New WHT'), follow_redirects=True)
         cr = WithholdingTaxChangeRequest.query.one()
         make_wht(db_session, code='WCX', name='Pre-existing')   # code now taken
+        # Switch to admin2 (second reviewer) so self-approval guard doesn't fire
+        client.get('/logout', follow_redirects=True)  # must log out before switching users
+        login(client, username='admin2', password='admin2pass')
         resp = client.post(f'/withholding-tax/change-requests/{cr.id}/review',
                            data={'action': 'approve', 'review_notes': ''}, follow_redirects=True)
         assert 'already exists' in html.unescape(resp.data.decode())
@@ -763,6 +774,8 @@ class TestApprovalUniquenessRecheck:
                     data=wht_form_data(code='WCY', name='Dup Name'), follow_redirects=True)
         cr = WithholdingTaxChangeRequest.query.one()
         make_wht(db_session, code='WCZ', name='Dup Name')       # name now taken (diff code)
+        client.get('/logout', follow_redirects=True)  # must log out before switching users
+        login(client, username='admin2', password='admin2pass')
         resp = client.post(f'/withholding-tax/change-requests/{cr.id}/review',
                            data={'action': 'approve', 'review_notes': ''}, follow_redirects=True)
         assert 'already exists' in html.unescape(resp.data.decode())
@@ -780,6 +793,8 @@ class TestApprovalUniquenessRecheck:
                     follow_redirects=True)
         cr = VATCategoryChangeRequest.query.one()
         make_vat(db_session, code='VATX', name='Pre-existing')
+        client.get('/logout', follow_redirects=True)  # must log out before switching users
+        login(client, username='admin2', password='admin2pass')
         resp = client.post(f'/vat-categories/change-requests/{cr.id}/review',
                            data={'action': 'approve', 'review_notes': ''}, follow_redirects=True)
         assert 'already exists' in html.unescape(resp.data.decode())
@@ -795,6 +810,8 @@ class TestApprovalUniquenessRecheck:
                     follow_redirects=True)
         cr = VATCategoryChangeRequest.query.one()
         make_vat(db_session, code='VATZ', name='Dup VAT')
+        client.get('/logout', follow_redirects=True)  # must log out before switching users
+        login(client, username='admin2', password='admin2pass')
         resp = client.post(f'/vat-categories/change-requests/{cr.id}/review',
                            data={'action': 'approve', 'review_notes': ''}, follow_redirects=True)
         assert 'already exists' in html.unescape(resp.data.decode())
@@ -852,3 +869,4 @@ class TestRequiredFieldMarkers:
         resp = client.get('/accounts/create')
         assert resp.status_code == 200
         assert b'class="required"' in resp.data
+

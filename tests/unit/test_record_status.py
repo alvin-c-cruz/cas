@@ -1,4 +1,4 @@
-"""Unit tests for record status transitions: void, sent, overdue."""
+﻿"""Unit tests for record status transitions: void, sent, overdue."""
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal
@@ -40,8 +40,14 @@ def gl_accounts(db_session):
     from app.vat_categories.models import VATCategory
     db_session.add(VATCategory(code='VATABLE', name='VATable Purchases',
                                rate=Decimal('12.00'), is_active=True,
-                               input_vat_account_id=accounts['input_vat'].id,
-                               output_vat_account_id=accounts['output_vat'].id))
+                               input_vat_account_id=accounts['input_vat'].id))
+    # SI/CRV _output_vat_buckets reads SalesVATCategory, not VATCategory.
+    # Seed one so _post_invoice_je can resolve the output-VAT account.
+    from app.sales_vat_categories.models import SalesVATCategory
+    db_session.add(SalesVATCategory(code='VATABLE', name='VATable Sales',
+                                    rate=Decimal('12.00'), is_active=True,
+                                    transaction_nature='regular',
+                                    output_vat_account_id=accounts['output_vat'].id))
     db_session.commit()
     return accounts
 
@@ -347,3 +353,4 @@ def test_sent_invoice_can_be_posted(db_session, admin_user, main_branch, test_cu
 
     db_session.refresh(invoice)
     assert invoice.status == 'posted'
+

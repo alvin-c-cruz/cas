@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 pytestmark = [pytest.mark.users, pytest.mark.integration]
 
 
@@ -191,13 +191,14 @@ class TestDashboardMaintenanceLinks:
         login(client, 'admin', 'admin123')
         assert b'/withholding-tax/' in get_dashboard(client).data
 
-    def test_accountant_sees_vat_categories(self, client, db_session, admin_user, accountant_user,
-                                            main_branch):
+    def test_accountant_does_not_see_vat_categories(self, client, db_session, admin_user,
+                                                    accountant_user, main_branch):
+        # VAT Categories is now admin-only; accountants no longer see it in the nav.
         admin_user.add_branch(main_branch)
         accountant_user.add_branch(main_branch)
         db_session.commit()
         login(client, 'accountant', 'accountant123')
-        assert b'VAT Categories' in get_dashboard(client).data
+        assert b'VAT Categories' not in get_dashboard(client).data
 
     def test_staff_no_vat_categories(self, client, db_session, admin_user, staff_user,
                                      main_branch):
@@ -344,3 +345,4 @@ class TestActionItemsPage:
         # Viewers have no action items — the route redirects them away.
         assert resp.status_code == 302
         assert '/action-items' not in resp.headers.get('Location', '')
+

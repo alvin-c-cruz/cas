@@ -1,4 +1,4 @@
-"""Integration tests for CRV journal-entry posting (_post_crv_je)."""
+﻿"""Integration tests for CRV journal-entry posting (_post_crv_je)."""
 import pytest
 from decimal import Decimal
 from datetime import date
@@ -8,7 +8,7 @@ from app.accounts.models import Account
 from app.branches.models import Branch
 from app.customers.models import Customer
 from app.sales_invoices.models import SalesInvoice
-from app.vat_categories.models import VATCategory
+from app.sales_vat_categories.models import SalesVATCategory
 from app.cash_receipts.models import CashReceiptVoucher, CRVArLine, CRVRevenueLine
 
 pytestmark = [pytest.mark.integration]
@@ -63,11 +63,14 @@ def make_invoice(db_session, customer, branch_id, balance=500):
 
 
 def make_vat_category(db_session, code, rate, output_vat_account=None):
-    cat = VATCategory(
+    """CRV _output_vat_buckets reads SalesVATCategory (not VATCategory).
+    Seeds a SalesVATCategory so the CRV posting helper can resolve the output account."""
+    cat = SalesVATCategory(
         code=code,
         name=f'VAT {code}',
         rate=Decimal(str(rate)),
         is_active=True,
+        transaction_nature='regular',
         output_vat_account_id=output_vat_account.id if output_vat_account else None,
     )
     db_session.add(cat)
@@ -371,3 +374,4 @@ class TestCRVPosting:
 
         with pytest.raises(ValueError, match='too far below'):
             _output_vat_buckets(crv)
+

@@ -1,4 +1,4 @@
-"""Integration tests for vendor views — CRUD, detail page, role checks."""
+﻿"""Integration tests for vendor views — CRUD, detail page, role checks."""
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal
@@ -340,12 +340,14 @@ class TestVendorFormSections:
         assert b'>Registration Type<' in resp.data
         assert b'Default VAT Category' not in resp.data
 
-    def test_customer_vat_label_unchanged(self, client, db_session, admin_user, main_branch):
-        # The customer form's 'Default VAT Category' twin must NOT be renamed.
+    def test_customer_vat_label_is_registration_type(self, client, db_session, admin_user, main_branch):
+        # The customer form now uses the same "Registration Type" label as the vendor form
+        # (unified per design spec; both refer to the same SalesVATCategory picker).
         login(client)
         resp = client.get('/customers/create')
         assert resp.status_code == 200
-        assert b'Default VAT Category' in resp.data
+        assert b'Registration Type' in resp.data
+        assert b'Default VAT Category' not in resp.data
 
     def test_withholding_tax_section_label(self, client, db_session, admin_user, main_branch):
         login(client)
@@ -513,3 +515,4 @@ class TestVendorListSearchPagination:
         login(client, 'viewer', 'viewer123')
         resp = client.get('/vendors/export/excel')
         assert resp.status_code == 302
+

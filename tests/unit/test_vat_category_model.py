@@ -1,4 +1,4 @@
-"""VATCategory.input_vat_account mapping (B-014)."""
+﻿"""VATCategory.input_vat_account mapping (B-014)."""
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 import pytest
@@ -51,35 +51,8 @@ class TestInputVatAccountField:
         assert d['input_vat_account_name'] is None
 
 
-def test_vat_category_has_output_vat_account_id(db_session):
-    from app.vat_categories.models import VATCategory
-    cat = VATCategory(code='TEST', name='Test', rate=12.0)
-    db_session.add(cat)
-    db_session.commit()
-    assert hasattr(cat, 'output_vat_account_id')
-    assert cat.output_vat_account_id is None
-    d = cat.to_dict()
-    assert 'output_vat_account_id' in d
-    assert 'output_vat_account_code' in d
-
-
-def test_output_vat_account_relationship_and_to_dict(db_session):
-    from app.vat_categories.models import VATCategory
-    from app.accounts.models import Account
-    # Create a leaf account to assign
-    acct = Account(code='20201', name='Output VAT - Sales', account_type='Liability',
-                   normal_balance='credit', is_active=True)
-    db_session.add(acct)
-    db_session.flush()
-
-    cat = VATCategory(code='V12', name='VAT 12%', rate=12.0,
-                      output_vat_account_id=acct.id)
-    db_session.add(cat)
-    db_session.commit()
-
-    assert cat.output_vat_account is not None
-    assert cat.output_vat_account.code == '20201'
-    d = cat.to_dict()
-    assert d['output_vat_account_id'] == acct.id
-    assert d['output_vat_account_code'] == '20201'
-    assert d['output_vat_account_name'] == 'Output VAT - Sales'
+# test_vat_category_has_output_vat_account_id and
+# test_output_vat_account_relationship_and_to_dict were removed:
+# VATCategory.output_vat_account_id was deliberately deleted from this model.
+# Output-VAT mapping now lives on SalesVATCategory (app/sales_vat_categories/models.py).
+# The corresponding SalesVATCategory tests cover that behavior.

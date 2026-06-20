@@ -1,4 +1,8 @@
-"""Input-tax account flows through the VAT change-request workflow (B-014)."""
+﻿"""Input-tax account flows through the VAT change-request workflow (B-014).
+
+VAT Categories are now admin-only (sole-admin auto-approves).
+Tests updated to use admin actors for all VAT maintenance operations.
+"""
 import json
 
 from app.accounts.models import Account
@@ -31,9 +35,6 @@ def vat_data(account_id, code='V12T', rate='12.00'):
         'code': code, 'name': f'Test {code}', 'description': 'test',
         'rate': rate, 'is_active': '1',
         'input_vat_account_id': str(account_id),
-        # VAT-bearing categories (rate > 0) now require an output tax account too;
-        # the single test account doubles as both (pickers accept any leaf account).
-        'output_vat_account_id': str(account_id),
         'request_reason': 'B-014 workflow test',
     }
 
@@ -41,6 +42,15 @@ def vat_data(account_id, code='V12T', rate='12.00'):
 class TestInputAccountWorkflow:
     def test_admin_create_pending_then_approved_applies_account(
             self, client, db_session, admin_user, accountant_user, main_branch):
+        """Two admins (admin + admin2) so sole_admin_can_auto_approve() is False.
+        admin2 approves (accountant cannot access admin-only vat-categories)."""
+        from app.users.models import User
+        second_admin = User(username='admin2', email='admin2@example.com', full_name='Second Admin', role='admin',
+                            is_active=True)
+        second_admin.set_password('admin2pass')
+        db_session.add(second_admin)
+        db_session.commit()
+
         acct = make_account(db_session)
         login(client, 'admin', 'admin123')
         client.post('/vat-categories/create', data=vat_data(acct.id),
@@ -52,7 +62,7 @@ class TestInputAccountWorkflow:
         assert req.status == 'pending'
         assert json.loads(req.proposed_data)['input_vat_account_id'] == acct.id
 
-        login(client, 'accountant', 'accountant123')
+        login(client, 'admin2', 'admin2pass')
         client.post(f'/vat-categories/change-requests/{req.id}/review',
                     data={'action': 'approve', 'review_notes': 'ok'},
                     follow_redirects=True)
@@ -65,10 +75,12 @@ class TestInputAccountWorkflow:
                                          record_id=cat.id).first()
         assert audit is not None
 
-    def test_sole_accountant_autoapprove_sets_account(
+    def test_sole_admin_autoapprove_sets_account(
             self, client, db_session, admin_user, accountant_user, main_branch):
+        """Sole active admin => sole_admin_can_auto_approve() is True => direct create.
+        (accountant_user exists but is not an admin, so admin count = 1.)"""
         acct = make_account(db_session, code='10503', name='Input VAT - Services')
-        login(client, 'accountant', 'accountant123')
+        login(client, 'admin', 'admin123')
         client.post('/vat-categories/create', data=vat_data(acct.id, code='V12S'),
                     follow_redirects=True)
         cat = VATCategory.query.filter_by(code='V12S').first()
@@ -77,6 +89,12 @@ class TestInputAccountWorkflow:
 
     def test_update_changes_account_through_workflow(
             self, client, db_session, admin_user, accountant_user, main_branch):
+        """Two admins => CR goes pending; second admin approves."""
+        from app.users.models import User
+        second_admin = User(username='admin2', email='admin2@example.com', full_name='Second Admin', role='admin',
+                            is_active=True)
+        second_admin.set_password('admin2pass')
+        db_session.add(second_admin)
         a1 = make_account(db_session, code='10501', name='Input VAT - Capital Goods')
         a2 = make_account(db_session, code='10502', name='Input VAT - Domestic Goods')
         cat = VATCategory(code='V12U', name='Upd 12%', rate=12.00, is_active=True,
@@ -94,7 +112,7 @@ class TestInputAccountWorkflow:
         assert req is not None
         assert req.status == 'pending'
 
-        login(client, 'accountant', 'accountant123')
+        login(client, 'admin2', 'admin2pass')
         client.post(f'/vat-categories/change-requests/{req.id}/review',
                     data={'action': 'approve', 'review_notes': 'ok'},
                     follow_redirects=True)
@@ -102,7 +120,15 @@ class TestInputAccountWorkflow:
 
     def test_review_and_list_pages_show_proposed_account(
             self, client, db_session, admin_user, accountant_user, main_branch):
+        """Two admins => CR goes pending; second admin can view review + list pages."""
+        from app.users.models import User
+        second_admin = User(username='admin2', email='admin2@example.com', full_name='Second Admin', role='admin',
+                            is_active=True)
+        second_admin.set_password('admin2pass')
+        db_session.add(second_admin)
         acct = make_account(db_session, code='10504', name='Input VAT - Importations')
+        db_session.commit()
+
         login(client, 'admin', 'admin123')
         client.post('/vat-categories/create', data=vat_data(acct.id, code='V12P'),
                     follow_redirects=True)
@@ -110,7 +136,7 @@ class TestInputAccountWorkflow:
             VATCategoryChangeRequest.id.desc()).first()
         assert req is not None and req.status == 'pending'
 
-        login(client, 'accountant', 'accountant123')
+        login(client, 'admin2', 'admin2pass')
         resp = client.get(f'/vat-categories/change-requests/{req.id}/review')
         assert resp.status_code == 200
         assert '10504 : Input VAT - Importations' in resp.data.decode()
