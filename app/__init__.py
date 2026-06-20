@@ -97,6 +97,7 @@ def create_app(config_name=None):
         from flask import session
         current_branch = None
         multi_branch = False
+        accessible_branches = []
         if current_user.is_authenticated:
             branch_id = session.get('selected_branch_id')
             if branch_id:
@@ -109,7 +110,14 @@ def create_app(config_name=None):
                 multi_branch = Branch.query.filter_by(is_active=True).count() > 1
             except Exception:
                 multi_branch = False
-        return {'current_branch': current_branch, 'multi_branch': multi_branch}
+            # Branches this user may switch to (drives the sidebar quick-switcher).
+            try:
+                from app.users.utils import get_accessible_branches
+                accessible_branches = get_accessible_branches(current_user)
+            except Exception:
+                accessible_branches = []
+        return {'current_branch': current_branch, 'multi_branch': multi_branch,
+                'accessible_branches': accessible_branches}
 
     # Make company name and logo available in all templates (sidebar brand)
     @app.context_processor

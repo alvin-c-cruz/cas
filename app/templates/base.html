@@ -728,6 +728,28 @@
             gap: 12px;
         }
 
+        /* Quick branch-switcher (sidebar) */
+        .sidebar-branch-switch { position: relative; }
+        .branch-switch-trigger { cursor: pointer; }
+        .branch-switch-trigger:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+        .branch-switch-caret { margin-left: auto; color: #fff; font-size: 12px; opacity: .85; }
+        .branch-switch-menu {
+            position: absolute; left: 12px; right: 12px; top: calc(100% - 8px); z-index: 50;
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: var(--radius); box-shadow: var(--shadow-md); padding: 6px;
+        }
+        .branch-switch-menu[hidden] { display: none; }
+        .branch-switch-form { margin: 0; }
+        .branch-switch-item {
+            display: flex; align-items: center; gap: 8px; width: 100%;
+            padding: 8px 10px; border: none; background: none; border-radius: 6px;
+            font: inherit; font-size: 13px; color: var(--text); text-align: left; cursor: pointer;
+        }
+        .branch-switch-item:hover { background: var(--bg); }
+        .branch-switch-item.is-current { color: var(--text-2); cursor: default; font-weight: 600; }
+        .branch-switch-check { color: var(--green); }
+        .branch-switch-tag { color: var(--text-3); font-size: 11px; margin-left: auto; text-transform: uppercase; }
+
         .branch-icon-sidebar {
             font-size: 28px;
             display: flex;
@@ -1010,13 +1032,34 @@
             </div>
         </div>
 
-        <!-- Branch Indicator (hidden when the company has a single branch) -->
+        <!-- Branch quick-switcher (hidden when the company has a single branch) -->
         {% if current_user.is_authenticated and current_branch and multi_branch %}
-        <div class="sidebar-branch-indicator">
-            <div class="branch-icon-sidebar">🏢</div>
-            <div class="branch-details-sidebar">
-                <div class="branch-label-sidebar">Current Branch</div>
-                <div class="branch-name-sidebar">{{ current_branch.name }}</div>
+        <div class="sidebar-branch-switch" id="branchSwitch">
+            <div class="sidebar-branch-indicator branch-switch-trigger" id="branchSwitchTrigger"
+                 role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+                <div class="branch-icon-sidebar">🏢</div>
+                <div class="branch-details-sidebar">
+                    <div class="branch-label-sidebar">Current Branch</div>
+                    <div class="branch-name-sidebar">{{ current_branch.name }}</div>
+                </div>
+                <span class="branch-switch-caret" aria-hidden="true">▾</span>
+            </div>
+            <div class="branch-switch-menu" id="branchSwitchMenu" role="menu" hidden>
+                {% for b in accessible_branches %}
+                {% if b.id == current_branch.id %}
+                <div class="branch-switch-item is-current" role="menuitemradio" aria-checked="true">
+                    <span class="branch-switch-check" aria-hidden="true">✓</span>{{ b.name }}
+                    <span class="branch-switch-tag">current</span>
+                </div>
+                {% else %}
+                <form method="post" action="{{ url_for('users.select_branch') }}" class="branch-switch-form" role="none">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="branch_id" value="{{ b.id }}">
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <button type="submit" class="branch-switch-item" role="menuitem">{{ b.name }}</button>
+                </form>
+                {% endif %}
+                {% endfor %}
             </div>
         </div>
         {% endif %}
@@ -1637,6 +1680,28 @@
         window.addEventListener('resize', function () {
             if (window.innerWidth > 768 && isOpen()) closeDrawer();
         });
+    })();
+    </script>
+
+    <!-- Sidebar quick branch-switcher: open/close the branch dropdown -->
+    <script>
+    (function () {
+        var sw = document.getElementById('branchSwitch');
+        if (!sw) return;
+        var trigger = document.getElementById('branchSwitchTrigger');
+        var menu = document.getElementById('branchSwitchMenu');
+        if (!trigger || !menu) return;
+
+        function open()  { menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); }
+        function close() { menu.hidden = true;  trigger.setAttribute('aria-expanded', 'false'); }
+        function toggle(){ menu.hidden ? open() : close(); }
+
+        trigger.addEventListener('click', function (e) { e.stopPropagation(); toggle(); });
+        trigger.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+        });
+        document.addEventListener('click', function (e) { if (!sw.contains(e.target)) close(); });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
     })();
     </script>
 </body>
