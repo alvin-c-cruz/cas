@@ -19,12 +19,13 @@ def _login(client, user, branch):
 
 def test_customer_defaults_returns_vat_terms_and_single_wht(
         client, db_session, admin_user, main_branch):
-    """A customer's default VAT category, payment terms, and single default WHT
-    code are returned (WHT as a 0/1-item list to match the vendor endpoint shape)."""
+    """A customer's default VAT category, payment terms, and single M2M WHT
+    are returned as a 1-item withholding_taxes list."""
     wt = WithholdingTax(code='WC010', name='Professional Fees', rate=10.00, is_active=True)
     db_session.add(wt)
     cust = Customer(code='C001', name='Acme Corp', payment_terms='Net 15',
-                    default_vat_category='SVAT-G', default_wt_code='WC010', is_active=True)
+                    default_vat_category='SVAT-G', is_active=True)
+    cust.withholding_taxes = [wt]
     db_session.add(cust)
     db_session.commit()
 
@@ -45,7 +46,7 @@ def test_customer_defaults_returns_vat_terms_and_single_wht(
 
 def test_customer_defaults_no_wht_returns_empty_list(
         client, db_session, admin_user, main_branch):
-    """A customer without a default WHT code returns an empty withholding_taxes list,
+    """A customer with no withholding_taxes assigned returns an empty list,
     and a blank payment_terms falls back to 'Net 30'."""
     cust = Customer(code='C002', name='Beta Inc', default_vat_category='SVAT-S', is_active=True)
     db_session.add(cust)
@@ -101,6 +102,20 @@ def test_customer_defaults_voided_invoice_excluded(
     data = client.get(f'/customers/{cust.id}/defaults').get_json()
 
     assert data['last_account_id'] is None
+
+
+def test_customer_defaults_returns_multiple_whts(
+        client, db_session, admin_user, main_branch):
+    a = WithholdingTax(code='WC100', name='Rentals', rate=5.00, is_active=True)
+    b = WithholdingTax(code='WC158', name='Goods', rate=1.00, is_active=True)
+    db_session.add_all([a, b])
+    cust = Customer(code='C005', name='Multi', is_active=True)
+    cust.withholding_taxes = [a, b]
+    db_session.add(cust)
+    db_session.commit()
+    _login(client, admin_user, main_branch)
+    data = client.get(f'/customers/{cust.id}/defaults').get_json()
+    assert sorted(w['code'] for w in data['withholding_taxes']) == ['WC100', 'WC158']
 
 
 def test_customer_defaults_requires_login(client, db_session):

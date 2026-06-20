@@ -391,17 +391,10 @@ def customer_defaults(id):
 
     customer = Customer.query.get_or_404(id)
 
-    withholding_taxes = []
-    if customer.default_wt_code:
-        wt = WithholdingTax.query.filter_by(
-            code=customer.default_wt_code, is_active=True).first()
-        if wt:
-            withholding_taxes.append({
-                'id': wt.id,
-                'code': wt.code,
-                'name': wt.sales_name or wt.name,
-                'rate': float(wt.rate),
-            })
+    withholding_taxes = [
+        {'id': wt.id, 'code': wt.code, 'name': wt.sales_name or wt.name, 'rate': float(wt.rate)}
+        for wt in customer.withholding_taxes if wt.is_active
+    ]
 
     last_item = (
         SalesInvoiceItem.query
