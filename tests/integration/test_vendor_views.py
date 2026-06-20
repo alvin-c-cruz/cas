@@ -458,6 +458,18 @@ class TestVendorListAnalyzeFixes:
         assert b'Create Vendor' in resp.data
         assert b'Add Vendor' not in resp.data
 
+    def test_create_form_submit_button_uses_create_verb(self, client, db_session, admin_user, main_branch):
+        """The create-form submit button uses the master-data 'Create' verb, not 'Save'.
+
+        (The page <title> already says 'Create Vendor', so the meaningful signal is
+        the absence of the old 'Save Vendor' button label.)
+        """
+        login(client)
+        resp = client.get('/vendors/create')
+        assert resp.status_code == 200
+        assert b'Save Vendor' not in resp.data
+        assert b'Create Vendor' in resp.data
+
 
 def test_generate_next_vendor_code_is_numeric_safe_past_999(db_session):
     """Vendor code sequencing must be numeric, not lexicographic (twin of the
