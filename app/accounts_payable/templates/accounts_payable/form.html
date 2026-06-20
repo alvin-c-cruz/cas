@@ -351,8 +351,8 @@ function buildWhtOptions(selectedId) {
     if (currentVendorWHTs.length === 0) {
         // Vendor has no withholding tax codes — show a clear notice instead of a
         // confusing empty "None". The select is disabled after Choices init.
-        const cp = escHtml(JSON.stringify({ code: 'No withholding tax' }));
-        return `<option value="" data-custom-properties="${cp}">No withholding tax for this vendor</option>`;
+        const cp = escHtml(JSON.stringify({ code: 'No WT' }));
+        return `<option value="" data-custom-properties="${cp}">No WT</option>`;
     }
     return '<option value="">None</option>' +
         currentVendorWHTs.map(wt => {
@@ -366,7 +366,7 @@ function rebuildAllWhtSelects() {
     const noWht = currentVendorWHTs.length === 0;
     const autoWht = currentVendorWHTs.length === 1 ? currentVendorWHTs[0] : null;
     const noneChoice = noWht
-        ? { value: '', label: 'No withholding tax for this vendor', customProperties: { code: 'No withholding tax' } }
+        ? { value: '', label: 'No WT', customProperties: { code: 'No WT' } }
         : { value: '', label: 'None', customProperties: { code: '' } };
     const dropped = [];   // codes removed because they aren't valid for the new vendor
     lineItems.forEach(item => {

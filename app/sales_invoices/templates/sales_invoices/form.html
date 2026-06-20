@@ -512,8 +512,8 @@ function buildWhtOptions(selectedId) {
     if (currentCustomerWHTs.length === 0) {
         // Customer has no withholding tax codes — show a clear notice instead of a
         // confusing empty "None". The select is disabled after Choices init.
-        const cp = escHtml(JSON.stringify({ code: 'No withholding tax' }));
-        return `<option value="" data-custom-properties="${cp}">No withholding tax for this customer</option>`;
+        const cp = escHtml(JSON.stringify({ code: 'No WT' }));
+        return `<option value="" data-custom-properties="${cp}">No WT</option>`;
     }
     return '<option value="">None</option>' +
         currentCustomerWHTs.map(wt => {
@@ -527,7 +527,7 @@ function rebuildAllWhtSelects() {
     const noWht = currentCustomerWHTs.length === 0;
     const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
     const noneChoice = noWht
-        ? { value: '', label: 'No withholding tax for this customer', customProperties: { code: 'No withholding tax' } }
+        ? { value: '', label: 'No WT', customProperties: { code: 'No WT' } }
         : { value: '', label: 'None', customProperties: { code: '' } };
     const dropped = [];   // codes removed because they aren't valid for the new customer
     lineItems.forEach(item => {
@@ -562,6 +562,7 @@ function rebuildAllWhtSelects() {
         const uniq = [...new Set(dropped)];
         showToast(`Removed ${uniq.join(', ')} — not valid for the selected customer.`, 'warn');
     }
+    calculateTotals();  // dropped codes null wt_rate — refresh the displayed totals (APV parity)
 }
 
 function addLineItem(existingItem) {

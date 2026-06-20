@@ -420,7 +420,7 @@ function rebuildAllRevenueWhtSelects() {
     const noWht   = currentWHTs.length === 0;
     const autoWht = currentWHTs.length === 1 ? currentWHTs[0] : null;
     const noneChoice = noWht
-        ? { value: '', label: 'No withholding tax for this customer', customProperties: { code: 'No withholding tax' } }
+        ? { value: '', label: 'No WT', customProperties: { code: 'No WT' } }
         : { value: '', label: 'None', customProperties: { code: '' } };
     const dropped = [];
     revenueLines.forEach(item => {
@@ -453,6 +453,7 @@ function rebuildAllRevenueWhtSelects() {
         const uniq = [...new Set(dropped)];
         showToast(`Removed ${uniq.join(', ')} — not valid for the selected customer.`, 'warn');
     }
+    recalculate();  // dropped codes null wt_rate — refresh the displayed totals (APV parity)
 }
 
 function setInvPickerLoading(loading, error) {
@@ -586,7 +587,7 @@ function renderArEmpty() {
 function buildRevenueWhtOptions(item) {
     const sel = item ? item.wt_id : null;
     if (currentWHTs.length === 0) {
-        return '<option value="">No withholding tax</option>';
+        return '<option value="">No WT</option>';
     }
     return '<option value="">None</option>' +
         currentWHTs.map(w =>
