@@ -19,6 +19,15 @@ class WithholdingTax(db.Model):
     rate = db.Column(db.Numeric(5, 2), nullable=False)  # e.g., 10.00 for 10%
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
+    # Per-ATC GL account mapping (NULL falls back to the hardcoded anchors
+    # 20301 / 10212 in the posting views).
+    # payable side    -> APV/CDV (what we withhold from a vendor)
+    # receivable side -> SI/CRV  (creditable WHT a customer withholds from us)
+    payable_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
+    receivable_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
+    payable_account = db.relationship('Account', foreign_keys=[payable_account_id])
+    receivable_account = db.relationship('Account', foreign_keys=[receivable_account_id])
+
     # Audit fields
     created_at = db.Column(db.DateTime, default=ph_now)
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -41,6 +50,10 @@ class WithholdingTax(db.Model):
             'description': self.description,
             'rate': float(self.rate) if self.rate else 0.0,
             'is_active': self.is_active,
+            'payable_account_id': self.payable_account_id,
+            'payable_account_code': self.payable_account.code if self.payable_account else None,
+            'receivable_account_id': self.receivable_account_id,
+            'receivable_account_code': self.receivable_account.code if self.receivable_account else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
