@@ -4,24 +4,32 @@ _Source snapshot: 356 accounts (16 groups, 340 leaves). Names shown proper-cased
 
 ## Group headers — create first (you Save each)
 
-| ✔ | Code | Name (proper-cased) | Type | Normal balance |
-|---|------|---------------------|------|----------------|
-| ☐ | `11` | Cash and Cash Equivalents | Asset | debit |
-| ☐ | `12` | Trade Receivable | Asset | debit |
-| ☐ | `13` | Other Current Assets | Asset | debit |
-| ☐ | `14` | Fixed Assets | Asset | debit |
-| ☐ | `15` | Other Assets | Asset | debit |
-| ☐ | `21` | Accounts Payable | Liability | credit |
-| ☐ | `22` | Other Current Liabilities | Liability | credit |
-| ☐ | `23` | Other Liabilities | Liability | credit |
-| ☐ | `31` | Stockholder's Equity | Equity | credit |
-| ☐ | `41` | Revenues | Revenue | credit |
-| ☐ | `51` | Other Income (Group) | Revenue | credit |
-| ☐ | `61` | Direct Materials | Expense | debit |
-| ☐ | `62` | Direct Labor | Expense | debit |
-| ☐ | `63` | Factory Overhead | Expense | debit |
-| ☐ | `64` | Selling Expenses | Expense | debit |
-| ☐ | `65` | Administrative Expenses | Expense | debit |
+Group codes are 5-digit, zero-padded (`+000`). Classification is a best-guess
+for Asset/Liability groups — adjust live. Description: concise one-line purpose
+(generated per account at entry).
+
+| ✔ | Code | Name (proper-cased) | Type | Normal balance | Classification |
+|---|------|---------------------|------|----------------|----------------|
+| ☑ | `11000` | Cash and Cash Equivalents | Asset | debit | Current |
+| ☐ | `12000` | Trade Receivable | Asset | debit | Current |
+| ☐ | `13000` | Other Current Assets | Asset | debit | Current |
+| ☐ | `14000` | Fixed Assets | Asset | debit | Non-Current |
+| ☐ | `15000` | Other Assets | Asset | debit | Non-Current |
+| ☐ | `21000` | Accounts Payable | Liability | credit | Current |
+| ☐ | `22000` | Other Current Liabilities | Liability | credit | Current |
+| ☐ | `23000` | Other Liabilities | Liability | credit | Non-Current |
+| ☐ | `31000` | Stockholder's Equity | Equity | credit | — |
+| ☐ | `41000` | Revenues | Revenue | credit | — |
+| ☐ | `51000` | Other Income (Group) | Revenue | credit | — |
+| ☐ | `61000` | Direct Materials | Expense | debit | — |
+| ☐ | `62000` | Direct Labor | Expense | debit | — |
+| ☐ | `63000` | Factory Overhead | Expense | debit | — |
+| ☐ | `64000` | Selling Expenses | Expense | debit | — |
+| ☐ | `65000` | Administrative Expenses | Expense | debit | — |
+
+> **Leaf renumber exception:** `12000` "Construction in Progress" is being
+> recoded to sit after the in-transit accounts (`11701-*`/`11702-*`) — proposed
+> `11703` — to free `12000` for the Trade Receivable group.
 
 ## Leaves — create after groups, ascending code (you pick parent + Save)
 

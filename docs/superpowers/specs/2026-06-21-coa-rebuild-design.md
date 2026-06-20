@@ -32,6 +32,21 @@ the dependent VAT/WHT master data must be re-entered against the new accounts.
 | Wipe scope | accounts (356) + vat_categories (7) + sales_vat_categories (3) + withholding_tax (4). Keep branches, users, settings. |
 | VAT/WHT | Re-entered fresh after COA (no id re-map needed). |
 
+## Refinements (2026-06-21, decided during entry)
+
+- **Group codes are 5-digit, zero-padded `+000`** (`11000`, `13000`, … `65000`).
+  Exception: `12000` is the legacy "Construction in Progress" leaf; the user
+  chose to **renumber that leaf** to sit after the in-transit accounts
+  (`11701-*`/`11702-*`, proposed `11703`) so `12000` frees up for the Trade
+  Receivable group. (One deliberate override of "leaf codes stay.")
+- **Classification** is pre-filled best-guess on Asset/Liability group headers
+  (Current for 11000/12000/13000/21000/22000; Non-Current for 14000/15000/23000);
+  user adjusts live.
+- **Descriptions**: a concise one-line purpose sentence, generated per account.
+- **Submit button** on the account form renamed `Create Account` → **`Save Account`**
+  (create) / `Update Account` (edit). This deliberately moves accounts off the
+  "master data = Create" verb convention onto the transaction-doc Save/Update verb.
+
 ## Key facts established from the live DB
 
 - **Zero transactions** reference accounts (all SI/AP/CR/CD/journal line tables
