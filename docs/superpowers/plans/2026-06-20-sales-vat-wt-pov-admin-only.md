@@ -24,6 +24,7 @@
 - **Sales VAT seed codes (verbatim):** `SVAT-G`, `SVAT-S`, `SVAT-EX`, `SVAT-ZR`, `SVAT-GOV`.
 - **Two seed paths** must stay in lockstep: `app/fixtures.py` AND `app/seeds/seed_data.py`.
 - **Output VAT account** = code `2100` ("Output Tax"); **Input VAT** = `1200` ("Input Tax").
+- **Test login (conftest fixtures):** the per-role user fixtures use password `<username>123` — `admin`/`admin123`, `accountant`/`accountant123`, `staff`/`staff123`, `viewer`/`viewer123`. In example `_login(client, user)` helpers below, derive it as `user.username + '123'` (NOT a literal placeholder). When a test creates an *extra* user, `set_password('<known>')` and log in with that exact value.
 
 ---
 
@@ -528,7 +529,7 @@ from app.utils.admin_approval import sole_admin_can_auto_approve
 from app.users.models import User
 
 
-def _login(client, username, password='pw12345'):
+def _login(client, username, password):  # fixtures use <username>123
     return client.post('/login', data={'username': username, 'password': password},
                        follow_redirects=True)
 
@@ -542,7 +543,7 @@ def test_sole_admin_auto_approves(app, db_session, admin_user):
 
 def test_two_admins_do_not_auto_approve(app, db_session, admin_user):
     second = User(username='admin2', email='a2@x.com', role='admin', is_active=True)
-    second.set_password('pw12345')
+    second.set_password(second.username + '123')
     db_session.add(second)
     db_session.commit()
     with app.test_request_context():
@@ -639,7 +640,7 @@ from app.audit.models import AuditLog
 
 
 def _login(client, user):
-    return client.post('/login', data={'username': user.username, 'password': 'pw12345'},
+    return client.post('/login', data={'username': user.username, 'password': user.username + '123'},
                        follow_redirects=True)
 
 
@@ -991,7 +992,7 @@ from app.vat_categories.models import VATCategory
 
 
 def _login(client, user):
-    return client.post('/login', data={'username': user.username, 'password': 'pw12345'},
+    return client.post('/login', data={'username': user.username, 'password': user.username + '123'},
                        follow_redirects=True)
 
 
@@ -1133,7 +1134,7 @@ git commit -m "refactor(vat): drop output_vat_account_id (now sales-only)"
 ```python
 # tests/integration/test_vat_category_admin_only.py
 def _login(client, user):
-    return client.post('/login', data={'username': user.username, 'password': 'pw12345'},
+    return client.post('/login', data={'username': user.username, 'password': user.username + '123'},
                        follow_redirects=True)
 
 
@@ -1190,7 +1191,7 @@ from app.withholding_tax.models import WithholdingTax
 
 
 def _login(client, user):
-    return client.post('/login', data={'username': user.username, 'password': 'pw12345'},
+    return client.post('/login', data={'username': user.username, 'password': user.username + '123'},
                        follow_redirects=True)
 
 
@@ -1328,7 +1329,7 @@ git commit -m "feat(wht): POV-aware picker labels on sales documents"
 ```python
 # tests/integration/test_nav_admin_gating.py
 def _login(client, user):
-    return client.post('/login', data={'username': user.username, 'password': 'pw12345'},
+    return client.post('/login', data={'username': user.username, 'password': user.username + '123'},
                        follow_redirects=True)
 
 
