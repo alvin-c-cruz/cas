@@ -284,16 +284,12 @@ def load_default_sales_vat_categories():
     output_acct = Account.query.filter_by(code='2100').first()
     output_id = output_acct.id if output_acct else None
     rows = [
-        SalesVATCategory(code='SVAT-G', name='Sale of Goods (12%)', rate=12.00,
+        SalesVATCategory(code='V12', name='VATable Sales (12%)', rate=12.00,
                          transaction_nature='regular', output_vat_account_id=output_id, is_active=True),
-        SalesVATCategory(code='SVAT-S', name='Sale of Services (12%)', rate=12.00,
-                         transaction_nature='regular', output_vat_account_id=output_id, is_active=True),
-        SalesVATCategory(code='SVAT-EX', name='VAT-Exempt Sales', rate=0.00,
-                         transaction_nature='exempt', is_active=True),
-        SalesVATCategory(code='SVAT-ZR', name='Zero-Rated Sales (Export)', rate=0.00,
+        SalesVATCategory(code='V0', name='VAT Zero-Rated Sales', rate=0.00,
                          transaction_nature='zero_export', is_active=True),
-        SalesVATCategory(code='SVAT-GOV', name='Sales to Government (12%)', rate=12.00,
-                         transaction_nature='government', output_vat_account_id=output_id, is_active=True),
+        SalesVATCategory(code='VEX', name='VAT-Exempt Sales', rate=0.00,
+                         transaction_nature='exempt', is_active=True),
     ]
     for r in rows:
         db.session.add(r)

@@ -15,11 +15,11 @@ def test_seed_sales_vat_categories(db_session):
     db_session.commit()
     load_default_sales_vat_categories()
     codes = {c.code for c in SalesVATCategory.query.all()}
-    assert {'SVAT-G', 'SVAT-S', 'SVAT-EX', 'SVAT-ZR', 'SVAT-GOV'} <= codes
-    goods = SalesVATCategory.query.filter_by(code='SVAT-G').first()
-    assert goods.transaction_nature == 'regular'
-    assert goods.output_vat_account.code == '2100'
-    exempt = SalesVATCategory.query.filter_by(code='SVAT-EX').first()
+    assert {'V12', 'V0', 'VEX'} <= codes
+    vatable = SalesVATCategory.query.filter_by(code='V12').first()
+    assert vatable.transaction_nature == 'regular'
+    assert vatable.output_vat_account.code == '2100'
+    exempt = SalesVATCategory.query.filter_by(code='VEX').first()
     assert exempt.output_vat_account_id is None
 
 
@@ -32,21 +32,21 @@ def test_seed_all_sales_vat_links_to_output_vat_sales(db_session):
     seed_data.seed_sales_vat_categories()
 
     # Rated row must resolve to account 20201 (Output VAT - Sales)
-    svat_g = SalesVATCategory.query.filter_by(code='SVAT-G').first()
-    assert svat_g is not None, "SVAT-G row not created"
-    assert svat_g.output_vat_account is not None, "SVAT-G has no output_vat_account"
-    assert svat_g.output_vat_account.code == '20201', (
-        f"Expected 20201 but got {svat_g.output_vat_account.code} "
-        f"({svat_g.output_vat_account.name!r}) — wrong account linked"
+    v12 = SalesVATCategory.query.filter_by(code='V12').first()
+    assert v12 is not None, "V12 row not created"
+    assert v12.output_vat_account is not None, "V12 has no output_vat_account"
+    assert v12.output_vat_account.code == '20201', (
+        f"Expected 20201 but got {v12.output_vat_account.code} "
+        f"({v12.output_vat_account.name!r}) — wrong account linked"
     )
-    assert 'Output VAT' in svat_g.output_vat_account.name, (
-        f"Account name does not contain 'Output VAT': {svat_g.output_vat_account.name!r}"
+    assert 'Output VAT' in v12.output_vat_account.name, (
+        f"Account name does not contain 'Output VAT': {v12.output_vat_account.name!r}"
     )
 
-    # Zero-rate row must have no output account
-    svat_ex = SalesVATCategory.query.filter_by(code='SVAT-EX').first()
-    assert svat_ex is not None, "SVAT-EX row not created"
-    assert svat_ex.output_vat_account_id is None, "SVAT-EX should have no output_vat_account"
+    # Zero-rate/exempt row must have no output account
+    vex = SalesVATCategory.query.filter_by(code='VEX').first()
+    assert vex is not None, "VEX row not created"
+    assert vex.output_vat_account_id is None, "VEX should have no output_vat_account"
 
 
 def test_seed_wht_sales_name_backfill(db_session):

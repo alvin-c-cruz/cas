@@ -383,11 +383,9 @@ def seed_sales_vat_categories():
     output_id = output_acct.id if output_acct else None
 
     sales_vat_categories = [
-        {'code': 'SVAT-G',   'name': 'Sale of Goods (12%)',            'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': output_id},
-        {'code': 'SVAT-S',   'name': 'Sale of Services (12%)',         'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': output_id},
-        {'code': 'SVAT-EX',  'name': 'VAT-Exempt Sales',               'rate':  0.00, 'transaction_nature': 'exempt',      'output_vat_account_id': None},
-        {'code': 'SVAT-ZR',  'name': 'Zero-Rated Sales (Export)',       'rate':  0.00, 'transaction_nature': 'zero_export', 'output_vat_account_id': None},
-        {'code': 'SVAT-GOV', 'name': 'Sales to Government (12%)',      'rate': 12.00, 'transaction_nature': 'government',  'output_vat_account_id': output_id},
+        {'code': 'V12', 'name': 'VATable Sales (12%)',   'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': output_id},
+        {'code': 'V0',  'name': 'VAT Zero-Rated Sales',  'rate':  0.00, 'transaction_nature': 'zero_export', 'output_vat_account_id': None},
+        {'code': 'VEX', 'name': 'VAT-Exempt Sales',      'rate':  0.00, 'transaction_nature': 'exempt',      'output_vat_account_id': None},
     ]
 
     for cat in sales_vat_categories:
@@ -773,11 +771,9 @@ def seed_minimal():
             _output_svat_acct = Account.query.filter_by(code='20401').first()
             _output_svat_id = _output_svat_acct.id if _output_svat_acct else None
             svat_categories = [
-                {'code': 'SVAT-G',   'name': 'Sale of Goods (12%)',       'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': _output_svat_id},
-                {'code': 'SVAT-S',   'name': 'Sale of Services (12%)',    'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': _output_svat_id},
-                {'code': 'SVAT-EX',  'name': 'VAT-Exempt Sales',          'rate':  0.00, 'transaction_nature': 'exempt',      'output_vat_account_id': None},
-                {'code': 'SVAT-ZR',  'name': 'Zero-Rated Sales (Export)', 'rate':  0.00, 'transaction_nature': 'zero_export', 'output_vat_account_id': None},
-                {'code': 'SVAT-GOV', 'name': 'Sales to Government (12%)', 'rate': 12.00, 'transaction_nature': 'government',  'output_vat_account_id': _output_svat_id},
+                {'code': 'V12', 'name': 'VATable Sales (12%)',   'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': _output_svat_id},
+                {'code': 'V0',  'name': 'VAT Zero-Rated Sales',  'rate':  0.00, 'transaction_nature': 'zero_export', 'output_vat_account_id': None},
+                {'code': 'VEX', 'name': 'VAT-Exempt Sales',      'rate':  0.00, 'transaction_nature': 'exempt',      'output_vat_account_id': None},
             ]
             for cat in svat_categories:
                 db.session.add(SalesVATCategory(
