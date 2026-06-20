@@ -738,17 +738,16 @@ def seed_minimal():
                     ['10501', '10502', '10503', '10504']
                 )).all()
             }
-            _output_vat = Account.query.filter_by(code='20401').first()
-            output_vat_id = _output_vat.id if _output_vat else None
-
+            # VATCategory is purchase-only (input VAT). Output/sales VAT lives in
+            # SalesVATCategory, seeded in the Sales VAT Categories section below.
             vat_categories = [
-                {'code': 'VEX',   'name': 'VAT Exempt',               'rate':  0.00, 'input_vat_account_id': None,                      'output_vat_account_id': None},
-                {'code': 'V0',    'name': 'VAT Zero-Rated',            'rate':  0.00, 'input_vat_account_id': None,                      'output_vat_account_id': None},
-                {'code': 'INV',   'name': 'Invalid',                   'rate':  0.00, 'input_vat_account_id': None,                      'output_vat_account_id': None},
-                {'code': 'V12CG', 'name': 'Input Tax Capital Goods',   'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10501'), 'output_vat_account_id': output_vat_id},
-                {'code': 'V12DG', 'name': 'Input Tax Domestic Goods',  'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10502'), 'output_vat_account_id': output_vat_id},
-                {'code': 'V12SV', 'name': 'Input Tax Services',        'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10503'), 'output_vat_account_id': output_vat_id},
-                {'code': 'V12IM', 'name': 'Input Tax Importation',     'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10504'), 'output_vat_account_id': output_vat_id},
+                {'code': 'VEX',   'name': 'VAT Exempt',               'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'V0',    'name': 'VAT Zero-Rated',            'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'INV',   'name': 'Invalid',                   'rate':  0.00, 'input_vat_account_id': None},
+                {'code': 'V12CG', 'name': 'Input Tax Capital Goods',   'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10501')},
+                {'code': 'V12DG', 'name': 'Input Tax Domestic Goods',  'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10502')},
+                {'code': 'V12SV', 'name': 'Input Tax Services',        'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10503')},
+                {'code': 'V12IM', 'name': 'Input Tax Importation',     'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10504')},
             ]
             for cat in vat_categories:
                 db.session.add(VATCategory(
@@ -757,7 +756,6 @@ def seed_minimal():
                     rate=cat['rate'],
                     description='',
                     input_vat_account_id=cat['input_vat_account_id'],
-                    output_vat_account_id=cat['output_vat_account_id'],
                     is_active=True
                 ))
             db.session.commit()
