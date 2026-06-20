@@ -31,3 +31,12 @@ def sole_admin_can_auto_approve():
         return False
     total_admins = User.query.filter(User.role == 'admin', User.is_active == True).count()
     return total_admins == 1
+
+
+def another_active_admin_exists():
+    """True if an active admin other than the current user exists. Used to
+    block self-approval (four-eyes) while letting a sole admin self-resolve a
+    stray pending request without deadlock."""
+    return User.query.filter(
+        User.role == 'admin', User.is_active == True,
+        User.id != current_user.id).count() > 0

@@ -1,4 +1,4 @@
-from app.utils.admin_approval import sole_admin_can_auto_approve
+from app.utils.admin_approval import sole_admin_can_auto_approve, another_active_admin_exists
 from app.users.models import User
 
 
@@ -30,3 +30,24 @@ def test_accountant_never_auto_approves(app, db_session, accountant_user):
         from flask_login import login_user
         login_user(accountant_user)
         assert sole_admin_can_auto_approve() is False
+
+
+# --- another_active_admin_exists ---
+
+def test_another_active_admin_exists_with_two_admins(app, db_session, admin_user):
+    second = User(username='admin2', email='a2@x.com', full_name='Admin Two',
+                  role='admin', is_active=True)
+    second.set_password('pw12345')
+    db_session.add(second)
+    db_session.commit()
+    with app.test_request_context():
+        from flask_login import login_user
+        login_user(admin_user)
+        assert another_active_admin_exists() is True
+
+
+def test_another_active_admin_not_exists_sole_admin(app, db_session, admin_user):
+    with app.test_request_context():
+        from flask_login import login_user
+        login_user(admin_user)
+        assert another_active_admin_exists() is False

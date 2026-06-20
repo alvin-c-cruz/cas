@@ -11,7 +11,7 @@ from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
-from app.utils.admin_approval import admin_required, sole_admin_can_auto_approve
+from app.utils.admin_approval import admin_required, sole_admin_can_auto_approve, another_active_admin_exists
 from app.utils.cache_helpers import clear_sales_vat_cache
 import json
 
@@ -396,7 +396,7 @@ def review_change_request(id):
     """Review and approve/reject a change request"""
     change_request = SalesVATCategoryChangeRequest.query.get_or_404(id)
 
-    if change_request.requested_by_id == current_user.id and current_user.role != 'admin':
+    if change_request.requested_by_id == current_user.id and another_active_admin_exists():
         flash('You cannot review your own change request.', 'error')
         return redirect(url_for('sales_vat_categories.change_requests'))
 
