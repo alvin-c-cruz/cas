@@ -31,12 +31,12 @@
   "modules": {
     "accounts_payable":  { "marker": "accounts_payable", "e2e": "tests/e2e/test_ap_smoke.py" },
     "cash_disbursements": { "marker": "cash_disbursements", "e2e": null },
-    "sales_invoices":    { "marker": "sales_invoices", "e2e": null },
+    "sales_invoices":    { "marker": "sales_invoices", "e2e": "tests/e2e/test_si_smoke.py" },
     "vendors":           { "marker": "vendors", "e2e": null },
     "sales_vat_categories": { "marker": "sales_vat", "e2e": null }
   },
   "notes": [
-    "Only the JS/browser layer is e2e-covered (pytest renders HTML but never executes JS). accounts_payable has the first smoke suite; mirror it to cash_disbursements/sales_invoices as they get verified, then set their 'e2e' path here.",
+    "Only the JS/browser layer is e2e-covered (pytest renders HTML but never executes JS). accounts_payable (test_ap_smoke.py) and sales_invoices (test_si_smoke.py) have smoke suites; mirror to cash_disbursements as it gets verified, then set its 'e2e' path here.",
     "When you ADD a new shared file or a new module dependency, add it here in the SAME commit -- a stale map is a silent coverage hole."
   ]
 }
