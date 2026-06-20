@@ -16,6 +16,7 @@ from app.utils.export import export_to_excel, export_to_csv
 from app.utils.wt_labels import wt_label
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
+from app.customers.views import build_customer_quick_add_form
 from app.journal_entries.utils import generate_entry_number
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -557,7 +558,8 @@ def _form_context(all_accounts=None):
     return dict(customers=customers, all_accounts=all_accounts,
                 vat_categories=vat_categories,
                 all_whts=all_whts,
-                gl_accounts=gl_accounts)
+                gl_accounts=gl_accounts,
+                customer_quick_add_form=build_customer_quick_add_form())
 
 
 # ---------------------------------------------------------------------------
