@@ -1190,15 +1190,21 @@
                         <span class="nav-text">Vendors</span>
                     </a>
                     {% endif %}
-                    {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
+                    {% if current_user.is_authenticated and current_user.role == 'admin' %}
                     <a href="{{ url_for('vat_categories.list_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_categories.') %}active{% endif %}">
                         <span class="nav-icon">📊</span>
                         <span class="nav-text">VAT Categories</span>
+                    </a>
+                    <a href="{{ url_for('sales_vat_categories.list_sales_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_vat_categories.') %}active{% endif %}">
+                        <span class="nav-icon">🧾</span>
+                        <span class="nav-text">Sales VAT Categories</span>
                     </a>
                     <a href="{{ url_for('withholding_tax.list_withholding_tax') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('withholding_tax.') %}active{% endif %}">
                         <span class="nav-icon">💼</span>
                         <span class="nav-text">Withholding Tax Expanded</span>
                     </a>
+                    {% endif %}
+                    {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
                     <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
                         <span class="nav-icon">📜</span>
                         <span class="nav-text">Audit Log</span>
