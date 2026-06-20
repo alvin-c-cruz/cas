@@ -140,8 +140,8 @@ def test_wt_scoping_tracks_vendor(logged_in_page, e2e_server):
         '#lineItemsBody tr:first-child .choices:has(.wht-select) '
         '.choices__list--single .choices__item'
     ).first.inner_text()
-    assert 'No withholding tax' in selected_label, \
-        f'WT dropdown should display a "No withholding tax" notice, got: {selected_label!r}'
+    assert 'No WT' in selected_label, \
+        f'WT dropdown should display a "No WT" notice, got: {selected_label!r}'
 
 
 def test_presave_upload_card_renders_on_create(logged_in_page, e2e_server):
