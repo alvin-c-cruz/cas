@@ -57,3 +57,31 @@ def test_line_items_locked_until_customer_selected(logged_in_page, e2e_server):
     # Revealed after selecting a customer; placeholder gone.
     page.wait_for_selector('#lineItemsSection', state='visible')
     assert page.locator('#lineItemsLocked').is_hidden()
+
+
+def test_add_customer_modal_creates_and_selects(logged_in_page, e2e_server):
+    """The inline Add Customer modal creates a customer, auto-selects it, and reveals
+    the line items (mirrors AP's quick-add)."""
+    page = logged_in_page
+    page.goto(e2e_server + SI_CREATE)
+    page.wait_for_selector('#customer_id', state='attached')
+
+    # Open the picker and click the add-customer action.
+    _pick_in_choices(page, CUSTOMER_SCOPE, 'Add Customer')
+    overlay = page.locator('#customerQuickAddOverlay')
+    overlay.wait_for(state='visible')
+
+    new_name = 'E2E Quick Customer LLC'
+    overlay.locator('input[name="name"]').fill(new_name)
+    page.click('#customerQuickAddSubmit')
+
+    # Modal closes; the new customer becomes the selected chip; section revealed.
+    overlay.wait_for(state='hidden')
+    page.wait_for_function(
+        """(name) => {
+            const chip = document.querySelector('.choices:has(#customer_id) .choices__list--single .choices__item');
+            return chip && chip.textContent.includes(name);
+        }""",
+        arg=new_name, timeout=10000,
+    )
+    page.wait_for_selector('#lineItemsSection', state='visible')

@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='customer-form.css') }}?v=1">
 
 {{ render_flash_messages() }}
 
@@ -214,6 +215,8 @@
     </div>
 </div>
 
+{% include "customers/_quick_add_modal.html" %}
+
 {% if invoice %}
 <!-- ── Image Preview Modals ── -->
 {% for att in invoice.attachments %}{% if att.is_image %}
@@ -336,6 +339,9 @@
 
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}"></script>
+<script src="{{ url_for('static', filename='customer-form-widgets.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='customer-quick-add.js') }}?v=1"></script>
 <script>
 // ── Context data from server ─────────────────────────────────────────────────
 const vatCategories = {{ vat_categories | tojson }};
@@ -355,15 +361,7 @@ let wtOverrideActive  = false;
 // ── Choices.js: customer picker ──────────────────────────────────────────────
 const customerSel = document.getElementById('customer_id');
 if (customerSel) {
-    new Choices(customerSel, {
-        searchEnabled: true,
-        searchResultLimit: 100,
-        allowHTML: false,
-        itemSelectText: '',
-        shouldSort: false,
-        placeholder: true,
-        placeholderValue: '-- Select Customer --',
-    });
+    initCustomerQuickAdd({ selectEl: customerSel });
 }
 
 // ── Customer select: reveal line items + auto-add the first line ─────────────
@@ -373,7 +371,7 @@ if (customerSel) {
 if (customerSel) {
     customerSel.addEventListener('change', function () {
         const cid = customerSel.value;
-        if (!cid || cid === '0') return;
+        if (!cid || cid === '0' || cid === '__add_customer__') return;
         document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
         document.getElementById('lineItemsSection').style.display = '';
         if (lineItems.length === 0) addLineItem();

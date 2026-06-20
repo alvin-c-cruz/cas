@@ -1,0 +1,30 @@
+{# Inline "Add Customer" modal. Requires `customer_quick_add_form` in the template
+   context. Styling: design tokens only (.customer-form-scope from customer-form.css). #}
+<div id="customerQuickAddOverlay"
+     style="display:none; position:fixed; inset:0; background:var(--backdrop);
+            z-index:1200; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
+  <div style="background:var(--card); border-radius:8px; padding:24px; max-width:880px; width:100%;
+              box-shadow:var(--shadow-md);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px;">Add Customer</h3>
+      <button type="button" id="customerQuickAddClose"
+              style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text);"
+              aria-label="Close">&times;</button>
+    </div>
+
+    <div id="customerQuickAddError" class="form-error" style="display:none; margin-bottom:12px; color:var(--alert-error-text);"></div>
+
+    <form id="customerQuickAddForm" method="POST" action="{{ url_for('customers.create') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="customer-form-scope">
+        {% with form = customer_quick_add_form, customer = None %}
+          {% include "customers/_form_fields.html" %}
+        {% endwith %}
+      </div>
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
+        <button type="button" id="customerQuickAddCancel" class="btn btn-secondary">Cancel</button>
+        <button type="submit" id="customerQuickAddSubmit" class="btn btn-primary">Create Customer</button>
+      </div>
+    </form>
+  </div>
+</div>

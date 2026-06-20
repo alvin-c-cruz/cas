@@ -6,6 +6,7 @@ from app import db
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem, SalesInvoiceAttachment
 from app.sales_invoices.forms import SalesInvoiceForm
 from app.customers.models import Customer
+from app.customers.views import build_customer_quick_add_form
 from app.sales_vat_categories.models import SalesVATCategory
 from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
@@ -616,7 +617,8 @@ def create():
                                    all_accounts=_get_all_accounts_for_select(),
                                    line_items=[],
                                    gl_accounts=_gl_accounts_dict(),
-                                   wht_codes=_wht_codes_for_form())
+                                   wht_codes=_wht_codes_for_form(),
+                                   customer_quick_add_form=build_customer_quick_add_form())
         try:
             cust = Customer.query.get(form.customer_id.data)
             if not cust:
@@ -625,7 +627,8 @@ def create():
                                        vat_categories=_vat_categories_for_form(),
                                        all_accounts=_get_all_accounts_for_select(),
                                        gl_accounts=_gl_accounts_dict(),
-                                       wht_codes=_wht_codes_for_form())
+                                       wht_codes=_wht_codes_for_form(),
+                                       customer_quick_add_form=build_customer_quick_add_form())
 
             invoice = SalesInvoice(
                 branch_id=session.get('selected_branch_id'),
@@ -691,7 +694,8 @@ def create():
                            all_accounts=_get_all_accounts_for_select(),
                            line_items=[],
                            gl_accounts=_gl_accounts_dict(),
-                           wht_codes=_wht_codes_for_form())
+                           wht_codes=_wht_codes_for_form(),
+                           customer_quick_add_form=build_customer_quick_add_form())
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/edit', methods=['GET', 'POST'])
@@ -717,7 +721,8 @@ def edit(id):
                                    all_accounts=_get_all_accounts_for_select(),
                                    line_items=[item.to_dict() for item in invoice.line_items],
                                    gl_accounts=_gl_accounts_dict(),
-                                   wht_codes=_wht_codes_for_form())
+                                   wht_codes=_wht_codes_for_form(),
+                                   customer_quick_add_form=build_customer_quick_add_form())
         try:
             old_values = model_to_dict(invoice, [
                 'invoice_number', 'invoice_date', 'due_date', 'customer_name',
@@ -731,7 +736,8 @@ def edit(id):
                                        all_accounts=_get_all_accounts_for_select(),
                                        line_items=[item.to_dict() for item in invoice.line_items],
                                        gl_accounts=_gl_accounts_dict(),
-                                       wht_codes=_wht_codes_for_form())
+                                       wht_codes=_wht_codes_for_form(),
+                                       customer_quick_add_form=build_customer_quick_add_form())
 
             invoice.invoice_number = form.invoice_number.data
             invoice.invoice_date = form.invoice_date.data
@@ -800,7 +806,8 @@ def edit(id):
                            all_accounts=_get_all_accounts_for_select(),
                            line_items=[item.to_dict() for item in invoice.line_items],
                            gl_accounts=_gl_accounts_dict(),
-                           wht_codes=_wht_codes_for_form())
+                           wht_codes=_wht_codes_for_form(),
+                           customer_quick_add_form=build_customer_quick_add_form())
 
 
 # ── helpers called by create() and edit() ───────────────────────────────────
