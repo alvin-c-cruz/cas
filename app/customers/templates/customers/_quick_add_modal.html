@@ -1,5 +1,6 @@
-{# Inline "Add Customer" modal. Requires `customer_quick_add_form` in the template
-   context. Styling: design tokens only (.customer-form-scope from customer-form.css). #}
+{# Inline "Add Customer" modal. Requires `customer_quick_add_form` and
+   `customer_quick_add_whts` in the template context.
+   Styling: design tokens only (.customer-form-scope from customer-form.css). #}
 <div id="customerQuickAddOverlay"
      style="display:none; position:fixed; inset:0; background:var(--backdrop);
             z-index:1200; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
@@ -17,7 +18,7 @@
     <form id="customerQuickAddForm" method="POST" action="{{ url_for('customers.create') }}" novalidate>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="customer-form-scope">
-        {% with form = customer_quick_add_form, customer = None %}
+        {% with form = customer_quick_add_form, withholding_taxes = customer_quick_add_whts, customer = None %}
           {% include "customers/_form_fields.html" %}
         {% endwith %}
       </div>

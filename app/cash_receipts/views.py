@@ -555,11 +555,13 @@ def _form_context(all_accounts=None):
     }
     _whts_raw = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
     all_whts = [{**w.to_dict(), 'label': wt_label(w.to_dict(), 'sales')} for w in _whts_raw]
+    customer_quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
     return dict(customers=customers, all_accounts=all_accounts,
                 vat_categories=vat_categories,
                 all_whts=all_whts,
                 gl_accounts=gl_accounts,
-                customer_quick_add_form=build_customer_quick_add_form())
+                customer_quick_add_form=build_customer_quick_add_form(),
+                customer_quick_add_whts=customer_quick_add_whts)
 
 
 # ---------------------------------------------------------------------------

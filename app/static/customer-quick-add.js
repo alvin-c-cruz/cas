@@ -63,7 +63,7 @@ function initCustomerQuickAdd(opts) {
                     closeModal();
                     form.reset();
                     if (vatChoices) vatChoices.setChoiceByValue('');
-                    if (wtChoices) wtChoices.setChoiceByValue('');
+                    if (wtChoices) wtChoices.removeActiveItems();
                 } else {
                     const errs = body.errors || {};
                     const first = Object.values(errs)[0] || 'Could not create customer. Please check the fields.';

@@ -422,3 +422,21 @@ def test_customer_edit_updates_withholding_taxes(
     assert resp.status_code == 200
     updated = Customer.query.get(cid)
     assert [w.code for w in updated.withholding_taxes] == ['WC160']
+
+
+def test_customer_quick_add_json_persists_wht(
+        client, db_session, accountant_user, main_branch):
+    """WHT codes POSTed to the quick-add JSON endpoint are persisted on the new customer."""
+    from app.customers.models import Customer
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC158', name='Goods', rate=1.00, is_active=True)
+    db_session.add(wt)
+    db_session.commit()
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.post('/customers/create',
+        data={'code': 'C902', 'name': 'QA Corp', 'payment_terms': 'Net 30',
+              'is_active': '1', 'withholding_tax_ids': [str(wt.id)]},
+        headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 200 and resp.get_json()['ok'] is True
+    c = Customer.query.filter_by(code='C902').first()
+    assert [w.code for w in c.withholding_taxes] == ['WC158']

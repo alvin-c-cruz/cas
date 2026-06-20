@@ -27,6 +27,11 @@ from werkzeug.utils import secure_filename
 sales_invoices_bp = Blueprint('sales_invoices', __name__, template_folder='templates')
 
 
+def _customer_quick_add_whts():
+    """Active WHT list for the inline Add-Customer modal (mirrors vendor quick-add)."""
+    return WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+
+
 # ---------------------------------------------------------------------------
 # Role decorators
 # ---------------------------------------------------------------------------
@@ -622,7 +627,8 @@ def create():
                                    line_items=[],
                                    gl_accounts=_gl_accounts_dict(),
                                    wht_codes=_wht_codes_for_form(),
-                                   customer_quick_add_form=build_customer_quick_add_form())
+                                   customer_quick_add_form=build_customer_quick_add_form(),
+                                   customer_quick_add_whts=_customer_quick_add_whts())
         try:
             cust = Customer.query.get(form.customer_id.data)
             if not cust:
@@ -632,7 +638,8 @@ def create():
                                        all_accounts=_get_all_accounts_for_select(),
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
-                                       customer_quick_add_form=build_customer_quick_add_form())
+                                       customer_quick_add_form=build_customer_quick_add_form(),
+                                       customer_quick_add_whts=_customer_quick_add_whts())
 
             line_err = _line_items_error(request.form.get('line_items', '[]'))
             if line_err:
@@ -643,7 +650,8 @@ def create():
                                        line_items=[],
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
-                                       customer_quick_add_form=build_customer_quick_add_form())
+                                       customer_quick_add_form=build_customer_quick_add_form(),
+                                       customer_quick_add_whts=_customer_quick_add_whts())
 
             invoice = SalesInvoice(
                 branch_id=session.get('selected_branch_id'),
@@ -710,7 +718,8 @@ def create():
                            line_items=[],
                            gl_accounts=_gl_accounts_dict(),
                            wht_codes=_wht_codes_for_form(),
-                           customer_quick_add_form=build_customer_quick_add_form())
+                           customer_quick_add_form=build_customer_quick_add_form(),
+                           customer_quick_add_whts=_customer_quick_add_whts())
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/edit', methods=['GET', 'POST'])
@@ -737,7 +746,8 @@ def edit(id):
                                    line_items=[item.to_dict() for item in invoice.line_items],
                                    gl_accounts=_gl_accounts_dict(),
                                    wht_codes=_wht_codes_for_form(),
-                                   customer_quick_add_form=build_customer_quick_add_form())
+                                   customer_quick_add_form=build_customer_quick_add_form(),
+                                   customer_quick_add_whts=_customer_quick_add_whts())
         try:
             old_values = model_to_dict(invoice, [
                 'invoice_number', 'invoice_date', 'due_date', 'customer_name',
@@ -752,7 +762,8 @@ def edit(id):
                                        line_items=[item.to_dict() for item in invoice.line_items],
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
-                                       customer_quick_add_form=build_customer_quick_add_form())
+                                       customer_quick_add_form=build_customer_quick_add_form(),
+                                       customer_quick_add_whts=_customer_quick_add_whts())
 
             line_err = _line_items_error(request.form.get('line_items', '[]'))
             if line_err:
@@ -763,7 +774,8 @@ def edit(id):
                                        line_items=[item.to_dict() for item in invoice.line_items],
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
-                                       customer_quick_add_form=build_customer_quick_add_form())
+                                       customer_quick_add_form=build_customer_quick_add_form(),
+                                       customer_quick_add_whts=_customer_quick_add_whts())
 
             invoice.invoice_number = form.invoice_number.data
             invoice.invoice_date = form.invoice_date.data
@@ -833,7 +845,8 @@ def edit(id):
                            line_items=[item.to_dict() for item in invoice.line_items],
                            gl_accounts=_gl_accounts_dict(),
                            wht_codes=_wht_codes_for_form(),
-                           customer_quick_add_form=build_customer_quick_add_form())
+                           customer_quick_add_form=build_customer_quick_add_form(),
+                           customer_quick_add_whts=_customer_quick_add_whts())
 
 
 # ── helpers called by create() and edit() ───────────────────────────────────
