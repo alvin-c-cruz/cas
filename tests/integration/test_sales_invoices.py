@@ -198,6 +198,60 @@ def test_post_invoice_je_creates_balanced_entry(db_session, customer, revenue_ac
     assert len(credit_lines) >= 1  # Revenue at minimum
 
 
+def test_post_invoice_je_line_order(db_session, customer, revenue_account, branch, accountant_user):
+    """JE lines read debits-first: AR, Creditable WHT, Output VAT, Sales (matches APV)."""
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    from app.accounts.models import Account
+    from app.sales_vat_categories.models import SalesVATCategory
+    from app.withholding_tax.models import WithholdingTax
+
+    def _acct(code, name, typ, nb):
+        a = Account.query.filter_by(code=code).first()
+        if not a:
+            a = Account(code=code, name=name, account_type=typ, normal_balance=nb, is_active=True)
+            db_session.add(a)
+            db_session.flush()
+        return a
+
+    _acct('10201', 'AR - Trade', 'Asset', 'debit')
+    _acct('10212', 'Creditable WHT Receivable', 'Asset', 'debit')
+    ovat = _acct('20201', 'Output VAT', 'Liability', 'credit')
+
+    if not SalesVATCategory.query.filter_by(code='V12ORD').first():
+        db_session.add(SalesVATCategory(code='V12ORD', name='VAT 12% Ord', rate=Decimal('12.00'),
+                                        transaction_nature='regular', output_vat_account_id=ovat.id))
+    if not WithholdingTax.query.filter_by(code='WC999').first():
+        db_session.add(WithholdingTax(code='WC999', name='Test WHT', rate=Decimal('1.00'), is_active=True))
+    db_session.flush()
+    wt = WithholdingTax.query.filter_by(code='WC999').first()
+
+    inv = SalesInvoice(branch_id=branch.id, invoice_number='SI-ORD-01',
+                       invoice_date=date(2026, 6, 14), due_date=date(2026, 7, 14),
+                       customer_id=customer.id, customer_name=customer.name, notes='',
+                       status='draft', amount_paid=Decimal('0.00'))
+    db_session.add(inv)
+    db_session.flush()
+    item = SalesInvoiceItem(invoice_id=inv.id, line_number=1, description='Service',
+                            amount=Decimal('11200.00'), vat_category='V12ORD', vat_rate=Decimal('12.00'),
+                            account_id=revenue_account.id, wt_id=wt.id, wt_rate=Decimal('1.00'))
+    item.calculate_amounts()
+    db_session.add(item)
+    db_session.flush()
+    inv.calculate_totals()
+    assert inv.withholding_tax_amount > 0  # ensure a Creditable WHT line is emitted
+
+    from app.sales_invoices import views as sv_views
+    je = sv_views._post_invoice_je(inv, accountant_user.id)
+    db_session.flush()
+
+    ordered = sorted(je.lines, key=lambda l: l.line_number)
+    codes = [l.account.code for l in ordered]
+    assert codes == ['10201', '10212', '20201', revenue_account.code]
+    assert ordered[0].debit_amount > 0 and ordered[1].debit_amount > 0   # AR, CWT
+    assert ordered[2].credit_amount > 0 and ordered[3].credit_amount > 0  # Output VAT, Sales
+    assert je.is_balanced
+
+
 def test_create_invoice_posts_to_books(client, db_session, accountant_user, customer, revenue_account, branch):
     """Creating an SV saves draft JE and audit log entry."""
     from app.accounts.models import Account

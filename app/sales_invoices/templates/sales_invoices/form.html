@@ -133,7 +133,7 @@
 
                             <!-- Row 2: Less: Output VAT — pencil override -->
                             <div id="vatDisplayMode" class="bsr">
-                                <span class="bsr-label">Less: Output VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Output VAT" aria-label="Override Output VAT">&#9999;</button></span>
+                                <span class="bsr-label">Less: Output VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Output VAT" aria-label="Override Output VAT">✏️</button></span>
                                 <span id="vatDisplay" class="bsr-amt">0.00</span>
                             </div>
                             <div id="vatEditMode" class="bsr" style="display:none">
@@ -158,7 +158,7 @@
 
                             <!-- Row 5: Less: WHT (customer deducts on payment) — pencil override -->
                             <div id="wtDisplayMode" class="bsr">
-                                <span class="bsr-label">Less: WHT (customer) <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">&#9999;</button></span>
+                                <span class="bsr-label">Less: WHT (customer) <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button></span>
                                 <span id="wtDisplay" class="bsr-amt bsr-amt--red">0.00</span>
                             </div>
                             <div id="wtEditMode" class="bsr" style="display:none">
@@ -688,7 +688,7 @@ function calculateTotals() {
 // ── JE Preview ────────────────────────────────────────────────────────────────
 
 function renderJEPreview(subtotal, vatUsed, wtUsed) {
-    const rows = [];
+    const revenueRows = [];
     let firstRevIdx = -1;
     const vatBuckets = {};
 
@@ -708,8 +708,8 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
             if (!vatBuckets[acctId]) vatBuckets[acctId] = { code, name, amt: 0 };
             vatBuckets[acctId].amt += vatAmt;
         }
-        if (firstRevIdx === -1) firstRevIdx = rows.length;
-        rows.push({
+        if (firstRevIdx === -1) firstRevIdx = revenueRows.length;
+        revenueRows.push({
             code: acct ? acct.code : '—',
             // Account Title column shows the account name (matches the posted JE
             // in print.html); the line description lives in the line-items table.
@@ -733,20 +733,21 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
     // Residual absorber on first revenue credit line
     const vatRowsTotal = bucketList.reduce((s, b) => s + b.amt, 0);
     if (firstRevIdx >= 0) {
-        rows[firstRevIdx].credit -= (vatRowsTotal - autoVat);
+        revenueRows[firstRevIdx].credit -= (vatRowsTotal - autoVat);
     }
 
-    bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: 0, credit: b.amt }));
-
-    // WHT Receivable (debit)
-    if (wtUsed > 0 && glAccounts && glAccounts.wt) {
-        rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: wtUsed, credit: 0 });
-    }
-    // AR Trade (debit)
+    // Assemble debits-first (mirrors the posted JE + APV):
+    // AR, Creditable WHT, Output VAT, Sales.
+    const rows = [];
     const netReceivable = subtotal - wtUsed;
     if (glAccounts && glAccounts.ar) {
         rows.push({ code: glAccounts.ar.code, name: glAccounts.ar.name, debit: netReceivable, credit: 0 });
     }
+    if (wtUsed > 0 && glAccounts && glAccounts.wt) {
+        rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: wtUsed, credit: 0 });
+    }
+    bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: 0, credit: b.amt }));
+    revenueRows.forEach(r => rows.push(r));
 
     const totalDebit  = rows.reduce((s, r) => s + r.debit, 0);
     const totalCredit = rows.reduce((s, r) => s + r.credit, 0);

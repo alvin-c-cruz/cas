@@ -343,22 +343,32 @@ def _post_invoice_je(invoice, user_id):
     first_revenue_line = None
     all_lines = []
 
-    # Credit: revenue accounts (net base per line item)
-    for item in invoice.line_items:
-        if not item.account_id:
-            continue
-        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
-        entry_line = JournalEntryLine(
+    # Order mirrors APV (debits first, then credits): AR, Creditable WHT, then
+    # Output VAT and revenue. Amounts/balance are unchanged — only presentation.
+
+    # Debit: Accounts Receivable (total receivable)
+    ar_line = JournalEntryLine(
+        entry_id=je.id, line_number=line_num,
+        account_id=ar_account.id,
+        description=f'AR: {invoice.invoice_number} — {invoice.customer_name}',
+        debit_amount=Decimal(str(invoice.total_amount)),
+        credit_amount=Decimal('0.00'),
+    )
+    db.session.add(ar_line)
+    all_lines.append(ar_line)
+    line_num += 1
+
+    # Debit: Creditable WHT Receivable
+    if wt_account:
+        wt_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
-            account_id=item.account_id,
-            description=item.description or '',
-            debit_amount=Decimal('0.00'),
-            credit_amount=net_base,
+            account_id=wt_account.id,
+            description=f'Creditable WHT: {invoice.invoice_number}',
+            debit_amount=Decimal(str(invoice.withholding_tax_amount)),
+            credit_amount=Decimal('0.00'),
         )
-        db.session.add(entry_line)
-        all_lines.append(entry_line)
-        if first_revenue_line is None:
-            first_revenue_line = entry_line
+        db.session.add(wt_line)
+        all_lines.append(wt_line)
         line_num += 1
 
     # Credit: output VAT per bucket
@@ -376,29 +386,23 @@ def _post_invoice_je(invoice, user_id):
         all_lines.append(vat_line)
         line_num += 1
 
-    # Debit: Creditable WHT Receivable
-    if wt_account:
-        wt_line = JournalEntryLine(
+    # Credit: revenue accounts (net base per line item)
+    for item in invoice.line_items:
+        if not item.account_id:
+            continue
+        net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+        entry_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
-            account_id=wt_account.id,
-            description=f'Creditable WHT: {invoice.invoice_number}',
-            debit_amount=Decimal(str(invoice.withholding_tax_amount)),
-            credit_amount=Decimal('0.00'),
+            account_id=item.account_id,
+            description=item.description or '',
+            debit_amount=Decimal('0.00'),
+            credit_amount=net_base,
         )
-        db.session.add(wt_line)
-        all_lines.append(wt_line)
+        db.session.add(entry_line)
+        all_lines.append(entry_line)
+        if first_revenue_line is None:
+            first_revenue_line = entry_line
         line_num += 1
-
-    # Debit: Accounts Receivable
-    ar_line = JournalEntryLine(
-        entry_id=je.id, line_number=line_num,
-        account_id=ar_account.id,
-        description=f'AR: {invoice.invoice_number} — {invoice.customer_name}',
-        debit_amount=Decimal(str(invoice.total_amount)),
-        credit_amount=Decimal('0.00'),
-    )
-    db.session.add(ar_line)
-    all_lines.append(ar_line)
 
     # Absorb rounding residual into first revenue line
     sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
