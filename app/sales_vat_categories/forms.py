@@ -1,5 +1,4 @@
 """Sales VAT Category forms."""
-from decimal import Decimal
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, DecimalField, SelectField
 from wtforms.validators import (DataRequired, InputRequired, Length, NumberRange,
@@ -25,18 +24,8 @@ class SalesVATCategoryForm(FlaskForm):
     description = TextAreaField('Description', validators=[
         Optional(), Length(max=500, message='Description must be 500 characters or less')])
     rate = DecimalField('VAT Rate (%)', validators=[
-        DataRequired(message='VAT rate is required')], places=2)
-
-    def validate_rate(self, field):
-        """Validate rate is between 0 and 100."""
-        # Coerce string data to Decimal if needed (happens with form.process(data=...))
-        if isinstance(field.data, str):
-            try:
-                field.data = Decimal(field.data)
-            except (ValueError, TypeError):
-                raise ValidationError('VAT rate must be a valid number')
-        if field.data is not None and (field.data < 0 or field.data > 100):
-            raise ValidationError('VAT rate must be between 0 and 100')
+        InputRequired(message='VAT rate is required'),
+        NumberRange(min=0, max=100, message='VAT rate must be between 0 and 100')], places=2)
 
     transaction_nature = SelectField('Transaction Nature',
                                      choices=TRANSACTION_NATURE_CHOICES,
@@ -46,13 +35,6 @@ class SalesVATCategoryForm(FlaskForm):
 
     def validate_output_vat_account_id(self, field):
         rate = self.rate.data
-        # Handle case where rate might be a string (from form.process(data=...))
-        if isinstance(rate, str):
-            try:
-                from decimal import Decimal
-                rate = Decimal(rate)
-            except (ValueError, TypeError):
-                rate = None
         if rate is not None and rate > 0:
             if not field.data or field.data == 0:
                 raise ValidationError(
