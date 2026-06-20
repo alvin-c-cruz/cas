@@ -240,11 +240,15 @@ def _build_validated_ap_lines():
     """
     line_items_data = request.form.getlist('line_items')
     if not line_items_data or not line_items_data[0]:
-        return []
+        raise APVLineError('Add at least one line item before saving the AP Voucher.')
     line_items = json.loads(line_items_data[0])
+    if not line_items:
+        raise APVLineError('Add at least one line item before saving the AP Voucher.')
     leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
     built = []
     for idx, item_data in enumerate(line_items, start=1):
+        if not str(item_data.get('description') or '').strip():
+            raise APVLineError('Each line item must have a description.')
         try:
             amount = Decimal(str(item_data.get('amount', 0)))
         except (ValueError, TypeError, InvalidOperation):
