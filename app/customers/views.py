@@ -1,7 +1,7 @@
 """
 Customer management views (Admin and Accountant only)
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -28,6 +28,37 @@ def accountant_or_admin_required(f):
             return redirect(url_for('dashboard.home'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def staff_or_above_required(f):
+    """Staff, accountant, and admin allowed (matches vendors; used by quick-add create)."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if current_user.role not in ['staff', 'accountant', 'admin']:
+            flash('You do not have permission to perform this action.', 'error')
+            return redirect(url_for('dashboard.home'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def _wants_json():
+    """True when the request is an AJAX/JSON call (modal quick-add)."""
+    return (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        or request.accept_mimetypes.best == 'application/json'
+    )
+
+
+def build_customer_quick_add_form():
+    """A populated CustomerForm for the inline Add-Customer modal."""
+    form = CustomerForm()
+    populate_dropdown_choices(form)
+    form.code.data = generate_next_customer_code()
+    form.is_active.data = '1'
+    form.payment_terms.data = 'Net 30'
+    return form
 
 
 # Single source of truth for the fields snapshotted to the audit trail and exported.
@@ -113,7 +144,7 @@ def populate_dropdown_choices(form):
 
 @customers_bp.route('/customers/create', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@staff_or_above_required
 def create():
     """Create new customer"""
     form = CustomerForm()
@@ -122,6 +153,9 @@ def create():
     if form.validate_on_submit():
         existing = Customer.query.filter_by(code=form.code.data).first()
         if existing:
+            if _wants_json():
+                return jsonify(ok=False,
+                               errors={'code': f'Customer code "{form.code.data}" already exists.'}), 422
             flash(f'Customer code "{form.code.data}" already exists.', 'error')
             return render_template('customers/form.html', form=form, customer=None)
 
@@ -153,6 +187,11 @@ def create():
                 new_values=model_to_dict(customer, CUSTOMER_FIELDS)
             )
 
+            if _wants_json():
+                return jsonify(ok=True, customer={
+                    'id': customer.id,
+                    'label': f'{customer.code} - {customer.name}',
+                })
             flash(f'Customer "{customer.name}" created successfully!', 'success')
             return redirect(url_for('customers.list_customers'))
         except Exception as e:
@@ -164,6 +203,10 @@ def create():
             log_exception(e, severity='ERROR', module='customers.create')
             db.session.rollback()
             flash('An error occurred while creating the customer. Please try again.', 'error')
+
+    if request.method == 'POST' and _wants_json():
+        return jsonify(ok=False,
+                       errors={f: errs[0] for f, errs in form.errors.items()}), 422
 
     if request.method == 'GET':
         form.code.data = generate_next_customer_code()

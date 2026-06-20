@@ -294,3 +294,88 @@ def test_customer_delete_succeeds_without_dependents(
     assert Customer.query.get(cust_id) is None
     assert AuditLog.query.filter_by(
         module='customer', action='delete', record_id=cust_id).count() == 1
+
+
+def test_create_json_returns_customer_on_success(
+        client, db_session, accountant_user, main_branch):
+    """AJAX POST to customers.create returns ok=True + the new customer's id/label."""
+    import json
+    from app.customers.models import Customer
+    from app.audit.models import AuditLog
+    _login_accountant(client, accountant_user, main_branch)
+
+    resp = client.post('/customers/create',
+                       data={'code': 'C001', 'name': 'Quick Corp',
+                             'payment_terms': 'Net 30', 'is_active': '1',
+                             'default_vat_category': '', 'default_wt_code': ''},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+
+    assert resp.status_code == 200
+    body = json.loads(resp.data)
+    assert body['ok'] is True
+    cust = Customer.query.filter_by(code='C001').first()
+    assert cust is not None
+    assert body['customer']['id'] == cust.id
+    assert body['customer']['label'] == 'C001 - Quick Corp'
+    assert AuditLog.query.filter_by(module='customer', action='create',
+                                    record_id=cust.id).count() == 1
+
+
+def test_create_json_duplicate_code_returns_422(
+        client, db_session, accountant_user, main_branch):
+    """A duplicate code on the JSON path returns 422 with a code error (no HTML)."""
+    import json
+    from app.customers.models import Customer
+    db_session.add(Customer(code='C001', name='Existing', payment_terms='Net 30',
+                            is_active=True))
+    db_session.commit()
+    _login_accountant(client, accountant_user, main_branch)
+
+    resp = client.post('/customers/create',
+                       data={'code': 'C001', 'name': 'Dupe', 'payment_terms': 'Net 30',
+                             'is_active': '1', 'default_vat_category': '',
+                             'default_wt_code': ''},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+
+    assert resp.status_code == 422
+    body = json.loads(resp.data)
+    assert body['ok'] is False
+    assert 'code' in body['errors']
+
+
+def test_create_json_invalid_returns_422(
+        client, db_session, accountant_user, main_branch):
+    """Missing required name on the JSON path returns 422 with a field error."""
+    import json
+    _login_accountant(client, accountant_user, main_branch)
+
+    resp = client.post('/customers/create',
+                       data={'code': 'C001', 'name': '', 'payment_terms': 'Net 30',
+                             'is_active': '1', 'default_vat_category': '',
+                             'default_wt_code': ''},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+
+    assert resp.status_code == 422
+    body = json.loads(resp.data)
+    assert body['ok'] is False
+    assert 'name' in body['errors']
+
+
+def test_staff_can_create_customer(client, db_session, staff_user, main_branch):
+    """Access change: staff (not just accountant/admin) may create a customer."""
+    from app.customers.models import Customer
+    staff_user.set_branches([main_branch])
+    db_session.commit()
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    client.post('/login', data={'username': 'staff', 'password': 'staff123'},
+                follow_redirects=True)
+
+    resp = client.post('/customers/create',
+                       data={'code': 'C001', 'name': 'Staff Made Corp',
+                             'payment_terms': 'Net 30', 'is_active': '1',
+                             'default_vat_category': '', 'default_wt_code': ''},
+                       follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert Customer.query.filter_by(code='C001').first() is not None
