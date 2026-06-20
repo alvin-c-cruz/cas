@@ -51,10 +51,10 @@ def _gl_account_ids():
 def _si_gl_account_ids():
     """Return (ar_id, wht_recv_id, output_vat_ids) for SI column grouping."""
     from app.accounts.models import Account
-    from app.vat_categories.models import VATCategory
+    from app.sales_vat_categories.models import SalesVATCategory
     ar = Account.query.filter_by(code='10201').first()
     wht_recv = Account.query.filter_by(code='10212').first()
-    vat_ids = {c.output_vat_account.id for c in VATCategory.query.all() if c.output_vat_account}
+    vat_ids = {c.output_vat_account.id for c in SalesVATCategory.query.all() if c.output_vat_account}
     return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
 
 
@@ -140,10 +140,10 @@ def _cd_entry_identity(entry, cdv_map):
 def _cr_gl_account_ids():
     """Return (ar_id, wht_recv_id, output_vat_ids) for CR column grouping."""
     from app.accounts.models import Account
-    from app.vat_categories.models import VATCategory
+    from app.sales_vat_categories.models import SalesVATCategory
     ar = Account.query.filter_by(code='10201').first()
     wht_recv = Account.query.filter_by(code='10212').first()
-    vat_ids = {c.output_vat_account.id for c in VATCategory.query.all() if c.output_vat_account}
+    vat_ids = {c.output_vat_account.id for c in SalesVATCategory.query.all() if c.output_vat_account}
     return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
 
 
