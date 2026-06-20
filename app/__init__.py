@@ -173,6 +173,7 @@ def create_app(config_name=None):
     from app.branches.models import Branch
     from app.vendors.models import Vendor
     from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
+    from app.sales_vat_categories.models import SalesVATCategory, SalesVATCategoryChangeRequest
     from app.withholding_tax.models import WithholdingTax, WithholdingTaxChangeRequest
     from app.customers.models import Customer
     from app.audit.models import AuditLog
