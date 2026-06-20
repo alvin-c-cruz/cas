@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit Sales VAT Category' if sales_vat_category else 'Create Sales VAT Category' }}{% endblock %}
+{% block page_title %}{{ 'Edit Sales VAT Category' if sales_vat_category else 'Create Sales VAT Category' }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate data-track-changes="{{ 'true' if sales_vat_category else 'false' }}">
+            {{ form.hidden_tag() }}
+
+            <!-- Basic Information Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">📋</span>
+                    <div>
+                        <h3 class="form-section-title">Basic Information</h3>
+                        <p class="form-section-desc">Enter the Sales VAT category code and display name</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    {{ render_field(form.code, required=True) }}
+                    {{ render_field(form.name, required=True) }}
+                </div>
+
+                <div class="form-group">
+                    {{ render_field(form.description) }}
+                </div>
+            </div>
+
+            <!-- Tax Configuration Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">💰</span>
+                    <div>
+                        <h3 class="form-section-title">Tax Configuration</h3>
+                        <p class="form-section-desc">Set the Sales VAT rate, transaction nature, and status</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        {{ form.rate.label(class="form-label") }}<span class="required" aria-hidden="true">*</span>
+                        <div class="rate-input-wrapper">
+                            {{ form.rate(class="form-control rate-input", **{"data-rate-input": "true"}) }}
+                            <span class="rate-preview" id="ratePreview">0.00%</span>
+                        </div>
+                        {% if form.rate.errors %}
+                            {% for error in form.rate.errors %}
+                                <div class="form-error">{{ error }}</div>
+                            {% endfor %}
+                        {% endif %}
+                        <small class="form-hint">Enter as decimal (e.g., 12.00 for 12%)</small>
+                    </div>
+
+                    <div class="form-group">
+                        {{ form.is_active.label(class="form-label") }}
+                        <div class="toggle-wrapper">
+                            {{ form.is_active(class="toggle-input") }}
+                            <div class="toggle-switch" id="statusToggle" role="switch"
+                                 tabindex="0" aria-checked="false" aria-label="Toggle status">
+                                <span class="toggle-slider"></span>
+                            </div>
+                            <span class="toggle-label" id="toggleLabel">
+                                {% if sales_vat_category and sales_vat_category.is_active %}Active{% else %}Inactive{% endif %}
+                            </span>
+                        </div>
+                        {% if form.is_active.errors %}
+                            {% for error in form.is_active.errors %}
+                                <div class="form-error">{{ error }}</div>
+                            {% endfor %}
+                        {% endif %}
+                        <small class="form-hint">Only active categories appear in dropdowns</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    {{ form.transaction_nature.label(class="form-label") }}<span class="required" aria-hidden="true">*</span>
+                    {{ form.transaction_nature(class="form-control") }}
+                    {% if form.transaction_nature.errors %}
+                        {% for error in form.transaction_nature.errors %}
+                            <div class="form-error">{{ error }}</div>
+                        {% endfor %}
+                    {% endif %}
+                    <small class="form-hint">BIR classification for this Sales VAT category</small>
+                </div>
+
+                <div class="form-group" id="outputVatAccountGroup">
+                    {{ form.output_vat_account_id.label(class="form-label", for="outputVatAccountSelect") }}
+                    {{ form.output_vat_account_id(class="form-control", id="outputVatAccountSelect") }}
+                    {% if form.output_vat_account_id.errors %}
+                        {% for error in form.output_vat_account_id.errors %}
+                            <div class="form-error">{{ error }}</div>
+                        {% endfor %}
+                    {% endif %}
+                    <small class="form-hint">Journal entries credit this account for the category's output VAT. Required when the rate is above 0%.</small>
+                </div>
+            </div>
+
+            {# Reason for Change — only when editing; creating needs no reason #}
+            {% if sales_vat_category %}
+            <!-- Reason for Change Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">📝</span>
+                    <div>
+                        <h3 class="form-section-title">Reason for Change</h3>
+                        <p class="form-section-desc">Visible to the reviewer of this change request</p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    {{ render_field(form.request_reason) }}
+                    <small class="form-hint">Visible to the reviewer. Explain why this change is needed.</small>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    {{ 'Update Sales VAT Category' if sales_vat_category else 'Create Sales VAT Category' }}
+                </button>
+                <a href="{{ url_for('sales_vat_categories.list_sales_vat_categories') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.form-section {
+    margin-bottom: 28px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+}
+.form-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 24px;
+}
+.form-section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.form-section-icon {
+    font-size: 24px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.form-section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+.form-section-desc {
+    font-size: 13px;
+    color: var(--text-2);
+    margin: 0;
+}
+.rate-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.rate-input {
+    flex: 1;
+    max-width: 200px;
+}
+.rate-preview {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 80px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, var(--blue) 0%, #2563eb 100%);
+    color: white;
+    font-weight: 600;
+    font-size: 15px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+}
+.toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+}
+.toggle-input {
+    display: none;
+}
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 26px;
+    background-color: #cbd5e1;
+    border-radius: 34px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+.toggle-slider {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    background-color: white;
+    border-radius: 50%;
+    transition: transform 0.3s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.toggle-switch.is-on {
+    background-color: var(--green);
+}
+.toggle-switch.is-on .toggle-slider {
+    transform: translateX(22px);
+}
+.toggle-label {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-2);
+    min-width: 60px;
+}
+.form-hint {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-3);
+    font-size: 12px;
+}
+</style>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Rate input live preview
+    const rateInput = document.querySelector('[data-rate-input]');
+    const ratePreview = document.getElementById('ratePreview');
+
+    if (rateInput && ratePreview) {
+        function updateRatePreview() {
+            const value = parseFloat(rateInput.value) || 0;
+            ratePreview.textContent = value.toFixed(2) + '%';
+        }
+        rateInput.addEventListener('input', updateRatePreview);
+        updateRatePreview();
+    }
+
+    // Status toggle — backed by a <select> (Active/Inactive)
+    const toggleInput = document.getElementById('{{ form.is_active.id }}');
+    const toggleLabel = document.getElementById('toggleLabel');
+    const toggleSwitch = document.getElementById('statusToggle');
+
+    if (toggleInput && toggleLabel && toggleSwitch) {
+        function syncStatusToggle() {
+            const active = toggleInput.value === '1';
+            toggleSwitch.classList.toggle('is-on', active);
+            toggleSwitch.setAttribute('aria-checked', active ? 'true' : 'false');
+            toggleLabel.textContent = active ? 'Active' : 'Inactive';
+            toggleLabel.style.color = active ? 'var(--green)' : 'var(--text-2)';
+        }
+        function flipStatus() {
+            toggleInput.value = toggleInput.value === '1' ? '0' : '1';
+            syncStatusToggle();
+        }
+        toggleSwitch.addEventListener('click', flipStatus);
+        toggleSwitch.addEventListener('keydown', function(e) {
+            if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipStatus(); }
+        });
+        toggleInput.addEventListener('change', syncStatusToggle);
+        syncStatusToggle();
+    }
+
+    // Output Tax account picker — searchable; hidden when rate is 0
+    const acctSelect = document.getElementById('outputVatAccountSelect');
+    const acctGroup = document.getElementById('outputVatAccountGroup');
+    let acctChoices = null;
+    if (acctSelect && window.Choices) {
+        acctChoices = new Choices(acctSelect, {
+            searchEnabled: true, itemSelectText: '', shouldSort: false,
+            searchResultLimit: 100, allowHTML: false
+        });
+    }
+    function syncAcctVisibility() {
+        const rate = parseFloat(rateInput ? rateInput.value : '0') || 0;
+        if (acctGroup) acctGroup.style.display = rate > 0 ? '' : 'none';
+        if (rate <= 0 && acctChoices) acctChoices.setChoiceByValue('0');
+    }
+    if (rateInput) rateInput.addEventListener('input', syncAcctVisibility);
+    syncAcctVisibility();
+});
+</script>
+{% endblock %}

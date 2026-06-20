@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Sales VAT Categories{% endblock %}
+{% block page_title %}Sales VAT Categories{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div class="page-header-actions">
+        <div>
+            <h1 class="page-heading">Sales VAT Categories</h1>
+            <p class="page-subheading">Manage Philippine BIR Sales VAT Categories</p>
+        </div>
+        <div class="page-actions">
+            {% if pending_requests|length > 0 %}
+            <a href="{{ url_for('sales_vat_categories.change_requests') }}" class="btn btn-secondary">
+                View Pending Requests ({{ pending_requests|length }})
+            </a>
+            {% endif %}
+            <a href="{{ url_for('sales_vat_categories.create') }}" class="btn btn-primary">+ New Sales VAT Category</a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Rate (%)</th>
+                    <th>Transaction Nature</th>
+                    <th>Output Tax Account</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if sales_vat_categories %}
+                    {% for svc in sales_vat_categories %}
+                    <tr>
+                        <td>
+                            <span class="account-code">{{ svc.code }}</span>
+                        </td>
+                        <td>
+                            <strong>{{ svc.name }}</strong>
+                            {% if svc.id in pending_record_ids %}
+                            <span class="badge badge-pending-change" title="A change request for this record is awaiting review">Pending change</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size: 13px; color: #64748b;">
+                            {{ svc.description or '-' }}
+                        </td>
+                        <td style="font-weight: 600; color: #1e293b;">
+                            {{ "%.2f"|format(svc.rate) }}%
+                        </td>
+                        <td style="font-size: 13px;">
+                            {{ svc.transaction_nature or '-' }}
+                        </td>
+                        <td>
+                            {% if svc.output_vat_account %}
+                                {{ svc.output_vat_account.code }} : {{ svc.output_vat_account.name }}
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td>
+                            {% if svc.is_active %}
+                            <span class="badge badge-success">Active</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="action-buttons">
+                                <a href="{{ url_for('sales_vat_categories.edit', id=svc.id) }}" class="btn-action btn-action-edit">Edit</a>
+                                <button type="button" class="btn-action btn-action-delete"
+                                        onclick="showDeleteModal({{ svc.id }}, '{{ svc.code | e }}', '{{ svc.name | e }}')">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" class="empty-state-cell">
+                            <div class="empty-icon">📋</div>
+                            <div>No Sales VAT categories found</div>
+                            <div style="margin-top: 12px;">
+                                <a href="{{ url_for('sales_vat_categories.create') }}" class="btn btn-primary">+ Create First Sales VAT Category</a>
+                            </div>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Delete modal -->
+<div id="delete-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-box">
+        <h3>Delete Sales VAT Category</h3>
+        <p id="delete-modal-message" class="modal-message"></p>
+        <form id="delete-form" method="POST" action="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="delete-request-reason" class="form-label">Reason for Change</label>
+                <textarea name="request_reason" id="delete-request-reason" rows="3" maxlength="500"
+                          class="form-control" required
+                          placeholder="Why is this deletion needed?"></textarea>
+                <small class="form-hint">Visible to the reviewer. Explain why this change is needed.</small>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Confirm Delete</button>
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+.modal-box {
+    background: var(--card);
+    padding: 30px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    max-width: 480px; width: 90%;
+}
+.modal-box h3 { margin: 0 0 16px; color: var(--text); }
+.modal-message { margin-bottom: 20px; color: var(--text-2); }
+.form-hint { display: block; margin-top: 6px; color: var(--text-3); font-size: 12px; }
+</style>
+
+<script>
+function showDeleteModal(id, code, name) {
+    document.getElementById('delete-form').action = '/sales-vat-categories/' + id + '/delete';
+    document.getElementById('delete-modal-message').textContent =
+        'Are you sure you want to delete Sales VAT category ' + code + ' - ' + name + '?';
+    document.getElementById('delete-request-reason').value = '';
+    document.getElementById('delete-modal').style.display = 'flex';
+}
+function closeDeleteModal() {
+    document.getElementById('delete-modal').style.display = 'none';
+}
+document.getElementById('delete-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeDeleteModal();
+});
+</script>
+{% endblock %}

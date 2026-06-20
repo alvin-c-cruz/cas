@@ -195,6 +195,7 @@ def create_app(config_name=None):
     from app.branches.views import branches_bp
     from app.vendors.views import vendors_bp
     from app.vat_categories.views import vat_categories_bp
+    from app.sales_vat_categories.views import sales_vat_categories_bp
     from app.withholding_tax.views import withholding_tax_bp
     from app.customers.views import customers_bp
     from app.audit.views import audit_bp
@@ -216,6 +217,7 @@ def create_app(config_name=None):
     app.register_blueprint(branches_bp)
     app.register_blueprint(vendors_bp)
     app.register_blueprint(vat_categories_bp, url_prefix='/vat-categories')
+    app.register_blueprint(sales_vat_categories_bp, url_prefix='/sales-vat-categories')
     app.register_blueprint(withholding_tax_bp, url_prefix='/withholding-tax')
     app.register_blueprint(customers_bp)
     app.register_blueprint(audit_bp)
