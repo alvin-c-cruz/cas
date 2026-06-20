@@ -3,48 +3,19 @@ VAT Category views with approval workflow
 """
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from functools import wraps
 from app import db
 from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
 from app.vat_categories.forms import VATCategoryForm, VATCategoryChangeReviewForm
-from app.users.models import User
 from app.accounts.models import Account
 from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
+from app.utils.admin_approval import admin_required, sole_admin_can_auto_approve, another_active_admin_exists
+from app.utils.cache_helpers import clear_vat_cache
 import json
 
 vat_categories_bp = Blueprint('vat_categories', __name__, template_folder='templates')
-
-
-def accountant_or_admin_required(f):
-    """Decorator to require accountant or admin role."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated:
-            return redirect(url_for('users.login'))
-        if current_user.role not in ['accountant', 'admin']:
-            flash('Only Accountants and Administrators can modify VAT categories.', 'error')
-            return redirect(url_for('vat_categories.list_vat_categories'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-def can_auto_approve():
-    """
-    Sole-accountant rule (owner decision 2026-06-12, B-011): admins are
-    separate from accountants. The single active accountant auto-approves
-    their own changes regardless of how many admins exist; admins never
-    auto-approve and always go to pending.
-    """
-    if current_user.role != 'accountant':
-        return False
-    total_accountants = User.query.filter(
-        User.role == 'accountant',
-        User.is_active == True
-    ).count()
-    return total_accountants == 1
 
 
 def _vat_account_choices(placeholder='-- None --'):
@@ -101,6 +72,7 @@ def flash_duplicate_pending(existing_request):
 
 @vat_categories_bp.route('/')
 @login_required
+@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def list_vat_categories():
     """List all VAT categories"""
     vat_categories = VATCategory.query.order_by(VATCategory.code).all()
@@ -119,7 +91,7 @@ def list_vat_categories():
 
 @vat_categories_bp.route('/create', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def create():
     """Create new VAT category - submits for approval"""
     form = VATCategoryForm()
@@ -157,15 +129,20 @@ def create():
 
             # Shared create flow (mirrors withholding_tax) — auto-approve or
             # pending change request, with audit + flash.
-            return process_create_change_request(
+            auto_approve = sole_admin_can_auto_approve()
+            result = process_create_change_request(
                 model_cls=VATCategory,
                 cr_cls=VATCategoryChangeRequest,
                 module='vat_category',
                 noun='VAT category',
                 change_data=change_data,
-                auto_approve=can_auto_approve(),
-                list_endpoint='vat_categories.list_vat_categories'
+                auto_approve=auto_approve,
+                list_endpoint='vat_categories.list_vat_categories',
+                approved_note='Auto-approved (single admin)'
             )
+            if auto_approve:
+                clear_vat_cache()
+            return result
 
         except Exception as e:
             from flask import current_app
@@ -181,7 +158,7 @@ def create():
 
 @vat_categories_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def edit(id):
     """Edit VAT category - submits for approval"""
     vat_category = VATCategory.query.get_or_404(id)
@@ -225,7 +202,7 @@ def edit(id):
             }
 
             # Check if auto-approval is allowed
-            if can_auto_approve():
+            if sole_admin_can_auto_approve():
                 # Capture old values before update
                 old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
 
@@ -247,10 +224,11 @@ def edit(id):
                     record_identifier=f'{vat_category.code} - {vat_category.name}',
                     old_values=old_values,
                     new_values=change_data,
-                    notes=f'Auto-approved (single accountant). Reason: {form.request_reason.data.strip()}'
+                    notes=f'Auto-approved (single admin). Reason: {form.request_reason.data.strip()}'
                 )
 
                 db.session.commit()
+                clear_vat_cache()
                 flash(f'VAT category "{vat_category.name}" has been updated successfully.', 'success')
                 return redirect(url_for('vat_categories.list_vat_categories'))
             else:
@@ -306,7 +284,7 @@ def edit(id):
 
 @vat_categories_bp.route('/<int:id>/delete', methods=['POST'])
 @login_required
-@accountant_or_admin_required
+@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def delete(id):
     """Delete VAT category - submits for approval"""
     vat_category = VATCategory.query.get_or_404(id)
@@ -328,7 +306,7 @@ def delete(id):
 
     try:
         # Check if auto-approval is allowed
-        if can_auto_approve():
+        if sole_admin_can_auto_approve():
             # Capture values before delete
             old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
             vat_identifier = f'{vat_category.code} - {vat_category.name}'
@@ -345,10 +323,11 @@ def delete(id):
                 record_id=vat_id,
                 record_identifier=vat_identifier,
                 old_values=old_values,
-                notes=f'Auto-approved (single accountant). Reason: {request_reason}'
+                notes=f'Auto-approved (single admin). Reason: {request_reason}'
             )
 
             db.session.commit()
+            clear_vat_cache()
             flash(f'VAT category "{vat_name}" has been deleted successfully.', 'success')
         else:
             # Create change request for approval
@@ -392,7 +371,7 @@ def delete(id):
 
 @vat_categories_bp.route('/change-requests')
 @login_required
-@accountant_or_admin_required
+@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def change_requests():
     """View all change requests (pending, approved, rejected)"""
     all_requests = VATCategoryChangeRequest.query.order_by(VATCategoryChangeRequest.requested_at.desc()).all()
@@ -440,13 +419,13 @@ def change_requests():
 
 @vat_categories_bp.route('/change-requests/<int:id>/review', methods=['GET', 'POST'])
 @login_required
-@accountant_or_admin_required
+@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def review_change_request(id):
     """Review and approve/reject a change request"""
     change_request = VATCategoryChangeRequest.query.get_or_404(id)
 
-    # Cannot review own requests (unless admin)
-    if change_request.requested_by_id == current_user.id and current_user.role != 'admin':
+    # Cannot review own requests when another admin exists (four-eyes rule)
+    if change_request.requested_by_id == current_user.id and another_active_admin_exists():
         flash('You cannot review your own change request.', 'error')
         return redirect(url_for('vat_categories.change_requests'))
 
@@ -609,6 +588,8 @@ def review_change_request(id):
                     )
 
             db.session.commit()
+            if action == 'approve':
+                clear_vat_cache()
             return redirect(url_for('vat_categories.change_requests'))
 
         except Exception as e:
