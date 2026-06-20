@@ -137,7 +137,7 @@ def test_post_invoice_je_creates_balanced_entry(db_session, customer, revenue_ac
     """_post_invoice_je creates a balanced JE with correct debit/credit structure."""
     from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
     from app.accounts.models import Account
-    from app.vat_categories.models import VATCategory
+    from app.sales_vat_categories.models import SalesVATCategory
 
     # Create required GL accounts
     ar = Account.query.filter_by(code='10201').first()
@@ -153,10 +153,11 @@ def test_post_invoice_je_creates_balanced_entry(db_session, customer, revenue_ac
         db_session.add(output_vat)
     db_session.flush()
 
-    vat_cat = VATCategory.query.filter_by(code='V12TEST').first()
+    vat_cat = SalesVATCategory.query.filter_by(code='V12TEST').first()
     if not vat_cat:
-        vat_cat = VATCategory(code='V12TEST', name='VAT 12% Test', rate=Decimal('12.00'),
-                              output_vat_account_id=output_vat.id)
+        vat_cat = SalesVATCategory(code='V12TEST', name='VAT 12% Test', rate=Decimal('12.00'),
+                                   transaction_nature='regular',
+                                   output_vat_account_id=output_vat.id)
         db_session.add(vat_cat)
     db_session.flush()
 
@@ -374,14 +375,15 @@ def test_si_create_form_vat_context(client, db_session, accountant_user, branch)
     Regression for BUG-02: empty dropdowns in dynamic line item rows caused by
     missing seed data. Verify server always sends non-empty arrays.
     """
-    from app.vat_categories.models import VATCategory
+    from app.sales_vat_categories.models import SalesVATCategory
     from app.withholding_tax.models import WithholdingTax
 
-    # Seed minimal VAT + WHT data mirroring seed_minimal()
+    # Seed minimal Sales VAT + WHT data (SI reads SalesVATCategory, not VATCategory)
     vat_codes = ['VEX', 'V0', 'INV', 'V12CG', 'V12DG', 'V12SV', 'V12IM']
     for code in vat_codes:
-        db_session.add(VATCategory(code=code, name=code, rate=0.0,
-                                   description='', is_active=True))
+        db_session.add(SalesVATCategory(code=code, name=code, rate=0.0,
+                                        transaction_nature='regular',
+                                        is_active=True))
     for code in ['WC158', 'WC160', 'WC100']:
         db_session.add(WithholdingTax(code=code, name=code,
                                       description='', rate=1.0, is_active=True))

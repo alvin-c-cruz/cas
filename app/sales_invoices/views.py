@@ -6,7 +6,7 @@ from app import db
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem, SalesInvoiceAttachment
 from app.sales_invoices.forms import SalesInvoiceForm
 from app.customers.models import Customer
-from app.vat_categories.models import VATCategory
+from app.sales_vat_categories.models import SalesVATCategory
 from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
@@ -199,7 +199,7 @@ def _output_vat_buckets(invoice):
     if Decimal(str(invoice.vat_amount)) <= 0:
         return []
 
-    categories = {c.code: c for c in VATCategory.query.all()}
+    categories = {c.code: c for c in SalesVATCategory.query.all()}
     buckets = {}
     for item in invoice.line_items:
         vat_amt = Decimal(str(item.vat_amount or 0))
@@ -803,7 +803,7 @@ def edit(id):
 
 def _vat_categories_for_form():
     return [v.to_dict() for v in
-            VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+            SalesVATCategory.query.filter_by(is_active=True).order_by(SalesVATCategory.code).all()]
 
 
 def _gl_accounts_dict():
@@ -830,7 +830,7 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
         vat_rate = Decimal('0.00')
         vat_category = item_data.get('vat_category') or None
         if vat_category:
-            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+            vat_cat = SalesVATCategory.query.filter_by(code=vat_category, is_active=True).first()
             if vat_cat:
                 vat_rate = Decimal(str(vat_cat.rate))
 
@@ -1020,7 +1020,7 @@ def print_invoice(id):
     if invoice.journal_entry:
         vat_account_ids = {
             c.output_vat_account_id
-            for c in VATCategory.query.all()
+            for c in SalesVATCategory.query.all()
             if c.output_vat_account_id
         }
         lines = invoice.journal_entry.lines.all()

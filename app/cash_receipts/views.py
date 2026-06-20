@@ -7,7 +7,7 @@ from app.cash_receipts.models import CashReceiptVoucher, CRVArLine, CRVRevenueLi
 from app.sales_invoices.models import SalesInvoice
 from app.customers.models import Customer
 from app.accounts.models import Account
-from app.vat_categories.models import VATCategory
+from app.sales_vat_categories.models import SalesVATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
@@ -123,7 +123,7 @@ def _output_vat_buckets(crv):
     revenue line's category has no output account."""
     if Decimal(str(crv.total_vat)) == 0:
         return []
-    categories = {c.code: c for c in VATCategory.query.all()}
+    categories = {c.code: c for c in SalesVATCategory.query.all()}
     buckets = {}
     for line in crv.revenue_lines:
         vat_amt = Decimal(str(line.vat_amount or 0))
@@ -514,7 +514,7 @@ def _parse_line_items(crv):
         vat_rate = Decimal('0.00')
         vat_category = item.get('vat_category')
         if vat_category:
-            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+            vat_cat = SalesVATCategory.query.filter_by(code=vat_category, is_active=True).first()
             if vat_cat:
                 vat_rate = Decimal(str(vat_cat.rate))
         wt_id = int(item['wt_id']) if item.get('wt_id') else None
@@ -545,7 +545,7 @@ def _form_context(all_accounts=None):
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
     if all_accounts is None:
         all_accounts = _get_all_accounts_for_select()
-    vat_categories = [v.to_dict() for v in VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()]
+    vat_categories = [v.to_dict() for v in SalesVATCategory.query.filter_by(is_active=True).order_by(SalesVATCategory.code).all()]
     _accts = _get_gl_accounts()
     gl_accounts = {
         'ar': {'code': _accts['ar'].code, 'name': _accts['ar'].name} if _accts['ar'] else None,
