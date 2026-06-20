@@ -26,7 +26,9 @@
     "app/sales_vat_categories/models.py":  ["sales_invoices", "cash_receipts", "customers", "journals"],
     "app/sales_vat_categories/views.py":   ["sales_vat_categories"],
     "app/utils/admin_approval.py":         ["vat_categories", "withholding_tax", "sales_vat_categories"],
-    "app/utils/wt_labels.py":              ["sales_invoices", "cash_receipts", "customers"]
+    "app/utils/wt_labels.py":              ["sales_invoices", "cash_receipts", "customers"],
+    "app/customers/views.py":              ["customers", "sales_invoices"],
+    "app/customers/models.py":             ["customers", "sales_invoices", "cash_receipts"]
   },
   "modules": {
     "accounts_payable":  { "marker": "accounts_payable", "e2e": "tests/e2e/test_ap_smoke.py" },
@@ -34,7 +36,8 @@
     "sales_invoices":    { "marker": "sales_invoices", "e2e": "tests/e2e/test_si_smoke.py" },
     "cash_receipts":     { "marker": "cash_receipts", "e2e": "tests/e2e/test_crv_smoke.py" },
     "vendors":           { "marker": "vendors", "e2e": null },
-    "sales_vat_categories": { "marker": "sales_vat", "e2e": null }
+    "sales_vat_categories": { "marker": "sales_vat", "e2e": null },
+    "customers":         { "marker": "customers", "e2e": null }
   },
   "notes": [
     "Only the JS/browser layer is e2e-covered (pytest renders HTML but never executes JS). accounts_payable (test_ap_smoke.py) and sales_invoices (test_si_smoke.py) have smoke suites; mirror to cash_disbursements as it gets verified, then set its 'e2e' path here.",

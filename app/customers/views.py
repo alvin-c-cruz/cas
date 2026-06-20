@@ -374,3 +374,46 @@ def export_csv_route():
         headers=CUSTOMER_EXPORT_HEADERS,
         filename=f'customers_{timestamp}.csv'
     )
+
+
+@customers_bp.route('/customers/<int:id>/defaults')
+@login_required
+def customer_defaults(id):
+    """Return a customer's default VAT category, WHT code, payment terms, and
+    last-used revenue account for AJAX — mirrors `/vendors/<id>/defaults` so the
+    Sales Invoice customer card can auto-fill line defaults like the APV vendor card.
+
+    A customer has a single `default_wt_code` (vs a vendor's many-to-many), so it
+    is emitted as a 0-or-1-item `withholding_taxes` list to keep the same response
+    shape as the vendor endpoint.
+    """
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+
+    customer = Customer.query.get_or_404(id)
+
+    withholding_taxes = []
+    if customer.default_wt_code:
+        wt = WithholdingTax.query.filter_by(
+            code=customer.default_wt_code, is_active=True).first()
+        if wt:
+            withholding_taxes.append({
+                'id': wt.id,
+                'code': wt.code,
+                'name': wt.sales_name or wt.name,
+                'rate': float(wt.rate),
+            })
+
+    last_item = (
+        SalesInvoiceItem.query
+        .join(SalesInvoice)
+        .filter(SalesInvoice.customer_id == id, SalesInvoice.status != 'voided')
+        .order_by(SalesInvoice.created_at.desc(), SalesInvoiceItem.line_number.asc())
+        .first()
+    )
+
+    return jsonify({
+        'withholding_taxes': withholding_taxes,
+        'default_vat_category': customer.default_vat_category,
+        'payment_terms': customer.payment_terms or 'Net 30',
+        'last_account_id': last_item.account_id if last_item else None,
+    })

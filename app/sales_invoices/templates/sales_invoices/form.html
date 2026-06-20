@@ -37,10 +37,11 @@
 
                 <!-- Right 2/3: customer picker card -->
                 <div class="right-col">
-                    <div class="vendor-step-card vendor-step-card--done" id="customerCard">
+                    <div class="vendor-step-card{% if invoice %} vendor-step-card--done{% endif %}" id="customerCard">
                         <div class="vendor-step-label" id="customerCardLabel">
                             {% if invoice %}&#10003; {{ invoice.customer_name }}{% else %}Select Customer{% endif %}
                         </div>
+                        <div id="customerBadges" class="vendor-badges"></div>
                         <div>
                             <label class="form-label" for="customer_id">Customer *</label>
                             <select name="customer_id" id="customer_id" class="form-control" required
@@ -364,24 +365,147 @@ if (customerSel) {
     initCustomerQuickAdd({ selectEl: customerSel });
 }
 
-// ── Customer select: reveal line items + auto-add the first line ─────────────
-// Mirrors the AP form's vendor-select pattern — the line-items section stays
-// locked behind a placeholder until a customer is chosen, then it is revealed
-// and the first blank line appears automatically.
+// ── Customer card state (mirrors the APV vendor card) ────────────────────────
+let currentCustomerWHTs        = [];
+let currentCustomerVatCategory = '';
+let currentCustomerLastAccountId = null;
+let currentCustomerName        = '';
+
+// The customer's stored default_vat_category may be a name or a code; the line
+// VAT select keys on the code — resolve to the code (mirrors the APV form).
+function resolveVatCode(nameOrCode) {
+    const match = vatCategories.find(v => v.code === nameOrCode || v.name === nameOrCode);
+    return match ? match.code : nameOrCode;
+}
+
+function setCustomerDone(customerName, defaults) {
+    const card   = document.getElementById('customerCard');
+    const label  = document.getElementById('customerCardLabel');
+    const badges = document.getElementById('customerBadges');
+
+    currentCustomerName = customerName;
+
+    card.classList.add('vendor-step-card--done');
+    label.textContent = '✓ ' + customerName;
+
+    badges.textContent = '';
+    (defaults.withholding_taxes || []).forEach(wt => {
+        const span = document.createElement('span');
+        span.className = 'vendor-badge';
+        span.textContent = wt.code;
+        badges.appendChild(span);
+    });
+    const vatBadge = currentCustomerVatCategory || defaults.default_vat_category;
+    if (vatBadge) {
+        const span = document.createElement('span');
+        span.className = 'vendor-badge';
+        span.textContent = 'VAT: ' + vatBadge;
+        badges.appendChild(span);
+    }
+
+    document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
+    document.getElementById('lineItemsSection').style.display = '';
+}
+
+// Loading / error states for the line-items placeholder while customer defaults load.
+function setLineItemsLoading() {
+    const locked = document.getElementById('lineItemsLocked');
+    locked.classList.remove('line-items-locked--hidden');
+    locked.innerHTML =
+        '<div class="inline-spinner" style="margin:0 auto 12px;"></div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Loading customer details…</div>';
+}
+function setLineItemsLoadError() {
+    const locked = document.getElementById('lineItemsLocked');
+    locked.classList.remove('line-items-locked--hidden');
+    locked.innerHTML =
+        '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Could not load customer details — please re-select the customer.</div>';
+}
+
+function applyCustomerTerms(terms) {
+    if (paymentTermsChoices && terms) paymentTermsChoices.setChoiceByValue(terms);
+    const match = (terms || '').match(/Net (\d+)/);
+    if (!match) return;
+    const days = parseInt(match[1]);
+    const invDateVal = document.getElementById('invoice_date')?.value;
+    if (!invDateVal) return;
+    const due = new Date(invDateVal);
+    if (isNaN(due.getTime())) return;
+    due.setDate(due.getDate() + days);
+    const dueField = document.getElementById('due_date');
+    if (dueField) dueField.value = due.toISOString().split('T')[0];
+}
+
+function addFirstCustomerLine() {
+    const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
+    addLineItem({
+        description: '', amount: 0.00,
+        vat_category: currentCustomerVatCategory || '',
+        account_id: currentCustomerLastAccountId,
+        wt_id: autoWht ? autoWht.id : null,
+        wt_rate: autoWht ? autoWht.rate : null,
+    });
+}
+
+function rebuildCustomerLineDefaults() {
+    // Existing rows (restored after a failed POST) — refresh VAT/WHT to the newly
+    // chosen customer's defaults without discarding typed amounts.
+    const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
+    lineItems.forEach(item => {
+        const lc = lineChoices[item.id];
+        if (!lc) return;
+        if (currentCustomerVatCategory) {
+            lc.vat.setChoiceByValue(currentCustomerVatCategory);
+            item.vat_category = currentCustomerVatCategory;
+        }
+        if (autoWht) {
+            lc.wht.setChoiceByValue(String(autoWht.id));
+            item.wt_id = autoWht.id;
+            item.wt_rate = autoWht.rate;
+        }
+    });
+    calculateTotals();
+}
+
+// ── Customer select: load defaults + reveal line items (mirrors APV) ─────────
+// The line-items section stays locked until a customer is chosen; selecting one
+// fetches the customer's defaults (VAT / WHT / terms / last account), shows the
+// done-card with badges, and auto-adds a first line pre-filled from those defaults.
 if (customerSel) {
     customerSel.addEventListener('change', function () {
         const cid = customerSel.value;
         if (!cid || cid === '0' || cid === '__add_customer__') return;
-        document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
-        document.getElementById('lineItemsSection').style.display = '';
-        if (lineItems.length === 0) addLineItem();
+        const customerName = customerSel.options[customerSel.selectedIndex]
+            ? customerSel.options[customerSel.selectedIndex].text : '';
+
+        setLineItemsLoading();
+        fetch(`/customers/${cid}/defaults`)
+            .then(r => r.json())
+            .then(data => {
+                currentCustomerWHTs          = data.withholding_taxes || [];
+                currentCustomerVatCategory   = resolveVatCode(data.default_vat_category || '');
+                currentCustomerLastAccountId = data.last_account_id || null;
+                applyCustomerTerms(data.payment_terms || 'Net 30');
+
+                const hadItems = lineItems.length > 0;
+                setCustomerDone(customerName, data);
+
+                if (hadItems) {
+                    rebuildCustomerLineDefaults();
+                } else {
+                    addFirstCustomerLine();
+                }
+            })
+            .catch(() => setLineItemsLoadError());
     });
 }
 
 // ── Choices.js: payment terms ────────────────────────────────────────────────
 const ptSel = document.getElementById('payment_terms');
+let paymentTermsChoices = null;
 if (ptSel) {
-    new Choices(ptSel, {
+    paymentTermsChoices = new Choices(ptSel, {
         searchEnabled: false, itemSelectText: '', shouldSort: false, allowHTML: false,
     });
 }
@@ -798,6 +922,26 @@ function initOverrides() {
 
 initItems();
 initOverrides();
+
+// ── Edit mode: populate the customer card badges on load (mirrors APV) ────────
+{% if invoice %}
+(function initCustomerCardOnEdit() {
+    const sel = document.getElementById('customer_id');
+    const cid = sel ? sel.value : '';
+    if (!cid || cid === '0') return;
+    const name = sel.options[sel.selectedIndex]
+        ? sel.options[sel.selectedIndex].text : '{{ invoice.customer_name | e }}';
+    fetch(`/customers/${cid}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentCustomerWHTs          = data.withholding_taxes || [];
+            currentCustomerVatCategory   = resolveVatCode(data.default_vat_category || '');
+            currentCustomerLastAccountId = data.last_account_id || null;
+            setCustomerDone(name, data);
+        })
+        .catch(() => {});
+})();
+{% endif %}
 </script>
 
 {% endblock %}
