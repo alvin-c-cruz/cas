@@ -54,20 +54,20 @@
                             <strong>{{ customer.name }}</strong>
                             <span id="customer-{{ loop.index }}-icon" style="margin-left:8px;color:var(--text-2);">&#9654;</span>
                         </td>
-                        <td style="text-align:right;">&#8369;{{ "{:,.2f}".format(customer.current) }}</td>
+                        <td style="text-align:right;">₱{{ "{:,.2f}".format(customer.current) }}</td>
                         <td style="text-align:right;{% if customer['1-30'] > 0 %}color:var(--aging-warn);{% endif %}">
-                            &#8369;{{ "{:,.2f}".format(customer['1-30']) }}
+                            ₱{{ "{:,.2f}".format(customer['1-30']) }}
                         </td>
                         <td style="text-align:right;{% if customer['31-60'] > 0 %}color:var(--aging-warn);{% endif %}">
-                            &#8369;{{ "{:,.2f}".format(customer['31-60']) }}
+                            ₱{{ "{:,.2f}".format(customer['31-60']) }}
                         </td>
                         <td style="text-align:right;{% if customer['61-90'] > 0 %}color:var(--red);{% endif %}">
-                            &#8369;{{ "{:,.2f}".format(customer['61-90']) }}
+                            ₱{{ "{:,.2f}".format(customer['61-90']) }}
                         </td>
                         <td style="text-align:right;{% if customer['90+'] > 0 %}color:var(--red);font-weight:600;{% endif %}">
-                            &#8369;{{ "{:,.2f}".format(customer['90+']) }}
+                            ₱{{ "{:,.2f}".format(customer['90+']) }}
                         </td>
-                        <td style="text-align:right;"><strong>&#8369;{{ "{:,.2f}".format(customer.total) }}</strong></td>
+                        <td style="text-align:right;"><strong>₱{{ "{:,.2f}".format(customer.total) }}</strong></td>
                     </tr>
                     <!-- Invoice Details (hidden by default) -->
                     <tr id="customer-{{ loop.index }}" style="display:none;">
@@ -99,7 +99,7 @@
                                                 <span style="background:var(--aging-ok-bg);color:var(--aging-ok-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Current</span>
                                                 {% endif %}
                                             </td>
-                                            <td style="text-align:right;">&#8369;{{ "{:,.2f}".format(invoice.balance_due) }}</td>
+                                            <td style="text-align:right;">₱{{ "{:,.2f}".format(invoice.balance_due) }}</td>
                                             <td>
                                                 {% if invoice.bucket == 'current' %}
                                                 <span style="background:var(--aging-ok-bg);color:var(--aging-ok-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Current</span>
@@ -125,20 +125,20 @@
                 <tfoot style="border-top:2px solid var(--border);font-weight:600;">
                     <tr style="background:var(--bg);">
                         <td><strong>GRAND TOTAL</strong></td>
-                        <td style="text-align:right;">&#8369;{{ "{:,.2f}".format(grand_totals.current) }}</td>
+                        <td style="text-align:right;">₱{{ "{:,.2f}".format(grand_totals.current) }}</td>
                         <td style="text-align:right;{% if grand_totals['1-30'] > 0 %}color:var(--aging-warn);{% endif %}">
-                            &#8369;{{ "{:,.2f}".format(grand_totals['1-30']) }}
+                            ₱{{ "{:,.2f}".format(grand_totals['1-30']) }}
                         </td>
                         <td style="text-align:right;{% if grand_totals['31-60'] > 0 %}color:var(--aging-warn);{% endif %}">
-                            &#8369;{{ "{:,.2f}".format(grand_totals['31-60']) }}
+                            ₱{{ "{:,.2f}".format(grand_totals['31-60']) }}
                         </td>
                         <td style="text-align:right;{% if grand_totals['61-90'] > 0 %}color:var(--red);{% endif %}">
-                            &#8369;{{ "{:,.2f}".format(grand_totals['61-90']) }}
+                            ₱{{ "{:,.2f}".format(grand_totals['61-90']) }}
                         </td>
                         <td style="text-align:right;{% if grand_totals['90+'] > 0 %}color:var(--red);font-weight:600;{% endif %}">
-                            &#8369;{{ "{:,.2f}".format(grand_totals['90+']) }}
+                            ₱{{ "{:,.2f}".format(grand_totals['90+']) }}
                         </td>
-                        <td style="text-align:right;"><strong>&#8369;{{ "{:,.2f}".format(grand_totals.total) }}</strong></td>
+                        <td style="text-align:right;"><strong>₱{{ "{:,.2f}".format(grand_totals.total) }}</strong></td>
                     </tr>
                 </tfoot>
             </table>

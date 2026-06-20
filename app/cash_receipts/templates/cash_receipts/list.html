@@ -61,7 +61,7 @@
 <div class="crv-summary-grid">
     <div class="crv-card">
         <div class="crv-card-label">Received This Month</div>
-        <div class="crv-card-value">&#8369;{{ '{:,.2f}'.format(summary.received_this_month) }}</div>
+        <div class="crv-card-value">₱{{ '{:,.2f}'.format(summary.received_this_month) }}</div>
         <div class="crv-card-detail">posted CRVs</div>
     </div>
     <div class="crv-card">
@@ -152,18 +152,18 @@
                     <td>{{ crv.customer_name }}</td>
                     <td>{{ crv.payment_method.replace('_', ' ').title() if crv.payment_method else '—' }}</td>
                     <td style="text-align:right;font-family:var(--mono);">
-                        {% if crv.total_ar_applied %}&#8369;{{ '{:,.2f}'.format(crv.total_ar_applied) }}{% else %}—{% endif %}
+                        {% if crv.total_ar_applied %}₱{{ '{:,.2f}'.format(crv.total_ar_applied) }}{% else %}—{% endif %}
                     </td>
                     <td style="text-align:right;font-family:var(--mono);">
-                        {% if crv.total_revenue %}&#8369;{{ '{:,.2f}'.format(crv.total_revenue) }}{% else %}—{% endif %}
+                        {% if crv.total_revenue %}₱{{ '{:,.2f}'.format(crv.total_revenue) }}{% else %}—{% endif %}
                     </td>
                     <td style="text-align:right;font-family:var(--mono);">
-                        {% if crv.total_vat %}&#8369;{{ '{:,.2f}'.format(crv.total_vat) }}{% else %}—{% endif %}
+                        {% if crv.total_vat %}₱{{ '{:,.2f}'.format(crv.total_vat) }}{% else %}—{% endif %}
                     </td>
                     <td style="text-align:right;font-family:var(--mono);{% if crv.total_wt > 0 %}color:var(--red);{% endif %}">
-                        {% if crv.total_wt > 0 %}-&#8369;{{ '{:,.2f}'.format(crv.total_wt) }}{% else %}—{% endif %}
+                        {% if crv.total_wt > 0 %}-₱{{ '{:,.2f}'.format(crv.total_wt) }}{% else %}—{% endif %}
                     </td>
-                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">&#8369;{{ '{:,.2f}'.format(crv.total_amount) }}</td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(crv.total_amount) }}</td>
                     <td><span class="badge badge-{{ badge_map.get(crv.status, 'draft') }}">{{ crv.status|replace('_', ' ')|title }}</span></td>
                     <td>
                         <a href="{{ url_for('cash_receipts.view', id=crv.id) }}" class="btn-action">&#128065;</a>

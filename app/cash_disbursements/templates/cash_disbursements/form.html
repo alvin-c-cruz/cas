@@ -361,7 +361,7 @@ function billOptionHtml(b) {
     return `<span class="bill-opt">`
          + `<span class="bill-opt__no">${escHtml(b.bill_number)}</span>`
          + `<span class="bill-opt__inv">${escHtml(b.vendor_invoice_number || '—')}</span>`
-         + `<span class="bill-opt__bal">&#8369;${escHtml(fmt(b.balance))}</span>`
+         + `<span class="bill-opt__bal">₱${escHtml(fmt(b.balance))}</span>`
          + `</span>`;
 }
 // Replace all choices with [placeholder, ...items] and reset selection to the placeholder.
@@ -495,7 +495,7 @@ function addApLine(bill) {
     tr.innerHTML = `
         <td style="font-family:var(--mono)">${escHtml(bill.bill_number)}</td>
         <td>${escHtml(bill.vendor_invoice_number || '-')}</td>
-        <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt(bill.balance)}</td>
+        <td style="text-align:right;font-family:var(--mono)">₱${fmt(bill.balance)}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt(bill.balance)}"
@@ -527,7 +527,7 @@ function restoreApLine(line) {
     tr.innerHTML = `
         <td style="font-family:var(--mono)">${escHtml(line.bill_number)}</td>
         <td>${escHtml(line.vendor_invoice_number || '-')}</td>
-        <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt(line.original_balance)}</td>
+        <td style="text-align:right;font-family:var(--mono)">₱${fmt(line.original_balance)}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt(line.amount_applied)}"
@@ -896,7 +896,7 @@ apLines.push({
         <td style="font-family:var(--mono)">{{ ap_line.ap_number }}</td>
         <td>-</td>
         <td>-</td>
-        <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt({{ ap_line.original_balance }})}</td>
+        <td style="text-align:right;font-family:var(--mono)">₱${fmt({{ ap_line.original_balance }})}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt({{ ap_line.amount_applied }})}"

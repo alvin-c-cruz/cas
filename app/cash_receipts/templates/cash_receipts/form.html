@@ -339,7 +339,7 @@ function invOptionHtml(inv) {
     return `<span class="inv-opt">`
          + `<span class="inv-opt__no">${escHtml(inv.invoice_number)}</span>`
          + `<span class="inv-opt__date">${escHtml(inv.invoice_date || '')}</span>`
-         + `<span class="inv-opt__bal">&#8369;${escHtml(fmt(inv.balance))}</span>`
+         + `<span class="inv-opt__bal">₱${escHtml(fmt(inv.balance))}</span>`
          + `</span>`;
 }
 function setInvChoices(items) {
@@ -508,7 +508,7 @@ function addArLine(inv) {
     tr.innerHTML = `
         <td style="font-family:var(--mono)">${escHtml(inv.invoice_number)}</td>
         <td>${escHtml(inv.invoice_date || '-')}</td>
-        <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt(inv.balance)}</td>
+        <td style="text-align:right;font-family:var(--mono)">₱${fmt(inv.balance)}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt(inv.balance)}"
@@ -537,7 +537,7 @@ function restoreArLine(line) {
     tr.innerHTML = `
         <td style="font-family:var(--mono)">${escHtml(line.invoice_number)}</td>
         <td>${escHtml(line.invoice_date || '-')}</td>
-        <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt(line.original_balance)}</td>
+        <td style="text-align:right;font-family:var(--mono)">₱${fmt(line.original_balance)}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt(line.amount_applied)}"
@@ -854,7 +854,7 @@ arLines.push({
     tr.innerHTML = `
         <td style="font-family:var(--mono)">{{ ar_line.invoice_number }}</td>
         <td>-</td>
-        <td style="text-align:right;font-family:var(--mono)">&#8369;${fmt({{ ar_line.original_balance }})}</td>
+        <td style="text-align:right;font-family:var(--mono)">₱${fmt({{ ar_line.original_balance }})}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt({{ ar_line.amount_applied }})}"
