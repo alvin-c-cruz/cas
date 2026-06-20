@@ -1,4 +1,4 @@
-﻿"""Input-tax account flows through the VAT change-request workflow (B-014).
+"""Input-tax account flows through the VAT change-request workflow (B-014).
 
 VAT Categories are now admin-only (sole-admin auto-approves).
 Tests updated to use admin actors for all VAT maintenance operations.

@@ -1,4 +1,4 @@
-﻿"""Integration tests for CRV journal-entry posting (_post_crv_je)."""
+"""Integration tests for CRV journal-entry posting (_post_crv_je)."""
 import pytest
 from decimal import Decimal
 from datetime import date

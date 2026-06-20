@@ -1,4 +1,4 @@
-﻿"""VATCategoryForm: input_vat_account_id required when rate > 0 (B-014)."""
+"""VATCategoryForm: input_vat_account_id required when rate > 0 (B-014)."""
 from app.vat_categories.forms import VATCategoryForm
 import pytest
 pytestmark = [pytest.mark.vat_categories, pytest.mark.unit]

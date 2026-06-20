@@ -1,4 +1,4 @@
-﻿"""Integration tests for vendor views — CRUD, detail page, role checks."""
+"""Integration tests for vendor views — CRUD, detail page, role checks."""
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal

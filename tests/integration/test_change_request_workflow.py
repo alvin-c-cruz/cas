@@ -1,4 +1,4 @@
-﻿"""Integration tests for the master-data change-request workflow (B-006).
+"""Integration tests for the master-data change-request workflow (B-006).
 
 Covers Chart of Accounts, VAT Categories and Withholding Tax:
 - "Reason for change" is required and persisted on EDIT and DELETE change

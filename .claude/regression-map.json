@@ -1,4 +1,4 @@
-﻿{
+{
   "_comment": "Blast-radius map for the CAS regression guard. Maps high-blast-radius SHARED files to the 'done' modules that silently inherit their changes. /guard and the pre-push hook read this: for each changed file, union its dependents, then run those modules' pytest markers + e2e smoke. Maintained by the retro-agent and humans. See .claude/skills/guard/SKILL.md.",
   "version": 1,
   "blast_radius": {

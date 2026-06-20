@@ -1,4 +1,4 @@
-﻿"""VATCategory.input_vat_account mapping (B-014)."""
+"""VATCategory.input_vat_account mapping (B-014)."""
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 import pytest

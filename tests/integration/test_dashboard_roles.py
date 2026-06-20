@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 pytestmark = [pytest.mark.users, pytest.mark.integration]
 
 

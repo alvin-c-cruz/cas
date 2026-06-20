@@ -1,4 +1,4 @@
-﻿"""Unit tests for record status transitions: void, sent, overdue."""
+"""Unit tests for record status transitions: void, sent, overdue."""
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal
