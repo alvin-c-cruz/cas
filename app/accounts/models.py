@@ -18,7 +18,7 @@ class Account(db.Model):
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
 
     # Relationship for hierarchical accounts
-    children = db.relationship('Account', backref=db.backref('parent', remote_side=[id]), lazy='dynamic')
+    children = db.relationship('Account', backref=db.backref('parent', remote_side=[id]))
 
     def __repr__(self):
         return f'<Account {self.code} - {self.name}>'

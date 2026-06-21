@@ -61,7 +61,7 @@ def test_seed_construction_coa_creates_magic_codes(db_session):
         a = Account.query.filter_by(code=code).first()
         assert a is not None, f'missing magic account {code}'
         assert a.is_active is True
-        assert a.children.count() == 0, f'{code} must be a postable leaf'
+        assert len(a.children) == 0, f'{code} must be a postable leaf'
     # Construction-specific accounts present
     assert Account.query.filter_by(code='40101').first().name == 'Construction Contract Revenue'
     assert Account.query.filter_by(code='10310').first() is not None  # CIP
