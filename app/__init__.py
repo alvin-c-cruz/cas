@@ -277,7 +277,7 @@ def create_app(config_name=None):
         print("\nYou can now:")
         print("  1. Start the application: python flask_app.py")
         print("  2. Login with username: admin")
-        print("  3. Password: ac112358321")
+        print("  3. Password: admin123")
         print("="*60 + "\n")
 
     @app.cli.command('seed-minimal')
