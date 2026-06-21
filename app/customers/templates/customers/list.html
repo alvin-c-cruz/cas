@@ -47,9 +47,9 @@
             <tbody>
                 {% for customer in customers %}
                 <tr>
-                    <td><a href="{{ url_for('customers.edit', id=customer.id) }}" class="customer-link"><strong>{{ customer.code }}</strong></a></td>
+                    <td><a href="{{ url_for('customers.detail', id=customer.id) }}" class="customer-link"><strong>{{ customer.code }}</strong></a></td>
                     <td>
-                        <a href="{{ url_for('customers.edit', id=customer.id) }}" class="customer-link">{{ customer.name }}</a>
+                        <a href="{{ url_for('customers.detail', id=customer.id) }}" class="customer-link">{{ customer.name }}</a>
                         {% set bir_missing = [] %}
                         {% if not customer.tin %}{% set bir_missing = bir_missing + ['TIN'] %}{% endif %}
                         {% if not customer.address %}{% set bir_missing = bir_missing + ['Address'] %}{% endif %}

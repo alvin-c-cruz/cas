@@ -94,3 +94,16 @@ def test_detail_404_for_unknown_customer(client, db_session, accountant_user, ma
     login_user(client, 'accountant', 'accountant123')
     resp = client.get('/customers/99999')
     assert resp.status_code == 404
+
+
+@pytest.mark.integration
+def test_list_links_point_to_detail(client, db_session, accountant_user, main_branch, login_user):
+    c = _customer(db_session)
+    login_user(client, 'accountant', 'accountant123')
+
+    resp = client.get('/customers')
+
+    body = resp.data.decode()
+    assert f'/customers/{c.id}"' in body          # detail link present
+    # the code/name cells must no longer link to the edit page
+    assert f'/customers/{c.id}/edit" class="customer-link"' not in body
