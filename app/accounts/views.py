@@ -84,29 +84,37 @@ def list_accounts():
     id_to_account = {a.id: a for a in accounts}
     has_children = {a.parent_id for a in accounts if a.parent_id}
 
-    depth_cache = {}
+    # Display order is a pre-order DFS so every subtree is contiguous: each root
+    # group, then its children (recursively), each level in code order. Because
+    # legacy leaf codes interleave across groups, a flat code-sort would scatter
+    # children away from their parent; DFS keeps the indentation honest.
+    # `accounts` is already code-sorted, so roots and child lists keep code order.
+    children_by_parent = {}
+    roots = []
+    for a in accounts:
+        if a.parent_id and a.parent_id in id_to_account:
+            children_by_parent.setdefault(a.parent_id, []).append(a)
+        else:
+            roots.append(a)  # top-level, or orphan whose parent is missing
 
-    def get_depth(account_id):
-        if account_id in depth_cache:
-            return depth_cache[account_id]
-        acct = id_to_account.get(account_id)
-        if not acct or not acct.parent_id:
-            depth_cache[account_id] = 0
-            return 0
-        d = 1 + get_depth(acct.parent_id)
-        depth_cache[account_id] = d
-        return d
+    account_rows = []
+    visited = set()
 
-    account_rows = [
-        {
-            'account': a,
-            'depth': get_depth(a.id),
-            # A parent/group is top-level (no parent) OR has children — so a
-            # header reads as a parent from creation, before it has any children.
-            'is_header': a.id in has_children or a.parent_id is None,
-        }
-        for a in accounts
-    ]
+    def walk(node, depth):
+        if node.id in visited:
+            return  # guard against an accidental parent cycle
+        visited.add(node.id)
+        account_rows.append({
+            'account': node,
+            'depth': depth,
+            # parent/group = top-level (no parent) OR has children
+            'is_header': node.id in has_children or node.parent_id is None,
+        })
+        for child in children_by_parent.get(node.id, []):
+            walk(child, depth + 1)
+
+    for r in roots:
+        walk(r, 0)
 
     # Posting account counts per type (for summary cards)
     type_counts = {}
