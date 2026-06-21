@@ -423,8 +423,13 @@ function setLineItemsLoadError() {
         '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Could not load customer details — please re-select the customer.</div>';
 }
 
-function applyCustomerTerms(terms) {
-    if (paymentTermsChoices && terms) paymentTermsChoices.setChoiceByValue(terms);
+// Recompute Due Date = Invoice Date + Net N days, using the CURRENT payment
+// terms (or an explicit override). Called when terms change AND when the
+// invoice date loses focus, so a later date edit re-derives the due date
+// instead of leaving a stale value computed off the default date.
+function recomputeDueDate(termsOverride) {
+    const termsEl = document.getElementById('payment_terms');
+    const terms = termsOverride || (termsEl ? termsEl.value : '');
     const match = (terms || '').match(/Net (\d+)/);
     if (!match) return;
     const days = parseInt(match[1]);
@@ -435,6 +440,11 @@ function applyCustomerTerms(terms) {
     due.setDate(due.getDate() + days);
     const dueField = document.getElementById('due_date');
     if (dueField) dueField.value = due.toISOString().split('T')[0];
+}
+
+function applyCustomerTerms(terms) {
+    if (paymentTermsChoices && terms) paymentTermsChoices.setChoiceByValue(terms);
+    recomputeDueDate(terms);
 }
 
 function addFirstCustomerLine() {
@@ -931,6 +941,8 @@ document.getElementById('invoiceForm').addEventListener('submit', function () {
 for (const fieldId of ['invoice_date', 'due_date']) {
     document.getElementById(fieldId)?.addEventListener('change', validateForm);
 }
+// Re-derive Due Date from the (edited) Invoice Date + current terms on blur.
+document.getElementById('invoice_date')?.addEventListener('change', () => recomputeDueDate());
 
 // ── Init: load existing items on edit ────────────────────────────────────────
 
