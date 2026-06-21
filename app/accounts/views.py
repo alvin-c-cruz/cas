@@ -101,7 +101,9 @@ def list_accounts():
         {
             'account': a,
             'depth': get_depth(a.id),
-            'is_header': a.id in has_children,
+            # A parent/group is top-level (no parent) OR has children — so a
+            # header reads as a parent from creation, before it has any children.
+            'is_header': a.id in has_children or a.parent_id is None,
         }
         for a in accounts
     ]

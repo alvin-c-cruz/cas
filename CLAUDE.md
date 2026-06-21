@@ -74,7 +74,7 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 - **No JavaScript popups.** Never use `confirm()`, `alert()`, or `prompt()`. Build custom HTML modal forms with a `{{ csrf_token() }}` hidden input.
 - **Model changes require explicit user approval first.** Before editing any `models.py` or running a migration, describe the change (field name, type, nullable, default, migration impact) and get sign-off.
 - **Propose before seeding/bulk-writing.** Show proposed data for review before running anything that writes to the DB. Do not seed and ask forgiveness.
-- **Hierarchy is derived, not stored.** For tree data (COA), a node is a GROUP if it has children, a LEAF (postable) otherwise — computed from `parent_id`, no `is_header` field.
+- **Hierarchy is derived, not stored.** For tree data (COA), a node is a PARENT (group header, non-postable) if it is top-level (no `parent_id`) **or** has children; otherwise it is a LEAF (postable). Computed from `parent_id`, no stored `is_header` field. The COA list badges parents as **PARENT** (not the old "GROUP") from creation — so a freshly-created top-level header reads as PARENT before it has any children.
 - **No hardcoded styling in templates.** Use design tokens / CSS variables.
 - **Peso sign: use the literal `₱` (U+20B1) glyph, never the `&#8369;` HTML entity.** Templates are UTF-8 and `₱` renders everywhere. The entity is fine in *direct* template HTML but becomes literal text (`&#8369;`) the moment a value carrying it passes through an autoescaping Jinja macro (`{{ val }}`) — which is exactly the bug it caused in the CRV summary. The literal glyph survives autoescaping, so standardize on it.
 - **Responsive on all UI** (desktop, tablet, mobile).
