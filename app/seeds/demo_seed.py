@@ -595,3 +595,79 @@ def build_cdv_expense(doc_date, vendor_obj, vendor_spec, gross_amount, refs, adm
     cdv.journal_entry_id = je.id
     db.session.commit()
     return cdv
+
+
+def _generate_jv_number(doc_date, branch_id):
+    """Generate JV-YYYY-MM-NNNN using doc_date (not current date) for historical seeding."""
+    from app.journal_entries.models import JournalEntry
+    prefix = f'JV-{doc_date.year}-{doc_date.month:02d}-'
+    latest = JournalEntry.query.filter(
+        JournalEntry.entry_number.like(f'{prefix}%'),
+        JournalEntry.branch_id == branch_id
+    ).order_by(JournalEntry.entry_number.desc()).first()
+    if latest:
+        try:
+            last_num = int(latest.entry_number.split('-')[-1])
+            next_num = last_num + 1
+        except (ValueError, IndexError):
+            next_num = 1
+    else:
+        next_num = 1
+    return f'{prefix}{next_num:04d}'
+
+
+def build_jv(doc_date, lines, refs, admin_id, branch_id, *,
+             entry_type='adjustment', description, reference=''):
+    """Create one posted Journal Voucher. lines = [(Account, debit, credit), ...]."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.utils import ph_now
+
+    je = JournalEntry(
+        entry_number=_generate_jv_number(doc_date, branch_id),
+        entry_date=doc_date,
+        description=description,
+        reference=reference,
+        entry_type=entry_type,
+        branch_id=branch_id,
+        status='posted',
+        created_by_id=admin_id,
+        posted_by_id=admin_id,
+        posted_at=ph_now(),
+    )
+    for i, (acct, dr, cr) in enumerate(lines, start=1):
+        je.lines.append(JournalEntryLine(
+            line_number=i, account_id=acct.id,
+            debit_amount=_money(dr), credit_amount=_money(cr),
+            description=description,
+        ))
+    db.session.add(je)
+    db.session.flush()
+    je.calculate_totals()   # sets total_debit/credit/is_balanced
+    db.session.commit()
+    return je
+
+
+def seed_stockholder_investments(refs, admin_id, branch_id):
+    """Three opening equity contributions (2 cash, 1 in-kind equipment)."""
+    from datetime import date
+    out = []
+    # Wei Zhang — cash: 5,000,000 (4,000,000 par + 1,000,000 premium)
+    out.append(build_jv(date(2025, 1, 2), [
+        (refs['cash_bank'], Decimal('5000000.00'), Decimal('0.00')),
+        (refs['capital_stock'], Decimal('0.00'), Decimal('4000000.00')),
+        (refs['apic'], Decimal('0.00'), Decimal('1000000.00')),
+    ], refs, admin_id, branch_id, entry_type='opening',
+        description='Stockholder investment — Wei Zhang (cash)'))
+    # Liang Chen — cash: 3,000,000 par
+    out.append(build_jv(date(2025, 1, 2), [
+        (refs['cash_bank'], Decimal('3000000.00'), Decimal('0.00')),
+        (refs['capital_stock'], Decimal('0.00'), Decimal('3000000.00')),
+    ], refs, admin_id, branch_id, entry_type='opening',
+        description='Stockholder investment — Liang Chen (cash)'))
+    # Mei Lin — in-kind: construction equipment 2,000,000 par
+    out.append(build_jv(date(2025, 1, 3), [
+        (refs['equipment'], Decimal('2000000.00'), Decimal('0.00')),
+        (refs['capital_stock'], Decimal('0.00'), Decimal('2000000.00')),
+    ], refs, admin_id, branch_id, entry_type='opening',
+        description='Stockholder investment — Mei Lin (construction equipment, in-kind)'))
+    return out

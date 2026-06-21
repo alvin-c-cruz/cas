@@ -171,3 +171,26 @@ def test_build_cdv_pays_ap(db_session):
     assert Decimal(str(ap.balance)) < bal_before
     assert ap.status in ('paid', 'partially_paid')
     assert cdv.cdv_number == 'CD-2025-04-0001'
+
+
+def test_jv_and_stockholder_investments(db_session):
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.demo_seed import (seed_demo_baseline, resolve_refs, build_jv,
+                                     seed_stockholder_investments)
+    refs0 = seed_demo_baseline()
+    refs = resolve_refs()
+    jv = build_jv(date(2025, 1, 31),
+                  [(refs['dep_expense'], Decimal('15000.00'), Decimal('0.00')),
+                   (refs['accum_dep_equipment'], Decimal('0.00'), Decimal('15000.00'))],
+                  refs, refs0['admin'].id, refs0['branch'].id,
+                  entry_type='adjustment', description='Monthly depreciation Jan 2025')
+    assert jv.status == 'posted' and jv.is_balanced is True
+    assert jv.entry_number.startswith('JV-2025-01-')
+
+    inv = seed_stockholder_investments(refs, refs0['admin'].id, refs0['branch'].id)
+    assert len(inv) == 3
+    for je in inv:
+        d = sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
+        c = sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
+        assert d == c and je.status == 'posted'
