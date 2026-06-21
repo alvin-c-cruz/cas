@@ -243,7 +243,10 @@ def test_run_seed_demo_full_balances(db_session):
         tot_c += sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
     assert tot_d == tot_c
     assert summary['unbalanced'] == 0
-    # All transactions within Jan 1 - Jun 19 2025
+    # All transactions within Jan 1 2025 - Jun 19 2026
     from datetime import date
-    for si in SalesInvoice.query.all():
-        assert date(2025, 1, 1) <= si.invoice_date <= date(2025, 6, 19)
+    all_si = SalesInvoice.query.all()
+    for si in all_si:
+        assert date(2025, 1, 1) <= si.invoice_date <= date(2026, 6, 19)
+    # The demo spans into the current year (2026) so default current-year views populate
+    assert any(si.invoice_date.year == 2026 for si in all_si)

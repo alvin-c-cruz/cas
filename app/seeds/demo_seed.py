@@ -239,8 +239,13 @@ def seed_demo_baseline():
         db.session.commit()
 
     # Open 2025 Jan-Jun periods
-    for m in range(1, 7):
-        AccountingPeriod.get_or_create_period(2025, m)
+    # Open every month from Jan 2025 through Jun 2026 (the demo's full span).
+    py, pm = 2025, 1
+    while (py, pm) <= (2026, 6):
+        AccountingPeriod.get_or_create_period(py, pm)
+        pm += 1
+        if pm > 12:
+            pm, py = 1, py + 1
 
     return {'admin': admin, 'branch': branch}
 
@@ -691,9 +696,9 @@ def _count_unbalanced_jes():
     return bad
 
 
-def generate_demo_transactions(refs, admin_id, branch_id, *, end=date(2025, 6, 19),
+def generate_demo_transactions(refs, admin_id, branch_id, *, end=date(2026, 6, 19),
                                rng_seed=20250101):
-    """Generate the Jan 1 - Jun 19 2025 document set. Deterministic."""
+    """Generate the Jan 1 2025 - Jun 19 2026 document set. Deterministic."""
     from app.customers.models import Customer
     from app.vendors.models import Vendor
     rng = random.Random(rng_seed)
@@ -709,7 +714,14 @@ def generate_demo_transactions(refs, admin_id, branch_id, *, end=date(2025, 6, 1
     summary['jv'] += 3
 
     posted_sis, posted_aps = [], []
-    months = [(2025, m) for m in range(1, 7)]
+    # Every month from Jan 2025 through end's month (clamp keeps the final month <= end).
+    months = []
+    _y, _m = 2025, 1
+    while (_y, _m) <= (end.year, end.month):
+        months.append((_y, _m))
+        _m += 1
+        if _m > 12:
+            _m, _y = 1, _y + 1
     for (y, m) in months:
         # ~2 SIs / month (skip days past end via clamp)
         for _ in range(2):
