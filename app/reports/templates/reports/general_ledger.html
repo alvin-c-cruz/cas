@@ -17,7 +17,9 @@
                 </p>
             </div>
             <div class="card-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <button onclick="window.print()" class="btn btn-secondary">Print</button>
+                <a href="{{ url_for('reports.general_ledger_export_excel') }}?{{ q }}" class="btn btn-secondary">Excel</a>
+                <a href="{{ url_for('reports.general_ledger_export_csv') }}?{{ q }}" class="btn btn-secondary">CSV</a>
+                <a href="{{ url_for('reports.general_ledger_print') }}?{{ q }}" class="btn btn-secondary" target="_blank">Print</a>
                 <a href="{{ url_for('reports.index') }}" class="btn btn-secondary">Back to Reports</a>
             </div>
         </div>
@@ -88,9 +90,13 @@
                 </tbody>
                 <tfoot style="border-top:2px solid var(--border);font-weight:600;">
                     <tr style="background:var(--bg);">
-                        <td colspan="4">Closing balance</td>
+                        <td colspan="4">Period totals</td>
                         <td style="text-align:right;">₱{{ "{:,.2f}".format(acct.total_debit) }}</td>
                         <td style="text-align:right;">₱{{ "{:,.2f}".format(acct.total_credit) }}</td>
+                        <td></td>
+                    </tr>
+                    <tr style="background:var(--bg);">
+                        <td colspan="6">Closing balance</td>
                         <td style="text-align:right;">{{ balance_dr_cr(acct.closing_balance) }}</td>
                     </tr>
                 </tfoot>
