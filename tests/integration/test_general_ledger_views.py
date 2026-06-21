@@ -102,14 +102,32 @@ def test_general_ledger_account_filter(client, db_session, main_branch, admin_us
     assert resp.data.count(b'Opening balance') == 1
 
 
-@pytest.mark.skip(reason="general_ledger module gate registered in Task 5; "
-                         "Task 5 assigns staff to the branch and asserts the gate specifically")
 def test_general_ledger_staff_without_grant_denied(client, db_session, main_branch,
                                                    staff_user):
+    # Give staff access to the branch so the branch-validation hook doesn't redirect first.
+    staff_user.branches.append(main_branch)
+    db_session.commit()
     _login(client, staff_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/general-ledger', follow_redirects=False)
-    assert resp.status_code == 302  # global module gate redirects ungranted staff
+    # The module gate (not the branch hook) redirects ungranted staff.
+    assert resp.status_code == 302
+    assert resp.status_code != 200
+
+
+def test_general_ledger_staff_with_grant_allowed(client, db_session, main_branch,
+                                                  staff_user, cash_account, revenue_account):
+    # Grant the general_ledger book permission.
+    perms = staff_user.get_book_permissions()
+    perms['general_ledger'] = True
+    staff_user.set_book_permissions(perms)
+    # Give staff access to the branch.
+    staff_user.branches.append(main_branch)
+    db_session.commit()
+    _login(client, staff_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/general-ledger', follow_redirects=False)
+    assert resp.status_code == 200
 
 
 def test_general_ledger_excel_export(client, db_session, main_branch, admin_user,

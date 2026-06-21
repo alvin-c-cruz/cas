@@ -34,6 +34,9 @@ MODULE_REGISTRY = [
      'endpoints': ('reports.ap_aging', 'reports.ap_aging_export_excel', 'reports.ap_aging_export_csv')},
     {'key': 'ar_aging', 'label': 'Aging of AR', 'section': 'Ledger',
      'endpoints': ('reports.ar_aging', 'reports.ar_aging_export_excel', 'reports.ar_aging_export_csv')},
+    {'key': 'general_ledger', 'label': 'General Ledger', 'section': 'Ledger',
+     'endpoints': ('reports.general_ledger', 'reports.general_ledger_export_excel',
+                   'reports.general_ledger_export_csv', 'reports.general_ledger_print')},
 ]
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY if m['section'] == 'Transactions']

@@ -1,4 +1,6 @@
 import pytest
+from app import db
+
 pytestmark = [pytest.mark.users, pytest.mark.integration]
 
 
@@ -55,6 +57,59 @@ class TestSidebarRoles:
         resp = client.get('/under-development')
         assert b'User Management' not in resp.data
         assert b'Audit Log' not in resp.data
+
+
+class TestGeneralLedgerNavLink:
+    """GL changed from a nav-item--soon stub to a real can_access_module-gated link."""
+
+    def test_admin_sees_gl_link(self, client, db_session, admin_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'admin', 'admin123')
+        resp = client.get('/under-development')
+        assert b'/reports/general-ledger' in resp.data
+
+    def test_accountant_sees_gl_link(self, client, db_session, admin_user,
+                                      accountant_user, main_branch):
+        admin_user.add_branch(main_branch)
+        accountant_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'accountant', 'accountant123')
+        resp = client.get('/under-development')
+        assert b'/reports/general-ledger' in resp.data
+
+    def test_viewer_sees_gl_link(self, client, db_session, admin_user,
+                                  viewer_user, main_branch):
+        admin_user.add_branch(main_branch)
+        viewer_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'viewer', 'viewer123')
+        resp = client.get('/under-development')
+        assert b'/reports/general-ledger' in resp.data
+
+    def test_staff_without_grant_does_not_see_gl_link(self, client, db_session,
+                                                        admin_user, staff_user, main_branch):
+        admin_user.add_branch(main_branch)
+        staff_user.add_branch(main_branch)
+        # Remove general_ledger from staff's book_permissions (it's absent by default,
+        # but be explicit to guard against future conftest changes).
+        perms = staff_user.get_book_permissions()
+        perms.pop('general_ledger', None)
+        staff_user.set_book_permissions(perms)
+        db_session.commit()
+        login(client, 'staff', 'staff123')
+        resp = client.get('/under-development')
+        assert b'/reports/general-ledger' not in resp.data
+
+    def test_gl_link_is_not_a_soon_stub(self, client, db_session, admin_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'admin', 'admin123')
+        resp = client.get('/under-development')
+        html = resp.data.decode()
+        # The Soon badge and the under-development URL must no longer appear for GL.
+        assert 'feature=General+Ledger' not in html
+        assert 'feature=General%20Ledger' not in html
 
 
 class TestReceiptLinks:

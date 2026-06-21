@@ -39,16 +39,17 @@ class TestUnderDevelopmentPage:
 
 
 class TestDeadLinksWired:
-    def test_general_ledger_link_not_customers(self, client, db_session, admin_user, main_branch):
+    def test_general_ledger_link_points_to_real_route(self, client, db_session, admin_user, main_branch):
+        # General Ledger is now a real page, not an under-development stub.
         admin_user.add_branch(main_branch)
         db_session.commit()
         login(client)
         resp = client.get('/under-development')
         html = resp.data.decode()
-        gl_idx = html.find('General Ledger')
-        snippet = html[max(0, gl_idx - 200):gl_idx]
-        assert 'customers/customers' not in snippet
-        assert 'under-development' in snippet
+        # The GL link in the sidebar should now point at /reports/general-ledger, not under-development.
+        assert '/reports/general-ledger' in html
+        assert 'feature=General+Ledger' not in html
+        assert 'feature=General%20Ledger' not in html
 
     def test_cash_flow_not_hash(self, client, db_session, admin_user, main_branch):
         admin_user.add_branch(main_branch)
