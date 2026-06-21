@@ -298,7 +298,10 @@ def edit(id):
         form.account_type.data = account.account_type
         form.normal_balance.data = account.normal_balance
         form.classification.data = account.classification
-        form.parent_id.data = str(account.parent_id) if account.parent_id else ''
+        # Keep the field's coerced type (int/None) so WTForms marks the matching
+        # option selected. Stringifying it broke the compare (coerce->int vs str),
+        # leaving the dropdown on "None (Top Level)" and orphaning children on save.
+        form.parent_id.data = account.parent_id
         # Debug: Print form data after setting
         print(f"DEBUG - Form data set: type={form.account_type.data}, balance={form.normal_balance.data}, class={form.classification.data}, parent={form.parent_id.data}")
     else:
