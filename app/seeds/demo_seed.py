@@ -521,3 +521,77 @@ def build_crv_revenue(doc_date, customer_obj, gross_amount, refs, admin_id, bran
     crv.journal_entry_id = je.id
     db.session.commit()
     return crv
+
+
+def _new_cdv(doc_date, vendor_obj, refs, admin_id, branch_id, counters, method):
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    from app.utils import ph_now
+    cash = refs['cash_bank'] if method == 'check' else refs['cash_on_hand']
+    cdv = CashDisbursementVoucher(
+        branch_id=branch_id,
+        cdv_number=next_doc_number('CD', doc_date, counters),
+        cdv_date=doc_date,
+        vendor_id=vendor_obj.id,
+        vendor_name=vendor_obj.name,
+        vendor_tin=vendor_obj.tin,
+        payment_method=method,
+        cash_account_id=cash.id,
+        notes='',
+        status='posted',
+        created_by_id=admin_id,
+        posted_by_id=admin_id,
+        posted_at=ph_now(),
+    )
+    if method == 'check':
+        cdv.check_number = f'{doc_date.year}{doc_date.month:02d}{counters[("CD", doc_date.year, doc_date.month)]:04d}'
+        cdv.check_date = doc_date
+        cdv.check_bank = 'BDO'
+    return cdv
+
+
+def build_cdv_paying(doc_date, ap, refs, admin_id, branch_id, counters, method='check'):
+    from app.cash_disbursements.models import CDVApLine
+    from app.cash_disbursements.views import _post_cdv_je, _apply_ap_payments
+    cdv = _new_cdv(doc_date, ap.vendor, refs, admin_id, branch_id, counters, method)
+    cdv.ap_lines.append(CDVApLine(
+        line_number=1,
+        ap_id=ap.id,
+        ap_number=ap.ap_number,
+        original_balance=ap.balance,
+        amount_applied=_money(ap.balance),
+    ))
+    cdv.calculate_totals()
+    db.session.add(cdv)
+    db.session.flush()
+    je = _post_cdv_je(cdv, admin_id)
+    cdv.journal_entry_id = je.id
+    _apply_ap_payments(cdv)
+    db.session.commit()
+    return cdv
+
+
+def build_cdv_expense(doc_date, vendor_obj, vendor_spec, gross_amount, refs, admin_id, branch_id, counters, method='cash'):
+    from app.cash_disbursements.models import CDVExpenseLine
+    from app.cash_disbursements.views import _post_cdv_je
+    vatable = vendor_spec['vat'].startswith('V12')
+    wt = _wht(vendor_spec['wht'])
+    cdv = _new_cdv(doc_date, vendor_obj, refs, admin_id, branch_id, counters, method)
+    line = CDVExpenseLine(
+        line_number=1,
+        description=f'{vendor_obj.name} — {doc_date.strftime("%b %Y")}',
+        amount=_money(gross_amount),
+        vat_category=vendor_spec['vat'],
+        vat_rate=Decimal('12.00') if vatable else Decimal('0.00'),
+        account_id=refs['expense'][vendor_spec['expense_code']].id,
+        wt_id=wt.id if wt else None,
+        wt_rate=Decimal(str(wt.rate)) if wt else Decimal('0.00'),
+    )
+    line.calculate_amounts()
+    cdv.expense_lines.append(line)
+    cdv.calculate_totals()
+    db.session.add(cdv)
+    db.session.flush()
+    je = _post_cdv_je(cdv, admin_id)
+    cdv.journal_entry_id = je.id
+    db.session.commit()
+    return cdv

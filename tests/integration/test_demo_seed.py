@@ -147,3 +147,27 @@ def test_build_crv_collects_invoice(db_session):
     # SI balance reduced / marked paid
     assert Decimal(str(si.balance)) < bal_before
     assert si.status in ('paid', 'partially_paid')
+
+
+def test_build_cdv_pays_ap(db_session):
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.demo_seed import (seed_demo_baseline, seed_demo_vendors,
+                                     resolve_refs, build_apv, build_cdv_paying, VENDORS)
+    refs0 = seed_demo_baseline()
+    vends = seed_demo_vendors()
+    refs = resolve_refs()
+    counters = {}
+    ap = build_apv(date(2025, 3, 5), vends[0], VENDORS[0], Decimal('224000.00'),
+                   refs, refs0['admin'].id, refs0['branch'].id, counters)
+    bal_before = Decimal(str(ap.balance))
+    cdv = build_cdv_paying(date(2025, 4, 5), ap, refs,
+                           refs0['admin'].id, refs0['branch'].id, counters)
+    assert cdv.status == 'posted'
+    je = cdv.journal_entry
+    d = sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
+    c = sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
+    assert d == c
+    assert Decimal(str(ap.balance)) < bal_before
+    assert ap.status in ('paid', 'partially_paid')
+    assert cdv.cdv_number == 'CD-2025-04-0001'
