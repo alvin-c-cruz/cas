@@ -11,10 +11,14 @@ for Asset/Liability groups — adjust live. Description: concise one-line purpos
 | ✔ | Code | Name (proper-cased) | Type | Normal balance | Classification |
 |---|------|---------------------|------|----------------|----------------|
 | ☑ | `11000` | Cash and Cash Equivalents | Asset | debit | Current |
-| ☐ | `12000` | Trade Receivable | Asset | debit | Current |
-| ☐ | `13000` | Other Current Assets | Asset | debit | Current |
-| ☐ | `14000` | Fixed Assets | Asset | debit | Non-Current |
-| ☐ | `15000` | Other Assets | Asset | debit | Non-Current |
+| ☑ | `12000` | Trade Receivable | Asset | debit | Current |
+| ☑ | `13000` | Non Trade Receivables | Asset | debit | Current |
+| ☑ | `14000` | Inventories | Asset | debit | Current |
+| ☑ | `15000` | Prepayments | Asset | debit | Current |
+| ☑ | `16000` | Prepaid Taxes | Asset | debit | Current |
+| ☑ | `17000` | Other Current Assets | Asset | debit | Current |
+| ☑ | `18000` | Fixed Assets | Asset | debit | Non-Current |
+| ☑ | `19000` | Other Assets | Asset | debit | Non-Current |
 | ☐ | `21000` | Accounts Payable | Liability | credit | Current |
 | ☐ | `22000` | Other Current Liabilities | Liability | credit | Current |
 | ☐ | `23000` | Other Liabilities | Liability | credit | Non-Current |

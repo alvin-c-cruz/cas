@@ -43,9 +43,13 @@ the dependent VAT/WHT master data must be re-entered against the new accounts.
   (Current for 11000/12000/13000/21000/22000; Non-Current for 14000/15000/23000);
   user adjusts live.
 - **Descriptions**: a concise one-line purpose sentence, generated per account.
-- **Submit button** on the account form renamed `Create Account` → **`Save Account`**
-  (create) / `Update Account` (edit). This deliberately moves accounts off the
-  "master data = Create" verb convention onto the transaction-doc Save/Update verb.
+- **Submit button** on the account form is now **dynamic by parent**: top-level
+  (no parent) → `Save Group` / `Update Group`; child (parent selected) →
+  `Save Account` / `Update Account`. Server-renders the initial label
+  (`form.parent_id.data`) and toggles live via the existing `handleParentChange`
+  JS. This deliberately moves accounts off the "master data = Create" verb
+  convention onto Save/Update. (Replaced the earlier flat `Create Account` →
+  `Save Account` rename.) Covered by `tests/integration/test_account_form_button_label.py`.
 
 ## Key facts established from the live DB
 
