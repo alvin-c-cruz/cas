@@ -643,6 +643,8 @@ def build_jv(doc_date, lines, refs, admin_id, branch_id, *,
     db.session.add(je)
     db.session.flush()
     je.calculate_totals()   # sets total_debit/credit/is_balanced
+    if not je.is_balanced:
+        raise ValueError(f"Journal voucher not balanced: {je.entry_number} (debit {je.total_debit} != credit {je.total_credit})")
     db.session.commit()
     return je
 
@@ -741,8 +743,6 @@ def generate_demo_transactions(refs, admin_id, branch_id, *, end=date(2025, 6, 1
     # Collect ~70% of SIs, pay ~70% of APs (payment dated 20-40 days later, clamped)
     for si in posted_sis:
         if rng.random() < 0.70:
-            pay = _clamp_day(si.invoice_date.year, si.invoice_date.month,
-                             si.invoice_date.day, end)
             pay = min(date.fromordinal(si.invoice_date.toordinal() + rng.randint(20, 40)), end)
             if pay >= si.invoice_date:
                 build_crv_collecting(pay, si, refs, admin_id, branch_id, counters,
@@ -788,4 +788,11 @@ def run_seed_demo(reset=False):
     seed_demo_customers(refs0['admin'].id)
     seed_demo_vendors()
     refs = resolve_refs()
+    from app.sales_invoices.models import SalesInvoice
+    if not reset and SalesInvoice.query.count() > 0:
+        raise RuntimeError(
+            "Demo transactions already present in this database. "
+            "To rebuild: delete the DB file, run `flask db upgrade`, then `flask seed-demo`. "
+            "(Refusing to add duplicates — invoice/AP numbers are unique.)"
+        )
     return generate_demo_transactions(refs, refs0['admin'].id, refs0['branch'].id)

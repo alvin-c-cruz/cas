@@ -196,6 +196,29 @@ def test_jv_and_stockholder_investments(db_session):
         assert d == c and je.status == 'posted'
 
 
+def test_run_seed_demo_refuses_double_run(db_session):
+    import pytest
+    from app.seeds.demo_seed import run_seed_demo
+    run_seed_demo(reset=False)
+    with pytest.raises(RuntimeError):
+        run_seed_demo(reset=False)
+
+
+def test_build_jv_rejects_unbalanced(db_session):
+    import pytest
+    from decimal import Decimal
+    from datetime import date
+    from app.seeds.demo_seed import seed_demo_baseline, resolve_refs, build_jv
+    r0 = seed_demo_baseline()
+    refs = resolve_refs()
+    with pytest.raises(ValueError):
+        build_jv(date(2025, 3, 1),
+                 [(refs['dep_expense'], Decimal('100.00'), Decimal('0.00')),
+                  (refs['accum_dep_equipment'], Decimal('0.00'), Decimal('90.00'))],
+                 refs, r0['admin'].id, r0['branch'].id,
+                 entry_type='adjustment', description='Deliberately unbalanced')
+
+
 def test_run_seed_demo_full_balances(db_session):
     from decimal import Decimal
     from app.seeds.demo_seed import run_seed_demo
