@@ -410,6 +410,93 @@ def generate_balance_sheet(as_of_date=None, branch_id=None):
     }
 
 
+def generate_general_ledger(start_date, end_date, branch_id, account_id=None):
+    """All-accounts General Ledger book over posted journal entries.
+
+    Per account: opening balance (debit-positive) carried from before start_date,
+    each in-range posted line with a running balance, and a closing subtotal.
+    Accounts with no opening balance and no in-range activity are omitted.
+    """
+    accounts_q = Account.query.filter_by(is_active=True)
+    if account_id:
+        accounts_q = accounts_q.filter(Account.id == account_id)
+    accounts = accounts_q.order_by(Account.code).all()
+
+    result_accounts = []
+    grand_debit = Decimal('0.00')
+    grand_credit = Decimal('0.00')
+
+    for account in accounts:
+        opening = db.session.query(
+            func.coalesce(
+                func.sum(JournalEntryLine.debit_amount - JournalEntryLine.credit_amount),
+                0)
+        ).join(JournalEntry).filter(
+            JournalEntry.status == 'posted',
+            JournalEntry.branch_id == branch_id,
+            JournalEntry.entry_date < start_date,
+            JournalEntryLine.account_id == account.id,
+        ).scalar()
+        opening = Decimal(str(opening or '0.00'))
+
+        rows = db.session.query(JournalEntryLine, JournalEntry).join(JournalEntry).filter(
+            JournalEntry.status == 'posted',
+            JournalEntry.branch_id == branch_id,
+            JournalEntry.entry_date >= start_date,
+            JournalEntry.entry_date <= end_date,
+            JournalEntryLine.account_id == account.id,
+        ).order_by(
+            JournalEntry.entry_date,
+            JournalEntry.entry_number,
+            JournalEntryLine.line_number,
+        ).all()
+
+        if opening == 0 and not rows:
+            continue
+
+        running = opening
+        total_debit = Decimal('0.00')
+        total_credit = Decimal('0.00')
+        line_dicts = []
+        for line, entry in rows:
+            running += (line.debit_amount - line.credit_amount)
+            total_debit += line.debit_amount
+            total_credit += line.credit_amount
+            line_dicts.append({
+                'entry_id': entry.id,
+                'entry_number': entry.entry_number,
+                'entry_date': entry.entry_date,
+                'entry_type': entry.entry_type,
+                'reference': entry.reference,
+                'description': line.description or entry.description,
+                'debit': float(line.debit_amount),
+                'credit': float(line.credit_amount),
+                'running_balance': float(running),
+            })
+
+        closing = opening + (total_debit - total_credit)
+        grand_debit += total_debit
+        grand_credit += total_credit
+        result_accounts.append({
+            'code': account.code,
+            'name': account.name,
+            'account_type': account.account_type,
+            'opening_balance': float(opening),
+            'lines': line_dicts,
+            'total_debit': float(total_debit),
+            'total_credit': float(total_credit),
+            'closing_balance': float(closing),
+        })
+
+    return {
+        'start_date': start_date,
+        'end_date': end_date,
+        'accounts': result_accounts,
+        'grand_total_debit': float(grand_debit),
+        'grand_total_credit': float(grand_credit),
+    }
+
+
 def get_account_category_name(account_code):
     """
     Get friendly category name based on account code
