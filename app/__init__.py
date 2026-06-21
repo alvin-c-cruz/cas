@@ -298,6 +298,17 @@ def create_app(config_name=None):
         if summary['unbalanced']:
             print("  [WARN] Some posted JEs are unbalanced — investigate before demo.")
 
+    @app.cli.command('seed-demo')
+    def seed_demo_command():
+        """Build the Zhiyuan Construction demo dataset into the active DB."""
+        from app.seeds.demo_seed import run_seed_demo
+        summary = run_seed_demo(reset=False)
+        print("\n[OK] Demo seed complete:")
+        for k in ('si', 'ap', 'crv', 'cdv', 'jv', 'unbalanced'):
+            print(f"  {k:>12}: {summary[k]}")
+        if summary['unbalanced']:
+            print("  [WARN] Some posted JEs are unbalanced — investigate before demo.")
+
     # Request/Response logging middleware
     @app.before_request
     def log_request_info():

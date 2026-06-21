@@ -194,3 +194,33 @@ def test_jv_and_stockholder_investments(db_session):
         d = sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
         c = sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
         assert d == c and je.status == 'posted'
+
+
+def test_run_seed_demo_full_balances(db_session):
+    from decimal import Decimal
+    from app.seeds.demo_seed import run_seed_demo
+    from app.journal_entries.models import JournalEntry
+    from app.sales_invoices.models import SalesInvoice
+    from app.accounts_payable.models import AccountsPayable
+    from app.cash_receipts.models import CashReceiptVoucher
+    from app.cash_disbursements.models import CashDisbursementVoucher
+
+    summary = run_seed_demo(reset=False)
+    assert summary['si'] >= 8 and summary['ap'] >= 8
+    assert summary['crv'] >= 6 and summary['cdv'] >= 6 and summary['jv'] >= 5
+    # Every posted document type exists (including paid/partially_paid after collection)
+    assert SalesInvoice.query.count() >= 8
+    assert AccountsPayable.query.count() >= 8
+    assert CashReceiptVoucher.query.count() >= 6
+    assert CashDisbursementVoucher.query.count() >= 6
+    # Trial balance: total posted debits == total posted credits
+    tot_d = tot_c = Decimal('0')
+    for je in JournalEntry.query.filter_by(status='posted').all():
+        tot_d += sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
+        tot_c += sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
+    assert tot_d == tot_c
+    assert summary['unbalanced'] == 0
+    # All transactions within Jan 1 - Jun 19 2025
+    from datetime import date
+    for si in SalesInvoice.query.all():
+        assert date(2025, 1, 1) <= si.invoice_date <= date(2025, 6, 19)

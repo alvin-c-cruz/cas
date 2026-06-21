@@ -671,3 +671,121 @@ def seed_stockholder_investments(refs, admin_id, branch_id):
     ], refs, admin_id, branch_id, entry_type='opening',
         description='Stockholder investment — Mei Lin (construction equipment, in-kind)'))
     return out
+
+
+def _clamp_day(year, month, day, end):
+    last = calendar.monthrange(year, month)[1]
+    return min(date(year, month, min(day, last)), end)
+
+
+def _count_unbalanced_jes():
+    from app.journal_entries.models import JournalEntry
+    bad = 0
+    for je in JournalEntry.query.filter_by(status='posted').all():
+        d = sum((l.debit_amount for l in je.lines.all()), Decimal('0.00'))
+        c = sum((l.credit_amount for l in je.lines.all()), Decimal('0.00'))
+        if d != c:
+            bad += 1
+    return bad
+
+
+def generate_demo_transactions(refs, admin_id, branch_id, *, end=date(2025, 6, 19),
+                               rng_seed=20250101):
+    """Generate the Jan 1 - Jun 19 2025 document set. Deterministic."""
+    from app.customers.models import Customer
+    from app.vendors.models import Vendor
+    rng = random.Random(rng_seed)
+    counters = {}
+    summary = {'si': 0, 'ap': 0, 'crv': 0, 'cdv': 0, 'jv': 0, 'unbalanced': 0}
+
+    custs = [c for c in (Customer.query.filter_by(code=s['code']).first() for s in CUSTOMERS) if c]
+    vends = {v.code: v for v in Vendor.query.all()}
+    vatable_custs = [c for c in custs if c.default_vat_category == 'V12']
+
+    # Stockholder investments first (opening equity)
+    seed_stockholder_investments(refs, admin_id, branch_id)
+    summary['jv'] += 3
+
+    posted_sis, posted_aps = [], []
+    months = [(2025, m) for m in range(1, 7)]
+    for (y, m) in months:
+        # ~2 SIs / month (skip days past end via clamp)
+        for _ in range(2):
+            cust = rng.choice(vatable_custs)
+            d = _clamp_day(y, m, rng.randint(5, 20), end)
+            if d > end:
+                continue
+            gross = _money(rng.uniform(300000, 900000))
+            si = build_si(d, cust, gross, refs, admin_id, branch_id, counters)
+            posted_sis.append(si)
+            summary['si'] += 1
+        # ~2 APs / month
+        for _ in range(2):
+            spec = rng.choice(VENDORS)
+            vobj = vends[spec['code']]
+            d = _clamp_day(y, m, rng.randint(3, 18), end)
+            if d > end:
+                continue
+            gross = _money(rng.uniform(80000, 350000))
+            ap = build_apv(d, vobj, spec, gross, refs, admin_id, branch_id, counters)
+            posted_aps.append(ap)
+            summary['ap'] += 1
+        # depreciation JV each month
+        d = _clamp_day(y, m, 28, end)
+        build_jv(d, [(refs['dep_expense'], Decimal('25000.00'), Decimal('0.00')),
+                     (refs['accum_dep_equipment'], Decimal('0.00'), Decimal('25000.00'))],
+                 refs, admin_id, branch_id, entry_type='adjustment',
+                 description=f'Monthly depreciation {d.strftime("%b %Y")}')
+        summary['jv'] += 1
+
+    # Collect ~70% of SIs, pay ~70% of APs (payment dated 20-40 days later, clamped)
+    for si in posted_sis:
+        if rng.random() < 0.70:
+            pay = _clamp_day(si.invoice_date.year, si.invoice_date.month,
+                             si.invoice_date.day, end)
+            pay = min(date.fromordinal(si.invoice_date.toordinal() + rng.randint(20, 40)), end)
+            if pay >= si.invoice_date:
+                build_crv_collecting(pay, si, refs, admin_id, branch_id, counters,
+                                     method='check' if rng.random() < 0.6 else 'cash')
+                summary['crv'] += 1
+    for ap in posted_aps:
+        if rng.random() < 0.70:
+            pay = min(date.fromordinal(ap.ap_date.toordinal() + rng.randint(15, 35)), end)
+            if pay >= ap.ap_date:
+                spec = next(s for s in VENDORS if s['code'] == ap.vendor.code)
+                build_cdv_paying(pay, ap, refs, admin_id, branch_id, counters,
+                                 method='check' if rng.random() < 0.6 else 'cash')
+                summary['cdv'] += 1
+
+    # A couple direct-revenue CRVs and direct-expense CDVs for variety
+    build_crv_revenue(date(2025, 4, 15), vatable_custs[0], _money('56000.00'),
+                      refs, admin_id, branch_id, counters)
+    summary['crv'] += 1
+    for spec_code, day, mon in [('V007', 10, 2), ('V008', 12, 5)]:
+        spec = next(s for s in VENDORS if s['code'] == spec_code)
+        build_cdv_expense(_clamp_day(2025, mon, day, end), vends[spec_code], spec,
+                          _money(rng.uniform(8000, 40000)), refs, admin_id, branch_id, counters)
+        summary['cdv'] += 1
+
+    # A reclassification JV + a reversal-style JV for variety
+    build_jv(date(2025, 6, 18),
+             [(refs['cip'], Decimal('120000.00'), Decimal('0.00')),
+              (refs['expense']['50101'], Decimal('0.00'), Decimal('120000.00'))],
+             refs, admin_id, branch_id, entry_type='reclassification',
+             description='Reclassify materials to CIP')
+    summary['jv'] += 1
+
+    summary['unbalanced'] = _count_unbalanced_jes()
+    return summary
+
+
+def run_seed_demo(reset=False):
+    """Optionally reset, build baseline + master data + transactions. Returns summary."""
+    if reset:
+        db.drop_all()
+        db.create_all()
+    refs0 = seed_demo_baseline()
+    seed_demo_customers(refs0['admin'].id)
+    seed_demo_vendors()
+    refs = resolve_refs()
+    return generate_demo_transactions(refs, refs0['admin'].id, refs0['branch'].id)
