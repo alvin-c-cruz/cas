@@ -92,6 +92,11 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 
 Production target is PythonAnywhere via `wsgi.py` (set `PYTHONANYWHERE_USERNAME` and a real `SECRET_KEY` there; defaults to production config and SQLite at `~/cas.db`).
 
+**Multi-instance (RIC + CAS).** The same codebase is deployed to separate servers, one per client/instance. There is no code branching — each server differs only by its `.env` and its data:
+- Each server sets its own `SQLALCHEMY_DATABASE_URI` (RIC → `ric.db`, CAS demo → `cas_demo.db`), keeps its own `instance/uploads` (the logo is a file referenced by the `company_logo` setting, **not** stored in the DB), and sets `company_name` as a DB setting.
+- The dev box currently runs the **RIC** instance (`.env` → `sqlite:///ric.db`); the real migration data lives in `instance/ric.db`. Design: `docs/superpowers/specs/2026-06-21-ric-cas-database-separation-design.md`.
+- `/reset-database` resolves its target from `.env` and confirms the filename before wiping — it will not blindly delete `cas.db`. Mind which DB `.env` points at before reseeding.
+
 ## Gotchas
 
 - Global error handlers are currently **disabled** in `create_app` (bottom of the file) to surface full tracebacks during testing — re-enable before production.

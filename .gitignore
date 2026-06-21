@@ -29,11 +29,11 @@ env/
 instance/
 .webassets-cache
 
-# Database
+# Database (per-instance DBs: cas.db, ric.db, cas_demo.db, ... + local backups)
 *.db
 *.sqlite
 *.sqlite3
-cas.db
+*.db.bak-*
 
 # IDE
 .vscode/

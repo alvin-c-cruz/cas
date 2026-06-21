@@ -78,6 +78,33 @@ Patching `seed_data.py` requires explicit approval per CLAUDE.md ("Propose befor
 
 Only runs after Phase 1 is complete and user has responded.
 
+### Step 2.0 — Resolve and confirm the TARGET database (safety-critical)
+
+There is more than one database now (e.g. `instance/ric.db` holds **real RIC client
+migration data**; a CAS demo DB is separate). `seed-minimal` destroys whatever DB it
+runs against, so you MUST reset the *intended* one — never blindly `cas.db`.
+
+Resolve the active DB from `.env` (the single source of truth):
+
+```powershell
+$uri = (Get-Content "C:\envs\cas\.env" | Select-String '^\s*SQLALCHEMY_DATABASE_URI=').Line
+$dbname = ($uri -replace '.*sqlite:///','').Trim()
+$dbfile = "C:\envs\cas\instance\$dbname"
+Write-Host "Active SQLALCHEMY_DATABASE_URI: $uri"
+Write-Host "Resolved target DB file:        $dbfile"
+if (Test-Path $dbfile) { Write-Host ("Size: {0} bytes" -f (Get-Item $dbfile).Length) }
+else { Write-Host "WARNING: target file does not exist yet." }
+```
+
+**STOP and confirm with the user**, quoting the resolved filename:
+
+> "This will DELETE and re-seed `instance/<dbname>`. If that is the RIC client
+> database, its migrated data will be permanently lost. Type the database
+> filename to confirm."
+
+Proceed only if the user confirms the exact filename. Carry `$dbfile`/`$dbname`
+into the steps below — do not hardcode `cas.db`.
+
 ### Step 2.1 — Kill server
 
 ```powershell
@@ -120,8 +147,10 @@ These live processes may belong to **another Claude session's dev server** (see 
 
 ### Step 2.3 — Delete the database
 
+Delete the **resolved target** from Step 2.0, not a hardcoded name:
+
 ```powershell
-Remove-Item -Force "C:\envs\cas\instance\cas.db"
+Remove-Item -Force $dbfile
 ```
 
 Note: No `-ErrorAction SilentlyContinue`. If this errors, surface the error and stop.
@@ -129,10 +158,10 @@ Note: No `-ErrorAction SilentlyContinue`. If this errors, surface the error and 
 ### Step 2.4 — Verify the file is gone
 
 ```powershell
-if (Test-Path "C:\envs\cas\instance\cas.db") {
-    Write-Host "ERROR: instance/cas.db still exists. File lock was not released."
+if (Test-Path $dbfile) {
+    Write-Host "ERROR: $dbfile still exists. File lock was not released."
 } else {
-    Write-Host "instance/cas.db deleted successfully."
+    Write-Host "$dbname deleted successfully."
 }
 ```
 
@@ -167,7 +196,7 @@ Tell the user:
 RESET COMPLETE
 ==============
 Server:     Killed PIDs [x, y] / No server was running
-DB:         instance/cas.db deleted and recreated
+DB:         instance/<dbname> deleted and recreated (the .env target)
 Seed:       flask seed-minimal — admin user, main branch, 19 app settings, 28 COA accounts, 7 VAT codes, 3 WHT codes
 Seed diff:  [summary of any seed_data.py changes from Phase 1, or "none"]
 Uploads:    instance/uploads/ is NOT cleared by reset; company_logo is reset to '' so any
@@ -186,4 +215,6 @@ Login:      admin / admin123
 - Never edit `seed_data.py` without explicit user approval.
 - Use `flask seed-minimal`, not `flask seed-db`.
 - If port 5000 is still in use after killing, stop — do not delete the DB.
-- If `instance/cas.db` still exists after `Remove-Item`, stop — do not run migrations.
+- If the resolved target DB still exists after `Remove-Item`, stop — do not run migrations.
+- Always reset the DB resolved from `.env` (Step 2.0) and confirm its filename with the
+  user first. Never hardcode `cas.db` — it may not be the active database (e.g. RIC runs `ric.db`).
