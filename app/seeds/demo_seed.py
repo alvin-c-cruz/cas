@@ -243,3 +243,71 @@ def seed_demo_baseline():
         AccountingPeriod.get_or_create_period(2025, m)
 
     return {'admin': admin, 'branch': branch}
+
+
+# code, name, vat ('V12' VATable / 'VEX' non-VAT), wht (sales-side code or None)
+CUSTOMERS = [
+    {'code': 'C001', 'name': 'Vista Land Estates Inc.', 'vat': 'V12', 'wht': 'WC120'},
+    {'code': 'C002', 'name': 'Megabuild Properties Corp.', 'vat': 'V12', 'wht': 'WC120'},
+    {'code': 'C003', 'name': "St. Luke's Realty Development Corp.", 'vat': 'V12', 'wht': 'WC120'},
+    {'code': 'C004', 'name': 'Ayala Township Development Inc.', 'vat': 'V12', 'wht': 'WC120'},
+    {'code': 'C005', 'name': 'Robinsons Land Corporation', 'vat': 'V12', 'wht': 'WC120'},
+    {'code': 'C006', 'name': 'Greenfield District Devt Corp.', 'vat': 'V12', 'wht': 'WC120'},
+    {'code': 'C007', 'name': 'Juan dela Cruz', 'vat': 'VEX', 'wht': None},
+]
+
+# code, name, vat (purchase category), wht, expense_code (default GL line account)
+VENDORS = [
+    {'code': 'V001', 'name': 'Holcim Philippines Inc.', 'vat': 'V12DG', 'wht': 'WC158', 'expense_code': '50101'},
+    {'code': 'V002', 'name': 'SteelAsia Manufacturing Corp.', 'vat': 'V12DG', 'wht': 'WC158', 'expense_code': '50101'},
+    {'code': 'V003', 'name': 'Wilcon Depot Inc.', 'vat': 'V12DG', 'wht': 'WC158', 'expense_code': '50101'},
+    {'code': 'V004', 'name': 'Premier Electrical Subcontractor', 'vat': 'V12SV', 'wht': 'WC120', 'expense_code': '50103'},
+    {'code': 'V005', 'name': 'Reliable Plumbing & Sanitary Subcon', 'vat': 'V12SV', 'wht': 'WC120', 'expense_code': '50103'},
+    {'code': 'V006', 'name': 'Manila Equipment Rentals Inc.', 'vat': 'V12SV', 'wht': 'WC100', 'expense_code': '50104'},
+    {'code': 'V007', 'name': 'Meralco', 'vat': 'V12SV', 'wht': None, 'expense_code': '50221'},
+    {'code': 'V008', 'name': 'Petron Corporation', 'vat': 'V12DG', 'wht': None, 'expense_code': '50280'},
+    {'code': 'V009', 'name': 'Cruz & Associates Law Office', 'vat': 'V12SV', 'wht': 'WC010', 'expense_code': '50240'},
+    {'code': 'V010', 'name': 'Pioneer Insurance & Surety Corp.', 'vat': 'V12SV', 'wht': 'WC160', 'expense_code': '50298'},
+]
+
+
+def _wht(code):
+    from app.withholding_tax.models import WithholdingTax
+    return WithholdingTax.query.filter_by(code=code).first() if code else None
+
+
+def seed_demo_customers(admin_id):
+    from app.customers.models import Customer
+    out = []
+    for i, spec in enumerate(CUSTOMERS):
+        c = Customer.query.filter_by(code=spec['code']).first()
+        if c is None:
+            c = Customer(code=spec['code'], name=spec['name'],
+                         tin=f"{200 + i}-100-200-000",
+                         address='Metro Manila', payment_terms='Net 60',
+                         default_vat_category=spec['vat'], default_wt_code=spec['wht'],
+                         is_active=True, created_by_id=admin_id)
+            db.session.add(c)
+        wt = _wht(spec['wht'])
+        c.withholding_taxes = [wt] if wt else []
+        out.append(c)
+    db.session.commit()
+    return out
+
+
+def seed_demo_vendors():
+    from app.vendors.models import Vendor
+    out = []
+    for i, spec in enumerate(VENDORS):
+        v = Vendor.query.filter_by(code=spec['code']).first()
+        if v is None:
+            v = Vendor(code=spec['code'], name=spec['name'],
+                       tin=f"{300 + i}-400-500-000",
+                       payment_terms='Net 30', default_vat_category=spec['vat'],
+                       is_active=True)
+            db.session.add(v)
+        wt = _wht(spec['wht'])
+        v.withholding_taxes = [wt] if wt else []
+        out.append(v)
+    db.session.commit()
+    return out

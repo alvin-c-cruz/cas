@@ -43,3 +43,22 @@ def test_seed_demo_baseline(db_session):
     # Idempotent
     seed_demo_baseline()
     assert WithholdingTax.query.filter_by(code='WC120').count() == 1
+
+
+def test_seed_master_data(db_session):
+    from app.seeds.demo_seed import seed_demo_baseline, seed_demo_customers, seed_demo_vendors
+    from app.customers.models import Customer
+    from app.vendors.models import Vendor
+    refs = seed_demo_baseline()
+    custs = seed_demo_customers(refs['admin'].id)
+    vends = seed_demo_vendors()
+    assert len(custs) == 7 and len(vends) == 10
+    # WHT association resolved to real objects
+    v_sub = Vendor.query.filter_by(name='Premier Electrical Subcontractor').first()
+    assert [w.code for w in v_sub.withholding_taxes] == ['WC120']
+    c1 = Customer.query.filter_by(code='C001').first()
+    assert c1.default_vat_category == 'V12'
+    assert [w.code for w in c1.withholding_taxes] == ['WC120']
+    # Idempotent
+    assert len(seed_demo_customers(refs['admin'].id)) == 7
+    assert Customer.query.count() == 7
