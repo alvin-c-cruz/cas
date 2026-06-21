@@ -11,7 +11,6 @@ from app.accounts.models import Account
 from app.accounts_payable.models import AccountsPayable
 from app.cash_receipts.models import CashReceiptVoucher
 from app.cash_disbursements.models import CashDisbursementVoucher
-from app.journal_entries.models import JournalEntry
 from app.reports.bir import (
     get_summary_list_of_sales,
     get_summary_list_of_purchases,

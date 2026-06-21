@@ -3,7 +3,6 @@ from decimal import Decimal
 import pytest
 
 from app import db
-from app.accounts.models import Account
 from app.customers.models import Customer
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.reports.views import _attach_source_links
@@ -158,3 +157,21 @@ def test_general_ledger_print_renders(client, db_session, main_branch, admin_use
     resp = client.get('/reports/general-ledger/print')
     assert resp.status_code == 200
     assert b'General Ledger' in resp.data
+
+
+def test_general_ledger_csv_export_contains_data(client, db_session, main_branch, admin_user,
+                                                  cash_account, revenue_account):
+    """_flatten_ledger rows (account header + Opening balance label) appear in the CSV body."""
+    _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-CSV')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    today = date.today()
+    start = date(today.year, today.month, 1).isoformat()
+    end = today.isoformat()
+    resp = client.get(f'/reports/general-ledger/export/csv?start_date={start}&end_date={end}')
+    assert resp.status_code == 200
+    assert 'text/csv' in resp.headers['Content-Type']
+    # _flatten_ledger emits one header row per account (contains the code) and one row
+    # with 'Opening balance' as the particulars column; verify both land in the file.
+    assert cash_account.code.encode() in resp.data
+    assert b'Opening balance' in resp.data
