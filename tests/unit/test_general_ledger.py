@@ -112,3 +112,56 @@ def test_draft_entries_excluded(db_session):
     _entry(b.id, date(2026, 6, 5), 'JE-D', [(cash, 700, 0), (rev, 0, 700)], status='draft')
     gl = generate_general_ledger(date(2026, 6, 1), date(2026, 6, 30), b.id)
     assert gl['accounts'] == []
+
+
+def test_opening_balance_is_branch_scoped(db_session):
+    """A prior-dated entry on B2 must not bleed into B1's opening balance."""
+    b1 = _branch('B1', 'B1')
+    b2 = _branch('B2', 'B2')
+    cash = _acct('1001', 'Cash')
+    rev = _acct('4001', 'Revenue', 'Income', 'Credit')
+    # Post a prior-period entry to B2 only
+    _entry(b2.id, date(2026, 5, 15), 'JE-B2', [(cash, 500, 0), (rev, 0, 500)])
+    # B1 has no activity at all — GL should return empty accounts
+    gl = generate_general_ledger(date(2026, 6, 1), date(2026, 6, 30), b1.id)
+    assert gl['accounts'] == []
+
+
+def test_description_falls_back_to_entry_description(db_session):
+    """When a line's description is None, the line dict uses the parent entry's description."""
+    b = _branch()
+    cash = _acct('1001', 'Cash')
+    rev = _acct('4001', 'Revenue', 'Income', 'Credit')
+    # Build entry directly so we can leave the cash line's description as None
+    je = JournalEntry(
+        entry_number='JE-DESC',
+        entry_date=date(2026, 6, 10),
+        description='ENTRY DESC',
+        reference='JE-DESC',
+        entry_type='adjustment',
+        branch_id=b.id,
+        status='posted',
+        is_balanced=True,
+        total_debit=Decimal('1000'),
+        total_credit=Decimal('1000'),
+    )
+    db.session.add(je)
+    db.session.flush()
+    # Cash debit line — description intentionally None
+    db.session.add(JournalEntryLine(
+        entry_id=je.id, line_number=1, account_id=cash.id,
+        debit_amount=Decimal('1000'), credit_amount=Decimal('0'),
+        description=None,
+    ))
+    # Revenue credit line (balances the entry)
+    db.session.add(JournalEntryLine(
+        entry_id=je.id, line_number=2, account_id=rev.id,
+        debit_amount=Decimal('0'), credit_amount=Decimal('1000'),
+        description=None,
+    ))
+    db.session.commit()
+
+    gl = generate_general_ledger(date(2026, 6, 1), date(2026, 6, 30), b.id)
+    cash_sec = next(a for a in gl['accounts'] if a['code'] == '1001')
+    assert len(cash_sec['lines']) == 1
+    assert cash_sec['lines'][0]['description'] == 'ENTRY DESC'
