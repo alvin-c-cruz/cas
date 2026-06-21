@@ -9,6 +9,7 @@ from app.customers.models import Customer
 from app.sales_vat_categories.models import SalesVATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.customers.forms import CustomerForm
+from app.sales_invoices.models import SalesInvoice
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils import ph_now
@@ -141,6 +142,63 @@ def populate_dropdown_choices(form):
     wt_choices = [('', '-- Select --')]
     wt_choices.extend([(wt.code, f'{wt_label(wt.to_dict(), "sales")} ({wt.rate}%)') for wt in wt_codes])
     form.default_wt_code.choices = wt_choices
+
+
+@customers_bp.route('/customers/<int:id>')
+@login_required
+def detail(id):
+    """Customer detail: Overview (info + AR aging + creditable WHT YTD) and
+    Invoices tabs. Read view — mirrors vendors.detail (no role gate, no audit)."""
+    customer = Customer.query.get_or_404(id)
+    tab = request.args.get('tab', 'overview')
+    total_invoices = SalesInvoice.query.filter_by(customer_id=id).count()
+
+    if tab == 'invoices':
+        from datetime import date as date_type
+        page = request.args.get('page', 1, type=int)
+        date_from_str = request.args.get('date_from', '')
+        date_to_str = request.args.get('date_to', '')
+        status_filter = request.args.get('status', 'all')
+
+        query = SalesInvoice.query.filter_by(customer_id=id)
+        if date_from_str:
+            try:
+                query = query.filter(SalesInvoice.invoice_date >= date_type.fromisoformat(date_from_str))
+            except ValueError:
+                pass
+        if date_to_str:
+            try:
+                query = query.filter(SalesInvoice.invoice_date <= date_type.fromisoformat(date_to_str))
+            except ValueError:
+                pass
+        if status_filter and status_filter != 'all':
+            query = query.filter(SalesInvoice.status == status_filter)
+
+        pagination = query.order_by(SalesInvoice.invoice_date.desc()).paginate(
+            page=page, per_page=20, error_out=False
+        )
+        return render_template(
+            'customers/detail.html',
+            customer=customer,
+            tab='invoices',
+            total_invoices=total_invoices,
+            pagination=pagination,
+            date_from=date_from_str,
+            date_to=date_to_str,
+            status_filter=status_filter,
+        )
+    else:
+        from app.customers.utils import compute_ar_aging, compute_creditable_wht_ytd
+        aging = compute_ar_aging(customer.id)
+        wht_ytd = compute_creditable_wht_ytd(customer.id)
+        return render_template(
+            'customers/detail.html',
+            customer=customer,
+            tab='overview',
+            total_invoices=total_invoices,
+            aging=aging,
+            wht_ytd=wht_ytd,
+        )
 
 
 @customers_bp.route('/customers/create', methods=['GET', 'POST'])

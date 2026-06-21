@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}{{ customer.name }} — Customer{% endblock %}
+{% block page_title %}{{ customer.name }}{% endblock %}
+
+{% block content %}
+
+<!-- Header: code/status + Edit button -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <span style="color:var(--text-2); font-size:14px; font-weight:500;">{{ customer.code }}</span>
+        <span class="badge {% if customer.is_active %}badge-success{% else %}badge-inactive{% endif %}">
+            {{ 'Active' if customer.is_active else 'Inactive' }}
+        </span>
+    </div>
+    {% if current_user.role in ['accountant', 'admin'] %}
+    <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn btn-primary btn-sm">Edit Customer</a>
+    {% endif %}
+</div>
+
+<!-- Tab bar -->
+<div class="customer-tab-bar">
+    <a href="{{ url_for('customers.detail', id=customer.id, tab='overview') }}"
+       class="customer-tab {% if tab == 'overview' %}active{% endif %}">Overview</a>
+    <a href="{{ url_for('customers.detail', id=customer.id, tab='invoices') }}"
+       class="customer-tab {% if tab == 'invoices' %}active{% endif %}">Invoices ({{ total_invoices }})</a>
+</div>
+
+{% if tab == 'overview' %}
+<!-- ── OVERVIEW TAB ── -->
+<div class="customer-overview-grid">
+
+    <!-- Left: Customer Info -->
+    <div class="card">
+        <div class="card-body">
+            <h4 style="margin:0 0 16px 0; font-size:15px; font-weight:600;">Customer Information</h4>
+            <table class="customer-info-table">
+                <tr><td>Code</td><td><strong>{{ customer.code }}</strong></td></tr>
+                <tr><td>Name</td><td>{{ customer.name }}</td></tr>
+                <tr><td>TIN</td><td>{{ customer.tin or '—' }}</td></tr>
+                <tr><td>Contact</td><td>{{ customer.contact_person or '—' }}</td></tr>
+                <tr><td>Phone</td><td>{{ customer.phone or '—' }}</td></tr>
+                <tr><td>Email</td><td>{{ customer.email or '—' }}</td></tr>
+                <tr><td>Address</td><td>{{ customer.address or '—' }}</td></tr>
+                <tr><td>Postal Code</td><td>{{ customer.postal_code or '—' }}</td></tr>
+                <tr><td>Payment Terms</td><td>{{ customer.payment_terms or '—' }}</td></tr>
+                <tr>
+                    <td>Default VAT</td>
+                    <td>
+                        {% if customer.default_vat_category %}
+                        <span class="badge badge-vat">{{ customer.default_vat_category }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Default WHT</td>
+                    <td>
+                        {% for wt in customer.withholding_taxes %}
+                        <span class="badge badge-wt">{{ wt.code }}</span>
+                        {% else %}—{% endfor %}
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Right: AR Aging + Creditable WHT YTD -->
+    <div style="display:flex; flex-direction:column; gap:20px;">
+
+        <div class="card">
+            <div class="card-body">
+                <h4 style="margin:0 0 16px 0; font-size:15px; font-weight:600;">AR Aging (Posted Invoices)</h4>
+                <table class="customer-info-table">
+                    <tr><td>Current (not yet due)</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['current']) }}</td></tr>
+                    <tr><td>1–30 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['1_30']) }}</td></tr>
+                    <tr><td>31–60 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['31_60']) }}</td></tr>
+                    <tr><td>61–90 days overdue</td><td class="amount-cell">₱{{ '{:,.2f}'.format(aging['61_90']) }}</td></tr>
+                    <tr><td>90+ days overdue</td><td class="amount-cell" style="color:var(--red);">₱{{ '{:,.2f}'.format(aging['90_plus']) }}</td></tr>
+                    <tr class="aging-total-row">
+                        <td><strong>Total Outstanding</strong></td>
+                        <td class="amount-cell"><strong>₱{{ '{:,.2f}'.format(aging['total']) }}</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h4 style="margin:0 0 16px 0; font-size:15px; font-weight:600;">Creditable WHT (BIR 2307) YTD</h4>
+                {% if wht_ytd %}
+                <table class="customer-info-table">
+                    {% for row in wht_ytd %}
+                    <tr>
+                        <td>{{ row.code }} — {{ row.name }}</td>
+                        <td class="amount-cell">₱{{ '{:,.2f}'.format(row.total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% else %}
+                <p style="color:var(--text-2); font-style:italic; margin:0;">No creditable WHT recorded this calendar year.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- ── INVOICES TAB ── -->
+<div style="margin-top:16px;">
+    <form method="GET" action="{{ url_for('customers.detail', id=customer.id) }}"
+          style="display:flex; gap:12px; align-items:flex-end; margin-bottom:16px; flex-wrap:wrap;">
+        <input type="hidden" name="tab" value="invoices">
+        <div>
+            <label style="font-size:13px; font-weight:500; display:block; margin-bottom:4px;">Date From</label>
+            <input type="date" name="date_from" value="{{ date_from }}"
+                   class="form-control form-control-sm" style="width:160px;">
+        </div>
+        <div>
+            <label style="font-size:13px; font-weight:500; display:block; margin-bottom:4px;">Date To</label>
+            <input type="date" name="date_to" value="{{ date_to }}"
+                   class="form-control form-control-sm" style="width:160px;">
+        </div>
+        <div>
+            <label style="font-size:13px; font-weight:500; display:block; margin-bottom:4px;">Status</label>
+            <select name="status" class="form-control form-control-sm" style="width:150px;">
+                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+                <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+                <option value="posted" {% if status_filter == 'posted' %}selected{% endif %}>Posted</option>
+                <option value="partially_paid" {% if status_filter == 'partially_paid' %}selected{% endif %}>Partially Paid</option>
+                <option value="paid" {% if status_filter == 'paid' %}selected{% endif %}>Paid</option>
+                <option value="voided" {% if status_filter == 'voided' %}selected{% endif %}>Voided</option>
+                <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-end;">Filter</button>
+        <a href="{{ url_for('customers.detail', id=customer.id, tab='invoices') }}"
+           class="btn btn-secondary btn-sm" style="align-self:flex-end;">Clear</a>
+    </form>
+
+    <div class="card">
+        <div class="card-body" style="padding:0;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>INVOICE #</th>
+                        <th>INVOICE DATE</th>
+                        <th>DUE DATE</th>
+                        <th style="text-align:right;">SUBTOTAL</th>
+                        <th style="text-align:right;">OUTPUT VAT</th>
+                        <th style="text-align:right;">WHT</th>
+                        <th style="text-align:right;">NET AMOUNT</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in pagination.items %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('sales_invoices.view', id=inv.id) }}"
+                               style="color:var(--blue); text-decoration:none;">
+                                {{ inv.invoice_number }}
+                            </a>
+                        </td>
+                        <td>{{ inv.invoice_date.strftime('%b %d, %Y') }}</td>
+                        <td>{{ inv.due_date.strftime('%b %d, %Y') }}</td>
+                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(inv.subtotal) }}</td>
+                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(inv.vat_amount) }}</td>
+                        <td style="text-align:right; color:var(--red);">
+                            {% if inv.withholding_tax_amount > 0 %}
+                            -₱{{ '{:,.2f}'.format(inv.withholding_tax_amount) }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td style="text-align:right; font-weight:600;">₱{{ '{:,.2f}'.format(inv.total_amount) }}</td>
+                        <td>
+                            {% set inv_badge = {'partially_paid': 'partial', 'voided': 'void'} %}
+                            <span class="badge badge-{{ inv_badge.get(inv.status, inv.status) }}">{{ inv.status | replace('_', ' ') | title }}</span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align:center; color:var(--text-2); padding:32px; font-style:italic;">
+                            No invoices found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if pagination.pages > 1 %}
+    <div style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px;">
+        {% if pagination.has_prev %}
+        <a href="{{ url_for('customers.detail', id=customer.id, tab='invoices', page=pagination.prev_num,
+                            date_from=date_from, date_to=date_to, status=status_filter) }}"
+           class="btn btn-secondary btn-sm">← Previous</a>
+        {% endif %}
+        <span style="font-size:14px; color:var(--text-2);">
+            Page {{ pagination.page }} of {{ pagination.pages }} ({{ pagination.total }} invoices)
+        </span>
+        {% if pagination.has_next %}
+        <a href="{{ url_for('customers.detail', id=customer.id, tab='invoices', page=pagination.next_num,
+                            date_from=date_from, date_to=date_to, status=status_filter) }}"
+           class="btn btn-primary btn-sm">Next →</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<style>
+.customer-tab-bar {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 20px;
+}
+.customer-tab {
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-2);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+}
+.customer-tab:hover { color: var(--text); }
+.customer-tab.active {
+    color: var(--blue);
+    border-bottom-color: var(--blue);
+    font-weight: 600;
+}
+.customer-overview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+.customer-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.customer-info-table td { padding: 6px 8px; vertical-align: top; }
+.customer-info-table td:first-child { color: var(--text-2); width: 40%; white-space: nowrap; }
+.customer-info-table tr + tr td { border-top: 1px solid var(--border); }
+.amount-cell { text-align: right; font-variant-numeric: tabular-nums; }
+.aging-total-row td { border-top: 2px solid var(--border) !important; padding-top: 10px !important; }
+.badge-vat  { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+.badge-wt   { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+@media (max-width: 768px) {
+    .customer-overview-grid { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}
