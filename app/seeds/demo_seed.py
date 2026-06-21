@@ -125,3 +125,121 @@ def seed_construction_coa():
             by_code[a['code']].parent_id = by_code[a['parent']].id
     db.session.commit()
     return len(CONSTRUCTION_COA)
+
+
+COMPANY_SETTINGS = [
+    {'key': 'company_name', 'value': 'Zhiyuan Construction Corporation'},
+    {'key': 'trade_name', 'value': 'Zhiyuan Construction'},
+    {'key': 'company_tin', 'value': '456-789-123-000'},
+    {'key': 'company_address', 'value': '12 Mindanao Avenue, Project 8, Quezon City, Metro Manila'},
+    {'key': 'postal_code', 'value': '1106'},
+    {'key': 'rdo_code', 'value': '039'},
+    {'key': 'tin_branch_code', 'value': '000'},
+    {'key': 'fiscal_year_start', 'value': '01'},
+    {'key': 'email', 'value': 'info@zhiyuanconstruction.ph'},
+    {'key': 'phone', 'value': '(02) 8123-4567'},
+    {'key': 'vat_registration_type', 'value': 'VAT'},
+    {'key': 'officer_president', 'value': 'Wei Zhang'},
+    {'key': 'officer_treasurer', 'value': 'Liang Chen'},
+    {'key': 'officer_secretary', 'value': 'Mei Lin'},
+    {'key': 'apv_print_access', 'value': 'draft_and_posted'},
+    {'key': 'sv_print_access', 'value': 'draft_and_posted'},
+    {'key': 'cd_print_access', 'value': 'draft_and_posted'},
+    {'key': 'cr_print_access', 'value': 'draft_and_posted'},
+    {'key': 'company_logo', 'value': ''},
+    {'key': 'environment', 'value': 'demo'},
+]
+
+# code, name, rate, sales_name (None = purchase-only)
+WHT_CODES = [
+    {'code': 'WC120', 'name': 'Contractors/Subcontractors', 'rate': 2.00,
+     'sales_name': 'Construction/Contractor (2% CWT)'},
+    {'code': 'WC158', 'name': 'Income payments - Goods', 'rate': 1.00,
+     'sales_name': 'Sale of Goods (1% CWT)'},
+    {'code': 'WC160', 'name': 'Income payments - Services', 'rate': 2.00,
+     'sales_name': 'Sale of Services (2% CWT)'},
+    {'code': 'WC100', 'name': 'Rentals', 'rate': 5.00, 'sales_name': None},
+    {'code': 'WC010', 'name': 'Professional Fees', 'rate': 10.00, 'sales_name': None},
+]
+
+
+def seed_demo_baseline():
+    """COA + admin + branch + settings + tax tables + 2025 periods. Idempotent."""
+    from app.users.models import User
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    from app.vat_categories.models import VATCategory
+    from app.sales_vat_categories.models import SalesVATCategory
+    from app.withholding_tax.models import WithholdingTax
+    from app.periods.models import AccountingPeriod
+
+    seed_construction_coa()
+
+    # Admin
+    admin = User.query.filter_by(username='admin').first()
+    if admin is None:
+        admin = User(username='admin', email='admin@zhiyuanconstruction.ph',
+                     full_name='System Administrator', role='admin', is_active=True)
+        admin.set_password('admin123')
+        db.session.add(admin)
+        db.session.commit()
+
+    # Branch + assignment
+    branch = Branch.query.filter_by(code='MAIN').first()
+    if branch is None:
+        branch = Branch(code='MAIN', name='Main Branch', address='Head Office', is_active=True)
+        db.session.add(branch)
+        db.session.commit()
+    if branch not in admin.branches.all():
+        admin.branches.append(branch)
+        db.session.commit()
+
+    # Settings
+    if AppSettings.query.count() == 0:
+        for s in COMPANY_SETTINGS:
+            db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
+        db.session.commit()
+
+    # VAT (input) categories wired to Input VAT accounts
+    if VATCategory.query.count() == 0:
+        vat_acct = {a.code: a.id for a in Account.query.filter(
+            Account.code.in_(['10501', '10502', '10503', '10504'])).all()}
+        for c in [
+            {'code': 'VEX', 'name': 'VAT Exempt', 'rate': 0.00, 'acct': None},
+            {'code': 'V0', 'name': 'VAT Zero-Rated', 'rate': 0.00, 'acct': None},
+            {'code': 'INV', 'name': 'Invalid', 'rate': 0.00, 'acct': None},
+            {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'acct': '10501'},
+            {'code': 'V12DG', 'name': 'Input Tax Domestic Goods', 'rate': 12.00, 'acct': '10502'},
+            {'code': 'V12SV', 'name': 'Input Tax Services', 'rate': 12.00, 'acct': '10503'},
+            {'code': 'V12IM', 'name': 'Input Tax Importation', 'rate': 12.00, 'acct': '10504'},
+        ]:
+            db.session.add(VATCategory(code=c['code'], name=c['name'], rate=c['rate'],
+                                       description='', is_active=True,
+                                       input_vat_account_id=vat_acct.get(c['acct']) if c['acct'] else None))
+        db.session.commit()
+
+    # Sales (output) VAT categories wired to Output VAT Payable (20401)
+    if SalesVATCategory.query.count() == 0:
+        out_id = Account.query.filter_by(code='20401').first().id
+        for c in [
+            {'code': 'V12', 'name': 'VATable Sales (12%)', 'rate': 12.00, 'nature': 'regular', 'acct': out_id},
+            {'code': 'V0', 'name': 'VAT Zero-Rated Sales', 'rate': 0.00, 'nature': 'zero_export', 'acct': None},
+            {'code': 'VEX', 'name': 'VAT-Exempt Sales', 'rate': 0.00, 'nature': 'exempt', 'acct': None},
+        ]:
+            db.session.add(SalesVATCategory(code=c['code'], name=c['name'], rate=c['rate'],
+                                            transaction_nature=c['nature'],
+                                            output_vat_account_id=c['acct'], is_active=True))
+        db.session.commit()
+
+    # WHT codes
+    if WithholdingTax.query.count() == 0:
+        for w in WHT_CODES:
+            db.session.add(WithholdingTax(code=w['code'], name=w['name'], description='',
+                                          rate=w['rate'], sales_name=w['sales_name'], is_active=True))
+        db.session.commit()
+
+    # Open 2025 Jan-Jun periods
+    for m in range(1, 7):
+        AccountingPeriod.get_or_create_period(2025, m)
+
+    return {'admin': admin, 'branch': branch}

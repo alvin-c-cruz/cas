@@ -17,3 +17,29 @@ def test_seed_construction_coa_creates_magic_codes(db_session):
     assert Account.query.filter_by(code='10310').first() is not None  # CIP
     # Idempotent
     assert seed_construction_coa() == 0
+
+
+def test_seed_demo_baseline(db_session):
+    from app.seeds.demo_seed import seed_demo_baseline
+    from app.settings import AppSettings
+    from app.withholding_tax.models import WithholdingTax
+    from app.sales_vat_categories.models import SalesVATCategory
+    from app.periods.models import AccountingPeriod
+
+    refs = seed_demo_baseline()
+    assert refs['admin'].username == 'admin'
+    assert refs['branch'].code == 'MAIN'
+    assert AppSettings.query.filter_by(key='company_name').first().value == \
+        'Zhiyuan Construction Corporation'
+    # WC120 (contractors 2%) present, with a sales_name (company is a contractor)
+    wc120 = WithholdingTax.query.filter_by(code='WC120').first()
+    assert wc120 is not None and float(wc120.rate) == 2.0
+    assert wc120.sales_name
+    assert SalesVATCategory.query.filter_by(code='V12').first() is not None
+    # 2025 Jan-Jun periods open
+    for m in range(1, 7):
+        p = AccountingPeriod.query.filter_by(year=2025, month=m).first()
+        assert p is not None and p.status == 'open'
+    # Idempotent
+    seed_demo_baseline()
+    assert WithholdingTax.query.filter_by(code='WC120').count() == 1
