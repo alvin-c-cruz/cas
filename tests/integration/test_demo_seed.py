@@ -78,3 +78,26 @@ def test_resolve_refs_and_numbers(db_session):
     assert next_doc_number('AP', date(2025, 3, 4), counters) == 'AP-2025-03-0002'
     assert si_number(counters) == '00001'
     assert si_number(counters) == '00002'
+
+
+def test_build_si_posts_balanced(db_session):
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.demo_seed import (seed_demo_baseline, seed_demo_customers,
+                                     resolve_refs, build_si)
+    refs0 = seed_demo_baseline()
+    custs = seed_demo_customers(refs0['admin'].id)
+    refs = resolve_refs()
+    counters = {}
+    si = build_si(date(2025, 2, 10), custs[0], Decimal('560000.00'),
+                  refs, refs0['admin'].id, refs0['branch'].id, counters)
+    assert si.status == 'posted'
+    assert si.journal_entry_id is not None
+    je = si.journal_entry
+    assert je.status == 'posted'
+    d = sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
+    c = sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
+    assert d == c
+    # VATable customer -> WHT applied
+    assert si.withholding_tax_amount > 0
+    assert si.invoice_number == '00001'

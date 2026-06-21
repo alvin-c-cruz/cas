@@ -356,3 +356,49 @@ def si_number(counters):
 def crv_number(counters):
     counters[('CRV',)] = counters.get(('CRV',), 0) + 1
     return f"{counters[('CRV',)]:05d}"
+
+
+def build_si(doc_date, customer_obj, gross_amount, refs, admin_id, branch_id, counters):
+    """Create one posted Sales Invoice (single line) + balanced posted JE."""
+    from datetime import date as _date
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    from app.sales_invoices.views import _post_invoice_je
+    from app.utils import ph_now
+
+    vatable = customer_obj.default_vat_category == 'V12'
+    wt = _wht('WC120') if vatable else None
+
+    si = SalesInvoice(
+        branch_id=branch_id,
+        invoice_number=si_number(counters),
+        invoice_date=doc_date,
+        due_date=_date.fromordinal(doc_date.toordinal() + 60),
+        customer_id=customer_obj.id,
+        customer_name=customer_obj.name,
+        customer_tin=customer_obj.tin,
+        customer_address=customer_obj.address,
+        status='posted',
+        amount_paid=Decimal('0.00'),
+        created_by_id=admin_id,
+        posted_by_id=admin_id,
+        posted_at=ph_now(),
+    )
+    item = SalesInvoiceItem(
+        line_number=1,
+        description='Progress billing — construction works',
+        amount=_money(gross_amount),
+        vat_category='V12' if vatable else 'VEX',
+        vat_rate=Decimal('12.00') if vatable else Decimal('0.00'),
+        account_id=refs['revenue_contract'].id,
+        wt_id=wt.id if wt else None,
+        wt_rate=Decimal(str(wt.rate)) if wt else Decimal('0.00'),
+    )
+    item.calculate_amounts()   # extract VAT + WHT-on-net-of-rounded-VAT
+    si.line_items.append(item)
+    si.calculate_totals()
+    db.session.add(si)
+    db.session.flush()
+    je = _post_invoice_je(si, admin_id)
+    si.journal_entry_id = je.id
+    db.session.commit()
+    return si
