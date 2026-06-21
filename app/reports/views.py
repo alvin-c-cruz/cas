@@ -8,6 +8,9 @@ from functools import wraps
 from app import db
 from app.sales_invoices.models import SalesInvoice
 from app.accounts_payable.models import AccountsPayable
+from app.cash_receipts.models import CashReceiptVoucher
+from app.cash_disbursements.models import CashDisbursementVoucher
+from app.journal_entries.models import JournalEntry
 from app.reports.bir import (
     get_summary_list_of_sales,
     get_summary_list_of_purchases,
@@ -27,6 +30,51 @@ from decimal import Decimal
 from sqlalchemy import func
 
 reports_bp = Blueprint('reports', __name__, template_folder='templates')
+
+# entry_type -> (Model, number column, view endpoint, short label prefix)
+_SOURCE_MAP = {
+    'sale':         (SalesInvoice,            'invoice_number', 'sales_invoices.view',    'SI'),
+    'purchase':     (AccountsPayable,         'ap_number',      'accounts_payable.view',  'AP'),
+    'receipt':      (CashReceiptVoucher,      'crv_number',     'cash_receipts.view',     'CR'),
+    'disbursement': (CashDisbursementVoucher, 'cdv_number',     'cash_disbursements.view', 'CD'),
+}
+
+
+def _attach_source_links(ledger, branch_id):
+    """Mutate each line, adding line['source'] = {'url', 'label'}.
+
+    Resolves the four auto-posted transaction types to their source document by
+    number (one IN-query per type); everything else links to the Journal Entry view.
+    """
+    # Gather the distinct references actually present, grouped by entry_type.
+    refs_by_type = {}
+    for account in ledger['accounts']:
+        for line in account['lines']:
+            et = line.get('entry_type')
+            if et in _SOURCE_MAP and line.get('reference'):
+                refs_by_type.setdefault(et, set()).add(line['reference'])
+
+    # Build {number: id} maps with one query per source type.
+    id_maps = {}
+    for et, refs in refs_by_type.items():
+        model, numcol, _endpoint, _prefix = _SOURCE_MAP[et]
+        col = getattr(model, numcol)
+        rows = model.query.filter(model.branch_id == branch_id, col.in_(refs)).all()
+        id_maps[et] = {getattr(r, numcol): r.id for r in rows}
+
+    for account in ledger['accounts']:
+        for line in account['lines']:
+            et = line.get('entry_type')
+            ref = line.get('reference')
+            mapped = _SOURCE_MAP.get(et)
+            doc_id = id_maps.get(et, {}).get(ref) if mapped else None
+            if mapped and doc_id is not None:
+                _model, _numcol, endpoint, prefix = mapped
+                line['source'] = {'url': url_for(endpoint, id=doc_id),
+                                  'label': f'{prefix} {ref}'}
+            else:
+                line['source'] = {'url': url_for('journal_entries.view', id=line['entry_id']),
+                                  'label': line['entry_number']}
 
 
 def accountant_or_admin_required(f):
