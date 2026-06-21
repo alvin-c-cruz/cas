@@ -91,6 +91,7 @@ def test_creditable_wht_ytd_groups_by_code(db_session):
 
     assert len(rows) == 1
     assert rows[0]['code'] == 'WC010'
+    assert rows[0]['name'] == 'Professional 10%'   # name is rendered in the UI
     assert rows[0]['total'] == Decimal('50.00')
 
 
