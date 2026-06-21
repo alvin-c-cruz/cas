@@ -7,6 +7,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from app import db
 from app.sales_invoices.models import SalesInvoice
+from app.accounts.models import Account
 from app.accounts_payable.models import AccountsPayable
 from app.cash_receipts.models import CashReceiptVoucher
 from app.cash_disbursements.models import CashDisbursementVoucher
@@ -22,7 +23,8 @@ from app.reports.bir import (
 from app.reports.financial import (
     generate_trial_balance,
     generate_income_statement,
-    generate_balance_sheet
+    generate_balance_sheet,
+    generate_general_ledger,
 )
 from app.utils.export import export_to_excel, export_to_csv
 from datetime import date, timedelta, datetime
@@ -263,6 +265,42 @@ def ap_aging():
                            vendors=vendors_list,
                            grand_totals=grand_totals,
                            as_of_date=as_of_date)
+
+
+@reports_bp.route('/reports/general-ledger')
+@login_required
+def general_ledger():
+    """All-accounts General Ledger book for the selected branch."""
+    today = date.today()
+    start_default = date(today.year, today.month, 1)
+
+    def _parse(param, fallback):
+        try:
+            return date.fromisoformat(request.args.get(param, ''))
+        except (ValueError, TypeError):
+            return fallback
+
+    start_date = _parse('start_date', start_default)
+    end_date = _parse('end_date', today)
+    account_id = request.args.get('account_id', type=int)
+
+    branch_id = session.get('selected_branch_id')
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+    _attach_source_links(ledger, branch_id)
+
+    # Full account list for the picker; when an account filter is active the
+    # picker only needs to show active accounts so the user can change selection.
+    # We keep a separate list for the picker to avoid polluting the ledger body.
+    if account_id:
+        accounts = Account.query.filter_by(id=account_id, is_active=True).all()
+    else:
+        accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    return render_template('reports/general_ledger.html',
+                           ledger=ledger,
+                           start_date=start_date,
+                           end_date=end_date,
+                           accounts=accounts,
+                           selected_account_id=account_id)
 
 
 # BIR Compliance Reports

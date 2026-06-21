@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}General Ledger{% endblock %}
+{% block page_title %}General Ledger{% endblock %}
+
+{% block content %}
+{% macro balance_dr_cr(value) %}{% if value >= 0 %}₱{{ "{:,.2f}".format(value) }} Dr{% else %}₱{{ "{:,.2f}".format(-value) }} Cr{% endif %}{% endmacro %}
+
+{% set q = 'start_date=' ~ start_date.isoformat() ~ '&end_date=' ~ end_date.isoformat() ~ ('&account_id=' ~ selected_account_id if selected_account_id else '') %}
+<div class="card">
+    <div class="card-header">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <div>
+                <h2 style="margin:0;">General Ledger</h2>
+                <p style="margin:4px 0 0 0;color:var(--text-2);">
+                    {{ start_date.strftime('%B %d, %Y') }} &ndash; {{ end_date.strftime('%B %d, %Y') }}
+                </p>
+            </div>
+            <div class="card-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <button onclick="window.print()" class="btn btn-secondary">Print</button>
+                <a href="{{ url_for('reports.index') }}" class="btn btn-secondary">Back to Reports</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <form method="GET" style="margin-bottom:20px;">
+            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="form-group" style="margin:0;">
+                    <label>From</label>
+                    <input type="date" name="start_date" value="{{ start_date.isoformat() }}" class="form-control" style="width:180px;">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label>To</label>
+                    <input type="date" name="end_date" value="{{ end_date.isoformat() }}" class="form-control" style="width:180px;">
+                </div>
+                <div class="form-group" style="margin:0;min-width:280px;">
+                    <label>Account (optional)</label>
+                    <select id="gl-account-picker" name="account_id" class="form-control">
+                        <option value="">All accounts</option>
+                        {% for a in accounts %}
+                        <option value="{{ a.id }}" {{ 'selected' if selected_account_id == a.id else '' }}>{{ a.code }} &mdash; {{ a.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Generate</button>
+            </div>
+        </form>
+
+        {% if ledger.accounts %}
+        {% for acct in ledger.accounts %}
+        <div style="margin-bottom:24px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+            <div style="background:var(--bg);padding:10px 14px;font-weight:600;">
+                {{ acct.code }} &mdash; {{ acct.name }}
+            </div>
+            <table class="table" style="margin:0;font-size:0.9rem;">
+                <thead>
+                    <tr style="background:var(--bg);">
+                        <th>Date</th>
+                        <th>JE #</th>
+                        <th>Source</th>
+                        <th>Particulars</th>
+                        <th style="text-align:right;">Debit</th>
+                        <th style="text-align:right;">Credit</th>
+                        <th style="text-align:right;">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="6"><em>Opening balance</em></td>
+                        <td style="text-align:right;">{{ balance_dr_cr(acct.opening_balance) }}</td>
+                    </tr>
+                    {% for line in acct.lines %}
+                    <tr>
+                        <td>{{ line.entry_date.strftime('%Y-%m-%d') }}</td>
+                        <td><a href="{{ url_for('journal_entries.view', id=line.entry_id) }}" style="color:var(--blue)">{{ line.entry_number }}</a></td>
+                        <td>
+                            {% if line.source.url %}
+                            <a href="{{ line.source.url }}" style="color:var(--blue)">{{ line.source.label }}</a>
+                            {% else %}{{ line.source.label }}{% endif %}
+                        </td>
+                        <td>{{ line.description }}</td>
+                        <td style="text-align:right;">{% if line.debit %}₱{{ "{:,.2f}".format(line.debit) }}{% endif %}</td>
+                        <td style="text-align:right;">{% if line.credit %}₱{{ "{:,.2f}".format(line.credit) }}{% endif %}</td>
+                        <td style="text-align:right;">{{ balance_dr_cr(line.running_balance) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot style="border-top:2px solid var(--border);font-weight:600;">
+                    <tr style="background:var(--bg);">
+                        <td colspan="4">Closing balance</td>
+                        <td style="text-align:right;">₱{{ "{:,.2f}".format(acct.total_debit) }}</td>
+                        <td style="text-align:right;">₱{{ "{:,.2f}".format(acct.total_credit) }}</td>
+                        <td style="text-align:right;">{{ balance_dr_cr(acct.closing_balance) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state">
+            <p>No ledger activity for {{ start_date.strftime('%b %d, %Y') }} &ndash; {{ end_date.strftime('%b %d, %Y') }}.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const picker = document.getElementById('gl-account-picker');
+    if (picker) {
+        new Choices(picker, {
+            searchEnabled: true,
+            itemSelectText: '',
+            shouldSort: false,
+            allowHTML: false,
+        });
+    }
+})();
+</script>
+
+<style>
+@media print {
+    .btn, form, .card-header-actions { display: none !important; }
+    .sidebar { display: none !important; }
+    .main-content { margin-left: 0 !important; }
+}
+</style>
+{% endblock %}

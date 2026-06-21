@@ -44,6 +44,24 @@
                     </div>
                 </div>
             </div>
+
+            <!-- General Ledger Card -->
+            <div class="col" style="flex: 1; min-width: 300px;">
+                <div class="content-card" style="height: 100%;">
+                    <div class="card-body">
+                        <h3 style="margin-top: 0; color: var(--primary);">
+                            <span style="font-size: 2rem;">📖</span>
+                            General Ledger
+                        </h3>
+                        <p class="text-muted" style="margin-bottom: 20px;">
+                            The full ledger book: every account with its posted entries, opening and running balances. Filter by date range or a single account.
+                        </p>
+                        <a href="{{ url_for('reports.general_ledger') }}" class="btn btn-primary">
+                            View General Ledger
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
