@@ -1139,7 +1139,7 @@
                     </a>
                     {% endif %}
                     {% if can_access_module(current_user, 'general_ledger') %}
-                    <a href="{{ url_for('reports.general_ledger') }}" class="nav-item {% if request.endpoint == 'reports.general_ledger' %}active{% endif %}">
+                    <a href="{{ url_for('reports.general_ledger') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.general_ledger') %}active{% endif %}">
                         <span class="nav-icon">📖</span>
                         <span class="nav-text">General Ledger</span>
                     </a>
