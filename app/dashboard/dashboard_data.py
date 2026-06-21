@@ -423,7 +423,15 @@ def get_monthly_revenue_trend(months=6, as_of_date=None, branch_id=None, revenue
 
 def get_expense_breakdown(as_of_date=None, branch_id=None, expense_accounts=None):
     """
-    Get expense breakdown by category for pie chart
+    Get expense breakdown by category for pie chart.
+
+    Each active expense account's YTD posted total is rolled up to its
+    top-level ancestor account (walking ``parent_id`` to the root), and the
+    category label is that root account's *name*. This derives categories from
+    the chart of accounts' own hierarchy — matching the "hierarchy is derived,
+    not stored" convention — instead of a hardcoded code→name map, so it adapts
+    to any COA scheme (e.g. RIC's 6xxxx codes, the demo's 5xxxx codes). A
+    parent-less expense account is its own category.
 
     Args:
         as_of_date: date - Calculate expenses up to this date (optional, defaults to today)
@@ -467,10 +475,26 @@ def get_expense_breakdown(as_of_date=None, branch_id=None, expense_accounts=None
         for row in totals_query.all()
     }
 
+    # Map every account id → (parent_id, name) so we can walk to the top-level
+    # ancestor. Parent headers may be inactive or of a different type, so this
+    # must cover all accounts, not just the active expense list.
+    nodes = {
+        a.id: (a.parent_id, a.name)
+        for a in db.session.query(Account.id, Account.parent_id, Account.name).all()
+    }
+
+    def root_name(account_id):
+        seen = set()
+        parent_id, name = nodes.get(account_id, (None, None))
+        while parent_id is not None and parent_id in nodes and parent_id not in seen:
+            seen.add(account_id)
+            account_id = parent_id
+            parent_id, name = nodes[account_id]
+        return name
+
     categories = {}
     for account in expense_accounts:
-        category_code = account.code[:2] + 'xxx'
-        category_name = _get_expense_category_name(category_code)
+        category_name = root_name(account.id) or account.name
         account_total = account_totals.get(account.id, Decimal('0.00'))
         categories[category_name] = categories.get(category_name, Decimal('0.00')) + account_total
 
@@ -482,29 +506,3 @@ def get_expense_breakdown(as_of_date=None, branch_id=None, expense_accounts=None
         'labels': labels,
         'data': data
     }
-
-
-def _get_expense_category_name(category_code):
-    """
-    Get friendly name for expense category code
-
-    Args:
-        category_code: 2-digit expense category (e.g., '51xxx', '52xxx')
-
-    Returns:
-        Friendly category name
-    """
-    category_names = {
-        '50xxx': 'Cost of Sales',
-        '51xxx': 'Personnel Expenses',
-        '52xxx': 'Administrative Expenses',
-        '53xxx': 'Selling Expenses',
-        '54xxx': 'Financial Expenses',
-        '55xxx': 'Other Expenses',
-        '56xxx': 'Depreciation',
-        '57xxx': 'Taxes and Licenses',
-        '58xxx': 'Other Operating Expenses',
-        '59xxx': 'Non-Operating Expenses'
-    }
-
-    return category_names.get(category_code, f'Expenses ({category_code})')

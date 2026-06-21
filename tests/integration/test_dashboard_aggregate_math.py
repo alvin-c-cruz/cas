@@ -62,11 +62,20 @@ def seeded(db_session, main_branch, branch_manila):
 
     rev = Account(code='4001', name='Sales', account_type='Revenue',
                   classification='Operating Revenue', normal_balance='Credit')
+    # Expense hierarchy: two top-level group headers (non-postable) each with a
+    # postable child. The breakdown must roll each child up to its top-level
+    # ancestor's NAME (derived from parent_id), not a hardcoded code->name map.
+    cos = Account(code='5000', name='Cost of Sales', account_type='Expense',
+                  classification='COGS', normal_balance='Debit')
+    opex = Account(code='5200', name='Operating Expenses', account_type='Expense',
+                   classification='Admin', normal_balance='Debit')
+    db_session.add_all([rev, cos, opex])
+    db_session.flush()
     cogs = Account(code='5001', name='Cost of goods', account_type='Expense',
-                   classification='COGS', normal_balance='Debit')
+                   classification='COGS', normal_balance='Debit', parent_id=cos.id)
     admin = Account(code='5201', name='Admin exp', account_type='Expense',
-                    classification='Admin', normal_balance='Debit')
-    db_session.add_all([rev, cogs, admin])
+                    classification='Admin', normal_balance='Debit', parent_id=opex.id)
+    db_session.add_all([cogs, admin])
     db_session.flush()
 
     # Branch A journal entries: revenue 1000 this month + 500 last month;
@@ -160,6 +169,10 @@ class TestDashboardAggregateMath:
         assert trend['data'] == [0.0, 0.0, 0.0, 0.0, 500.0, 1000.0]
 
     def test_expense_breakdown_by_category(self, seeded):
+        # Each child rolls up to its top-level ancestor's name: the 'Cost of
+        # goods' (300) child -> 'Cost of Sales' header; the 'Admin exp' (200)
+        # child -> 'Operating Expenses' header. The non-postable headers
+        # contribute 0 and do not form their own buckets.
         bd = get_expense_breakdown(as_of_date=AS_OF, branch_id=seeded.id)
         assert dict(zip(bd['labels'], bd['data'])) == {
-            'Cost of Sales': 300.0, 'Administrative Expenses': 200.0}
+            'Cost of Sales': 300.0, 'Operating Expenses': 200.0}
