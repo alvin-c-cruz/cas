@@ -113,8 +113,11 @@ URL by the stored `reference` number:
 The four clean transaction types deep-link by their `reference` (= the document number). Manual
 vouchers and reversals (whose `reference` may be prefixed, e.g. `CANCEL-…`) link to the Journal
 Entry view by `entry_id` — no fragile prefix-parsing. `label` is a human string
-(e.g. `"SI AR-2026-06-0001"`); `url` is `None` only if a referenced doc can't be resolved, in
-which case the template shows the JE number as plain text.
+(e.g. `"SI AR-2026-06-0001"`). If a mapped type's `reference` can't be matched to an existing
+document (rare — the source doc was hard-deleted while its JE survived), the line falls back to
+the Journal Entry view link as well (label = JE number), so the Source cell is always a usable
+link. (Decided 2026-06-22 over an earlier `url=None` draft: the JE link is strictly more useful
+and `entry_id` is always valid. The `source.url` field is therefore always non-null in practice.)
 
 ### 3. Routes — `app/reports/views.py`
 
