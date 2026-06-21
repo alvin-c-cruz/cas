@@ -66,11 +66,21 @@ The work decomposes into independent, separately-testable units:
 3. **`seed_demo_master_data()`** — fabricated customers + vendors (Appendix B).
 4. **`seed_demo_transactions()`** — generates the documents (Appendix C) by
    reusing the posting helpers; wires CRV→SI and CDV→AP applications.
-5. **`flask seed-demo` CLI** — orchestrates 1→4, idempotent.
+5. **`flask seed-demo` CLI** — orchestrates 1→4.
 
-Each unit is idempotent: it checks for existing rows (by code / number) and skips
-what already exists, so `seed-demo` is safe to re-run and can either build a clean
-DB or top up a DB that already holds the UI validation samples.
+The **baseline + master-data** units are idempotent (skip-by-code), so re-running
+them is safe. The **transaction** unit is NOT idempotent — invoice/AP numbers are
+`UNIQUE`, so it builds the document set exactly once. `seed-demo` is therefore a
+**build-into-a-clean-DB** command: if demo transactions already exist it refuses
+with a clear message rather than duplicating. Rebuild = delete the DB file →
+`flask db upgrade` → `flask seed-demo`. With a fixed RNG seed, a from-clean run
+reproduces the demo deterministically.
+
+> Note (accepted, not fixed): the auto-created transactional journal entries are
+> numbered by the shared `generate_entry_number()`, which keys on the *run* year
+> (`JE-<run-year>-####`), while document numbers and `entry_date` are correctly
+> 2025 and the JVs read `JV-2025-MM-####`. Making JE numbers date-aware would
+> change a helper shared by all four modules; left as-is for the demo.
 
 ## Reference data
 
@@ -126,9 +136,11 @@ adjustment JVs, so applications reference already-posted documents.
    sample documents per type** (SI/CR/AP/CD/JV) through the UI. Owner eyeballs
    shape/amounts/posting. Findings feed back into the generator.
 4. **Full seed:** finalize and run `seed_demo_transactions()` to produce the
-   complete set. Because the generator is idempotent (skip-by-number), it tops up
-   whatever the UI samples already created; a from-clean `flask seed-demo`
-   reproduces the entire demo deterministically.
+   complete set. The transaction generator is **not** idempotent (unique doc
+   numbers), so it runs once against a clean DB; `seed-demo` refuses if demo
+   transactions already exist. Authoritative rebuild = delete `cas_demo.db` →
+   `flask db upgrade` → `flask seed-demo` (deterministic via fixed RNG seed). Any
+   UI validation samples entered earlier are discarded by this clean rebuild.
 5. **`seed_data.py` refresh:** reconcile/clean existing seeders while adding the
    demo seeders (no behavior change to `seed-db`/`seed-minimal` beyond cleanup).
 
@@ -137,8 +149,11 @@ adjustment JVs, so applications reference already-posted documents.
 - Per-unit tests: COA seeded (counts, magic codes present + postable), reference
   data present, master data created, periods open.
 - Transaction tests: each document type posts; linked JE is balanced and
-  `status='posted'`; CRV reduces SI balance; CDV reduces AP balance; audit row
-  exists (per CLAUDE.md "verify the audit log in CRUD tests").
+  `status='posted'`; CRV reduces SI balance; CDV reduces AP balance.
+  (Note: the seeder posts via the `_post_*_je` helpers, not the view routes, so
+  it writes **no audit rows** — consistent with the existing `history_seed.py`
+  convention. The CLAUDE.md "verify the audit log in CRUD tests" rule applies to
+  the view-layer CRUD, not to batch seeders.)
 - A trial-balance assertion: after full seed, total debits == total credits
   across posted `JournalEntryLine`s.
 
