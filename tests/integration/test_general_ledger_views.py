@@ -110,3 +110,33 @@ def test_general_ledger_staff_without_grant_denied(client, db_session, main_bran
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/general-ledger', follow_redirects=False)
     assert resp.status_code == 302  # global module gate redirects ungranted staff
+
+
+def test_general_ledger_excel_export(client, db_session, main_branch, admin_user,
+                                     cash_account, revenue_account):
+    _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-E1')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/general-ledger/export/excel?start_date=2026-06-01&end_date=2026-06-30')
+    assert resp.status_code == 200
+    assert 'spreadsheetml' in resp.headers['Content-Type']
+
+
+def test_general_ledger_csv_export(client, db_session, main_branch, admin_user,
+                                   cash_account, revenue_account):
+    _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-E2')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/general-ledger/export/csv')
+    assert resp.status_code == 200
+    assert 'text/csv' in resp.headers['Content-Type']
+
+
+def test_general_ledger_print_renders(client, db_session, main_branch, admin_user,
+                                      cash_account, revenue_account):
+    _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-P1')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/general-ledger/print')
+    assert resp.status_code == 200
+    assert b'General Ledger' in resp.data

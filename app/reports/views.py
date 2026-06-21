@@ -267,10 +267,8 @@ def ap_aging():
                            as_of_date=as_of_date)
 
 
-@reports_bp.route('/reports/general-ledger')
-@login_required
-def general_ledger():
-    """All-accounts General Ledger book for the selected branch."""
+def _gl_params():
+    """Shared (start_date, end_date, account_id, branch_id) parsing for GL routes."""
     today = date.today()
     start_default = date(today.year, today.month, 1)
 
@@ -280,11 +278,41 @@ def general_ledger():
         except (ValueError, TypeError):
             return fallback
 
-    start_date = _parse('start_date', start_default)
-    end_date = _parse('end_date', today)
-    account_id = request.args.get('account_id', type=int)
+    return (_parse('start_date', start_default),
+            _parse('end_date', today),
+            request.args.get('account_id', type=int),
+            session.get('selected_branch_id'))
 
-    branch_id = session.get('selected_branch_id')
+
+def _flatten_ledger(ledger):
+    """Flatten the book into export rows: a header row per account, its lines, a subtotal."""
+    rows = []
+    for acct in ledger['accounts']:
+        rows.append({'date': f"{acct['code']} - {acct['name']}", 'je': '', 'source': '',
+                     'particulars': 'Opening balance', 'debit': '', 'credit': '',
+                     'balance': acct['opening_balance']})
+        for line in acct['lines']:
+            rows.append({
+                'date': line['entry_date'], 'je': line['entry_number'],
+                'source': line['source']['label'], 'particulars': line['description'],
+                'debit': line['debit'] or '', 'credit': line['credit'] or '',
+                'balance': line['running_balance'],
+            })
+        rows.append({'date': '', 'je': '', 'source': '', 'particulars': 'Closing balance',
+                     'debit': acct['total_debit'], 'credit': acct['total_credit'],
+                     'balance': acct['closing_balance']})
+    return rows
+
+
+_GL_COLUMNS = ['date', 'je', 'source', 'particulars', 'debit', 'credit', 'balance']
+_GL_HEADERS = ['Date', 'JE #', 'Source', 'Particulars', 'Debit', 'Credit', 'Balance']
+
+
+@reports_bp.route('/reports/general-ledger')
+@login_required
+def general_ledger():
+    """All-accounts General Ledger book for the selected branch."""
+    start_date, end_date, account_id, branch_id = _gl_params()
     ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
     _attach_source_links(ledger, branch_id)
 
@@ -295,6 +323,41 @@ def general_ledger():
                            end_date=end_date,
                            accounts=accounts,
                            selected_account_id=account_id)
+
+
+@reports_bp.route('/reports/general-ledger/export/excel')
+@login_required
+def general_ledger_export_excel():
+    start_date, end_date, account_id, branch_id = _gl_params()
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+    _attach_source_links(ledger, branch_id)
+    rows = _flatten_ledger(ledger)
+    return export_to_excel(
+        rows, _GL_COLUMNS, _GL_HEADERS,
+        filename=f'general_ledger_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx',
+        title=f'General Ledger - {start_date.isoformat()} to {end_date.isoformat()}')
+
+
+@reports_bp.route('/reports/general-ledger/export/csv')
+@login_required
+def general_ledger_export_csv():
+    start_date, end_date, account_id, branch_id = _gl_params()
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+    _attach_source_links(ledger, branch_id)
+    rows = _flatten_ledger(ledger)
+    return export_to_csv(
+        rows, _GL_COLUMNS, _GL_HEADERS,
+        filename=f'general_ledger_{start_date.isoformat()}_to_{end_date.isoformat()}.csv')
+
+
+@reports_bp.route('/reports/general-ledger/print')
+@login_required
+def general_ledger_print():
+    start_date, end_date, account_id, branch_id = _gl_params()
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+    _attach_source_links(ledger, branch_id)
+    return render_template('reports/general_ledger_print.html',
+                           ledger=ledger, start_date=start_date, end_date=end_date)
 
 
 # BIR Compliance Reports
