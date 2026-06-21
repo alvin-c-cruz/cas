@@ -164,8 +164,11 @@ class CRVRevenueLine(db.Model):
         self.line_total = Decimal(str(self.amount))
         self.vat_amount = (Decimal(str(self.amount)) - net_base).quantize(
             Decimal('0.01'), rounding='ROUND_HALF_UP')
+        # WHT base is Net of VAT = Gross - rounded VAT (owner/RIC formula),
+        # NOT the unrounded Gross/1.12 — they differ a centavo on residual lines.
+        net_of_vat = Decimal(str(self.amount)) - self.vat_amount
         wt_rate = Decimal(str(self.wt_rate)) if self.wt_rate else Decimal('0')
-        self.wt_amount = (net_base * wt_rate / Decimal('100')).quantize(
+        self.wt_amount = (net_of_vat * wt_rate / Decimal('100')).quantize(
             Decimal('0.01'), rounding='ROUND_HALF_UP')
 
     def to_dict(self):
