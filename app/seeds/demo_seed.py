@@ -752,22 +752,59 @@ def generate_demo_transactions(refs, admin_id, branch_id, *, end=date(2026, 6, 1
                  description=f'Monthly depreciation {d.strftime("%b %Y")}')
         summary['jv'] += 1
 
-    # Collect ~70% of SIs, pay ~70% of APs (payment dated 20-40 days later, clamped)
+    # Collections / payments engineered for a realistic AGING SPREAD.
+    # Pay (almost) everything, but deliberately leave a few docs unpaid in EACH
+    # aging bucket so the AR/AP aging report populates Current / 1-30 / 31-60 /
+    # 61-90 and a small 90+ tail — not 100% in 90+. Buckets are measured by due
+    # date relative to `end` (the build is shown ~`end`, which is what the report
+    # ages against). Selection is deterministic (first-N per bucket in gen order).
+    from collections import defaultdict
+
+    def _bucket(due_date):
+        days = (end - due_date).days
+        if days <= 0:
+            return 'current'
+        if days <= 30:
+            return '1-30'
+        if days <= 60:
+            return '31-60'
+        if days <= 90:
+            return '61-90'
+        return '90+'
+
+    def _pick_unpaid(docs, targets):
+        by_bucket = defaultdict(list)
+        for d in docs:
+            by_bucket[_bucket(d.due_date)].append(d)
+        unpaid = set()
+        for bucket, want in targets.items():
+            for d in by_bucket.get(bucket, [])[:want]:
+                unpaid.add(d.id)
+        return unpaid
+
+    # Want a believable profile: a little in each near-term bucket, a modest 90+ tail.
+    _targets = {'current': 2, '1-30': 2, '31-60': 2, '61-90': 2, '90+': 3}
+    unpaid_si = _pick_unpaid(posted_sis, _targets)
+    unpaid_ap = _pick_unpaid(posted_aps, _targets)
+
+    # Collect every SI except the deliberately-unpaid set (full collection)
     for si in posted_sis:
-        if rng.random() < 0.70:
-            pay = min(date.fromordinal(si.invoice_date.toordinal() + rng.randint(20, 40)), end)
-            if pay >= si.invoice_date:
-                build_crv_collecting(pay, si, refs, admin_id, branch_id, counters,
-                                     method='check' if rng.random() < 0.6 else 'cash')
-                summary['crv'] += 1
-    for ap in posted_aps:
-        if rng.random() < 0.70:
-            pay = min(date.fromordinal(ap.ap_date.toordinal() + rng.randint(15, 35)), end)
-            if pay >= ap.ap_date:
-                spec = next(s for s in VENDORS if s['code'] == ap.vendor.code)
-                build_cdv_paying(pay, ap, refs, admin_id, branch_id, counters,
+        if si.id in unpaid_si:
+            continue
+        pay = min(date.fromordinal(si.invoice_date.toordinal() + rng.randint(20, 40)), end)
+        if pay >= si.invoice_date:
+            build_crv_collecting(pay, si, refs, admin_id, branch_id, counters,
                                  method='check' if rng.random() < 0.6 else 'cash')
-                summary['cdv'] += 1
+            summary['crv'] += 1
+    # Pay every AP except the deliberately-unpaid set (full payment)
+    for ap in posted_aps:
+        if ap.id in unpaid_ap:
+            continue
+        pay = min(date.fromordinal(ap.ap_date.toordinal() + rng.randint(15, 35)), end)
+        if pay >= ap.ap_date:
+            build_cdv_paying(pay, ap, refs, admin_id, branch_id, counters,
+                             method='check' if rng.random() < 0.6 else 'cash')
+            summary['cdv'] += 1
 
     # A couple direct-revenue CRVs and direct-expense CDVs for variety
     build_crv_revenue(date(2025, 4, 15), vatable_custs[0], _money('56000.00'),

@@ -250,3 +250,35 @@ def test_run_seed_demo_full_balances(db_session):
         assert date(2025, 1, 1) <= si.invoice_date <= date(2026, 6, 19)
     # The demo spans into the current year (2026) so default current-year views populate
     assert any(si.invoice_date.year == 2026 for si in all_si)
+
+
+def test_demo_aging_is_spread_not_all_90plus(db_session):
+    """Outstanding AP and AR must span multiple aging buckets, not pile into 90+."""
+    from datetime import date
+    from app.seeds.demo_seed import run_seed_demo
+    from app.accounts_payable.models import AccountsPayable
+    from app.sales_invoices.models import SalesInvoice
+    run_seed_demo(reset=False)
+    end = date(2026, 6, 19)
+
+    def bucket(due):
+        d = (end - due).days
+        if d <= 0:
+            return 'current'
+        if d <= 30:
+            return '1-30'
+        if d <= 60:
+            return '31-60'
+        if d <= 90:
+            return '61-90'
+        return '90+'
+
+    ap_buckets = {bucket(a.due_date) for a in AccountsPayable.query.all()
+                  if a.balance and a.balance > 0}
+    si_buckets = {bucket(s.due_date) for s in SalesInvoice.query.all()
+                  if s.balance and s.balance > 0}
+    # At least 3 distinct buckets, and not everything in 90+
+    assert len(ap_buckets) >= 3, f'AP aging not spread: {ap_buckets}'
+    assert ap_buckets - {'90+'}, f'AP outstanding all in 90+: {ap_buckets}'
+    assert len(si_buckets) >= 3, f'AR aging not spread: {si_buckets}'
+    assert si_buckets - {'90+'}, f'AR outstanding all in 90+: {si_buckets}'
