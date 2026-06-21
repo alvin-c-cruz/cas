@@ -358,6 +358,55 @@ def crv_number(counters):
     return f"{counters[('CRV',)]:05d}"
 
 
+def build_apv(doc_date, vendor_obj, vendor_spec, gross_amount, refs, admin_id, branch_id, counters):
+    """Create one posted Accounts Payable (single line) + balanced posted JE."""
+    from datetime import date as _date
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    from app.accounts_payable.views import _post_ap_je
+    from app.utils import ph_now
+
+    vatable = vendor_spec['vat'].startswith('V12')
+    wt = _wht(vendor_spec['wht'])
+    apnum = next_doc_number('AP', doc_date, counters)
+
+    ap = AccountsPayable(
+        branch_id=branch_id,
+        ap_number=apnum,
+        ap_date=doc_date,
+        due_date=_date.fromordinal(doc_date.toordinal() + 30),
+        vendor_id=vendor_obj.id,
+        vendor_name=vendor_obj.name,
+        vendor_tin=vendor_obj.tin,
+        vendor_invoice_number=f'SI-{doc_date.year}{doc_date.month:02d}-{apnum[-4:]}',
+        vendor_invoice_date=doc_date,
+        payment_terms='Net 30',
+        status='posted',
+        amount_paid=Decimal('0.00'),
+        created_by_id=admin_id,
+        posted_by_id=admin_id,
+        posted_at=ph_now(),
+    )
+    item = AccountsPayableItem(
+        line_number=1,
+        description=f'{vendor_obj.name} — {doc_date.strftime("%b %Y")}',
+        amount=_money(gross_amount),
+        vat_category=vendor_spec['vat'],
+        vat_rate=Decimal('12.00') if vatable else Decimal('0.00'),
+        account_id=refs['expense'][vendor_spec['expense_code']].id,
+        wt_id=wt.id if wt else None,
+        wt_rate=Decimal(str(wt.rate)) if wt else Decimal('0.00'),
+    )
+    item.calculate_amounts()
+    ap.line_items.append(item)
+    ap.calculate_totals()
+    db.session.add(ap)
+    db.session.flush()
+    je = _post_ap_je(ap, admin_id)
+    ap.journal_entry_id = je.id
+    db.session.commit()
+    return ap
+
+
 def build_si(doc_date, customer_obj, gross_amount, refs, admin_id, branch_id, counters):
     """Create one posted Sales Invoice (single line) + balanced posted JE."""
     from datetime import date as _date

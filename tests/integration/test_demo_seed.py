@@ -101,3 +101,24 @@ def test_build_si_posts_balanced(db_session):
     # VATable customer -> WHT applied
     assert si.withholding_tax_amount > 0
     assert si.invoice_number == '00001'
+
+
+def test_build_apv_posts_balanced(db_session):
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.demo_seed import (seed_demo_baseline, seed_demo_vendors,
+                                     resolve_refs, build_apv, VENDORS)
+    refs0 = seed_demo_baseline()
+    vends = seed_demo_vendors()
+    refs = resolve_refs()
+    counters = {}
+    ap = build_apv(date(2025, 3, 5), vends[0], VENDORS[0], Decimal('224000.00'),
+                   refs, refs0['admin'].id, refs0['branch'].id, counters)
+    assert ap.status == 'posted'
+    je = ap.journal_entry
+    assert je.status == 'posted'
+    d = sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
+    c = sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
+    assert d == c
+    assert ap.ap_number == 'AP-2025-03-0001'
+    assert ap.vendor_invoice_number  # required when VAT/WHT > 0
