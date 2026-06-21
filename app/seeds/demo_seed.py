@@ -311,3 +311,48 @@ def seed_demo_vendors():
         out.append(v)
     db.session.commit()
     return out
+
+
+def resolve_refs():
+    """Resolve the GL accounts the generators post against. Raises if missing."""
+    def need(code):
+        a = Account.query.filter_by(code=code).first()
+        if a is None:
+            raise RuntimeError(f"Required account {code} missing — run seed_demo_baseline first.")
+        return a
+    return {
+        'ar': need('10201'),
+        'cwt': need('10212'),
+        'ap': need('20101'),
+        'wt_payable': need('20301'),
+        'output_vat': need('20401'),
+        'cash_on_hand': need('10101'),
+        'cash_bank': need('10111'),
+        'revenue_contract': need('40101'),
+        'revenue_rental': need('40201'),
+        'cip': need('10310'),
+        'equipment': need('11110'),
+        'accum_dep_equipment': need('11111'),
+        'dep_expense': need('50260'),
+        'capital_stock': need('30101'),
+        'apic': need('30102'),
+        'expense': {code: need(code) for code in
+                    ['50101', '50103', '50104', '50221', '50280', '50240', '50298', '50230']},
+    }
+
+
+def next_doc_number(prefix, doc_date, counters):
+    """PREFIX-YYYY-MM-NNNN, sequencing per (prefix, year, month) on the DOC date."""
+    key = (prefix, doc_date.year, doc_date.month)
+    counters[key] = counters.get(key, 0) + 1
+    return f'{prefix}-{doc_date.year}-{doc_date.month:02d}-{counters[key]:04d}'
+
+
+def si_number(counters):
+    counters[('SI',)] = counters.get(('SI',), 0) + 1
+    return f"{counters[('SI',)]:05d}"
+
+
+def crv_number(counters):
+    counters[('CRV',)] = counters.get(('CRV',), 0) + 1
+    return f"{counters[('CRV',)]:05d}"

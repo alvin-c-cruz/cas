@@ -62,3 +62,19 @@ def test_seed_master_data(db_session):
     # Idempotent
     assert len(seed_demo_customers(refs['admin'].id)) == 7
     assert Customer.query.count() == 7
+
+
+def test_resolve_refs_and_numbers(db_session):
+    from app.seeds.demo_seed import seed_demo_baseline, resolve_refs, next_doc_number, si_number
+    seed_demo_baseline()
+    refs = resolve_refs()
+    assert refs['ar'].code == '10201'
+    assert refs['ap'].code == '20101'
+    assert refs['cash_bank'].code == '10111'
+    assert refs['revenue_contract'].code == '40101'
+    counters = {}
+    from datetime import date
+    assert next_doc_number('AP', date(2025, 3, 4), counters) == 'AP-2025-03-0001'
+    assert next_doc_number('AP', date(2025, 3, 4), counters) == 'AP-2025-03-0002'
+    assert si_number(counters) == '00001'
+    assert si_number(counters) == '00002'
