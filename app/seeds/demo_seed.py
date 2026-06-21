@@ -451,3 +451,73 @@ def build_si(doc_date, customer_obj, gross_amount, refs, admin_id, branch_id, co
     si.journal_entry_id = je.id
     db.session.commit()
     return si
+
+
+def _new_crv(doc_date, customer_obj, refs, admin_id, branch_id, counters, method):
+    from app.cash_receipts.models import CashReceiptVoucher
+    from app.utils import ph_now
+    cash = refs['cash_bank'] if method == 'check' else refs['cash_on_hand']
+    crv = CashReceiptVoucher(
+        branch_id=branch_id,
+        crv_number=crv_number(counters),
+        crv_date=doc_date,
+        customer_id=customer_obj.id,
+        customer_name=customer_obj.name,
+        customer_tin=customer_obj.tin,
+        payment_method=method,
+        cash_account_id=cash.id,
+        status='posted',
+        created_by_id=admin_id,
+        posted_by_id=admin_id,
+        posted_at=ph_now(),
+    )
+    if method == 'check':
+        crv.check_number = f'{doc_date.year}{doc_date.month:02d}{counters.get(("CRV",), 0):04d}'
+        crv.check_date = doc_date
+        crv.check_bank = 'BDO'
+    return crv
+
+
+def build_crv_collecting(doc_date, invoice, refs, admin_id, branch_id, counters, method='check'):
+    from app.cash_receipts.models import CRVArLine
+    from app.cash_receipts.views import _post_crv_je, _apply_ar_collections
+    crv = _new_crv(doc_date, invoice.customer, refs, admin_id, branch_id, counters, method)
+    crv.ar_lines.append(CRVArLine(
+        line_number=1,
+        invoice_id=invoice.id,
+        invoice_number=invoice.invoice_number,
+        original_balance=invoice.balance,
+        amount_applied=_money(invoice.balance),
+    ))
+    crv.calculate_totals()
+    db.session.add(crv)
+    db.session.flush()
+    je = _post_crv_je(crv, admin_id)
+    crv.journal_entry_id = je.id
+    _apply_ar_collections(crv)
+    db.session.commit()
+    return crv
+
+
+def build_crv_revenue(doc_date, customer_obj, gross_amount, refs, admin_id, branch_id, counters):
+    from app.cash_receipts.models import CRVRevenueLine
+    from app.cash_receipts.views import _post_crv_je
+    crv = _new_crv(doc_date, customer_obj, refs, admin_id, branch_id, counters, 'cash')
+    line = CRVRevenueLine(
+        line_number=1,
+        description='Equipment rental income',
+        amount=_money(gross_amount),
+        vat_category='V12',
+        vat_rate=Decimal('12.00'),
+        account_id=refs['revenue_rental'].id,
+        wt_rate=Decimal('0.00'),
+    )
+    line.calculate_amounts()
+    crv.revenue_lines.append(line)
+    crv.calculate_totals()
+    db.session.add(crv)
+    db.session.flush()
+    je = _post_crv_je(crv, admin_id)
+    crv.journal_entry_id = je.id
+    db.session.commit()
+    return crv

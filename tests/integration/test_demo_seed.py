@@ -122,3 +122,28 @@ def test_build_apv_posts_balanced(db_session):
     assert d == c
     assert ap.ap_number == 'AP-2025-03-0001'
     assert ap.vendor_invoice_number  # required when VAT/WHT > 0
+
+
+def test_build_crv_collects_invoice(db_session):
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.demo_seed import (seed_demo_baseline, seed_demo_customers,
+                                     resolve_refs, build_si, build_crv_collecting)
+    refs0 = seed_demo_baseline()
+    custs = seed_demo_customers(refs0['admin'].id)
+    refs = resolve_refs()
+    counters = {}
+    si = build_si(date(2025, 2, 10), custs[0], Decimal('560000.00'),
+                  refs, refs0['admin'].id, refs0['branch'].id, counters)
+    bal_before = Decimal(str(si.balance))
+    assert bal_before > 0
+    crv = build_crv_collecting(date(2025, 3, 12), si, refs,
+                               refs0['admin'].id, refs0['branch'].id, counters)
+    assert crv.status == 'posted'
+    je = crv.journal_entry
+    d = sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
+    c = sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
+    assert d == c
+    # SI balance reduced / marked paid
+    assert Decimal(str(si.balance)) < bal_before
+    assert si.status in ('paid', 'partially_paid')
