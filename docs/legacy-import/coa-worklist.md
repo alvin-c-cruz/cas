@@ -19,17 +19,17 @@ for Asset/Liability groups — adjust live. Description: concise one-line purpos
 | ☑ | `17000` | Other Current Assets | Asset | debit | Current |
 | ☑ | `18000` | Fixed Assets | Asset | debit | Non-Current |
 | ☑ | `19000` | Other Assets | Asset | debit | Non-Current |
-| ☐ | `21000` | Accounts Payable | Liability | credit | Current |
-| ☐ | `22000` | Other Current Liabilities | Liability | credit | Current |
-| ☐ | `23000` | Other Liabilities | Liability | credit | Non-Current |
-| ☐ | `31000` | Stockholder's Equity | Equity | credit | — |
-| ☐ | `41000` | Revenues | Revenue | credit | — |
-| ☐ | `51000` | Other Income (Group) | Revenue | credit | — |
-| ☐ | `61000` | Direct Materials | Expense | debit | — |
-| ☐ | `62000` | Direct Labor | Expense | debit | — |
-| ☐ | `63000` | Factory Overhead | Expense | debit | — |
-| ☐ | `64000` | Selling Expenses | Expense | debit | — |
-| ☐ | `65000` | Administrative Expenses | Expense | debit | — |
+| ☑ | `21000` | Accounts Payable | Liability | credit | Current |
+| ☑ | `22000` | Other Current Liabilities | Liability | credit | Current |
+| ☑ | `23000` | Other Liabilities | Liability | credit | Non-Current |
+| ☑ | `31000` | Stockholder's Equity | Equity | credit | — |
+| ☑ | `41000` | Revenues | Revenue | credit | — |
+| ☑ | `51000` | Other Income (Group) | Revenue | credit | — |
+| ☑ | `61000` | Direct Materials | Expense | debit | — |
+| ☑ | `62000` | Direct Labor | Expense | debit | — |
+| ☑ | `63000` | Factory Overhead | Expense | debit | — |
+| ☑ | `64000` | Selling Expenses | Expense | debit | — |
+| ☑ | `65000` | Administrative Expenses | Expense | debit | — |
 
 > **Leaf renumber exception:** `12000` "Construction in Progress" is being
 > recoded to sit after the in-transit accounts (`11701-*`/`11702-*`) — proposed
