@@ -288,13 +288,7 @@ def general_ledger():
     ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
     _attach_source_links(ledger, branch_id)
 
-    # Full account list for the picker; when an account filter is active the
-    # picker only needs to show active accounts so the user can change selection.
-    # We keep a separate list for the picker to avoid polluting the ledger body.
-    if account_id:
-        accounts = Account.query.filter_by(id=account_id, is_active=True).all()
-    else:
-        accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
     return render_template('reports/general_ledger.html',
                            ledger=ledger,
                            start_date=start_date,
