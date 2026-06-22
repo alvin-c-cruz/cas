@@ -10,11 +10,14 @@
         h1 { font-size: 16px; margin: 0 0 2px 0; }
         table { width: 100%; border-collapse: collapse; }
         td { padding: 3px 8px; }
-        .num { text-align: right; font-variant-numeric: tabular-nums; }
-        .section td { font-weight: bold; border-top: 1px solid #999; }
-        .child td:first-child { padding-left: 28px; }
-        .subtotal td { font-weight: bold; border-top: 1px solid #000; }
-        .net td { font-weight: bold; font-size: 14px; border-top: 2px solid #000; border-bottom: 2px solid #000; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .colhead td { font-weight: bold; border-bottom: 1px solid #000; }
+        .header td, .total td, .subtotal td, .net td { font-weight: bold; }
+        .net td { font-size: 14px; }
+        .indent td:first-child { padding-left: 28px; }
+        .rule-bottom td { border-bottom: 1px solid #000; }
+        .rule-top_bottom td { border-top: 1px solid #000; border-bottom: 1px solid #000; }
+        .rule-double_bottom td { border-bottom: 3px double #000; }
     </style>
 </head>
 <body onload="window.print()">
@@ -29,16 +32,13 @@
 
     <table>
         <tbody>
-            {% for sec in income_statement.sections %}
-            <tr class="section"><td>{% if sec.deduction %}Less: {% endif %}{{ sec.label }}</td><td class="num">₱{{ '{:,.2f}'.format(sec.total) }}</td></tr>
-            {% for a in sec.accounts %}
-            <tr class="child"><td>{{ a.code }} &nbsp; {{ a.name }}</td><td class="num">₱{{ '{:,.2f}'.format(a.amount) }}</td></tr>
+            <tr class="colhead"><td>Particulars</td><td class="num">Amount</td></tr>
+            {% for ln in lines %}
+            <tr class="{{ ln.kind }}{% if ln.indent %} indent{% endif %}{% if ln.rule %} rule-{{ ln.rule }}{% endif %}">
+                <td>{{ ln.label }}</td>
+                <td class="num">{% if ln.amount is not none %}₱{{ '{:,.2f}'.format(ln.amount) }}{% endif %}</td>
+            </tr>
             {% endfor %}
-            {% if sec.key == 'cost_of_sales' %}<tr class="subtotal"><td>Gross Profit</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.gross_profit) }}</td></tr>{% endif %}
-            {% if sec.key == 'operating_expenses' %}<tr class="subtotal"><td>Operating Income (Loss)</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.operating_income) }}</td></tr>{% endif %}
-            {% if sec.key == 'financial' %}<tr class="subtotal"><td>Income Before Income Tax</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.income_before_tax) }}</td></tr>{% endif %}
-            {% endfor %}
-            <tr class="net"><td>NET INCOME (LOSS){% if income_statement.net_income_percentage %} — {{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin{% endif %}</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.net_income) }}</td></tr>
         </tbody>
     </table>
 </body>

@@ -604,6 +604,7 @@ def income_statement_export_excel():
 def income_statement_print():
     from app.settings import AppSettings
     from app.branches.models import Branch
+    from app.reports.statement_export import income_statement_lines
     start_date, end_date, branch_id = _is_params()
     income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
     company = {
@@ -613,7 +614,8 @@ def income_statement_print():
     }
     branch = Branch.query.get(branch_id) if branch_id else None
     return render_template('reports/income_statement_print.html',
-                           income_statement=income_stmt_data, start_date=start_date, end_date=end_date,
+                           lines=income_statement_lines(income_stmt_data),
+                           start_date=start_date, end_date=end_date,
                            company=company, branch_name=branch.name if branch else '')
 
 
