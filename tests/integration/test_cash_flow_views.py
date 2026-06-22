@@ -108,3 +108,15 @@ def test_cash_flow_excel_export(client, db_session, main_branch, admin_user):
     resp = client.get('/reports/cash-flow/export/excel')
     assert resp.status_code == 200
     assert 'spreadsheetml' in resp.headers['Content-Type']
+
+
+def test_cash_flow_print_renders(client, db_session, main_branch, admin_user):
+    from app.settings import AppSettings
+    AppSettings.set_setting('company_name', 'ACME Trading Corp')
+    _seed_cf(main_branch.id)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/cash-flow/print')
+    assert resp.status_code == 200
+    assert b'Statement of Cash Flows' in resp.data
+    assert b'ACME Trading Corp' in resp.data

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Cash Flow</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #000; margin: 24px; }
+        .company { font-size: 14px; font-weight: bold; }
+        .meta { color: #333; margin: 2px 0 14px 0; }
+        h1 { font-size: 16px; margin: 0 0 2px 0; }
+        table { width: 100%; border-collapse: collapse; }
+        td { padding: 3px 8px; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .colhead td { font-weight: bold; border-bottom: 1px solid #000; }
+        .header td, .subtotal td, .net td, .total td { font-weight: bold; }
+        .net td { font-size: 14px; }
+        .subheader td { font-style: italic; }
+        .indent td:first-child { padding-left: 28px; }
+        .rule-bottom td { border-bottom: 1px solid #000; }
+        .rule-top_bottom td { border-top: 1px solid #000; border-bottom: 1px solid #000; }
+        .rule-double_bottom td { border-bottom: 3px double #000; }
+    </style>
+</head>
+<body onload="window.print()">
+    {% if company.name %}<div class="company">{{ company.name }}</div>{% endif %}
+    <div class="meta">
+        {% if company.tin %}TIN: {{ company.tin }} &nbsp; {% endif %}
+        {% if company.address %}{{ company.address }}<br>{% endif %}
+        {% if branch_name %}Branch: {{ branch_name }} &nbsp; {% endif %}
+    </div>
+    <h1>Statement of Cash Flows</h1>
+    <div class="meta">Indirect Method &nbsp;·&nbsp; {{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
+
+    <table>
+        <tbody>
+            <tr class="colhead"><td>Particulars</td><td class="num">Amount</td></tr>
+            {% for ln in lines %}
+            <tr class="{{ ln.kind }}{% if ln.indent %} indent{% endif %}{% if ln.rule %} rule-{{ ln.rule }}{% endif %}">
+                <td>{{ ln.label }}</td>
+                <td class="num">{% if ln.amount is not none %}{% if ln.amount < 0 %}(₱{{ '{:,.2f}'.format(-ln.amount) }}){% else %}₱{{ '{:,.2f}'.format(ln.amount) }}{% endif %}{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
