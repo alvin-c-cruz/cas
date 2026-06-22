@@ -284,42 +284,27 @@ def _gl_params():
 
 
 def _flatten_ledger(ledger):
-    """Flatten the book into two-sided T-ledger export rows: per account a header row,
-    paired debit/credit rows, a totals row, and a closing-balance row."""
-    def _bal(v):
-        return f"₱{abs(v):,.2f} {'Dr' if v >= 0 else 'Cr'}"
-
+    """Flatten the book into export rows: a header row per account, its lines, a subtotal."""
     rows = []
     for acct in ledger['accounts']:
-        debit_lines = [l for l in acct['lines'] if l['debit']]
-        credit_lines = [l for l in acct['lines'] if l['credit']]
-        rows.append({'d_date': f"{acct['code']} - {acct['name']}", 'd_je': '', 'd_source': '',
-                     'd_particulars': '', 'debit': '', 'c_date': 'Balance b/f', 'c_je': '',
-                     'c_source': '', 'c_particulars': '', 'credit': _bal(acct['opening_balance'])})
-        for i in range(max(len(debit_lines), len(credit_lines))):
-            d = debit_lines[i] if i < len(debit_lines) else None
-            c = credit_lines[i] if i < len(credit_lines) else None
+        rows.append({'date': f"{acct['code']} - {acct['name']}", 'je': '', 'source': '',
+                     'particulars': 'Opening balance', 'debit': '', 'credit': '',
+                     'balance': acct['opening_balance']})
+        for line in acct['lines']:
             rows.append({
-                'd_date': d['entry_date'] if d else '', 'd_je': d['entry_number'] if d else '',
-                'd_source': d['source']['label'] if d else '', 'd_particulars': d['contra'] if d else '',
-                'debit': d['debit'] if d else '',
-                'c_date': c['entry_date'] if c else '', 'c_je': c['entry_number'] if c else '',
-                'c_source': c['source']['label'] if c else '', 'c_particulars': c['contra'] if c else '',
-                'credit': c['credit'] if c else '',
+                'date': line['entry_date'], 'je': line['entry_number'],
+                'source': line['source']['label'], 'particulars': line['description'],
+                'debit': line['debit'] or '', 'credit': line['credit'] or '',
+                'balance': line['running_balance'],
             })
-        rows.append({'d_date': 'Total Debit', 'd_je': '', 'd_source': '', 'd_particulars': '',
-                     'debit': acct['total_debit'], 'c_date': 'Total Credit', 'c_je': '',
-                     'c_source': '', 'c_particulars': '', 'credit': acct['total_credit']})
-        rows.append({'d_date': '', 'd_je': '', 'd_source': '', 'd_particulars': '', 'debit': '',
-                     'c_date': 'Balance c/f', 'c_je': '', 'c_source': '', 'c_particulars': '',
-                     'credit': _bal(acct['closing_balance'])})
+        rows.append({'date': '', 'je': '', 'source': '', 'particulars': 'Closing balance',
+                     'debit': acct['total_debit'], 'credit': acct['total_credit'],
+                     'balance': acct['closing_balance']})
     return rows
 
 
-_GL_COLUMNS = ['d_date', 'd_je', 'd_source', 'd_particulars', 'debit',
-               'c_date', 'c_je', 'c_source', 'c_particulars', 'credit']
-_GL_HEADERS = ['Date', 'JE #', 'Source', 'Particulars', 'Debit',
-               'Date', 'JE #', 'Source', 'Particulars', 'Credit']
+_GL_COLUMNS = ['date', 'je', 'source', 'particulars', 'debit', 'credit', 'balance']
+_GL_HEADERS = ['Date', 'JE #', 'Source', 'Particulars', 'Debit', 'Credit', 'Balance']
 
 
 @reports_bp.route('/reports/general-ledger')
@@ -367,20 +352,11 @@ def general_ledger_export_csv():
 @reports_bp.route('/reports/general-ledger/print')
 @login_required
 def general_ledger_print():
-    from app.settings import AppSettings
-    from app.branches.models import Branch
     start_date, end_date, account_id, branch_id = _gl_params()
     ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
     _attach_source_links(ledger, branch_id)
-    company = {
-        'name': AppSettings.get_setting('company_name', ''),
-        'address': AppSettings.get_setting('company_address', ''),
-        'tin': AppSettings.get_setting('company_tin', ''),
-    }
-    branch = Branch.query.get(branch_id) if branch_id else None
     return render_template('reports/general_ledger_print.html',
-                           ledger=ledger, start_date=start_date, end_date=end_date,
-                           company=company, branch_name=branch.name if branch else '')
+                           ledger=ledger, start_date=start_date, end_date=end_date)
 
 
 # BIR Compliance Reports

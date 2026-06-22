@@ -97,8 +97,8 @@ def test_general_ledger_account_filter(client, db_session, main_branch, admin_us
     assert resp.status_code == 200
     assert cash_account.code.encode() in resp.data
     # Only the filtered account's ledger section is rendered; each section has exactly
-    # one "Balance b/f" label — so the count must be 1, not 2.
-    assert resp.data.count(b'Balance b/f') == 1
+    # one "Opening balance" row — so the count must be 1, not 2.
+    assert resp.data.count(b'Opening balance') == 1
 
 
 def test_general_ledger_staff_without_grant_denied(client, db_session, main_branch,
@@ -151,22 +151,17 @@ def test_general_ledger_csv_export(client, db_session, main_branch, admin_user,
 
 def test_general_ledger_print_renders(client, db_session, main_branch, admin_user,
                                       cash_account, revenue_account):
-    from app.settings import AppSettings
-    AppSettings.set_setting('company_name', 'ACME Trading Corp')
     _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-P1')
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/general-ledger/print')
     assert resp.status_code == 200
-    body = resp.data
-    assert b'General Ledger' in body
-    assert b'ACME Trading Corp' in body          # BIR-book company header
-    assert b'Total Debit' in body                 # T-ledger footer
+    assert b'General Ledger' in resp.data
 
 
 def test_general_ledger_csv_export_contains_data(client, db_session, main_branch, admin_user,
                                                   cash_account, revenue_account):
-    """The T-shape CSV emits an account header row + Balance b/f and Total Debit markers."""
+    """_flatten_ledger rows (account header + Opening balance label) appear in the CSV body."""
     _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-CSV')
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
@@ -176,24 +171,7 @@ def test_general_ledger_csv_export_contains_data(client, db_session, main_branch
     resp = client.get(f'/reports/general-ledger/export/csv?start_date={start}&end_date={end}')
     assert resp.status_code == 200
     assert 'text/csv' in resp.headers['Content-Type']
-    # _flatten_ledger emits one header row per account (contains the code), a Balance b/f
-    # cell, and a Total Debit row; verify all land in the file.
+    # _flatten_ledger emits one header row per account (contains the code) and one row
+    # with 'Opening balance' as the particulars column; verify both land in the file.
     assert cash_account.code.encode() in resp.data
-    assert b'Balance b/f' in resp.data
-    assert b'Total Debit' in resp.data
-
-
-def test_general_ledger_renders_t_ledger(client, db_session, main_branch, admin_user,
-                                         cash_account, revenue_account):
-    _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-TL')
-    _login(client, admin_user)
-    _select_branch(client, main_branch.id)
-    resp = client.get('/reports/general-ledger')
-    assert resp.status_code == 200
-    body = resp.data
-    assert b'Balance b/f' in body
-    assert b'Total Debit' in body
-    assert b'Total Credit' in body
-    assert b'Balance c/f' in body
-    # Particulars shows the contra-account name (cash debit's contra = revenue account name)
-    assert revenue_account.name.encode() in body
+    assert b'Opening balance' in resp.data
