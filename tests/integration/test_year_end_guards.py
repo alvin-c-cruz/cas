@@ -5,6 +5,7 @@ from datetime import date
 
 from app import db
 from app.accounts.models import Account
+from app.journal_entries.models import JournalEntry
 from app.sales_invoices.models import SalesInvoice
 from app.customers.models import Customer
 from tests.integration.test_year_end_close import _world
@@ -39,6 +40,29 @@ def test_drafts_block_close(db_session, admin_user, main_branch):
                                 invoice_date=date(2025, 5, 1), due_date=date(2025, 6, 1),
                                 customer_id=cust.id, customer_name='C', notes='',
                                 status='draft', amount_paid=Decimal('0.00')))
+    db.session.commit()
+    with pytest.raises(ValueError, match='draft'):
+        service.assert_closeable(2025, today=date(2026, 1, 15))
+
+
+def test_draft_journal_voucher_blocks_close(db_session, admin_user, main_branch):
+    """A draft JournalEntry dated in 2025 must block assert_closeable (M-3 fix)."""
+    from app.year_end import service
+    _world(main_branch.id)
+    # Create a draft JournalEntry (JV) dated in the year being closed
+    je = JournalEntry(
+        entry_number='JV-2025-12-0099',
+        entry_date=date(2025, 6, 15),
+        description='Draft voucher for testing',
+        reference='TEST-DRAFT-JV',
+        entry_type='adjustment',
+        branch_id=main_branch.id,
+        status='draft',
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00'),
+    )
+    db.session.add(je)
     db.session.commit()
     with pytest.raises(ValueError, match='draft'):
         service.assert_closeable(2025, today=date(2026, 1, 15))

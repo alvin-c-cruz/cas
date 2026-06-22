@@ -223,6 +223,56 @@ def test_voucher_list_avoids_n_plus_one(client, setup, db_session):
         f'N+1: {c1.count} queries for 1 row but {c10.count} for 10 rows')
 
 
+def test_jv_book_shows_closing_and_closing_reversal_after_reopen(client, db_session):
+    """After close_fiscal_year(2025) then reopen_fiscal_year(2025), the JV book
+    must show BOTH the closing entries (CLOSE-2025) AND their reversals (REOPEN-2025).
+    Covers Fix I-2: 'closing_reversal' must be in VOUCHER_TYPES.
+    """
+    from tests.integration.test_year_end_close import _world
+    from app.year_end import service
+    from app import db as _db
+    from app.users.models import User
+    from app.branches.models import Branch
+
+    # Build a standalone branch and admin user (avoids fixture conflicts with setup)
+    branch = Branch(name='JV-Test-Branch', code='JVTB')
+    db_session.add(branch)
+    db_session.flush()
+
+    admin = User(username='admin_jvtest', email='admin_jvtest@test.com',
+                 full_name='Admin JV', role='admin', is_active=True)
+    admin.set_password('admin123')
+    db_session.add(admin)
+    db_session.flush()
+
+    _world(branch.id)
+    _db.session.commit()
+
+    service.close_fiscal_year(2025, admin.id)
+    _db.session.commit()
+
+    service.reopen_fiscal_year(2025, admin.id)
+    _db.session.commit()
+
+    # Log in as the test admin user, then set branch in session
+    client.post('/login', data={'username': 'admin_jvtest', 'password': 'admin123'},
+                follow_redirects=True)
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+
+    body = client.get(
+        '/journals/voucher?date_from=2025-01-01&date_to=2025-12-31',
+    ).get_data(as_text=True)
+
+    # Closing entries show descriptions like "Close revenue to Income Summary — FY2025"
+    assert 'FY2025' in body, "JV book must show closing entries (description contains FY2025)"
+    # Reversal entries show descriptions like "Reverse Close revenue to Income Summary — FY2025"
+    assert 'Reverse Close' in body, (
+        "JV book must show closing_reversal entries (description starts with 'Reverse Close'). "
+        "If this fails, 'closing_reversal' is missing from VOUCHER_TYPES."
+    )
+
+
 def test_voucher_print_and_export_render(client, setup, db_session):
     """Print/export share the voucher query helper and must still render."""
     users, branch = setup

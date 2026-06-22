@@ -242,6 +242,12 @@ def drafts_in_year(year):
         rows = model.query.filter(model.status == 'draft',
                                   func.strftime('%Y', datecol) == y).all()
         found += [f'{label} {getattr(r, numcol.key)}' for r in rows]
+    # Journal Vouchers (JournalEntry with status='draft')
+    draft_jes = JournalEntry.query.filter(
+        JournalEntry.status == 'draft',
+        func.strftime('%Y', JournalEntry.entry_date) == y,
+    ).all()
+    found += [f'Journal Voucher {je.display_number}' for je in draft_jes]
     return found
 
 
