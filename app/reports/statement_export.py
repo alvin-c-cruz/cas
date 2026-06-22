@@ -37,7 +37,8 @@ def build_income_statement_xlsx(stmt, period_label, company, branch_name, filena
     right = Alignment(horizontal='right')
     thin, double_s = Side(style='thin'), Side(style='double')
     top_rule = Border(top=thin)
-    net_rule = Border(top=double_s, bottom=double_s)
+    single_bottom = Border(bottom=thin)
+    double_bottom = Border(bottom=double_s)
 
     def row(particulars='', amount=None):
         ws.append([particulars, amount])
@@ -80,7 +81,11 @@ def build_income_statement_xlsx(stmt, period_label, company, branch_name, filena
         label = ('Less: ' if sec['deduction'] else '') + sec['label']
         r = row(label, sec['total'])
         ws.cell(r, 1).font = Font(bold=True)
-        amount_cell(r, bold=True)
+        # Single rule under the last line before the total (Less: Income Tax Expense).
+        sec_border = single_bottom if sec['key'] == 'income_tax' else None
+        if sec_border:
+            ws.cell(r, 1).border = sec_border
+        amount_cell(r, bold=True, border=sec_border)
         for a in sec['accounts']:
             r = row(f"        {a['code']}  {a['name']}", a['amount'])
             amount_cell(r)
@@ -95,8 +100,8 @@ def build_income_statement_xlsx(stmt, period_label, company, branch_name, filena
     net_label = 'NET INCOME (LOSS)' + (f'  —  {margin:.1f}% Net Margin' if margin else '')
     r = row(net_label, stmt['net_income'])
     ws.cell(r, 1).font = Font(bold=True, size=12)
-    ws.cell(r, 1).border = net_rule
-    amount_cell(r, bold=True, border=net_rule, size=12)
+    ws.cell(r, 1).border = double_bottom
+    amount_cell(r, bold=True, border=double_bottom, size=12)
 
     ws.column_dimensions['A'].width = 50
     ws.column_dimensions['B'].width = 22
