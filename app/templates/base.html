@@ -1178,11 +1178,12 @@
                         <span class="nav-text">Balance Sheet</span>
                     </a>
                     {% endif %}
-                    <a href="{{ url_for('dashboard.under_development', feature='Cash Flow') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Cash Flow' %}active{% endif %}">
+                    {% if can_access_module(current_user, 'cash_flow') %}
+                    <a href="{{ url_for('reports.cash_flow') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.cash_flow') %}active{% endif %}">
                         <span class="nav-icon">💸</span>
                         <span class="nav-text">Cash Flow</span>
-                        <span class="nav-coming-soon">Soon</span>
                     </a>
+                    {% endif %}
                     {% if can_access_module(current_user, 'trial_balance') %}
                     <a href="{{ url_for('reports.trial_balance') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.trial_balance') %}active{% endif %}">
                         <span class="nav-icon">⚖️</span>

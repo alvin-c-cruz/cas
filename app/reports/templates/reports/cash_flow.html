@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Cash Flow{% endblock %}
+{% block page_title %}Statement of Cash Flows{% endblock %}
+
+{% block content %}
+{% macro amt(v) %}<td style="text-align:right;font-family:var(--mono);">{% if v < 0 %}(₱{{ '{:,.2f}'.format(-v) }}){% else %}₱{{ '{:,.2f}'.format(v) }}{% endif %}</td>{% endmacro %}
+<div class="card">
+    <div class="card-header">
+        <div>
+            <div class="card-title">Statement of Cash Flows</div>
+            <div class="card-sub">Indirect Method · {{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
+        </div>
+        <div class="card-header-actions" style="display:flex;gap:8px;">
+            <a href="{{ url_for('reports.cash_flow_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
+               class="btn btn-secondary">📊 Excel</a>
+            <a href="{{ url_for('reports.cash_flow_print', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
+               target="_blank" class="btn btn-secondary">Print</a>
+            <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Period</button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <table class="table" style="margin:0;">
+            <tbody>
+                {% set op = cash_flow.operating %}
+                <tr style="background:var(--bg);font-weight:700;"><td>CASH FLOWS FROM OPERATING ACTIVITIES</td><td></td></tr>
+                <tr><td style="padding-left:24px;">Net Income (period)</td>{{ amt(op.net_income) }}</tr>
+                {% if op.depreciation %}<tr><td style="padding-left:24px;">Add: Depreciation</td>{{ amt(op.depreciation) }}</tr>{% endif %}
+                {% if op.working_capital %}
+                <tr><td style="padding-left:24px;font-style:italic;color:var(--text-2);">Changes in operating assets and liabilities:</td><td></td></tr>
+                {% for w in op.working_capital %}<tr><td style="padding-left:40px;">{{ w.name }}</td>{{ amt(w.amount) }}</tr>{% endfor %}
+                {% endif %}
+                <tr style="font-weight:700;border-top:1px solid var(--border);"><td>Net cash provided by/(used in) operating activities</td>{{ amt(op.total) }}</tr>
+
+                {% for sec, label in [(cash_flow.investing, 'INVESTING'), (cash_flow.financing, 'FINANCING')] %}
+                <tr style="background:var(--bg);font-weight:700;"><td>CASH FLOWS FROM {{ label }} ACTIVITIES</td><td></td></tr>
+                {% for ln in sec.lines %}<tr><td style="padding-left:24px;">{{ ln.name }}</td>{{ amt(ln.amount) }}</tr>{% endfor %}
+                <tr style="font-weight:700;border-top:1px solid var(--border);"><td>Net cash provided by/(used in) {{ label|lower }} activities</td>{{ amt(sec.total) }}</tr>
+                {% endfor %}
+
+                <tr style="font-weight:800;border-top:3px double var(--border);background:var(--bg);"><td>NET INCREASE/(DECREASE) IN CASH</td>{{ amt(cash_flow.net_change) }}</tr>
+                <tr><td>Cash at beginning of period</td>{{ amt(cash_flow.cash_begin) }}</tr>
+                <tr style="font-weight:700;border-bottom:3px double var(--border);"><td>Cash at end of period</td>{{ amt(cash_flow.cash_end) }}</tr>
+            </tbody>
+        </table>
+
+        <div class="alert {% if cash_flow.is_reconciled %}alert-success{% else %}alert-danger{% endif %}"
+             style="margin-top:24px;border-radius:8px;padding:16px;">
+            {% if cash_flow.is_reconciled %}
+            <strong>✅ Reconciled</strong> — net change in cash ties to ending minus beginning cash.
+            {% else %}
+            <strong>⚠️ Not Reconciled</strong> — difference of ₱{{ '{:,.2f}'.format(cash_flow.difference) }}. Please review journal entries.
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Period Picker Modal -->
+<div id="periodPicker" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:var(--card);padding:30px;border-radius:8px;max-width:500px;width:90%;">
+        <h3 style="margin-top:0;">Select Period</h3>
+        <form action="{{ url_for('reports.cash_flow') }}" method="get">
+            <div style="margin-bottom:20px;">
+                <label for="start_date" style="display:block;margin-bottom:8px;font-weight:600;">Start Date:</label>
+                <input type="date" id="start_date" name="start_date" value="{{ start_date.isoformat() }}"
+                       style="width:100%;padding:10px;border:1px solid var(--border);border-radius:4px;font-family:inherit;">
+            </div>
+            <div style="margin-bottom:30px;">
+                <label for="end_date" style="display:block;margin-bottom:8px;font-weight:600;">End Date:</label>
+                <input type="date" id="end_date" name="end_date" value="{{ end_date.isoformat() }}"
+                       style="width:100%;padding:10px;border:1px solid var(--border);border-radius:4px;font-family:inherit;">
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="hidePeriodPicker()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Generate Report</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function showPeriodPicker() { document.getElementById('periodPicker').style.display = 'flex'; }
+function hidePeriodPicker() { document.getElementById('periodPicker').style.display = 'none'; }
+document.getElementById('periodPicker').addEventListener('click', function (e) { if (e.target === this) hidePeriodPicker(); });
+</script>
+{% endblock %}

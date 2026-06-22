@@ -24,6 +24,7 @@ from app.reports.financial import (
     generate_income_statement,
     generate_balance_sheet,
     generate_general_ledger,
+    generate_cash_flow,
 )
 from app.utils.export import export_to_excel, export_to_csv
 from datetime import date, timedelta, datetime
@@ -667,6 +668,40 @@ def balance_sheet_print():
     return render_template('reports/balance_sheet_print.html',
                            lines=balance_sheet_lines(bs), as_of_date=as_of_date,
                            company=company, branch_name=branch_name)
+
+
+@reports_bp.route('/reports/cash-flow')
+@login_required
+def cash_flow():
+    start_date, end_date, branch_id = _is_params()
+    cf = generate_cash_flow(start_date, end_date, branch_id=branch_id)
+    return render_template('reports/cash_flow.html', cash_flow=cf,
+                           start_date=start_date, end_date=end_date)
+
+
+@reports_bp.route('/reports/cash-flow/export/excel')
+@login_required
+def cash_flow_export_excel():
+    """Export the Statement of Cash Flows to a formatted Excel workbook."""
+    from app.reports.statement_export import build_cash_flow_xlsx
+    start_date, end_date, branch_id = _is_params()
+    cf = generate_cash_flow(start_date, end_date, branch_id=branch_id)
+    company, branch_name = _bs_company_branch(branch_id)
+    period_label = f"{start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
+    filename = f'Cash_Flow_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx'
+    return build_cash_flow_xlsx(cf, period_label, company, branch_name, filename)
+
+
+@reports_bp.route('/reports/cash-flow/print')
+@login_required
+def cash_flow_print():
+    from app.reports.statement_export import cash_flow_lines
+    start_date, end_date, branch_id = _is_params()
+    cf = generate_cash_flow(start_date, end_date, branch_id=branch_id)
+    company, branch_name = _bs_company_branch(branch_id)
+    return render_template('reports/cash_flow_print.html',
+                           lines=cash_flow_lines(cf), start_date=start_date,
+                           end_date=end_date, company=company, branch_name=branch_name)
 
 
 @reports_bp.route('/reports/ap-aging/export/excel')

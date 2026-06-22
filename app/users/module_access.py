@@ -46,6 +46,9 @@ MODULE_REGISTRY = [
     {'key': 'balance_sheet', 'label': 'Balance Sheet', 'section': 'Ledger',
      'endpoints': ('reports.balance_sheet', 'reports.balance_sheet_export_excel',
                    'reports.balance_sheet_print')},
+    {'key': 'cash_flow', 'label': 'Cash Flow', 'section': 'Ledger',
+     'endpoints': ('reports.cash_flow', 'reports.cash_flow_export_excel',
+                   'reports.cash_flow_print')},
 ]
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY if m['section'] == 'Transactions']
