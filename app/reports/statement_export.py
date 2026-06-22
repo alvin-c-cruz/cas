@@ -117,27 +117,69 @@ def build_income_statement_xlsx(stmt, period_label, company, branch_name, filena
         cell.border = Border(bottom=thin)
     ws.cell(r, 2).alignment = right
 
-    # ── Body (from the shared line list) ─────────────────────────────────────
-    for ln in income_statement_lines(stmt):
-        label = ('        ' + ln['label']) if ln['indent'] else ln['label']
-        r = put(label, ln['amount'])
-        bold = ln['kind'] in ('header', 'total', 'subtotal', 'net')
-        size = 12 if ln['kind'] == 'net' else None
-        border = rules.get(ln['rule'])
+    # ── Body — live SUM/subtotal formulas so edits recalc in Excel ───────────
+    def style(r, bold=False, size=None, border=None):
         font = Font(bold=bold, size=size) if size else (Font(bold=True) if bold else None)
         lc = ws.cell(r, 1)
         if font:
             lc.font = font
         if border:
             lc.border = border
-        if ln['amount'] is not None:
-            ac = ws.cell(r, 2)
-            ac.number_format = _NUM_FMT
-            ac.alignment = right
-            if font:
-                ac.font = font
-            if border:
-                ac.border = border
+        ac = ws.cell(r, 2)
+        ac.number_format = _NUM_FMT
+        ac.alignment = right
+        if font:
+            ac.font = font
+        if border:
+            ac.border = border
+
+    total_row = {}        # section key -> row holding that section's total/amount
+    gp_row = oi_row = ibt_row = None
+
+    for sec in stmt['sections']:
+        header = ('Less: ' if sec['deduction'] else '') + sec['label']
+        accts = sec['accounts']
+        if not accts:                                   # empty section: one ruled total line
+            r = put(header, sec['total'])
+            style(r, bold=True, border=rules['bottom'])
+            total_row[sec['key']] = r
+        elif len(accts) == 1:                           # single account IS the total
+            r = put(header); ws.cell(r, 1).font = Font(bold=True)
+            a = accts[0]
+            r = put(f"        {a['code']}  {a['name']}", a['amount'])
+            style(r, border=rules['bottom'])
+            total_row[sec['key']] = r
+        else:                                           # children + live SUM total
+            r = put(header); ws.cell(r, 1).font = Font(bold=True)
+            first = last = None
+            for a in accts:
+                r = put(f"        {a['code']}  {a['name']}", a['amount'])
+                style(r)
+                first = first or r
+                last = r
+            r = put('Total ' + sec['label'])
+            ws.cell(r, 2).value = f'=SUM(B{first}:B{last})'
+            style(r, bold=True, border=rules['top_bottom'])
+            total_row[sec['key']] = r
+
+        if sec['key'] == 'cost_of_sales':
+            r = put('Gross Profit')
+            ws.cell(r, 2).value = f"=B{total_row['revenue']}-B{total_row['cost_of_sales']}"
+            style(r, bold=True, border=rules['bottom']); gp_row = r
+        elif sec['key'] == 'operating_expenses':
+            r = put('Operating Income (Loss)')
+            ws.cell(r, 2).value = f"=B{gp_row}-B{total_row['operating_expenses']}"
+            style(r, bold=True, border=rules['bottom']); oi_row = r
+        elif sec['key'] == 'financial':
+            r = put('Income Before Income Tax')
+            ws.cell(r, 2).value = f"=B{oi_row}-B{total_row['financial']}"
+            style(r, bold=True, border=rules['bottom']); ibt_row = r
+
+    margin = stmt['net_income_percentage']
+    nlabel = 'NET INCOME (LOSS)' + (f'  —  {margin:.1f}% Net Margin' if margin else '')
+    r = put(nlabel)
+    ws.cell(r, 2).value = f"=B{ibt_row}-B{total_row['income_tax']}"
+    style(r, bold=True, size=12, border=rules['double_bottom'])
 
     ws.column_dimensions['A'].width = 50
     ws.column_dimensions['B'].width = 22

@@ -544,9 +544,10 @@ def trial_balance_print():
         'tin': AppSettings.get_setting('company_tin', ''),
     }
     branch = Branch.query.get(branch_id) if branch_id else None
+    branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     return render_template('reports/trial_balance_print.html',
                            trial_balance=trial_balance_data, as_of_date=as_of_date,
-                           company=company, branch_name=branch.name if branch else '')
+                           company=company, branch_name=branch_name)
 
 
 def _is_params():
@@ -593,10 +594,10 @@ def income_statement_export_excel():
         'tin': AppSettings.get_setting('company_tin', ''),
     }
     branch = Branch.query.get(branch_id) if branch_id else None
+    branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     period_label = f"{start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
     filename = f'Income_Statement_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx'
-    return build_income_statement_xlsx(stmt, period_label, company,
-                                       branch.name if branch else '', filename)
+    return build_income_statement_xlsx(stmt, period_label, company, branch_name, filename)
 
 
 @reports_bp.route('/reports/income-statement/print')
@@ -613,10 +614,11 @@ def income_statement_print():
         'tin': AppSettings.get_setting('company_tin', ''),
     }
     branch = Branch.query.get(branch_id) if branch_id else None
+    branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     return render_template('reports/income_statement_print.html',
                            lines=income_statement_lines(income_stmt_data),
                            start_date=start_date, end_date=end_date,
-                           company=company, branch_name=branch.name if branch else '')
+                           company=company, branch_name=branch_name)
 
 
 @reports_bp.route('/reports/balance-sheet')
