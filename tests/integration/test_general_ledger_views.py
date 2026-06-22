@@ -166,7 +166,7 @@ def test_general_ledger_print_renders(client, db_session, main_branch, admin_use
 
 def test_general_ledger_csv_export_contains_data(client, db_session, main_branch, admin_user,
                                                   cash_account, revenue_account):
-    """_flatten_ledger rows (account header + Opening balance label) appear in the CSV body."""
+    """The T-shape CSV emits an account header row + Balance b/f and Total Debit markers."""
     _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-CSV')
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
@@ -176,10 +176,11 @@ def test_general_ledger_csv_export_contains_data(client, db_session, main_branch
     resp = client.get(f'/reports/general-ledger/export/csv?start_date={start}&end_date={end}')
     assert resp.status_code == 200
     assert 'text/csv' in resp.headers['Content-Type']
-    # _flatten_ledger emits one header row per account (contains the code) and one row
-    # with 'Opening balance' as the particulars column; verify both land in the file.
+    # _flatten_ledger emits one header row per account (contains the code), a Balance b/f
+    # cell, and a Total Debit row; verify all land in the file.
     assert cash_account.code.encode() in resp.data
-    assert b'Opening balance' in resp.data
+    assert b'Balance b/f' in resp.data
+    assert b'Total Debit' in resp.data
 
 
 def test_general_ledger_renders_t_ledger(client, db_session, main_branch, admin_user,
