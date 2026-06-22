@@ -4,6 +4,7 @@
 {% block page_title %}General Ledger{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 {% macro balance_dr_cr(value) %}{% if value >= 0 %}₱{{ "{:,.2f}".format(value) }} Dr{% else %}₱{{ "{:,.2f}".format(-value) }} Cr{% endif %}{% endmacro %}
 
 {% set q = 'start_date=' ~ start_date.isoformat() ~ '&end_date=' ~ end_date.isoformat() ~ ('&account_id=' ~ selected_account_id if selected_account_id else '') %}
