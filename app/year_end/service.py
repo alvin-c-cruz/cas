@@ -219,3 +219,74 @@ def close_fiscal_year(year, user_id):
     """
     branches = Branch.query.filter_by(is_active=True).order_by(Branch.id).all()
     return [_close_branch(year, b.id, user_id) for b in branches]
+
+
+# ---------------------------------------------------------------------------
+# Reopen
+# ---------------------------------------------------------------------------
+
+def _reverse_je(source_je, year, branch_id, user_id):
+    rev = JournalEntry(
+        entry_number=closing_entry_number(branch_id, year),
+        entry_date=date(year, 12, 31),
+        description=f'Reverse {source_je.description}',
+        reference=f'REOPEN-{year}',
+        entry_type='closing_reversal',
+        is_reversing=True,
+        reversed_entry_id=source_je.id,
+        branch_id=branch_id,
+        status='posted',
+        posted_by_id=user_id,
+        posted_at=ph_now(),
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00'),
+    )
+    db.session.add(rev)
+    db.session.flush()
+    for i, src in enumerate(source_je.lines.all(), start=1):
+        db.session.add(JournalEntryLine(entry_id=rev.id, line_number=i, account_id=src.account_id,
+                                        description=f'Reverse: {src.description or ""}',
+                                        debit_amount=src.credit_amount,
+                                        credit_amount=src.debit_amount))
+    db.session.flush()
+    _finalize(rev)
+    return rev
+
+
+def _reopen_branch(year, branch_id, user_id):
+    fc = FiscalYearClose.query.filter_by(fiscal_year=year, branch_id=branch_id,
+                                         status='closed').first()
+    if fc is None:
+        return None
+    for je_id in fc.get_closing_entry_ids():
+        src = db.session.get(JournalEntry, je_id)
+        if src is not None:
+            _reverse_je(src, year, branch_id, user_id)
+
+    for month in range(1, 13):
+        p = AccountingPeriod.query.filter_by(year=year, month=month).first()
+        if p is not None and p.status == 'closed':
+            p.status = 'open'
+            p.closed_by_id = None
+            p.closed_at = None
+
+    fc.status = 'reopened'
+    fc.reopened_at = ph_now()
+    fc.reopened_by_id = user_id
+    db.session.flush()
+    log_audit(module='year_end', action='reopen', record_id=fc.id,
+              record_identifier=f'{year} / {fc.branch.name if fc.branch else branch_id}',
+              new_values={'fiscal_year': year, 'branch_id': branch_id},
+              user_id=user_id)
+    return fc
+
+
+def reopen_fiscal_year(year, user_id):
+    """Reopen `year` for every branch. Only the latest closed year may be reopened."""
+    branches = Branch.query.filter_by(is_active=True).order_by(Branch.id).all()
+    for b in branches:
+        latest = latest_closed_year(b.id)
+        if latest is not None and year != latest:
+            raise ValueError(f'Only the latest closed year ({latest}) can be reopened.')
+    return [r for r in (_reopen_branch(year, b.id, user_id) for b in branches) if r]
