@@ -320,8 +320,72 @@ def build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename):
     return _xlsx_response(wb, filename)
 
 
+def _cf_invfin_net_cash_lines(cf):
+    """Investing + Financing sections + NET INCREASE + begin/end cash.
+
+    Shared by both methods so the tail is emitted identically.
+    """
+    lines = []
+    for key, label, short in (('investing', 'CASH FLOWS FROM INVESTING ACTIVITIES', 'investing'),
+                              ('financing', 'CASH FLOWS FROM FINANCING ACTIVITIES', 'financing')):
+        sec = cf[key]
+        lines.append({'kind': 'header', 'label': label, 'amount': None, 'indent': False, 'rule': None})
+        for ln in sec['lines']:
+            lines.append({'kind': 'account', 'label': ln['name'], 'amount': ln['amount'],
+                          'indent': True, 'rule': None})
+        lines.append({'kind': 'subtotal',
+                      'label': 'Net cash provided by/(used in) %s activities' % short,
+                      'amount': sec['total'], 'indent': False, 'rule': 'top_bottom'})
+    lines.append({'kind': 'net', 'label': 'NET INCREASE/(DECREASE) IN CASH',
+                  'amount': cf['net_change'], 'indent': False, 'rule': 'double_bottom'})
+    lines.append({'kind': 'total', 'label': 'Cash at beginning of period',
+                  'amount': cf['cash_begin'], 'indent': False, 'rule': None})
+    lines.append({'kind': 'total', 'label': 'Cash at end of period',
+                  'amount': cf['cash_end'], 'indent': False, 'rule': 'double_bottom'})
+    return lines
+
+
+def _reconciliation_lines(rec):
+    """The PAS 7 net-income -> operating-cash reconciliation note."""
+    lines = [{'kind': 'subheader',
+              'label': 'Reconciliation of net income to net cash from operating activities',
+              'amount': None, 'indent': False, 'rule': None},
+             {'kind': 'account', 'label': 'Net Income (period)',
+              'amount': rec['net_income'], 'indent': True, 'rule': None}]
+    if rec['depreciation']:
+        lines.append({'kind': 'account', 'label': 'Add: Depreciation',
+                      'amount': rec['depreciation'], 'indent': True, 'rule': None})
+    for w in rec['working_capital']:
+        lines.append({'kind': 'account', 'label': w['name'], 'amount': w['amount'],
+                      'indent': True, 'rule': None})
+    lines.append({'kind': 'subtotal', 'label': 'Net cash from operating activities',
+                  'amount': rec['total'], 'indent': False, 'rule': 'top_bottom'})
+    return lines
+
+
 def cash_flow_lines(cf):
-    """Flatten the indirect cash flow statement into render-ready lines (print + Excel)."""
+    """Flatten the cash flow statement into render-ready lines (print + Excel)."""
+    if cf.get('method') == 'direct':
+        lines = [{'kind': 'header', 'label': 'CASH FLOWS FROM OPERATING ACTIVITIES',
+                  'amount': None, 'indent': False, 'rule': None}]
+        for ln in cf['operating']['lines']:
+            lines.append({'kind': 'account', 'label': ln['name'], 'amount': ln['amount'],
+                          'indent': True, 'rule': None})
+        lines.append({'kind': 'subtotal',
+                      'label': 'Net cash provided by/(used in) operating activities',
+                      'amount': cf['operating']['total'], 'indent': False, 'rule': 'top_bottom'})
+        lines += _cf_invfin_net_cash_lines(cf)
+        if cf.get('noncash'):
+            lines.append({'kind': 'subheader',
+                          'label': 'Non-cash investing and financing transactions',
+                          'amount': None, 'indent': False, 'rule': None})
+            for n in cf['noncash']:
+                lines.append({'kind': 'account', 'label': n['description'],
+                              'amount': n['amount'], 'indent': True, 'rule': None})
+        lines += _reconciliation_lines(cf['reconciliation'])
+        return lines
+
+    # Indirect (unchanged output)
     lines = []
     op = cf['operating']
     lines.append({'kind': 'header', 'label': 'CASH FLOWS FROM OPERATING ACTIVITIES',
@@ -339,29 +403,12 @@ def cash_flow_lines(cf):
                           'indent': True, 'rule': None})
     lines.append({'kind': 'subtotal', 'label': 'Net cash provided by/(used in) operating activities',
                   'amount': op['total'], 'indent': False, 'rule': 'top_bottom'})
-
-    for key, label, short in (('investing', 'CASH FLOWS FROM INVESTING ACTIVITIES', 'investing'),
-                              ('financing', 'CASH FLOWS FROM FINANCING ACTIVITIES', 'financing')):
-        sec = cf[key]
-        lines.append({'kind': 'header', 'label': label, 'amount': None, 'indent': False, 'rule': None})
-        for ln in sec['lines']:
-            lines.append({'kind': 'account', 'label': ln['name'], 'amount': ln['amount'],
-                          'indent': True, 'rule': None})
-        lines.append({'kind': 'subtotal',
-                      'label': 'Net cash provided by/(used in) %s activities' % short,
-                      'amount': sec['total'], 'indent': False, 'rule': 'top_bottom'})
-
-    lines.append({'kind': 'net', 'label': 'NET INCREASE/(DECREASE) IN CASH',
-                  'amount': cf['net_change'], 'indent': False, 'rule': 'double_bottom'})
-    lines.append({'kind': 'total', 'label': 'Cash at beginning of period',
-                  'amount': cf['cash_begin'], 'indent': False, 'rule': None})
-    lines.append({'kind': 'total', 'label': 'Cash at end of period',
-                  'amount': cf['cash_end'], 'indent': False, 'rule': 'double_bottom'})
+    lines += _cf_invfin_net_cash_lines(cf)
     return lines
 
 
 def build_cash_flow_xlsx(cf, period_label, company, branch_name, filename):
-    """Statement of Cash Flows (indirect) as a formatted workbook with live formulas."""
+    """Statement of Cash Flows as a formatted workbook with live formulas."""
     wb = Workbook()
     ws = wb.active
     ws.title = 'Cash Flow'
@@ -393,6 +440,8 @@ def build_cash_flow_xlsx(cf, period_label, company, branch_name, filename):
         if border:
             ac.border = border
 
+    is_direct = cf.get('method') == 'direct'
+
     # Header
     if company.get('name'):
         r = put(company['name']); ws.cell(r, 1).font = Font(bold=True, size=14)
@@ -406,7 +455,7 @@ def build_cash_flow_xlsx(cf, period_label, company, branch_name, filename):
     if branch_name:
         put('Branch: ' + branch_name)
     r = put('Statement of Cash Flows'); ws.cell(r, 1).font = Font(bold=True, size=13)
-    put('Indirect Method')
+    put('Direct Method' if is_direct else 'Indirect Method')
     put(period_label)
     put()
     r = put('Particulars', 'Amount')
@@ -415,23 +464,31 @@ def build_cash_flow_xlsx(cf, period_label, company, branch_name, filename):
         cell.border = Border(bottom=thin)
     ws.cell(r, 2).alignment = right
 
-    # Operating — live SUM over the operating detail rows
-    op = cf['operating']
+    # Operating section (live SUM over its detail rows)
     r = put('CASH FLOWS FROM OPERATING ACTIVITIES'); ws.cell(r, 1).font = Font(bold=True)
-    r = put('        Net Income (period)', op['net_income']); style(r)
-    first = last = r
-    if op['depreciation']:
-        r = put('        Add: Depreciation', op['depreciation']); style(r); last = r
-    if op['working_capital']:
-        r = put('        Changes in operating assets and liabilities:')
-        ws.cell(r, 1).font = Font(italic=True)
-        for w in op['working_capital']:
-            r = put('            ' + w['name'], w['amount']); style(r); last = r
+    if is_direct:
+        first = last = None
+        for ln in cf['operating']['lines']:
+            r = put('        ' + ln['name'], ln['amount']); style(r)
+            first = first or r
+            last = r
+    else:
+        op = cf['operating']
+        r = put('        Net Income (period)', op['net_income']); style(r)
+        first = last = r
+        if op['depreciation']:
+            r = put('        Add: Depreciation', op['depreciation']); style(r); last = r
+        if op['working_capital']:
+            r = put('        Changes in operating assets and liabilities:')
+            ws.cell(r, 1).font = Font(italic=True)
+            for w in op['working_capital']:
+                r = put('            ' + w['name'], w['amount']); style(r); last = r
     r = put('Net cash provided by/(used in) operating activities')
-    ws.cell(r, 2).value = f'=SUM(B{first}:B{last})'
+    ws.cell(r, 2).value = f'=SUM(B{first}:B{last})' if first else 0
     style(r, bold=True, border=rules['top_bottom'])
     sec_rows = {'operating': r}
 
+    # Investing + Financing (shared)
     for key, short in (('investing', 'investing'), ('financing', 'financing')):
         sec = cf[key]
         r = put('CASH FLOWS FROM %s ACTIVITIES' % short.upper()); ws.cell(r, 1).font = Font(bold=True)
@@ -450,8 +507,29 @@ def build_cash_flow_xlsx(cf, period_label, company, branch_name, filename):
     r = put('Cash at beginning of period', cf['cash_begin']); style(r)
     begin_row = r
     r = put('Cash at end of period')
-    ws.cell(r, 2).value = f"=B{net_row}+B{begin_row}"      # live: net change + beginning = end
+    ws.cell(r, 2).value = f"=B{net_row}+B{begin_row}"
     style(r, bold=True, border=rules['double_bottom'])
+
+    # Direct extras: non-cash note + reconciliation note
+    if is_direct:
+        if cf.get('noncash'):
+            put()
+            r = put('Non-cash investing and financing transactions'); ws.cell(r, 1).font = Font(italic=True)
+            for n in cf['noncash']:
+                r = put('        ' + n['description'], n['amount']); style(r)
+        put()
+        r = put('Reconciliation of net income to net cash from operating activities')
+        ws.cell(r, 1).font = Font(italic=True)
+        rec = cf['reconciliation']
+        r = put('        Net Income (period)', rec['net_income']); style(r)
+        rfirst = rlast = r
+        if rec['depreciation']:
+            r = put('        Add: Depreciation', rec['depreciation']); style(r); rlast = r
+        for w in rec['working_capital']:
+            r = put('        ' + w['name'], w['amount']); style(r); rlast = r
+        r = put('Net cash from operating activities')
+        ws.cell(r, 2).value = f'=SUM(B{rfirst}:B{rlast})'
+        style(r, bold=True, border=rules['top_bottom'])
 
     ws.column_dimensions['A'].width = 50
     ws.column_dimensions['B'].width = 22
