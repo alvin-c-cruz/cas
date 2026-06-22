@@ -1,49 +1,136 @@
 {% extends "base.html" %}
-
-{% block title %}Year-End Close{% endblock %}
+{% block title %}Year-End Close - CAS{% endblock %}
 {% block page_title %}Year-End Close{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <div class="card-title">Year-End Close</div>
-        <div class="card-sub">Close or reopen fiscal years</div>
-    </div>
-    <div class="card-body">
-        {% if eligible_years %}
-        <h3>Eligible Years to Close</h3>
-        <ul>
-            {% for y in eligible_years %}
-            <li>{{ y }}</li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p>No fiscal years are currently eligible for closing.</p>
-        {% endif %}
 
-        {% if closes %}
-        <h3>Closed / Reopened Fiscal Years</h3>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Year</th>
-                    <th>Status</th>
-                    <th>Net Income</th>
-                    <th>Closed At</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for fc in closes %}
-                <tr>
-                    <td>{{ fc.fiscal_year }}</td>
-                    <td>{{ fc.status }}</td>
-                    <td>{{ fc.net_income }}</td>
-                    <td>{{ fc.closed_at }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% endif %}
-    </div>
+{# ── Close-Year modals (one per eligible year) ─────────────────────────── #}
+{% for y in eligible_years %}
+<div id="close-modal-{{ y }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Close Fiscal Year {{ y }}?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">
+      This posts closing entries to Retained Earnings and locks all periods in {{ y }}.
+      This action cannot be undone without reopening.
+    </p>
+    <form method="post" action="{{ url_for('year_end.close') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="year" value="{{ y }}">
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('close-modal-{{ y }}').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Close Year</button>
+      </div>
+    </form>
+  </div>
 </div>
+{% endfor %}
+
+{# ── Reopen-Year modals (one per closed record) ────────────────────────── #}
+{% for c in closes %}
+{% if c.status == 'closed' %}
+<div id="reopen-modal-{{ c.id }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Reopen Fiscal Year {{ c.fiscal_year }}?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">
+      This reverses the closing entries and unlocks all periods in {{ c.fiscal_year }}.
+    </p>
+    <form method="post" action="{{ url_for('year_end.reopen') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="year" value="{{ c.fiscal_year }}">
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('reopen-modal-{{ c.id }}').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-danger">Reopen Year</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{# ── Eligible Years to Close ───────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Close a Fiscal Year</div>
+    <div class="card-sub">Select an eligible year to post closing entries</div>
+  </div>
+  <div class="card-body">
+    {% if eligible_years %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Fiscal Year</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for y in eligible_years %}
+        <tr>
+          <td>{{ y }}</td>
+          <td>
+            <button type="button" class="btn btn-primary"
+                    onclick="document.getElementById('close-modal-{{ y }}').style.display='flex'">
+              Close Year
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No fiscal year is currently eligible to close.</p>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Closed Years ──────────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Closed Years</div>
+    <div class="card-sub">History of closed fiscal years</div>
+  </div>
+  <div class="card-body">
+    {% if closes %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Year</th>
+          <th>Branch</th>
+          <th style="text-align:right;">Net Income</th>
+          <th>Status</th>
+          <th>Closed By</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in closes %}
+        <tr>
+          <td>{{ c.fiscal_year }}</td>
+          <td>{{ c.branch.name if c.branch else c.branch_id }}</td>
+          <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(c.net_income) }}</td>
+          <td>
+            <span class="badge badge-{{ 'success' if c.status == 'closed' else 'secondary' }}">
+              {{ c.status|title }}
+            </span>
+          </td>
+          <td>{{ c.closed_by_id }}</td>
+          <td>
+            {% if c.status == 'closed' %}
+            <button type="button" class="btn btn-danger"
+                    onclick="document.getElementById('reopen-modal-{{ c.id }}').style.display='flex'">
+              Reopen Year
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No years have been closed yet.</p>
+    {% endif %}
+  </div>
+</div>
+
 {% endblock %}
