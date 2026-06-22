@@ -186,3 +186,135 @@ def build_income_statement_xlsx(stmt, period_label, company, branch_name, filena
     ws.sheet_view.showGridLines = False
 
     return _xlsx_response(wb, filename)
+
+
+_BS_GRAND = {'assets': 'TOTAL ASSETS', 'liabilities': 'TOTAL LIABILITIES', 'equity': 'TOTAL EQUITY'}
+
+
+def balance_sheet_lines(bs):
+    """Flatten the classified balance sheet into render-ready lines (print + Excel).
+
+    Multi-group sections (Assets, Liabilities) show group headers + group subtotals;
+    a single-group section (Equity) shows its accounts directly (no redundant
+    sub-header). Grand totals (TOTAL ASSETS, TOTAL LIABILITIES AND EQUITY) get a
+    double rule; group subtotals top+bottom; TOTAL LIABILITIES / TOTAL EQUITY single.
+    """
+    lines = []
+    for sec in bs['sections']:
+        lines.append({'kind': 'section', 'label': sec['label'], 'amount': None,
+                      'indent': 0, 'rule': None})
+        single = len(sec['groups']) == 1
+        for g in sec['groups']:
+            if not single:
+                lines.append({'kind': 'group', 'label': g['label'], 'amount': None,
+                              'indent': 1, 'rule': None})
+            for a in g['accounts']:
+                nm = a['name'] if not a['code'] else f"{a['code']}  {a['name']}"
+                lines.append({'kind': 'account', 'label': nm, 'amount': a['amount'],
+                              'indent': (1 if single else 2), 'rule': None})
+            if not single:
+                lines.append({'kind': 'group_total', 'label': 'Total ' + g['label'],
+                              'amount': g['total'], 'indent': 1, 'rule': 'top_bottom'})
+        rule = 'double_bottom' if sec['key'] == 'assets' else 'bottom'
+        lines.append({'kind': 'section_total', 'label': _BS_GRAND[sec['key']],
+                      'amount': sec['total'], 'indent': 0, 'rule': rule})
+    lines.append({'kind': 'grand_total', 'label': 'TOTAL LIABILITIES AND EQUITY',
+                  'amount': bs['total_liabilities_equity'], 'indent': 0, 'rule': 'double_bottom'})
+    return lines
+
+
+def build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename):
+    """Classified Balance Sheet as a formatted workbook with live SUM formulas."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Balance Sheet'
+
+    right = Alignment(horizontal='right')
+    thin, double_s = Side(style='thin'), Side(style='double')
+    rules = {
+        'bottom': Border(bottom=thin),
+        'top_bottom': Border(top=thin, bottom=thin),
+        'double_bottom': Border(bottom=double_s),
+    }
+
+    def put(label='', amount=None):
+        ws.append([label, amount])
+        return ws.max_row
+
+    def style(r, bold=False, size=None, border=None):
+        font = Font(bold=bold, size=size) if size else (Font(bold=True) if bold else None)
+        lc = ws.cell(r, 1)
+        if font:
+            lc.font = font
+        if border:
+            lc.border = border
+        ac = ws.cell(r, 2)
+        ac.number_format = _NUM_FMT
+        ac.alignment = right
+        if font:
+            ac.font = font
+        if border:
+            ac.border = border
+
+    # ── Header ──
+    if company.get('name'):
+        r = put(company['name']); ws.cell(r, 1).font = Font(bold=True, size=14)
+    meta = []
+    if company.get('tin'):
+        meta.append('TIN: ' + company['tin'])
+    if company.get('address'):
+        meta.append(company['address'])
+    if meta:
+        put(' · '.join(meta))
+    if branch_name:
+        put('Branch: ' + branch_name)
+    r = put('Balance Sheet'); ws.cell(r, 1).font = Font(bold=True, size=13)
+    put(as_of_label)
+    put()
+    r = put('Particulars', 'Amount')
+    for cell in ws[r]:
+        cell.font = Font(bold=True)
+        cell.border = Border(bottom=thin)
+    ws.cell(r, 2).alignment = right
+
+    # ── Body — live formulas ──
+    section_total_row = {}
+    for sec in bs['sections']:
+        r = put(sec['label']); ws.cell(r, 1).font = Font(bold=True)      # section header
+        single = len(sec['groups']) == 1
+        group_total_rows = []
+        for g in sec['groups']:
+            if not single:
+                r = put('    ' + g['label']); ws.cell(r, 1).font = Font(bold=True)
+            acct_rows = []
+            for a in g['accounts']:
+                nm = a['name'] if not a['code'] else f"{a['code']}  {a['name']}"
+                indent = '        ' if not single else '    '
+                r = put(indent + nm, a['amount']); style(r); acct_rows.append(r)
+            if not single:
+                r = put('    Total ' + g['label'])
+                ws.cell(r, 2).value = f'=SUM(B{acct_rows[0]}:B{acct_rows[-1]})' if acct_rows else 0
+                style(r, bold=True, border=rules['top_bottom'])
+                group_total_rows.append(r)
+            else:
+                group_total_rows = acct_rows      # equity: section total sums the accounts
+        st = put(_BS_GRAND[sec['key']])
+        if group_total_rows:
+            if single:
+                ws.cell(st, 2).value = f'=SUM(B{group_total_rows[0]}:B{group_total_rows[-1]})'
+            else:
+                ws.cell(st, 2).value = '=' + '+'.join(f'B{x}' for x in group_total_rows)
+        else:
+            ws.cell(st, 2).value = 0
+        style(st, bold=True, border=rules['double_bottom' if sec['key'] == 'assets' else 'bottom'])
+        section_total_row[sec['key']] = st
+
+    gt = put('TOTAL LIABILITIES AND EQUITY')
+    ws.cell(gt, 2).value = f"=B{section_total_row['liabilities']}+B{section_total_row['equity']}"
+    style(gt, bold=True, size=12, border=rules['double_bottom'])
+
+    ws.column_dimensions['A'].width = 50
+    ws.column_dimensions['B'].width = 22
+    ws.sheet_view.showGridLines = False
+
+    return _xlsx_response(wb, filename)

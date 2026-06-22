@@ -621,71 +621,52 @@ def income_statement_print():
                            company=company, branch_name=branch_name)
 
 
+def _bs_company_branch(branch_id):
+    """(company dict, branch_name-or-None) for the Balance Sheet export/print headers."""
+    from app.settings import AppSettings
+    from app.branches.models import Branch
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    branch = Branch.query.get(branch_id) if branch_id else None
+    branch_name = branch.name if (branch and Branch.query.count() > 1) else None
+    return company, branch_name
+
+
 @reports_bp.route('/reports/balance-sheet')
 @login_required
-@accountant_or_admin_required
 def balance_sheet():
-    return redirect(url_for('dashboard.under_development', feature='Balance Sheet'))
-    as_of_str = request.args.get('as_of', date.today().isoformat())
-    as_of_date = date.fromisoformat(as_of_str)
-
-    # Generate balance sheet — scoped to current branch
-    current_branch_id = session.get('selected_branch_id')
-    balance_sheet_data = generate_balance_sheet(as_of_date, branch_id=current_branch_id)
-
+    as_of_date, branch_id = _tb_params()
+    balance_sheet_data = generate_balance_sheet(as_of_date, branch_id=branch_id)
     return render_template('reports/balance_sheet.html',
-                         balance_sheet=balance_sheet_data,
-                         as_of_date=as_of_date)
+                           balance_sheet=balance_sheet_data, as_of_date=as_of_date)
 
 
 @reports_bp.route('/reports/balance-sheet/export/excel')
 @login_required
-@accountant_or_admin_required
 def balance_sheet_export_excel():
-    """Export Balance Sheet to Excel"""
-    as_of_str = request.args.get('as_of', date.today().isoformat())
-    as_of_date = date.fromisoformat(as_of_str)
-
-    current_branch_id = session.get('selected_branch_id')
-    balance_sheet_data = generate_balance_sheet(as_of_date, branch_id=current_branch_id)
-
-    # Combine assets, liabilities, and equity for export
-    data = []
-
-    # Add assets
-    for item in balance_sheet_data['assets']:
-        data.append({
-            'code': item['code'],
-            'name': item['name'],
-            'amount': item['amount'],
-            'section': 'Assets'
-        })
-
-    # Add liabilities
-    for item in balance_sheet_data['liabilities']:
-        data.append({
-            'code': item['code'],
-            'name': item['name'],
-            'amount': item['amount'],
-            'section': 'Liabilities'
-        })
-
-    # Add equity
-    for item in balance_sheet_data['equity']:
-        data.append({
-            'code': item['code'],
-            'name': item['name'],
-            'amount': item['amount'],
-            'section': 'Equity'
-        })
-
-    columns = ['section', 'code', 'name', 'amount']
-    headers = ['Section', 'Code', 'Account Name', 'Amount']
-
+    """Export Balance Sheet to a formatted Excel workbook."""
+    from app.reports.statement_export import build_balance_sheet_xlsx
+    as_of_date, branch_id = _tb_params()
+    bs = generate_balance_sheet(as_of_date, branch_id=branch_id)
+    company, branch_name = _bs_company_branch(branch_id)
+    as_of_label = f'As of {as_of_date.strftime("%B %d, %Y")}'
     filename = f'Balance_Sheet_{as_of_date.isoformat()}.xlsx'
-    title = f'Balance Sheet - As of {as_of_date.strftime("%B %d, %Y")}'
+    return build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename)
 
-    return export_to_excel(data, columns, headers, filename, title)
+
+@reports_bp.route('/reports/balance-sheet/print')
+@login_required
+def balance_sheet_print():
+    from app.reports.statement_export import balance_sheet_lines
+    as_of_date, branch_id = _tb_params()
+    bs = generate_balance_sheet(as_of_date, branch_id=branch_id)
+    company, branch_name = _bs_company_branch(branch_id)
+    return render_template('reports/balance_sheet_print.html',
+                           lines=balance_sheet_lines(bs), as_of_date=as_of_date,
+                           company=company, branch_name=branch_name)
 
 
 @reports_bp.route('/reports/ap-aging/export/excel')

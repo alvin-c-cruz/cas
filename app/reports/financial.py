@@ -204,184 +204,118 @@ def generate_income_statement(start_date, end_date, branch_id=None):
     }
 
 
+# Balance Sheet categories: (key, label, code prefix, credit-normal?)
+_BS_CATEGORIES = [
+    ('assets', 'ASSETS', '1', False),
+    ('liabilities', 'LIABILITIES', '2', True),
+    ('equity', 'EQUITY', '3', True),
+]
+
+
 def generate_balance_sheet(as_of_date=None, branch_id=None):
-    """
-    Generate Balance Sheet as of a specific date
+    """Classified Balance Sheet as of a date, grouped by the parent-account hierarchy.
 
-    Shows:
-    - Assets (1xxxx accounts)
-    - Liabilities (2xxxx accounts)
-    - Equity (3xxxx accounts)
-
-    Verifies: Assets = Liabilities + Equity
-
-    Args:
-        as_of_date: date - As of date for the report (defaults to today)
-
-    Returns:
-        dict with:
-        - as_of_date: Report date
-        - assets: List of asset accounts with amounts
-        - total_assets: Sum of all assets
-        - liabilities: List of liability accounts with amounts
-        - total_liabilities: Sum of all liabilities
-        - equity: List of equity accounts with amounts
-        - total_equity: Sum of all equity
-        - total_liabilities_equity: Liabilities + Equity
-        - is_balanced: Whether Assets = Liabilities + Equity
+    Each category (Assets / Liabilities / Equity) lists its top-level parent groups
+    (e.g. Current Assets, Non-Current Assets), each with its postable child accounts
+    (non-zero balances only) and a group total. Net Income (YTD) is added to Equity.
+    Returns floats for template/export consumption; verifies Assets = Liabilities + Equity.
     """
     if as_of_date is None:
         as_of_date = date.today()
 
-    # Get asset accounts (1xxxx) - debit normal balance
-    asset_accounts = Account.query.filter(
-        Account.code.like('1%'),
-        Account.is_active == True
-    ).order_by(Account.code).all()
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    children_of = {}
+    for a in accounts:
+        children_of.setdefault(a.parent_id, []).append(a)
 
-    # Get liability accounts (2xxxx) - credit normal balance
-    liability_accounts = Account.query.filter(
-        Account.code.like('2%'),
-        Account.is_active == True
-    ).order_by(Account.code).all()
+    def leaves(group):
+        out, stack = [], list(children_of.get(group.id, []))
+        while stack:
+            n = stack.pop()
+            kids = children_of.get(n.id, [])
+            if kids:
+                stack.extend(kids)
+            else:
+                out.append(n)
+        return sorted(out, key=lambda x: x.code or '')
 
-    # Get equity accounts (3xxxx) - credit normal balance
-    equity_accounts = Account.query.filter(
-        Account.code.like('3%'),
-        Account.is_active == True
-    ).order_by(Account.code).all()
+    branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
 
-    # Calculate Assets
-    asset_list = []
-    total_assets = Decimal('0.00')
-
-    for account in asset_accounts:
-        # Assets have debit normal balance
-        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-        debit_sum = db.session.query(
-            func.sum(JournalEntryLine.debit_amount)
+    def balance(account_id, credit_positive):
+        debit_sum, credit_sum = db.session.query(
+            func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
+            func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id,
+            JournalEntryLine.account_id == account_id,
             *branch_filter
-        ).scalar() or Decimal('0.00')
+        ).one()
+        d, c = Decimal(str(debit_sum)), Decimal(str(credit_sum))
+        return (c - d) if credit_positive else (d - c)
 
-        credit_sum = db.session.query(
-            func.sum(JournalEntryLine.credit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
+    sections = []
+    totals = {}
+    for key, label, prefix, credit_positive in _BS_CATEGORIES:
+        top_groups = sorted(
+            (a for a in accounts if a.parent_id is None and (a.code or '').startswith(prefix)),
+            key=lambda a: a.code or '')
+        groups = []
+        section_total = Decimal('0.00')
+        for g in top_groups:
+            accts = []
+            gtotal = Decimal('0.00')
+            for leaf in leaves(g):
+                bal = balance(leaf.id, credit_positive)
+                if bal != 0:
+                    accts.append({'code': leaf.code, 'name': leaf.name, 'amount': float(bal)})
+                    gtotal += bal
+            if accts:
+                groups.append({'label': (g.name or '').title(), 'total': float(gtotal),
+                               'accounts': accts})
+                section_total += gtotal
+        totals[key] = section_total
+        sections.append({'key': key, 'label': label, 'total': float(section_total), 'groups': groups})
 
-        balance = debit_sum - credit_sum
-
-        if balance != 0:
-            asset_list.append({
-                'code': account.code,
-                'name': account.name,
-                'amount': float(balance)
-            })
-            total_assets += balance
-
-    # Calculate Liabilities
-    liability_list = []
-    total_liabilities = Decimal('0.00')
-
-    for account in liability_accounts:
-        # Liabilities have credit normal balance
-        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-        debit_sum = db.session.query(
-            func.sum(JournalEntryLine.debit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        credit_sum = db.session.query(
-            func.sum(JournalEntryLine.credit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        balance = credit_sum - debit_sum
-
-        if balance != 0:
-            liability_list.append({
-                'code': account.code,
-                'name': account.name,
-                'amount': float(balance)
-            })
-            total_liabilities += balance
-
-    # Calculate Equity
-    equity_list = []
-    total_equity = Decimal('0.00')
-
-    for account in equity_accounts:
-        # Equity has credit normal balance
-        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-        debit_sum = db.session.query(
-            func.sum(JournalEntryLine.debit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        credit_sum = db.session.query(
-            func.sum(JournalEntryLine.credit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date <= as_of_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        balance = credit_sum - debit_sum
-
-        if balance != 0:
-            equity_list.append({
-                'code': account.code,
-                'name': account.name,
-                'amount': float(balance)
-            })
-            total_equity += balance
-
-    # Calculate net income YTD and add to equity
+    # Accumulated earnings → Equity, split into Retained Earnings (prior periods)
+    # and Net Income (current year). NOTE: the prior-period figure is COMPUTED from the
+    # P&L (inception → end of last year); if year-end closing entries are ever posted to a
+    # real Retained Earnings account, that posted balance would double-count with this line.
     year_start = date(as_of_date.year, 1, 1)
-    income_stmt = generate_income_statement(year_start, as_of_date, branch_id=branch_id)
-    net_income_ytd = Decimal(str(income_stmt['net_income']))
+    prior_end = date(as_of_date.year - 1, 12, 31)
+    ni_current = Decimal(str(
+        generate_income_statement(year_start, as_of_date, branch_id=branch_id)['net_income']))
+    ni_prior = Decimal(str(
+        generate_income_statement(date(1900, 1, 1), prior_end, branch_id=branch_id)['net_income']))
 
-    # Add net income to equity
-    equity_list.append({
-        'code': '',
-        'name': 'Net Income (YTD)',
-        'amount': float(net_income_ytd)
-    })
-    total_equity += net_income_ytd
+    extra = []
+    if ni_prior != 0:
+        extra.append({'code': '', 'name': 'Retained Earnings', 'amount': float(ni_prior)})
+    if ni_current != 0:
+        extra.append({'code': '', 'name': 'Net Income (current year)', 'amount': float(ni_current)})
+    added = ni_prior + ni_current
 
-    total_liabilities_equity = total_liabilities + total_equity
+    equity = next(s for s in sections if s['key'] == 'equity')
+    if equity['groups']:
+        grp = equity['groups'][0]
+        grp['accounts'].extend(extra)
+        grp['total'] = float(Decimal(str(grp['total'])) + added)
+    elif extra:
+        equity['groups'].append({'label': 'Equity', 'total': float(added), 'accounts': extra})
+    equity['total'] = float(Decimal(str(equity['total'])) + added)
+    totals['equity'] += added
 
+    tle = totals['liabilities'] + totals['equity']
+    diff = abs(totals['assets'] - tle)
     return {
         'as_of_date': as_of_date,
-        'assets': asset_list,
-        'total_assets': float(total_assets),
-        'liabilities': liability_list,
-        'total_liabilities': float(total_liabilities),
-        'equity': equity_list,
-        'total_equity': float(total_equity),
-        'total_liabilities_equity': float(total_liabilities_equity),
-        'is_balanced': (abs(total_assets - total_liabilities_equity) < Decimal('0.01')),
-        'difference': float(abs(total_assets - total_liabilities_equity))
+        'sections': sections,
+        'total_assets': float(totals['assets']),
+        'total_liabilities': float(totals['liabilities']),
+        'total_equity': float(totals['equity']),
+        'total_liabilities_equity': float(tle),
+        'is_balanced': bool(diff < Decimal('0.01')),
+        'difference': float(diff),
     }
 
 
