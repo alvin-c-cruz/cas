@@ -124,7 +124,68 @@ def test_no_cash_accounts(db_session):
     assert cf['is_reconciled'] is True
 
 
-def test_rejects_direct_method(db_session):
-    b = _build(db_session)
+def _build_direct(db_session):
+    b = _branch()
+    ca = _acct('10000', 'CURRENT ASSETS', 'Asset')
+    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca)
+    ar = _acct('10201', 'Accounts Receivable', 'Asset', parent=ca)
+    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset')
+    equip = _acct('11110', 'Construction Equipment', 'Asset', parent=nca)
+    cl = _acct('20000', 'CURRENT LIABILITIES', 'Liability', 'Credit')
+    ap = _acct('20101', 'Accounts Payable', 'Liability', 'Credit', parent=cl)
+    eq = _acct('30000', 'EQUITY', 'Equity', 'Credit')
+    cap = _acct('30101', 'Capital Stock', 'Equity', 'Credit', parent=eq)
+    rev = _acct('40101', 'Sales Revenue', 'Revenue', 'Credit')
+    _je(b.id, [(equip, 2000, 0), (cap, 0, 2000)], 'D1')   # NON-CASH equipment-for-stock
+    _je(b.id, [(cash, 500, 0), (rev, 0, 500)], 'D2')      # cash sale -> received from customers +500
+    _je(b.id, [(ar, 300, 0), (rev, 0, 300)], 'D3')        # credit sale (non-cash) -> excluded
+    _je(b.id, [(cash, 200, 0), (ar, 0, 200)], 'D4')       # collection -> received from customers +200
+    _je(b.id, [(ap, 150, 0), (cash, 0, 150)], 'D5')       # pay supplier -> paid to suppliers -150
+    return b
+
+
+def test_direct_reconciles(db_session):
+    b = _build_direct(db_session)
+    cf = generate_cash_flow(START, END, branch_id=b.id, method='direct')
+    assert cf['method'] == 'direct'
+    assert cf['cash_end'] == 550.0 and cf['cash_begin'] == 0.0
+    assert cf['net_change'] == 550.0
+    assert cf['is_reconciled'] is True
+
+
+def test_direct_sections_are_cash_only(db_session):
+    b = _build_direct(db_session)
+    cf = generate_cash_flow(START, END, branch_id=b.id, method='direct')
+    # non-cash equipment-for-stock is excluded from the sections, shown in the note
+    assert cf['investing']['lines'] == []
+    assert cf['investing']['total'] == 0.0
+    assert cf['financing']['lines'] == []
+    assert cf['financing']['total'] == 0.0
+    assert any(n['amount'] == 2000.0 for n in cf['noncash'])
+
+
+def test_direct_operating_sublines(db_session):
+    b = _build_direct(db_session)
+    cf = generate_cash_flow(START, END, branch_id=b.id, method='direct')
+    lines = {l['name']: l['amount'] for l in cf['operating']['lines']}
+    assert lines['Cash received from customers'] == 700.0     # 500 sale + 200 collection
+    assert lines['Cash paid to suppliers'] == -150.0
+    assert cf['operating']['total'] == 550.0
+
+
+def test_direct_reconciliation_note(db_session):
+    b = _build_direct(db_session)
+    cf = generate_cash_flow(START, END, branch_id=b.id, method='direct')
+    rec = cf['reconciliation']
+    assert rec['net_income'] == 800.0                          # revenue 500 + 300, no expense
+    assert rec['total'] == cf['operating']['total']            # foots to operating cash (550)
+
+
+def test_direct_guard_and_indirect_unchanged(db_session):
+    b = _build_direct(db_session)
     with pytest.raises(ValueError):
-        generate_cash_flow(START, END, branch_id=b.id, method='direct')
+        generate_cash_flow(START, END, branch_id=b.id, method='xyz')
+    ind = generate_cash_flow(START, END, branch_id=b.id, method='indirect')
+    assert ind['method'] == 'indirect'
+    assert 'noncash' not in ind and 'reconciliation' not in ind
+    assert set(ind['operating'].keys()) == {'net_income', 'depreciation', 'working_capital', 'total'}

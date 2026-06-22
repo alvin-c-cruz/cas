@@ -329,6 +329,41 @@ def _is_depreciation_name(account):
     return 'depreciation' in (account.name or '').lower()
 
 
+_DIRECT_SUBLINE_ORDER = [
+    'Cash received from customers',
+    'Cash paid to suppliers',
+    'Cash paid for operating expenses',
+    'Taxes paid',
+    'Other operating receipts/(payments)',
+]
+
+
+def _direct_activity(account):
+    """Activity bucket for a non-cash contra account in the direct method."""
+    code = account.code or ''
+    if code.startswith('11') and not _is_depreciation_name(account):
+        return 'investing'
+    if code.startswith('21') or code.startswith('30'):
+        return 'financing'
+    return 'operating'   # 4x / 5x / 10x-ex-cash / 20x + any stray (catch-all)
+
+
+def _direct_operating_subline(account):
+    """PFRS operating sub-line for an operating contra account (first match wins)."""
+    code = account.code or ''
+    name = (account.name or '').lower()
+    if any(t in name for t in ('vat', 'withholding', 'wht', 'income tax')):
+        return 'Taxes paid'
+    if code.startswith('4') or 'receivable' in name:
+        return 'Cash received from customers'
+    if code.startswith('501') or any(t in name for t in
+                                      ('payable', 'inventory', 'construction in progress', 'materials')):
+        return 'Cash paid to suppliers'
+    if code.startswith('5'):
+        return 'Cash paid for operating expenses'
+    return 'Other operating receipts/(payments)'
+
+
 def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
     """Statement of Cash Flows (indirect method) for a period.
 
@@ -348,8 +383,8 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
     movement would double-count net income here (same caveat as the Balance
     Sheet). Not an issue on books without closing entries.
     """
-    if method != 'indirect':
-        raise ValueError("Only the indirect cash-flow method is implemented")
+    if method not in ('indirect', 'direct'):
+        raise ValueError("Cash-flow method must be 'indirect' or 'direct'")
 
     accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
     branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
@@ -440,7 +475,7 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
     cash_end = cash_balance(end_date)
     diff = abs(net_change - (cash_end - cash_begin))
 
-    return {
+    indirect = {
         'period_start': start_date,
         'period_end': end_date,
         'method': 'indirect',
@@ -457,6 +492,108 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
         'cash_end': float(cash_end),
         'is_reconciled': bool(diff < Decimal('0.01')),
         'difference': float(diff),
+    }
+    if method == 'indirect':
+        return indirect
+
+    # method == 'direct': decompose the period's ACTUAL cash into the three
+    # activities from cash-touching JEs. Non-cash transactions (no cash line) are
+    # excluded and listed in `noncash`. Ties to the cash movement by construction.
+    acct_by_id = {a.id: a for a in accounts}
+    cash_ids = [a.id for a in accounts if _is_cash(a)]
+
+    op_buckets = {k: Decimal('0.00') for k in _DIRECT_SUBLINE_ORDER}
+    inv_by_acct, fin_by_acct = {}, {}
+    if cash_ids:
+        cash_je_ids = db.session.query(JournalEntryLine.entry_id).join(JournalEntry).filter(
+            JournalEntry.status == 'posted',
+            JournalEntry.entry_date >= start_date,
+            JournalEntry.entry_date <= end_date,
+            JournalEntryLine.account_id.in_(cash_ids),
+            *branch_filter
+        ).distinct()
+        contra = db.session.query(
+            JournalEntryLine.account_id,
+            (func.coalesce(func.sum(JournalEntryLine.credit_amount), 0)
+             - func.coalesce(func.sum(JournalEntryLine.debit_amount), 0)).label('eff'),
+        ).filter(
+            JournalEntryLine.entry_id.in_(cash_je_ids),
+            ~JournalEntryLine.account_id.in_(cash_ids),
+        ).group_by(JournalEntryLine.account_id).all()
+        for account_id, eff in contra:
+            a = acct_by_id.get(account_id)
+            if a is None:
+                continue
+            effect = Decimal(str(eff))
+            activity = _direct_activity(a)
+            if activity == 'investing':
+                inv_by_acct[a.id] = (a, effect)
+            elif activity == 'financing':
+                fin_by_acct[a.id] = (a, effect)
+            else:
+                op_buckets[_direct_operating_subline(a)] += effect
+
+    operating_lines = [{'name': k, 'amount': float(op_buckets[k])}
+                       for k in _DIRECT_SUBLINE_ORDER if op_buckets[k] != 0]
+    operating_dtotal = sum(op_buckets.values(), Decimal('0.00'))
+
+    investing_dlines, investing_dtotal = [], Decimal('0.00')
+    for a, eff in sorted(inv_by_acct.values(), key=lambda x: x[0].code or ''):
+        if eff != 0:
+            investing_dlines.append({'name': '(Acquisition)/disposal of ' + a.name,
+                                     'amount': float(eff)})
+            investing_dtotal += eff
+    financing_dlines, financing_dtotal = [], Decimal('0.00')
+    for a, eff in sorted(fin_by_acct.values(), key=lambda x: x[0].code or ''):
+        if eff != 0:
+            financing_dlines.append({'name': a.name, 'amount': float(eff)})
+            financing_dtotal += eff
+
+    # Non-cash investing & financing transactions: posted in-period branch JEs
+    # not touching cash that hit a real investing (11x non-accum-depr) or
+    # financing (21x/30x) account. (Depreciation entries hit only accumulated
+    # depreciation among 11x accounts, so they do not qualify.)
+    noncash = []
+    invfin_ids = [a.id for a in accounts
+                  if ((a.code or '').startswith('11') and not _is_depreciation_name(a))
+                  or (a.code or '').startswith('21') or (a.code or '').startswith('30')]
+    if invfin_ids:
+        cash_je_set = set()
+        if cash_ids:
+            cash_je_set = {r[0] for r in db.session.query(JournalEntryLine.entry_id).filter(
+                JournalEntryLine.account_id.in_(cash_ids)).distinct()}
+        cand = db.session.query(JournalEntry).join(JournalEntryLine).filter(
+            JournalEntry.status == 'posted',
+            JournalEntry.entry_date >= start_date,
+            JournalEntry.entry_date <= end_date,
+            JournalEntryLine.account_id.in_(invfin_ids),
+            *branch_filter
+        ).distinct().all()
+        for je in sorted(cand, key=lambda j: j.id):
+            if je.id in cash_je_set:
+                continue
+            gross = db.session.query(
+                func.coalesce(func.sum(JournalEntryLine.debit_amount), 0)
+            ).filter(JournalEntryLine.entry_id == je.id).scalar()
+            noncash.append({'description': je.description or je.reference or f'JE {je.id}',
+                            'amount': float(gross or 0)})
+
+    net_change_d = operating_dtotal + investing_dtotal + financing_dtotal
+    diff_d = abs(net_change_d - (cash_end - cash_begin))
+    return {
+        'period_start': start_date,
+        'period_end': end_date,
+        'method': 'direct',
+        'operating': {'lines': operating_lines, 'total': float(operating_dtotal)},
+        'investing': {'lines': investing_dlines, 'total': float(investing_dtotal)},
+        'financing': {'lines': financing_dlines, 'total': float(financing_dtotal)},
+        'noncash': noncash,
+        'reconciliation': indirect['operating'],
+        'net_change': float(net_change_d),
+        'cash_begin': float(cash_begin),
+        'cash_end': float(cash_end),
+        'is_reconciled': bool(diff_d < Decimal('0.01')),
+        'difference': float(diff_d),
     }
 
 
