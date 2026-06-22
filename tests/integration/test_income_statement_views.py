@@ -66,7 +66,7 @@ def test_income_statement_admin_renders(client, db_session, main_branch, admin_u
     assert b'NET INCOME' in resp.data
     assert b'Gross Profit' in resp.data                       # P&L subtotal
     assert b'Operating Income' in resp.data                  # P&L subtotal
-    assert b'alert-success' in resp.data                      # positive net income banner
+    assert b'Net Margin' in resp.data                         # net income line (positive revenue)
 
 
 def test_income_statement_staff_without_grant_denied(client, db_session, main_branch, staff_user):

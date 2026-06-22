@@ -581,30 +581,34 @@ _IS_SUBTOTAL_AFTER = {
     'cost_of_sales': ('Gross Profit', 'gross_profit'),
     'operating_expenses': ('Operating Income (Loss)', 'operating_income'),
     'financial': ('Income Before Income Tax', 'income_before_tax'),
-    'income_tax': ('Net Income (Loss)', 'net_income'),
 }
 
 
 def _is_flatten(income_stmt_data):
-    """Flat rows mirroring the P&L: a section header (label + total), its child
-    accounts, and the running subtotal rows (Gross Profit, Operating Income, ...)."""
+    """Two-column P&L statement rows (Particulars | Amount) mirroring the report:
+    a section header (label + total), its indented child accounts, the running
+    subtotal rows (Gross Profit, Operating Income, Income Before Tax), and a final
+    Net Income line."""
     rows = []
 
-    def add(line='', code='', name='', amount=''):
-        rows.append({'line': line, 'code': code, 'name': name, 'amount': amount})
+    def add(particulars, amount=''):
+        rows.append({'particulars': particulars, 'amount': amount})
 
     for sec in income_stmt_data['sections']:
-        add(line=('Less: ' if sec['deduction'] else '') + sec['label'], amount=sec['total'])
+        add(('Less: ' if sec['deduction'] else '') + sec['label'], sec['total'])
         for a in sec['accounts']:
-            add(code=a['code'], name=a['name'], amount=a['amount'])
+            add(f"    {a['code']}  {a['name']}", a['amount'])
         if sec['key'] in _IS_SUBTOTAL_AFTER:
             label, key = _IS_SUBTOTAL_AFTER[sec['key']]
-            add(line=label, amount=income_stmt_data[key])
+            add(label, income_stmt_data[key])
+    margin = income_stmt_data['net_income_percentage']
+    net_label = 'NET INCOME (LOSS)' + (f' — {margin:.1f}% Net Margin' if margin else '')
+    add(net_label, income_stmt_data['net_income'])
     return rows
 
 
-_IS_COLUMNS = ['line', 'code', 'name', 'amount']
-_IS_HEADERS = ['Line', 'Code', 'Account', 'Amount']
+_IS_COLUMNS = ['particulars', 'amount']
+_IS_HEADERS = ['Particulars', 'Amount']
 
 
 @reports_bp.route('/reports/income-statement')

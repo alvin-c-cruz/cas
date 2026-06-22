@@ -34,11 +34,11 @@
             {% for a in sec.accounts %}
             <tr class="child"><td>{{ a.code }} &nbsp; {{ a.name }}</td><td class="num">₱{{ '{:,.2f}'.format(a.amount) }}</td></tr>
             {% endfor %}
-            {% if sec.key == 'cost_of_sales' %}<tr class="subtotal"><td class="num">Gross Profit</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.gross_profit) }}</td></tr>{% endif %}
-            {% if sec.key == 'operating_expenses' %}<tr class="subtotal"><td class="num">Operating Income (Loss)</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.operating_income) }}</td></tr>{% endif %}
-            {% if sec.key == 'financial' %}<tr class="subtotal"><td class="num">Income Before Income Tax</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.income_before_tax) }}</td></tr>{% endif %}
+            {% if sec.key == 'cost_of_sales' %}<tr class="subtotal"><td>Gross Profit</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.gross_profit) }}</td></tr>{% endif %}
+            {% if sec.key == 'operating_expenses' %}<tr class="subtotal"><td>Operating Income (Loss)</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.operating_income) }}</td></tr>{% endif %}
+            {% if sec.key == 'financial' %}<tr class="subtotal"><td>Income Before Income Tax</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.income_before_tax) }}</td></tr>{% endif %}
             {% endfor %}
-            <tr class="net"><td class="num">NET INCOME (LOSS){% if income_statement.net_income_percentage %} — {{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin{% endif %}</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.net_income) }}</td></tr>
+            <tr class="net"><td>NET INCOME (LOSS){% if income_statement.net_income_percentage %} — {{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin{% endif %}</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.net_income) }}</td></tr>
         </tbody>
     </table>
 </body>

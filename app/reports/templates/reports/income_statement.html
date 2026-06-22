@@ -7,7 +7,7 @@
 {% macro is_subtotal(label, value) %}
 <tr style="font-weight:700;border-top:2px solid var(--border);background:var(--card);">
     <td></td>
-    <td style="text-align:right;padding-right:20px;">{{ label }}</td>
+    <td>{{ label }}</td>
     <td style="text-align:right;font-family:var(--mono);color:var(--blue);">₱{{ '{:,.2f}'.format(value) }}</td>
 </tr>
 {% endmacro %}
@@ -54,29 +54,13 @@
                 {% if sec.key == 'operating_expenses' %}{{ is_subtotal('Operating Income (Loss)', income_statement.operating_income) }}{% endif %}
                 {% if sec.key == 'financial' %}{{ is_subtotal('Income Before Income Tax', income_statement.income_before_tax) }}{% endif %}
                 {% endfor %}
+                <tr style="font-weight:800;border-top:3px double var(--border);background:var(--bg);">
+                    <td></td>
+                    <td>NET INCOME (LOSS){% if income_statement.net_income_percentage %} &nbsp;<span style="font-weight:600;color:var(--text-2);">({{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin)</span>{% endif %}</td>
+                    <td style="text-align:right;font-family:var(--mono);color:{% if income_statement.net_income >= 0 %}var(--green){% else %}var(--red){% endif %};">₱{{ '{:,.2f}'.format(income_statement.net_income) }}</td>
+                </tr>
             </tbody>
         </table>
-
-        <!-- Net Income -->
-        <div class="alert {% if income_statement.net_income >= 0 %}alert-success{% else %}alert-danger{% endif %}"
-             style="margin-top: 24px; border-radius: 8px; padding: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 4px;">NET INCOME (LOSS)</div>
-                    <div style="font-size: 12px; opacity: 0.8;">Revenue &minus; Cost of Sales &minus; Operating &minus; Financial &minus; Income Tax</div>
-                </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 32px; font-weight: 700; font-family: var(--mono);">
-                        ₱{{ '{:,.2f}'.format(income_statement.net_income) }}
-                    </div>
-                    {% if income_statement.net_income_percentage %}
-                    <div style="font-size: 14px; font-weight: 600; margin-top: 4px;">
-                        {{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
