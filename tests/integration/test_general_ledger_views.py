@@ -175,3 +175,14 @@ def test_general_ledger_csv_export_contains_data(client, db_session, main_branch
     # with 'Opening balance' as the particulars column; verify both land in the file.
     assert cash_account.code.encode() in resp.data
     assert b'Opening balance' in resp.data
+
+
+def test_general_ledger_from_date_defaults_to_first_of_year(client, db_session, main_branch,
+                                                            admin_user):
+    """With no date params, the From field defaults to Jan 1 of the current year."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/general-ledger')
+    assert resp.status_code == 200
+    jan1 = date(date.today().year, 1, 1).isoformat()
+    assert f'name="start_date" value="{jan1}"'.encode() in resp.data

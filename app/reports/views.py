@@ -269,7 +269,7 @@ def ap_aging():
 def _gl_params():
     """Shared (start_date, end_date, account_id, branch_id) parsing for GL routes."""
     today = date.today()
-    start_default = date(today.year, today.month, 1)
+    start_default = date(today.year, 1, 1)  # first day of the current year
 
     def _parse(param, fallback):
         try:
