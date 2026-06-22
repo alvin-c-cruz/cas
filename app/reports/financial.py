@@ -164,6 +164,7 @@ def generate_income_statement(start_date, end_date, branch_id=None):
             func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
+            JournalEntry.entry_type.notin_(['closing', 'closing_reversal']),
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
             JournalEntryLine.account_id == a.id,
@@ -396,6 +397,7 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
             func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
+            JournalEntry.entry_type.notin_(['closing', 'closing_reversal']),
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
             JournalEntryLine.account_id == account_id,
@@ -507,6 +509,7 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
     if cash_ids:
         cash_je_ids = db.session.query(JournalEntryLine.entry_id).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
+            JournalEntry.entry_type.notin_(['closing', 'closing_reversal']),
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
             JournalEntryLine.account_id.in_(cash_ids),
@@ -564,6 +567,7 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
                 JournalEntryLine.account_id.in_(cash_ids)).distinct()}
         cand = db.session.query(JournalEntry).join(JournalEntryLine).filter(
             JournalEntry.status == 'posted',
+            JournalEntry.entry_type.notin_(['closing', 'closing_reversal']),
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
             JournalEntryLine.account_id.in_(invfin_ids),
