@@ -463,8 +463,41 @@ def create_app(config_name=None):
         flash('Too many attempts from your network. Please wait a minute and try again.', 'error')
         return render_template('users/login.html', form=LoginForm()), 429
 
-    # GLOBAL ERROR HANDLERS DELETED FOR TESTING
-    # This allows full Python tracebacks to show in browser
-    # TODO: re-enable error handlers before production deployment
+    # Generic error handlers — friendly pages + DB error logging. Registered
+    # only when DEBUG is off (production) so development and tests keep raw
+    # tracebacks / exception propagation for visibility. The 429 handler above
+    # stays active in all environments.
+    if not app.debug:
+        from flask import render_template, request
+        from flask_login import current_user
+
+        @app.errorhandler(404)
+        def not_found_error(error):
+            app.logger.warning(f"404 error: {request.url}")
+            return render_template('errors/404.html'), 404
+
+        @app.errorhandler(403)
+        def forbidden_error(error):
+            app.logger.warning(
+                f"403 error: {request.url} by user "
+                f"{current_user.id if current_user.is_authenticated else 'anonymous'}"
+            )
+            return render_template('errors/403.html'), 403
+
+        @app.errorhandler(500)
+        def internal_error(error):
+            app.logger.critical(f"500 error: {request.url}", exc_info=True)
+            from app.errors.utils import log_error_to_db
+            log_error_to_db(error, severity='CRITICAL')
+            db.session.rollback()
+            return render_template('errors/500.html'), 500
+
+        @app.errorhandler(Exception)
+        def unhandled_exception(error):
+            app.logger.critical(f"Unhandled exception: {request.url}", exc_info=True)
+            from app.errors.utils import log_error_to_db
+            log_error_to_db(error, severity='CRITICAL')
+            db.session.rollback()
+            return render_template('errors/500.html'), 500
 
     return app

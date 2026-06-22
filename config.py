@@ -100,11 +100,26 @@ class TestingConfig(Config):
     RATELIMIT_ENABLED = False
 
 
+class TestingErrorsConfig(TestingConfig):
+    """Testing config that exercises the PRODUCTION error handlers.
+
+    The generic 404/403/500/Exception handlers register only when DEBUG is off
+    (see create_app), so plain TestingConfig (DEBUG=True) never hits them. This
+    variant turns DEBUG and TESTING off and disables exception propagation so the
+    test client routes errors through the handlers exactly as production would,
+    while keeping the in-memory DB, CSRF-off, and no-rate-limit testing niceties.
+    """
+    DEBUG = False
+    TESTING = False
+    PROPAGATE_EXCEPTIONS = False
+
+
 # Configuration dictionary
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
     'testing': TestingConfig,
+    'testing_errors': TestingErrorsConfig,
     'default': DevelopmentConfig
 }
 
