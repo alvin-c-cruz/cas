@@ -51,56 +51,57 @@
 
         {% if ledger.accounts %}
         {% for acct in ledger.accounts %}
+        {% set debit_lines = acct.lines | selectattr('debit') | list %}
+        {% set credit_lines = acct.lines | selectattr('credit') | list %}
+        {% set rowcount = [debit_lines|length, credit_lines|length] | max %}
         <div style="margin-bottom:24px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
-            <div style="background:var(--bg);padding:10px 14px;font-weight:600;">
-                {{ acct.code }} &mdash; {{ acct.name }}
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:var(--bg);padding:10px 14px;font-weight:600;">
+                <span>{{ acct.code }} &mdash; {{ acct.name }}</span>
+                <span style="color:var(--text-2);">Balance b/f: {{ balance_dr_cr(acct.opening_balance) }}</span>
             </div>
+            <div style="overflow-x:auto;">
             <table class="table" style="margin:0;font-size:0.9rem;">
                 <thead>
                     <tr style="background:var(--bg);">
-                        <th>Date</th>
-                        <th>JE #</th>
-                        <th>Source</th>
-                        <th>Particulars</th>
-                        <th style="text-align:right;">Debit</th>
-                        <th style="text-align:right;">Credit</th>
-                        <th style="text-align:right;">Balance</th>
+                        <th>Date</th><th>JE #</th><th>Source</th><th>Particulars</th><th style="text-align:right;">Debit</th>
+                        <th style="border-left:2px solid var(--border);">Date</th><th>JE #</th><th>Source</th><th>Particulars</th><th style="text-align:right;">Credit</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {% for i in range(rowcount) %}
                     <tr>
-                        <td colspan="6"><em>Opening balance</em></td>
-                        <td style="text-align:right;">{{ balance_dr_cr(acct.opening_balance) }}</td>
-                    </tr>
-                    {% for line in acct.lines %}
-                    <tr>
-                        <td>{{ line.entry_date.strftime('%Y-%m-%d') }}</td>
-                        <td><a href="{{ url_for('journal_entries.view', id=line.entry_id) }}" style="color:var(--blue)">{{ line.entry_number }}</a></td>
-                        <td>
-                            {% if line.source.url %}
-                            <a href="{{ line.source.url }}" style="color:var(--blue)">{{ line.source.label }}</a>
-                            {% else %}{{ line.source.label }}{% endif %}
-                        </td>
-                        <td>{{ line.description }}</td>
-                        <td style="text-align:right;">{% if line.debit %}₱{{ "{:,.2f}".format(line.debit) }}{% endif %}</td>
-                        <td style="text-align:right;">{% if line.credit %}₱{{ "{:,.2f}".format(line.credit) }}{% endif %}</td>
-                        <td style="text-align:right;">{{ balance_dr_cr(line.running_balance) }}</td>
+                        {% set d = debit_lines[i] if i < debit_lines|length else None %}
+                        {% if d %}
+                        <td>{{ d.entry_date.strftime('%Y-%m-%d') }}</td>
+                        <td><a href="{{ url_for('journal_entries.view', id=d.entry_id) }}" style="color:var(--blue)">{{ d.entry_number }}</a></td>
+                        <td>{% if d.source.url %}<a href="{{ d.source.url }}" style="color:var(--blue)">{{ d.source.label }}</a>{% else %}{{ d.source.label }}{% endif %}</td>
+                        <td>{{ d.contra }}</td>
+                        <td style="text-align:right;">₱{{ "{:,.2f}".format(d.debit) }}</td>
+                        {% else %}<td></td><td></td><td></td><td></td><td></td>{% endif %}
+                        {% set c = credit_lines[i] if i < credit_lines|length else None %}
+                        {% if c %}
+                        <td style="border-left:2px solid var(--border);">{{ c.entry_date.strftime('%Y-%m-%d') }}</td>
+                        <td><a href="{{ url_for('journal_entries.view', id=c.entry_id) }}" style="color:var(--blue)">{{ c.entry_number }}</a></td>
+                        <td>{% if c.source.url %}<a href="{{ c.source.url }}" style="color:var(--blue)">{{ c.source.label }}</a>{% else %}{{ c.source.label }}{% endif %}</td>
+                        <td>{{ c.contra }}</td>
+                        <td style="text-align:right;">₱{{ "{:,.2f}".format(c.credit) }}</td>
+                        {% else %}<td style="border-left:2px solid var(--border);"></td><td></td><td></td><td></td><td></td>{% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
                 <tfoot style="border-top:2px solid var(--border);font-weight:600;">
                     <tr style="background:var(--bg);">
-                        <td colspan="4">Period totals</td>
+                        <td colspan="4">Total Debit</td>
                         <td style="text-align:right;">₱{{ "{:,.2f}".format(acct.total_debit) }}</td>
+                        <td colspan="4" style="border-left:2px solid var(--border);">Total Credit</td>
                         <td style="text-align:right;">₱{{ "{:,.2f}".format(acct.total_credit) }}</td>
-                        <td></td>
                     </tr>
                     <tr style="background:var(--bg);">
-                        <td colspan="6">Closing balance</td>
-                        <td style="text-align:right;">{{ balance_dr_cr(acct.closing_balance) }}</td>
+                        <td colspan="10" style="text-align:right;">Balance c/f: {{ balance_dr_cr(acct.closing_balance) }}</td>
                     </tr>
                 </tfoot>
             </table>
+            </div>
         </div>
         {% endfor %}
         {% else %}
