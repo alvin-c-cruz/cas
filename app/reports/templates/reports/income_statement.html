@@ -4,118 +4,72 @@
 {% block page_title %}Income Statement (P&L){% endblock %}
 
 {% block content %}
+{% macro is_subtotal(label, value) %}
+<tr style="font-weight:700;border-top:2px solid var(--border);background:var(--card);">
+    <td></td>
+    <td style="text-align:right;padding-right:20px;">{{ label }}</td>
+    <td style="text-align:right;font-family:var(--mono);color:var(--blue);">₱{{ '{:,.2f}'.format(value) }}</td>
+</tr>
+{% endmacro %}
 
 <div class="card">
     <div class="card-header">
         <div>
-            <div class="card-title">Income Statement (Profit & Loss)</div>
+            <div class="card-title">Income Statement (Profit &amp; Loss)</div>
             <div class="card-sub">{{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
         </div>
         <div class="card-header-actions" style="display: flex; gap: 8px;">
             <a href="{{ url_for('reports.income_statement_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
-               class="btn btn-secondary">
-                📊 Excel
-            </a>
+               class="btn btn-secondary">📊 Excel</a>
             <a href="{{ url_for('reports.income_statement_export_csv', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
-               class="btn btn-secondary">
-                CSV
-            </a>
+               class="btn btn-secondary">CSV</a>
             <a href="{{ url_for('reports.income_statement_print', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
-               target="_blank" class="btn btn-secondary">
-                Print
-            </a>
-            <button class="btn btn-secondary" onclick="showPeriodPicker()">
-                📅 Change Period
-            </button>
+               target="_blank" class="btn btn-secondary">Print</a>
+            <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Period</button>
         </div>
     </div>
 
     <div class="card-body">
-        <!-- Revenue Section -->
-        <div style="margin-bottom: 30px;">
-            <h3 style="font-size: 18px; font-weight: 700; color: var(--blue); margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid var(--border);">
-                REVENUE
-            </h3>
-            {% if income_statement.revenue %}
-            <table class="table" style="margin-bottom: 0;">
-                <tbody>
-                    {% for item in income_statement.revenue %}
-                    <tr>
-                        <td style="width: 120px; font-family: var(--mono); font-weight: 600; color: var(--text-2);">
-                            {{ item.code }}
-                        </td>
-                        <td>{{ item.name }}</td>
-                        <td style="text-align: right; font-family: var(--mono); width: 180px;">
-                            ₱{{ '{:,.2f}'.format(item.amount) }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot style="border-top: 1px solid var(--border); font-weight: 700;">
-                    <tr>
-                        <td colspan="2" style="text-align: right; padding-right: 20px;">Total Revenue:</td>
-                        <td style="text-align: right; font-family: var(--mono); color: var(--green); font-size: 16px;">
-                            ₱{{ '{:,.2f}'.format(income_statement.total_revenue) }}
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-            {% else %}
-            <p style="color: var(--text-3); font-size: 14px; padding: 15px 0;">No revenue recorded for this period.</p>
-            {% endif %}
-        </div>
-
-        <!-- Expenses Section -->
-        <div style="margin-bottom: 30px;">
-            <h3 style="font-size: 18px; font-weight: 700; color: var(--red); margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid var(--border);">
-                EXPENSES
-            </h3>
-            {% if income_statement.expenses %}
-            <table class="table" style="margin-bottom: 0;">
-                <tbody>
-                    {% for item in income_statement.expenses %}
-                    <tr>
-                        <td style="width: 120px; font-family: var(--mono); font-weight: 600; color: var(--text-2);">
-                            {{ item.code }}
-                        </td>
-                        <td>{{ item.name }}</td>
-                        <td style="text-align: right; font-family: var(--mono); width: 180px;">
-                            ₱{{ '{:,.2f}'.format(item.amount) }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot style="border-top: 1px solid var(--border); font-weight: 700;">
-                    <tr>
-                        <td colspan="2" style="text-align: right; padding-right: 20px;">Total Expenses:</td>
-                        <td style="text-align: right; font-family: var(--mono); color: var(--red); font-size: 16px;">
-                            ₱{{ '{:,.2f}'.format(income_statement.total_expenses) }}
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-            {% else %}
-            <p style="color: var(--text-3); font-size: 14px; padding: 15px 0;">No expenses recorded for this period.</p>
-            {% endif %}
-        </div>
+        <p class="text-muted" style="font-size:13px;margin-bottom:12px;">Click a section to show its accounts.</p>
+        <table class="table" style="margin:0;">
+            <tbody>
+                {% for sec in income_statement.sections %}
+                {% set sidx = loop.index %}
+                <tr class="is-section" {% if sec.accounts %}data-target="is-sec-{{ sidx }}" style="cursor:pointer;background:var(--bg);font-weight:700;"{% else %}style="background:var(--bg);font-weight:700;color:var(--text-2);"{% endif %}>
+                    <td style="width:30px;text-align:center;color:var(--text-2);">{% if sec.accounts %}<span class="is-caret" id="is-caret-{{ sidx }}">▶</span>{% endif %}</td>
+                    <td>{% if sec.deduction %}Less: {% endif %}{{ sec.label }}</td>
+                    <td style="text-align:right;font-family:var(--mono);width:200px;">₱{{ '{:,.2f}'.format(sec.total) }}</td>
+                </tr>
+                {% for a in sec.accounts %}
+                <tr class="is-sec-{{ sidx }}" style="display:none;">
+                    <td></td>
+                    <td style="padding-left:30px;">
+                        <span style="font-family:var(--mono);color:var(--text-2);font-weight:600;">{{ a.code }}</span>
+                        &nbsp; {{ a.name }}
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(a.amount) }}</td>
+                </tr>
+                {% endfor %}
+                {% if sec.key == 'cost_of_sales' %}{{ is_subtotal('Gross Profit', income_statement.gross_profit) }}{% endif %}
+                {% if sec.key == 'operating_expenses' %}{{ is_subtotal('Operating Income (Loss)', income_statement.operating_income) }}{% endif %}
+                {% if sec.key == 'financial' %}{{ is_subtotal('Income Before Income Tax', income_statement.income_before_tax) }}{% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
 
         <!-- Net Income -->
         <div class="alert {% if income_statement.net_income >= 0 %}alert-success{% else %}alert-danger{% endif %}"
-             style="border-radius: 8px; padding: 20px;">
+             style="margin-top: 24px; border-radius: 8px; padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">
-                        NET INCOME
-                    </div>
-                    <div style="font-size: 12px; opacity: 0.8;">
-                        Revenue - Expenses
-                    </div>
+                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 4px;">NET INCOME (LOSS)</div>
+                    <div style="font-size: 12px; opacity: 0.8;">Revenue &minus; Cost of Sales &minus; Operating &minus; Financial &minus; Income Tax</div>
                 </div>
                 <div style="text-align: right;">
                     <div style="font-size: 32px; font-weight: 700; font-family: var(--mono);">
                         ₱{{ '{:,.2f}'.format(income_statement.net_income) }}
                     </div>
-                    {% if income_statement.total_revenue > 0 %}
+                    {% if income_statement.net_income_percentage %}
                     <div style="font-size: 14px; font-weight: 600; margin-top: 4px;">
                         {{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin
                     </div>
@@ -142,8 +96,6 @@
                 <input type="date" id="end_date" name="end_date" value="{{ end_date.isoformat() }}"
                        style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 4px; font-family: inherit;">
             </div>
-
-            <!-- Quick Periods -->
             <div style="margin-bottom: 20px;">
                 <div style="font-weight: 600; margin-bottom: 10px; font-size: 14px; color: var(--text-2);">Quick Periods:</div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
@@ -153,7 +105,6 @@
                     <button type="button" class="btn btn-secondary btn-sm" onclick="setLastYear()">Last Year</button>
                 </div>
             </div>
-
             <div style="display: flex; gap: 10px; justify-content: flex-end;">
                 <button type="button" class="btn btn-secondary" onclick="hidePeriodPicker()">Cancel</button>
                 <button type="submit" class="btn btn-primary">Generate Report</button>
@@ -163,55 +114,44 @@
 </div>
 
 <script>
-function showPeriodPicker() {
-    document.getElementById('periodPicker').style.display = 'flex';
-}
+// Section expand/collapse
+document.querySelectorAll('.is-section[data-target]').forEach(function (row) {
+    row.addEventListener('click', function () {
+        const cls = row.getAttribute('data-target');
+        const caret = row.querySelector('.is-caret');
+        const open = caret && caret.textContent.trim() === '▼';
+        document.querySelectorAll('.' + cls).forEach(function (r) {
+            r.style.display = open ? 'none' : '';
+        });
+        if (caret) caret.textContent = open ? '▶' : '▼';
+    });
+});
 
-function hidePeriodPicker() {
-    document.getElementById('periodPicker').style.display = 'none';
-}
+function showPeriodPicker() { document.getElementById('periodPicker').style.display = 'flex'; }
+function hidePeriodPicker() { document.getElementById('periodPicker').style.display = 'none'; }
 
-// Quick period helpers
 function setCurrentMonth() {
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-    document.getElementById('start_date').value = firstDay.toISOString().split('T')[0];
-    document.getElementById('end_date').value = lastDay.toISOString().split('T')[0];
+    document.getElementById('start_date').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    document.getElementById('end_date').value = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 }
-
 function setLastMonth() {
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-
-    document.getElementById('start_date').value = firstDay.toISOString().split('T')[0];
-    document.getElementById('end_date').value = lastDay.toISOString().split('T')[0];
+    document.getElementById('start_date').value = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+    document.getElementById('end_date').value = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
 }
-
 function setYTD() {
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), 0, 1);
-
-    document.getElementById('start_date').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('start_date').value = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
     document.getElementById('end_date').value = now.toISOString().split('T')[0];
 }
-
 function setLastYear() {
     const now = new Date();
-    const firstDay = new Date(now.getFullYear() - 1, 0, 1);
-    const lastDay = new Date(now.getFullYear() - 1, 11, 31);
-
-    document.getElementById('start_date').value = firstDay.toISOString().split('T')[0];
-    document.getElementById('end_date').value = lastDay.toISOString().split('T')[0];
+    document.getElementById('start_date').value = new Date(now.getFullYear() - 1, 0, 1).toISOString().split('T')[0];
+    document.getElementById('end_date').value = new Date(now.getFullYear() - 1, 11, 31).toISOString().split('T')[0];
 }
-
-// Close modal when clicking outside
-document.getElementById('periodPicker').addEventListener('click', function(e) {
-    if (e.target === this) {
-        hidePeriodPicker();
-    }
+document.getElementById('periodPicker').addEventListener('click', function (e) {
+    if (e.target === this) { hidePeriodPicker(); }
 });
 </script>
 

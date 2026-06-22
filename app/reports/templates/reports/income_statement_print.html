@@ -8,12 +8,13 @@
         .company { font-size: 14px; font-weight: bold; }
         .meta { color: #333; margin: 2px 0 14px 0; }
         h1 { font-size: 16px; margin: 0 0 2px 0; }
-        h2 { font-size: 13px; margin: 16px 0 4px 0; border-bottom: 1px solid #000; padding-bottom: 2px; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 3px 8px; border-bottom: 1px solid #ccc; text-align: left; }
-        .num { text-align: right; }
-        .total td { font-weight: bold; border-top: 1px solid #000; }
-        .net { margin-top: 16px; font-size: 14px; font-weight: bold; border-top: 2px solid #000; padding-top: 8px; }
+        td { padding: 3px 8px; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .section td { font-weight: bold; border-top: 1px solid #999; }
+        .child td:first-child { padding-left: 28px; }
+        .subtotal td { font-weight: bold; border-top: 1px solid #000; }
+        .net td { font-weight: bold; font-size: 14px; border-top: 2px solid #000; border-bottom: 2px solid #000; }
     </style>
 </head>
 <body onload="window.print()">
@@ -26,39 +27,19 @@
     <h1>Income Statement (Profit &amp; Loss)</h1>
     <div class="meta">{{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
 
-    <h2>Revenue</h2>
     <table>
         <tbody>
-            {% for item in income_statement.revenue %}
-            <tr><td style="width:120px;">{{ item.code }}</td><td>{{ item.name }}</td>
-                <td class="num" style="width:180px;">₱{{ '{:,.2f}'.format(item.amount) }}</td></tr>
-            {% else %}
-            <tr><td colspan="3">No revenue recorded for this period.</td></tr>
+            {% for sec in income_statement.sections %}
+            <tr class="section"><td>{% if sec.deduction %}Less: {% endif %}{{ sec.label }}</td><td class="num">₱{{ '{:,.2f}'.format(sec.total) }}</td></tr>
+            {% for a in sec.accounts %}
+            <tr class="child"><td>{{ a.code }} &nbsp; {{ a.name }}</td><td class="num">₱{{ '{:,.2f}'.format(a.amount) }}</td></tr>
             {% endfor %}
-            <tr class="total"><td colspan="2" class="num">Total Revenue:</td>
-                <td class="num">₱{{ '{:,.2f}'.format(income_statement.total_revenue) }}</td></tr>
+            {% if sec.key == 'cost_of_sales' %}<tr class="subtotal"><td class="num">Gross Profit</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.gross_profit) }}</td></tr>{% endif %}
+            {% if sec.key == 'operating_expenses' %}<tr class="subtotal"><td class="num">Operating Income (Loss)</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.operating_income) }}</td></tr>{% endif %}
+            {% if sec.key == 'financial' %}<tr class="subtotal"><td class="num">Income Before Income Tax</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.income_before_tax) }}</td></tr>{% endif %}
+            {% endfor %}
+            <tr class="net"><td class="num">NET INCOME (LOSS){% if income_statement.net_income_percentage %} — {{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin{% endif %}</td><td class="num">₱{{ '{:,.2f}'.format(income_statement.net_income) }}</td></tr>
         </tbody>
     </table>
-
-    <h2>Expenses</h2>
-    <table>
-        <tbody>
-            {% for item in income_statement.expenses %}
-            <tr><td style="width:120px;">{{ item.code }}</td><td>{{ item.name }}</td>
-                <td class="num" style="width:180px;">₱{{ '{:,.2f}'.format(item.amount) }}</td></tr>
-            {% else %}
-            <tr><td colspan="3">No expenses recorded for this period.</td></tr>
-            {% endfor %}
-            <tr class="total"><td colspan="2" class="num">Total Expenses:</td>
-                <td class="num">₱{{ '{:,.2f}'.format(income_statement.total_expenses) }}</td></tr>
-        </tbody>
-    </table>
-
-    <div class="net">
-        Net Income: ₱{{ '{:,.2f}'.format(income_statement.net_income) }}
-        {% if income_statement.total_revenue > 0 %}
-        ({{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin)
-        {% endif %}
-    </div>
 </body>
 </html>

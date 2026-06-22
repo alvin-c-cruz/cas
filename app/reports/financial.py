@@ -104,128 +104,103 @@ def generate_trial_balance(as_of_date=None, branch_id=None):
     }
 
 
+# P&L sections in statement order. Roles are assigned by account_type + code prefix,
+# extending the existing 4%/5% convention (the COA `classification` field is unused/empty):
+#   4xxxx -> revenue; 501 -> cost of sales; 503 -> financial; 504 -> income tax;
+#   any other expense (502, etc.) -> operating expenses.
+_PL_ROLES = ['revenue', 'cost_of_sales', 'operating_expenses', 'financial', 'income_tax']
+_PL_DEFAULT_LABEL = {
+    'revenue': 'Revenue',
+    'cost_of_sales': 'Cost of Sales',
+    'operating_expenses': 'Operating Expenses',
+    'financial': 'Financial Expenses',
+    'income_tax': 'Income Tax Expense',
+}
+
+
+def _pl_role(account):
+    """Classify an account into a P&L role by account_type + code prefix, or None."""
+    code = account.code or ''
+    if account.account_type == 'Revenue' or code.startswith('4'):
+        return 'revenue'
+    if account.account_type == 'Expense' or code.startswith('5'):
+        if code.startswith('501'):
+            return 'cost_of_sales'
+        if code.startswith('503'):
+            return 'financial'
+        if code.startswith('504'):
+            return 'income_tax'
+        return 'operating_expenses'   # 502 + any other expense
+    return None
+
+
 def generate_income_statement(start_date, end_date, branch_id=None):
+    """Hierarchical Income Statement (P&L) for a period.
+
+    Groups revenue/expense accounts into P&L sections (revenue, cost of sales,
+    operating expenses, financial, income tax) by the parent-account hierarchy /
+    code prefix, and computes Gross Profit, Operating Income, Income Before Tax,
+    and Net Income. Each section carries its postable child accounts (non-zero
+    activity only) and a total. Returns floats for template/export consumption.
     """
-    Generate Income Statement (Profit & Loss) for a period
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
 
-    Shows:
-    - Revenue (4xxxx accounts)
-    - Expenses (5xxxx accounts)
-    - Net Income = Revenue - Expenses
+    # Section label per role = the top-level parent group's name for that role.
+    labels = dict(_PL_DEFAULT_LABEL)
+    for a in accounts:
+        if a.parent_id is None:
+            role = _pl_role(a)
+            if role in labels:
+                labels[role] = a.name
 
-    Args:
-        start_date: date - Start of period
-        end_date: date - End of period
-
-    Returns:
-        dict with:
-        - period_start: Start date
-        - period_end: End date
-        - revenue: List of revenue accounts with amounts
-        - total_revenue: Sum of all revenue
-        - expenses: List of expense accounts with amounts
-        - total_expenses: Sum of all expenses
-        - net_income: Revenue - Expenses
-    """
-    # Get revenue accounts (4xxxx)
-    revenue_accounts = Account.query.filter(
-        Account.code.like('4%'),
-        Account.is_active == True
-    ).order_by(Account.code).all()
-
-    # Get expense accounts (5xxxx)
-    expense_accounts = Account.query.filter(
-        Account.code.like('5%'),
-        Account.is_active == True
-    ).order_by(Account.code).all()
-
-    revenue_list = []
-    total_revenue = Decimal('0.00')
-
-    for account in revenue_accounts:
-        # Revenue accounts have credit normal balance
-        # Credit increases revenue, debit decreases
-        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-        debit_sum = db.session.query(
-            func.sum(JournalEntryLine.debit_amount)
+    branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
+    buckets = {k: [] for k in _PL_ROLES}
+    for a in accounts:
+        role = _pl_role(a)
+        if role is None:
+            continue
+        debit_sum, credit_sum = db.session.query(
+            func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
+            func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
         ).join(JournalEntry).filter(
             JournalEntry.status == 'posted',
             JournalEntry.entry_date >= start_date,
             JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id,
+            JournalEntryLine.account_id == a.id,
             *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        credit_sum = db.session.query(
-            func.sum(JournalEntryLine.credit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date >= start_date,
-            JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        # Net revenue = credits - debits
-        amount = credit_sum - debit_sum
-
+        ).one()
+        debit = Decimal(str(debit_sum))
+        credit = Decimal(str(credit_sum))
+        amount = (credit - debit) if role == 'revenue' else (debit - credit)
         if amount != 0:
-            revenue_list.append({
-                'code': account.code,
-                'name': account.name,
-                'amount': float(amount)
-            })
-            total_revenue += amount
+            buckets[role].append({'code': a.code, 'name': a.name, 'amount': float(amount)})
 
-    expense_list = []
-    total_expenses = Decimal('0.00')
+    totals = {k: sum((Decimal(str(x['amount'])) for x in buckets[k]), Decimal('0.00'))
+              for k in _PL_ROLES}
 
-    for account in expense_accounts:
-        # Expense accounts have debit normal balance
-        # Debit increases expense, credit decreases
-        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-        debit_sum = db.session.query(
-            func.sum(JournalEntryLine.debit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date >= start_date,
-            JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
+    sections = [{
+        'key': k,
+        'label': labels[k],
+        'deduction': (k != 'revenue'),
+        'total': float(totals[k]),
+        'accounts': buckets[k],
+    } for k in _PL_ROLES]
 
-        credit_sum = db.session.query(
-            func.sum(JournalEntryLine.credit_amount)
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_date >= start_date,
-            JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == account.id,
-            *branch_filter
-        ).scalar() or Decimal('0.00')
-
-        # Net expense = debits - credits
-        amount = debit_sum - credit_sum
-
-        if amount != 0:
-            expense_list.append({
-                'code': account.code,
-                'name': account.name,
-                'amount': float(amount)
-            })
-            total_expenses += amount
-
-    net_income = total_revenue - total_expenses
+    revenue = totals['revenue']
+    gross_profit = revenue - totals['cost_of_sales']
+    operating_income = gross_profit - totals['operating_expenses']
+    income_before_tax = operating_income - totals['financial']
+    net_income = income_before_tax - totals['income_tax']
 
     return {
         'period_start': start_date,
         'period_end': end_date,
-        'revenue': revenue_list,
-        'total_revenue': float(total_revenue),
-        'expenses': expense_list,
-        'total_expenses': float(total_expenses),
+        'sections': sections,
+        'gross_profit': float(gross_profit),
+        'operating_income': float(operating_income),
+        'income_before_tax': float(income_before_tax),
         'net_income': float(net_income),
-        'net_income_percentage': float((net_income / total_revenue * 100) if total_revenue > 0 else 0)
+        'net_income_percentage': float((net_income / revenue * 100) if revenue > 0 else 0),
     }
 
 

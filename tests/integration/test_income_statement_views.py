@@ -61,9 +61,11 @@ def test_income_statement_admin_renders(client, db_session, main_branch, admin_u
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/income-statement')
     assert resp.status_code == 200
-    assert revenue_account.code.encode() in resp.data        # 4xxxx revenue
-    assert expense_account.code.encode() in resp.data        # 5xxxx expense
+    assert revenue_account.code.encode() in resp.data        # 4xxxx revenue (child, in markup)
+    assert expense_account.code.encode() in resp.data        # 5xxxx expense (child, in markup)
     assert b'NET INCOME' in resp.data
+    assert b'Gross Profit' in resp.data                       # P&L subtotal
+    assert b'Operating Income' in resp.data                  # P&L subtotal
     assert b'alert-success' in resp.data                      # positive net income banner
 
 

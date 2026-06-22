@@ -577,20 +577,34 @@ def _is_params():
             session.get('selected_branch_id'))
 
 
+_IS_SUBTOTAL_AFTER = {
+    'cost_of_sales': ('Gross Profit', 'gross_profit'),
+    'operating_expenses': ('Operating Income (Loss)', 'operating_income'),
+    'financial': ('Income Before Income Tax', 'income_before_tax'),
+    'income_tax': ('Net Income (Loss)', 'net_income'),
+}
+
+
 def _is_flatten(income_stmt_data):
-    """Combined revenue + expense rows for the Income Statement exports."""
+    """Flat rows mirroring the P&L: a section header (label + total), its child
+    accounts, and the running subtotal rows (Gross Profit, Operating Income, ...)."""
     rows = []
-    for item in income_stmt_data['revenue']:
-        rows.append({'section': 'Revenue', 'code': item['code'],
-                     'name': item['name'], 'amount': item['amount']})
-    for item in income_stmt_data['expenses']:
-        rows.append({'section': 'Expenses', 'code': item['code'],
-                     'name': item['name'], 'amount': item['amount']})
+
+    def add(line='', code='', name='', amount=''):
+        rows.append({'line': line, 'code': code, 'name': name, 'amount': amount})
+
+    for sec in income_stmt_data['sections']:
+        add(line=('Less: ' if sec['deduction'] else '') + sec['label'], amount=sec['total'])
+        for a in sec['accounts']:
+            add(code=a['code'], name=a['name'], amount=a['amount'])
+        if sec['key'] in _IS_SUBTOTAL_AFTER:
+            label, key = _IS_SUBTOTAL_AFTER[sec['key']]
+            add(line=label, amount=income_stmt_data[key])
     return rows
 
 
-_IS_COLUMNS = ['section', 'code', 'name', 'amount']
-_IS_HEADERS = ['Section', 'Code', 'Account Name', 'Amount']
+_IS_COLUMNS = ['line', 'code', 'name', 'amount']
+_IS_HEADERS = ['Line', 'Code', 'Account', 'Amount']
 
 
 @reports_bp.route('/reports/income-statement')
