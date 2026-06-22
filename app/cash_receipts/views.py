@@ -660,6 +660,10 @@ def create():
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.crv_date.data, 'Cash Receipt Voucher'):
             return _render_form()
+        if CashReceiptVoucher.query.filter_by(crv_number=form.crv_number.data).first():
+            flash(f'CR Number "{form.crv_number.data}" already exists. '
+                  'Enter the number printed on the receipt.', 'error')
+            return _render_form()
         try:
             customer = Customer.query.get(form.customer_id.data)
             if not customer:
@@ -668,7 +672,7 @@ def create():
 
             crv = CashReceiptVoucher(
                 branch_id=session.get('selected_branch_id'),
-                crv_number=generate_crv_number(),
+                crv_number=form.crv_number.data,
                 crv_date=form.crv_date.data,
                 customer_id=customer.id,
                 customer_name=customer.name,
@@ -752,6 +756,14 @@ def edit(id):
             ctx = _form_context(all_accounts=all_accounts)
             return render_template('cash_receipts/form.html', form=form, crv=crv,
                                    ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+        if CashReceiptVoucher.query.filter(
+                CashReceiptVoucher.crv_number == form.crv_number.data,
+                CashReceiptVoucher.id != crv.id).first():
+            flash(f'CR Number "{form.crv_number.data}" already exists. '
+                  'Enter the number printed on the receipt.', 'error')
+            ctx = _form_context(all_accounts=all_accounts)
+            return render_template('cash_receipts/form.html', form=form, crv=crv,
+                                   ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
         try:
             customer = Customer.query.get(form.customer_id.data)
             if not customer:
@@ -760,6 +772,7 @@ def edit(id):
                 return render_template('cash_receipts/form.html', form=form, crv=crv,
                                        ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
 
+            crv.crv_number = form.crv_number.data
             crv.crv_date = form.crv_date.data
             crv.customer_id = customer.id
             crv.customer_name = customer.name

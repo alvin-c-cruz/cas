@@ -5,10 +5,12 @@ from datetime import date
 
 
 class CashReceiptForm(FlaskForm):
+    # Pre-printed receipt serial typed in by the accountant (like SI invoice_number),
+    # not a system-generated sequence — so it is editable, not readonly.
     crv_number = StringField('CR Number', validators=[
         DataRequired(message='CRV number is required.'),
         Length(max=50, message='CRV number must be 50 characters or less.')
-    ], render_kw={'readonly': True})
+    ])
 
     crv_date = DateField('CRV Date', validators=[
         DataRequired(message='CRV date is required.')

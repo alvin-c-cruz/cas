@@ -60,10 +60,11 @@ def make_posted_invoice(db_session, customer, ar_account, branch_id):
     return inv
 
 
-def create_draft_crv(client, customer, cash_account, ar_lines=None, revenue_lines=None):
+def create_draft_crv(client, customer, cash_account, ar_lines=None, revenue_lines=None,
+                     crv_number='CR-TEST-0001'):
     today = ph_now().date().isoformat()
     return client.post('/cash-receipts/create', data={
-        'crv_number': 'CR-TEST-0001',
+        'crv_number': crv_number,
         'crv_date': today,
         'customer_id': customer.id,
         'payment_method': 'cash',
@@ -512,14 +513,15 @@ class TestCRVTOCTOU:
         customer = make_customer(db_session)
         inv = make_posted_invoice(db_session, customer, ar, main_branch.id)  # balance=5000
 
-        # Draft CRV 1 — applies full balance
+        # Draft CRV 1 — applies full balance. Distinct pre-printed numbers: two
+        # physical receipts can't share a serial (enforced by the duplicate guard).
         ar_lines = [{'invoice_id': inv.id, 'invoice_number': inv.invoice_number,
                      'original_balance': 5000.0, 'amount_applied': 5000.0}]
-        create_draft_crv(client, customer, cash, ar_lines=ar_lines)
+        create_draft_crv(client, customer, cash, ar_lines=ar_lines, crv_number='OR-T-001')
         crv1 = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
 
         # Draft CRV 2 — also applies full balance (TOCTOU: passes draft-time check)
-        create_draft_crv(client, customer, cash, ar_lines=ar_lines)
+        create_draft_crv(client, customer, cash, ar_lines=ar_lines, crv_number='OR-T-002')
         crv2 = CashReceiptVoucher.query.order_by(CashReceiptVoucher.id.desc()).first()
         assert crv2.id != crv1.id, 'Two distinct CRVs must have been created'
 
