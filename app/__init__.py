@@ -194,6 +194,7 @@ def create_app(config_name=None):
     from app.journal_entries.models import JournalEntry, JournalEntryLine
     from app.errors.models import ErrorLog
     from app.periods.models import AccountingPeriod
+    from app.year_end.models import FiscalYearClose
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
