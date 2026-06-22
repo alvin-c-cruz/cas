@@ -496,41 +496,67 @@ def bir_alphalist_export_excel():
 # FINANCIAL STATEMENTS
 # ============================================================================
 
+def _tb_params():
+    """Shared (as_of_date, branch_id) parsing for the Trial Balance routes."""
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except (ValueError, TypeError):
+        as_of_date = date.today()
+    return as_of_date, session.get('selected_branch_id')
+
+
+_TB_COLUMNS = ['code', 'name', 'debit_balance', 'credit_balance']
+_TB_HEADERS = ['Account Code', 'Account Name', 'Debit', 'Credit']
+
+
 @reports_bp.route('/reports/trial-balance')
 @login_required
-@accountant_or_admin_required
 def trial_balance():
-    return redirect(url_for('dashboard.under_development', feature='Trial Balance'))
-    as_of_str = request.args.get('as_of', date.today().isoformat())
-    as_of_date = date.fromisoformat(as_of_str)
-
-    # Generate trial balance — scoped to current branch
-    current_branch_id = session.get('selected_branch_id')
-    trial_balance_data = generate_trial_balance(as_of_date, branch_id=current_branch_id)
-
+    as_of_date, branch_id = _tb_params()
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id)
     return render_template('reports/trial_balance.html',
-                         trial_balance=trial_balance_data,
-                         as_of_date=as_of_date)
+                           trial_balance=trial_balance_data,
+                           as_of_date=as_of_date)
 
 
 @reports_bp.route('/reports/trial-balance/export/excel')
 @login_required
-@accountant_or_admin_required
 def trial_balance_export_excel():
     """Export Trial Balance to Excel"""
-    as_of_str = request.args.get('as_of', date.today().isoformat())
-    as_of_date = date.fromisoformat(as_of_str)
-
-    current_branch_id = session.get('selected_branch_id')
-    trial_balance_data = generate_trial_balance(as_of_date, branch_id=current_branch_id)
-
-    columns = ['code', 'name', 'debit_balance', 'credit_balance']
-    headers = ['Account Code', 'Account Name', 'Debit', 'Credit']
-
+    as_of_date, branch_id = _tb_params()
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id)
     filename = f'Trial_Balance_{as_of_date.isoformat()}.xlsx'
     title = f'Trial Balance - As of {as_of_date.strftime("%B %d, %Y")}'
+    return export_to_excel(trial_balance_data['accounts'], _TB_COLUMNS, _TB_HEADERS, filename, title)
 
-    return export_to_excel(trial_balance_data['accounts'], columns, headers, filename, title)
+
+@reports_bp.route('/reports/trial-balance/export/csv')
+@login_required
+def trial_balance_export_csv():
+    """Export Trial Balance to CSV"""
+    as_of_date, branch_id = _tb_params()
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id)
+    filename = f'Trial_Balance_{as_of_date.isoformat()}.csv'
+    return export_to_csv(trial_balance_data['accounts'], _TB_COLUMNS, _TB_HEADERS, filename)
+
+
+@reports_bp.route('/reports/trial-balance/print')
+@login_required
+def trial_balance_print():
+    from app.settings import AppSettings
+    from app.branches.models import Branch
+    as_of_date, branch_id = _tb_params()
+    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    branch = Branch.query.get(branch_id) if branch_id else None
+    return render_template('reports/trial_balance_print.html',
+                           trial_balance=trial_balance_data, as_of_date=as_of_date,
+                           company=company, branch_name=branch.name if branch else '')
 
 
 @reports_bp.route('/reports/income-statement')

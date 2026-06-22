@@ -14,7 +14,15 @@
         <div class="card-header-actions" style="display: flex; gap: 8px;">
             <a href="{{ url_for('reports.trial_balance_export_excel', as_of=as_of_date.isoformat()) }}"
                class="btn btn-secondary">
-                📊 Export Excel
+                📊 Excel
+            </a>
+            <a href="{{ url_for('reports.trial_balance_export_csv', as_of=as_of_date.isoformat()) }}"
+               class="btn btn-secondary">
+                CSV
+            </a>
+            <a href="{{ url_for('reports.trial_balance_print', as_of=as_of_date.isoformat()) }}"
+               target="_blank" class="btn btn-secondary">
+                Print
             </a>
             <button class="btn btn-secondary" onclick="showDatePicker()">
                 📅 Change Date
@@ -69,29 +77,25 @@
         </table>
 
         <!-- Balance Check -->
-        <div style="margin-top: 30px; padding: 20px; border-radius: 8px;
-                    {% if trial_balance.is_balanced %}
-                    background: #dcfce7; border: 1px solid #bbf7d0;
-                    {% else %}
-                    background: #fef2f2; border: 1px solid #fecaca;
-                    {% endif %}">
+        <div class="alert {% if trial_balance.is_balanced %}alert-success{% else %}alert-danger{% endif %}"
+             style="margin-top: 30px;">
             {% if trial_balance.is_balanced %}
             <div style="display: flex; align-items: center; gap: 12px;">
                 <div style="font-size: 24px;">✅</div>
                 <div>
-                    <div style="font-weight: 700; color: #166534; font-size: 16px;">Trial Balance is Balanced</div>
-                    <div style="color: #166534; font-size: 14px;">Total Debits = Total Credits</div>
+                    <div style="font-weight: 700; font-size: 16px;">Trial Balance is Balanced</div>
+                    <div style="font-size: 14px;">Total Debits = Total Credits</div>
                 </div>
             </div>
             {% else %}
             <div style="display: flex; align-items: center; gap: 12px;">
                 <div style="font-size: 24px;">⚠️</div>
                 <div>
-                    <div style="font-weight: 700; color: #991b1b; font-size: 16px;">Trial Balance is NOT Balanced</div>
-                    <div style="color: #991b1b; font-size: 14px;">
+                    <div style="font-weight: 700; font-size: 16px;">Trial Balance is NOT Balanced</div>
+                    <div style="font-size: 14px;">
                         Difference: ₱{{ '{:,.2f}'.format(trial_balance.difference) }}
                     </div>
-                    <div style="color: #991b1b; font-size: 12px; margin-top: 4px;">
+                    <div style="font-size: 12px; margin-top: 4px;">
                         Please review journal entries for errors.
                     </div>
                 </div>
@@ -113,7 +117,7 @@
 <!-- Date Picker Modal (Simple) -->
 <div id="datePicker" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                               background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; padding: 30px; border-radius: 8px; max-width: 400px; width: 90%;">
+    <div style="background: var(--card); padding: 30px; border-radius: 8px; max-width: 400px; width: 90%;">
         <h3 style="margin-top: 0;">Select Date</h3>
         <form action="{{ url_for('reports.trial_balance') }}" method="get">
             <div style="margin-bottom: 20px;">

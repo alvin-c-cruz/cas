@@ -37,6 +37,9 @@ MODULE_REGISTRY = [
     {'key': 'general_ledger', 'label': 'General Ledger', 'section': 'Ledger',
      'endpoints': ('reports.general_ledger', 'reports.general_ledger_export_excel',
                    'reports.general_ledger_export_csv', 'reports.general_ledger_print')},
+    {'key': 'trial_balance', 'label': 'Trial Balance', 'section': 'Ledger',
+     'endpoints': ('reports.trial_balance', 'reports.trial_balance_export_excel',
+                   'reports.trial_balance_export_csv', 'reports.trial_balance_print')},
 ]
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY if m['section'] == 'Transactions']
