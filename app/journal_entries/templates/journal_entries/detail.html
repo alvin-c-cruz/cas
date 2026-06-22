@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Journal Entry {{ entry.entry_number }}{% endblock %}
-{% block page_title %}Journal Entry - {{ entry.entry_number }}{% endblock %}
+{% block title %}Journal Entry {{ entry.display_number }}{% endblock %}
+{% block page_title %}Journal Entry - {{ entry.display_number }}{% endblock %}
 
 {% block content %}
 
@@ -38,7 +38,7 @@
                 <div style="background: var(--bg); padding: 16px; border-radius: 6px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                         <span style="color: var(--text-2); font-size: 13px;">Entry Number:</span>
-                        <span style="font-weight: 600;">{{ entry.entry_number }}</span>
+                        <span style="font-weight: 600;">{{ entry.display_number }}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                         <span style="color: var(--text-2); font-size: 13px;">Entry Date:</span>

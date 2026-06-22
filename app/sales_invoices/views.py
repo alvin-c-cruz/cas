@@ -14,7 +14,7 @@ from app.audit.utils import log_create, log_update, log_delete, model_to_dict, l
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.wt_labels import wt_label
-from app.journal_entries.utils import generate_entry_number
+from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from datetime import date, timedelta
@@ -435,7 +435,7 @@ def _create_reversal_je(invoice, reversal_date, user_id, label='Cancel'):
         raise ValueError(
             f'Invoice {invoice.invoice_number} has no stored journal entry to reverse.')
 
-    entry_number = generate_entry_number(invoice.branch_id)
+    entry_number = generate_jv_number(invoice.branch_id)  # reversal is a General Journal entry
     je = JournalEntry(
         entry_number=entry_number,
         entry_date=reversal_date,

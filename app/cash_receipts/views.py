@@ -17,7 +17,7 @@ from app.utils.wt_labels import wt_label
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.customers.views import build_customer_quick_add_form
-from app.journal_entries.utils import generate_entry_number
+from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
@@ -268,7 +268,7 @@ def _create_crv_reversal_je(crv, reversal_date, user_id):
     if source_je is None:
         raise ValueError(f'CRV {crv.crv_number} has no journal entry to reverse.')
 
-    entry_number = generate_entry_number(crv.branch_id)
+    entry_number = generate_jv_number(crv.branch_id)  # reversal is a General Journal entry
     je = JournalEntry(
         entry_number=entry_number,
         entry_date=reversal_date,

@@ -64,7 +64,7 @@
                     <td>{{ entry.entry_date.strftime('%b %d, %Y') }}</td>
                     <td>
                         <a href="{{ url_for('journal_entries.view', id=entry.id) }}" style="font-weight: 600; color: var(--blue);">
-                            {{ entry.entry_number }}
+                            {{ entry.display_number }}
                         </a>
                     </td>
                     <td>{{ entry.description[:70] }}{% if entry.description | length > 70 %}...{% endif %}</td>

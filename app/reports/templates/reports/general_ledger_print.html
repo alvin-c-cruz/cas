@@ -26,15 +26,14 @@
         <div class="acct-title">{{ acct.code }} &mdash; {{ acct.name }}</div>
         <table>
             <thead>
-                <tr><th>Date</th><th>JE #</th><th>Source</th><th>Particulars</th>
+                <tr><th>Date</th><th>Source</th><th>Particulars</th>
                     <th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr>
             </thead>
             <tbody>
-                <tr><td colspan="6"><em>Opening balance</em></td><td class="num">{{ bal(acct.opening_balance) }}</td></tr>
+                <tr><td colspan="5"><em>Opening balance</em></td><td class="num">{{ bal(acct.opening_balance) }}</td></tr>
                 {% for line in acct.lines %}
                 <tr>
                     <td>{{ line.entry_date.strftime('%Y-%m-%d') }}</td>
-                    <td>{{ line.entry_number }}</td>
                     <td>{{ line.source.label }}</td>
                     <td>{{ line.description }}</td>
                     <td class="num">{% if line.debit %}₱{{ "{:,.2f}".format(line.debit) }}{% endif %}</td>
@@ -44,11 +43,11 @@
                 {% endfor %}
             </tbody>
             <tfoot>
-                <tr><td colspan="4">Period totals</td>
+                <tr><td colspan="3">Period totals</td>
                     <td class="num">₱{{ "{:,.2f}".format(acct.total_debit) }}</td>
                     <td class="num">₱{{ "{:,.2f}".format(acct.total_credit) }}</td>
                     <td class="num"></td></tr>
-                <tr><td colspan="6">Closing balance</td>
+                <tr><td colspan="5">Closing balance</td>
                     <td class="num">{{ bal(acct.closing_balance) }}</td></tr>
             </tfoot>
         </table>

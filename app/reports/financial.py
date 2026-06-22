@@ -465,6 +465,7 @@ def generate_general_ledger(start_date, end_date, branch_id, account_id=None):
             line_dicts.append({
                 'entry_id': entry.id,
                 'entry_number': entry.entry_number,
+                'display_number': entry.display_number,
                 'entry_date': entry.entry_date,
                 'entry_type': entry.entry_type,
                 'reference': entry.reference,

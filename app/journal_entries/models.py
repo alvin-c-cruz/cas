@@ -92,6 +92,17 @@ class JournalEntry(db.Model):
         # Check if balanced
         self.is_balanced = (self.total_debit == self.total_credit)
 
+    @property
+    def display_number(self):
+        """User-facing number. General Journal entries (manual vouchers + reversals)
+        keep their JV-YYYY-MM-#### number; special-journal postings show their
+        source-document reference instead. The internal JE-#### sequence is never
+        surfaced to users (it stays in the DB + audit trail). Legacy reversals that
+        still carry a JE- number fall through to their reference."""
+        if self.entry_number and self.entry_number.startswith('JV-'):
+            return self.entry_number
+        return self.reference or self.entry_number
+
     def to_dict(self):
         """Convert journal entry to dictionary."""
         return {

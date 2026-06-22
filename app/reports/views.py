@@ -75,7 +75,7 @@ def _attach_source_links(ledger, branch_id):
                                   'label': f'{prefix} {ref}'}
             else:
                 line['source'] = {'url': url_for('journal_entries.view', id=line['entry_id']),
-                                  'label': line['entry_number']}
+                                  'label': line.get('display_number') or line['entry_number']}
 
 
 def accountant_or_admin_required(f):
@@ -287,24 +287,24 @@ def _flatten_ledger(ledger):
     """Flatten the book into export rows: a header row per account, its lines, a subtotal."""
     rows = []
     for acct in ledger['accounts']:
-        rows.append({'date': f"{acct['code']} - {acct['name']}", 'je': '', 'source': '',
+        rows.append({'date': f"{acct['code']} - {acct['name']}", 'source': '',
                      'particulars': 'Opening balance', 'debit': '', 'credit': '',
                      'balance': acct['opening_balance']})
         for line in acct['lines']:
             rows.append({
-                'date': line['entry_date'], 'je': line['entry_number'],
+                'date': line['entry_date'],
                 'source': line['source']['label'], 'particulars': line['description'],
                 'debit': line['debit'] or '', 'credit': line['credit'] or '',
                 'balance': line['running_balance'],
             })
-        rows.append({'date': '', 'je': '', 'source': '', 'particulars': 'Closing balance',
+        rows.append({'date': '', 'source': '', 'particulars': 'Closing balance',
                      'debit': acct['total_debit'], 'credit': acct['total_credit'],
                      'balance': acct['closing_balance']})
     return rows
 
 
-_GL_COLUMNS = ['date', 'je', 'source', 'particulars', 'debit', 'credit', 'balance']
-_GL_HEADERS = ['Date', 'JE #', 'Source', 'Particulars', 'Debit', 'Credit', 'Balance']
+_GL_COLUMNS = ['date', 'source', 'particulars', 'debit', 'credit', 'balance']
+_GL_HEADERS = ['Date', 'Source', 'Particulars', 'Debit', 'Credit', 'Balance']
 
 
 @reports_bp.route('/reports/general-ledger')

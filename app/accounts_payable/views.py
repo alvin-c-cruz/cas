@@ -19,7 +19,7 @@ from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
-from app.journal_entries.utils import generate_entry_number
+from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 import json
@@ -1163,7 +1163,7 @@ def _create_reversal_je(ap, reversal_date, user_id, label='Cancel'):
             f'Bill {ap.ap_number} has no stored journal entry to reverse. '
             f'Cannot {label.lower()}.')
 
-    entry_number = generate_entry_number(ap.branch_id)
+    entry_number = generate_jv_number(ap.branch_id)  # reversal is a General Journal entry
     je = JournalEntry(
         entry_number=entry_number,
         entry_date=reversal_date,

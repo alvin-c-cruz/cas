@@ -73,7 +73,7 @@
         {% set total_amount.v = total_amount.v + entry.total_debit %}
         <tr {% if entry.status == 'cancelled' %}style="text-decoration:line-through;background:#ffebee;"{% elif entry.status == 'draft' %}style="background:#fffde7;"{% endif %}>
           <td>{{ entry.entry_date.strftime('%d-%b-%Y') }}</td>
-          <td>{{ entry.entry_number }}</td>
+          <td>{{ entry.display_number }}</td>
           <td>{{ entry.description[:80] }}{% if entry.description and entry.description | length > 80 %}…{% endif %}</td>
           <td class="num">{{ '{:,.2f}'.format(entry.total_debit) }}</td>
           <td>{{ entry.status | title }}</td>

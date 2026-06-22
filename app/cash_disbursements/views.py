@@ -18,7 +18,7 @@ from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
-from app.journal_entries.utils import generate_entry_number
+from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
@@ -378,7 +378,7 @@ def _create_cdv_reversal_je(cdv, reversal_date, user_id):
     if source_je is None:
         raise ValueError(f'CDV {cdv.cdv_number} has no journal entry to reverse.')
 
-    entry_number = generate_entry_number(cdv.branch_id)
+    entry_number = generate_jv_number(cdv.branch_id)  # reversal is a General Journal entry
     je = JournalEntry(
         entry_number=entry_number,
         entry_date=reversal_date,

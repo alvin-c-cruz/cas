@@ -186,3 +186,26 @@ def test_general_ledger_from_date_defaults_to_first_of_year(client, db_session, 
     assert resp.status_code == 200
     jan1 = date(date.today().year, 1, 1).isoformat()
     assert f'name="start_date" value="{jan1}"'.encode() in resp.data
+
+
+def test_general_ledger_hides_je_phantom_number(client, db_session, main_branch, admin_user,
+                                                cash_account, revenue_account):
+    """A posted special-journal JE shows its document number (reference) in the GL,
+    never the internal JE-#### number."""
+    je = JournalEntry(entry_number='JE-2026-0001', entry_date=date.today(), description='Sales',
+                      reference='AR-2026-06-0001', entry_type='sale', branch_id=main_branch.id,
+                      status='posted', is_balanced=True,
+                      total_debit=Decimal('100'), total_credit=Decimal('100'))
+    db.session.add(je)
+    db.session.flush()
+    db.session.add(JournalEntryLine(entry_id=je.id, line_number=1, account_id=cash_account.id,
+                                    debit_amount=Decimal('100'), credit_amount=Decimal('0')))
+    db.session.add(JournalEntryLine(entry_id=je.id, line_number=2, account_id=revenue_account.id,
+                                    debit_amount=Decimal('0'), credit_amount=Decimal('100')))
+    db.session.commit()
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/general-ledger')
+    assert resp.status_code == 200
+    assert b'AR-2026-06-0001' in resp.data        # document number shown in Source
+    assert b'JE-2026-0001' not in resp.data        # internal JE- phantom hidden
