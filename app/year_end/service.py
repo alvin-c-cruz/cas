@@ -91,7 +91,7 @@ def _require_account(code, label):
     return a
 
 
-def _new_closing_je(branch_id, year, description):
+def _new_closing_je(branch_id, year, description, user_id=None):
     je = JournalEntry(
         entry_number=closing_entry_number(branch_id, year),
         entry_date=date(year, 12, 31),
@@ -99,7 +99,7 @@ def _new_closing_je(branch_id, year, description):
         reference=f'CLOSE-{year}',
         entry_type='closing',
         branch_id=branch_id,
-        created_by_id=None,
+        created_by_id=user_id,
         status='posted',
         posted_at=ph_now(),
         is_balanced=False,
@@ -137,7 +137,7 @@ def _close_branch(year, branch_id, user_id):
 
     # JE1 — close revenue into income summary
     if bal['revenue']:
-        je1 = _new_closing_je(branch_id, year, f'Close revenue to Income Summary — FY{year}')
+        je1 = _new_closing_je(branch_id, year, f'Close revenue to Income Summary — FY{year}', user_id=user_id)
         ln = 1
         for acct, amt in bal['revenue']:
             db.session.add(JournalEntryLine(entry_id=je1.id, line_number=ln, account_id=acct.id,
@@ -151,7 +151,7 @@ def _close_branch(year, branch_id, user_id):
 
     # JE2 — close expenses into income summary
     if bal['expense']:
-        je2 = _new_closing_je(branch_id, year, f'Close expenses to Income Summary — FY{year}')
+        je2 = _new_closing_je(branch_id, year, f'Close expenses to Income Summary — FY{year}', user_id=user_id)
         ln = 1
         db.session.add(JournalEntryLine(entry_id=je2.id, line_number=ln, account_id=isum.id,
                                         description='Expenses to Income Summary',
@@ -166,7 +166,7 @@ def _close_branch(year, branch_id, user_id):
 
     # JE3 — close income summary to retained earnings
     if net_income != 0:
-        je3 = _new_closing_je(branch_id, year, f'Close Income Summary to Retained Earnings — FY{year}')
+        je3 = _new_closing_je(branch_id, year, f'Close Income Summary to Retained Earnings — FY{year}', user_id=user_id)
         if net_income > 0:
             db.session.add(JournalEntryLine(entry_id=je3.id, line_number=1, account_id=isum.id,
                                             description='Income Summary to RE',
@@ -208,6 +208,14 @@ def _close_branch(year, branch_id, user_id):
 
 
 def close_fiscal_year(year, user_id):
-    """Close `year` for every active branch. All-or-nothing within one transaction."""
+    """Close `year` for every active branch.
+
+    NOTE: not strictly all-or-nothing across branches — AccountingPeriod.get_or_create_period
+    and log_audit commit internally, so with multiple active branches an earlier branch's
+    close is already committed before a later branch is attempted. The per-branch tie-out
+    guard runs before any posting, so the common failure modes abort that branch cleanly.
+    (Single active branch today; revisit a validate-all-branches-first pass when multi-branch
+    goes live.)
+    """
     branches = Branch.query.filter_by(is_active=True).order_by(Branch.id).all()
     return [_close_branch(year, b.id, user_id) for b in branches]
