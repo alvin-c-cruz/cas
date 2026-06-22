@@ -9,13 +9,12 @@
 
 Add the **direct method** to the existing Statement of Cash Flows, exposed as a
 method toggle on the same `/reports/cash-flow` page. The direct method presents
-actual operating cash receipts and payments grouped into standard PFRS lines,
-plus a PAS 7 reconciliation of net income to operating cash flow. Investing and
-Financing sections are reused verbatim from the indirect method.
+**actual operating cash receipts and payments** grouped into standard PFRS
+lines, the investing/financing cash flows, a **non-cash transactions disclosure
+note**, and a PAS 7 reconciliation of net income to operating cash flow. The
+already-shipped indirect statement is **left unchanged**.
 
-This completes the owner's "we will do both Direct and Indirect" intent. The
-indirect path is already live; this spec adds the direct path **without changing
-the indirect output**.
+This completes the owner's "we will do both Direct and Indirect" intent.
 
 ## Decisions (locked)
 
@@ -25,233 +24,244 @@ the indirect output**.
    at the top of the screen; Excel/Print links carry the selected method.
 2. **Operating granularity:** standard PFRS grouping (Cash received from
    customers / Cash paid to suppliers / Cash paid for operating expenses / Taxes
-   paid / Other operating), mapped from contra accounts by name + code.
+   paid / Other operating).
 3. **Reconciliation note:** include the PAS 7 reconciliation of net income to
-   net operating cash flow as a supplementary schedule below the direct
-   statement — it reuses the indirect Operating computation verbatim.
+   operating cash flow as a supplementary schedule — it reuses the indirect
+   Operating computation.
+4. **Non-cash transactions (owner decision 2026-06-22):** the direct method
+   shows **only real cash**. Non-cash transactions (e.g. `cas_demo.db` JE3:
+   `Dr Construction Equipment ₱2,000,000 / Cr Capital Stock ₱2,000,000`) are
+   **excluded** from the three sections and listed in a **disclosure note**. The
+   shipped indirect statement is **not** modified (it still shows such entries in
+   investing/financing — the two methods will differ there; expected).
 
-## Core principle — only Operating differs
+## Core principle — direct method decomposes ACTUAL cash
 
-The indirect/direct distinction affects **only the Operating section**.
-Therefore:
+The direct method decomposes the cash that actually moved in the period into the
+three activities, so **all three sections are computed from cash-touching
+journal entries** — not reused from the indirect method.
 
-- **Investing and Financing are computed identically** to the indirect method
-  and reused verbatim (`generate_cash_flow` already produces them).
-- The **reconciliation note** *is* the indirect Operating section (net income →
-  + depreciation → ± working-capital changes). It is already computed.
-- `net_change`, `cash_begin`, `cash_end`, `is_reconciled`, `difference` are
-  unchanged — so the direct statement reconciles by exactly the same identity.
+**Ties by construction.** For every posted JE that has at least one cash line,
+the cash lines' `Σ(debit − credit)` equals the negative of the non-cash lines'
+(the JE balances). Summed over all cash-touching JEs, the total cash movement
+equals `Σ(credit − debit)` over their non-cash lines. The direct sections ARE
+that decomposition, so `net_change = operating + investing + financing =
+cash_end − cash_begin` identically. A non-cash transaction (no cash line) is
+never counted — it is disclosed in the note instead. The reconciliation banner
+stays as a runtime safety net (always green for direct).
 
-**Why direct operating total == indirect operating total (always):** both equal
-the real operating cash flow. A credit sale (`Dr AR / Cr Revenue`) touches no
-cash → contributes 0 to direct operating *and* nets to 0 in indirect operating
-(revenue +X in net income, AR increase −X in working capital). A collection
-(`Dr Cash / Cr AR`) is +X in both. Depreciation (`Dr Dep Exp / Cr Accum Depr`)
-touches no cash → naturally excluded from direct operating with no add-back
-needed, and nets to 0 in indirect (expense −X in NI, +X add-back). The two
-operating totals are equal for every transaction shape.
+## Direct derivation — decompose cash by contra activity
 
-## Direct operating derivation
+For every posted JE (in period, branch-filtered) with **at least one cash line**
+(`_is_cash` account), aggregate the **cash effect** of each non-cash line **per
+non-cash account**, where cash effect = `Σ(credit) − Σ(debit)` (positive = cash
+inflow). Classify each non-cash account into an activity via `_direct_activity`:
 
-For every posted JE (in period, branch-filtered) that has **at least one cash
-line** (`_is_cash` account), iterate its **non-cash** lines. Each non-cash line's
-**cash effect** = `credit − debit` (positive = cash inflow; this is the cash
-attributable to that account, since within a balanced JE the cash movement
-equals the negative of the non-cash movement).
-
-Classify each non-cash line by its account into an **activity** (same rules as
-the indirect bucketing):
-
-- **Operating** — revenue (`4…`), expense (`5…`), current assets ex-cash (`10…`
-  non-cash), current liabilities (`20…`).
 - **Investing** — non-current asset cost (`11…`) excluding accumulated
-  depreciation. *(Reused from indirect; not recomputed here.)*
-- **Financing** — non-current liabilities (`21…`) + equity (`30…`). *(Reused.)*
+  depreciation (name contains "depreciation").
+- **Financing** — non-current liabilities (`21…`) + equity (`30…`).
+- **Operating** — everything else (revenue `4…`, expense `5…`, current assets
+  ex-cash `10…`, current liabilities `20…`, plus any stray account). The
+  catch-all guarantees nothing is dropped, so the three sections always sum to
+  the cash movement.
 
-Only **operating** contra lines feed the direct operating section. Within
-operating, assign each line to a PFRS sub-line by **first match wins**:
+**Investing** and **Financing** are emitted as **per-account lines** (non-zero
+cash effect only): `"(Acquisition)/disposal of <name>"` and `"<name>"`. In
+`cas_demo.db` both are empty for the direct method (the only equipment/capital
+activity is the non-cash JE3, excluded) — correct.
 
-| Order | Sub-line | Match rule (case-insensitive) |
+**Operating** accounts are grouped into PFRS sub-lines by `_direct_operating_subline`,
+**first match wins** (case-insensitive on name; `code` is the account code):
+
+| Order | Sub-line | Match rule |
 |---|---|---|
-| 1 | **Taxes paid** | account name contains `vat`, `withholding`, `wht`, or `income tax` |
-| 2 | **Cash received from customers** | revenue (code `4…`) OR name contains `receivable` |
-| 3 | **Cash paid to suppliers** | code `501…` (cost of construction/sales) OR name contains `payable`, `inventory`, `construction in progress`, or `materials` |
-| 4 | **Cash paid for operating expenses** | any remaining expense (code `5…`) |
-| 5 | **Other operating receipts/(payments)** | catch-all — any operating contra not matched above |
+| 1 | **Taxes paid** | name contains `vat`, `withholding`, `wht`, or `income tax` |
+| 2 | **Cash received from customers** | code starts `4` OR name contains `receivable` |
+| 3 | **Cash paid to suppliers** | code starts `501` OR name contains `payable`, `inventory`, `construction in progress`, or `materials` |
+| 4 | **Cash paid for operating expenses** | code starts `5` (remaining expenses) |
+| 5 | **Other operating receipts/(payments)** | catch-all |
 
-Each sub-line sums the cash effects of its matching lines (inflows +, outflows
-−). Sub-lines with a zero total are omitted. The five sub-lines are emitted in
-the order above. `operating.total` = sum of the sub-line amounts (equals the
-indirect operating total; asserted by tests).
+Each sub-line sums the cash effects of its accounts (inflows +, outflows −);
+zero-total sub-lines are omitted; the five are emitted in the order above.
+`operating.total`, `investing.total`, `financing.total` are the sums of their
+lines; `net_change = operating.total + investing.total + financing.total`.
 
-**Tie-out guarantee.** Because the sub-line mapping only re-labels *operating*
-contras (it never moves a flow between activities, and the catch-all ensures no
-operating flow is dropped), the direct operating total is exactly the indirect
-operating total, and `net_change = operating + investing + financing` continues
-to equal `cash_end − cash_begin`. The reconciliation banner is the runtime
-safety net, identical to the indirect path.
+## Non-cash transactions disclosure note
 
-Edge cases:
-- **Cash-to-cash transfer** (`Dr Cash in Bank / Cr Cash on Hand`): no non-cash
-  lines → contributes nothing to any sub-line; net cash movement across the two
-  cash accounts is 0. Correctly ignored.
-- **JE with mixed operating + investing contras** touching cash: each non-cash
-  line is attributed by its own account, so operating and investing each get
-  their correct slice.
-- **No cash-touching JEs**: all operating sub-lines empty, `operating.total = 0`.
+A separate list (PAS 7 supplemental disclosure). Identify posted in-period
+branch JEs that (a) do **not** touch a cash account, and (b) touch at least one
+**investing** account (`11…` excluding accumulated depreciation) **or financing**
+account (`21…`/`30…`). Depreciation entries are excluded automatically because
+their only `11…` account is accumulated depreciation (rule b requires a
+non-accum-depr investing or a financing account). For each such JE emit
+`{'description': je.description or je.reference, 'amount': float(total_debit)}`.
+In `cas_demo.db` this yields one entry: JE3, ₱2,000,000.
+
+## Reconciliation note (net income → operating cash)
+
+Reuse the indirect Operating computation verbatim as a supplementary schedule:
+`net_income`, `+ depreciation`, the working-capital change lines, and the
+"Net cash from operating activities" subtotal. This equals the direct operating
+cash total when no non-cash transaction mixes an operating account with an
+investing/financing account (true for `cas_demo.db` — JE3 involves only
+investing + financing accounts, no operating account). **Documented limitation:**
+if a future non-cash entry pairs an operating account with an investing/financing
+account (e.g. equipment bought on credit, `Dr Equipment / Cr AP`), the indirect
+operating figure can diverge from direct operating cash; the reconciliation note
+is the indirect-basis figure and would then not foot exactly to the direct
+operating subtotal. Acceptable per the owner's "actual cash only" decision; noted
+in a code comment.
 
 ## Generator — `generate_cash_flow(start, end, branch_id, method)`
 
 Extend the existing function in `app/reports/financial.py`. `method='indirect'`
-keeps its current return shape **unchanged**. `method='direct'` returns:
+keeps its current return shape **unchanged** (regression-guarded by a test).
+`method='direct'` returns:
 
 ```python
 {
     'period_start': date, 'period_end': date,
     'method': 'direct',
-    'operating': {
-        'lines': [ {'name': str, 'amount': float}, ... ],   # PFRS sub-lines, signed, non-zero only
-        'total': float,
-    },
-    'investing': { 'lines': [...], 'total': float },          # identical to indirect
-    'financing': { 'lines': [...], 'total': float },          # identical to indirect
-    'reconciliation': {                                        # PAS 7 note = indirect operating
-        'net_income': float,
-        'depreciation': float,
+    'operating': { 'lines': [ {'name': str, 'amount': float}, ... ], 'total': float },
+    'investing': { 'lines': [ {'name': str, 'amount': float}, ... ], 'total': float },
+    'financing': { 'lines': [ {'name': str, 'amount': float}, ... ], 'total': float },
+    'noncash':   [ {'description': str, 'amount': float}, ... ],           # may be empty
+    'reconciliation': {                                                    # indirect operating
+        'net_income': float, 'depreciation': float,
         'working_capital': [ {'name': str, 'amount': float}, ... ],
-        'total': float,                                        # == operating.total
+        'total': float,
     },
     'net_change': float, 'cash_begin': float, 'cash_end': float,
     'is_reconciled': bool, 'difference': float,
 }
 ```
 
-Implementation approach (DRY): refactor the indirect computation so the
-operating pieces (`net_income`, `depreciation`, `working_capital`, the operating
-total) and the investing/financing/cash-balance pieces are computed once and
-reused by both methods. For `direct`, compute the operating sub-lines via the
-contra-attribution pass over cash-touching JEs, and place the indirect operating
-result under `reconciliation`. Reuse the existing `_is_cash`,
-`_is_depreciation_name`, `movement`, and `cash_balance` helpers. Add a module-level
-`_direct_operating_subline(account)` returning the sub-line label for an
-operating contra (the table above), or `None` if the account is not operating.
+Implementation: keep the existing indirect computation; capture its result dict
+in a local `indirect` and `return indirect` when `method == 'indirect'`
+(byte-for-byte unchanged). For `method == 'direct'`, run the cash-decomposition
+pass (below) for the three sections + the non-cash note, set `reconciliation =
+indirect['operating']`, and compute `net_change` from the direct section totals.
+Reuse the existing `_is_cash`, `_is_depreciation_name`, `cash_balance` helpers.
+Add module-level `_direct_activity(account)` and `_direct_operating_subline(account)`
+helpers and the sub-line order constant. Tighten the guard to
+`if method not in ('indirect', 'direct'): raise ValueError(...)`.
 
-`method` not in (`'indirect'`, `'direct'`) → `ValueError` (tighten the existing
-guard).
+Cash-decomposition query: find posted in-period branch JE ids whose lines hit a
+cash account; then sum `credit − debit` grouped by account over the non-cash
+lines of those JEs; bucket per `_direct_activity`. Empty cash-account set → all
+sections empty.
 
 ## Export — `statement_export.py`
 
 - `cash_flow_lines(cf)` branches on `cf['method']`:
   - `indirect` → current output (unchanged).
   - `direct` → operating header + sub-line rows + "Net cash … operating
-    activities" subtotal (`top_bottom`); then the **shared** investing/financing
-    sections + NET INCREASE/(DECREASE) IN CASH + begin/end cash (identical
-    helper code, factored out); then a **reconciliation note** block:
-    a `subheader` "Reconciliation of net income to net cash from operating
-    activities", `Net Income (period)`, optional `Add: Depreciation`, the
-    working-capital lines, and a `subtotal` "Net cash from operating activities"
-    (`top_bottom`) carrying `reconciliation.total`.
+    activities" subtotal (`top_bottom`); investing header + per-account lines +
+    subtotal; financing header + per-account lines + subtotal; NET
+    INCREASE/(DECREASE) IN CASH (`double_bottom`); Cash at beginning; Cash at end
+    (`double_bottom`); then, if `cf['noncash']`, a `subheader` "Non-cash investing
+    and financing transactions" + one `account` line per note entry; then a
+    `subheader` "Reconciliation of net income to net cash from operating
+    activities" + `Net Income (period)` + optional `Add: Depreciation` + the
+    working-capital lines + a `subtotal` "Net cash from operating activities"
+    (`top_bottom`).
 - `build_cash_flow_xlsx(cf, period_label, company, branch_name, filename)`
-  branches on `cf['method']` the same way, with live `=SUM` formulas for the
-  direct operating subtotal (over its sub-line rows) and for the reconciliation
-  subtotal (over its detail rows). Investing/financing/net-change/cash-end
-  formulas are unchanged. The sheet title stays `Cash Flow`; the method label
-  ("Indirect Method" / "Direct Method") appears under the statement title.
+  branches the same way, with live `=SUM` formulas for each section subtotal
+  (over its line rows, or `0` when empty), `net_change =
+  operating+investing+financing` row refs, `cash_end = net_change + cash_begin`,
+  and a `=SUM` for the reconciliation subtotal. Method label under the title
+  reads "Indirect Method" / "Direct Method"; sheet title stays `Cash Flow`.
 
-Factor the shared investing/financing/net-change/begin/end emission (lines and
-xlsx rows) into a small internal helper so the two method branches do not
-duplicate it.
+Factor the shared section-emission (header + lines + subtotal) so the two method
+branches do not duplicate row/line code.
 
 ## Views — `app/reports/views.py`
 
-- Add a `_cf_method()` helper: `request.args.get('method', 'indirect')`,
-  validated to `{'indirect','direct'}` (fallback `indirect`).
-- `cash_flow`, `cash_flow_export_excel`, `cash_flow_print` read the method and
-  pass it to `generate_cash_flow(...)`. The export `period_label` and `filename`
-  gain the method (e.g. `Cash_Flow_Direct_2026-01-01_to_2026-06-30.xlsx`).
-- No new endpoints, **no new module-access key** (the existing `cash_flow` key
-  already gates all three; the method is a query param).
+- Add `_cf_method()`: `request.args.get('method', 'indirect')`, validated to
+  `{'indirect','direct'}` (fallback `indirect`).
+- `cash_flow`, `cash_flow_export_excel`, `cash_flow_print` read the method, pass
+  it to `generate_cash_flow(...)`, and forward it to the template / filename. The
+  export `filename` gains the method (e.g.
+  `Cash_Flow_Direct_2026-01-01_to_2026-06-30.xlsx`).
+- No new endpoints, **no new module-access key**.
 
 ## Templates
 
 - `reports/cash_flow.html`:
   - An **Indirect | Direct** toggle (two links to the same page with
-    `method=indirect` / `method=direct`, preserving `start_date`/`end_date`; the
-    active method styled as selected — design tokens, no JS popups).
-  - The card sub-title shows "Indirect Method" / "Direct Method".
+    `method=indirect`/`method=direct`, preserving `start_date`/`end_date`; active
+    method styled selected — design tokens, no JS popups).
+  - Card sub-title shows "Indirect Method" / "Direct Method".
   - Render branches on `cash_flow.method`: indirect = current layout; direct =
-    operating sub-lines + subtotal, then the shared investing/financing/net/begin/
-    end rows, then the reconciliation note table.
-  - Excel/Print buttons append the current `method`.
-  - Reconciliation banner unchanged. Negatives in parentheses; literal `₱`.
+    operating sub-lines + subtotal, investing per-account lines + subtotal,
+    financing per-account lines + subtotal, NET INCREASE, begin/end cash, then
+    the non-cash note table (if any) and the reconciliation note table.
+  - Excel/Print buttons append the current `method`. Reconciliation banner
+    unchanged. Negatives in parentheses; literal `₱`.
 - `reports/cash_flow_print.html`:
   - Title shows the method label.
-  - Render from `lines` (already method-aware via `cash_flow_lines`), so the
-    print template needs only to ensure the `subheader` kind (reconciliation
-    note header) is styled — it already is.
+  - Renders from `lines` (already method-aware via `cash_flow_lines`), so it
+    needs only the `subheader` kind styled (already is).
 
 ## Files
 
-- **Modify** `app/reports/financial.py` — refactor `generate_cash_flow` for both
-  methods; add `_direct_operating_subline(account)`.
+- **Modify** `app/reports/financial.py` — `method='direct'` branch in
+  `generate_cash_flow`; `_direct_activity`, `_direct_operating_subline`, sub-line
+  order constant; cash-decomposition + non-cash note.
 - **Modify** `app/reports/statement_export.py` — method branches in
-  `cash_flow_lines` + `build_cash_flow_xlsx`; factor shared investing/financing
-  emission.
+  `cash_flow_lines` + `build_cash_flow_xlsx`; factor shared section emission.
 - **Modify** `app/reports/views.py` — `_cf_method()` + pass-through in 3 routes.
 - **Modify** `app/reports/templates/reports/cash_flow.html` — toggle + direct
-  render + reconciliation note.
-- **Modify** `app/reports/templates/reports/cash_flow_print.html` — method label
-  (and confirm `subheader` styling).
-- **Modify** `tests/unit/test_cash_flow_generator.py` — add direct-method tests.
-- **Modify** `tests/unit/test_cash_flow_export.py` — add direct `cash_flow_lines`
-  tests.
-- **Modify** `tests/integration/test_cash_flow_views.py` — add direct render +
-  toggle + excel/print(method=direct) tests.
+  render + non-cash note + reconciliation note.
+- **Modify** `app/reports/templates/reports/cash_flow_print.html` — method label.
+- **Modify** `tests/unit/test_cash_flow_generator.py` — direct-method tests.
+- **Modify** `tests/unit/test_cash_flow_export.py` — direct `cash_flow_lines` tests.
+- **Modify** `tests/integration/test_cash_flow_views.py` — direct render + toggle
+  + excel/print(method=direct) tests.
 
 ## Testing (TDD)
 
-**Unit — generator (`test_cash_flow_generator.py`):** reuse the existing
-`_build` fixture (it already has cash, AR, equipment, accum-depr, AP, capital,
-revenue, depreciation, salaries).
+**Unit — generator (`test_cash_flow_generator.py`):** extend the `_build`
+fixture with a non-cash investing+financing JE (`Dr Equipment / Cr Capital`, no
+cash) and cash collection/payment JEs so the sections are non-trivial.
 1. **Direct reconciles**: `method='direct'` → `net_change == cash_end −
    cash_begin`; `is_reconciled True`.
-2. **Direct operating total == indirect operating total**: call both, assert
-   `direct['operating']['total'] == indirect['operating']['total']`.
-3. **Sub-line classification**: the collection-style flows land in "Cash received
-   from customers"; AP-paying flows in "Cash paid to suppliers"; assert the
-   expected sub-line names appear with the right signs. (Augment `_build` with a
-   cash collection `Dr Cash / Cr AR` and a cash payment `Dr AP / Cr Cash` so the
-   sub-lines are non-trivial.)
-4. **Reconciliation note**: `reconciliation.total == operating.total`;
-   `reconciliation.net_income` equals the IS net income; depreciation present.
-5. **Investing/financing reused**: `direct['investing'] == indirect['investing']`
-   and same for financing.
-6. **Guard**: `method='cash'` (or any other) → `ValueError`; `method='indirect'`
-   return shape is byte-for-byte unchanged from today (regression guard — assert
-   the indirect dict still has its original keys and no `reconciliation`).
+2. **Direct sections = cash only**: the non-cash equipment/capital JE does NOT
+   appear in `investing`/`financing` lines; it DOES appear in `noncash` with the
+   right amount.
+3. **Operating sub-lines**: a cash collection (`Dr Cash / Cr AR`) lands in "Cash
+   received from customers" (positive); a cash payment of AP (`Dr AP / Cr Cash`)
+   in "Cash paid to suppliers" (negative).
+4. **Reconciliation note**: `reconciliation.net_income` equals the IS net income;
+   depreciation present; for this fixture `reconciliation.total ==
+   operating.total`.
+5. **Guard + indirect unchanged**: `method='xyz'` → `ValueError`;
+   `method='indirect'` returns the original keys with **no** `noncash`/`reconciliation`
+   keys (regression guard).
 
 **Unit — export (`test_cash_flow_export.py`):** `cash_flow_lines(direct_cf)`
-emits the operating sub-lines, the shared investing/financing/net/begin/end
-lines, and a reconciliation note block (a `subheader` + detail + subtotal); the
-indirect call is unchanged.
+emits operating sub-lines, investing/financing sections, NET INCREASE +
+begin/end, a non-cash note block (when `noncash` non-empty), and a reconciliation
+note block; the indirect call output is unchanged.
 
 **Integration (`test_cash_flow_views.py`):**
-1. `/reports/cash-flow?method=direct` renders 200 with `Direct Method`, the
-   operating sub-line headers, and `Reconciliation of net income`.
-2. The page shows both toggle links (indirect + direct).
-3. `/reports/cash-flow/export/excel?method=direct` → 200 + spreadsheet content
-   type; filename contains `Direct`.
+1. `/reports/cash-flow?method=direct` → 200 with `Direct Method`, the operating
+   sub-line headers, `Non-cash`, and `Reconciliation of net income`.
+2. Both toggle links (indirect + direct) present.
+3. `/reports/cash-flow/export/excel?method=direct` → 200 + spreadsheet type;
+   filename contains `Direct`.
 4. `/reports/cash-flow/print?method=direct` → 200 + `Direct Method`.
 5. Default (no `method`) still renders the indirect statement (regression).
 
-Read-only report: no audit-log assertions (consistent with the other statements).
+Read-only report: no audit-log assertions.
 
 ## Out of scope
 
-- Interest-paid as its own operating line (folds into operating expenses /
-  financial unless requested later).
+- Interest-paid as its own operating line.
 - Comparative prior-period columns.
-- Configurable contra→sub-line mapping (the rules are code constants;
-  misclassification only re-labels within Operating, never breaks the totals).
-- The latent indirect-method reconciliation guard (uncovered-account → red
-  banner test) tracked separately in the open backlog — not part of this spec.
+- Modifying the shipped indirect statement's non-cash handling (owner chose to
+  leave it).
+- Tracing AP/AR settlements back to their original purpose (the direct method
+  classifies by the immediate contra account — AP payment = operating).
+- The latent indirect-method reconciliation guard (tracked separately in the
+  open backlog).
