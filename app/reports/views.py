@@ -352,11 +352,20 @@ def general_ledger_export_csv():
 @reports_bp.route('/reports/general-ledger/print')
 @login_required
 def general_ledger_print():
+    from app.settings import AppSettings
+    from app.branches.models import Branch
     start_date, end_date, account_id, branch_id = _gl_params()
     ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
     _attach_source_links(ledger, branch_id)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    branch = Branch.query.get(branch_id) if branch_id else None
     return render_template('reports/general_ledger_print.html',
-                           ledger=ledger, start_date=start_date, end_date=end_date)
+                           ledger=ledger, start_date=start_date, end_date=end_date,
+                           company=company, branch_name=branch.name if branch else '')
 
 
 # BIR Compliance Reports

@@ -151,12 +151,17 @@ def test_general_ledger_csv_export(client, db_session, main_branch, admin_user,
 
 def test_general_ledger_print_renders(client, db_session, main_branch, admin_user,
                                       cash_account, revenue_account):
+    from app.settings import AppSettings
+    AppSettings.set_setting('company_name', 'ACME Trading Corp')
     _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-P1')
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/general-ledger/print')
     assert resp.status_code == 200
-    assert b'General Ledger' in resp.data
+    body = resp.data
+    assert b'General Ledger' in body
+    assert b'ACME Trading Corp' in body          # BIR-book company header
+    assert b'Total Debit' in body                 # T-ledger footer
 
 
 def test_general_ledger_csv_export_contains_data(client, db_session, main_branch, admin_user,
