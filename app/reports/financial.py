@@ -229,12 +229,16 @@ def generate_balance_sheet(as_of_date=None, branch_id=None):
         children_of.setdefault(a.parent_id, []).append(a)
 
     def leaves(group):
-        out, stack = [], list(children_of.get(group.id, []))
+        kids = children_of.get(group.id, [])
+        if not kids:
+            # top-level account with no children is itself a postable leaf
+            return [group]
+        out, stack = [], list(kids)
         while stack:
             n = stack.pop()
-            kids = children_of.get(n.id, [])
-            if kids:
-                stack.extend(kids)
+            grandkids = children_of.get(n.id, [])
+            if grandkids:
+                stack.extend(grandkids)
             else:
                 out.append(n)
         return sorted(out, key=lambda x: x.code or '')
@@ -277,23 +281,19 @@ def generate_balance_sheet(as_of_date=None, branch_id=None):
         totals[key] = section_total
         sections.append({'key': key, 'label': label, 'total': float(section_total), 'groups': groups})
 
-    # Accumulated earnings → Equity, split into Retained Earnings (prior periods)
-    # and Net Income (current year). NOTE: the prior-period figure is COMPUTED from the
-    # P&L (inception → end of last year); if year-end closing entries are ever posted to a
-    # real Retained Earnings account, that posted balance would double-count with this line.
-    year_start = date(as_of_date.year, 1, 1)
-    prior_end = date(as_of_date.year - 1, 12, 31)
+    # Net Income for the OPEN (not-yet-closed) span is added to Equity as a computed line.
+    # Closed years are already in the ledger as posted Retained Earnings (account 30201),
+    # captured by the normal equity-account loop above — so we must NOT recompute them.
+    from app.year_end.service import latest_closed_year_end
+    last_close = latest_closed_year_end(branch_id)
+    open_start = date(last_close.year + 1, 1, 1) if last_close else date(1900, 1, 1)
     ni_current = Decimal(str(
-        generate_income_statement(year_start, as_of_date, branch_id=branch_id)['net_income']))
-    ni_prior = Decimal(str(
-        generate_income_statement(date(1900, 1, 1), prior_end, branch_id=branch_id)['net_income']))
+        generate_income_statement(open_start, as_of_date, branch_id=branch_id)['net_income']))
 
     extra = []
-    if ni_prior != 0:
-        extra.append({'code': '', 'name': 'Retained Earnings', 'amount': float(ni_prior)})
     if ni_current != 0:
         extra.append({'code': '', 'name': 'Net Income (current year)', 'amount': float(ni_current)})
-    added = ni_prior + ni_current
+    added = ni_current
 
     equity = next(s for s in sections if s['key'] == 'equity')
     if equity['groups']:
