@@ -472,6 +472,8 @@ def generate_general_ledger(start_date, end_date, branch_id, account_id=None):
                 'debit': float(line.debit_amount),
                 'credit': float(line.credit_amount),
                 'running_balance': float(running),
+                'account_id': account.id,
+                'contra': '',
             })
 
         closing = opening + (total_debit - total_credit)
@@ -507,7 +509,7 @@ def generate_general_ledger(start_date, end_date, branch_id, account_id=None):
                 near_is_debit = l['debit'] > 0
                 opposite = {acct_id: name
                             for (acct_id, name, is_debit) in by_entry.get(l['entry_id'], [])
-                            if is_debit != near_is_debit}
+                            if is_debit != near_is_debit and acct_id != l['account_id']}
                 if len(opposite) == 1:
                     l['contra'] = next(iter(opposite.values()))
                 elif len(opposite) > 1:

@@ -68,3 +68,14 @@ def test_multi_contra_is_various_single_opposite_is_named(db_session):
     assert _line_for(gl, '5001')['contra'] == 'Various'      # opposite = AP + WHT
     assert _line_for(gl, '2001')['contra'] == 'Office Supplies'  # opposite = Expense only
     assert _line_for(gl, '2002')['contra'] == 'Office Supplies'
+
+
+def test_contra_excludes_own_account_when_on_both_sides(db_session):
+    b = _branch()
+    cash = _acct('1001', 'Cash')
+    # A JE that debits AND credits the same account (self-referential entry)
+    _entry(b.id, date(2026, 6, 8), 'JE-SELF', [(cash, 50, 0), (cash, 0, 50)])
+    gl = generate_general_ledger(date(2026, 6, 1), date(2026, 6, 30), b.id)
+    sec = next(a for a in gl['accounts'] if a['code'] == '1001')
+    # Both lines' only opposite-side account is Cash itself, which must be excluded
+    assert all(l['contra'] == '' for l in sec['lines'])
