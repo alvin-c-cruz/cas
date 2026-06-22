@@ -74,3 +74,140 @@ def latest_closed_year(branch_id):
 def latest_closed_year_end(branch_id):
     y = latest_closed_year(branch_id)
     return date(y, 12, 31) if y else None
+
+
+from app.branches.models import Branch
+from app.periods.models import AccountingPeriod
+from app.audit.utils import log_audit
+from app.utils import ph_now
+from app.reports.financial import generate_income_statement
+
+
+def _require_account(code, label):
+    a = Account.query.filter_by(code=code).first()
+    if a is None:
+        raise ValueError(f'{label} ({code}) not found in the Chart of Accounts. '
+                         'Add it before closing the year.')
+    return a
+
+
+def _new_closing_je(branch_id, year, description):
+    je = JournalEntry(
+        entry_number=closing_entry_number(branch_id, year),
+        entry_date=date(year, 12, 31),
+        description=description,
+        reference=f'CLOSE-{year}',
+        entry_type='closing',
+        branch_id=branch_id,
+        created_by_id=None,
+        status='posted',
+        posted_at=ph_now(),
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00'),
+    )
+    db.session.add(je)
+    db.session.flush()
+    return je
+
+
+def _finalize(je):
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'Closing entry {je.entry_number} is not balanced '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+
+def _close_branch(year, branch_id, user_id):
+    re_acct = _require_account(RETAINED_EARNINGS_CODE, 'Retained Earnings')
+    isum = _require_account(INCOME_SUMMARY_CODE, 'Current-Year Earnings (Income Summary)')
+    bal = nominal_balances(year, branch_id)
+    total_rev = sum((amt for _, amt in bal['revenue']), Decimal('0.00'))
+    total_exp = sum((amt for _, amt in bal['expense']), Decimal('0.00'))
+    net_income = total_rev - total_exp
+
+    # tie-out: must equal the reported net income
+    reported = Decimal(str(generate_income_statement(
+        date(year, 1, 1), date(year, 12, 31), branch_id=branch_id)['net_income']))
+    if net_income != reported:
+        raise ValueError(f'Closing net income ({net_income}) does not reconcile with the '
+                         f'Income Statement ({reported}) for {year}. Close aborted.')
+
+    je_ids = []
+
+    # JE1 — close revenue into income summary
+    if bal['revenue']:
+        je1 = _new_closing_je(branch_id, year, f'Close revenue to Income Summary — FY{year}')
+        ln = 1
+        for acct, amt in bal['revenue']:
+            db.session.add(JournalEntryLine(entry_id=je1.id, line_number=ln, account_id=acct.id,
+                                            description=f'Close {acct.code}',
+                                            debit_amount=amt, credit_amount=Decimal('0.00')))
+            ln += 1
+        db.session.add(JournalEntryLine(entry_id=je1.id, line_number=ln, account_id=isum.id,
+                                        description='Revenue to Income Summary',
+                                        debit_amount=Decimal('0.00'), credit_amount=total_rev))
+        db.session.flush(); _finalize(je1); je_ids.append(je1.id)
+
+    # JE2 — close expenses into income summary
+    if bal['expense']:
+        je2 = _new_closing_je(branch_id, year, f'Close expenses to Income Summary — FY{year}')
+        ln = 1
+        db.session.add(JournalEntryLine(entry_id=je2.id, line_number=ln, account_id=isum.id,
+                                        description='Expenses to Income Summary',
+                                        debit_amount=total_exp, credit_amount=Decimal('0.00')))
+        ln += 1
+        for acct, amt in bal['expense']:
+            db.session.add(JournalEntryLine(entry_id=je2.id, line_number=ln, account_id=acct.id,
+                                            description=f'Close {acct.code}',
+                                            debit_amount=Decimal('0.00'), credit_amount=amt))
+            ln += 1
+        db.session.flush(); _finalize(je2); je_ids.append(je2.id)
+
+    # JE3 — close income summary to retained earnings
+    if net_income != 0:
+        je3 = _new_closing_je(branch_id, year, f'Close Income Summary to Retained Earnings — FY{year}')
+        if net_income > 0:
+            db.session.add(JournalEntryLine(entry_id=je3.id, line_number=1, account_id=isum.id,
+                                            description='Income Summary to RE',
+                                            debit_amount=net_income, credit_amount=Decimal('0.00')))
+            db.session.add(JournalEntryLine(entry_id=je3.id, line_number=2, account_id=re_acct.id,
+                                            description='Net income to Retained Earnings',
+                                            debit_amount=Decimal('0.00'), credit_amount=net_income))
+        else:
+            loss = -net_income
+            db.session.add(JournalEntryLine(entry_id=je3.id, line_number=1, account_id=re_acct.id,
+                                            description='Net loss from Retained Earnings',
+                                            debit_amount=loss, credit_amount=Decimal('0.00')))
+            db.session.add(JournalEntryLine(entry_id=je3.id, line_number=2, account_id=isum.id,
+                                            description='Income Summary to RE',
+                                            debit_amount=Decimal('0.00'), credit_amount=loss))
+        db.session.flush(); _finalize(je3); je_ids.append(je3.id)
+
+    fc = FiscalYearClose(fiscal_year=year, branch_id=branch_id, status='closed',
+                         net_income=net_income, closed_by_id=user_id,
+                         closed_at=ph_now())
+    fc.set_closing_entry_ids(je_ids)
+    db.session.add(fc)
+    db.session.flush()
+
+    # lock the year's periods
+    for month in range(1, 13):
+        p = AccountingPeriod.get_or_create_period(year, month)
+        if p.status != 'closed':
+            p.status = 'closed'
+            p.closed_by_id = user_id
+            p.closed_at = ph_now()
+
+    log_audit(module='year_end', action='close', record_id=fc.id,
+              record_identifier=f'{year} / {fc.branch.name if fc.branch else branch_id}',
+              new_values={'fiscal_year': year, 'branch_id': branch_id,
+                          'net_income': str(net_income), 'closing_entry_ids': je_ids},
+              user_id=user_id)
+    return fc
+
+
+def close_fiscal_year(year, user_id):
+    """Close `year` for every active branch. All-or-nothing within one transaction."""
+    branches = Branch.query.filter_by(is_active=True).order_by(Branch.id).all()
+    return [_close_branch(year, b.id, user_id) for b in branches]
