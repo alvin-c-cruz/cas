@@ -110,7 +110,7 @@
           <td>{{ c.branch.name if c.branch else c.branch_id }}</td>
           <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(c.net_income) }}</td>
           <td>
-            <span class="badge badge-{{ 'success' if c.status == 'closed' else 'secondary' }}">
+            <span class="badge badge-{{ 'active' if c.status == 'closed' else 'inactive' }}">
               {{ c.status|title }}
             </span>
           </td>
