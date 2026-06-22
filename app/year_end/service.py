@@ -207,6 +207,81 @@ def _close_branch(year, branch_id, user_id):
     return fc
 
 
+def _earliest_data_year(branch_id=None):
+    q = db.session.query(func.min(JournalEntry.entry_date)).filter(JournalEntry.status == 'posted')
+    if branch_id:
+        q = q.filter(JournalEntry.branch_id == branch_id)
+    earliest = q.scalar()
+    return earliest.year if earliest else None
+
+
+def _has_posted_data(year):
+    return db.session.query(JournalEntry.id).filter(
+        JournalEntry.status == 'posted',
+        func.strftime('%Y', JournalEntry.entry_date) == str(year),
+    ).first() is not None
+
+
+def drafts_in_year(year):
+    """Labels of any draft documents dated within `year` (across the 5 document types)."""
+    from app.sales_invoices.models import SalesInvoice
+    from app.accounts_payable.models import AccountsPayable
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    from app.cash_receipts.models import CashReceiptVoucher
+    y = str(year)
+    found = []
+    checks = [
+        (SalesInvoice, SalesInvoice.invoice_date, SalesInvoice.invoice_number, 'Sales Invoice'),
+        (AccountsPayable, AccountsPayable.ap_date, AccountsPayable.ap_number, 'AP Bill'),
+        (CashDisbursementVoucher, CashDisbursementVoucher.cdv_date,
+         CashDisbursementVoucher.cdv_number, 'Cash Disbursement'),
+        (CashReceiptVoucher, CashReceiptVoucher.crv_date,
+         CashReceiptVoucher.crv_number, 'Cash Receipt'),
+    ]
+    for model, datecol, numcol, label in checks:
+        rows = model.query.filter(model.status == 'draft',
+                                  func.strftime('%Y', datecol) == y).all()
+        found += [f'{label} {getattr(r, numcol.key)}' for r in rows]
+    return found
+
+
+def assert_closeable(year, today):
+    if date(year, 12, 31) > today:
+        raise ValueError(f'Fiscal year {year} has not ended yet; it can be closed on or '
+                         f'after Dec 31, {year}.')
+    for b in Branch.query.filter_by(is_active=True).all():
+        if FiscalYearClose.query.filter_by(fiscal_year=year, branch_id=b.id,
+                                            status='closed').first():
+            raise ValueError(f'Fiscal year {year} is already closed.')
+    earliest = _earliest_data_year()
+    if earliest is not None and year > earliest:
+        prior = year - 1
+        prior_has_data = _has_posted_data(prior)
+        prior_closed = FiscalYearClose.query.filter_by(fiscal_year=prior,
+                                                       status='closed').first() is not None
+        if prior_has_data and not prior_closed:
+            raise ValueError(f'Close fiscal year {prior} before closing {year}.')
+    drafts = drafts_in_year(year)
+    if drafts:
+        preview = ', '.join(drafts[:5]) + ('…' if len(drafts) > 5 else '')
+        raise ValueError(f'Cannot close {year}: post or void these draft documents first '
+                         f'({len(drafts)}): {preview}')
+
+
+def eligible_years(today):
+    earliest = _earliest_data_year()
+    if earliest is None:
+        return []
+    years = []
+    for y in range(earliest, today.year + 1):
+        try:
+            assert_closeable(y, today)
+            years.append(y)
+        except ValueError:
+            continue
+    return years
+
+
 def close_fiscal_year(year, user_id):
     """Close `year` for every active branch.
 
@@ -217,6 +292,7 @@ def close_fiscal_year(year, user_id):
     (Single active branch today; revisit a validate-all-branches-first pass when multi-branch
     goes live.)
     """
+    assert_closeable(year, ph_now().date())
     branches = Branch.query.filter_by(is_active=True).order_by(Branch.id).all()
     return [_close_branch(year, b.id, user_id) for b in branches]
 
