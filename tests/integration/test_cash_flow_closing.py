@@ -24,3 +24,22 @@ def test_cash_flow_excludes_closing_entries(db_session, admin_user, main_branch)
     # Actual return keys: net_change (not net_change_in_cash), financing['total'] (not financing_total)
     assert cf_after['net_change'] == cf_before['net_change']
     assert cf_after['financing']['total'] == cf_before['financing']['total']
+
+
+def test_direct_cash_flow_excludes_closing_entries(db_session, admin_user, main_branch):
+    """Closing entries must not alter the direct-method cash flow or its non-cash note."""
+    from app.year_end import service
+    _world(main_branch.id)
+    db.session.commit()
+
+    cf_before = generate_cash_flow(date(2025, 1, 1), date(2025, 12, 31),
+                                   branch_id=main_branch.id, method='direct')
+    service.close_fiscal_year(2025, admin_user.id)
+    db.session.commit()
+    cf_after = generate_cash_flow(date(2025, 1, 1), date(2025, 12, 31),
+                                  branch_id=main_branch.id, method='direct')
+
+    # The closing entries (dated 2025-12-31) must NOT change net cash change.
+    assert cf_after['net_change'] == cf_before['net_change']
+    # The non-cash supplemental note must be identical before and after close.
+    assert cf_after['noncash'] == cf_before['noncash']

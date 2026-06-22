@@ -99,6 +99,28 @@ def test_close_locks_periods_and_writes_audit(db_session, admin_user, main_branc
     assert log is not None and '2025' in (log.record_identifier or '')
 
 
+def test_income_statement_excludes_closing_entries_post_close(db_session, admin_user, main_branch):
+    """After closing 2025, the IS for that year must still report the real P&L (700).
+
+    Closing entries zero out nominal accounts but are tagged entry_type='closing'.
+    The IS generator must exclude them so the report reflects actual operations.
+    """
+    from app.year_end import service
+    from app.reports.financial import generate_income_statement
+    _world(main_branch.id)
+    db.session.commit()
+
+    service.close_fiscal_year(2025, admin_user.id)
+    db.session.commit()
+
+    result = generate_income_statement(date(2025, 1, 1), date(2025, 12, 31),
+                                       branch_id=main_branch.id)
+    assert result['net_income'] == 700.0, (
+        f"Expected net_income=700.0 after close, got {result['net_income']}. "
+        "Closing entries may not be excluded from the IS generator."
+    )
+
+
 def test_close_raises_if_re_account_missing(db_session, admin_user, main_branch):
     from app.year_end import service
     # nominal accounts but NO 30201/30301
