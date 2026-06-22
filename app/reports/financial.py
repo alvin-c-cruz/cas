@@ -9,7 +9,7 @@ This module generates the three core financial statements:
 All statements use the double-entry accounting system and pull data from
 posted journal entries.
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from sqlalchemy import func, and_, extract
 from decimal import Decimal
 
@@ -315,6 +315,147 @@ def generate_balance_sheet(as_of_date=None, branch_id=None):
         'total_equity': float(totals['equity']),
         'total_liabilities_equity': float(tle),
         'is_balanced': bool(diff < Decimal('0.01')),
+        'difference': float(diff),
+    }
+
+
+def _is_cash(account):
+    """Cash & cash equivalents: an account whose name contains 'cash'."""
+    return 'cash' in (account.name or '').lower()
+
+
+def _is_depreciation_name(account):
+    """Depreciation expense or accumulated depreciation (name-based)."""
+    return 'depreciation' in (account.name or '').lower()
+
+
+def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
+    """Statement of Cash Flows (indirect method) for a period.
+
+    Reorganizes every non-cash account's period movement (Sigma debit - credit)
+    into Operating / Investing / Financing activities, adds back depreciation,
+    and reconciles to the actual change in cash. Returns floats for
+    template/export consumption.
+
+    Because every journal entry balances, the change in cash equals the negative
+    sum of all non-cash account movements; bucketing those movements therefore
+    sums exactly to the change in cash. Depreciation is the one special case: it
+    is added back in Operating and Accumulated Depreciation is excluded from
+    Investing (the two are equal and opposite, so the total still ties).
+
+    NOTE (closing-entries caveat): equity movement feeds Financing. If year-end
+    closing entries are ever posted to a Retained Earnings equity account, that
+    movement would double-count net income here (same caveat as the Balance
+    Sheet). Not an issue on books without closing entries.
+    """
+    if method != 'indirect':
+        raise ValueError("Only the indirect cash-flow method is implemented")
+
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
+
+    def movement(account_id):
+        """Net period movement in debit-positive terms: Sigma(debit) - Sigma(credit)."""
+        debit_sum, credit_sum = db.session.query(
+            func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
+            func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
+        ).join(JournalEntry).filter(
+            JournalEntry.status == 'posted',
+            JournalEntry.entry_date >= start_date,
+            JournalEntry.entry_date <= end_date,
+            JournalEntryLine.account_id == account_id,
+            *branch_filter
+        ).one()
+        return Decimal(str(debit_sum)) - Decimal(str(credit_sum))
+
+    def cash_balance(as_of):
+        """Sigma over cash accounts of (debit - credit) posted on/before as_of."""
+        total = Decimal('0.00')
+        for a in accounts:
+            if not _is_cash(a):
+                continue
+            debit_sum, credit_sum = db.session.query(
+                func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
+                func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
+            ).join(JournalEntry).filter(
+                JournalEntry.status == 'posted',
+                JournalEntry.entry_date <= as_of,
+                JournalEntryLine.account_id == a.id,
+                *branch_filter
+            ).one()
+            total += Decimal(str(debit_sum)) - Decimal(str(credit_sum))
+        return total
+
+    # Operating
+    net_income = Decimal(str(
+        generate_income_statement(start_date, end_date, branch_id=branch_id)['net_income']))
+
+    depreciation = Decimal('0.00')
+    for a in accounts:
+        if (a.account_type == 'Expense' or (a.code or '').startswith('5')) and _is_depreciation_name(a):
+            depreciation += movement(a.id)        # debit-positive expense -> positive add-back
+
+    working_capital = []
+    wc_total = Decimal('0.00')
+    for a in accounts:
+        code = a.code or ''
+        is_curr_asset = code.startswith('10') and not _is_cash(a)
+        is_curr_liab = code.startswith('20')
+        if not (is_curr_asset or is_curr_liab):
+            continue
+        effect = -movement(a.id)                  # asset up uses cash; liability up frees cash
+        if effect != 0:
+            verb = '(Increase)/decrease in ' if is_curr_asset else 'Increase/(decrease) in '
+            working_capital.append({'name': verb + a.name, 'amount': float(effect)})
+            wc_total += effect
+
+    operating_total = net_income + depreciation + wc_total
+
+    # Investing: non-current asset cost (11...) excluding accumulated depreciation
+    investing_lines = []
+    investing_total = Decimal('0.00')
+    for a in accounts:
+        if not (a.code or '').startswith('11') or _is_depreciation_name(a):
+            continue
+        effect = -movement(a.id)                  # purchase (debit up) -> outflow (negative)
+        if effect != 0:
+            investing_lines.append({'name': '(Acquisition)/disposal of ' + a.name,
+                                    'amount': float(effect)})
+            investing_total += effect
+
+    # Financing: non-current liabilities (21...) + equity (30...)
+    financing_lines = []
+    financing_total = Decimal('0.00')
+    for a in accounts:
+        code = a.code or ''
+        if not (code.startswith('21') or code.startswith('30')):
+            continue
+        effect = -movement(a.id)                  # contribution / loan proceeds (credit up) -> inflow
+        if effect != 0:
+            financing_lines.append({'name': a.name, 'amount': float(effect)})
+            financing_total += effect
+
+    net_change = operating_total + investing_total + financing_total
+    cash_begin = cash_balance(start_date - timedelta(days=1))
+    cash_end = cash_balance(end_date)
+    diff = abs(net_change - (cash_end - cash_begin))
+
+    return {
+        'period_start': start_date,
+        'period_end': end_date,
+        'method': 'indirect',
+        'operating': {
+            'net_income': float(net_income),
+            'depreciation': float(depreciation),
+            'working_capital': working_capital,
+            'total': float(operating_total),
+        },
+        'investing': {'lines': investing_lines, 'total': float(investing_total)},
+        'financing': {'lines': financing_lines, 'total': float(financing_total)},
+        'net_change': float(net_change),
+        'cash_begin': float(cash_begin),
+        'cash_end': float(cash_end),
+        'is_reconciled': bool(diff < Decimal('0.01')),
         'difference': float(diff),
     }
 
