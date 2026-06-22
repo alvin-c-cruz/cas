@@ -109,17 +109,6 @@ def test_income_statement_excel_export(client, db_session, main_branch, admin_us
     assert 'spreadsheetml' in resp.headers['Content-Type']
 
 
-def test_income_statement_csv_export(client, db_session, main_branch, admin_user,
-                                     cash_account, revenue_account, expense_account):
-    _seed_pl(main_branch.id, cash_account, revenue_account, expense_account)
-    _login(client, admin_user)
-    _select_branch(client, main_branch.id)
-    resp = client.get('/reports/income-statement/export/csv')
-    assert resp.status_code == 200
-    assert 'text/csv' in resp.headers['Content-Type']
-    assert revenue_account.code.encode() in resp.data
-
-
 def test_income_statement_print_renders(client, db_session, main_branch, admin_user,
                                         cash_account, revenue_account, expense_account):
     from app.settings import AppSettings

@@ -16,10 +16,6 @@
                class="btn btn-secondary">
                 📊 Excel
             </a>
-            <a href="{{ url_for('reports.trial_balance_export_csv', as_of=as_of_date.isoformat()) }}"
-               class="btn btn-secondary">
-                CSV
-            </a>
             <a href="{{ url_for('reports.trial_balance_print', as_of=as_of_date.isoformat()) }}"
                target="_blank" class="btn btn-secondary">
                 Print

@@ -21,8 +21,6 @@
         <div class="card-header-actions" style="display: flex; gap: 8px;">
             <a href="{{ url_for('reports.income_statement_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
                class="btn btn-secondary">📊 Excel</a>
-            <a href="{{ url_for('reports.income_statement_export_csv', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
-               class="btn btn-secondary">CSV</a>
             <a href="{{ url_for('reports.income_statement_print', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
                target="_blank" class="btn btn-secondary">Print</a>
             <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Period</button>

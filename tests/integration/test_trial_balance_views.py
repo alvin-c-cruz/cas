@@ -103,17 +103,6 @@ def test_trial_balance_excel_export(client, db_session, main_branch, admin_user,
     assert 'spreadsheetml' in resp.headers['Content-Type']
 
 
-def test_trial_balance_csv_export(client, db_session, main_branch, admin_user,
-                                  cash_account, revenue_account):
-    _post_je(main_branch.id, cash_account, revenue_account, date.today(), 'JE-TB3')
-    _login(client, admin_user)
-    _select_branch(client, main_branch.id)
-    resp = client.get('/reports/trial-balance/export/csv')
-    assert resp.status_code == 200
-    assert 'text/csv' in resp.headers['Content-Type']
-    assert cash_account.code.encode() in resp.data
-
-
 def test_trial_balance_print_renders(client, db_session, main_branch, admin_user,
                                      cash_account, revenue_account):
     from app.settings import AppSettings

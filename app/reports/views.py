@@ -531,16 +531,6 @@ def trial_balance_export_excel():
     return export_to_excel(trial_balance_data['accounts'], _TB_COLUMNS, _TB_HEADERS, filename, title)
 
 
-@reports_bp.route('/reports/trial-balance/export/csv')
-@login_required
-def trial_balance_export_csv():
-    """Export Trial Balance to CSV"""
-    as_of_date, branch_id = _tb_params()
-    trial_balance_data = generate_trial_balance(as_of_date, branch_id=branch_id)
-    filename = f'Trial_Balance_{as_of_date.isoformat()}.csv'
-    return export_to_csv(trial_balance_data['accounts'], _TB_COLUMNS, _TB_HEADERS, filename)
-
-
 @reports_bp.route('/reports/trial-balance/print')
 @login_required
 def trial_balance_print():
@@ -577,40 +567,6 @@ def _is_params():
             session.get('selected_branch_id'))
 
 
-_IS_SUBTOTAL_AFTER = {
-    'cost_of_sales': ('Gross Profit', 'gross_profit'),
-    'operating_expenses': ('Operating Income (Loss)', 'operating_income'),
-    'financial': ('Income Before Income Tax', 'income_before_tax'),
-}
-
-
-def _is_flatten(income_stmt_data):
-    """Two-column P&L statement rows (Particulars | Amount) mirroring the report:
-    a section header (label + total), its indented child accounts, the running
-    subtotal rows (Gross Profit, Operating Income, Income Before Tax), and a final
-    Net Income line."""
-    rows = []
-
-    def add(particulars, amount=''):
-        rows.append({'particulars': particulars, 'amount': amount})
-
-    for sec in income_stmt_data['sections']:
-        add(('Less: ' if sec['deduction'] else '') + sec['label'], sec['total'])
-        for a in sec['accounts']:
-            add(f"    {a['code']}  {a['name']}", a['amount'])
-        if sec['key'] in _IS_SUBTOTAL_AFTER:
-            label, key = _IS_SUBTOTAL_AFTER[sec['key']]
-            add(label, income_stmt_data[key])
-    margin = income_stmt_data['net_income_percentage']
-    net_label = 'NET INCOME (LOSS)' + (f' — {margin:.1f}% Net Margin' if margin else '')
-    add(net_label, income_stmt_data['net_income'])
-    return rows
-
-
-_IS_COLUMNS = ['particulars', 'amount']
-_IS_HEADERS = ['Particulars', 'Amount']
-
-
 @reports_bp.route('/reports/income-statement')
 @login_required
 def income_statement():
@@ -625,22 +581,22 @@ def income_statement():
 @reports_bp.route('/reports/income-statement/export/excel')
 @login_required
 def income_statement_export_excel():
-    """Export Income Statement to Excel"""
+    """Export Income Statement to a formatted Excel workbook."""
+    from app.settings import AppSettings
+    from app.branches.models import Branch
+    from app.reports.statement_export import build_income_statement_xlsx
     start_date, end_date, branch_id = _is_params()
-    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
+    stmt = generate_income_statement(start_date, end_date, branch_id=branch_id)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    branch = Branch.query.get(branch_id) if branch_id else None
+    period_label = f"{start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
     filename = f'Income_Statement_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx'
-    title = f'Income Statement - {start_date.strftime("%b %d, %Y")} to {end_date.strftime("%b %d, %Y")}'
-    return export_to_excel(_is_flatten(income_stmt_data), _IS_COLUMNS, _IS_HEADERS, filename, title)
-
-
-@reports_bp.route('/reports/income-statement/export/csv')
-@login_required
-def income_statement_export_csv():
-    """Export Income Statement to CSV"""
-    start_date, end_date, branch_id = _is_params()
-    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
-    filename = f'Income_Statement_{start_date.isoformat()}_to_{end_date.isoformat()}.csv'
-    return export_to_csv(_is_flatten(income_stmt_data), _IS_COLUMNS, _IS_HEADERS, filename)
+    return build_income_statement_xlsx(stmt, period_label, company,
+                                       branch.name if branch else '', filename)
 
 
 @reports_bp.route('/reports/income-statement/print')
