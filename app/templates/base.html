@@ -1166,11 +1166,12 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-financial-reports">
-                    <a href="{{ url_for('reports.income_statement') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.income_statement' %}active{% endif %}">
+                    {% if can_access_module(current_user, 'income_statement') %}
+                    <a href="{{ url_for('reports.income_statement') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.income_statement') %}active{% endif %}">
                         <span class="nav-icon">💰</span>
                         <span class="nav-text">Income Statement</span>
-                        <span class="nav-coming-soon">Soon</span>
                     </a>
+                    {% endif %}
                     <a href="{{ url_for('reports.balance_sheet') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.balance_sheet' %}active{% endif %}">
                         <span class="nav-icon">📈</span>
                         <span class="nav-text">Balance Sheet</span>

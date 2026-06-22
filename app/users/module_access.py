@@ -40,6 +40,9 @@ MODULE_REGISTRY = [
     {'key': 'trial_balance', 'label': 'Trial Balance', 'section': 'Ledger',
      'endpoints': ('reports.trial_balance', 'reports.trial_balance_export_excel',
                    'reports.trial_balance_export_csv', 'reports.trial_balance_print')},
+    {'key': 'income_statement', 'label': 'Income Statement', 'section': 'Ledger',
+     'endpoints': ('reports.income_statement', 'reports.income_statement_export_excel',
+                   'reports.income_statement_export_csv', 'reports.income_statement_print')},
 ]
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY if m['section'] == 'Transactions']

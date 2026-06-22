@@ -559,71 +559,88 @@ def trial_balance_print():
                            company=company, branch_name=branch.name if branch else '')
 
 
+def _is_params():
+    """Shared (start_date, end_date, branch_id) parsing for Income Statement routes.
+
+    Defaults to year-to-date (Jan 1 of the current year -> today).
+    """
+    today = date.today()
+
+    def _parse(param, fallback):
+        try:
+            return date.fromisoformat(request.args.get(param, ''))
+        except (ValueError, TypeError):
+            return fallback
+
+    return (_parse('start_date', date(today.year, 1, 1)),
+            _parse('end_date', today),
+            session.get('selected_branch_id'))
+
+
+def _is_flatten(income_stmt_data):
+    """Combined revenue + expense rows for the Income Statement exports."""
+    rows = []
+    for item in income_stmt_data['revenue']:
+        rows.append({'section': 'Revenue', 'code': item['code'],
+                     'name': item['name'], 'amount': item['amount']})
+    for item in income_stmt_data['expenses']:
+        rows.append({'section': 'Expenses', 'code': item['code'],
+                     'name': item['name'], 'amount': item['amount']})
+    return rows
+
+
+_IS_COLUMNS = ['section', 'code', 'name', 'amount']
+_IS_HEADERS = ['Section', 'Code', 'Account Name', 'Amount']
+
+
 @reports_bp.route('/reports/income-statement')
 @login_required
-@accountant_or_admin_required
 def income_statement():
-    return redirect(url_for('dashboard.under_development', feature='Income Statement'))
-    today = date.today()
-    start_str = request.args.get('start_date', date(today.year, today.month, 1).isoformat())
-    end_str = request.args.get('end_date', today.isoformat())
-
-    start_date = date.fromisoformat(start_str)
-    end_date = date.fromisoformat(end_str)
-
-    # Generate income statement — scoped to current branch
-    current_branch_id = session.get('selected_branch_id')
-    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=current_branch_id)
-
+    start_date, end_date, branch_id = _is_params()
+    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
     return render_template('reports/income_statement.html',
-                         income_statement=income_stmt_data,
-                         start_date=start_date,
-                         end_date=end_date)
+                           income_statement=income_stmt_data,
+                           start_date=start_date,
+                           end_date=end_date)
 
 
 @reports_bp.route('/reports/income-statement/export/excel')
 @login_required
-@accountant_or_admin_required
 def income_statement_export_excel():
     """Export Income Statement to Excel"""
-    today = date.today()
-    start_str = request.args.get('start_date', date(today.year, today.month, 1).isoformat())
-    end_str = request.args.get('end_date', today.isoformat())
-
-    start_date = date.fromisoformat(start_str)
-    end_date = date.fromisoformat(end_str)
-
-    current_branch_id = session.get('selected_branch_id')
-    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=current_branch_id)
-
-    # Combine revenue and expenses for export
-    data = []
-
-    # Add revenue section
-    for item in income_stmt_data['revenue']:
-        data.append({
-            'code': item['code'],
-            'name': item['name'],
-            'amount': item['amount'],
-            'section': 'Revenue'
-        })
-
-    # Add expenses section
-    for item in income_stmt_data['expenses']:
-        data.append({
-            'code': item['code'],
-            'name': item['name'],
-            'amount': item['amount'],
-            'section': 'Expenses'
-        })
-
-    columns = ['section', 'code', 'name', 'amount']
-    headers = ['Section', 'Code', 'Account Name', 'Amount']
-
+    start_date, end_date, branch_id = _is_params()
+    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
     filename = f'Income_Statement_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx'
     title = f'Income Statement - {start_date.strftime("%b %d, %Y")} to {end_date.strftime("%b %d, %Y")}'
+    return export_to_excel(_is_flatten(income_stmt_data), _IS_COLUMNS, _IS_HEADERS, filename, title)
 
-    return export_to_excel(data, columns, headers, filename, title)
+
+@reports_bp.route('/reports/income-statement/export/csv')
+@login_required
+def income_statement_export_csv():
+    """Export Income Statement to CSV"""
+    start_date, end_date, branch_id = _is_params()
+    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
+    filename = f'Income_Statement_{start_date.isoformat()}_to_{end_date.isoformat()}.csv'
+    return export_to_csv(_is_flatten(income_stmt_data), _IS_COLUMNS, _IS_HEADERS, filename)
+
+
+@reports_bp.route('/reports/income-statement/print')
+@login_required
+def income_statement_print():
+    from app.settings import AppSettings
+    from app.branches.models import Branch
+    start_date, end_date, branch_id = _is_params()
+    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    branch = Branch.query.get(branch_id) if branch_id else None
+    return render_template('reports/income_statement_print.html',
+                           income_statement=income_stmt_data, start_date=start_date, end_date=end_date,
+                           company=company, branch_name=branch.name if branch else '')
 
 
 @reports_bp.route('/reports/balance-sheet')

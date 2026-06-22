@@ -14,7 +14,15 @@
         <div class="card-header-actions" style="display: flex; gap: 8px;">
             <a href="{{ url_for('reports.income_statement_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
                class="btn btn-secondary">
-                📊 Export Excel
+                📊 Excel
+            </a>
+            <a href="{{ url_for('reports.income_statement_export_csv', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
+               class="btn btn-secondary">
+                CSV
+            </a>
+            <a href="{{ url_for('reports.income_statement_print', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
+               target="_blank" class="btn btn-secondary">
+                Print
             </a>
             <button class="btn btn-secondary" onclick="showPeriodPicker()">
                 📅 Change Period
@@ -92,26 +100,23 @@
         </div>
 
         <!-- Net Income -->
-        <div style="background: {% if income_statement.net_income >= 0 %}#dcfce7{% else %}#fef2f2{% endif %};
-                    border: 1px solid {% if income_statement.net_income >= 0 %}#bbf7d0{% else %}#fecaca{% endif %};
-                    border-radius: 8px; padding: 20px;">
+        <div class="alert {% if income_statement.net_income >= 0 %}alert-success{% else %}alert-danger{% endif %}"
+             style="border-radius: 8px; padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <div style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 4px;">
+                    <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">
                         NET INCOME
                     </div>
-                    <div style="font-size: 12px; color: var(--text-3);">
+                    <div style="font-size: 12px; opacity: 0.8;">
                         Revenue - Expenses
                     </div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-size: 32px; font-weight: 700; font-family: var(--mono);
-                                color: {% if income_statement.net_income >= 0 %}#166534{% else %}#991b1b{% endif %};">
+                    <div style="font-size: 32px; font-weight: 700; font-family: var(--mono);">
                         ₱{{ '{:,.2f}'.format(income_statement.net_income) }}
                     </div>
                     {% if income_statement.total_revenue > 0 %}
-                    <div style="font-size: 14px; font-weight: 600; margin-top: 4px;
-                                color: {% if income_statement.net_income >= 0 %}#166534{% else %}#991b1b{% endif %};">
+                    <div style="font-size: 14px; font-weight: 600; margin-top: 4px;">
                         {{ '{:.1f}'.format(income_statement.net_income_percentage) }}% Net Margin
                     </div>
                     {% endif %}
@@ -124,7 +129,7 @@
 <!-- Period Picker Modal -->
 <div id="periodPicker" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                               background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; padding: 30px; border-radius: 8px; max-width: 500px; width: 90%;">
+    <div style="background: var(--card); padding: 30px; border-radius: 8px; max-width: 500px; width: 90%;">
         <h3 style="margin-top: 0;">Select Period</h3>
         <form action="{{ url_for('reports.income_statement') }}" method="get">
             <div style="margin-bottom: 20px;">

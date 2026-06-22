@@ -80,6 +80,24 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Income Statement Card -->
+            <div class="col" style="flex: 1; min-width: 300px;">
+                <div class="content-card" style="height: 100%;">
+                    <div class="card-body">
+                        <h3 style="margin-top: 0; color: var(--primary);">
+                            <span style="font-size: 2rem;">💰</span>
+                            Income Statement
+                        </h3>
+                        <p class="text-muted" style="margin-bottom: 20px;">
+                            Profit &amp; Loss for a period: revenue, expenses, and net income with margin. Pick any date range; export to Excel/CSV or print.
+                        </p>
+                        <a href="{{ url_for('reports.income_statement') }}" class="btn btn-primary">
+                            View Income Statement
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
