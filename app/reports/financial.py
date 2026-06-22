@@ -488,6 +488,33 @@ def generate_general_ledger(start_date, end_date, branch_id, account_id=None):
             'closing_balance': float(closing),
         })
 
+    # Resolve the contra-account (opposite side of each line's own JE) in one batched query.
+    entry_ids = {l['entry_id'] for a in result_accounts for l in a['lines']}
+    if entry_ids:
+        sibling_rows = db.session.query(
+            JournalEntryLine.entry_id,
+            JournalEntryLine.account_id,
+            Account.name,
+            JournalEntryLine.debit_amount,
+        ).join(Account, JournalEntryLine.account_id == Account.id).filter(
+            JournalEntryLine.entry_id.in_(entry_ids)
+        ).all()
+        by_entry = {}
+        for eid, acct_id, name, dr in sibling_rows:
+            by_entry.setdefault(eid, []).append((acct_id, name, dr > 0))
+        for a in result_accounts:
+            for l in a['lines']:
+                near_is_debit = l['debit'] > 0
+                opposite = {acct_id: name
+                            for (acct_id, name, is_debit) in by_entry.get(l['entry_id'], [])
+                            if is_debit != near_is_debit}
+                if len(opposite) == 1:
+                    l['contra'] = next(iter(opposite.values()))
+                elif len(opposite) > 1:
+                    l['contra'] = 'Various'
+                else:
+                    l['contra'] = ''
+
     return {
         'start_date': start_date,
         'end_date': end_date,
