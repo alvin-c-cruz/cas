@@ -49,6 +49,8 @@ MODULE_REGISTRY = [
     {'key': 'cash_flow', 'label': 'Cash Flow', 'section': 'Ledger',
      'endpoints': ('reports.cash_flow', 'reports.cash_flow_export_excel',
                    'reports.cash_flow_print')},
+    {'key': 'fiscal_year_close', 'label': 'Year-End Close', 'section': 'Ledger',
+     'endpoints': ('year_end.index', 'year_end.close', 'year_end.reopen')},
 ]
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY if m['section'] == 'Transactions']

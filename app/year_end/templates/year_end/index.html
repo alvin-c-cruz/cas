@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Year-End Close{% endblock %}
+{% block page_title %}Year-End Close{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Year-End Close</div>
+        <div class="card-sub">Close or reopen fiscal years</div>
+    </div>
+    <div class="card-body">
+        {% if eligible_years %}
+        <h3>Eligible Years to Close</h3>
+        <ul>
+            {% for y in eligible_years %}
+            <li>{{ y }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>No fiscal years are currently eligible for closing.</p>
+        {% endif %}
+
+        {% if closes %}
+        <h3>Closed / Reopened Fiscal Years</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Year</th>
+                    <th>Status</th>
+                    <th>Net Income</th>
+                    <th>Closed At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fc in closes %}
+                <tr>
+                    <td>{{ fc.fiscal_year }}</td>
+                    <td>{{ fc.status }}</td>
+                    <td>{{ fc.net_income }}</td>
+                    <td>{{ fc.closed_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
