@@ -46,19 +46,28 @@ $conn = Get-NetTCPConnection -LocalPort 5050 -State Listen -ErrorAction Silently
 if ($conn) { Write-Host "WARNING: port 5050 still in use by PID $($conn.OwningProcess)" } else { Write-Host "Port 5050 is free" }
 ```
 
-**3. Start Flask server in background**
+**3. Start Flask server detached (with auto-reload)**
 
-Use PowerShell tool with `run_in_background: true`. Launch **without the auto-reloader** —
-`python flask_app.py` runs the reloader, which re-execs itself; under `run_in_background` the
-tracked process then exits 255 and kills the server (false "failed" / dead server). Running with
-`use_reloader=False` is one stable process the harness tracks correctly:
+Launch the server as a **detached** process via `Start-Process` — NOT as a harness-tracked
+`run_in_background` task. The Werkzeug auto-reloader works by re-exec'ing itself (a supervisor
+parent + a child that binds the port); a harness-tracked background task can't host that
+re-exec and exits 255, killing the server. A detached process is owned by the OS instead of the
+harness, so the reloader's parent/child cycle runs normally and **edits hot-reload**. Output goes
+to a log file (not the harness) — read it in step 4/6 if the server misbehaves.
+
+Use a normal (foreground) PowerShell call — `Start-Process` returns immediately and the server
+keeps running detached:
 
 ```powershell
-python -c "from dotenv import load_dotenv; load_dotenv(); from app import create_app; create_app().run(host='127.0.0.1', port=5050, use_reloader=False)"
+$log = "$env:TEMP\cas_server.out.log"; $err = "$env:TEMP\cas_server.err.log"
+Start-Process -FilePath python -ArgumentList 'flask_app.py' -WorkingDirectory 'C:\envs\cas' `
+    -RedirectStandardOutput $log -RedirectStandardError $err -WindowStyle Hidden
+"Launched detached server (reloader on); logs: $log / $err"
 ```
 
-(Trade-off: no auto-reload on code edits — fine for a session; just re-run step 2+3 after code
-changes. If you want live reload, run `python flask_app.py` yourself in a foreground terminal.)
+(`flask_app.py` runs with `debug=True` → reloader ON. After a code edit, Werkzeug detects the
+change and respawns the child automatically — no need to re-run /run. The reloader supervisor is
+a python parent of the port-5050 listener, which step 2 already kills on the next /run.)
 
 **4. Poll until server responds**
 
@@ -88,4 +97,5 @@ Tell the user: how many PIDs were killed, whether server started cleanly, curren
 - **Worktree sessions:** if Flask fails with `SECRET_KEY must be set`, copy `.env` from `C:\envs\cas\.env` to the worktree root before retrying.
 - If port 5050 is still occupied after kill, report remaining PIDs.
 - Redirect to `/login` is expected — not an error.
-- If server fails to start, read the background task output file and report it verbatim.
+- If server fails to start, read the log files (`$env:TEMP\cas_server.out.log` and `.err.log`) and report them verbatim.
+- **Auto-reload:** the detached server hot-reloads on code edits (Werkzeug reloader). You normally do NOT need to re-run /run after editing app code — just refresh the page. Re-run /run only if the server died or the port was taken. Static-asset edits still need a `?v=N` cache-buster bump (see CLAUDE.md), reload or not.
