@@ -6,9 +6,25 @@ from app import db
 from app.accounts.models import Account
 from app.branches.models import Branch
 from app.journal_entries.models import JournalEntry, JournalEntryLine
-from app.reports.financial import generate_cash_flow
+from app.reports.financial import generate_cash_flow, _activity_bucket
 
 pytestmark = [pytest.mark.unit]
+
+
+def _a(code, atype, name='x', cls=None):
+    return Account(code=code, name=name, account_type=atype, classification=cls,
+                   normal_balance='debit')
+
+
+def test_activity_bucket_by_type_and_classification():
+    assert _activity_bucket(_a('11120', 'Asset', 'Machinery', 'Non-Current')) == 'investing'
+    assert _activity_bucket(_a('11131', 'Asset', 'Accumulated Depreciation - Machinery',
+                               'Non-Current')) == 'operating'
+    assert _activity_bucket(_a('21100', 'Liability', 'Long-term Loan', 'Non-Current')) == 'financing'
+    assert _activity_bucket(_a('30101', 'Equity', 'Common Stock')) == 'financing'
+    assert _activity_bucket(_a('10201', 'Asset', 'AR - Trade', 'Current')) == 'operating'
+    assert _activity_bucket(_a('20101', 'Liability', 'AP - Trade', 'Current')) == 'operating'
+    assert _activity_bucket(_a('50101', 'Cost of Goods Sold', 'COGS')) == 'operating'
 
 START, END = date(2026, 1, 1), date(2026, 6, 30)
 
@@ -20,9 +36,10 @@ def _branch():
     return b
 
 
-def _acct(code, name, atype, normal='Debit', parent=None):
+def _acct(code, name, atype, normal='Debit', parent=None, cls=None):
     a = Account(code=code, name=name, account_type=atype, normal_balance=normal,
-                is_active=True, parent_id=parent.id if parent else None)
+                is_active=True, parent_id=parent.id if parent else None,
+                classification=cls)
     db.session.add(a)
     db.session.commit()
     return a
@@ -46,19 +63,20 @@ def _je(branch_id, lines, number):
 
 def _build(db_session):
     b = _branch()
-    ca = _acct('10000', 'CURRENT ASSETS', 'Asset')
-    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca)
-    ar = _acct('10201', 'Accounts Receivable', 'Asset', parent=ca)
-    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset')
-    equip = _acct('11110', 'Construction Equipment', 'Asset', parent=nca)
-    accum = _acct('11111', 'Accumulated Depreciation', 'Asset', 'Credit', parent=nca)
-    cl = _acct('20000', 'CURRENT LIABILITIES', 'Liability', 'Credit')
-    ap = _acct('20101', 'Accounts Payable', 'Liability', 'Credit', parent=cl)
+    ca = _acct('10000', 'CURRENT ASSETS', 'Asset', cls='Current')
+    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca, cls='Current')
+    ar = _acct('10201', 'Accounts Receivable', 'Asset', parent=ca, cls='Current')
+    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset', cls='Non-Current')
+    equip = _acct('11110', 'Construction Equipment', 'Asset', parent=nca, cls='Non-Current')
+    accum = _acct('11111', 'Accumulated Depreciation', 'Asset', 'Credit', parent=nca,
+                  cls='Non-Current')
+    cl = _acct('20000', 'CURRENT LIABILITIES', 'Liability', 'Credit', cls='Current')
+    ap = _acct('20101', 'Accounts Payable', 'Liability', 'Credit', parent=cl, cls='Current')
     eq = _acct('30000', 'EQUITY', 'Equity', 'Credit')
     cap = _acct('30101', 'Capital Stock', 'Equity', 'Credit', parent=eq)
     rev = _acct('40101', 'Sales Revenue', 'Revenue', 'Credit')
-    dep = _acct('50260', 'Depreciation Expense', 'Expense')
-    sal = _acct('50110', 'Salaries Expense', 'Expense')
+    dep = _acct('50260', 'Depreciation Expense', 'Administrative Expense')
+    sal = _acct('50110', 'Salaries Expense', 'Administrative Expense')
     _je(b.id, [(cash, 1000, 0), (cap, 0, 1000)], 'CF1')   # financing inflow 1000, cash +1000
     _je(b.id, [(equip, 500, 0), (cash, 0, 500)], 'CF2')   # investing outflow -500, cash -500
     _je(b.id, [(cash, 200, 0), (rev, 0, 200)], 'CF3')     # NI +200, cash +200
@@ -113,8 +131,8 @@ def test_financing(db_session):
 
 def test_no_cash_accounts(db_session):
     b = _branch()
-    ca = _acct('10000', 'CURRENT ASSETS', 'Asset')
-    ar = _acct('10201', 'Accounts Receivable', 'Asset', parent=ca)
+    ca = _acct('10000', 'CURRENT ASSETS', 'Asset', cls='Current')
+    ar = _acct('10201', 'Accounts Receivable', 'Asset', parent=ca, cls='Current')
     rev = _acct('40101', 'Sales Revenue', 'Revenue', 'Credit')
     _je(b.id, [(ar, 100, 0), (rev, 0, 100)], 'CF1')
     cf = generate_cash_flow(START, END, branch_id=b.id)
@@ -126,13 +144,13 @@ def test_no_cash_accounts(db_session):
 
 def _build_direct(db_session):
     b = _branch()
-    ca = _acct('10000', 'CURRENT ASSETS', 'Asset')
-    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca)
-    ar = _acct('10201', 'Accounts Receivable', 'Asset', parent=ca)
-    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset')
-    equip = _acct('11110', 'Construction Equipment', 'Asset', parent=nca)
-    cl = _acct('20000', 'CURRENT LIABILITIES', 'Liability', 'Credit')
-    ap = _acct('20101', 'Accounts Payable', 'Liability', 'Credit', parent=cl)
+    ca = _acct('10000', 'CURRENT ASSETS', 'Asset', cls='Current')
+    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca, cls='Current')
+    ar = _acct('10201', 'Accounts Receivable', 'Asset', parent=ca, cls='Current')
+    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset', cls='Non-Current')
+    equip = _acct('11110', 'Construction Equipment', 'Asset', parent=nca, cls='Non-Current')
+    cl = _acct('20000', 'CURRENT LIABILITIES', 'Liability', 'Credit', cls='Current')
+    ap = _acct('20101', 'Accounts Payable', 'Liability', 'Credit', parent=cl, cls='Current')
     eq = _acct('30000', 'EQUITY', 'Equity', 'Credit')
     cap = _acct('30101', 'Capital Stock', 'Equity', 'Credit', parent=eq)
     rev = _acct('40101', 'Sales Revenue', 'Revenue', 'Credit')

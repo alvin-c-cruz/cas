@@ -262,14 +262,16 @@ _DIRECT_SUBLINE_ORDER = [
 ]
 
 
-def _direct_activity(account):
-    """Activity bucket for a non-cash contra account in the direct method."""
-    code = account.code or ''
-    if code.startswith('11') and not _is_depreciation_name(account):
+def _activity_bucket(account):
+    """Cash-flow activity for a non-cash account, by type + classification.
+    Investing: Non-Current Assets (excl. accumulated depreciation by name).
+    Financing: Non-Current Liabilities + all Equity. Operating: everything else."""
+    t, cls = account.account_type, account.classification
+    if t == 'Asset' and cls == 'Non-Current' and not _is_depreciation_name(account):
         return 'investing'
-    if code.startswith('21') or code.startswith('30'):
+    if (t == 'Liability' and cls == 'Non-Current') or t == 'Equity':
         return 'financing'
-    return 'operating'   # 4x / 5x / 10x-ex-cash / 20x + any stray (catch-all)
+    return 'operating'
 
 
 def _direct_operating_subline(account):
@@ -358,9 +360,9 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
     working_capital = []
     wc_total = Decimal('0.00')
     for a in accounts:
-        code = a.code or ''
-        is_curr_asset = code.startswith('10') and not _is_cash(a)
-        is_curr_liab = code.startswith('20')
+        is_curr_asset = (a.account_type == 'Asset' and a.classification == 'Current'
+                         and not _is_cash(a))
+        is_curr_liab = (a.account_type == 'Liability' and a.classification == 'Current')
         if not (is_curr_asset or is_curr_liab):
             continue
         effect = -movement(a.id)                  # asset up uses cash; liability up frees cash
@@ -371,11 +373,11 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
 
     operating_total = net_income + depreciation + wc_total
 
-    # Investing: non-current asset cost (11...) excluding accumulated depreciation
+    # Investing: non-current assets excluding accumulated depreciation
     investing_lines = []
     investing_total = Decimal('0.00')
     for a in accounts:
-        if not (a.code or '').startswith('11') or _is_depreciation_name(a):
+        if _activity_bucket(a) != 'investing':
             continue
         effect = -movement(a.id)                  # purchase (debit up) -> outflow (negative)
         if effect != 0:
@@ -383,12 +385,11 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
                                     'amount': float(effect)})
             investing_total += effect
 
-    # Financing: non-current liabilities (21...) + equity (30...)
+    # Financing: non-current liabilities + equity
     financing_lines = []
     financing_total = Decimal('0.00')
     for a in accounts:
-        code = a.code or ''
-        if not (code.startswith('21') or code.startswith('30')):
+        if _activity_bucket(a) != 'financing':
             continue
         effect = -movement(a.id)                  # contribution / loan proceeds (credit up) -> inflow
         if effect != 0:
@@ -451,7 +452,7 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
             if a is None:
                 continue
             effect = Decimal(str(eff))
-            activity = _direct_activity(a)
+            activity = _activity_bucket(a)
             if activity == 'investing':
                 inv_by_acct[a.id] = (a, effect)
             elif activity == 'financing':
@@ -481,8 +482,7 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
     # depreciation among 11x accounts, so they do not qualify.)
     noncash = []
     invfin_ids = [a.id for a in accounts
-                  if ((a.code or '').startswith('11') and not _is_depreciation_name(a))
-                  or (a.code or '').startswith('21') or (a.code or '').startswith('30')]
+                  if _activity_bucket(a) in ('investing', 'financing')]
     if invfin_ids:
         cash_je_set = set()
         if cash_ids:
