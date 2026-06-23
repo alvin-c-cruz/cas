@@ -252,6 +252,72 @@ def test_post_invoice_je_line_order(db_session, customer, revenue_account, branc
     assert je.is_balanced
 
 
+def test_create_error_preserves_customer_and_line_items(client, db_session, accountant_user, customer, revenue_account, branch):
+    """A failed save (blank line description) must re-render WITH the user's customer and
+    line items intact — not a blank form forcing full re-entry."""
+    import json as _json
+    import re
+    from app.accounts.models import Account
+    if not Account.query.filter_by(code='10201').first():
+        db_session.add(Account(code='10201', name='AR - Trade', account_type='Asset',
+                               normal_balance='debit', is_active=True))
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+
+    bad_line = {'description': '', 'amount': '1000.00', 'vat_category': '',
+                'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
+    resp = client.post('/sales-invoices/create', data={
+        'invoice_number': 'SI-ERR-01',
+        'invoice_date': '2026-06-14',
+        'due_date': '2026-07-14',
+        'customer_id': str(customer.id),
+        'payment_terms': 'Net 30',
+        'notes': 'x',
+        'line_items': _json.dumps([bad_line]),
+    })
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200                                  # re-render, not redirect
+    assert 'Each line item must have a description.' in body        # user is notified
+    # line items survive: the row-seed must carry the submitted line (with its amount)
+    assert 'existingItems' in body and '1000' in body
+    # customer survives: its option is re-selected (not reset to the placeholder)
+    assert re.search(r'value="%d"[^>]*selected' % customer.id, body) is not None
+
+
+def test_edit_error_preserves_submitted_line_items(client, db_session, accountant_user, customer, revenue_account, branch):
+    """A failed edit must re-render with the user's SUBMITTED line edits, not revert to the saved lines."""
+    import json as _json
+    inv = _make_draft_invoice(db_session, customer, revenue_account, branch, accountant_user)
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+
+    # User changes the amount to a distinctive value but blanks the description -> validation fails.
+    bad_line = {'description': '', 'amount': '777777.00', 'vat_category': '',
+                'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
+    resp = client.post(f'/sales-invoices/{inv.id}/edit', data={
+        'invoice_number': inv.invoice_number,
+        'invoice_date': '2026-06-14',
+        'due_date': '2026-07-14',
+        'customer_id': str(customer.id),
+        'payment_terms': 'Net 30',
+        'notes': 'x',
+        'line_items': _json.dumps([bad_line]),
+    })
+    body = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert 'Each line item must have a description.' in body
+    # The submitted edit (777777) survives — not reverted to the saved line.
+    assert 'existingItems' in body and '777777' in body
+
+
 def test_create_invoice_posts_to_books(client, db_session, accountant_user, customer, revenue_account, branch):
     """Creating an SV saves draft JE and audit log entry."""
     from app.accounts.models import Account

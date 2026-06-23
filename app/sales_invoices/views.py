@@ -624,7 +624,7 @@ def create():
             return render_template('sales_invoices/form.html', form=form, invoice=None,
                                    vat_categories=_vat_categories_for_form(),
                                    all_accounts=_get_all_accounts_for_select(),
-                                   line_items=[],
+                                   line_items=_submitted_line_items(),
                                    gl_accounts=_gl_accounts_dict(),
                                    wht_codes=_wht_codes_for_form(),
                                    customer_quick_add_form=build_customer_quick_add_form(),
@@ -636,6 +636,7 @@ def create():
                 return render_template('sales_invoices/form.html', form=form, invoice=None,
                                        vat_categories=_vat_categories_for_form(),
                                        all_accounts=_get_all_accounts_for_select(),
+                                       line_items=_submitted_line_items(),
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form(),
@@ -647,7 +648,7 @@ def create():
                 return render_template('sales_invoices/form.html', form=form, invoice=None,
                                        vat_categories=_vat_categories_for_form(),
                                        all_accounts=_get_all_accounts_for_select(),
-                                       line_items=[],
+                                       line_items=_submitted_line_items(),
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form(),
@@ -715,7 +716,7 @@ def create():
     return render_template('sales_invoices/form.html', form=form, invoice=None,
                            vat_categories=_vat_categories_for_form(),
                            all_accounts=_get_all_accounts_for_select(),
-                           line_items=[],
+                           line_items=_submitted_line_items(),
                            gl_accounts=_gl_accounts_dict(),
                            wht_codes=_wht_codes_for_form(),
                            customer_quick_add_form=build_customer_quick_add_form(),
@@ -738,12 +739,17 @@ def edit(id):
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
     form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
 
+    # On a failed POST, re-render with the user's SUBMITTED line items (preserve their edits);
+    # on a GET, show the saved line items.
+    restore_items = (_submitted_line_items() if request.method == 'POST'
+                     else [item.to_dict() for item in invoice.line_items])
+
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.invoice_date.data, 'Sales Invoice'):
             return render_template('sales_invoices/form.html', form=form, invoice=invoice,
                                    vat_categories=_vat_categories_for_form(),
                                    all_accounts=_get_all_accounts_for_select(),
-                                   line_items=[item.to_dict() for item in invoice.line_items],
+                                   line_items=restore_items,
                                    gl_accounts=_gl_accounts_dict(),
                                    wht_codes=_wht_codes_for_form(),
                                    customer_quick_add_form=build_customer_quick_add_form(),
@@ -759,7 +765,7 @@ def edit(id):
                 return render_template('sales_invoices/form.html', form=form, invoice=invoice,
                                        vat_categories=_vat_categories_for_form(),
                                        all_accounts=_get_all_accounts_for_select(),
-                                       line_items=[item.to_dict() for item in invoice.line_items],
+                                       line_items=restore_items,
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form(),
@@ -771,7 +777,7 @@ def edit(id):
                 return render_template('sales_invoices/form.html', form=form, invoice=invoice,
                                        vat_categories=_vat_categories_for_form(),
                                        all_accounts=_get_all_accounts_for_select(),
-                                       line_items=[item.to_dict() for item in invoice.line_items],
+                                       line_items=restore_items,
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form(),
@@ -842,7 +848,7 @@ def edit(id):
     return render_template('sales_invoices/form.html', form=form, invoice=invoice,
                            vat_categories=_vat_categories_for_form(),
                            all_accounts=_get_all_accounts_for_select(),
-                           line_items=[item.to_dict() for item in invoice.line_items],
+                           line_items=restore_items,
                            gl_accounts=_gl_accounts_dict(),
                            wht_codes=_wht_codes_for_form(),
                            customer_quick_add_form=build_customer_quick_add_form(),
@@ -902,6 +908,15 @@ def _line_items_error(line_items_json):
         return 'Enter an amount greater than zero on at least one line item.'
 
     return None
+
+
+def _submitted_line_items():
+    """Submitted line items (parsed) for re-rendering a failed POST without losing them.
+    Returns [] when there is no submitted payload (e.g. a GET request)."""
+    try:
+        return json.loads(request.form.get('line_items') or '[]')
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=False):

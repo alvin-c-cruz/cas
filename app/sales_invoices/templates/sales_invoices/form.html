@@ -49,7 +49,8 @@
                                 {% for choice in form.customer_id.choices %}
                                 <option value="{{ choice[0] }}"
                                     {% if invoice and invoice.customer_id == choice[0] %}selected{% endif %}
-                                    {% if not invoice and choice[0] == 0 %}selected{% endif %}>
+                                    {% if not invoice and line_items and form.customer_id.data == choice[0] %}selected{% endif %}
+                                    {% if not invoice and not line_items and choice[0] == 0 %}selected{% endif %}>
                                     {{ choice[1] }}
                                 </option>
                                 {% endfor %}
@@ -71,7 +72,7 @@
             </div>
 
             <!-- ── Line Items Locked Placeholder (create only) ── -->
-            <div id="lineItemsLocked" class="line-items-locked{% if invoice %} line-items-locked--hidden{% endif %}">
+            <div id="lineItemsLocked" class="line-items-locked{% if invoice or line_items %} line-items-locked--hidden{% endif %}">
                 <div style="font-size: 28px; margin-bottom: 10px;">&#128274;</div>
                 <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
                     Select a customer above to add line items
@@ -79,7 +80,7 @@
             </div>
 
             <!-- ── Line Items Section (hidden on create, visible on edit) ── -->
-            <div id="lineItemsSection" style="margin-top: 24px;{% if not invoice %}display:none;{% endif %}">
+            <div id="lineItemsSection" style="margin-top: 24px;{% if not invoice and not line_items %}display:none;{% endif %}">
                 <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 12px;">Line Items</h3>
 
                 <table class="table" id="lineItemsTable">
