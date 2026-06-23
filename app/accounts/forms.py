@@ -1,6 +1,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, SelectField, TextAreaField, HiddenField
 from wtforms.validators import DataRequired, Length, Optional
+from app.accounts.account_types import ACCOUNT_TYPES, CLASSIFICATIONS
 
 class AccountForm(FlaskForm):
     """Form for creating and editing accounts"""
@@ -15,25 +16,14 @@ class AccountForm(FlaskForm):
 
     account_type = SelectField('Account Type',
                               validators=[DataRequired()],
-                              choices=[
-                                  ('', 'Select Type'),
-                                  ('Asset', 'Asset'),
-                                  ('Liability', 'Liability'),
-                                  ('Equity', 'Equity'),
-                                  ('Revenue', 'Revenue'),
-                                  ('Expense', 'Expense')
-                              ])
+                              choices=[('', 'Select Type')] + [(t, t) for t in ACCOUNT_TYPES])
 
     classification = SelectField('Classification',
                                 validators=[Optional()],
-                                choices=[
-                                    ('', 'None'),
-                                    ('Current', 'Current'),
-                                    ('Non-Current', 'Non-Current')
-                                ])
+                                choices=[('', '—')] + [(c, c) for c in CLASSIFICATIONS])
 
     normal_balance = SelectField('Normal Balance',
-                                validators=[DataRequired()],
+                                validators=[Optional()],
                                 choices=[
                                     ('', 'Select'),
                                     ('debit', 'Debit'),

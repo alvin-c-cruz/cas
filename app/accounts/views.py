@@ -5,6 +5,7 @@ from app import db
 from app.accounts.models import Account
 from app.accounts.approval_models import AccountChangeRequest
 from app.accounts.forms import AccountForm
+from app.accounts.account_types import TYPES_NEEDING_CLASSIFICATION, DEFAULT_NORMAL_BALANCE
 from app.users.models import User
 from app.utils import ph_now
 from app.audit.utils import log_audit
@@ -168,7 +169,8 @@ def create():
         try:
             # Determine inherited fields based on parent
             account_type = form.account_type.data
-            normal_balance = form.normal_balance.data
+            # Default normal_balance from account type when not explicitly supplied
+            normal_balance = form.normal_balance.data or DEFAULT_NORMAL_BALANCE.get(account_type, 'debit')
             classification = None
 
             if form.parent_id.data:
@@ -181,6 +183,10 @@ def create():
             else:
                 # Parent account - use form data
                 classification = form.classification.data if form.classification.data else None
+                # Require classification for Asset and Liability types
+                if account_type in TYPES_NEEDING_CLASSIFICATION and not classification:
+                    flash('Classification (Current or Non-Current) is required for Asset and Liability accounts.', 'error')
+                    return render_template('accounts/form.html', form=form, account=None)
 
             # Prepare change data
             change_data = {
@@ -346,8 +352,13 @@ def edit(id):
             else:
                 # Parent account - use form data
                 account_type = form.account_type.data
-                normal_balance = form.normal_balance.data
+                # Default normal_balance from account type when not explicitly supplied
+                normal_balance = form.normal_balance.data or DEFAULT_NORMAL_BALANCE.get(account_type, account.normal_balance)
                 classification = form.classification.data if form.classification.data else None
+                # Require classification for Asset and Liability types
+                if account_type in TYPES_NEEDING_CLASSIFICATION and not classification:
+                    flash('Classification (Current or Non-Current) is required for Asset and Liability accounts.', 'error')
+                    return render_template('accounts/form.html', form=form, account=account)
 
             # Prepare change data (only changed fields)
             change_data = {
