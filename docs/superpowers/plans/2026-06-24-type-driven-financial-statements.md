@@ -952,7 +952,7 @@ Create `scripts/retype_manufacturing_coa.py` defining `TYPE_BY_CODE` and `CLASS_
 - [ ] **Step 4: Run test + execute the script**
 
 Run: `python -m pytest tests/unit/test_manufacturing_coa_types.py -q -o addopts=""` → PASS.
-Then (current DB only): `PYTHONPATH=. python scripts/retype_manufacturing_coa.py` and confirm the printed summary: 136 accounts, every account_type in the taxonomy, all Assets/Liabilities classified, the three generators return without exception.
+Then (current DB only): `PYTHONPATH=. python scripts/retype_manufacturing_coa.py` and confirm the printed summary: 146 accounts, every account_type in the taxonomy, all Assets/Liabilities classified, the three generators return without exception.
 
 - [ ] **Step 5: Commit**
 
