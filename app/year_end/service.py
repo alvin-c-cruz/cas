@@ -6,7 +6,7 @@ from sqlalchemy import func
 from app import db
 from app.accounts.models import Account
 from app.journal_entries.models import JournalEntry, JournalEntryLine
-from app.reports.financial import _pl_role
+from app.accounts.account_types import BASE_CATEGORY, IS_TYPES
 from app.year_end.models import FiscalYearClose
 
 RETAINED_EARNINGS_CODE = '30201'
@@ -33,11 +33,10 @@ def nominal_balances(year, branch_id):
     year_end = date(year, 12, 31)
     out = {'revenue': [], 'expense': []}
     for a in Account.query.order_by(Account.code).all():
-        role = _pl_role(a)
-        if role is None:
+        if a.account_type not in IS_TYPES:
             continue
         d, c = _posted_sums(a.id, year_end, branch_id)
-        if role == 'revenue':
+        if BASE_CATEGORY.get(a.account_type) == 'Revenue':
             bal = c - d
             if bal != 0:
                 out['revenue'].append((a, bal))

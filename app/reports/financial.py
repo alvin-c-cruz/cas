@@ -16,6 +16,8 @@ from decimal import Decimal
 from app import db
 from app.accounts.models import Account
 from app.journal_entries.models import JournalEntry, JournalEntryLine
+from app.reports.sections import IS_SECTIONS, BS_SECTIONS, rollup
+from app.accounts.account_types import BASE_CATEGORY, DEFAULT_NORMAL_BALANCE
 
 
 def generate_trial_balance(as_of_date=None, branch_id=None):
@@ -104,104 +106,65 @@ def generate_trial_balance(as_of_date=None, branch_id=None):
     }
 
 
-# P&L sections in statement order. Roles are assigned by account_type + code prefix,
-# extending the existing 4%/5% convention (the COA `classification` field is unused/empty):
-#   4xxxx -> revenue; 501 -> cost of sales; 503 -> financial; 504 -> income tax;
-#   any other expense (502, etc.) -> operating expenses.
-_PL_ROLES = ['revenue', 'cost_of_sales', 'operating_expenses', 'financial', 'income_tax']
-_PL_DEFAULT_LABEL = {
-    'revenue': 'Revenue',
-    'cost_of_sales': 'Cost of Sales',
-    'operating_expenses': 'Operating Expenses',
-    'financial': 'Financial Expenses',
-    'income_tax': 'Income Tax Expense',
-}
-
-
-def _pl_role(account):
-    """Classify an account into a P&L role by account_type + code prefix, or None."""
-    code = account.code or ''
-    if account.account_type == 'Revenue' or code.startswith('4'):
-        return 'revenue'
-    if account.account_type == 'Expense' or code.startswith('5'):
-        if code.startswith('501'):
-            return 'cost_of_sales'
-        if code.startswith('503'):
-            return 'financial'
-        if code.startswith('504'):
-            return 'income_tax'
-        return 'operating_expenses'   # 502 + any other expense
-    return None
+def _period_balance(account_id, start_date, end_date, branch_id):
+    branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
+    d, c = db.session.query(
+        func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
+        func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
+    ).join(JournalEntry).filter(
+        JournalEntry.status == 'posted',
+        JournalEntry.entry_type.notin_(['closing', 'closing_reversal']),
+        JournalEntry.entry_date >= start_date,
+        JournalEntry.entry_date <= end_date,
+        JournalEntryLine.account_id == account_id,
+        *branch_filter
+    ).one()
+    return Decimal(str(d)), Decimal(str(c))
 
 
 def generate_income_statement(start_date, end_date, branch_id=None):
-    """Hierarchical Income Statement (P&L) for a period.
+    """Hierarchical, type-driven Income Statement for a period.
 
-    Groups revenue/expense accounts into P&L sections (revenue, cost of sales,
-    operating expenses, financial, income tax) by the parent-account hierarchy /
-    code prefix, and computes Gross Profit, Operating Income, Income Before Tax,
-    and Net Income. Each section carries its postable child accounts (non-zero
-    activity only) and a total. Returns floats for template/export consumption.
+    Sections and their subtotal chain come from IS_SECTIONS; each account's
+    placement is its account_type. Revenue-natured types are credit-positive,
+    everything else debit-positive. Returns floats for template/export use.
+    'net_income' key/semantics preserved (Balance Sheet + Year-End depend on it).
     """
     accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-
-    # Section label per role = the top-level parent group's name for that role.
-    labels = dict(_PL_DEFAULT_LABEL)
+    by_type = {}
     for a in accounts:
-        if a.parent_id is None:
-            role = _pl_role(a)
-            if role in labels:
-                labels[role] = a.name
+        by_type.setdefault(a.account_type, []).append(a)
 
-    branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-    buckets = {k: [] for k in _PL_ROLES}
-    for a in accounts:
-        role = _pl_role(a)
-        if role is None:
-            continue
-        debit_sum, credit_sum = db.session.query(
-            func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
-            func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
-        ).join(JournalEntry).filter(
-            JournalEntry.status == 'posted',
-            JournalEntry.entry_type.notin_(['closing', 'closing_reversal']),
-            JournalEntry.entry_date >= start_date,
-            JournalEntry.entry_date <= end_date,
-            JournalEntryLine.account_id == a.id,
-            *branch_filter
-        ).one()
-        debit = Decimal(str(debit_sum))
-        credit = Decimal(str(credit_sum))
-        amount = (credit - debit) if role == 'revenue' else (debit - credit)
-        if amount != 0:
-            buckets[role].append({'code': a.code, 'name': a.name, 'amount': float(amount)})
+    def amount(a):
+        d, c = _period_balance(a.id, start_date, end_date, branch_id)
+        return float((c - d) if DEFAULT_NORMAL_BALANCE.get(a.account_type) == 'credit' else (d - c))
 
-    totals = {k: sum((Decimal(str(x['amount'])) for x in buckets[k]), Decimal('0.00'))
-              for k in _PL_ROLES}
-
-    sections = [{
-        'key': k,
-        'label': labels[k],
-        'deduction': (k != 'revenue'),
-        'total': float(totals[k]),
-        'accounts': buckets[k],
-    } for k in _PL_ROLES]
-
-    revenue = totals['revenue']
-    gross_profit = revenue - totals['cost_of_sales']
-    operating_income = gross_profit - totals['operating_expenses']
-    income_before_tax = operating_income - totals['financial']
-    net_income = income_before_tax - totals['income_tax']
+    sections, running, subtotals = [], Decimal('0.00'), {}
+    for spec in IS_SECTIONS:
+        rows = []
+        sec_total = Decimal('0.00')
+        for t in spec['types']:
+            for a in by_type.get(t, []):
+                amt = amount(a)
+                if amt != 0:
+                    rows.append({'account_id': a.id, 'code': a.code, 'name': a.name, 'amount': amt})
+                    sec_total += Decimal(str(amt))
+        running += spec['sign'] * sec_total
+        section = {'key': spec['key'], 'label': spec['label'], 'sign': spec['sign'],
+                   'total': float(sec_total), 'lines': rollup(rows, accounts)}
+        if spec['subtotal']:
+            section['subtotal_label'] = spec['subtotal']
+            section['subtotal'] = float(running)
+            subtotals[spec['subtotal']] = float(running)
+        sections.append(section)
 
     return {
-        'period_start': start_date,
-        'period_end': end_date,
-        'sections': sections,
-        'gross_profit': float(gross_profit),
-        'operating_income': float(operating_income),
-        'income_before_tax': float(income_before_tax),
-        'net_income': float(net_income),
-        'net_income_percentage': float((net_income / revenue * 100) if revenue > 0 else 0),
+        'period_start': start_date, 'period_end': end_date, 'sections': sections,
+        'net_sales': subtotals.get('Net Sales', 0.0),
+        'gross_profit': subtotals.get('Gross Profit', 0.0),
+        'operating_income': subtotals.get('Operating Income', 0.0),
+        'income_before_tax': subtotals.get('Income Before Tax', 0.0),
+        'net_income': subtotals.get('Net Income', 0.0),
     }
 
 
