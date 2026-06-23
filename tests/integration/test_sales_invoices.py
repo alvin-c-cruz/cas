@@ -336,6 +336,35 @@ def test_create_error_flash_shown_once(client, db_session, accountant_user, cust
     assert body.count('Each line item must have a description.') == 1
 
 
+def test_create_invoice_notes_optional(client, db_session, accountant_user, customer, revenue_account, branch):
+    """Notes is optional for SI: a valid invoice saves with notes omitted entirely."""
+    import json as _json
+    from app.accounts.models import Account
+    from app.sales_invoices.models import SalesInvoice
+    for code, name, typ, nb in [('10201', 'AR - Trade', 'Asset', 'debit'),
+                                ('20201', 'Output VAT', 'Liability', 'credit')]:
+        if not Account.query.filter_by(code=code).first():
+            db_session.add(Account(code=code, name=name, account_type=typ, normal_balance=nb, is_active=True))
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+
+    line = {'description': 'Service', 'amount': '5000.00', 'vat_category': '',
+            'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
+    resp = client.post('/sales-invoices/create', data={
+        'invoice_number': 'SI-NONOTES-01', 'invoice_date': '2026-06-14', 'due_date': '2026-07-14',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 30',
+        # notes intentionally omitted
+        'line_items': _json.dumps([line]),
+    }, follow_redirects=False)
+
+    assert resp.status_code == 302  # saved (redirect), not re-rendered with a validation error
+    inv = SalesInvoice.query.filter_by(invoice_number='SI-NONOTES-01').first()
+    assert inv is not None and inv.notes == ''
+
+
 def test_create_invoice_posts_to_books(client, db_session, accountant_user, customer, revenue_account, branch):
     """Creating an SV saves draft JE and audit log entry."""
     from app.accounts.models import Account
