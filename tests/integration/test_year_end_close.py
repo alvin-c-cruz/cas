@@ -34,7 +34,7 @@ def _world(branch_id):
     isum = _acct('30301', 'Current-Year Earnings', 'Equity', 'credit')
     cash = _acct('10101', 'Cash', 'Asset', 'debit')
     rev = _acct('40001', 'Service Revenue', 'Revenue', 'credit')
-    exp = _acct('50201', 'Rent Expense', 'Expense', 'debit')
+    exp = _acct('50201', 'Rent Expense', 'Administrative Expense', 'debit')
     # 2025 profit = 1000 revenue - 300 expense = 700
     _posted_je(branch_id, date(2025, 3, 1), [(cash.id, 1000, 0), (rev.id, 0, 1000)])
     _posted_je(branch_id, date(2025, 4, 1), [(exp.id, 300, 0), (cash.id, 0, 300)])

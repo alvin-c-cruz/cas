@@ -32,7 +32,7 @@ def _posted_je(branch_id, when, lines):
 def test_nominal_balances_splits_revenue_and_expense(db_session, main_branch):
     from app.year_end import service
     rev = _acct('40001', 'Service Revenue', 'Revenue', 'credit')
-    exp = _acct('50201', 'Rent Expense', 'Expense', 'debit')
+    exp = _acct('50201', 'Rent Expense', 'Administrative Expense', 'debit')
     # a sale: Dr cash 1000 / Cr revenue 1000 ; an expense: Dr rent 300 / Cr cash 300
     cash = _acct('10101', 'Cash', 'Asset', 'debit')
     _posted_je(main_branch.id, date(2025, 3, 1), [(cash.id, 1000, 0), (rev.id, 0, 1000)])
