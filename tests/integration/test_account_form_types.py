@@ -40,7 +40,8 @@ def test_create_cogs_account(client, db_session, accountant_user, main_branch):
 
 
 def test_asset_requires_classification(client, db_session, accountant_user, main_branch):
-    """Asset without classification is rejected; no Account row created."""
+    """Asset without classification is rejected; no Account row created and flash shown."""
+    import html
     accountant_user.add_branch(main_branch)
     login(client)
     resp = client.post('/accounts/create', data={
@@ -52,6 +53,8 @@ def test_asset_requires_classification(client, db_session, accountant_user, main
     }, follow_redirects=True)
     # Should re-render (200) with an error flash; no Account row created
     assert Account.query.filter_by(code='10199').first() is None
+    body = html.unescape(resp.data.decode())
+    assert 'Classification (Current or Non-Current) is required for Asset and Liability accounts.' in body
 
 
 def test_asset_with_classification_persists(client, db_session, accountant_user, main_branch):
@@ -69,3 +72,41 @@ def test_asset_with_classification_persists(client, db_session, accountant_user,
     assert a is not None, "Account row not created"
     assert a.classification == 'Current'
     assert a.normal_balance == 'debit'   # Asset defaults to debit
+
+
+def test_edit_asset_without_classification_rejected(client, db_session, accountant_user, main_branch):
+    """Edit route: submitting Asset with blank classification is rejected; existing value unchanged."""
+    import html
+    accountant_user.add_branch(main_branch)
+    login(client)
+
+    # First create a valid Asset account (auto-approved as sole accountant)
+    client.post('/accounts/create', data={
+        'code': '10201',
+        'name': 'Test Asset Account',
+        'account_type': 'Asset',
+        'classification': 'Current',
+        'description': '',
+    }, follow_redirects=True)
+    account = Account.query.filter_by(code='10201').first()
+    assert account is not None, "Setup failed: Asset account not created"
+    assert account.classification == 'Current'
+
+    # Now POST to edit route with no classification — should be rejected
+    resp = client.post(f'/accounts/{account.id}/edit', data={
+        'code': '10201',
+        'name': 'Test Asset Account',
+        'account_type': 'Asset',
+        'classification': '',
+        'description': '',
+        'request_reason': 'testing edit guard',
+    }, follow_redirects=True)
+
+    assert resp.status_code == 200
+    body = html.unescape(resp.data.decode())
+    assert 'Classification (Current or Non-Current) is required for Asset and Liability accounts.' in body
+
+    # Classification must remain unchanged
+    from app import db
+    db.session.refresh(account)
+    assert account.classification == 'Current', "Classification was incorrectly blanked on edit"
