@@ -168,49 +168,20 @@ def generate_income_statement(start_date, end_date, branch_id=None):
     }
 
 
-# Balance Sheet categories: (key, label, code prefix, credit-normal?)
-_BS_CATEGORIES = [
-    ('assets', 'ASSETS', '1', False),
-    ('liabilities', 'LIABILITIES', '2', True),
-    ('equity', 'EQUITY', '3', True),
-]
-
-
 def generate_balance_sheet(as_of_date=None, branch_id=None):
-    """Classified Balance Sheet as of a date, grouped by the parent-account hierarchy.
-
-    Each category (Assets / Liabilities / Equity) lists its top-level parent groups
-    (e.g. Current Assets, Non-Current Assets), each with its postable child accounts
-    (non-zero balances only) and a group total. Net Income (YTD) is added to Equity.
-    Returns floats for template/export consumption; verifies Assets = Liabilities + Equity.
-    """
+    """Classified, type-driven Balance Sheet. Assets/Liabilities split into
+    Current/Non-Current by classification; Equity carries Retained Earnings +
+    current-year Net Income. Verifies Assets = Liabilities + Equity."""
     if as_of_date is None:
         as_of_date = date.today()
-
     accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    children_of = {}
+    by_type = {}
     for a in accounts:
-        children_of.setdefault(a.parent_id, []).append(a)
+        by_type.setdefault(a.account_type, []).append(a)
 
-    def leaves(group):
-        kids = children_of.get(group.id, [])
-        if not kids:
-            # top-level account with no children is itself a postable leaf
-            return [group]
-        out, stack = [], list(kids)
-        while stack:
-            n = stack.pop()
-            grandkids = children_of.get(n.id, [])
-            if grandkids:
-                stack.extend(grandkids)
-            else:
-                out.append(n)
-        return sorted(out, key=lambda x: x.code or '')
-
-    branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
-
-    def balance(account_id, credit_positive):
-        debit_sum, credit_sum = db.session.query(
+    def bal(account_id, credit_positive):
+        branch_filter = [JournalEntry.branch_id == branch_id] if branch_id else []
+        d, c = db.session.query(
             func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
             func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
         ).join(JournalEntry).filter(
@@ -219,68 +190,57 @@ def generate_balance_sheet(as_of_date=None, branch_id=None):
             JournalEntryLine.account_id == account_id,
             *branch_filter
         ).one()
-        d, c = Decimal(str(debit_sum)), Decimal(str(credit_sum))
+        d, c = Decimal(str(d)), Decimal(str(c))
         return (c - d) if credit_positive else (d - c)
 
-    sections = []
-    totals = {}
-    for key, label, prefix, credit_positive in _BS_CATEGORIES:
-        top_groups = sorted(
-            (a for a in accounts if a.parent_id is None and (a.code or '').startswith(prefix)),
-            key=lambda a: a.code or '')
-        groups = []
+    sections, totals = [], {}
+    for spec in BS_SECTIONS:
+        accts = by_type.get(spec['type'], [])
+        divisions = []
         section_total = Decimal('0.00')
-        for g in top_groups:
-            accts = []
-            gtotal = Decimal('0.00')
-            for leaf in leaves(g):
-                bal = balance(leaf.id, credit_positive)
-                if bal != 0:
-                    accts.append({'code': leaf.code, 'name': leaf.name, 'amount': float(bal)})
-                    gtotal += bal
-            if accts:
-                groups.append({'label': (g.name or '').title(), 'total': float(gtotal),
-                               'accounts': accts})
-                section_total += gtotal
-        totals[key] = section_total
-        sections.append({'key': key, 'label': label, 'total': float(section_total), 'groups': groups})
+        groups_for = spec['divisions'] or [None]
+        for div in groups_for:
+            rows = []
+            div_total = Decimal('0.00')
+            for a in accts:
+                if div is not None and a.classification != div:
+                    continue
+                amt = bal(a.id, spec['credit_positive'])
+                if amt != 0:
+                    rows.append({'account_id': a.id, 'code': a.code, 'name': a.name, 'amount': float(amt)})
+                    div_total += amt
+            label = f'{div} {spec["label"].title()}' if div else spec['label'].title()
+            divisions.append({'label': label, 'total': float(div_total), 'lines': rollup(rows, accounts)})
+            section_total += div_total
+        totals[spec['key']] = section_total
+        sections.append({'key': spec['key'], 'label': spec['label'],
+                         'total': float(section_total), 'divisions': divisions})
 
-    # Net Income for the OPEN (not-yet-closed) span is added to Equity as a computed line.
-    # Closed years are already in the ledger as posted Retained Earnings (account 30201),
-    # captured by the normal equity-account loop above — so we must NOT recompute them.
+    # Net income for the open span added to Equity (unchanged policy)
     from app.year_end.service import latest_closed_year_end
     last_close = latest_closed_year_end(branch_id)
     open_start = date(last_close.year + 1, 1, 1) if last_close else date(1900, 1, 1)
-    ni_current = Decimal(str(
-        generate_income_statement(open_start, as_of_date, branch_id=branch_id)['net_income']))
-
-    extra = []
-    if ni_current != 0:
-        extra.append({'code': '', 'name': 'Net Income (current year)', 'amount': float(ni_current)})
-    added = ni_current
-
+    ni = Decimal(str(generate_income_statement(open_start, as_of_date, branch_id=branch_id)['net_income']))
     equity = next(s for s in sections if s['key'] == 'equity')
-    if equity['groups']:
-        grp = equity['groups'][0]
-        grp['accounts'].extend(extra)
-        grp['total'] = float(Decimal(str(grp['total'])) + added)
-    elif extra:
-        equity['groups'].append({'label': 'Equity', 'total': float(added), 'accounts': extra})
-    equity['total'] = float(Decimal(str(equity['total'])) + added)
-    totals['equity'] += added
+    if ni != 0:
+        eded = equity['divisions'][0] if equity['divisions'] else None
+        line = {'code': '', 'name': 'Net Income (current year)', 'account_id': None,
+                'total': float(ni), 'children': []}
+        if eded:
+            eded['lines'].append(line); eded['total'] = float(Decimal(str(eded['total'])) + ni)
+        else:
+            equity['divisions'].append({'label': 'Equity', 'total': float(ni), 'lines': [line]})
+        equity['total'] = float(Decimal(str(equity['total'])) + ni)
+        totals['equity'] += ni
 
     tle = totals['liabilities'] + totals['equity']
     diff = abs(totals['assets'] - tle)
-    return {
-        'as_of_date': as_of_date,
-        'sections': sections,
-        'total_assets': float(totals['assets']),
-        'total_liabilities': float(totals['liabilities']),
-        'total_equity': float(totals['equity']),
-        'total_liabilities_equity': float(tle),
-        'is_balanced': bool(diff < Decimal('0.01')),
-        'difference': float(diff),
-    }
+    return {'as_of_date': as_of_date, 'sections': sections,
+            'total_assets': float(totals['assets']),
+            'total_liabilities': float(totals['liabilities']),
+            'total_equity': float(totals['equity']),
+            'total_liabilities_equity': float(tle),
+            'is_balanced': bool(diff < Decimal('0.01')), 'difference': float(diff)}
 
 
 def _is_cash(account):

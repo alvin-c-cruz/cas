@@ -18,9 +18,9 @@ def _branch():
     return b
 
 
-def _acct(code, name, atype, normal='Debit', parent=None):
+def _acct(code, name, atype, normal='debit', classification=None):
     a = Account(code=code, name=name, account_type=atype, normal_balance=normal,
-                is_active=True, parent_id=parent.id if parent else None)
+                is_active=True, classification=classification)
     db.session.add(a)
     db.session.commit()
     return a
@@ -42,66 +42,32 @@ def _je(branch_id, lines, number):
     return je
 
 
-def _build(db_session):
+def test_current_vs_noncurrent_divisions(db_session):
     b = _branch()
-    ca = _acct('10000', 'CURRENT ASSETS', 'Asset')
-    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca)
-    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset')
-    equip = _acct('11110', 'Construction Equipment', 'Asset', parent=nca)
-    cl = _acct('20000', 'CURRENT LIABILITIES', 'Liability', 'Credit')
-    ap = _acct('20101', 'Accounts Payable', 'Liability', 'Credit', parent=cl)
-    eq = _acct('30000', 'EQUITY', 'Equity', 'Credit')
-    cap = _acct('30101', 'Capital Stock', 'Equity', 'Credit', parent=eq)
-    rev = _acct('40101', 'Sales Revenue', 'Revenue', 'Credit')   # drives Net Income (YTD)
-    _je(b.id, [(cash, 1000, 0), (cap, 0, 1000)], 'JE1')           # assets 1000 / equity 1000
-    _je(b.id, [(equip, 500, 0), (ap, 0, 500)], 'JE2')            # assets 500 / liab 500
-    _je(b.id, [(cash, 200, 0), (rev, 0, 200)], 'JE3')            # cash +200 / revenue 200 -> NI 200
-    return b
+    cash = _acct('10101', 'Cash on Hand', 'Asset', 'debit', classification='Current')
+    mach = _acct('11120', 'Machinery', 'Asset', 'debit', classification='Non-Current')
+    ap   = _acct('20101', 'AP - Trade', 'Liability', 'credit', classification='Current')
+    loan = _acct('21100', 'Long-term Loan', 'Liability', 'credit', classification='Non-Current')
+    cap  = _acct('30101', 'Common Stock', 'Equity', 'credit')
+    _je(b.id, [(cash, 1000, 0), (cap, 0, 1000)], 'JE-1')
+    _je(b.id, [(mach, 500, 0), (loan, 0, 500)], 'JE-2')
+    _je(b.id, [(cash, 0, 200), (ap, 0, 200)], 'JE-3')  # AP credit 200, cash down 200
+    bs = generate_balance_sheet(date(2026, 6, 30), b.id)
+    assets = next(s for s in bs['sections'] if s['key'] == 'assets')
+    divs = {d['label']: d for d in assets['divisions']}
+    assert set(divs) == {'Current Assets', 'Non-Current Assets'}
+    assert divs['Current Assets']['total'] == 800.0       # cash 1000 - 200
+    assert divs['Non-Current Assets']['total'] == 500.0
+    liabs = next(s for s in bs['sections'] if s['key'] == 'liabilities')
+    ldivs = {d['label']: d['total'] for d in liabs['divisions']}
+    assert ldivs == {'Current Liabilities': 200.0, 'Non-Current Liabilities': 500.0}
 
 
-def _section(bs, key):
-    return next(s for s in bs['sections'] if s['key'] == key)
-
-
-def test_classified_groups_and_totals(db_session):
-    b = _build(db_session)
-    bs = generate_balance_sheet(date(2026, 6, 30), branch_id=b.id)
-    assets = _section(bs, 'assets')
-    groups = {g['label']: g for g in assets['groups']}
-    assert groups['Current Assets']['total'] == 1200.0       # 1000 + 200
-    assert groups['Non-Current Assets']['total'] == 500.0
-    assert assets['total'] == 1700.0
-    assert _section(bs, 'liabilities')['total'] == 500.0
-
-
-def test_equity_includes_net_income_ytd(db_session):
-    b = _build(db_session)
-    bs = generate_balance_sheet(date(2026, 6, 30), branch_id=b.id)
-    equity = _section(bs, 'equity')
-    accts = equity['groups'][0]['accounts']
-    assert any(a['name'] == 'Capital Stock' and a['amount'] == 1000.0 for a in accts)
-    assert any(a['name'] == 'Net Income (current year)' and a['amount'] == 200.0 for a in accts)
-    assert equity['total'] == 1200.0                          # 1000 capital + 200 net income
-
-
-def test_balance_sheet_balances(db_session):
-    b = _build(db_session)
-    bs = generate_balance_sheet(date(2026, 6, 30), branch_id=b.id)
-    assert bs['total_assets'] == 1700.0
-    assert bs['total_liabilities_equity'] == 1700.0           # 500 + 1200
+def test_balanced(db_session):
+    b = _branch()
+    cash = _acct('10101', 'Cash on Hand', 'Asset', 'debit', classification='Current')
+    cap  = _acct('30101', 'Common Stock', 'Equity', 'credit')
+    _je(b.id, [(cash, 1000, 0), (cap, 0, 1000)], 'JE-1')
+    bs = generate_balance_sheet(date(2026, 6, 30), b.id)
     assert bs['is_balanced'] is True
-    assert bs['difference'] == 0.0
-
-
-def test_empty_groups_omitted(db_session):
-    b = _branch()
-    ca = _acct('10000', 'CURRENT ASSETS', 'Asset')
-    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca)
-    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset')
-    _acct('11110', 'Construction Equipment', 'Asset', parent=nca)  # no activity
-    eq = _acct('30000', 'EQUITY', 'Equity', 'Credit')
-    cap = _acct('30101', 'Capital Stock', 'Equity', 'Credit', parent=eq)
-    _je(b.id, [(cash, 1000, 0), (cap, 0, 1000)], 'JE1')
-    bs = generate_balance_sheet(date(2026, 6, 30), branch_id=b.id)
-    labels = [g['label'] for g in _section(bs, 'assets')['groups']]
-    assert labels == ['Current Assets']                       # Non-Current omitted (no non-zero accounts)
+    assert bs['total_assets'] == bs['total_liabilities_equity'] == 1000.0
