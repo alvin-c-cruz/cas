@@ -1199,6 +1199,7 @@
                 </div>
             </div>
 
+            {% if can_access_module(current_user, 'bir_reports') %}
             <!-- BIR Reports Section -->
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="bir-reports">
@@ -1223,6 +1224,7 @@
                     </a>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Maintenance Section (hidden entirely if staff has no maintenance access) -->
             {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') %}
