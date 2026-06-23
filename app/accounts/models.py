@@ -38,3 +38,10 @@ class Account(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
+    @property
+    def base_category(self):
+        """Map the rich account_type back to a legacy base category
+        (Asset/Liability/Equity/Revenue/Expense)."""
+        from app.accounts.account_types import BASE_CATEGORY
+        return BASE_CATEGORY.get(self.account_type, self.account_type)
