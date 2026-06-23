@@ -99,6 +99,19 @@ def can_access_module(user, key):
     return user.get_book_permissions().get(key, False)
 
 
+def can_toggle(key, enable, enabled_keys, registry=MODULE_REGISTRY):
+    """Validate a module toggle against dependencies. Returns (ok, reason)."""
+    entry = next((m for m in registry if m['key'] == key), None)
+    if entry is None:
+        return (False, 'unknown module')
+    if enable:
+        missing = [d for d in entry.get('depends_on', []) if d not in enabled_keys]
+        return (not missing, f"requires {', '.join(missing)}" if missing else '')
+    dependents = [m['key'] for m in registry
+                  if m.get('optional') and key in m.get('depends_on', []) and m['key'] in enabled_keys]
+    return (not dependents, f"in use by {', '.join(dependents)}" if dependents else '')
+
+
 def visible_transactions(user):
     """Transaction registry entries the user may see — used to hide the whole Transactions
     section when a staff user has been granted none of them."""
