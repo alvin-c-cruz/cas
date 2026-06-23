@@ -704,6 +704,93 @@ def cash_flow_print():
                            end_date=end_date, company=company, branch_name=branch_name)
 
 
+@reports_bp.route('/reports/account-ledger')
+@login_required
+def account_ledger_json():
+    """JSON endpoint: per-account ledger for a date range (FS drill-down).
+
+    GET /reports/account-ledger?account_id=<id>&start=<YYYY-MM-DD>&end=<YYYY-MM-DD>
+
+    Returns:
+        {
+            'account': {'code': str, 'name': str},
+            'lines': [{'date', 'source', 'particulars', 'debit', 'credit', 'balance'}],
+            'opening': float,   # signed by normal_balance
+            'closing': float,
+        }
+    Opening/closing are signed by the account's normal_balance:
+        debit-normal  → debit − credit (positive = debit balance)
+        credit-normal → credit − debit (positive = credit balance)
+    """
+    account_id = request.args.get('account_id', type=int)
+    start_str = request.args.get('start', '')
+    end_str = request.args.get('end', '')
+
+    try:
+        start_date = date.fromisoformat(start_str)
+    except (ValueError, TypeError):
+        start_date = date(date.today().year, 1, 1)
+
+    try:
+        end_date = date.fromisoformat(end_str)
+    except (ValueError, TypeError):
+        end_date = date.today()
+
+    if not account_id:
+        return jsonify({'error': 'account_id is required'}), 400
+
+    account = Account.query.get(account_id)
+    if account is None:
+        return jsonify({'error': 'Account not found'}), 404
+
+    branch_id = session.get('selected_branch_id')
+
+    # Reuse generate_general_ledger for the single-account ledger.
+    # When branch_id is None the helper filters branch_id == None (no-branch JEs).
+    # Mirror the GL report's behaviour: pass branch_id from session unchanged.
+    from app.reports.financial import generate_general_ledger
+    ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
+
+    # generate_general_ledger stores opening/running in raw debit-positive form.
+    # Apply normal_balance sign convention so callers get a meaningful balance sign.
+    normal_balance = (account.normal_balance or 'debit').lower()
+    sign = 1 if normal_balance == 'debit' else -1
+
+    acct_data = ledger['accounts'][0] if ledger['accounts'] else None
+    if acct_data is None:
+        # No activity at all for this account in this period.
+        return jsonify({
+            'account': {'code': account.code, 'name': account.name},
+            'lines': [],
+            'opening': 0.0,
+            'closing': 0.0,
+        })
+
+    opening = float(acct_data['opening_balance']) * sign
+
+    lines = []
+    for gl_line in acct_data['lines']:
+        # Derive source label: use display_number (JV/reversal) or reference (auto-posted docs)
+        source = gl_line.get('display_number') or gl_line.get('reference') or gl_line.get('entry_number', '')
+        lines.append({
+            'date': gl_line['entry_date'].isoformat() if hasattr(gl_line['entry_date'], 'isoformat') else str(gl_line['entry_date']),
+            'source': source,
+            'particulars': gl_line.get('description', ''),
+            'debit': gl_line['debit'],
+            'credit': gl_line['credit'],
+            'balance': float(gl_line['running_balance']) * sign,
+        })
+
+    closing = float(acct_data['closing_balance']) * sign
+
+    return jsonify({
+        'account': {'code': account.code, 'name': account.name},
+        'lines': lines,
+        'opening': opening,
+        'closing': closing,
+    })
+
+
 @reports_bp.route('/reports/ap-aging/export/excel')
 @login_required
 def ap_aging_export_excel():
