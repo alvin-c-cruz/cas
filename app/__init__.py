@@ -396,17 +396,23 @@ def create_app(config_name=None):
     def enforce_module_access():
         """Block staff users from modules they have not been granted (book_permissions).
         Admin/accountant/viewer are never gated here (staff-only). Nav hiding alone is not
-        access control — this is the server-side half."""
-        from flask import redirect, url_for, request, flash
+        access control — this is the server-side half.
+
+        Optional modules disabled at the instance level return 404 for ALL roles (including
+        admin) so that the route appears to not exist for this deployment package."""
+        from flask import redirect, url_for, request, flash, abort
         from flask_login import current_user
-        from app.users.module_access import module_key_for_endpoint, can_access_module
+        from app.users.module_access import module_key_for_endpoint, can_access_module, module_enabled
 
         if request.endpoint is None or not current_user.is_authenticated:
             return
         key = module_key_for_endpoint(request.endpoint)
-        if key and not can_access_module(current_user, key):
-            flash('You do not have access to this module.', 'error')
-            return redirect(url_for('dashboard.index'))
+        if key:
+            if not module_enabled(key):
+                abort(404)   # module not part of this instance's package
+            if not can_access_module(current_user, key):
+                flash('You do not have access to this module.', 'error')
+                return redirect(url_for('dashboard.index'))
 
     @app.after_request
     def add_security_headers(response):
