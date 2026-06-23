@@ -365,6 +365,74 @@ def test_create_invoice_notes_optional(client, db_session, accountant_user, cust
     assert inv is not None and inv.notes == ''
 
 
+def test_attachment_lifecycle(client, db_session, accountant_user, customer, revenue_account, branch, tmp_path):
+    """SI attachments: upload (draft-only, whitelisted) -> download -> delete; bad type +
+    posted-status uploads are rejected; audit row written."""
+    import io, os
+    from app.sales_invoices.models import SalesInvoiceAttachment
+    from app.audit.models import AuditLog
+    client.application.config['UPLOAD_FOLDER'] = str(tmp_path)
+
+    inv = _make_draft_invoice(db_session, customer, revenue_account, branch, accountant_user)
+    db_session.commit()
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+
+    # 1. valid upload
+    resp = client.post(f'/sales-invoices/{inv.id}/attachments/upload',
+                       data={'attachment': (io.BytesIO(b'hello world'), 'proof.txt')},
+                       content_type='multipart/form-data')
+    assert resp.status_code == 302
+    att = SalesInvoiceAttachment.query.filter_by(invoice_id=inv.id).first()
+    assert att is not None
+    assert att.original_filename == 'proof.txt' and att.mime_type == 'text/plain'
+    assert att.file_size == len(b'hello world')
+    stored = os.path.join(str(tmp_path), 'sales_invoices', str(inv.id), att.stored_filename)
+    assert os.path.isfile(stored)
+    assert AuditLog.query.filter_by(module='sales_invoice_attachment', action='create').first() is not None
+
+    # 2. disallowed extension rejected (no new record)
+    resp = client.post(f'/sales-invoices/{inv.id}/attachments/upload',
+                       data={'attachment': (io.BytesIO(b'MZ'), 'evil.exe')},
+                       content_type='multipart/form-data', follow_redirects=True)
+    assert b'not allowed' in resp.data
+    assert SalesInvoiceAttachment.query.filter_by(invoice_id=inv.id).count() == 1
+
+    # 3. download returns the stored content with the original filename
+    resp = client.get(f'/sales-invoices/attachments/{att.id}/download')
+    assert resp.status_code == 200
+    assert resp.data == b'hello world'
+    assert 'proof.txt' in resp.headers.get('Content-Disposition', '')
+
+    # 4. delete removes the record AND the file on disk.
+    #    Use a FRESH attachment (not the one downloaded above) so a lingering Windows
+    #    file handle from send_file can't block os.remove inside the same test process.
+    client.post(f'/sales-invoices/{inv.id}/attachments/upload',
+                data={'attachment': (io.BytesIO(b'todelete'), 'todelete.txt')},
+                content_type='multipart/form-data')
+    att2 = SalesInvoiceAttachment.query.filter_by(invoice_id=inv.id,
+                                                  original_filename='todelete.txt').first()
+    stored2 = os.path.join(str(tmp_path), 'sales_invoices', str(inv.id), att2.stored_filename)
+    assert os.path.isfile(stored2)
+    att2_id = att2.id
+    client.post(f'/sales-invoices/attachments/{att2_id}/delete', follow_redirects=True)
+    assert SalesInvoiceAttachment.query.get(att2_id) is None
+    assert not os.path.isfile(stored2)
+
+    # 5. upload blocked once the invoice is posted (draft-only) — adds nothing
+    count_before = SalesInvoiceAttachment.query.filter_by(invoice_id=inv.id).count()
+    inv.status = 'posted'
+    db_session.commit()
+    resp = client.post(f'/sales-invoices/{inv.id}/attachments/upload',
+                       data={'attachment': (io.BytesIO(b'late'), 'late.txt')},
+                       content_type='multipart/form-data', follow_redirects=True)
+    assert b'draft status' in resp.data
+    assert SalesInvoiceAttachment.query.filter_by(invoice_id=inv.id,
+                                                  original_filename='late.txt').count() == 0
+    assert SalesInvoiceAttachment.query.filter_by(invoice_id=inv.id).count() == count_before
+
+
 def test_create_invoice_posts_to_books(client, db_session, accountant_user, customer, revenue_account, branch):
     """Creating an SV saves draft JE and audit log entry."""
     from app.accounts.models import Account
