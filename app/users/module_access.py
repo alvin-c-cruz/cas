@@ -89,7 +89,8 @@ def module_enabled(key):
 
 
 def can_access_module(user, key):
-    """Instance package gate (all roles) then staff-only per-user gate."""
+    """Instance package gate (all roles; disabled optional module → False), then anonymous → False,
+    then staff-only per-user gate (admin/accountant/viewer always True; staff by book_permissions)."""
     if not module_enabled(key):
         return False
     if user is None or not getattr(user, 'is_authenticated', False):

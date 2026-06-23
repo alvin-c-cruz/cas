@@ -8,6 +8,10 @@ def _login(client):
 
 
 def test_bir_nav_present_when_enabled(client, db_session, admin_user, main_branch):
+    # The module-enablement cache is session-scoped; clear it so a prior test that
+    # disabled BIR cannot leak a stale value into this default-enabled assertion.
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
     _login(client)
     resp = client.get('/dashboard')
     assert b'BIR Reports' in resp.data

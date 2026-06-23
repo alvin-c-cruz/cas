@@ -368,7 +368,7 @@ def create_user():
             from app.users.module_access import MODULE_REGISTRY
             book_permissions = {
                 m['key']: request.form.get('book_' + m['key']) == '1'
-                for m in MODULE_REGISTRY
+                for m in MODULE_REGISTRY if not m.get('optional')
             }
             user.set_book_permissions(book_permissions)
 
@@ -487,7 +487,7 @@ def edit_user(id):
             from app.users.module_access import MODULE_REGISTRY
             book_permissions = {
                 m['key']: request.form.get('book_' + m['key']) == '1'
-                for m in MODULE_REGISTRY
+                for m in MODULE_REGISTRY if not m.get('optional')
             }
             user.set_book_permissions(book_permissions)
 

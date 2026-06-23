@@ -113,6 +113,10 @@
 {% block content %}
 {% from "macros.html" import render_field %}
 
+<div class="settings-toolbar" style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+    <a href="{{ url_for('company_settings.modules') }}" class="btn btn-secondary">Modules / Package</a>
+</div>
+
 <form method="POST" action="{{ url_for('company_settings.edit_settings') }}" novalidate>
     {{ form.hidden_tag() }}
 
@@ -186,7 +190,6 @@
 
     <div class="form-actions">
         <a href="{{ url_for('dashboard.home') }}" class="btn btn-secondary">Cancel</a>
-        <a href="{{ url_for('company_settings.modules') }}" class="btn btn-secondary">Modules / Package</a>
         <button type="submit" class="btn btn-primary">Save Settings</button>
     </div>
 </form>

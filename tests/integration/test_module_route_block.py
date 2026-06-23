@@ -12,6 +12,9 @@ def test_bir_route_not_404_when_enabled(client, db_session, admin_user, main_bra
     # When the BIR module is enabled, the endpoint passes the module gate and is reachable.
     # Assert only "not 404" (it 302-redirects to under_development today) so the test proves
     # the gate let it through WITHOUT coupling to the redirect target's status.
+    # Clear the session-scoped enablement cache so a prior disable-test can't leak a stale value.
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
     _login(client)
     resp = client.get('/reports/bir', follow_redirects=False)
     assert resp.status_code != 404
