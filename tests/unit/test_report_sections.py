@@ -47,3 +47,22 @@ def test_rollup_orphan_leaf_is_its_own_line(db_session):
     lines = rollup(rows, Account.query.all())
     assert lines == [{'code': '50101', 'name': 'COGS', 'account_id': a.id,
                       'total': 400.0, 'children': []}]
+
+def test_rollup_walks_past_mid_level_to_top(db_session):
+    """A 3-deep chain (leaf -> mid -> top) must roll the leaf up to the TOP
+    ancestor, not the mid-level parent."""
+    top = Account(code='50200', name='Operating Expenses',
+                  account_type='Administrative Expense', normal_balance='debit', is_active=True)
+    db.session.add(top); db.session.commit()
+    mid = Account(code='50220', name='G&A', account_type='Administrative Expense',
+                  normal_balance='debit', is_active=True, parent_id=top.id)
+    db.session.add(mid); db.session.commit()
+    leaf = Account(code='50221', name='Office Salaries', account_type='Administrative Expense',
+                   normal_balance='debit', is_active=True, parent_id=mid.id)
+    db.session.add(leaf); db.session.commit()
+    rows = [{'account_id': leaf.id, 'code': '50221', 'name': 'Office Salaries', 'amount': 100.0}]
+    lines = rollup(rows, Account.query.all())
+    assert len(lines) == 1
+    assert lines[0]['code'] == '50200'           # rolled up to TOP, not mid (50220)
+    assert lines[0]['total'] == 100.0
+    assert [ch['code'] for ch in lines[0]['children']] == ['50221']
