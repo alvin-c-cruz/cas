@@ -5,80 +5,101 @@
 """
 import io
 
-from flask import make_response
+from flask import make_response, has_request_context
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
 
 _XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 _NUM_FMT = '#,##0.00;(#,##0.00)'   # accounting style: parentheses for negatives
 
-_IS_SUBTOTALS = {
-    'cost_of_sales': ('Gross Profit', 'gross_profit'),
-    'operating_expenses': ('Operating Income (Loss)', 'operating_income'),
-    'financial': ('Income Before Income Tax', 'income_before_tax'),
-}
-
 
 def income_statement_lines(stmt):
     """Flatten the P&L into render-ready lines (shared by print + Excel).
 
-    Each line: {'kind', 'label', 'amount' (or None), 'indent', 'rule'}.
-      - section header: no amount on the header line.
-      - single-account section: the one account line IS the section total → single
-        bottom rule (no separate total line).
-      - multi-account section: child account lines + a 'Total <section>' line with a
-        top+bottom single rule.
-      - empty section: one total line carrying the (zero) total, single bottom rule.
-      - subtotals (Gross Profit / Operating Income / Income Before Tax): single
-        bottom rule.
-      - net income: double bottom rule.
+    Consumes the type-driven shape from generate_income_statement():
+      stmt['sections'] = [{'key','label','sign','total','lines':[...],
+                           optional 'subtotal_label','subtotal'}, ...]
+
+    Each returned line: {'kind', 'label', 'amount' (or None), 'indent', 'rule'}.
     rule ∈ {None, 'bottom', 'top_bottom', 'double_bottom'}.
     """
     lines = []
     for sec in stmt['sections']:
-        header = ('Less: ' if sec['deduction'] else '') + sec['label']
-        accts = sec['accounts']
-        if not accts:
+        header = sec['label']
+        groups = sec['lines']   # list of {code, name, account_id, total, children:[...]}
+        if not groups:
+            # Empty section: one ruled total line
             lines.append({'kind': 'total', 'label': header, 'amount': sec['total'],
                           'indent': False, 'rule': 'bottom'})
-        elif len(accts) == 1:
-            a = accts[0]
+        elif len(groups) == 1 and not groups[0]['children']:
+            # Single leaf account — header + account line (no separate total)
             lines.append({'kind': 'header', 'label': header, 'amount': None,
                           'indent': False, 'rule': None})
-            lines.append({'kind': 'account', 'label': f"{a['code']}  {a['name']}",
-                          'amount': a['amount'], 'indent': True, 'rule': 'bottom'})
+            g = groups[0]
+            lines.append({'kind': 'account',
+                          'label': f"{g['code']}  {g['name']}" if g['code'] else g['name'],
+                          'amount': g['total'], 'indent': True, 'rule': 'bottom'})
         else:
+            # Multiple groups or groups with children
             lines.append({'kind': 'header', 'label': header, 'amount': None,
                           'indent': False, 'rule': None})
-            for a in accts:
-                lines.append({'kind': 'account', 'label': f"{a['code']}  {a['name']}",
-                              'amount': a['amount'], 'indent': True, 'rule': None})
-            lines.append({'kind': 'total', 'label': 'Total ' + sec['label'],
+            for g in groups:
+                if g['children']:
+                    # Parent group: show group header then indented children
+                    lines.append({'kind': 'account',
+                                  'label': f"{g['code']}  {g['name']}" if g['code'] else g['name'],
+                                  'amount': None, 'indent': True, 'rule': None})
+                    for c in g['children']:
+                        lines.append({'kind': 'account',
+                                      'label': f"{c['code']}  {c['name']}" if c['code'] else c['name'],
+                                      'amount': c['amount'], 'indent': True, 'rule': None})
+                else:
+                    # Leaf group (no children)
+                    lines.append({'kind': 'account',
+                                  'label': f"{g['code']}  {g['name']}" if g['code'] else g['name'],
+                                  'amount': g['total'], 'indent': True, 'rule': None})
+            lines.append({'kind': 'total', 'label': 'Total ' + header,
                           'amount': sec['total'], 'indent': False, 'rule': 'top_bottom'})
-        if sec['key'] in _IS_SUBTOTALS:
-            slabel, skey = _IS_SUBTOTALS[sec['key']]
-            lines.append({'kind': 'subtotal', 'label': slabel, 'amount': stmt[skey],
-                          'indent': False, 'rule': 'bottom'})
 
-    margin = stmt['net_income_percentage']
-    nlabel = 'NET INCOME (LOSS)' + (f'  —  {margin:.1f}% Net Margin' if margin else '')
-    lines.append({'kind': 'net', 'label': nlabel, 'amount': stmt['net_income'],
-                  'indent': False, 'rule': 'double_bottom'})
+        # Subtotal row after the section (e.g. Gross Profit, Net Income)
+        if sec.get('subtotal_label'):
+            lines.append({'kind': 'subtotal', 'label': sec['subtotal_label'],
+                          'amount': sec['subtotal'], 'indent': False, 'rule': 'bottom'})
+
     return lines
 
 
-def _xlsx_response(wb, filename):
+def _wb_bytes(wb):
+    """Serialize workbook to raw bytes."""
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    resp = make_response(output.getvalue())
+    return output.getvalue()
+
+
+def _xlsx_response(wb, filename):
+    """Return an HTTP response with the workbook bytes (requires request context)."""
+    data = _wb_bytes(wb)
+    resp = make_response(data)
     resp.headers['Content-Type'] = _XLSX_MIME
     resp.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
     return resp
 
 
+def _xlsx_response_or_bytes(wb, filename):
+    """Return HTTP response in a request context, raw bytes otherwise (e.g. tests)."""
+    if has_request_context():
+        return _xlsx_response(wb, filename)
+    return _wb_bytes(wb)
+
+
 def build_income_statement_xlsx(stmt, period_label, company, branch_name, filename):
-    """Render the Income Statement as a formatted two-column workbook."""
+    """Render the Income Statement as a formatted two-column workbook.
+
+    Consumes the type-driven shape from generate_income_statement().
+    Returns raw bytes (BytesIO content) when called without a Flask request context,
+    or an HTTP response when called from a view.
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = 'Income Statement'
@@ -117,7 +138,7 @@ def build_income_statement_xlsx(stmt, period_label, company, branch_name, filena
         cell.border = Border(bottom=thin)
     ws.cell(r, 2).alignment = right
 
-    # ── Body — live SUM/subtotal formulas so edits recalc in Excel ───────────
+    # ── Body ─────────────────────────────────────────────────────────────────
     def style(r, bold=False, size=None, border=None):
         font = Font(bold=bold, size=size) if size else (Font(bold=True) if bold else None)
         lc = ws.cell(r, 1)
@@ -133,59 +154,56 @@ def build_income_statement_xlsx(stmt, period_label, company, branch_name, filena
         if border:
             ac.border = border
 
-    total_row = {}        # section key -> row holding that section's total/amount
-    gp_row = oi_row = ibt_row = None
-
     for sec in stmt['sections']:
-        header = ('Less: ' if sec['deduction'] else '') + sec['label']
-        accts = sec['accounts']
-        if not accts:                                   # empty section: one ruled total line
+        header = sec['label']
+        groups = sec['lines']
+
+        if not groups:
+            # Empty section: one ruled total line
             r = put(header, sec['total'])
             style(r, bold=True, border=rules['bottom'])
-            total_row[sec['key']] = r
-        elif len(accts) == 1:                           # single account IS the total
+        elif len(groups) == 1 and not groups[0]['children']:
+            # Single leaf — header + indented account line
+            g = groups[0]
             r = put(header); ws.cell(r, 1).font = Font(bold=True)
-            a = accts[0]
-            r = put(f"        {a['code']}  {a['name']}", a['amount'])
+            label = f"        {g['code']}  {g['name']}" if g['code'] else f"        {g['name']}"
+            r = put(label, g['total'])
             style(r, border=rules['bottom'])
-            total_row[sec['key']] = r
-        else:                                           # children + live SUM total
+        else:
+            # Multiple groups (with or without children) → SUM formula
             r = put(header); ws.cell(r, 1).font = Font(bold=True)
             first = last = None
-            for a in accts:
-                r = put(f"        {a['code']}  {a['name']}", a['amount'])
-                style(r)
-                first = first or r
-                last = r
-            r = put('Total ' + sec['label'])
-            ws.cell(r, 2).value = f'=SUM(B{first}:B{last})'
+            for g in groups:
+                if g['children']:
+                    # Group header (no amount)
+                    r = put(f"        {g['code']}  {g['name']}" if g['code'] else f"        {g['name']}")
+                    ws.cell(r, 1).font = Font(bold=True)
+                    for c in g['children']:
+                        label = f"            {c['code']}  {c['name']}" if c['code'] else f"            {c['name']}"
+                        r = put(label, c['amount'])
+                        style(r)
+                        first = first or r
+                        last = r
+                else:
+                    label = f"        {g['code']}  {g['name']}" if g['code'] else f"        {g['name']}"
+                    r = put(label, g['total'])
+                    style(r)
+                    first = first or r
+                    last = r
+            r = put('Total ' + header)
+            ws.cell(r, 2).value = f'=SUM(B{first}:B{last})' if first else sec['total']
             style(r, bold=True, border=rules['top_bottom'])
-            total_row[sec['key']] = r
 
-        if sec['key'] == 'cost_of_sales':
-            r = put('Gross Profit')
-            ws.cell(r, 2).value = f"=B{total_row['revenue']}-B{total_row['cost_of_sales']}"
-            style(r, bold=True, border=rules['bottom']); gp_row = r
-        elif sec['key'] == 'operating_expenses':
-            r = put('Operating Income (Loss)')
-            ws.cell(r, 2).value = f"=B{gp_row}-B{total_row['operating_expenses']}"
-            style(r, bold=True, border=rules['bottom']); oi_row = r
-        elif sec['key'] == 'financial':
-            r = put('Income Before Income Tax')
-            ws.cell(r, 2).value = f"=B{oi_row}-B{total_row['financial']}"
-            style(r, bold=True, border=rules['bottom']); ibt_row = r
-
-    margin = stmt['net_income_percentage']
-    nlabel = 'NET INCOME (LOSS)' + (f'  —  {margin:.1f}% Net Margin' if margin else '')
-    r = put(nlabel)
-    ws.cell(r, 2).value = f"=B{ibt_row}-B{total_row['income_tax']}"
-    style(r, bold=True, size=12, border=rules['double_bottom'])
+        # Subtotal row (e.g. Gross Profit, Operating Income, Net Income)
+        if sec.get('subtotal_label'):
+            r = put(sec['subtotal_label'], sec['subtotal'])
+            style(r, bold=True, border=rules['bottom'])
 
     ws.column_dimensions['A'].width = 50
     ws.column_dimensions['B'].width = 22
     ws.sheet_view.showGridLines = False
 
-    return _xlsx_response(wb, filename)
+    return _xlsx_response_or_bytes(wb, filename)
 
 
 _BS_GRAND = {'assets': 'TOTAL ASSETS', 'liabilities': 'TOTAL LIABILITIES', 'equity': 'TOTAL EQUITY'}
@@ -194,27 +212,44 @@ _BS_GRAND = {'assets': 'TOTAL ASSETS', 'liabilities': 'TOTAL LIABILITIES', 'equi
 def balance_sheet_lines(bs):
     """Flatten the classified balance sheet into render-ready lines (print + Excel).
 
-    Multi-group sections (Assets, Liabilities) show group headers + group subtotals;
-    a single-group section (Equity) shows its accounts directly (no redundant
-    sub-header). Grand totals (TOTAL ASSETS, TOTAL LIABILITIES AND EQUITY) get a
-    double rule; group subtotals top+bottom; TOTAL LIABILITIES / TOTAL EQUITY single.
+    Consumes the type-driven shape from generate_balance_sheet():
+      bs['sections'] = [{'key','label','total',
+                          'divisions':[{'label','total','lines':[...]}]}, ...]
+
+    Each returned line: {'kind', 'label', 'amount' (or None), 'indent', 'rule'}.
+    indent ∈ {0, 1, 2} — matches the CSS indent classes in the print template.
+    rule ∈ {None, 'bottom', 'top_bottom', 'double_bottom'}.
     """
     lines = []
     for sec in bs['sections']:
         lines.append({'kind': 'section', 'label': sec['label'], 'amount': None,
                       'indent': 0, 'rule': None})
-        single = len(sec['groups']) == 1
-        for g in sec['groups']:
-            if not single:
-                lines.append({'kind': 'group', 'label': g['label'], 'amount': None,
+        single_div = len(sec['divisions']) == 1
+        for div in sec['divisions']:
+            # Skip empty divisions
+            if div['total'] == 0 and not div['lines']:
+                continue
+            if not single_div:
+                lines.append({'kind': 'group', 'label': div['label'], 'amount': None,
                               'indent': 1, 'rule': None})
-            for a in g['accounts']:
-                nm = a['name'] if not a['code'] else f"{a['code']}  {a['name']}"
-                lines.append({'kind': 'account', 'label': nm, 'amount': a['amount'],
-                              'indent': (1 if single else 2), 'rule': None})
-            if not single:
-                lines.append({'kind': 'group_total', 'label': 'Total ' + g['label'],
-                              'amount': g['total'], 'indent': 1, 'rule': 'top_bottom'})
+            for g in div['lines']:
+                indent_account = 1 if single_div else 2
+                if g['children']:
+                    # Group header (no amount)
+                    nm = f"{g['code']}  {g['name']}" if g['code'] else g['name']
+                    lines.append({'kind': 'account', 'label': nm, 'amount': None,
+                                  'indent': indent_account, 'rule': None})
+                    for c in g['children']:
+                        cnm = f"{c['code']}  {c['name']}" if c['code'] else c['name']
+                        lines.append({'kind': 'account', 'label': cnm, 'amount': c['amount'],
+                                      'indent': indent_account, 'rule': None})
+                else:
+                    nm = f"{g['code']}  {g['name']}" if g['code'] else g['name']
+                    lines.append({'kind': 'account', 'label': nm, 'amount': g['total'],
+                                  'indent': indent_account, 'rule': None})
+            if not single_div:
+                lines.append({'kind': 'group_total', 'label': 'Total ' + div['label'],
+                              'amount': div['total'], 'indent': 1, 'rule': 'top_bottom'})
         rule = 'double_bottom' if sec['key'] == 'assets' else 'bottom'
         lines.append({'kind': 'section_total', 'label': _BS_GRAND[sec['key']],
                       'amount': sec['total'], 'indent': 0, 'rule': rule})
@@ -224,7 +259,10 @@ def balance_sheet_lines(bs):
 
 
 def build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename):
-    """Classified Balance Sheet as a formatted workbook with live SUM formulas."""
+    """Classified Balance Sheet as a formatted workbook with live SUM formulas.
+
+    Consumes the type-driven shape from generate_balance_sheet().
+    """
     wb = Workbook()
     ws = wb.active
     ws.title = 'Balance Sheet'
@@ -277,47 +315,73 @@ def build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename):
         cell.border = Border(bottom=thin)
     ws.cell(r, 2).alignment = right
 
-    # ── Body — live formulas ──
+    # ── Body ─────────────────────────────────────────────────────────────────
     section_total_row = {}
     for sec in bs['sections']:
-        r = put(sec['label']); ws.cell(r, 1).font = Font(bold=True)      # section header
-        single = len(sec['groups']) == 1
-        group_total_rows = []
-        for g in sec['groups']:
-            if not single:
-                r = put('    ' + g['label']); ws.cell(r, 1).font = Font(bold=True)
+        r = put(sec['label']); ws.cell(r, 1).font = Font(bold=True)   # section header
+
+        single_div = len(sec['divisions']) == 1
+        div_total_rows = []
+
+        for div in sec['divisions']:
+            # Skip empty divisions for clean output
+            if div['total'] == 0 and not div['lines']:
+                continue
+            if not single_div:
+                r = put('    ' + div['label']); ws.cell(r, 1).font = Font(bold=True)
+
+            # Emit account rows for each group in this division
             acct_rows = []
-            for a in g['accounts']:
-                nm = a['name'] if not a['code'] else f"{a['code']}  {a['name']}"
-                indent = '        ' if not single else '    '
-                r = put(indent + nm, a['amount']); style(r); acct_rows.append(r)
-            if not single:
-                r = put('    Total ' + g['label'])
+            for g in div['lines']:
+                indent = '        ' if not single_div else '    '
+                if g['children']:
+                    # Group header (no amount)
+                    nm = f"{g['code']}  {g['name']}" if g['code'] else g['name']
+                    r = put(indent + nm); ws.cell(r, 1).font = Font(bold=True)
+                    for c in g['children']:
+                        cnm = f"{c['code']}  {c['name']}" if c['code'] else c['name']
+                        extra = '    '
+                        r = put(indent + extra + cnm, c['amount']); style(r)
+                        acct_rows.append(r)
+                else:
+                    nm = f"{g['code']}  {g['name']}" if g['code'] else g['name']
+                    r = put(indent + nm, g['total']); style(r)
+                    acct_rows.append(r)
+
+            if not single_div:
+                r = put('    Total ' + div['label'])
                 ws.cell(r, 2).value = f'=SUM(B{acct_rows[0]}:B{acct_rows[-1]})' if acct_rows else 0
                 style(r, bold=True, border=rules['top_bottom'])
-                group_total_rows.append(r)
+                div_total_rows.append(r)
             else:
-                group_total_rows = acct_rows      # equity: section total sums the accounts
+                # Single division: section total sums the account rows directly
+                div_total_rows = acct_rows
+
         st = put(_BS_GRAND[sec['key']])
-        if group_total_rows:
-            if single:
-                ws.cell(st, 2).value = f'=SUM(B{group_total_rows[0]}:B{group_total_rows[-1]})'
+        if div_total_rows:
+            if single_div:
+                ws.cell(st, 2).value = f'=SUM(B{div_total_rows[0]}:B{div_total_rows[-1]})' if div_total_rows else 0
             else:
-                ws.cell(st, 2).value = '=' + '+'.join(f'B{x}' for x in group_total_rows)
+                ws.cell(st, 2).value = '=' + '+'.join(f'B{x}' for x in div_total_rows)
         else:
             ws.cell(st, 2).value = 0
         style(st, bold=True, border=rules['double_bottom' if sec['key'] == 'assets' else 'bottom'])
         section_total_row[sec['key']] = st
 
     gt = put('TOTAL LIABILITIES AND EQUITY')
-    ws.cell(gt, 2).value = f"=B{section_total_row['liabilities']}+B{section_total_row['equity']}"
+    liab_row = section_total_row.get('liabilities')
+    eq_row = section_total_row.get('equity')
+    if liab_row and eq_row:
+        ws.cell(gt, 2).value = f"=B{liab_row}+B{eq_row}"
+    else:
+        ws.cell(gt, 2).value = bs['total_liabilities_equity']
     style(gt, bold=True, size=12, border=rules['double_bottom'])
 
     ws.column_dimensions['A'].width = 50
     ws.column_dimensions['B'].width = 22
     ws.sheet_view.showGridLines = False
 
-    return _xlsx_response(wb, filename)
+    return _xlsx_response_or_bytes(wb, filename)
 
 
 def _cf_invfin_net_cash_lines(cf):
