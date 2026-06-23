@@ -152,6 +152,40 @@ def edit_settings():
     )
 
 
+@company_settings_bp.route('/modules')
+@login_required
+@admin_only
+def modules():
+    from app.users.module_access import MODULE_REGISTRY, module_enabled
+    optional = [dict(m, enabled=module_enabled(m['key']))
+                for m in MODULE_REGISTRY if m.get('optional')]
+    return render_template('company_settings/modules.html', modules=optional)
+
+
+@company_settings_bp.route('/modules/toggle', methods=['POST'])
+@login_required
+@admin_only
+def modules_toggle():
+    from app.users.module_access import MODULE_REGISTRY, module_enabled, can_toggle
+    from app.utils.cache_helpers import clear_module_config_cache
+    key = request.form.get('key', '')
+    enable = request.form.get('enable') == '1'
+    enabled_keys = {m['key'] for m in MODULE_REGISTRY
+                    if m.get('optional') and module_enabled(m['key'])}
+    ok, reason = can_toggle(key, enable, enabled_keys)
+    if not ok:
+        flash(f'Cannot change "{key}": {reason}.', 'error')
+        return redirect(url_for('company_settings.modules'))
+    AppSettings.set_setting(f'module_enabled:{key}', '1' if enable else '0',
+                            updated_by=current_user.username)
+    clear_module_config_cache()
+    log_audit(module='module_config', action='enable' if enable else 'disable',
+              record_id=None, record_identifier=key,
+              new_values={'enabled': enable})
+    flash(f'Module "{key}" {"enabled" if enable else "disabled"}.', 'success')
+    return redirect(url_for('company_settings.modules'))
+
+
 @company_settings_bp.route('/logo/upload', methods=['POST'])
 @login_required
 @admin_only
