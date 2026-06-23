@@ -323,85 +323,10 @@ def list_users():
     return render_template('users/list.html', users=users)
 
 
-@users_bp.route('/users/create', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def create_user():
-    """Create new user (admin only)."""
-
-    form = UserForm()
-
-    # Populate branch choices for multi-select
-    branches = Branch.query.filter_by(is_active=True).order_by(Branch.name).all()
-    form.branch_ids.choices = [(b.id, b.name) for b in branches]
-
-    if form.validate_on_submit():
-        # Check for duplicate username
-        existing_username = User.query.filter_by(username=form.username.data).first()
-        if existing_username:
-            flash(f'Username "{form.username.data}" already exists. Please use a different username.', 'error')
-            return render_template('users/form.html', form=form, user=None)
-
-        # Check for duplicate email
-        existing_email = User.query.filter_by(email=form.email.data).first()
-        if existing_email:
-            flash(f'Email "{form.email.data}" already exists. Please use a different email.', 'error')
-            return render_template('users/form.html', form=form, user=None)
-
-        try:
-            user = User(
-                username=form.username.data,
-                email=form.email.data,
-                full_name=form.full_name.data,
-                role=form.role.data,
-                is_active=form.is_active.data
-            )
-
-            # Set password if provided
-            if form.password.data:
-                user.set_password(form.password.data)
-            else:
-                flash('Password is required for new users.', 'error')
-                return render_template('users/form.html', form=form, user=None)
-
-            # Set book permissions from form (driven by the module registry)
-            from app.users.module_access import MODULE_REGISTRY
-            book_permissions = {
-                m['key']: request.form.get('book_' + m['key']) == '1'
-                for m in MODULE_REGISTRY if not m.get('optional')
-            }
-            user.set_book_permissions(book_permissions)
-
-            # Add user first to get an ID
-            db.session.add(user)
-            db.session.flush()  # Flush to get the user ID before adding branches
-
-            # Assign branches
-            if form.branch_ids.data:
-                selected_branches = Branch.query.filter(Branch.id.in_(form.branch_ids.data)).all()
-                user.set_branches(selected_branches)
-
-            db.session.commit()
-
-            # Audit log
-            log_create(
-                module='user',
-                record_id=user.id,
-                record_identifier=f'{user.username} ({user.full_name})',
-                new_values=model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
-            )
-
-            flash(f'User "{user.username}" created successfully!', 'success')
-            return redirect(url_for('users.list_users'))
-        except Exception as e:
-            from flask import current_app
-            from app.errors.utils import log_exception
-            current_app.logger.error(f"Error creating user", exc_info=True)
-            log_exception(e, severity='ERROR', module='users.create')
-            db.session.rollback()
-            flash(f'Error creating user: {str(e)}', 'error')
-
-    return render_template('users/form.html', form=form, user=None)
+# NOTE: Admin user creation has been removed by design — users are onboarded
+# via self-registration (/register, gated by the ApprovedEmail whitelist), not
+# created by an admin. Admins still promote roles and assign branches via
+# edit_user below. There is intentionally no /users/create route.
 
 
 @users_bp.route('/users/<int:id>/edit', methods=['GET', 'POST'])
