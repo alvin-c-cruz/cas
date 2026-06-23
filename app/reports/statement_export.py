@@ -63,8 +63,11 @@ def income_statement_lines(stmt):
 
         # Subtotal row after the section (e.g. Gross Profit, Net Income)
         if sec.get('subtotal_label'):
-            lines.append({'kind': 'subtotal', 'label': sec['subtotal_label'],
-                          'amount': sec['subtotal'], 'indent': False, 'rule': 'bottom'})
+            is_net_income = sec['subtotal_label'] == 'Net Income'
+            lines.append({'kind': 'net' if is_net_income else 'subtotal',
+                          'label': sec['subtotal_label'],
+                          'amount': sec['subtotal'], 'indent': False,
+                          'rule': 'double_bottom' if is_net_income else 'bottom'})
 
     return lines
 
@@ -224,7 +227,8 @@ def balance_sheet_lines(bs):
     for sec in bs['sections']:
         lines.append({'kind': 'section', 'label': sec['label'], 'amount': None,
                       'indent': 0, 'rule': None})
-        single_div = len(sec['divisions']) == 1
+        nonempty_divs = [d for d in sec['divisions'] if d['total'] != 0 or d['lines']]
+        single_div = len(nonempty_divs) == 1
         for div in sec['divisions']:
             # Skip empty divisions
             if div['total'] == 0 and not div['lines']:
@@ -320,7 +324,8 @@ def build_balance_sheet_xlsx(bs, as_of_label, company, branch_name, filename):
     for sec in bs['sections']:
         r = put(sec['label']); ws.cell(r, 1).font = Font(bold=True)   # section header
 
-        single_div = len(sec['divisions']) == 1
+        nonempty_divs = [d for d in sec['divisions'] if d['total'] != 0 or d['lines']]
+        single_div = len(nonempty_divs) == 1
         div_total_rows = []
 
         for div in sec['divisions']:

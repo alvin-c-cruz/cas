@@ -18,6 +18,7 @@ from app.reports.financial import generate_income_statement, generate_balance_sh
 from app.reports.statement_export import (
     build_income_statement_xlsx,
     build_balance_sheet_xlsx,
+    income_statement_lines,
 )
 
 pytestmark = [pytest.mark.unit]
@@ -157,5 +158,30 @@ def test_bs_xlsx_division_and_total_labels(db_session):
     cells = _xlsx_cells(xlsx)
     assert 'TOTAL ASSETS' in cells, f'TOTAL ASSETS missing from {cells}'
     assert 'TOTAL LIABILITIES AND EQUITY' in cells
-    # Division label for Assets — generator emits 'Current Assets'
-    assert any('Current' in str(c) for c in cells), f'Current division missing from {cells}'
+    # Account label for the cash account should appear (single non-empty division —
+    # sub-header is suppressed when only one non-empty division exists)
+    assert any('Cash on Hand' in str(c) for c in cells), f'Cash account missing from {cells}'
+
+
+# ── Net Income print-styling contract ─────────────────────────────────────────
+
+def test_income_statement_lines_net_income_kind_and_rule(db_session):
+    """Net Income row must carry kind='net' and rule='double_bottom' for print CSS.
+
+    The print template styles the Net Income row via `.net td { font-size: 14px; }`
+    and `.rule-double_bottom td { border-bottom: 3px double #000; }`.  Emitting a
+    generic subtotal kind/rule would silently drop that formatting.
+    """
+    b = _full_pl(db_session)
+    stmt = generate_income_statement(date(2026, 6, 1), date(2026, 6, 30), b.id)
+    lines = income_statement_lines(stmt)
+
+    net_income_rows = [ln for ln in lines if ln.get('label') == 'Net Income']
+    assert net_income_rows, 'No Net Income row found in income_statement_lines output'
+    ni = net_income_rows[0]
+    assert ni['kind'] == 'net', (
+        f"Net Income row must have kind='net' for print CSS, got kind={ni['kind']!r}"
+    )
+    assert ni['rule'] == 'double_bottom', (
+        f"Net Income row must have rule='double_bottom' for print CSS, got rule={ni['rule']!r}"
+    )
