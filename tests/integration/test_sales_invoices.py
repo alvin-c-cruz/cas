@@ -318,6 +318,24 @@ def test_edit_error_preserves_submitted_line_items(client, db_session, accountan
     assert 'existingItems' in body and '777777' in body
 
 
+def test_create_error_flash_shown_once(client, db_session, accountant_user, customer, revenue_account, branch):
+    """The validation flash must appear exactly once — not duplicated by a redundant render."""
+    import json as _json
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+
+    bad_line = {'description': '', 'amount': '1000.00', 'vat_category': '',
+                'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
+    resp = client.post('/sales-invoices/create', data={
+        'invoice_number': 'SI-ONCE-01', 'invoice_date': '2026-06-14', 'due_date': '2026-07-14',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 30', 'notes': 'x',
+        'line_items': _json.dumps([bad_line]),
+    })
+    body = resp.get_data(as_text=True)
+    assert body.count('Each line item must have a description.') == 1
+
+
 def test_create_invoice_posts_to_books(client, db_session, accountant_user, customer, revenue_account, branch):
     """Creating an SV saves draft JE and audit log entry."""
     from app.accounts.models import Account

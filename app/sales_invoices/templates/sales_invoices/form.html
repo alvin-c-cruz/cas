@@ -8,13 +8,11 @@
 {% endblock %}
 
 {% block content %}
-{% from "macros.html" import render_field, render_flash_messages %}
+{% from "macros.html" import render_field %}
 <link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='customer-form.css') }}?v=1">
-
-{{ render_flash_messages() }}
 
 <div class="card page-sales-invoice">
     <div class="card-body">
