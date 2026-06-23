@@ -51,6 +51,12 @@ MODULE_REGISTRY = [
                    'reports.cash_flow_print')},
     {'key': 'fiscal_year_close', 'label': 'Year-End Close', 'section': 'Ledger',
      'endpoints': ('year_end.index', 'year_end.close', 'year_end.reopen')},
+    # ── Reports (optional / configurable module) ─────────────────────────────
+    {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
+     'optional': True, 'depends_on': [], 'default_enabled': True,
+     'endpoints': ('reports.bir_index', 'reports.bir_sales', 'reports.bir_sales_export_excel',
+                   'reports.bir_purchases', 'reports.bir_purchases_export_excel',
+                   'reports.bir_alphalist', 'reports.bir_alphalist_export_excel')},
 ]
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY if m['section'] == 'Transactions']
@@ -72,9 +78,20 @@ def module_key_for_endpoint(endpoint):
     return None
 
 
+def module_enabled(key):
+    """Instance-level package gate: is this optional module included? Core/unknown → True."""
+    entry = next((m for m in MODULE_REGISTRY if m['key'] == key), None)
+    if not entry or not entry.get('optional'):
+        return True
+    from app.utils.cache_helpers import get_module_override
+    raw = get_module_override(key)
+    return entry.get('default_enabled', False) if raw is None else (raw == '1')
+
+
 def can_access_module(user, key):
-    """Staff-only gating: admin/accountant/viewer always True; staff checked against their
-    book_permissions; anonymous False."""
+    """Instance package gate (all roles) then staff-only per-user gate."""
+    if not module_enabled(key):
+        return False
     if user is None or not getattr(user, 'is_authenticated', False):
         return False
     if user.role in ('admin', 'accountant', 'viewer'):

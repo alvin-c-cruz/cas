@@ -100,3 +100,15 @@ def clear_branch_cache():
 def clear_all_caches():
     """Clear all cached data"""
     cache.clear()
+
+
+@cache.memoize(timeout=3600)
+def get_module_override(key):
+    """Stored `module_enabled:<key>` value ('1'/'0') or None if unset (cached 1h)."""
+    from app.settings import AppSettings
+    return AppSettings.get_setting(f'module_enabled:{key}')
+
+
+def clear_module_config_cache():
+    """Invalidate cached module-enablement after a toggle."""
+    cache.delete_memoized(get_module_override)
