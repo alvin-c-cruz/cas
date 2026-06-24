@@ -15,19 +15,22 @@ function initCustomerVatSelect(root) {
     });
 }
 
-/* Turns the customer "Withholding Tax" <select> inside `root` into a Choices.js
-   single search-select. Customer carries a single default_wt_code (unlike the
-   vendor multi-select), so this is a plain searchable single picker. */
+/* Turns the customer "Withholding Tax" <select multiple> inside `root` into a
+   Choices.js searchable multi-select (removable chips), mirroring the vendor WT
+   picker. Customer.withholding_taxes is many-to-many (customer_withholding_taxes),
+   submitted as `withholding_tax_ids`, so the backend is unchanged. Idempotent. */
 function initCustomerWtSelect(root) {
     if (!root || typeof Choices === 'undefined') return null;
-    const sel = root.querySelector('select.customer-wt-select');
+    const sel = root.querySelector('select.customer-wt-multi-select');
     if (!sel || sel.dataset.choicesReady === '1') return null;
     sel.dataset.choicesReady = '1';
     return new Choices(sel, {
         searchEnabled: true,
+        removeItemButton: true,
         itemSelectText: '',
         shouldSort: false,
         searchResultLimit: 50,
         allowHTML: false,
+        placeholderValue: 'Search or select withholding tax…',
     });
 }

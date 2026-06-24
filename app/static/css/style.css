@@ -521,6 +521,31 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .btn-ghost:hover    { background: var(--bg); }
 .btn-sm  { padding: 4px 10px; font-size: 12px; }
 .btn-icon{ padding: 7px; }
+
+/* Choices.js multi-select chips (WT pickers, etc.) — on-brand, replaces the
+   default Choices teal with the app blue token. The `.choices` prefix raises
+   specificity above choices.min.css's own rule (which loads after style.css). */
+.choices .choices__list--multiple .choices__item {
+  background: var(--blue);
+  border: 1px solid var(--blue-hover);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  margin: 3px 6px 0 0;
+}
+.choices .choices__list--multiple .choices__item.is-highlighted {
+  background: var(--blue-hover);
+  border-color: var(--blue-hover);
+}
+.choices .choices__list--multiple .choices__item .choices__button {
+  margin-left: 8px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.4);
+  opacity: 0.85;
+}
+.choices .choices__list--multiple .choices__item .choices__button:hover { opacity: 1; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 
 /* ─── Filter Bar ────────────────────────────────────────────── */
