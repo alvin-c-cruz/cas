@@ -28,7 +28,7 @@
                 <tr class="fs-section-header">
                     <td style="width:30px;"></td>
                     <td>{{ sec.label }}</td>
-                    <td class="num-col" style="width:180px;">₱{{ '{:,.2f}'.format(sec.total) }}</td>
+                    <td class="num-col" style="width:180px;">{% if sec.sign == -1 %}(₱{{ '{:,.2f}'.format(sec.total) }}){% else %}₱{{ '{:,.2f}'.format(sec.total) }}{% endif %}</td>
                 </tr>
 
                 {# Roll-up lines within the section #}

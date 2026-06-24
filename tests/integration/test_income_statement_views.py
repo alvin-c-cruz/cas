@@ -85,6 +85,21 @@ def test_income_statement_admin_renders(client, db_session, main_branch, admin_u
     assert b'Net Margin' in resp.data                  # net income line (positive revenue)
 
 
+def test_income_statement_deduction_section_total_parenthesized(
+        client, db_session, main_branch, admin_user):
+    """Deduction sections (sign -1: Contra-Revenue/COGS/expenses/tax) show their
+    section-header total parenthesized so the sign reads correctly; revenue
+    (sign +1) is shown plain. _seed_pl posts revenue 100 + admin expense 40."""
+    _seed_pl(main_branch.id)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/income-statement')
+    assert resp.status_code == 200
+    html = resp.data.decode('utf-8')
+    assert '(₱40.00)' in html        # admin-expense section total shown as a deduction
+    assert '₱100.00' in html         # revenue section total shown plain (positive)
+
+
 def test_income_statement_expander_caret_has_no_stoppropagation_onclick(
         client, db_session, main_branch, admin_user):
     """Regression guard (BUG-1): the caret button must NOT carry an inline
