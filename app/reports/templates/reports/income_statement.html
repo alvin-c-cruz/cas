@@ -24,10 +24,19 @@
             <tbody>
                 {% for sec in income_statement.sections %}
                 {% set sidx = loop.index %}
+                {# Umbrella "Operating Expenses" grouping caption before Selling (per spec):
+                   Selling + Administrative render under it and subtotal to Operating Income. #}
+                {% if sec.key == 'selling' %}
+                <tr class="fs-section-header">
+                    <td style="width:30px;"></td>
+                    <td>OPERATING EXPENSES</td>
+                    <td class="num-col" style="width:180px;"></td>
+                </tr>
+                {% endif %}
                 {# Section header row — always shown #}
                 <tr class="fs-section-header">
                     <td style="width:30px;"></td>
-                    <td>{{ sec.label }}</td>
+                    <td{% if sec.key in ['selling', 'admin'] %} style="padding-left:18px;"{% endif %}>{{ sec.label }}</td>
                     <td class="num-col" style="width:180px;">{% if sec.sign == -1 %}(₱{{ '{:,.2f}'.format(sec.total) }}){% else %}₱{{ '{:,.2f}'.format(sec.total) }}{% endif %}</td>
                 </tr>
 

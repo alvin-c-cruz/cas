@@ -85,6 +85,22 @@ def test_income_statement_admin_renders(client, db_session, main_branch, admin_u
     assert b'Net Margin' in resp.data                  # net income line (positive revenue)
 
 
+def test_income_statement_groups_selling_and_admin_under_operating_expenses(
+        client, db_session, main_branch, admin_user):
+    """Per spec, Selling + Administrative render under a single 'OPERATING
+    EXPENSES' heading that precedes them and subtotals to Operating Income."""
+    _seed_pl(main_branch.id)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/income-statement')
+    assert resp.status_code == 200
+    html = resp.data.decode('utf-8')
+    assert 'OPERATING EXPENSES' in html
+    # the umbrella heading comes before the Selling/Administrative sub-sections
+    assert html.index('OPERATING EXPENSES') < html.index('Administrative Expenses')
+    assert html.index('OPERATING EXPENSES') < html.index('Operating Income')   # subtotal after
+
+
 def test_income_statement_deduction_section_total_parenthesized(
         client, db_session, main_branch, admin_user):
     """Deduction sections (sign -1: Contra-Revenue/COGS/expenses/tax) show their
