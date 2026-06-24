@@ -270,8 +270,8 @@ def main():
     5. Run IS / BS / CF generators to confirm no exception.
     """
     from flask_app import app
+    from app import db
     from app.accounts.models import Account
-    from app.extensions import db
     from app.reports.financial import (
         generate_income_statement,
         generate_balance_sheet,
@@ -370,7 +370,7 @@ def main():
                 print(f"  WRONG    {code}: expected={expected_type} actual={acct.account_type}")
                 all_ok = False
             else:
-                print(f"  OK       {code} → {acct.account_type}")
+                print(f"  OK       {code} -> {acct.account_type}")
         if all_ok:
             print("  All required codes present and correctly typed.")
 
