@@ -60,7 +60,7 @@
                 class="form-control form-control-sm customer-wt-multi-select" multiple>
             {% for wt in withholding_taxes|default([]) %}
             {# Customer is a sales surface → show the seller-POV (sales_name) WT label, not the buyer-POV name. #}
-            <option value="{{ wt.id }}"{% if selected_wt_ids is defined and wt.id in selected_wt_ids %} selected{% endif %}>{{ wt.code }} — {{ wt.sales_name or wt.name }} ({{ wt.rate }}%)</option>
+            <option value="{{ wt.id }}" data-custom-properties='{"code": "{{ wt.code }}"}'{% if selected_wt_ids is defined and wt.id in selected_wt_ids %} selected{% endif %}>{{ wt.code }} — {{ wt.sales_name or wt.name }} ({{ wt.rate }}%)</option>
             {% endfor %}
         </select>
         {% else %}
