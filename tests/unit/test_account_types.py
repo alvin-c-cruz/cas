@@ -26,7 +26,8 @@ def test_base_category_examples():
     assert BASE_CATEGORY['Other Income'] == 'Revenue'
     assert BASE_CATEGORY['Income Tax Expense'] == 'Expense'
 
-def test_account_base_category_property(db_session):
+def test_account_base_category_property():
+    # base_category is a pure-Python property on an unsaved object — no DB needed.
     assert Account(code='1', name='x', account_type='Cost of Goods Sold',
                    normal_balance='debit').base_category == 'Expense'
     assert Account(code='2', name='y', account_type='Other Income',
