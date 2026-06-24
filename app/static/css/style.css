@@ -1772,6 +1772,13 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
   overflow-y: auto;
 }
 
+/* The JS shows/hides the modal via the `hidden` attribute. A bare class
+   selector overrides the UA `[hidden]{display:none}`, which left the modal
+   stuck open; this higher-specificity rule lets `hidden` actually hide it. */
+.fs-modal-backdrop[hidden] {
+  display: none;
+}
+
 .fs-modal {
   background: var(--card);
   border-radius: var(--radius);
