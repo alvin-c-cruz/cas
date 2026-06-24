@@ -115,10 +115,10 @@
       <tr>
         <th style="width:4%">#</th>
         <th>Description / Particulars</th>
-        <th style="width:14%;text-align:right">Amount</th>
-        <th style="width:10%;text-align:right">VAT Rate</th>
-        <th style="width:14%;text-align:right">VAT Amount</th>
-        <th style="width:14%;text-align:right">WHT Amount</th>
+        <th style="width:16%;text-align:right">Amount (₱, VAT-incl.)</th>
+        <th style="width:15%">VAT Category</th>
+        <th style="width:13%">WHT Code</th>
+        <th style="width:26%">Account</th>
       </tr>
     </thead>
     <tbody>
@@ -127,9 +127,9 @@
         <td>{{ item.line_number }}</td>
         <td>{{ item.description or '—' }}</td>
         <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
-        <td class="amount">{{ item.vat_rate }}%</td>
-        <td class="amount">{{ '{:,.2f}'.format(item.vat_amount) }}</td>
-        <td class="amount">{{ '{:,.2f}'.format(item.wt_amount) }}</td>
+        <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
+        <td>{% if item.withholding_tax %}{{ item.withholding_tax.code }} ({{ '{:.2f}'.format(item.wt_rate) }}%){% else %}—{% endif %}</td>
+        <td>{{ item.account.code ~ ' : ' ~ item.account.name if item.account else '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -137,7 +137,7 @@
 
   <div class="je-summary-row">
     <div class="je-block">
-      <div class="section-label">JOURNAL ENTRY</div>
+      <div class="section-label">ENTRY</div>
       <table class="je-table">
         <thead>
           <tr>
@@ -150,16 +150,14 @@
         <tbody>
           {% set total_debit = namespace(v=0) %}
           {% set total_credit = namespace(v=0) %}
-          {% for line in je_lines %}
-          {% set dr = line.debit_amount or 0 %}
-          {% set cr = line.credit_amount or 0 %}
-          {% set total_debit.v = total_debit.v + dr %}
-          {% set total_credit.v = total_credit.v + cr %}
+          {% for entry in je_entries %}
+          {% set total_debit.v = total_debit.v + entry.debit %}
+          {% set total_credit.v = total_credit.v + entry.credit %}
           <tr>
-            <td>{{ line.account.code }}</td>
-            <td>{{ line.account.name }}</td>
-            <td class="num">{% if dr %}{{ '{:,.2f}'.format(dr) }}{% endif %}</td>
-            <td class="num">{% if cr %}{{ '{:,.2f}'.format(cr) }}{% endif %}</td>
+            <td>{{ entry.code }}</td>
+            <td>{{ entry.name }}</td>
+            <td class="num">{% if entry.debit > 0 %}{{ '{:,.2f}'.format(entry.debit) }}{% endif %}</td>
+            <td class="num">{% if entry.credit > 0 %}{{ '{:,.2f}'.format(entry.credit) }}{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -177,27 +175,29 @@
       <div class="section-label">SUMMARY</div>
       <div class="summary-inner">
         <div class="summary-row">
-          <span class="slabel">Gross Amount:</span>
+          <span class="slabel">Subtotal (VAT-incl.):</span>
           <span class="sval">{{ '{:,.2f}'.format(invoice.subtotal) }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="slabel">Less: Output VAT:</span>
+          <span class="sval">{{ '{:,.2f}'.format(invoice.vat_amount) }}</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-row">
+          <span class="slabel">Net of VAT:</span>
+          <span class="sval">{{ '{:,.2f}'.format(invoice.subtotal - invoice.vat_amount) }}</span>
         </div>
         <div class="summary-row">
           <span class="slabel">Add: Output VAT:</span>
           <span class="sval">{{ '{:,.2f}'.format(invoice.vat_amount) }}</span>
         </div>
-        <div class="summary-divider"></div>
         <div class="summary-row">
-          <span class="slabel">Gross Receivable:</span>
-          <span class="sval">{{ '{:,.2f}'.format(invoice.subtotal + invoice.vat_amount) }}</span>
-        </div>
-        {% if invoice.withholding_tax_amount > 0 %}
-        <div class="summary-row">
-          <span class="slabel">Less: Withholding Tax:</span>
+          <span class="slabel">Less: Creditable w/tax:</span>
           <span class="sval red">-{{ '{:,.2f}'.format(invoice.withholding_tax_amount) }}</span>
         </div>
-        {% endif %}
         <div class="summary-divider-double"></div>
         <div class="summary-net">
-          <span class="netlabel">Net Amount Receivable:</span>
+          <span class="netlabel">Amount Collectible:</span>
           <span class="netval">{{ '{:,.2f}'.format(invoice.total_amount) }}</span>
         </div>
       </div>

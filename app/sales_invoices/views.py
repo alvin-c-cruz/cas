@@ -1133,24 +1133,9 @@ def void(id):
 @login_required
 def print_invoice(id):
     invoice = _get_invoice_or_404(id)
-    je_lines = []
-    if invoice.journal_entry:
-        vat_account_ids = {
-            c.output_vat_account_id
-            for c in SalesVATCategory.query.all()
-            if c.output_vat_account_id
-        }
-        lines = invoice.journal_entry.lines.all()
-        revenue_lines = sorted(
-            [l for l in lines if (l.credit_amount or 0) > 0 and l.account_id not in vat_account_ids],
-            key=lambda l: l.account.code)
-        vat_lines = sorted(
-            [l for l in lines if (l.credit_amount or 0) > 0 and l.account_id in vat_account_ids],
-            key=lambda l: l.account.code)
-        debit_lines = sorted(
-            [l for l in lines if (l.debit_amount or 0) > 0],
-            key=lambda l: l.account.code)
-        je_lines = revenue_lines + vat_lines + debit_lines
+    # Consolidated JE (each account once), same source as the detail-view Entry
+    # table — keeps view/print in sync.
+    je_entries = _build_je_preview(invoice)
 
     company = {
         'name': AppSettings.get_setting('company_name', ''),
@@ -1158,7 +1143,7 @@ def print_invoice(id):
         'tin': AppSettings.get_setting('company_tin', ''),
     }
     return render_template('sales_invoices/print.html', invoice=invoice,
-                           je_lines=je_lines, company=company, printed_at=ph_now())
+                           je_entries=je_entries, company=company, printed_at=ph_now())
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/attachments/upload', methods=['POST'])
