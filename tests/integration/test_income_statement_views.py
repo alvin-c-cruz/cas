@@ -85,6 +85,26 @@ def test_income_statement_admin_renders(client, db_session, main_branch, admin_u
     assert b'Net Margin' in resp.data                  # net income line (positive revenue)
 
 
+def test_income_statement_expander_caret_has_no_stoppropagation_onclick(
+        client, db_session, main_branch, admin_user):
+    """Regression guard (BUG-1): the caret button must NOT carry an inline
+    onclick="event.stopPropagation()". That inline handler stops the click at
+    the button so it never reaches the delegated expander handler in
+    fs-drilldown.js — leaving expand/collapse completely non-functional. The
+    drill-down handler already ignores caret clicks via closest('[data-fs-expand]'),
+    so the inline onclick is both redundant and harmful."""
+    group = _acct('40000', 'Sales', 'Revenue', 'Credit')
+    child = _acct('40001', 'Sales - Goods', 'Revenue', 'Credit', parent=group)
+    cash = _acct('10101', 'Cash on Hand', 'Asset', 'Debit')
+    _post(main_branch.id, cash, child, 100, 'IS-GRP')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/income-statement')
+    assert resp.status_code == 200
+    assert b'data-fs-expand' in resp.data                       # a caret/expander rendered
+    assert b'event.stopPropagation()' not in resp.data          # ...without the killer inline onclick
+
+
 def test_income_statement_staff_without_grant_denied(client, db_session, main_branch, staff_user):
     staff_user.branches.append(main_branch)
     db_session.commit()

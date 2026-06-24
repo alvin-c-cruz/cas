@@ -64,6 +64,20 @@ def test_balance_sheet_requires_login(client):
     assert resp.status_code in (302, 401)
 
 
+def test_balance_sheet_expander_caret_has_no_stoppropagation_onclick(
+        client, db_session, main_branch, admin_user):
+    """Regression guard (BUG-1): the caret button must NOT carry an inline
+    onclick="event.stopPropagation()" — it would stop the click before the
+    delegated expander handler in fs-drilldown.js runs, breaking expand/collapse."""
+    _seed_bs(main_branch.id)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/balance-sheet')
+    assert resp.status_code == 200
+    assert b'data-fs-expand' in resp.data                       # a caret/expander rendered
+    assert b'event.stopPropagation()' not in resp.data          # ...without the killer inline onclick
+
+
 def test_balance_sheet_no_longer_redirects(client, db_session, main_branch, admin_user):
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
