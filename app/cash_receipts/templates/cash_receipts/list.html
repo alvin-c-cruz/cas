@@ -120,7 +120,7 @@
             <a href="{{ url_for('cash_receipts.export_csv') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
                class="btn btn-secondary crv-export-link" style="font-size:13px;">&#11015; Export CSV</a>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}
-            <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-primary">&#10133; Enter CRV</a>
+            <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-green">&#10133; Enter CRV</a>
             {% endif %}
         </div>
     </div>
@@ -182,7 +182,7 @@
             {% else %}
             <p>No Cash Receipt Vouchers found.</p>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}
-            <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-primary">Enter First CRV</a>
+            <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-green">Enter First CRV</a>
             {% endif %}
             {% endif %}
         </div>

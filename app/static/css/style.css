@@ -515,6 +515,8 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .btn-danger:hover   { background: #fecaca; }
 .btn-success   { background: #dcfce7; color: #15803d; }
 .btn-success:hover  { background: #bbf7d0; }
+.btn-green     { background: var(--green); color: white; }
+.btn-green:hover    { filter: brightness(0.93); }
 .btn-ghost     { background: transparent; color: var(--text-2); }
 .btn-ghost:hover    { background: var(--bg); }
 .btn-sm  { padding: 4px 10px; font-size: 12px; }
