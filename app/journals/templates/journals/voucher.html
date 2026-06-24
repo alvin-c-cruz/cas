@@ -85,9 +85,6 @@
         {% else %}
         <div class="empty-state">
             <p>No journal vouchers found for this period.</p>
-            {% if current_user.role in ['accountant', 'admin'] %}
-            <a href="{{ url_for('journal_entries.create') }}" class="btn btn-green">Enter First Journal Voucher</a>
-            {% endif %}
         </div>
         {% endif %}
     </div>
