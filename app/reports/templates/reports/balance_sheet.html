@@ -10,7 +10,7 @@
             <div class="card-title">Balance Sheet</div>
             <div class="card-sub">As of {{ as_of_date.strftime('%B %d, %Y') }}</div>
         </div>
-        <div class="card-header-actions" style="display: flex; gap: 8px;">
+        <div class="card-header-actions" style="display:flex;gap:8px;">
             <a href="{{ url_for('reports.balance_sheet_export_excel', as_of=as_of_date.isoformat()) }}"
                class="btn btn-secondary">📊 Excel</a>
             <a href="{{ url_for('reports.balance_sheet_print', as_of=as_of_date.isoformat()) }}"
@@ -20,62 +20,99 @@
     </div>
 
     <div class="card-body">
-        <p class="text-muted" style="font-size:13px;margin-bottom:12px;">Click a section/group to show its accounts.</p>
         <table class="table" style="margin:0;">
             <tbody>
                 {% for sec in balance_sheet.sections %}
                 {% set si = loop.index %}
-                {% set single = sec.groups|length == 1 %}
-                {% if single %}
-                <tr class="bs-toggle" {% if sec.groups %}data-target="g{{ si }}-0"{% endif %}
-                    style="cursor:pointer;background:var(--bg);font-weight:700;">
-                    <td style="width:30px;text-align:center;color:var(--text-2);">{% if sec.groups %}<span class="bs-caret">▶</span>{% endif %}</td>
+
+                {# Section header (ASSETS / LIABILITIES / EQUITY) #}
+                <tr class="fs-section-header">
+                    <td style="width:30px;"></td>
                     <td>{{ sec.label }}</td>
-                    <td style="text-align:right;"></td>
+                    <td class="num-col" style="width:180px;"></td>
                 </tr>
-                {% for a in (sec.groups[0].accounts if sec.groups else []) %}
-                <tr class="g{{ si }}-0" style="display:none;">
+
+                {# Divisions (Current / Non-Current, or single Equity div) #}
+                {% for div in sec.divisions %}
+                {% set di = loop.index %}
+                {# Skip divisions that are empty (total==0 and no lines) #}
+                {% if div.total != 0 or div.lines %}
+
+                {# Division header (e.g. "Current Assets") — only if multiple divs #}
+                {% if sec.divisions | length > 1 %}
+                <tr class="fs-division-header">
                     <td></td>
-                    <td style="padding-left:30px;">{% if a.code %}<span style="font-family:var(--mono);color:var(--text-2);">{{ a.code }}</span> &nbsp;{% endif %}{{ a.name }}</td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(a.amount) }}</td>
-                </tr>
-                {% endfor %}
-                <tr style="font-weight:700;border-top:2px solid var(--border);">
-                    <td></td><td>TOTAL {{ sec.label }}</td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(sec.total) }}</td>
-                </tr>
-                {% else %}
-                <tr style="background:var(--bg);font-weight:700;">
-                    <td></td><td>{{ sec.label }}</td><td></td>
-                </tr>
-                {% for g in sec.groups %}
-                {% set gi = loop.index %}
-                <tr class="bs-toggle" data-target="g{{ si }}-{{ gi }}" style="cursor:pointer;font-weight:600;">
-                    <td style="width:30px;text-align:center;color:var(--text-2);"><span class="bs-caret">▶</span></td>
-                    <td style="padding-left:14px;">{{ g.label }}</td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(g.total) }}</td>
-                </tr>
-                {% for a in g.accounts %}
-                <tr class="g{{ si }}-{{ gi }}" style="display:none;">
-                    <td></td>
-                    <td style="padding-left:40px;">{% if a.code %}<span style="font-family:var(--mono);color:var(--text-2);">{{ a.code }}</span> &nbsp;{% endif %}{{ a.name }}</td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(a.amount) }}</td>
-                </tr>
-                {% endfor %}
-                <tr style="font-weight:600;border-top:1px solid var(--border);">
-                    <td></td><td style="padding-left:14px;">Total {{ g.label }}</td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(g.total) }}</td>
-                </tr>
-                {% endfor %}
-                <tr style="font-weight:700;border-top:2px solid var(--border);">
-                    <td></td><td>TOTAL {{ sec.label }}</td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(sec.total) }}</td>
+                    <td style="padding-left:14px;">{{ div.label }}</td>
+                    <td class="num-col"></td>
                 </tr>
                 {% endif %}
+
+                {# Lines within division #}
+                {% for line in div.lines %}
+                {% set lkey = 'bs-' ~ si ~ '-' ~ di ~ '-' ~ loop.index %}
+                <tr class="fs-line-row{% if line.children %} fs-line-expandable{% endif %}"
+                    {% if line.account_id %}
+                    data-account-id="{{ line.account_id }}"
+                    data-asof="{{ as_of_date.isoformat() }}"
+                    {% endif %}>
+                    <td>
+                        {% if line.children %}
+                        <button class="fs-caret-btn" data-fs-expand="{{ lkey }}"
+                                aria-expanded="false" title="Show / hide breakdown"
+                                onclick="event.stopPropagation()">
+                            <span class="fs-caret">▶</span>
+                        </button>
+                        {% endif %}
+                    </td>
+                    <td style="padding-left:{% if sec.divisions | length > 1 %}28px{% else %}16px{% endif %};">
+                        {% if line.code %}<span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ line.code }}</span>&nbsp;{% endif %}
+                        {{ line.name }}
+                    </td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(line.total) }}</td>
+                </tr>
+
+                {# Child detail rows (collapsed by default) #}
+                {% for child in line.children %}
+                <tr class="fs-child-row" data-fs-children="{{ lkey }}" hidden
+                    {% if child.account_id %}
+                    data-account-id="{{ child.account_id }}"
+                    data-asof="{{ as_of_date.isoformat() }}"
+                    {% endif %}>
+                    <td></td>
+                    <td style="padding-left:{% if sec.divisions | length > 1 %}54px{% else %}40px{% endif %};">
+                        {% if child.code %}<span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ child.code }}</span>&nbsp;{% endif %}
+                        {{ child.name }}
+                    </td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(child.amount) }}</td>
+                </tr>
                 {% endfor %}
-                <tr style="font-weight:800;border-top:3px double var(--border);background:var(--bg);">
-                    <td></td><td>TOTAL LIABILITIES AND EQUITY</td>
-                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(balance_sheet.total_liabilities_equity) }}</td>
+                {% endfor %}
+
+                {# Division subtotal row (only when multiple divisions) #}
+                {% if sec.divisions | length > 1 %}
+                <tr class="fs-subtotal-row">
+                    <td></td>
+                    <td style="padding-left:14px;">Total {{ div.label }}</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(div.total) }}</td>
+                </tr>
+                {% endif %}
+
+                {% endif %}{# end skip-empty-division #}
+                {% endfor %}
+
+                {# Section total (TOTAL ASSETS / TOTAL LIABILITIES / TOTAL EQUITY) #}
+                <tr class="fs-total-row">
+                    <td></td>
+                    <td>TOTAL {{ sec.label }}</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(sec.total) }}</td>
+                </tr>
+                {% endfor %}
+
+                {# Grand total #}
+                <tr class="fs-grand-total-row">
+                    <td></td>
+                    <td>TOTAL LIABILITIES AND EQUITY</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(balance_sheet.total_liabilities_equity) }}</td>
                 </tr>
             </tbody>
         </table>
@@ -83,13 +120,15 @@
         <div class="alert {% if balance_sheet.is_balanced %}alert-success{% else %}alert-danger{% endif %}"
              style="margin-top:24px;border-radius:8px;padding:16px;">
             {% if balance_sheet.is_balanced %}
-            <strong>✅ Balanced</strong> — Total Assets = Total Liabilities + Equity.
+            <strong>Balanced</strong> — Total Assets = Total Liabilities + Equity.
             {% else %}
-            <strong>⚠️ Not Balanced</strong> — difference of ₱{{ '{:,.2f}'.format(balance_sheet.difference) }}. Please review journal entries.
+            <strong>Not Balanced</strong> — difference of ₱{{ '{:,.2f}'.format(balance_sheet.difference) }}. Please review journal entries.
             {% endif %}
         </div>
     </div>
 </div>
+
+{% include 'reports/_ledger_modal.html' %}
 
 <!-- Date Picker Modal -->
 <div id="datePicker" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
@@ -109,16 +148,8 @@
     </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/fs-drilldown.js') }}?v=1"></script>
 <script>
-document.querySelectorAll('.bs-toggle[data-target]').forEach(function (row) {
-    row.addEventListener('click', function () {
-        const cls = row.getAttribute('data-target');
-        const caret = row.querySelector('.bs-caret');
-        const open = caret && caret.textContent.trim() === '▼';
-        document.querySelectorAll('.' + cls).forEach(function (r) { r.style.display = open ? 'none' : ''; });
-        if (caret) caret.textContent = open ? '▶' : '▼';
-    });
-});
 function showDatePicker() { document.getElementById('datePicker').style.display = 'flex'; }
 function hideDatePicker() { document.getElementById('datePicker').style.display = 'none'; }
 document.getElementById('datePicker').addEventListener('click', function (e) { if (e.target === this) hideDatePicker(); });

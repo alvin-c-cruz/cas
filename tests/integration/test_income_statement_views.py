@@ -3,6 +3,7 @@ from decimal import Decimal
 import pytest
 
 from app import db
+from app.accounts.models import Account
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 
 pytestmark = [pytest.mark.integration]
@@ -17,6 +18,14 @@ def _login(client, user):
 def _select_branch(client, branch_id):
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch_id
+
+
+def _acct(code, name, atype, normal='Debit', parent=None):
+    a = Account(code=code, name=name, account_type=atype, normal_balance=normal,
+                is_active=True, parent_id=parent.id if parent else None)
+    db.session.add(a)
+    db.session.commit()
+    return a
 
 
 def _post(branch_id, debit_acct, credit_acct, amount, number):
@@ -35,10 +44,18 @@ def _post(branch_id, debit_acct, credit_acct, amount, number):
     return je
 
 
-def _seed_pl(branch_id, cash, revenue, expense):
-    # Revenue 100 (credit 4xxxx); Expense 40 (debit 5xxxx) -> net income +60.
+def _seed_pl(branch_id):
+    """Create accounts using the new type taxonomy and post P&L JEs.
+
+    Revenue 100 (credit Revenue); AdminExp 40 (debit Admin Expense) -> net income +60.
+    Returns (cash, revenue, expense) accounts.
+    """
+    cash = _acct('10101', 'Cash on Hand', 'Asset', 'Debit')
+    revenue = _acct('40001', 'Sales Revenue', 'Revenue', 'Credit')
+    expense = _acct('50301', 'Admin Office Supplies', 'Administrative Expense', 'Debit')
     _post(branch_id, cash, revenue, 100, 'IS-REV')
     _post(branch_id, expense, cash, 40, 'IS-EXP')
+    return cash, revenue, expense
 
 
 def test_income_statement_requires_login(client):
@@ -54,19 +71,18 @@ def test_income_statement_no_longer_redirects(client, db_session, main_branch, a
     assert b'Income Statement' in resp.data
 
 
-def test_income_statement_admin_renders(client, db_session, main_branch, admin_user,
-                                        cash_account, revenue_account, expense_account):
-    _seed_pl(main_branch.id, cash_account, revenue_account, expense_account)
+def test_income_statement_admin_renders(client, db_session, main_branch, admin_user):
+    cash, revenue, expense = _seed_pl(main_branch.id)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/income-statement')
     assert resp.status_code == 200
-    assert revenue_account.code.encode() in resp.data        # 4xxxx revenue (child, in markup)
-    assert expense_account.code.encode() in resp.data        # 5xxxx expense (child, in markup)
+    assert revenue.code.encode() in resp.data          # Revenue account code in markup
+    assert expense.code.encode() in resp.data          # Expense account code in markup
     assert b'NET INCOME' in resp.data
-    assert b'Gross Profit' in resp.data                       # P&L subtotal
-    assert b'Operating Income' in resp.data                  # P&L subtotal
-    assert b'Net Margin' in resp.data                         # net income line (positive revenue)
+    assert b'Gross Profit' in resp.data                # P&L subtotal
+    assert b'Operating Income' in resp.data            # P&L subtotal
+    assert b'Net Margin' in resp.data                  # net income line (positive revenue)
 
 
 def test_income_statement_staff_without_grant_denied(client, db_session, main_branch, staff_user):
@@ -99,9 +115,8 @@ def test_income_statement_viewer_allowed(client, db_session, main_branch, viewer
     assert resp.status_code == 200
 
 
-def test_income_statement_excel_export(client, db_session, main_branch, admin_user,
-                                       cash_account, revenue_account, expense_account):
-    _seed_pl(main_branch.id, cash_account, revenue_account, expense_account)
+def test_income_statement_excel_export(client, db_session, main_branch, admin_user):
+    _seed_pl(main_branch.id)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/income-statement/export/excel')
@@ -109,11 +124,10 @@ def test_income_statement_excel_export(client, db_session, main_branch, admin_us
     assert 'spreadsheetml' in resp.headers['Content-Type']
 
 
-def test_income_statement_print_renders(client, db_session, main_branch, admin_user,
-                                        cash_account, revenue_account, expense_account):
+def test_income_statement_print_renders(client, db_session, main_branch, admin_user):
     from app.settings import AppSettings
     AppSettings.set_setting('company_name', 'ACME Trading Corp')
-    _seed_pl(main_branch.id, cash_account, revenue_account, expense_account)
+    _seed_pl(main_branch.id)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/income-statement/print')
@@ -129,3 +143,14 @@ def test_income_statement_defaults_to_year_to_date(client, db_session, main_bran
     assert resp.status_code == 200
     jan1 = f'{date.today().year}-01-01'
     assert f'value="{jan1}"'.encode() in resp.data           # start_date defaults to Jan 1
+
+
+def test_is_page_shows_subtotal_and_drilldown_hooks(client, db_session, admin_user, main_branch):
+    _seed_pl(main_branch.id)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/income-statement')
+    assert resp.status_code == 200
+    html = resp.data.decode()
+    assert 'Net Income' in html
+    assert 'data-account-id' in html        # drill-down hook present on lines

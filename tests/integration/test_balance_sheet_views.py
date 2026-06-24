@@ -20,9 +20,10 @@ def _select_branch(client, branch_id):
         sess['selected_branch_id'] = branch_id
 
 
-def _acct(code, name, atype, normal='Debit', parent=None):
+def _acct(code, name, atype, normal='Debit', parent=None, classification=None):
     a = Account(code=code, name=name, account_type=atype, normal_balance=normal,
-                is_active=True, parent_id=parent.id if parent else None)
+                is_active=True, parent_id=parent.id if parent else None,
+                classification=classification)
     db.session.add(a)
     db.session.commit()
     return a
@@ -45,12 +46,13 @@ def _je(branch_id, lines, number):
 
 
 def _seed_bs(branch_id):
-    ca = _acct('10000', 'CURRENT ASSETS', 'Asset')
-    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca)
-    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset')
-    equip = _acct('11110', 'Construction Equipment', 'Asset', parent=nca)
-    cl = _acct('20000', 'CURRENT LIABILITIES', 'Liability', 'Credit')
-    ap = _acct('20101', 'Accounts Payable', 'Liability', 'Credit', parent=cl)
+    # classification is required for Assets/Liabilities to appear in BS divisions
+    ca = _acct('10000', 'CURRENT ASSETS', 'Asset', classification='Current')
+    cash = _acct('10101', 'Cash on Hand', 'Asset', parent=ca, classification='Current')
+    nca = _acct('11000', 'NON-CURRENT ASSETS', 'Asset', classification='Non-Current')
+    equip = _acct('11110', 'Construction Equipment', 'Asset', parent=nca, classification='Non-Current')
+    cl = _acct('20000', 'CURRENT LIABILITIES', 'Liability', 'Credit', classification='Current')
+    ap = _acct('20101', 'Accounts Payable', 'Liability', 'Credit', parent=cl, classification='Current')
     eq = _acct('30000', 'EQUITY', 'Equity', 'Credit')
     cap = _acct('30101', 'Capital Stock', 'Equity', 'Credit', parent=eq)
     _je(branch_id, [(cash, 1000, 0), (cap, 0, 1000)], 'BS1')

@@ -1,0 +1,39 @@
+{# Shared ledger drill-down modal — included by IS, BS, and CF templates.
+   Opened by fs-drilldown.js when a [data-account-id] row is clicked. #}
+<div id="ledgerModal" class="fs-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ledgerModalTitle" hidden>
+    <div class="fs-modal">
+        <div class="fs-modal-header">
+            <div>
+                <span class="fs-modal-code" id="ledgerModalCode"></span>
+                <span class="fs-modal-name" id="ledgerModalTitle"></span>
+            </div>
+            <button class="fs-modal-close" id="ledgerModalClose" aria-label="Close">&times;</button>
+        </div>
+        <div class="fs-modal-body">
+            <div id="ledgerModalLoading" class="fs-modal-loading" hidden>Loading…</div>
+            <div id="ledgerModalError" class="fs-modal-error" hidden></div>
+            <div id="ledgerModalContent" hidden>
+                <div class="fs-modal-summary">
+                    <span>Opening: <strong id="ledgerModalOpening"></strong></span>
+                    <span>Closing: <strong id="ledgerModalClosing"></strong></span>
+                </div>
+                <div class="fs-modal-table-wrap">
+                    <table class="table fs-modal-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Source</th>
+                                <th>Particulars</th>
+                                <th class="num-col">Debit</th>
+                                <th class="num-col">Credit</th>
+                                <th class="num-col">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ledgerModalBody"></tbody>
+                    </table>
+                </div>
+                <p id="ledgerModalEmpty" class="fs-modal-empty" hidden>No activity in this period.</p>
+            </div>
+        </div>
+    </div>
+</div>

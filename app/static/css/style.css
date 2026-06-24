@@ -1703,3 +1703,149 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
   color: var(--text-2);
   min-width: 60px;
 }
+
+/* ── Financial Statement drill-down rows ─────────────────────────────────── */
+
+.fs-line-row {
+  cursor: pointer;
+}
+.fs-line-row:hover {
+  background: var(--bg);
+}
+.fs-line-row:hover td { outline: none; }
+
+.fs-section-header {
+  background: var(--bg);
+  font-weight: 700;
+}
+
+.fs-division-header {
+  font-weight: 600;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+}
+
+.fs-subtotal-row {
+  font-weight: 700;
+  border-top: 2px solid var(--border);
+  background: var(--card);
+}
+
+.fs-total-row {
+  font-weight: 700;
+  border-top: 2px solid var(--border);
+}
+
+.fs-grand-total-row {
+  font-weight: 800;
+  border-top: 3px double var(--border);
+  background: var(--bg);
+}
+
+.fs-child-row td { background: var(--bg); }
+.fs-child-row td:first-child { padding-left: 40px; }
+
+.fs-caret-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-2);
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1;
+}
+.fs-caret-btn:focus-visible { outline: 2px solid var(--blue); border-radius: 2px; }
+
+.num-col { text-align: right; font-family: var(--mono); white-space: nowrap; }
+
+/* ── FS Ledger Modal ─────────────────────────────────────────────────────── */
+
+.fs-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--backdrop);
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+}
+
+.fs-modal {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+}
+
+.fs-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+
+.fs-modal-code {
+  font-family: var(--mono);
+  color: var(--text-2);
+  font-size: 13px;
+  margin-right: 4px;
+}
+
+.fs-modal-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.fs-modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: var(--text-2);
+  line-height: 1;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.fs-modal-close:hover { color: var(--text); }
+.fs-modal-close:focus-visible { outline: 2px solid var(--blue); border-radius: 2px; }
+
+.fs-modal-body {
+  padding: 16px 20px 20px;
+  overflow-x: auto;
+}
+
+.fs-modal-loading,
+.fs-modal-error,
+.fs-modal-empty {
+  padding: 20px 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.fs-modal-error { color: var(--red); }
+
+.fs-modal-summary {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.fs-modal-table-wrap { overflow-x: auto; }
+
+.fs-modal-table { margin: 0; font-size: 13px; }
+.fs-modal-table th { font-weight: 600; }
+
+@media (max-width: 600px) {
+  .fs-modal-backdrop { padding: 0; align-items: flex-end; }
+  .fs-modal { border-radius: var(--radius) var(--radius) 0 0; max-height: 90vh; overflow-y: auto; }
+  .fs-modal-summary { flex-direction: column; gap: 4px; }
+}
