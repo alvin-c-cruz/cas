@@ -121,6 +121,36 @@ def test_income_statement_excludes_closing_entries_post_close(db_session, admin_
     )
 
 
+def test_close_with_contra_revenue_ties_out(db_session, admin_user, main_branch):
+    """Year-end close with a Contra-Revenue account: it nets against revenue in
+    nominal_balances (c−d is negative for its debit balance), the close ties out,
+    and both the revenue and contra-revenue accounts are zeroed."""
+    from app.year_end import service
+    _acct('30201', 'Retained Earnings', 'Equity', 'credit')
+    _acct('30301', 'Current-Year Earnings', 'Equity', 'credit')
+    cash = _acct('10101', 'Cash', 'Asset', 'debit')
+    rev = _acct('40001', 'Service Revenue', 'Revenue', 'credit')
+    disc = _acct('40104', 'Sales Discounts', 'Contra-Revenue', 'debit')
+    # Revenue 1000 (credit), Sales Discounts 100 (debit) -> net income 900
+    _posted_je(main_branch.id, date(2025, 3, 1), [(cash.id, 1000, 0), (rev.id, 0, 1000)])
+    _posted_je(main_branch.id, date(2025, 4, 1), [(disc.id, 100, 0), (cash.id, 0, 100)])
+    db.session.commit()
+
+    closes = service.close_fiscal_year(2025, admin_user.id)
+    db.session.commit()
+    assert closes[0].net_income == Decimal('900.00')
+
+    def net(code):
+        a = Account.query.filter_by(code=code).first()
+        d, c = service._posted_sums(a.id, date(2025, 12, 31), main_branch.id)
+        return d - c
+
+    assert net('40001') == Decimal('0.00')          # revenue zeroed
+    assert net('40104') == Decimal('0.00')          # contra-revenue zeroed
+    assert net('30301') == Decimal('0.00')          # income summary zeroed
+    assert net('30201') == Decimal('-900.00')       # RE holds the 900 credit
+
+
 def test_close_raises_if_re_account_missing(db_session, admin_user, main_branch):
     from app.year_end import service
     # nominal accounts but NO 30201/30301
