@@ -136,3 +136,51 @@ def test_balance_sheet_print_renders(client, db_session, main_branch, admin_user
     assert resp.status_code == 200
     assert b'Balance Sheet' in resp.data
     assert b'ACME Trading Corp' in resp.data
+
+
+def test_bs_page_shows_drilldown_hooks_and_net_income_has_no_account_id(
+        client, db_session, admin_user, main_branch):
+    """BS lines with real accounts emit data-account-id drill-down hooks.
+    The synthetic 'Net Income (current year)' line must NOT emit data-account-id
+    because its account_id is None (no GL account backs it).
+    """
+    # Seed standard BS accounts first (includes Cash on Hand 10101 + Equity accounts).
+    _seed_bs(main_branch.id)
+
+    # Add a Revenue account and post a JE so IS generates non-zero Net Income,
+    # which the BS generator appends as the synthetic equity line.
+    rev = _acct('40001', 'Sales Revenue', 'Revenue', 'Credit')
+    # Reuse the cash account already created by _seed_bs (code 10101).
+    from app.accounts.models import Account as _Account
+    cash = _Account.query.filter_by(code='10101').first()
+    _je(main_branch.id, [(cash, 1000, 0), (rev, 0, 1000)], 'BS-NI-1')
+
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/balance-sheet')
+    assert resp.status_code == 200
+    html = resp.data.decode()
+
+    # At least one real account line must carry a drill-down hook.
+    assert 'data-account-id' in html
+
+    # The synthetic Net Income row must be present...
+    assert 'Net Income (current year)' in html
+
+    # ...and that row must NOT carry a data-account-id attribute.
+    # The template only emits the attribute when line.account_id is truthy;
+    # because account_id is None for the synthetic line the attribute is absent
+    # from that <tr>. We find the last <tr opening tag before "Net Income (current year)"
+    # in the HTML, then extract that single row's attributes to confirm no data-account-id.
+    import re
+    ni_pos = html.find('Net Income (current year)')
+    assert ni_pos != -1, "Could not find 'Net Income (current year)' in BS HTML"
+    # Walk back to find the opening <tr for that row.
+    tr_start = html.rfind('<tr', 0, ni_pos)
+    assert tr_start != -1, "Could not find <tr before Net Income row"
+    tr_end = html.find('</tr>', ni_pos)
+    assert tr_end != -1, "Could not find </tr> after Net Income row"
+    ni_row_html = html[tr_start: tr_end + len('</tr>')]
+    assert 'data-account-id' not in ni_row_html, (
+        "Net Income (current year) row must not have a data-account-id attribute"
+    )

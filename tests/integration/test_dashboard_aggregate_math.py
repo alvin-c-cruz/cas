@@ -61,20 +61,20 @@ def seeded(db_session, main_branch, branch_manila):
     a, b = main_branch, branch_manila
 
     rev = Account(code='4001', name='Sales', account_type='Revenue',
-                  classification='Operating Revenue', normal_balance='Credit')
+                  normal_balance='Credit')
     # Expense hierarchy: two top-level group headers (non-postable) each with a
     # postable child. The breakdown must roll each child up to its top-level
     # ancestor's NAME (derived from parent_id), not a hardcoded code->name map.
-    cos = Account(code='5000', name='Cost of Sales', account_type='Expense',
-                  classification='COGS', normal_balance='Debit')
-    opex = Account(code='5200', name='Operating Expenses', account_type='Expense',
-                   classification='Admin', normal_balance='Debit')
+    cos = Account(code='5000', name='Cost of Sales', account_type='Cost of Goods Sold',
+                  normal_balance='Debit')
+    opex = Account(code='5200', name='Operating Expenses', account_type='Administrative Expense',
+                   normal_balance='Debit')
     db_session.add_all([rev, cos, opex])
     db_session.flush()
-    cogs = Account(code='5001', name='Cost of goods', account_type='Expense',
-                   classification='COGS', normal_balance='Debit', parent_id=cos.id)
-    admin = Account(code='5201', name='Admin exp', account_type='Expense',
-                    classification='Admin', normal_balance='Debit', parent_id=opex.id)
+    cogs = Account(code='5001', name='Cost of goods', account_type='Cost of Goods Sold',
+                   normal_balance='Debit', parent_id=cos.id)
+    admin = Account(code='5201', name='Admin exp', account_type='Administrative Expense',
+                    normal_balance='Debit', parent_id=opex.id)
     db_session.add_all([cogs, admin])
     db_session.flush()
 

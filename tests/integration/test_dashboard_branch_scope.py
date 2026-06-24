@@ -38,9 +38,9 @@ def _seed_branch_data(db_session, branch):
     due = today + timedelta(days=30)
 
     rev = Account(code='4001', name='Sales Revenue', account_type='Revenue',
-                  classification='Operating Revenue', normal_balance='Credit')
-    exp = Account(code='5001', name='Office Supplies', account_type='Expense',
-                  classification='Operating Expense', normal_balance='Debit')
+                  normal_balance='Credit')
+    exp = Account(code='5001', name='Office Supplies', account_type='Administrative Expense',
+                  normal_balance='Debit')
     db_session.add_all([rev, exp])
     db_session.flush()
 
@@ -137,9 +137,9 @@ class TestAccountListsFetchedOnce:
         # Revenue + Expense accounts present so both type-lookups fire.
         db_session.add_all([
             Account(code='4001', name='Sales', account_type='Revenue',
-                    classification='Operating Revenue', normal_balance='Credit'),
-            Account(code='5001', name='Supplies', account_type='Expense',
-                    classification='Operating Expense', normal_balance='Debit'),
+                    normal_balance='Credit'),
+            Account(code='5001', name='Supplies', account_type='Administrative Expense',
+                    normal_balance='Debit'),
         ])
         db_session.commit()
         login_user(client, 'admin', 'admin123')
