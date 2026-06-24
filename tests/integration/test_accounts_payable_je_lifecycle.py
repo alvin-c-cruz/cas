@@ -4,8 +4,9 @@ account types, not code prefixes (B-017).
 - A draft APV's auto-created JE must be status='draft' so unposted vouchers
   never appear in GL-based reports
 - Posting the APV promotes its JE to 'posted'
-- get_expense_stats matches accounts by account_type='Expense' (this company
-  uses 6xxxx expense codes; the old code assumed 5xxxx)
+- get_expense_stats matches accounts by base_category='Expense', which covers
+  all IS expense sub-types (Administrative Expense, Selling Expense, etc.);
+  code prefixes are irrelevant — the type drives the bucket
 """
 import json
 from datetime import date
@@ -28,7 +29,7 @@ def login(client, username='admin', password='admin123'):
 
 
 def setup_gl(db_session):
-    expense = Account(code='69902', name='JE Test Expense', account_type='Expense',
+    expense = Account(code='69902', name='JE Test Expense', account_type='Administrative Expense',
                       normal_balance='debit', is_active=True)
     ap = Account(code='20101', name='Accounts Payable - Trade',
                  account_type='Liability', normal_balance='credit', is_active=True)
