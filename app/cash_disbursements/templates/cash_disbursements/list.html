@@ -184,7 +184,6 @@
         <div class="empty-state">
             {% if filters_active %}
             <p>No CDVs match your filters.</p>
-            <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">Clear Filters</a>
             {% else %}
             <p>No Cash Disbursement Vouchers found.</p>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}

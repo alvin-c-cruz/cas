@@ -179,7 +179,6 @@
         <div class="empty-state">
             {% if filters_active %}
             <p>No CRVs match your filters.</p>
-            <a href="{{ url_for('cash_receipts.list_crvs') }}" class="btn btn-secondary">Clear Filters</a>
             {% else %}
             <p>No Cash Receipt Vouchers found.</p>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}

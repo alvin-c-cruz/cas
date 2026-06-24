@@ -185,7 +185,6 @@
         <div class="empty-state">
             {% if filters_active %}
             <p>No APVs match your filters.</p>
-            <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary">Clear Filters</a>
             {% else %}
             <p>No AP Vouchers found.</p>
             {% if current_user.role in ['staff', 'accountant', 'admin'] %}

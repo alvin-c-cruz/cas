@@ -93,6 +93,17 @@ class TestListCustomerFilter:
         assert 'SI-CF-001' in body, "selected customer's invoice should be shown"
         assert 'SI-CF-002' not in body, "other customer's invoice must be filtered out"
 
+    def test_filtered_empty_list_has_no_clear_filters_button(self, client, db_session,
+                                                             accountant_user, main_branch):
+        """With a filter applied that matches nothing, the empty state shows the
+        'no match' message but NOT a 'Clear Filters' button (removed per request)."""
+        login(client, username='accountant', password='accountant123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        body = client.get('/sales-invoices?customer_id=999999').data.decode()
+        assert 'No invoices match your filters' in body   # we are in the filtered-empty branch
+        assert 'Clear Filters' not in body                # ...without the removed button
+
     def test_csv_export_respects_customer_filter(self, client, db_session,
                                                  accountant_user, main_branch):
         c1 = make_customer(db_session, code='SCF3', name='Gamma Buyer')
