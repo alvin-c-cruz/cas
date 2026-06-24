@@ -114,7 +114,7 @@
                             {% if row.is_header %}
                             <span class="badge badge-group">PARENT</span>
                             {% else %}
-                            <span class="badge badge-{{ account.account_type.lower() }}">{{ account.account_type }}</span>
+                            <span class="badge badge-{{ account.base_category.lower() }}">{{ account.account_type }}</span>
                             {% endif %}
                         </td>
                         <td class="account-classification">{{ account.classification or '—' }}</td>

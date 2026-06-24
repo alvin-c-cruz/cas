@@ -15,7 +15,7 @@
             <h2 style="font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
                 {{ account.code }} - {{ account.name }}
             </h2>
-            <span class="badge badge-{{ account.account_type.lower() }}">{{ account.account_type }}</span>
+            <span class="badge badge-{{ account.base_category.lower() }}">{{ account.account_type }}</span>
         </div>
         <div style="display: flex; gap: 12px;">
             <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn btn-primary">
@@ -46,7 +46,7 @@
             <div class="detail-item">
                 <label class="detail-label">Account Type</label>
                 <div class="detail-value">
-                    <span class="badge badge-{{ account.account_type.lower() }}">{{ account.account_type }}</span>
+                    <span class="badge badge-{{ account.base_category.lower() }}">{{ account.account_type }}</span>
                 </div>
             </div>
 
@@ -135,7 +135,7 @@
                 <tr>
                     <td style="font-family: 'Courier New', monospace; font-weight: 600;">{{ child.code }}</td>
                     <td>{{ child.name }}</td>
-                    <td><span class="badge badge-{{ child.account_type.lower() }}">{{ child.account_type }}</span></td>
+                    <td><span class="badge badge-{{ child.base_category.lower() }}">{{ child.account_type }}</span></td>
                     <td>
                         {% if child.normal_balance == 'debit' %}
                         <span style="color: #dc2626; font-weight: 600;">Dr</span>
