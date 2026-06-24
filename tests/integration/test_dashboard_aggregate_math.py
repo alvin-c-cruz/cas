@@ -176,3 +176,23 @@ class TestDashboardAggregateMath:
         bd = get_expense_breakdown(as_of_date=AS_OF, branch_id=seeded.id)
         assert dict(zip(bd['labels'], bd['data'])) == {
             'Cost of Sales': 300.0, 'Operating Expenses': 200.0}
+
+
+def test_revenue_stats_includes_other_income_and_nets_contra_revenue(db_session, main_branch):
+    """get_active_accounts('Revenue') expands by base_category to Revenue +
+    Other Income + Contra-Revenue. Other Income must ADD to revenue and
+    Contra-Revenue must NET against it (no double-count, correct signs)."""
+    a = main_branch
+    rev = Account(code='4001', name='Sales', account_type='Revenue', normal_balance='Credit')
+    oinc = Account(code='4201', name='Interest Income', account_type='Other Income',
+                   normal_balance='Credit')
+    contra = Account(code='4104', name='Sales Discounts', account_type='Contra-Revenue',
+                     normal_balance='Debit')
+    db_session.add_all([rev, oinc, contra]); db_session.flush()
+    _je(db_session, a, 'JE-R', CUR, rev, '1000.00', 'credit')
+    _je(db_session, a, 'JE-OI', CUR, oinc, '200.00', 'credit')
+    _je(db_session, a, 'JE-CR', CUR, contra, '50.00', 'debit')
+    db_session.commit()
+    # 1000 revenue + 200 other income − 50 contra-revenue = 1150
+    assert get_revenue_stats(2026, 6, branch_id=a.id, as_of_date=AS_OF) == {
+        'mtd': 1150.0, 'ytd': 1150.0}
