@@ -240,14 +240,31 @@ def _output_vat_buckets(invoice):
     return ordered
 
 
+def _consolidate_je(entries):
+    """Merge JE preview lines posting to the same account into one row
+    (sum debit and credit), preserving first-seen order. Several invoice
+    lines crediting the same revenue account thus show that account once."""
+    order, by_key = [], {}
+    for e in entries:
+        key = (e['code'], e['name'])
+        if key not in by_key:
+            by_key[key] = {'code': e['code'], 'name': e['name'],
+                           'debit': Decimal('0.00'), 'credit': Decimal('0.00')}
+            order.append(key)
+        by_key[key]['debit'] += Decimal(str(e['debit']))
+        by_key[key]['credit'] += Decimal(str(e['credit']))
+    return [by_key[k] for k in order]
+
+
 def _build_je_preview(invoice):
-    """Return [{code, name, debit, credit}] for the detail view JE section.
+    """Return [{code, name, debit, credit}] for the detail view JE section,
+    consolidated so each account appears once.
 
     If the invoice has a stored JE, read from it.
     If draft (no stored JE), compute what _post_invoice_je would produce.
     """
     if invoice.journal_entry:
-        return [
+        return _consolidate_je([
             {
                 'code': line.account.code if line.account else '—',
                 'name': line.account.name if line.account else '—',
@@ -255,7 +272,7 @@ def _build_je_preview(invoice):
                 'credit': line.credit_amount,
             }
             for line in invoice.journal_entry.lines.all()
-        ]
+        ])
 
     # Draft preview: compute inline
     accts = _get_gl_accounts()
@@ -301,7 +318,7 @@ def _build_je_preview(invoice):
                         'debit': Decimal(str(invoice.total_amount)),
                         'credit': Decimal('0.00')})
 
-    return entries
+    return _consolidate_je(entries)
 
 
 # ---------------------------------------------------------------------------
