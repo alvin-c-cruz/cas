@@ -85,11 +85,11 @@
                     <thead>
                         <tr>
                             <th style="width: 1%; white-space: nowrap; color: var(--text-2);">#</th>
-                            <th style="width: 35%;">Description</th>
+                            <th style="width: 32%;">Description</th>
                             <th style="width: 13%; text-align: right;">Amount (₱, VAT-incl.)</th>
-                            <th style="width: 9%;">VT</th>
-                            <th style="width: 8%;">WT</th>
-                            <th style="width: 29%;">Account Title</th>
+                            <th style="width: 13%;">VAT Category</th>
+                            <th style="width: 11%;">WHT Code</th>
+                            <th style="width: 25%;">Account</th>
                             <th style="width: 5%;"></th>
                         </tr>
                     </thead>
@@ -104,7 +104,7 @@
 
                     <!-- JE Preview -->
                     <div id="jePreviewSection">
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Journal Entry Preview</div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Entry</div>
                         <table class="table" style="font-size: 12px;" id="jePreviewTable">
                             <thead>
                                 <tr>
@@ -157,11 +157,11 @@
 
                             <!-- Row 5: Less: WHT (customer deducts on payment) — pencil override -->
                             <div id="wtDisplayMode" class="bsr">
-                                <span class="bsr-label">Less: WHT (customer) <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button></span>
+                                <span class="bsr-label">Less: Creditable w/tax <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button></span>
                                 <span id="wtDisplay" class="bsr-amt bsr-amt--red">0.00</span>
                             </div>
                             <div id="wtEditMode" class="bsr" style="display:none">
-                                <span class="bsr-label">Less: WHT (customer) <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">&#8634;</button><span id="wtAutoHint" style="display:none; font-size:11px; color:var(--text-2); margin-left:4px;"></span></span>
+                                <span class="bsr-label">Less: Creditable w/tax <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">&#8634;</button><span id="wtAutoHint" style="display:none; font-size:11px; color:var(--text-2); margin-left:4px;"></span></span>
                                 <input type="text" id="wtOverrideInput" class="bsr-input"
                                        onfocus="amtFocus(this)"
                                        oninput="onWtOverrideInput(this.value)"
@@ -170,7 +170,7 @@
 
                             <!-- Row 6: Total Amount Receivable -->
                             <div class="bsr bsr--total">
-                                <span class="bsr-label bsr-label--total">Total Amount Receivable</span>
+                                <span class="bsr-label bsr-label--total">Amount Collectible</span>
                                 <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
                             </div>
 
@@ -788,7 +788,16 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: wtUsed, credit: 0 });
     }
     bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: 0, credit: b.amt }));
-    revenueRows.forEach(r => rows.push(r));
+    // Consolidate revenue lines posting to the same account into one row
+    // (mirrors the server-side _consolidate_je on the detail view).
+    const revByKey = {}, revOrder = [];
+    revenueRows.forEach(r => {
+        const key = r.code + '|' + r.name;
+        if (!revByKey[key]) { revByKey[key] = { code: r.code, name: r.name, debit: 0, credit: 0 }; revOrder.push(key); }
+        revByKey[key].debit += r.debit;
+        revByKey[key].credit += r.credit;
+    });
+    revOrder.forEach(k => rows.push(revByKey[k]));
 
     const totalDebit  = rows.reduce((s, r) => s + r.debit, 0);
     const totalCredit = rows.reduce((s, r) => s + r.credit, 0);

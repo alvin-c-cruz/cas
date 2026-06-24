@@ -300,6 +300,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .card-title { font-size: 13px; font-weight: 700; color: var(--text); }
 .card-sub { font-size: 12px; color: var(--text-3); margin-top: 1px; }
 .card-body { padding: 18px; }
+/* base.html's inline <style> sets .card-body{padding:0} (loads last, wins); restore
+   comfortable padding on the transaction-document forms so fields don't hug the edge. */
+.page-sales-invoice .card-body { padding: 24px; }
 
 /* ─── Stat Cards ─────────────────────────────────────────────── */
 .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 20px; }
