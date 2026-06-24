@@ -25,6 +25,7 @@ def account_form_data(code='10199'):
         'code': code,
         'name': 'Auto Approve Test',
         'account_type': 'Asset',
+        'classification': 'Current',  # Asset/Liability now require a classification (type-driven FS)
         'normal_balance': 'debit',
         'request_reason': 'B-011 rule test',
     }
