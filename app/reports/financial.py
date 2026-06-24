@@ -354,7 +354,7 @@ def generate_cash_flow(start_date, end_date, branch_id=None, method='indirect'):
 
     depreciation = Decimal('0.00')
     for a in accounts:
-        if (a.account_type == 'Expense' or (a.code or '').startswith('5')) and _is_depreciation_name(a):
+        if ((a.base_category == 'Expense' or (a.code or '').startswith('5')) and _is_depreciation_name(a)):
             depreciation += movement(a.id)        # debit-positive expense -> positive add-back
 
     working_capital = []

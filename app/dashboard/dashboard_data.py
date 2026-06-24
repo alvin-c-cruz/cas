@@ -20,15 +20,26 @@ from app.sales_invoices.models import SalesInvoice
 from app.accounts_payable.models import AccountsPayable
 
 
-def get_active_accounts(account_type):
-    """Return active accounts of a given type.
+def get_active_accounts(base_category):
+    """Return active accounts whose base category matches (e.g. 'Revenue', 'Expense').
+
+    Under the new type taxonomy, 'Expense' expands to several specific types
+    (Selling Expense, Administrative Expense, Cost of Goods Sold, etc.) and
+    'Revenue' includes Contra-Revenue and Other Income. This helper uses
+    BASE_CATEGORY to expand a legacy base category to all constituent types,
+    so dashboards stay correct after the type-driven FS migration.
 
     Exposed so the dashboard view can fetch the Revenue/Expense lists once and
     pass them into the helpers below, instead of each helper re-querying them
     (FINDING-002).
     """
+    from app.accounts.account_types import BASE_CATEGORY
+    types = [t for t, bc in BASE_CATEGORY.items() if bc == base_category]
+    if not types:
+        # base_category itself is a direct account_type (e.g. 'Asset')
+        types = [base_category]
     return Account.query.filter(
-        Account.account_type == account_type,
+        Account.account_type.in_(types),
         Account.is_active == True
     ).all()
 
