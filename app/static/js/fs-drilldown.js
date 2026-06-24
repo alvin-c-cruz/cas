@@ -125,10 +125,14 @@
                 } else {
                     data.lines.forEach(function (ln) {
                         var tr = document.createElement('tr');
+                        // Aggregated parent ledgers tag each line with its child account.
+                        var particulars = (ln.account && ln.account.code)
+                            ? escHtml(String(ln.account.code)) + ' · ' + escHtml(String(ln.particulars || ''))
+                            : escHtml(String(ln.particulars || ''));
                         tr.innerHTML =
                             '<td>' + (ln.date || '') + '</td>' +
                             '<td>' + escHtml(String(ln.source || '')) + '</td>' +
-                            '<td>' + escHtml(String(ln.particulars || '')) + '</td>' +
+                            '<td>' + particulars + '</td>' +
                             '<td class="num-col">' + (ln.debit  ? fmt(ln.debit)  : '') + '</td>' +
                             '<td class="num-col">' + (ln.credit ? fmt(ln.credit) : '') + '</td>' +
                             '<td class="num-col">' + fmt(ln.balance) + '</td>';

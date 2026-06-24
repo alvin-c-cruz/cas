@@ -704,6 +704,81 @@ def cash_flow_print():
                            end_date=end_date, company=company, branch_name=branch_name)
 
 
+def _descendant_leaf_ids(account):
+    """IDs of all postable leaf accounts under `account` (recursive).
+
+    Returns [] when `account` is itself a leaf (no children) — the caller then
+    falls back to the single-account ledger path.
+    """
+    leaves = []
+    stack = list(account.children)
+    while stack:
+        node = stack.pop()
+        kids = list(node.children)
+        if kids:
+            stack.extend(kids)
+        else:
+            leaves.append(node.id)
+    return leaves
+
+
+def _aggregated_ledger_response(account, leaf_ids, start_date, end_date, branch_id):
+    """Combined ledger of a parent group's descendant leaves, signed by the
+    parent's normal_balance (the group's net movement). Each line is tagged
+    with the child account it came from."""
+    from app import db
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from sqlalchemy import func
+    from decimal import Decimal
+
+    sign = 1 if (account.normal_balance or 'debit').lower() == 'debit' else -1
+
+    opening_raw = db.session.query(
+        func.coalesce(func.sum(JournalEntryLine.debit_amount - JournalEntryLine.credit_amount), 0)
+    ).join(JournalEntry).filter(
+        JournalEntry.status == 'posted',
+        JournalEntry.branch_id == branch_id,
+        JournalEntry.entry_date < start_date,
+        JournalEntryLine.account_id.in_(leaf_ids),
+    ).scalar()
+    running = Decimal(str(opening_raw or '0'))
+    opening = float(running) * sign
+
+    rows = db.session.query(JournalEntryLine, JournalEntry, Account).join(
+        JournalEntry, JournalEntryLine.entry_id == JournalEntry.id
+    ).join(Account, Account.id == JournalEntryLine.account_id).filter(
+        JournalEntry.status == 'posted',
+        JournalEntry.branch_id == branch_id,
+        JournalEntry.entry_date >= start_date,
+        JournalEntry.entry_date <= end_date,
+        JournalEntryLine.account_id.in_(leaf_ids),
+    ).order_by(
+        JournalEntry.entry_date, JournalEntry.entry_number, JournalEntryLine.line_number
+    ).all()
+
+    lines = []
+    for line, entry, acct in rows:
+        running += (line.debit_amount - line.credit_amount)
+        source = entry.display_number or entry.reference or entry.entry_number or ''
+        lines.append({
+            'date': entry.entry_date.isoformat() if hasattr(entry.entry_date, 'isoformat') else str(entry.entry_date),
+            'source': source,
+            'particulars': line.description or entry.description or '',
+            'account': {'code': acct.code, 'name': acct.name},
+            'debit': float(line.debit_amount),
+            'credit': float(line.credit_amount),
+            'balance': float(running) * sign,
+        })
+
+    return jsonify({
+        'account': {'code': account.code, 'name': account.name},
+        'aggregated': True,
+        'lines': lines,
+        'opening': opening,
+        'closing': float(running) * sign,
+    })
+
+
 @reports_bp.route('/reports/account-ledger')
 @login_required
 def account_ledger_json():
@@ -745,6 +820,12 @@ def account_ledger_json():
 
     branch_id = session.get('selected_branch_id')
 
+    # Parent (group) accounts have no postings of their own — aggregate the
+    # ledgers of all postable descendant leaves into one combined ledger.
+    leaf_ids = _descendant_leaf_ids(account)
+    if leaf_ids:
+        return _aggregated_ledger_response(account, leaf_ids, start_date, end_date, branch_id)
+
     # Reuse generate_general_ledger for the single-account ledger.
     # When branch_id is None the helper filters branch_id == None (no-branch JEs).
     # Mirror the GL report's behaviour: pass branch_id from session unchanged.
@@ -761,6 +842,7 @@ def account_ledger_json():
         # No activity at all for this account in this period.
         return jsonify({
             'account': {'code': account.code, 'name': account.name},
+            'aggregated': False,
             'lines': [],
             'opening': 0.0,
             'closing': 0.0,
@@ -785,6 +867,7 @@ def account_ledger_json():
 
     return jsonify({
         'account': {'code': account.code, 'name': account.name},
+        'aggregated': False,
         'lines': lines,
         'opening': opening,
         'closing': closing,
