@@ -92,7 +92,7 @@
 </div>
 {% endif %}
 
-<div class="card">
+<div class="card page-sales-invoice">
     <div class="card-header">
         <div style="display:flex; align-items:center; gap:12px;">
             <span style="font-size:20px; font-weight:700;">{{ invoice.invoice_number }}</span>
@@ -228,10 +228,10 @@
         </table>
 
         {# ── JE Preview + Invoice Summary ─────────────────────────────────── #}
-        <div style="display:grid; grid-template-columns:1fr 340px; gap:24px;">
+        <div style="display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:24px; align-items:start;">
 
             {# Journal Entry #}
-            <div>
+            <div style="min-width:0; overflow-x:auto;">
                 <details open>
                     <summary style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:12px; cursor:pointer; user-select:none;">
                         Entry
