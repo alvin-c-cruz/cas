@@ -346,6 +346,9 @@ let currentVendorWHTs = {{ vendor_whts | default([], true) | tojson }};
 let openBills = [];
 let autoVat = 0, autoWt = 0;
 let vatOverrideActive = false, wtOverrideActive = false;
+// Default account for NEW Section B expense lines — the vendor's last-used expense
+// account (from their most recent posted CDV); set on vendor change.
+let defaultExpenseAccountId = null;
 
 // ── Vendor Choices.js ─────────────────────────────────────────────────────────
 const vendorSel = document.getElementById('vendor_id');
@@ -356,7 +359,7 @@ initVendorQuickAdd({ selectEl: vendorSel });
 
 // ── Cash account Choices.js ───────────────────────────────────────────────────
 const cashAccSel = document.getElementById('cash_account_id');
-new Choices(cashAccSel, {
+const cashAccChoices = new Choices(cashAccSel, {
     searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false,
 });
 // Re-render the live Entry (JE preview) when the cash/bank account changes.
@@ -437,10 +440,18 @@ function onVendorChange(vendorId) {
     document.getElementById('cdvLocked').style.display = 'none';
     document.getElementById('cdvSections').style.display = '';
 
-    // Load this vendor's withholding codes, then re-scope the expense WT selects.
+    // Load this vendor's withholding codes, then re-scope the expense WT selects;
+    // also pre-fill the Cash/Bank account + Section B expense account from the
+    // vendor's most recent posted CDV (defaults only — the user can still override).
     fetch(`/vendors/${vendorId}/defaults`)
         .then(r => r.json())
-        .then(d => { currentVendorWHTs = d.withholding_taxes || []; })
+        .then(d => {
+            currentVendorWHTs = d.withholding_taxes || [];
+            defaultExpenseAccountId = d.last_expense_account_id || null;
+            if (d.last_cash_account_id) {
+                cashAccChoices.setChoiceByValue(String(d.last_cash_account_id));
+            }
+        })
         .catch(() => { currentVendorWHTs = []; })
         .finally(() => rebuildAllExpenseWhtSelects());
 
@@ -654,7 +665,7 @@ function addExpenseLine(existingItem) {
     const id = expenseCounter;
     const item = existingItem
         ? { ...existingItem, id }
-        : { id, description: '', amount: 0, vat_category: '', account_id: null, wt_id: null, wt_rate: null };
+        : { id, description: '', amount: 0, vat_category: '', account_id: defaultExpenseAccountId || null, wt_id: null, wt_rate: null };
     expenseLines.push(item);
 
     const row = document.createElement('tr');
@@ -1020,6 +1031,12 @@ if (savedVendorId) {
     fetch(`{{ url_for('cash_disbursements.open_bills') }}?vendor_id=${savedVendorId}`)
         .then(r => r.json())
         .then(bills => { openBills = bills; refreshBillPicker(); });
+    // Remember the vendor's last-used expense account for any NEW lines added on edit
+    // (keep the saved Cash/Bank account untouched).
+    fetch(`/vendors/${savedVendorId}/defaults`)
+        .then(r => r.json())
+        .then(d => { defaultExpenseAccountId = d.last_expense_account_id || null; })
+        .catch(() => {});
 }
 {% endif %}
 

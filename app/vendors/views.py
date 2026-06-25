@@ -414,6 +414,28 @@ def vendor_defaults(id):
         .order_by(AccountsPayable.created_at.desc(), AccountsPayableItem.line_number.asc())
         .first()
     )
+
+    # Cash-disbursement defaults: the cash/bank account and direct-expense account this
+    # vendor used on their most recent POSTED CDV — so the CDV form can pre-fill both
+    # (defaults only; the user can still override).
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+    last_cdv = (
+        CashDisbursementVoucher.query
+        .filter_by(vendor_id=id, status='posted')
+        .order_by(CashDisbursementVoucher.cdv_date.desc(), CashDisbursementVoucher.id.desc())
+        .first()
+    )
+    last_exp_line = (
+        CDVExpenseLine.query
+        .join(CashDisbursementVoucher)
+        .filter(CashDisbursementVoucher.vendor_id == id,
+                CashDisbursementVoucher.status == 'posted',
+                CDVExpenseLine.account_id.isnot(None))
+        .order_by(CashDisbursementVoucher.cdv_date.desc(), CashDisbursementVoucher.id.desc(),
+                  CDVExpenseLine.line_number.asc())
+        .first()
+    )
+
     return jsonify({
         'withholding_taxes': [
             {
@@ -428,4 +450,6 @@ def vendor_defaults(id):
         'default_vat_category': vendor.default_vat_category,
         'payment_terms': vendor.payment_terms or 'Net 30',
         'last_account_id': last_item.account_id if last_item else None,
+        'last_cash_account_id': last_cdv.cash_account_id if last_cdv else None,
+        'last_expense_account_id': last_exp_line.account_id if last_exp_line else None,
     })

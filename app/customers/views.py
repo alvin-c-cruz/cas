@@ -485,9 +485,32 @@ def customer_defaults(id):
         .first()
     )
 
+    # Cash-receipt defaults: the cash/bank account and direct-revenue account this
+    # customer used on their most recent POSTED CRV — so the CRV form can pre-fill
+    # both (defaults only; the user can still override).
+    from app.cash_receipts.models import CashReceiptVoucher, CRVRevenueLine
+    last_crv = (
+        CashReceiptVoucher.query
+        .filter_by(customer_id=id, status='posted')
+        .order_by(CashReceiptVoucher.crv_date.desc(), CashReceiptVoucher.id.desc())
+        .first()
+    )
+    last_rev_line = (
+        CRVRevenueLine.query
+        .join(CashReceiptVoucher)
+        .filter(CashReceiptVoucher.customer_id == id,
+                CashReceiptVoucher.status == 'posted',
+                CRVRevenueLine.account_id.isnot(None))
+        .order_by(CashReceiptVoucher.crv_date.desc(), CashReceiptVoucher.id.desc(),
+                  CRVRevenueLine.line_number.asc())
+        .first()
+    )
+
     return jsonify({
         'withholding_taxes': withholding_taxes,
         'default_vat_category': customer.default_vat_category,
         'payment_terms': customer.payment_terms or 'Net 30',
         'last_account_id': last_item.account_id if last_item else None,
+        'last_cash_account_id': last_crv.cash_account_id if last_crv else None,
+        'last_revenue_account_id': last_rev_line.account_id if last_rev_line else None,
     })
