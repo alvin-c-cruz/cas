@@ -10,8 +10,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', filename='vendor-form.css') }}?v=3">
 
-{{ render_flash_messages() }}
-
 <div class="card page-accounts-payable">
     <div class="card-body">
         <form method="POST" novalidate id="billForm" enctype="multipart/form-data">
