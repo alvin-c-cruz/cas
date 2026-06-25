@@ -32,7 +32,7 @@
   },
   "modules": {
     "accounts_payable":  { "marker": "accounts_payable", "e2e": "tests/e2e/test_ap_smoke.py" },
-    "cash_disbursements": { "marker": "cash_disbursements", "e2e": null },
+    "cash_disbursements": { "marker": "cash_disbursements", "e2e": "tests/e2e/test_cdv_smoke.py" },
     "sales_invoices":    { "marker": "sales_invoices", "e2e": "tests/e2e/test_si_smoke.py" },
     "cash_receipts":     { "marker": "cash_receipts", "e2e": "tests/e2e/test_crv_smoke.py" },
     "vendors":           { "marker": "vendors", "e2e": null },
