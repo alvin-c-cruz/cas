@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField
-from wtforms.validators import DataRequired, Length, Optional
+from wtforms.validators import DataRequired, Length, Optional, ValidationError
 from datetime import date
 
 
@@ -35,6 +35,18 @@ class CashReceiptForm(FlaskForm):
         DataRequired(message='Cash or bank account is required.')
     ], coerce=int)
 
-    notes = TextAreaField('Notes (Particulars)', validators=[
-        DataRequired(message='Notes are required.')
-    ])
+    notes = TextAreaField('Notes (Particulars)', validators=[Optional()])
+
+    def validate_notes(self, field):
+        """Notes/particulars are required only when the receipt includes direct
+        revenue lines (Section B). AR-collection-only receipts (Section A) take
+        their particulars from the referenced invoices, so notes are optional."""
+        import json
+        from flask import request
+        raw = request.form.get('revenue_lines', '') or '[]'
+        try:
+            has_revenue = bool(json.loads(raw))
+        except (ValueError, TypeError):
+            has_revenue = False
+        if has_revenue and not (field.data or '').strip():
+            raise ValidationError('Notes are required when the receipt includes direct revenue lines.')

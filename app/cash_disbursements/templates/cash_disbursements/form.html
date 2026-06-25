@@ -879,8 +879,12 @@ function validateForm() {
     }
 
     // Notes are required server-side (they become the CD Journal particulars).
+    // Notes are required only when the disbursement has direct expense lines (Section B);
+    // AP-payment-only disbursements (Section A) take their particulars from the bills.
     const notesVal = (document.querySelector('textarea[name="notes"]')?.value || '').trim();
-    if (!notesVal) { block('Enter notes / particulars before saving.'); return; }
+    if (expenseLines.length > 0 && !notesVal) {
+        block('Enter notes / particulars before saving (required for direct expense lines).'); return;
+    }
 
     for (let i = 0; i < apLines.length; i++) {
         const l = apLines[i];

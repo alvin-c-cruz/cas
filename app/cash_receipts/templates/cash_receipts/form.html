@@ -840,8 +840,12 @@ function validateForm() {
         block('Add at least one AR invoice or one revenue line.'); return;
     }
 
+    // Notes are required only when the receipt has direct revenue lines (Section B);
+    // AR-collection-only receipts (Section A) take their particulars from the invoices.
     const notesVal = (document.querySelector('textarea[name="notes"]')?.value || '').trim();
-    if (!notesVal) { block('Enter notes / particulars before saving.'); return; }
+    if (revenueLines.length > 0 && !notesVal) {
+        block('Enter notes / particulars before saving (required for direct revenue lines).'); return;
+    }
 
     for (let i = 0; i < arLines.length; i++) {
         const l = arLines[i];
