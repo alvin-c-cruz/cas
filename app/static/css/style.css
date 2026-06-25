@@ -393,6 +393,10 @@ tbody td {
   color: var(--text);
   vertical-align: middle;
 }
+/* Footer/total rows had no padding (only thead th + tbody td were styled), so
+   grand-total numbers sat 14px off from the column above. Match the body cells'
+   horizontal padding so decimals align (border/weight come from the templates). */
+tfoot td { padding: 12px 14px; vertical-align: middle; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #fafbfc; }
 tbody tr.clickable-row { cursor: pointer; }
