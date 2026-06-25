@@ -240,8 +240,23 @@
               <button type="button" class="btn btn-secondary" onclick="addExpenseLine()">+ Add Expense Line</button>
             </div>
 
-            <!-- Bottom: Summary panel -->
-            <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+            <!-- Bottom: Entry (JE preview) + Summary panel -->
+            <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:24px; margin-top:16px; align-items:start;">
+              <div id="jePreviewSection" style="min-width:0; overflow-x:auto;">
+                <div class="cdv-section-label">Entry</div>
+                <table class="table" style="font-size:12px;" id="jePreviewTable">
+                  <thead>
+                    <tr>
+                      <th style="width:14%; color:var(--text-2);">Code</th>
+                      <th>Account Title</th>
+                      <th style="text-align:right; width:18%;">Debit</th>
+                      <th style="text-align:right; width:18%;">Credit</th>
+                    </tr>
+                  </thead>
+                  <tbody id="jePreviewBody"></tbody>
+                  <tfoot id="jePreviewFoot"></tfoot>
+                </table>
+              </div>
               <div>
                 <div class="cdv-section-label">CDV Summary</div>
                 <div class="bill-summary-panel">
@@ -346,6 +361,8 @@ const cashAccSel = document.getElementById('cash_account_id');
 new Choices(cashAccSel, {
     searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false,
 });
+// Re-render the live Entry (JE preview) when the cash/bank account changes.
+cashAccSel.addEventListener('change', recalculate);
 
 // ── AP-bill picker Choices.js ─────────────────────────────────────────────────
 // Rich, searchable option rows (AP No. · invoice # · balance). allowHTML is on
@@ -765,7 +782,88 @@ function recalculate() {
     if (!wtOverrideActive)  document.getElementById('wtDisplay').textContent  = '-' + fmt(wtUsed);
     document.getElementById('totalDisplay').textContent = fmt(total);
 
+    renderCdvJEPreview(apApplied, vatUsed, wtUsed, total);
     validateForm();
+}
+
+// Live "Entry" (JE preview) — mirrors the server-side _build_cdv_je_preview, consolidated
+// by account. Dr AP + Dr Expense (net) + Dr Input VAT; Cr Withholding Tax Payable + Cr Cash.
+// Stays in sync with the detail-view "Entry".
+function renderCdvJEPreview(apApplied, vatUsed, wtUsed, total) {
+    const expenseRows = [];
+    let firstExpIdx = -1;
+    const vatBuckets = {};
+
+    expenseLines.forEach(item => {
+        if (!item.account_id) return;
+        const acct = allAccounts.find(a => a.id === item.account_id);
+        if (!acct) return;
+        const vat = vatCategories.find(v => v.code === item.vat_category);
+        const vatRate = vat ? vat.rate : 0;
+        const amtC = Math.round((item.amount || 0) * 100);
+        const vatC = vatRate > 0 ? Math.round(amtC - amtC / (1 + vatRate / 100)) : 0;
+        const vatAmt = vatC / 100;
+        const netBase = (amtC - vatC) / 100;
+        if (vatAmt > 0) {
+            const acctId = (vat && vat.input_vat_account_id) ? vat.input_vat_account_id : '??';
+            const code   = (vat && vat.input_vat_account_code) ? vat.input_vat_account_code : '??';
+            const name   = (vat && vat.input_vat_account_name) ? vat.input_vat_account_name : 'No Input Tax account configured';
+            if (!vatBuckets[acctId]) vatBuckets[acctId] = { code, name, amt: 0 };
+            vatBuckets[acctId].amt += vatAmt;
+        }
+        if (firstExpIdx === -1) firstExpIdx = expenseRows.length;
+        expenseRows.push({ code: acct.code, name: acct.name, debit: netBase, credit: 0 });
+    });
+
+    // Input VAT buckets (debits) + residual absorber on the first expense line
+    let bucketList = [];
+    if (vatUsed > 0) {
+        bucketList = Object.values(vatBuckets).sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
+        const bucketTotal = bucketList.reduce((s, b) => s + b.amt, 0);
+        const diff = vatUsed - bucketTotal;
+        if (Math.abs(diff) > 0.004 && bucketList.length) {
+            bucketList.reduce((max, b) => (b.amt > max.amt ? b : max), bucketList[0]).amt += diff;
+        }
+        bucketList = bucketList.filter(b => Math.abs(b.amt) > 0.004);
+    }
+    const vatRowsTotal = bucketList.reduce((s, b) => s + b.amt, 0);
+    if (firstExpIdx >= 0) expenseRows[firstExpIdx].debit -= (vatRowsTotal - autoVat);
+
+    // Assemble debits-first: AP, Expense, Input VAT; then credits: WHT Payable, Cash.
+    const rows = [];
+    if (apApplied > 0 && glAccounts && glAccounts.ap) rows.push({ code: glAccounts.ap.code, name: glAccounts.ap.name, debit: apApplied, credit: 0 });
+    expenseRows.forEach(r => rows.push(r));
+    bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: b.amt, credit: 0 }));
+    if (wtUsed > 0 && glAccounts && glAccounts.wt) rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: 0, credit: wtUsed });
+    const cashAcct = allAccounts.find(a => a.id === (parseInt(cashAccSel.value) || -1));
+    if (cashAcct && total > 0) rows.push({ code: cashAcct.code, name: cashAcct.name, debit: 0, credit: total });
+
+    // Consolidate by account (mirror _consolidate_je), preserving first-seen order.
+    const byKey = {}, order = [];
+    rows.forEach(r => {
+        const key = r.code + '|' + r.name;
+        if (!byKey[key]) { byKey[key] = { code: r.code, name: r.name, debit: 0, credit: 0 }; order.push(key); }
+        byKey[key].debit += r.debit;
+        byKey[key].credit += r.credit;
+    });
+    const finalRows = order.map(k => byKey[k]);
+
+    const totalDebit  = finalRows.reduce((s, r) => s + r.debit, 0);
+    const totalCredit = finalRows.reduce((s, r) => s + r.credit, 0);
+
+    document.getElementById('jePreviewBody').innerHTML = finalRows.map(r => `
+        <tr>
+            <td style="color:var(--text-2); font-family:var(--mono); font-size:11px;">${escHtml(r.code)}</td>
+            <td>${escHtml(r.name)}</td>
+            <td style="text-align:right; font-family:var(--mono);">${r.debit > 0 ? '₱' + fmt(r.debit) : '—'}</td>
+            <td style="text-align:right; font-family:var(--mono);">${r.credit > 0 ? '₱' + fmt(r.credit) : '—'}</td>
+        </tr>`).join('');
+    document.getElementById('jePreviewFoot').innerHTML = `
+        <tr style="border-top:2px solid var(--border); font-weight:700;">
+            <td colspan="2" style="font-size:11px; color:var(--text-2);">Total</td>
+            <td style="text-align:right; font-family:var(--mono);">₱${fmt(totalDebit)}</td>
+            <td style="text-align:right; font-family:var(--mono);">₱${fmt(totalCredit)}</td>
+        </tr>`;
 }
 
 // ── Form validation ───────────────────────────────────────────────────────────
