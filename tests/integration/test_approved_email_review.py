@@ -1,4 +1,5 @@
-"""Integration tests for the approved-email review flow (approve/reject).
+"""Integration tests for the approved-email review flow (approve/reject)
+and action-items badge count.
 
 Admin approves/rejects a pending request; accountant sees read-only list.
 """
@@ -166,3 +167,17 @@ def test_accountant_sees_list_readonly(
         "Accountant should not see reject form actions"
     # Must show the status
     assert 'Pending' in body or 'pending' in body.lower()
+
+
+# ---------------------------------------------------------------------------
+# Action-items count
+# ---------------------------------------------------------------------------
+
+def test_action_items_counts_pending_request(db_session, admin_user, accountant_user, main_branch):
+    """A pending approved-email row is included in the admin action-items count."""
+    from app.dashboard.action_items_service import count_action_items
+
+    _seed_pending(db_session, accountant_user)
+
+    count = count_action_items(admin_user, main_branch.id)
+    assert count >= 1, "Pending approved-email requests must appear in the admin action-items count"

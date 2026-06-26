@@ -15,6 +15,7 @@ import json
 from app.accounts.approval_models import AccountChangeRequest
 from app.vat_categories.models import VATCategoryChangeRequest
 from app.withholding_tax.models import WithholdingTaxChangeRequest
+from app.users.approved_emails import ApprovedEmail
 
 
 def _draft_sources():
@@ -106,6 +107,17 @@ def gather_approval_items(user):
             'reviewUrl': '/withholding-tax/change-requests/{}/review'.format(req.id),
         })
 
+    # Pending approved-email requests
+    for ae in ApprovedEmail.query.filter_by(status='pending').all():
+        items.append({
+            'type': 'Approved Email Request', 'icon': '📧',
+            'id': ae.email, 'desc': 'Registration email awaiting approval',
+            'by': ae.requested_by.username if ae.requested_by else '—',
+            'when': ae.approved_at.strftime('%Y-%m-%d %H:%M') if ae.approved_at else '—',
+            'state': 'Pending', 'reason': None,
+            'reviewUrl': '/approved-emails',
+        })
+
     return items
 
 
@@ -122,4 +134,6 @@ def count_action_items(user, branch_id):
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()
         n += WithholdingTaxChangeRequest.query.filter_by(status='pending').count()
+    if user.role == 'admin':
+        n += ApprovedEmail.query.filter_by(status='pending').count()
     return n
