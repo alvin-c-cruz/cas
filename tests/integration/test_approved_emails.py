@@ -23,6 +23,7 @@ class TestApprovedEmails:
         resp = client.post('/approved-emails/add', data={
             'email': 'new.hire@example.com',
             'notes': 'New accountant',
+            'position': 'staff',  # required since Feature B; branch auto-assigned (single branch)
         }, follow_redirects=True)
         assert resp.status_code == 200
         assert b'has been approved for registration' in resp.data
@@ -40,7 +41,8 @@ class TestApprovedEmails:
 
     def test_admin_delete_unused_writes_audit(self, client, db_session, admin_user, main_branch):
         login(client)
-        client.post('/approved-emails/add', data={'email': 'temp@example.com', 'notes': ''},
+        client.post('/approved-emails/add', data={'email': 'temp@example.com', 'notes': '',
+                                                  'position': 'viewer'},
                     follow_redirects=True)
         row = ApprovedEmail.query.filter_by(email='temp@example.com').first()
         row_id = row.id
@@ -61,7 +63,8 @@ class TestApprovedEmails:
         (data-confirm), never JS confirm() — without the token the POST 400s
         in production where CSRF is enforced."""
         login(client)
-        client.post('/approved-emails/add', data={'email': 'csrf.check@example.com', 'notes': ''},
+        client.post('/approved-emails/add', data={'email': 'csrf.check@example.com', 'notes': '',
+                                                  'position': 'viewer'},
                     follow_redirects=True)
 
         resp = client.get('/approved-emails')
@@ -114,7 +117,8 @@ class TestApprovedEmailsAccountantAccess:
         db_session.commit()
         self.login_accountant(client)
         client.post('/approved-emails/add',
-                    data={'email': 'accountant_req@example.com', 'notes': ''},
+                    data={'email': 'accountant_req@example.com', 'notes': '',
+                          'position': 'staff'},
                     follow_redirects=True)
         row = ApprovedEmail.query.filter_by(email='accountant_req@example.com').first()
         assert row is not None
