@@ -94,9 +94,6 @@
         {% if not approved_emails %}
         <div class="empty-state">
             <p>No approved emails found.</p>
-            <a href="{{ url_for('users.add_approved_email') }}" class="btn btn-primary">
-                <span class="btn-icon">+</span> Add First Approved Email
-            </a>
         </div>
         {% endif %}
     </div>
