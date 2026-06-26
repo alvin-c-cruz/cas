@@ -1,12 +1,7 @@
 {% extends "base.html" %}
 
-{% if current_user.role == 'admin' %}
-{% block title %}Add Approved Email{% endblock %}
-{% block page_title %}Add Approved Email for Registration{% endblock %}
-{% else %}
-{% block title %}Request Email Approval{% endblock %}
-{% block page_title %}Request Email Approval{% endblock %}
-{% endif %}
+{% block title %}{% if current_user.role == 'admin' %}Add Approved Email{% else %}Request Email Approval{% endif %}{% endblock %}
+{% block page_title %}{% if current_user.role == 'admin' %}Add Approved Email for Registration{% else %}Request Email Approval{% endif %}{% endblock %}
 
 {% block content %}
 

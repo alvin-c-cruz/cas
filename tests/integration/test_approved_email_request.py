@@ -105,3 +105,23 @@ def test_staff_cannot_submit(client, db_session, staff_user, main_branch):
     _login(client, staff_user, main_branch, 'staff123')
     resp = client.get('/approved-emails/add', follow_redirects=False)
     assert resp.status_code == 302
+
+
+# ---------------------------------------------------------------------------
+# GET renders the form (regression: the template defined {% block title %}
+# twice via if/else, which Jinja rejects at compile time — a successful POST
+# redirects so the earlier tests never rendered it)
+# ---------------------------------------------------------------------------
+
+def test_add_form_get_renders_for_admin(client, db_session, admin_user, main_branch):
+    _login(client, admin_user, main_branch, 'admin123')
+    resp = client.get('/approved-emails/add')
+    assert resp.status_code == 200
+    assert b'Add Approved Email' in resp.data
+
+
+def test_request_form_get_renders_for_accountant(client, db_session, accountant_user, main_branch):
+    _login(client, accountant_user, main_branch, 'accountant123')
+    resp = client.get('/approved-emails/add')
+    assert resp.status_code == 200
+    assert b'Request Email Approval' in resp.data
