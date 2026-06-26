@@ -102,7 +102,7 @@ def create_app(config_name=None):
             branch_id = session.get('selected_branch_id')
             if branch_id:
                 from app.branches.models import Branch
-                current_branch = Branch.query.get(branch_id)
+                current_branch = db.session.get(Branch, branch_id)
             # Hide branch indicators/labels entirely when the company has a
             # single active branch (nothing to disambiguate).
             try:
@@ -171,7 +171,7 @@ def create_app(config_name=None):
     @login_manager.user_loader
     def load_user(user_id):
         from app.users.models import User
-        return User.query.get(int(user_id))
+        return db.session.get(User, int(user_id))
 
     # Import models for migrations (must be before migrate.init_app)
     from app.accounts.models import Account
