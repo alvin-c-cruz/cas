@@ -632,19 +632,45 @@ def add_approved_email():
         return redirect(url_for('dashboard.index'))
     from app.users.forms import ApprovedEmailForm
     from app.users.approved_emails import ApprovedEmail
+    from app.users.utils import get_accessible_branches
 
     form = ApprovedEmailForm()
 
+    # Scope the branch pool to the approver: admin → all active; accountant → their
+    # assigned branches. Setting choices here is the in-scope enforcement — WTForms
+    # rejects any submitted branch id that is not an allowed choice.
+    allowed_branches = get_accessible_branches(current_user)
+    form.branch_ids.choices = [(b.id, b.name) for b in allowed_branches]
+    single_branch = allowed_branches[0] if len(allowed_branches) == 1 else None
+
     if form.validate_on_submit():
+        # Resolve the branch assignment. A single-branch approver need not pick —
+        # their one branch is auto-assigned; otherwise at least one must be chosen.
+        if single_branch is not None:
+            selected_ids = [single_branch.id]
+        else:
+            selected_ids = form.branch_ids.data or []
+        if not selected_ids:
+            flash('Assign at least one branch for this registration.', 'error')
+            return render_template('users/approved_email_form.html', form=form,
+                                   single_branch=single_branch)
+
+        branches = Branch.query.filter(Branch.id.in_(selected_ids)).all()
+        branch_names = ', '.join(b.name for b in branches)
+        position = form.position.data
+        position_label = dict(form.position.choices).get(position, position)
+
         try:
             if current_user.role == 'admin':
                 # Admin direct-add → immediately approved
                 approved_email = ApprovedEmail(
                     email=form.email.data.lower(),
                     status='approved',
+                    role=position,
                     approved_by_user_id=current_user.id,
                     notes=form.notes.data
                 )
+                approved_email.branches = branches
                 db.session.add(approved_email)
                 db.session.commit()
 
@@ -653,19 +679,23 @@ def add_approved_email():
                     action='create',
                     record_id=approved_email.id,
                     record_identifier=approved_email.email,
-                    new_values={'email': approved_email.email, 'notes': approved_email.notes},
-                    notes='Email pre-approved for registration'
+                    new_values={'email': approved_email.email, 'role': position,
+                                'branch_ids': selected_ids, 'notes': approved_email.notes},
+                    notes=f'Email pre-approved for registration as {position_label} ({branch_names})'
                 )
 
-                flash(f'Email "{form.email.data}" has been approved for registration.', 'success')
+                flash(f'Email "{form.email.data}" has been approved for registration '
+                      f'as {position_label}.', 'success')
             else:
                 # Accountant → pending, notify admins
                 approved_email = ApprovedEmail(
                     email=form.email.data.lower(),
                     status='pending',
+                    role=position,
                     requested_by_user_id=current_user.id,
                     notes=form.notes.data
                 )
+                approved_email.branches = branches
                 db.session.add(approved_email)
                 db.session.commit()
 
@@ -675,7 +705,8 @@ def add_approved_email():
                     create_notification(
                         user_id=admin.id,
                         title='Approved-email request',
-                        message=f'{current_user.full_name} requested approval for {approved_email.email}',
+                        message=(f'{current_user.full_name} requested approval for '
+                                 f'{approved_email.email} as {position_label} ({branch_names})'),
                         category='info',
                         related_type='approved_email',
                         related_id=approved_email.id,
@@ -686,8 +717,10 @@ def add_approved_email():
                     action='request',
                     record_id=approved_email.id,
                     record_identifier=approved_email.email,
-                    new_values={'email': approved_email.email, 'notes': approved_email.notes},
-                    notes=f'Submitted by {current_user.username} for admin approval'
+                    new_values={'email': approved_email.email, 'role': position,
+                                'branch_ids': selected_ids, 'notes': approved_email.notes},
+                    notes=(f'Submitted by {current_user.username} for admin approval '
+                           f'as {position_label} ({branch_names})')
                 )
 
                 flash('Email request submitted for admin approval.', 'success')
@@ -701,7 +734,8 @@ def add_approved_email():
             db.session.rollback()
             flash(f'Error adding approved email: {str(e)}', 'error')
 
-    return render_template('users/approved_email_form.html', form=form)
+    return render_template('users/approved_email_form.html', form=form,
+                           single_branch=single_branch)
 
 
 @users_bp.route('/approved-emails/<int:id>/approve', methods=['POST'])

@@ -16,10 +16,13 @@ def _login(client, user, branch, password):
                 follow_redirects=True)
 
 
-def _post_add(client, email, notes=''):
-    return client.post('/approved-emails/add',
-                       data={'email': email, 'notes': notes},
-                       follow_redirects=False)
+def _post_add(client, email, notes='', position='viewer', branch_ids=None):
+    # Feature B made position required; branch is auto-assigned when the approver
+    # has a single branch (the case in these tests), so branch_ids may be omitted.
+    data = {'email': email, 'notes': notes, 'position': position}
+    if branch_ids is not None:
+        data['branch_ids'] = [str(b) for b in branch_ids]
+    return client.post('/approved-emails/add', data=data, follow_redirects=False)
 
 
 # ---------------------------------------------------------------------------
