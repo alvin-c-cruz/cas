@@ -81,7 +81,7 @@ def generate_crv_number():
 
 
 def _get_crv_or_404(id):
-    crv = CashReceiptVoucher.query.get_or_404(id)
+    crv = db.get_or_404(CashReceiptVoucher, id)
     if crv.branch_id != session.get('selected_branch_id'):
         abort(404)
     return crv
@@ -522,7 +522,7 @@ def _parse_line_items(crv):
         wt_id = int(item['wt_id']) if item.get('wt_id') else None
         wt_rate = None
         if wt_id:
-            wt_obj = WithholdingTax.query.get(wt_id)
+            wt_obj = db.session.get(WithholdingTax, wt_id)
             if wt_obj:
                 wt_rate = wt_obj.rate
         rev_line = CRVRevenueLine(
@@ -665,7 +665,7 @@ def create():
                   'Enter the number printed on the receipt.', 'error')
             return _render_form()
         try:
-            customer = Customer.query.get(form.customer_id.data)
+            customer = db.session.get(Customer, form.customer_id.data)
             if not customer:
                 flash('Selected customer not found.', 'error')
                 return _render_form()
@@ -765,7 +765,7 @@ def edit(id):
             return render_template('cash_receipts/form.html', form=form, crv=crv,
                                    ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
         try:
-            customer = Customer.query.get(form.customer_id.data)
+            customer = db.session.get(Customer, form.customer_id.data)
             if not customer:
                 flash('Selected customer not found.', 'error')
                 ctx = _form_context(all_accounts=all_accounts)

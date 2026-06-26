@@ -89,7 +89,7 @@ def create():
 @admin_only
 def edit(id):
     """Edit branch."""
-    branch = Branch.query.get_or_404(id)
+    branch = db.get_or_404(Branch, id)
     form = BranchForm(obj=branch)
 
     if form.validate_on_submit():
@@ -140,7 +140,7 @@ def edit(id):
 @admin_only
 def delete(id):
     """Delete branch."""
-    branch = Branch.query.get_or_404(id)
+    branch = db.get_or_404(Branch, id)
 
     # Prevent deletion of main branch
     if branch.code == 'MAIN':
@@ -189,7 +189,7 @@ def delete(id):
 @admin_only
 def branch_users(id):
     """View and manage users assigned to a branch."""
-    branch = Branch.query.get_or_404(id)
+    branch = db.get_or_404(Branch, id)
 
     # Get users assigned to this branch
     assigned_users = branch.users.all()
@@ -212,8 +212,8 @@ def branch_users(id):
 @admin_only
 def assign_user(id, user_id):
     """Assign a user to a branch."""
-    branch = Branch.query.get_or_404(id)
-    user = User.query.get_or_404(user_id)
+    branch = db.get_or_404(Branch, id)
+    user = db.get_or_404(User, user_id)
 
     # Admins automatically have access to all branches and cannot be assigned
     if user.role == 'admin':
@@ -254,8 +254,8 @@ def assign_user(id, user_id):
 @admin_only
 def unassign_user(id, user_id):
     """Unassign a user from a branch."""
-    branch = Branch.query.get_or_404(id)
-    user = User.query.get_or_404(user_id)
+    branch = db.get_or_404(Branch, id)
+    user = db.get_or_404(User, user_id)
 
     try:
         old_branch_ids = user.get_branch_ids()

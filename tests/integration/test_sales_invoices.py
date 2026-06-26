@@ -1,6 +1,7 @@
 ﻿import pytest
 from decimal import Decimal
 from datetime import date
+from app import db
 
 
 @pytest.fixture
@@ -417,7 +418,7 @@ def test_attachment_lifecycle(client, db_session, accountant_user, customer, rev
     assert os.path.isfile(stored2)
     att2_id = att2.id
     client.post(f'/sales-invoices/attachments/{att2_id}/delete', follow_redirects=True)
-    assert SalesInvoiceAttachment.query.get(att2_id) is None
+    assert db.session.get(SalesInvoiceAttachment, att2_id) is None
     assert not os.path.isfile(stored2)
 
     # 5. upload blocked once the invoice is posted (draft-only) — adds nothing

@@ -87,7 +87,7 @@ def generate_cdv_number():
 
 
 def _get_cdv_or_404(id):
-    cdv = CashDisbursementVoucher.query.get_or_404(id)
+    cdv = db.get_or_404(CashDisbursementVoucher, id)
     if cdv.branch_id != session.get('selected_branch_id'):
         abort(404)
     return cdv
@@ -544,7 +544,7 @@ def _parse_line_items(cdv):
         wt_id = int(item['wt_id']) if item.get('wt_id') else None
         wt_rate = None
         if wt_id:
-            wt_obj = WithholdingTax.query.get(wt_id)
+            wt_obj = db.session.get(WithholdingTax, wt_id)
             if wt_obj:
                 wt_rate = wt_obj.rate
         exp_line = CDVExpenseLine(
@@ -587,7 +587,7 @@ def _form_context(all_accounts=None, selected_vendor_id=None):
     # so the synchronous line-restore builds correctly-scoped selects.
     vendor_whts = []
     if selected_vendor_id:
-        _v = Vendor.query.get(selected_vendor_id)
+        _v = db.session.get(Vendor, selected_vendor_id)
         if _v:
             vendor_whts = [w.to_dict() for w in _v.withholding_taxes if w.is_active]
     return dict(vendors=vendors, all_accounts=all_accounts,
@@ -624,7 +624,7 @@ def create():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
             return _render_form()
         try:
-            vendor = Vendor.query.get(form.vendor_id.data)
+            vendor = db.session.get(Vendor, form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
                 return _render_form()
@@ -715,7 +715,7 @@ def edit(id):
             return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
         try:
-            vendor = Vendor.query.get(form.vendor_id.data)
+            vendor = db.session.get(Vendor, form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
                 ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)

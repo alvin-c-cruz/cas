@@ -269,7 +269,7 @@ def _build_validated_ap_lines():
         wt_id = int(item_data['wt_id']) if item_data.get('wt_id') else None
         wt_rate = None
         if wt_id:
-            wt_obj = WithholdingTax.query.get(wt_id)
+            wt_obj = db.session.get(WithholdingTax, wt_id)
             if wt_obj:
                 wt_rate = wt_obj.rate
 
@@ -296,7 +296,7 @@ def require_branch_selection():
 
 
 def _get_ap_or_404(id):
-    ap = AccountsPayable.query.get_or_404(id)
+    ap = db.get_or_404(AccountsPayable, id)
     if ap.branch_id != session.get('selected_branch_id'):
         abort(404)
     return ap
@@ -612,7 +612,7 @@ def create():
             return _render_form(request.form.get('line_items', ''))
 
         try:
-            vendor = Vendor.query.get(form.vendor_id.data)
+            vendor = db.session.get(Vendor, form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
                 return _render_form(request.form.get('line_items', ''))
@@ -794,7 +794,7 @@ def edit(id):
         try:
             old_values = model_to_dict(ap, ['ap_number', 'ap_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
 
-            vendor = Vendor.query.get(form.vendor_id.data)
+            vendor = db.session.get(Vendor, form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
                 quick_add_form = VendorForm()
@@ -1315,7 +1315,7 @@ def upload_attachment(id):
 @login_required
 def download_attachment(attachment_id):
     """Download a file attachment (all non-voided bill statuses)."""
-    attachment = AccountsPayableAttachment.query.get_or_404(attachment_id)
+    attachment = db.get_or_404(AccountsPayableAttachment, attachment_id)
     ap = _get_ap_or_404(attachment.ap_id)
 
     file_path = os.path.join(
@@ -1343,7 +1343,7 @@ def download_attachment(attachment_id):
 @login_required
 def preview_attachment(attachment_id):
     """Serve an image attachment inline (for the popup modal img tag)."""
-    attachment = AccountsPayableAttachment.query.get_or_404(attachment_id)
+    attachment = db.get_or_404(AccountsPayableAttachment, attachment_id)
 
     if not attachment.is_image:
         abort(404)
@@ -1371,7 +1371,7 @@ def preview_attachment(attachment_id):
 @accountant_or_admin_required
 def delete_attachment(attachment_id):
     """Delete a file attachment (draft status only)."""
-    attachment = AccountsPayableAttachment.query.get_or_404(attachment_id)
+    attachment = db.get_or_404(AccountsPayableAttachment, attachment_id)
     ap = _get_ap_or_404(attachment.ap_id)
 
     if ap.status != 'draft':

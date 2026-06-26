@@ -95,7 +95,7 @@ def list_errors():
 @admin_required
 def view_error(id):
     """View detailed information about a specific error."""
-    error = ErrorLog.query.get_or_404(id)
+    error = db.get_or_404(ErrorLog, id)
     return render_template('errors/detail.html', error=error)
 
 
@@ -104,7 +104,7 @@ def view_error(id):
 @admin_required
 def resolve_error(id):
     """Mark an error as resolved."""
-    error = ErrorLog.query.get_or_404(id)
+    error = db.get_or_404(ErrorLog, id)
 
     resolution_notes = request.form.get('resolution_notes', '').strip()
 
@@ -122,7 +122,7 @@ def resolve_error(id):
 @admin_required
 def unresolve_error(id):
     """Mark a resolved error as unresolved (reopen)."""
-    error = ErrorLog.query.get_or_404(id)
+    error = db.get_or_404(ErrorLog, id)
 
     if error.is_resolved:
         error.is_resolved = False

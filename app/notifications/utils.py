@@ -45,7 +45,7 @@ def mark_as_read(notification_id):
     """Mark a notification as read"""
     from app.utils import ph_now
     try:
-        notification = Notification.query.get(notification_id)
+        notification = db.session.get(Notification, notification_id)
         if notification:
             notification.is_read = True
             notification.read_at = ph_now()

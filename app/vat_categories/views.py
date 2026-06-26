@@ -161,7 +161,7 @@ def create():
 @admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def edit(id):
     """Edit VAT category - submits for approval"""
-    vat_category = VATCategory.query.get_or_404(id)
+    vat_category = db.get_or_404(VATCategory, id)
     form = VATCategoryForm(obj=vat_category, require_reason=True)
     form.input_vat_account_id.choices = _input_vat_account_choices()
 
@@ -287,7 +287,7 @@ def edit(id):
 @admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def delete(id):
     """Delete VAT category - submits for approval"""
-    vat_category = VATCategory.query.get_or_404(id)
+    vat_category = db.get_or_404(VATCategory, id)
 
     # Reason for change is required (collected in the delete modal)
     request_reason = (request.form.get('request_reason') or '').strip()
@@ -422,7 +422,7 @@ def change_requests():
 @admin_required('vat_categories.list_vat_categories', 'VAT Categories')
 def review_change_request(id):
     """Review and approve/reject a change request"""
-    change_request = VATCategoryChangeRequest.query.get_or_404(id)
+    change_request = db.get_or_404(VATCategoryChangeRequest, id)
 
     # Cannot review own requests when another admin exists (four-eyes rule)
     if change_request.requested_by_id == current_user.id and another_active_admin_exists():

@@ -4,6 +4,7 @@
 - Admin can delete an unused approved email; audit entry written
 - Non-admin users are blocked
 """
+from app import db
 from app.users.approved_emails import ApprovedEmail
 from app.audit.models import AuditLog
 import pytest
@@ -50,7 +51,7 @@ class TestApprovedEmails:
         resp = client.post(f'/approved-emails/{row_id}/delete', follow_redirects=True)
         assert resp.status_code == 200
         assert b'has been removed' in resp.data
-        assert ApprovedEmail.query.get(row_id) is None
+        assert db.session.get(ApprovedEmail, row_id) is None
 
         audit = AuditLog.query.filter_by(module='approved_email', action='delete',
                                          record_id=row_id).first()

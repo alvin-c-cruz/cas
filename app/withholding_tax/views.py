@@ -140,7 +140,7 @@ def create():
 @admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def edit(id):
     """Edit withholding tax - submits for approval"""
-    withholding_tax = WithholdingTax.query.get_or_404(id)
+    withholding_tax = db.get_or_404(WithholdingTax, id)
     form = WithholdingTaxForm(obj=withholding_tax, require_reason=True)
 
     if form.validate_on_submit():
@@ -265,7 +265,7 @@ def edit(id):
 @admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def delete(id):
     """Delete withholding tax - submits for approval"""
-    withholding_tax = WithholdingTax.query.get_or_404(id)
+    withholding_tax = db.get_or_404(WithholdingTax, id)
 
     # Reason for change is required (collected in the delete modal)
     request_reason = (request.form.get('request_reason') or '').strip()
@@ -379,7 +379,7 @@ def change_requests():
 @admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')
 def review_change_request(id):
     """Review and approve/reject a change request"""
-    change_request = WithholdingTaxChangeRequest.query.get_or_404(id)
+    change_request = db.get_or_404(WithholdingTaxChangeRequest, id)
 
     # Cannot review own requests when another admin exists (four-eyes rule)
     if change_request.requested_by_id == current_user.id and another_active_admin_exists():

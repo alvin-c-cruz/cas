@@ -92,7 +92,7 @@ def generate_invoice_number():
 
 
 def _get_invoice_or_404(id):
-    invoice = SalesInvoice.query.get_or_404(id)
+    invoice = db.get_or_404(SalesInvoice, id)
     if invoice.branch_id != session.get('selected_branch_id'):
         abort(404)
     return invoice
@@ -647,7 +647,7 @@ def create():
                                    customer_quick_add_form=build_customer_quick_add_form(),
                                    customer_quick_add_whts=_customer_quick_add_whts())
         try:
-            cust = Customer.query.get(form.customer_id.data)
+            cust = db.session.get(Customer, form.customer_id.data)
             if not cust:
                 flash('Selected customer not found.', 'error')
                 return render_template('sales_invoices/form.html', form=form, invoice=None,
@@ -776,7 +776,7 @@ def edit(id):
                 'invoice_number', 'invoice_date', 'due_date', 'customer_name',
                 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
 
-            cust = Customer.query.get(form.customer_id.data)
+            cust = db.session.get(Customer, form.customer_id.data)
             if not cust:
                 flash('Selected customer not found.', 'error')
                 return render_template('sales_invoices/form.html', form=form, invoice=invoice,
@@ -955,13 +955,13 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
         wt_id = int(raw_wt_id) if raw_wt_id and str(raw_wt_id).strip() else None
         wt_rate = None
         if wt_id:
-            wt_obj = WithholdingTax.query.get(wt_id)
+            wt_obj = db.session.get(WithholdingTax, wt_id)
             if wt_obj:
                 wt_rate = wt_obj.rate
 
         raw_account_id = item_data.get('account_id')
         account_id = int(raw_account_id) if raw_account_id and str(raw_account_id).strip() else None
-        if account_id and not Account.query.get(account_id):
+        if account_id and not db.session.get(Account, account_id):
             account_id = None
 
         line_item = SalesInvoiceItem(
@@ -1196,7 +1196,7 @@ def upload_attachment(id):
 @sales_invoices_bp.route('/sales-invoices/attachments/<int:attachment_id>/download')
 @login_required
 def download_attachment(attachment_id):
-    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    attachment = db.get_or_404(SalesInvoiceAttachment, attachment_id)
     invoice = _get_invoice_or_404(attachment.invoice_id)
     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
                              str(invoice.id), attachment.stored_filename)
@@ -1212,7 +1212,7 @@ def download_attachment(attachment_id):
 @sales_invoices_bp.route('/sales-invoices/attachments/<int:attachment_id>/preview')
 @login_required
 def preview_attachment(attachment_id):
-    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    attachment = db.get_or_404(SalesInvoiceAttachment, attachment_id)
     if not attachment.is_image:
         abort(404)
     invoice = _get_invoice_or_404(attachment.invoice_id)
@@ -1230,7 +1230,7 @@ def preview_attachment(attachment_id):
 @login_required
 @accountant_or_admin_required
 def delete_attachment(attachment_id):
-    attachment = SalesInvoiceAttachment.query.get_or_404(attachment_id)
+    attachment = db.get_or_404(SalesInvoiceAttachment, attachment_id)
     invoice = _get_invoice_or_404(attachment.invoice_id)
     if invoice.status != 'draft':
         flash('Attachments can only be deleted while the Sales Invoice is in draft status.', 'error')

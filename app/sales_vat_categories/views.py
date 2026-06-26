@@ -137,7 +137,7 @@ def create():
 @admin_required('sales_vat_categories.list_sales_vat_categories', 'Sales VAT Categories')
 def edit(id):
     """Edit Sales VAT category - submits for approval"""
-    sales_vat_category = SalesVATCategory.query.get_or_404(id)
+    sales_vat_category = db.get_or_404(SalesVATCategory, id)
     form = SalesVATCategoryForm(obj=sales_vat_category, require_reason=True)
     form.output_vat_account_id.choices = _output_vat_account_choices()
 
@@ -262,7 +262,7 @@ def edit(id):
 @admin_required('sales_vat_categories.list_sales_vat_categories', 'Sales VAT Categories')
 def delete(id):
     """Delete Sales VAT category - submits for approval"""
-    sales_vat_category = SalesVATCategory.query.get_or_404(id)
+    sales_vat_category = db.get_or_404(SalesVATCategory, id)
 
     request_reason = (request.form.get('request_reason') or '').strip()
     if not request_reason:
@@ -395,7 +395,7 @@ def change_requests():
 @admin_required('sales_vat_categories.list_sales_vat_categories', 'Sales VAT Categories')
 def review_change_request(id):
     """Review and approve/reject a change request"""
-    change_request = SalesVATCategoryChangeRequest.query.get_or_404(id)
+    change_request = db.get_or_404(SalesVATCategoryChangeRequest, id)
 
     if change_request.requested_by_id == current_user.id and another_active_admin_exists():
         flash('You cannot review your own change request.', 'error')

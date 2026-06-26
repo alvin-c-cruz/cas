@@ -1,6 +1,7 @@
 """
 Integration tests for the customer list view.
 """
+from app import db
 
 
 def test_customer_list_renders_empty(client, db_session, accountant_user, main_branch):
@@ -80,7 +81,7 @@ def test_customer_delete_blocked_when_referenced_by_sales_invoice(
     resp = client.post(f'/customers/{cust.id}/delete', follow_redirects=True)
 
     assert resp.status_code == 200
-    assert Customer.query.get(cust.id) is not None, 'customer must not be deleted'
+    assert db.session.get(Customer, cust.id) is not None, 'customer must not be deleted'
     assert AuditLog.query.filter_by(module='customer', action='delete').count() == 0
     assert 'Cannot delete' in resp.data.decode()
 
@@ -105,7 +106,7 @@ def test_customer_delete_blocked_when_referenced_by_cash_receipt(
     _login_accountant(client, accountant_user, main_branch)
     resp = client.post(f'/customers/{cust.id}/delete', follow_redirects=True)
 
-    assert Customer.query.get(cust.id) is not None, 'customer must not be deleted'
+    assert db.session.get(Customer, cust.id) is not None, 'customer must not be deleted'
     assert AuditLog.query.filter_by(module='customer', action='delete').count() == 0
     assert 'Cannot delete' in resp.data.decode()
 
@@ -313,7 +314,7 @@ def test_customer_delete_succeeds_without_dependents(
     resp = client.post(f'/customers/{cust_id}/delete', follow_redirects=True)
 
     assert resp.status_code == 200
-    assert Customer.query.get(cust_id) is None
+    assert db.session.get(Customer, cust_id) is None
     assert AuditLog.query.filter_by(
         module='customer', action='delete', record_id=cust_id).count() == 1
 
@@ -442,7 +443,7 @@ def test_customer_edit_updates_withholding_taxes(
         'is_active': '1', 'withholding_tax_ids': [str(b.id)],
     }, follow_redirects=True)
     assert resp.status_code == 200
-    updated = Customer.query.get(cid)
+    updated = db.session.get(Customer, cid)
     assert [w.code for w in updated.withholding_taxes] == ['WC160']
 
 

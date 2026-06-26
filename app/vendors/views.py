@@ -76,7 +76,7 @@ def list_vendors():
 @vendors_bp.route('/vendors/<int:id>')
 @login_required
 def detail(id):
-    vendor = Vendor.query.get_or_404(id)
+    vendor = db.get_or_404(Vendor, id)
     tab = request.args.get('tab', 'overview')
     total_bills = AccountsPayable.query.filter_by(vendor_id=id).count()
 
@@ -213,7 +213,7 @@ def create():
 @staff_or_above_required
 def edit(id):
     """Edit vendor"""
-    vendor = Vendor.query.get_or_404(id)
+    vendor = db.get_or_404(Vendor, id)
     form = VendorForm(obj=vendor)
     populate_vat_category_choices(form)
 
@@ -300,7 +300,7 @@ def edit(id):
 @accountant_or_admin_required
 def delete(id):
     """Delete vendor"""
-    vendor = Vendor.query.get_or_404(id)
+    vendor = db.get_or_404(Vendor, id)
 
     bill_count = AccountsPayable.query.filter_by(vendor_id=vendor.id).count()
     if bill_count > 0:
@@ -406,7 +406,7 @@ def export_csv_route():
 @login_required
 def vendor_defaults(id):
     """Return vendor's WHT codes and default VAT category for AJAX."""
-    vendor = Vendor.query.get_or_404(id)
+    vendor = db.get_or_404(Vendor, id)
     last_item = (
         AccountsPayableItem.query
         .join(AccountsPayable)

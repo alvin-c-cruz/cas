@@ -36,7 +36,7 @@ def list_notifications():
 @login_required
 def mark_read(id):
     """Mark a notification as read"""
-    notification = Notification.query.get_or_404(id)
+    notification = db.get_or_404(Notification, id)
 
     # Security check - can only mark own notifications as read
     if notification.user_id != current_user.id:

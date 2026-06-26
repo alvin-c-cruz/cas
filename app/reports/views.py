@@ -544,7 +544,7 @@ def trial_balance_print():
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
-    branch = Branch.query.get(branch_id) if branch_id else None
+    branch = db.session.get(Branch, branch_id) if branch_id else None
     branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     return render_template('reports/trial_balance_print.html',
                            trial_balance=trial_balance_data, as_of_date=as_of_date,
@@ -594,7 +594,7 @@ def income_statement_export_excel():
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
-    branch = Branch.query.get(branch_id) if branch_id else None
+    branch = db.session.get(Branch, branch_id) if branch_id else None
     branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     period_label = f"{start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
     filename = f'Income_Statement_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx'
@@ -614,7 +614,7 @@ def income_statement_print():
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
-    branch = Branch.query.get(branch_id) if branch_id else None
+    branch = db.session.get(Branch, branch_id) if branch_id else None
     branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     return render_template('reports/income_statement_print.html',
                            lines=income_statement_lines(income_stmt_data),
@@ -631,7 +631,7 @@ def _bs_company_branch(branch_id):
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
-    branch = Branch.query.get(branch_id) if branch_id else None
+    branch = db.session.get(Branch, branch_id) if branch_id else None
     branch_name = branch.name if (branch and Branch.query.count() > 1) else None
     return company, branch_name
 
@@ -814,7 +814,7 @@ def account_ledger_json():
     if not account_id:
         return jsonify({'error': 'account_id is required'}), 400
 
-    account = Account.query.get(account_id)
+    account = db.session.get(Account, account_id)
     if account is None:
         return jsonify({'error': 'Account not found'}), 404
 

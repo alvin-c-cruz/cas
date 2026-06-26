@@ -352,7 +352,7 @@ def list_users():
 def edit_user(id):
     """Edit existing user (admin only)."""
 
-    user = User.query.get_or_404(id)
+    user = db.get_or_404(User, id)
 
     # Prevent accountants from editing admin users
     if current_user.role == 'accountant' and user.role == 'admin':
@@ -530,7 +530,7 @@ def delete_user(id):
         flash('Only Administrators can delete users.', 'error')
         return redirect(url_for('users.list_users'))
 
-    user = User.query.get_or_404(id)
+    user = db.get_or_404(User, id)
 
     # Prevent deleting yourself
     if user.id == current_user.id:
@@ -763,7 +763,7 @@ def approve_approved_email(id):
         return redirect(url_for('users.list_approved_emails'))
 
     from app.users.approved_emails import ApprovedEmail
-    ae = ApprovedEmail.query.get_or_404(id)
+    ae = db.get_or_404(ApprovedEmail, id)
 
     if ae.status != 'pending':
         flash('This request is not pending and cannot be approved.', 'error')
@@ -805,7 +805,7 @@ def reject_approved_email(id):
     from app.users.approved_emails import ApprovedEmail
     from app.users.forms import RejectReasonForm
 
-    ae = ApprovedEmail.query.get_or_404(id)
+    ae = db.get_or_404(ApprovedEmail, id)
 
     if ae.status != 'pending':
         flash('This request is not pending and cannot be rejected.', 'error')
@@ -847,7 +847,7 @@ def delete_approved_email(id):
     from app.users.approved_emails import ApprovedEmail
 
     try:
-        approved_email = ApprovedEmail.query.get_or_404(id)
+        approved_email = db.get_or_404(ApprovedEmail, id)
 
         # Don't allow deleting already used emails
         if approved_email.is_used:

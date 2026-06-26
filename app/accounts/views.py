@@ -243,7 +243,7 @@ def create():
 
             if form.parent_id.data:
                 # Child account - inherit from parent
-                parent = Account.query.get(form.parent_id.data)
+                parent = db.session.get(Account, form.parent_id.data)
                 if parent:
                     account_type = parent.account_type
                     normal_balance = parent.normal_balance
@@ -336,7 +336,7 @@ def create():
 @login_required
 def view(id):
     """View account details"""
-    account = Account.query.get_or_404(id)
+    account = db.get_or_404(Account, id)
     return render_template('accounts/detail.html', account=account)
 
 
@@ -344,7 +344,7 @@ def view(id):
 @login_required
 def account_json(id):
     """Get account data as JSON"""
-    account = Account.query.get_or_404(id)
+    account = db.get_or_404(Account, id)
     return jsonify({
         'id': account.id,
         'code': account.code,
@@ -361,7 +361,7 @@ def account_json(id):
 @accountant_or_admin_required
 def edit(id):
     """Edit existing account - submits for approval"""
-    account = Account.query.get_or_404(id)
+    account = db.get_or_404(Account, id)
 
     # Initialize form - on GET, populate from account; on POST, use form data
     if request.method == 'GET':
@@ -412,7 +412,7 @@ def edit(id):
 
             if form.parent_id.data:
                 # Child account - inherit from parent
-                parent = Account.query.get(form.parent_id.data)
+                parent = db.session.get(Account, form.parent_id.data)
                 if parent:
                     account_type = parent.account_type
                     normal_balance = parent.normal_balance
@@ -527,7 +527,7 @@ def edit(id):
 def delete(id):
     """Delete account - submits for approval"""
     try:
-        account = Account.query.get_or_404(id)
+        account = db.get_or_404(Account, id)
 
         # Reason for change is required (collected in the delete modal)
         request_reason = (request.form.get('request_reason') or '').strip()
@@ -642,7 +642,7 @@ def change_requests():
 def approve_request(request_id):
     """Approve a pending change request"""
     try:
-        change_request = AccountChangeRequest.query.get_or_404(request_id)
+        change_request = db.get_or_404(AccountChangeRequest, request_id)
 
         # Check if user can approve this request
         if not change_request.can_be_approved_by(current_user.username):
@@ -675,7 +675,7 @@ def approve_request(request_id):
 
         elif change_request.change_type == 'update':
             # Update existing account
-            account = Account.query.get(change_request.account_id)
+            account = db.session.get(Account, change_request.account_id)
             if account:
                 # Capture old values before update
                 old_values = {
@@ -695,7 +695,7 @@ def approve_request(request_id):
 
         elif change_request.change_type == 'delete':
             # Delete account
-            account = Account.query.get(change_request.account_id)
+            account = db.session.get(Account, change_request.account_id)
             if account:
                 old_values = change_data  # Already contains account data
                 db.session.delete(account)
@@ -739,7 +739,7 @@ def approve_request(request_id):
 def reject_request(request_id):
     """Reject a pending change request"""
     try:
-        change_request = AccountChangeRequest.query.get_or_404(request_id)
+        change_request = db.get_or_404(AccountChangeRequest, request_id)
 
         # Check if user can review this request
         if not change_request.can_be_approved_by(current_user.username):

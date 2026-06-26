@@ -176,7 +176,7 @@ def create():
 @login_required
 def view(id):
     """View journal entry details."""
-    entry = JournalEntry.query.get_or_404(id)
+    entry = db.get_or_404(JournalEntry, id)
     return render_template('journal_entries/detail.html', entry=entry)
 
 
@@ -185,7 +185,7 @@ def view(id):
 @accountant_or_admin_required
 def post(id):
     """Post journal entry (makes it final)."""
-    entry = JournalEntry.query.get_or_404(id)
+    entry = db.get_or_404(JournalEntry, id)
 
     if entry.status != 'draft':
         flash('Only draft journal entries can be posted.', 'error')
@@ -226,7 +226,7 @@ def post(id):
 @accountant_or_admin_required
 def cancel(id):
     """Cancel journal entry."""
-    entry = JournalEntry.query.get_or_404(id)
+    entry = db.get_or_404(JournalEntry, id)
 
     if entry.status == 'cancelled':
         flash('Journal entry is already cancelled.', 'error')
@@ -262,7 +262,7 @@ def cancel(id):
 @accountant_or_admin_required
 def delete(id):
     """Delete journal entry (only drafts can be deleted)."""
-    entry = JournalEntry.query.get_or_404(id)
+    entry = db.get_or_404(JournalEntry, id)
 
     if entry.status != 'draft':
         flash('Only draft journal entries can be deleted.', 'error')

@@ -149,7 +149,7 @@ def populate_dropdown_choices(form):
 def detail(id):
     """Customer detail: Overview (info + AR aging + creditable WHT YTD) and
     Invoices tabs. Read view — mirrors vendors.detail (no role gate, no audit)."""
-    customer = Customer.query.get_or_404(id)
+    customer = db.get_or_404(Customer, id)
     tab = request.args.get('tab', 'overview')
     total_invoices = SalesInvoice.query.filter_by(customer_id=id).count()
 
@@ -290,7 +290,7 @@ def create():
 @accountant_or_admin_required
 def edit(id):
     """Edit customer"""
-    customer = Customer.query.get_or_404(id)
+    customer = db.get_or_404(Customer, id)
     form = CustomerForm(obj=customer)
     populate_dropdown_choices(form)
 
@@ -373,7 +373,7 @@ def edit(id):
 @accountant_or_admin_required
 def delete(id):
     """Delete customer"""
-    customer = Customer.query.get_or_404(id)
+    customer = db.get_or_404(Customer, id)
 
     # Block deletion when the customer is still referenced by transactions.
     # SQLite does not enforce FK constraints by default, so the only thing
@@ -470,7 +470,7 @@ def customer_defaults(id):
     """
     from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 
-    customer = Customer.query.get_or_404(id)
+    customer = db.get_or_404(Customer, id)
 
     withholding_taxes = [
         {'id': wt.id, 'code': wt.code, 'name': wt.sales_name or wt.name, 'rate': float(wt.rate)}

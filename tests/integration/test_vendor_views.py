@@ -200,7 +200,7 @@ class TestVendorCrud:
         vid = vendor.id
         resp = client.post(f'/vendors/{vid}/delete', follow_redirects=True)
         assert resp.status_code == 200
-        assert Vendor.query.get(vid) is None
+        assert db.session.get(Vendor, vid) is None
         audit = AuditLog.query.filter_by(module='vendor', action='delete',
                                          record_id=vid).first()
         assert audit is not None
@@ -210,7 +210,7 @@ class TestVendorCrud:
         vendor = make_vendor(db_session, code='STF002', name='Staff Delete Test')
         vid = vendor.id
         client.post(f'/vendors/{vid}/delete', follow_redirects=True)
-        assert Vendor.query.get(vid) is not None
+        assert db.session.get(Vendor, vid) is not None
 
 
 class TestVendorStaffPermissions:
@@ -277,7 +277,7 @@ class TestVendorStaffPermissions:
         client.get('/logout')
         self._login(client, 'staff', 'staff123')
         client.post(f'/vendors/{vendor.id}/delete', follow_redirects=True)
-        assert Vendor.query.get(vendor.id) is not None
+        assert db.session.get(Vendor, vendor.id) is not None
 
 
 class TestVendorNoBirNotes:
