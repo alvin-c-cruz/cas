@@ -74,8 +74,12 @@ class UserForm(FlaskForm):
         ('accountant', 'Accountant'),
         ('admin', 'Administrator')
     ], validators=[DataRequired()])
-    branch_ids = SelectMultipleField('Branch Assignments', coerce=int, validators=[Optional()])
+    branch_ids = SelectMultipleField('Branch Assignments', coerce=int)
     is_active = BooleanField('Active')
+
+    def validate_branch_ids(self, field):
+        if self.role.data != 'admin' and not field.data:
+            raise ValidationError('Assign at least one branch for non-admin roles.')
     password = PasswordField('Password', validators=[
         Optional(),
         PasswordPolicy(min_length=12)
