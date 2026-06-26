@@ -23,6 +23,17 @@ BASE_CATEGORY = {
     'Other Expense': 'Expense', 'Income Tax Expense': 'Expense',
 }
 
+# Coarse buckets for the COA summary cards / filter tabs. Assets/Liabilities/Equity
+# and the whole revenue side roll up as usual; the expense side is split into COGS vs
+# Opex (every non-COGS expense, incl. the non-operating Other Expense / Income Tax).
+SUMMARY_CATEGORY = {
+    'Asset': 'Asset', 'Liability': 'Liability', 'Equity': 'Equity',
+    'Revenue': 'Revenue', 'Contra-Revenue': 'Revenue', 'Other Income': 'Revenue',
+    'Cost of Goods Sold': 'COGS',
+    'Selling Expense': 'Opex', 'Administrative Expense': 'Opex',
+    'Other Expense': 'Opex', 'Income Tax Expense': 'Opex',
+}
+
 DEFAULT_NORMAL_BALANCE = {
     'Asset': 'debit', 'Liability': 'credit', 'Equity': 'credit',
     'Revenue': 'credit', 'Contra-Revenue': 'debit',

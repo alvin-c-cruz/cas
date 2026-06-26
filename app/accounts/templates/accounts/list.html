@@ -39,7 +39,8 @@
         ('Liability', 'liability', '📋', 'Liabilities'),
         ('Equity',    'equity',    '🏢', 'Equity'),
         ('Revenue',   'revenue',   '📈', 'Revenue'),
-        ('Expense',   'expense',   '📉', 'Expenses'),
+        ('COGS',      'cogs',      '🏭', 'COGS'),
+        ('Opex',      'opex',      '📉', 'Opex'),
     ] %}
     {% for type_key, css_key, icon, label in card_types %}
     <div class="coa-card coa-card-{{ css_key }}" onclick="setTab('{{ type_key }}')" role="button" tabindex="0" aria-label="Filter by {{ label }}">
@@ -60,7 +61,8 @@
         <button class="coa-tab"        data-type="Liability" onclick="setTab('Liability')" role="tab">Liabilities</button>
         <button class="coa-tab"        data-type="Equity"    onclick="setTab('Equity')"    role="tab">Equity</button>
         <button class="coa-tab"        data-type="Revenue"   onclick="setTab('Revenue')"   role="tab">Revenue</button>
-        <button class="coa-tab"        data-type="Expense"   onclick="setTab('Expense')"   role="tab">Expenses</button>
+        <button class="coa-tab"        data-type="COGS"      onclick="setTab('COGS')"      role="tab">COGS</button>
+        <button class="coa-tab"        data-type="Opex"      onclick="setTab('Opex')"      role="tab">Opex</button>
     </div>
     <div class="coa-search-wrap">
         <span class="coa-search-icon">🔍</span>
@@ -94,7 +96,7 @@
                     {% for row in account_rows %}
                     {% set account = row.account %}
                     <tr class="account-row {% if row.is_header %}account-group-row{% else %}account-posting-row{% endif %}"
-                        data-type="{{ account.account_type }}"
+                        data-type="{{ row.summary_category }}"
                         data-code="{{ account.code }}"
                         data-name="{{ account.name | lower }}">
                         <td class="account-code {% if row.is_header %}account-code-group{% endif %}">
@@ -216,7 +218,8 @@
 .coa-card-liability { border-color: #fecaca; }
 .coa-card-equity    { border-color: #ddd6fe; }
 .coa-card-revenue   { border-color: #bbf7d0; }
-.coa-card-expense   { border-color: #fde68a; }
+.coa-card-cogs      { border-color: #fed7aa; }
+.coa-card-opex      { border-color: #fde68a; }
 
 .coa-card-asset.tab-active     { background: #eff6ff; border-color: #3b82f6; }
 .coa-card-liability.tab-active { background: #fef2f2; border-color: #ef4444; }

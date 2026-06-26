@@ -5,7 +5,7 @@ from app import db
 from app.accounts.models import Account
 from app.accounts.approval_models import AccountChangeRequest
 from app.accounts.forms import AccountForm
-from app.accounts.account_types import TYPES_NEEDING_CLASSIFICATION, DEFAULT_NORMAL_BALANCE
+from app.accounts.account_types import TYPES_NEEDING_CLASSIFICATION, DEFAULT_NORMAL_BALANCE, SUMMARY_CATEGORY
 from app.users.models import User
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
@@ -111,6 +111,8 @@ def list_accounts():
             'depth': depth,
             # parent/group = top-level (no parent) OR has children
             'is_header': node.id in has_children or node.parent_id is None,
+            # coarse bucket for the summary cards + filter tabs (COGS/Opex split)
+            'summary_category': SUMMARY_CATEGORY.get(node.account_type, node.account_type),
         })
         for child in children_by_parent.get(node.id, []):
             walk(child, depth + 1)
@@ -118,11 +120,11 @@ def list_accounts():
     for r in roots:
         walk(r, 0)
 
-    # Posting account counts per type (for summary cards)
+    # Postable-account counts per summary bucket (for the summary cards)
     type_counts = {}
     for row in account_rows:
         if not row['is_header']:
-            t = row['account'].account_type
+            t = row['summary_category']
             type_counts[t] = type_counts.get(t, 0) + 1
 
     pending_requests = AccountChangeRequest.query.filter_by(status='pending').all()
