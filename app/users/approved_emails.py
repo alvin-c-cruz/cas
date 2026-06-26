@@ -12,6 +12,16 @@ from app import db
 from app.utils import ph_now
 
 
+# Junction table: which branch(es) a registrant from this approved email is
+# assigned to. Mirrors users.user_branches. Consumed at registration time.
+approved_email_branches = db.Table(
+    'approved_email_branches',
+    db.Column('approved_email_id', db.Integer, db.ForeignKey('approved_emails.id'), primary_key=True),
+    db.Column('branch_id', db.Integer, db.ForeignKey('branches.id'), primary_key=True),
+    db.Column('created_at', db.DateTime, default=ph_now),
+)
+
+
 class ApprovedEmail(db.Model):
     """
     Model for pre-approved email addresses that can register.
@@ -33,6 +43,12 @@ class ApprovedEmail(db.Model):
     status = db.Column(db.String(20), nullable=False, default='approved')
     # 'pending' | 'approved' | 'rejected'
 
+    # --- Delegated registration (Feature B) ---
+    # The role + branch(es) the registrant is created with. Nullable: a row with
+    # role=None is a legacy pre-delegation approval and falls back to the old
+    # register behavior (viewer / inactive / pending admin activation).
+    role = db.Column(db.String(20), nullable=True)  # 'accountant' | 'staff' | 'viewer'
+
     # Who submitted this row (null for legacy/direct admin adds)
     requested_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     # When the admin reviewed it (null until approved/rejected)
@@ -49,6 +65,7 @@ class ApprovedEmail(db.Model):
     notes = db.Column(db.Text, nullable=True)  # Admin notes about this approval
 
     # Relationships
+    branches = db.relationship('Branch', secondary=approved_email_branches, lazy='select')
     requested_by = db.relationship('User', foreign_keys=[requested_by_user_id])
     approved_by = db.relationship('User', foreign_keys=[approved_by_user_id], backref='emails_approved')
     used_by = db.relationship('User', foreign_keys=[used_by_user_id], backref='approved_email_used')
@@ -56,6 +73,10 @@ class ApprovedEmail(db.Model):
     def __repr__(self):
         status = "Used" if self.is_used else self.status
         return f'<ApprovedEmail {self.email} - {status}>'
+
+    def get_branch_ids(self):
+        """Return the list of branch ids this email is assigned to."""
+        return [b.id for b in self.branches]
 
     def mark_as_used(self, user_id):
         """Mark this email as used by a specific user."""
