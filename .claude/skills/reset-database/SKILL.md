@@ -186,7 +186,8 @@ cd C:\envs\cas; flask seed-minimal
 Always use `flask seed-minimal`, not `flask seed-db`. The minimal seeder:
 - Assigns the admin user to Main Branch
 - Uses correct BIR VAT codes (VEX, V0, INV, V12CG, V12DG, V12SV, V12IM)
-- Seeds 19 app settings including company officers, RDO code, print access, company_logo, and environment
+- Seeds 20 app settings including company officers, RDO code, print access, company_logo, and environment
+- Seeds the canonical 146-account manufacturing COA (FS taxonomy + Current/Non-Current classification) from `app/seeds/manufacturing_coa.py`
 
 ### Step 2.7 — Report
 
@@ -197,7 +198,7 @@ RESET COMPLETE
 ==============
 Server:     Killed PIDs [x, y] / No server was running
 DB:         instance/<dbname> deleted and recreated (the .env target)
-Seed:       flask seed-minimal — admin user, main branch, 19 app settings, 28 COA accounts, 7 VAT codes, 3 WHT codes
+Seed:       flask seed-minimal — admin user, main branch, 20 app settings, 146 COA accounts (manufacturing), 7 VAT + 3 Sales VAT, 3 WHT codes
 Seed diff:  [summary of any seed_data.py changes from Phase 1, or "none"]
 Uploads:    instance/uploads/ is NOT cleared by reset; company_logo is reset to '' so any
             previously-uploaded logo is now orphaned on disk. Re-upload via Company Settings,

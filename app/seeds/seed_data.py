@@ -568,7 +568,7 @@ def seed_minimal():
     - 1 admin user
     - 1 main branch (assigned to admin)
     - 20 app settings
-    - 28 accounts (Assets, Liabilities, Equity, Revenue, Expenses with hierarchical structure)
+    - 146 accounts (canonical manufacturing COA: FS taxonomy + Current/Non-Current classification)
     - 7 VAT categories (V12CG/V12DG/V12SV/V12IM/V0/VEX/INV)
     - 3 WHT codes (WC158, WC160, WC100)
     """
@@ -657,69 +657,36 @@ def seed_minimal():
             print(f"  [OK] 20 app settings created")
 
         # ------------------------------------------------------------------
-        # 4. Chart of Accounts (28 accounts, three-pass seed: parents, then children)
+        # 4. Chart of Accounts (canonical 146-account manufacturing COA)
         # ------------------------------------------------------------------
         print("\n4. Seeding Chart of Accounts...")
         existing_accounts = Account.query.count()
         if existing_accounts > 0:
             print(f"  [SKIP] {existing_accounts} accounts already exist")
         else:
-            # Pass 1: Root groups/standalones (no parent_id)
-            pass1_accounts = [
-                # Assets
-                Account(code='10101', name='Cash on Hand',                account_type='Asset',     normal_balance='debit',  is_active=True),
-                Account(code='10102', name='Cash in Bank',                account_type='Asset',     normal_balance='debit',  is_active=True),
-                Account(code='10201', name='Accounts Receivable - Trade', account_type='Asset',     normal_balance='debit',  is_active=True),
-                Account(code='10212', name='Creditable WHT Receivable',   account_type='Asset',     normal_balance='debit',  is_active=True),
-                Account(code='10500', name='Input VAT',                   account_type='Asset',     normal_balance='debit',  is_active=True),
-                # Liabilities
-                Account(code='20101', name='Accounts Payable - Trade',    account_type='Liability', normal_balance='credit', is_active=True),
-                Account(code='20300', name='Withholding Tax Payable',     account_type='Liability', normal_balance='credit', is_active=True),
-                Account(code='20401', name='Output VAT Payable',          account_type='Liability', normal_balance='credit', is_active=True),
-                # Equity
-                Account(code='30100', name='Owner\'s Equity',             account_type='Equity',    normal_balance='credit', is_active=True),
-                # Revenue
-                Account(code='40000', name='Sales Revenue',               account_type='Revenue',   normal_balance='credit', is_active=True),
-                # Expense
-                Account(code='60100', name='Operating Expenses',          account_type='Expense',   normal_balance='debit',  is_active=True),
-            ]
-            db.session.add_all(pass1_accounts)
-            db.session.flush()  # Assign IDs
+            from app.seeds.manufacturing_coa import MANUFACTURING_COA
+            # Pass 1: create every account (parent wired in pass 2). account_type
+            # already carries the FS taxonomy; hierarchy is derived from parent_id.
+            code_to_account = {}
+            for a in MANUFACTURING_COA:
+                acct = Account(
+                    code=a['code'],
+                    name=a['name'],
+                    account_type=a['type'],
+                    classification=a['classification'],
+                    normal_balance=a['normal_balance'],
+                    is_active=True,
+                )
+                db.session.add(acct)
+                code_to_account[a['code']] = acct
+            db.session.flush()  # assign IDs
 
-            # Get parents by code for Pass 2
-            parent_10500 = Account.query.filter_by(code='10500').first()
-            parent_20300 = Account.query.filter_by(code='20300').first()
-            parent_60100 = Account.query.filter_by(code='60100').first()
-
-            # Pass 2: Children of 10500 (Input VAT) and 20300 (WHT Payable)
-            pass2_accounts = [
-                Account(code='10501', name='Input VAT - Capital Goods', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
-                Account(code='10502', name='Input VAT - Domestic Goods', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
-                Account(code='10503', name='Input VAT - Services', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
-                Account(code='10504', name='Input VAT - Importation', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
-                Account(code='10505', name='Excess Input Tax Carry-Over', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
-                Account(code='10506', name='Deferred Input Tax', account_type='Asset', normal_balance='debit', is_active=True, parent_id=parent_10500.id),
-                Account(code='20301', name='Withholding Tax Payable - Expanded', account_type='Liability', normal_balance='credit', is_active=True, parent_id=parent_20300.id),
-            ]
-            db.session.add_all(pass2_accounts)
-            db.session.flush()  # Assign IDs
-
-            # Pass 3: Children of 60100 (Operating Expenses)
-            pass3_accounts = [
-                Account(code='60101', name='Office Supplies Expense', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60102', name='Salaries and Wages', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60103', name='Rent Expense', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60104', name='Electricity and Water', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60105', name='Communications Expense', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60106', name='Transportation and Travel', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60107', name='Repairs and Maintenance', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60108', name='Representation and Entertainment', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60109', name='Professional Fees', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-                Account(code='60110', name='Miscellaneous Expense', account_type='Expense', normal_balance='debit', is_active=True, parent_id=parent_60100.id),
-            ]
-            db.session.add_all(pass3_accounts)
+            # Pass 2: wire parent relationships by code
+            for a in MANUFACTURING_COA:
+                if a['parent']:
+                    code_to_account[a['code']].parent_id = code_to_account[a['parent']].id
             db.session.commit()
-            print("  [OK] 28 accounts created in Chart of Accounts")
+            print(f"  [OK] {len(MANUFACTURING_COA)} accounts created in Chart of Accounts")
 
         # ------------------------------------------------------------------
         # 5. VAT Categories
@@ -768,7 +735,7 @@ def seed_minimal():
         if existing_svat > 0:
             print(f"  [SKIP] {existing_svat} Sales VAT categories already exist")
         else:
-            _output_svat_acct = Account.query.filter_by(code='20401').first()
+            _output_svat_acct = Account.query.filter_by(code='20201').first()
             _output_svat_id = _output_svat_acct.id if _output_svat_acct else None
             svat_categories = [
                 {'code': 'V12', 'name': 'VATable Sales (12%)',   'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': _output_svat_id},

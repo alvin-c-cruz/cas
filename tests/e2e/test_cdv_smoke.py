@@ -38,7 +38,7 @@ def _pick_in_choices(page, scope_selector, text):
     scope.locator('.choices__list--dropdown .choices__item', has_text=text).first.click()
 
 
-def _add_expense_line(page, amount='1000', account_code='60101'):
+def _add_expense_line(page, amount='1000', account_code='50226'):
     """Add a Section B direct-expense line and fill it (description sentinel + amount + account)."""
     page.click("button:has-text('Add Expense Line')")
     page.wait_for_selector('#expenseLinesBody tr')
@@ -70,7 +70,7 @@ def test_entry_preview_shows_account_name_not_description(logged_in_page, e2e_se
     page.wait_for_selector('#cdvSections', state='visible')
     # Cr Cash needs a cash/bank account for the disbursement entry to balance.
     _pick_in_choices(page, CASH_SCOPE, 'Cash on Hand')
-    _add_expense_line(page, amount='1000', account_code='60101')
+    _add_expense_line(page, amount='1000', account_code='50226')
 
     page.wait_for_selector('#jePreviewBody tr')
     data = page.evaluate(

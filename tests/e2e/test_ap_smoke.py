@@ -37,7 +37,7 @@ def _selected_vendor_text(page):
     return chip.inner_text() if chip.count() else ''
 
 
-def _fill_first_line(page, amount='1000', account_code='60101'):
+def _fill_first_line(page, amount='1000', account_code='50226'):
     inputs = page.locator('#lineItemsBody tr input.form-control')  # [0]=description, [1]=amount
     inputs.nth(0).fill(DESC_SENTINEL)
     inputs.nth(1).click()
@@ -67,7 +67,7 @@ def test_je_preview_shows_account_name_not_description(logged_in_page, e2e_serve
     page.wait_for_selector('#vendor_id', state='attached')
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
     page.wait_for_selector('#lineItemsSection', state='visible')
-    _fill_first_line(page, amount='1000', account_code='60101')
+    _fill_first_line(page, amount='1000', account_code='50226')
 
     page.wait_for_selector('#jePreviewBody tr')
     data = page.evaluate(
