@@ -8,6 +8,7 @@ from app.accounts.forms import AccountForm
 from app.accounts.account_types import TYPES_NEEDING_CLASSIFICATION, DEFAULT_NORMAL_BALANCE
 from app.users.models import User
 from app.utils import ph_now
+from app.utils.export import export_to_excel, export_to_csv
 from app.audit.utils import log_audit
 import json
 
@@ -134,6 +135,71 @@ def list_accounts():
                            type_counts=type_counts,
                            pending_requests=pending_requests,
                            pending_account_ids=pending_account_ids)
+
+
+# --- Chart of Accounts download (Excel + CSV) -----------------------------
+ACCOUNT_FIELDS = ['code', 'name', 'account_type', 'classification',
+                  'normal_balance', 'parent_code', 'parent_name', 'postable', 'status']
+ACCOUNT_EXPORT_HEADERS = ['Code', 'Account Name', 'Type', 'Classification',
+                          'Normal Balance', 'Parent Code', 'Parent Name', 'Postable', 'Status']
+
+
+def _account_export_rows(accounts):
+    """Build the export row dicts shared by the Excel and CSV routes.
+
+    Hierarchy is derived (matches the COA list): an account is a non-postable
+    group header if it is top-level (no parent) OR has children; otherwise it is
+    a postable leaf.
+    """
+    by_id = {a.id: a for a in accounts}
+    has_children = {a.parent_id for a in accounts if a.parent_id}
+    rows = []
+    for a in accounts:
+        parent = by_id.get(a.parent_id)
+        is_group = a.parent_id is None or a.id in has_children
+        rows.append({
+            'code': a.code,
+            'name': a.name,
+            'account_type': a.account_type,
+            'classification': a.classification or '',
+            'normal_balance': (a.normal_balance or '').capitalize(),
+            'parent_code': parent.code if parent else '',
+            'parent_name': parent.name if parent else '',
+            'postable': 'No' if is_group else 'Yes',
+            'status': 'Active' if a.is_active else 'Inactive',
+        })
+    return rows
+
+
+@accounts_bp.route('/export/excel')
+@login_required
+def export_excel():
+    """Download the Chart of Accounts as an Excel workbook."""
+    accounts = Account.query.order_by(Account.code).all()
+    data = _account_export_rows(accounts)
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_excel(
+        data=data,
+        columns=ACCOUNT_FIELDS,
+        headers=ACCOUNT_EXPORT_HEADERS,
+        filename=f'chart_of_accounts_{timestamp}.xlsx',
+        title='Chart of Accounts',
+    )
+
+
+@accounts_bp.route('/export/csv')
+@login_required
+def export_csv():
+    """Download the Chart of Accounts as a CSV file."""
+    accounts = Account.query.order_by(Account.code).all()
+    data = _account_export_rows(accounts)
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_csv(
+        data=data,
+        columns=ACCOUNT_FIELDS,
+        headers=ACCOUNT_EXPORT_HEADERS,
+        filename=f'chart_of_accounts_{timestamp}.csv',
+    )
 
 
 @accounts_bp.route('/create', methods=['GET', 'POST'])
