@@ -109,11 +109,26 @@ class RejectReasonForm(FlaskForm):
 
 
 class ApprovedEmailForm(FlaskForm):
-    """Form for adding pre-approved email addresses for registration."""
+    """Form for adding pre-approved email addresses for registration.
+
+    Feature B: the approver also stamps the registrant's position (role) and the
+    branch(es) they will be assigned to. Admin is never a self-registration
+    position, so it is intentionally absent from the choices (WTForms rejects any
+    out-of-choice value, blocking an injected ``admin``).
+    """
     email = StringField('Email Address', validators=[
         DataRequired(),
         Email(message='Please enter a valid email address.')
     ])
+    position = SelectField('Position', choices=[
+        ('viewer', 'Viewer'),
+        ('staff', 'Staff'),
+        ('accountant', 'Accountant'),
+    ], validators=[DataRequired(message='Select the position for this registrant.')])
+    # Branch pool is scoped per-approver in the view; the >=1 / in-scope rule and
+    # the single-branch auto-assign also live in the view (they need the approver's
+    # accessible-branch list).
+    branch_ids = SelectMultipleField('Branch Assignment', coerce=int)
     notes = TextAreaField('Notes (Optional)', validators=[
         Optional(),
         Length(max=500, message='Notes must not exceed 500 characters.')
