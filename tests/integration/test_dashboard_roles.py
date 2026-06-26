@@ -300,13 +300,14 @@ class TestDashboardAdminSection:
         login(client, 'admin', 'admin123')
         assert b'Approved Emails' in get_dashboard(client).data
 
-    def test_accountant_no_approved_emails(self, client, db_session, admin_user, accountant_user,
-                                           main_branch):
+    def test_accountant_sees_approved_emails(self, client, db_session, admin_user, accountant_user,
+                                            main_branch):
+        """Accountants now have a read-only Approved Emails nav link (feature: submit requests)."""
         admin_user.add_branch(main_branch)
         accountant_user.add_branch(main_branch)
         db_session.commit()
         login(client, 'accountant', 'accountant123')
-        assert b'Approved Emails' not in get_dashboard(client).data
+        assert b'Approved Emails' in get_dashboard(client).data
 
 
 # ---------------------------------------------------------------------------

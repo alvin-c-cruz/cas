@@ -81,39 +81,52 @@ class TestApprovedEmails:
         assert ApprovedEmail.query.filter_by(email='sneaky@example.com').first() is None
 
 
-class TestApprovedEmailsAccountantBlocked:
-    """Accountant role must be blocked from all approved-email routes (B-REG-01)."""
+class TestApprovedEmailsAccountantAccess:
+    """Accountant role now has limited access to approved-email routes.
+
+    Accountants can view the list (read-only) and submit new email requests
+    (which create pending rows rather than approved ones). They cannot approve
+    or reject existing requests.
+    """
 
     def login_accountant(self, client):
         client.post('/login', data={'username': 'accountant', 'password': 'accountant123'},
                     follow_redirects=True)
 
-    def test_accountant_blocked_from_list(self, client, db_session, admin_user,
-                                          accountant_user, main_branch):
+    def test_accountant_can_view_list(self, client, db_session, admin_user,
+                                      accountant_user, main_branch):
+        """Accountant gets 200 on the list page (read-only)."""
         admin_user.add_branch(main_branch)
         accountant_user.add_branch(main_branch)
         db_session.commit()
         self.login_accountant(client)
         resp = client.get('/approved-emails', follow_redirects=True)
-        assert b'Only administrators' in resp.data
-        assert b'approved_emails_list' not in resp.data
+        assert resp.status_code == 200
+        # No admin-only error message
+        assert b'Only administrators' not in resp.data
 
-    def test_accountant_blocked_from_add_get(self, client, db_session, admin_user,
-                                             accountant_user, main_branch):
-        admin_user.add_branch(main_branch)
-        accountant_user.add_branch(main_branch)
-        db_session.commit()
-        self.login_accountant(client)
-        resp = client.get('/approved-emails/add', follow_redirects=True)
-        assert b'Only administrators' in resp.data
-
-    def test_accountant_blocked_from_add_post(self, client, db_session, admin_user,
-                                              accountant_user, main_branch):
+    def test_accountant_submit_creates_pending_not_approved(self, client, db_session,
+                                                             admin_user, accountant_user,
+                                                             main_branch):
+        """Accountant POST to /approved-emails/add creates a PENDING row (not approved)."""
         admin_user.add_branch(main_branch)
         accountant_user.add_branch(main_branch)
         db_session.commit()
         self.login_accountant(client)
         client.post('/approved-emails/add',
-                    data={'email': 'blocked@example.com', 'notes': ''},
+                    data={'email': 'accountant_req@example.com', 'notes': ''},
                     follow_redirects=True)
-        assert ApprovedEmail.query.filter_by(email='blocked@example.com').first() is None
+        row = ApprovedEmail.query.filter_by(email='accountant_req@example.com').first()
+        assert row is not None
+        assert row.status == 'pending', 'Accountant submit must create a pending row'
+        assert row.approved_by_user_id is None
+
+    def test_staff_blocked_from_list(self, client, db_session, admin_user, staff_user, main_branch):
+        """Staff (and below) is still blocked from the list."""
+        admin_user.add_branch(main_branch)
+        staff_user.add_branch(main_branch)
+        db_session.commit()
+        client.post('/login', data={'username': 'staff', 'password': 'staff123'},
+                    follow_redirects=True)
+        resp = client.get('/approved-emails', follow_redirects=True)
+        assert b'do not have permission' in resp.data or resp.status_code in (302, 403)

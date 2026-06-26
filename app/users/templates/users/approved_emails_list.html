@@ -186,7 +186,8 @@
                         <div class="action-buttons">
                             {% if not email.is_used and email.status != 'rejected' %}
                             <form method="POST" action="{{ url_for('users.delete_approved_email', id=email.id) }}"
-                                  style="display:inline;">
+                                  style="display:inline;"
+                                  data-confirm="Remove {{ email.email }} from the approved list?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
                             </form>
