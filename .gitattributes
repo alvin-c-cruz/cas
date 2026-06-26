@@ -1,0 +1,24 @@
+# Normalize line endings: store text as LF in the repo, check out native on disk.
+# Stops the CRLF<->LF churn that tool/sed edits produced (no .gitattributes before).
+* text=auto
+
+# Explicit text types
+*.py    text
+*.html  text
+*.css   text
+*.js    text
+*.md    text
+*.txt   text
+*.ini   text
+*.cfg   text
+*.json  text
+
+# Binary types — never normalize
+*.db    binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.xlsx  binary
+*.pdf   binary
