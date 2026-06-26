@@ -1301,7 +1301,7 @@
             <!-- Approved Emails (accountant: request + read-only list) -->
             {% if current_user.is_authenticated and current_user.role == 'accountant' %}
             <div class="nav-section">
-                <div class="nav-label">Approvals</div>
+                <div class="nav-label">Staff Management</div>
                 <div class="nav-section-content">
                     <a href="{{ url_for('users.list_approved_emails') }}" class="nav-item {% if request.endpoint == 'users.list_approved_emails' or request.endpoint == 'users.add_approved_email' %}active{% endif %}">
                         <span class="nav-icon">📧</span>
