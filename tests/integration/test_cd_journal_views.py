@@ -25,11 +25,13 @@ def branch(db_session):
 
 
 @pytest.fixture()
-def accountant(db_session):
+def accountant(db_session, branch):
     u = User(username='acc_cd', email='acc_cd@test.com', full_name='CD Accountant',
              role='accountant', is_active=True)
     u.set_password('pass')
     db.session.add(u)
+    db.session.flush()
+    u.branches.append(branch)
     db.session.commit()
     return u
 

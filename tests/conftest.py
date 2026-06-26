@@ -82,8 +82,14 @@ def admin_user(db_session):
 
 
 @pytest.fixture
-def accountant_user(db_session):
-    """Create an accountant user"""
+def accountant_user(db_session, main_branch):
+    """Create an accountant user assigned to main_branch.
+
+    Accountants are now branch-scoped (like staff/viewer) — they must have at least
+    one assigned branch or the before_request gate will redirect them to the picker
+    with no options.  Assigning main_branch here keeps every existing test green
+    without changes; tests that need an unassigned accountant create one directly.
+    """
     user = User(
         username='accountant',
         email='accountant@test.com',
@@ -93,6 +99,8 @@ def accountant_user(db_session):
     )
     user.set_password('accountant123')
     db_session.add(user)
+    db_session.flush()  # get user.id before set_branches
+    user.set_branches([main_branch])
     db_session.commit()
     return user
 

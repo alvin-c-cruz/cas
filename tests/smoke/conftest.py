@@ -50,6 +50,8 @@ def _seed_smoke_data(app):
         )
         user.set_password('Smoke123!')
         _db.session.add(user)
+        _db.session.flush()
+        user.branches.append(branch)
 
         vat = VATCategory(code='VAT', name='VATable (12%)', rate=12.0, is_active=True)
         _db.session.add(vat)

@@ -177,19 +177,25 @@ class TestSIJournalViews:
         assert b'SI-0004' in resp.data
 
     def test_si_journal_redirects_without_branch(
-            self, client, db_session, accountant_user):
-        """GET /journals/si with no branch in session → 302 redirect."""
+            self, client, db_session, accountant_user, branch_manila):
+        """GET /journals/si with no branch in session → 302 redirect.
+
+        accountant_user has main_branch assigned (conftest); adding branch_manila gives 2
+        accessible branches so before_request cannot auto-select → it redirects instead.
+        """
+        accountant_user.branches.append(branch_manila)
+        db_session.commit()
         client.post('/login', data={'username': 'accountant', 'password': 'accountant123'},
                     follow_redirects=True)
-        # No selected_branch_id in session
-        resp = client.get('/journals/si')
+        with client.session_transaction() as s:
+            s.pop('selected_branch_id', None)
+        resp = client.get('/journals/si', follow_redirects=False)
         assert resp.status_code == 302
 
     def test_si_list_view_journal_button_links_to_si_journal(
             self, client, db_session, main_branch, accountant_user):
         """SI list page contains /journals/si link and no '(Soon)' text."""
-        accountant_user.branches.append(main_branch)
-        db.session.commit()
+        # accountant_user fixture already assigns main_branch (conftest); no append needed
         client.post('/login', data={'username': 'accountant', 'password': 'accountant123'},
                     follow_redirects=True)
         with client.session_transaction() as s:

@@ -16,7 +16,9 @@ class TestGetAccessibleBranches:
         assert main_branch.id in ids
         assert extra.id in ids
 
-    def test_accountant_gets_all_active_branches(self, db_session, accountant_user, main_branch):
+    def test_accountant_gets_only_assigned_branches(self, db_session, accountant_user, main_branch):
+        """Accountants are now scoped like staff — only their assigned branches."""
+        # accountant_user fixture assigns main_branch; that is the only active branch here
         result = get_accessible_branches(accountant_user)
         assert any(b.id == main_branch.id for b in result)
 
