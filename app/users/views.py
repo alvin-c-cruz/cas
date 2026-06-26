@@ -271,21 +271,32 @@ def register():
     form = RegistrationForm()
     if form.validate_on_submit():
         try:
+            from app.users.approved_emails import ApprovedEmail
+            approved_email = ApprovedEmail.get_approved_email(form.email.data)
+
+            # Feature B: a role-stamped approved email creates the user *active* with
+            # the delegated role + branch(es). A legacy row (role=None) falls back to
+            # the original behavior — a view-only account pending admin activation.
+            delegated = approved_email is not None and approved_email.role
+
             user = User(
                 username=form.username.data,
                 email=form.email.data,
                 full_name=form.full_name.data,
-                role='viewer',  # Default role for self-registration (view-only)
-                is_active=False  # New registrations require admin approval
+                role=approved_email.role if delegated else 'viewer',
+                is_active=True if delegated else False
             )
             user.set_password(form.password.data)
 
             db.session.add(user)
+            db.session.flush()  # get user.id before assigning branches
+
+            if delegated:
+                user.set_branches(list(approved_email.branches))
+
             db.session.commit()
 
             # Mark the approved email as used
-            from app.users.approved_emails import ApprovedEmail
-            approved_email = ApprovedEmail.get_approved_email(form.email.data)
             if approved_email:
                 approved_email.mark_as_used(user.id)
 
@@ -295,10 +306,15 @@ def register():
                 action='registration_success',
                 record_id=user.id,
                 record_identifier=f'{user.username} ({user.email})',
-                notes='User registered successfully, pending admin approval'
+                notes=(f'User registered as {user.role} (active)'
+                       if delegated else
+                       'User registered successfully, pending admin approval')
             )
 
-            flash('Registration successful! Your account is pending admin approval. You will be able to log in once your account is activated.', 'success')
+            if delegated:
+                flash('Registration successful! Your account is active — you can log in now.', 'success')
+            else:
+                flash('Registration successful! Your account is pending admin approval. You will be able to log in once your account is activated.', 'success')
             return redirect(url_for('users.login'))
         except Exception as e:
             from flask import current_app
