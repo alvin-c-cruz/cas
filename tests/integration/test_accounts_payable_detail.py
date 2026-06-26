@@ -137,10 +137,10 @@ class TestDetailPageLayout:
         login(client)
         resp = client.get(f'/accounts-payable/{bill.id}')
         html = resp.data.decode('utf-8')
-        # The redesigned page must have a "Journal Entry" section heading
-        # within the bill card body (not just the sidebar nav link).
-        # Check for it as a section label element, not a nav anchor.
-        assert 'Journal Entry</h' in html or '>Journal Entry</' in html
+        # The redesigned page presents the journal entry under an "Entry" section
+        # heading (relabeled from "Journal Entry" in 3cfd8af to match the canonical
+        # SI/JE surface jargon). Check for it as a section heading element.
+        assert '>Entry</h' in html
 
     def test_bill_summary_label_present(
             self, client, db_session, admin_user, main_branch):
