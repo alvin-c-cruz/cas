@@ -1,15 +1,23 @@
 {% extends "base.html" %}
 
+{% if current_user.role == 'admin' %}
 {% block title %}Add Approved Email{% endblock %}
 {% block page_title %}Add Approved Email for Registration{% endblock %}
+{% else %}
+{% block title %}Request Email Approval{% endblock %}
+{% block page_title %}Request Email Approval{% endblock %}
+{% endif %}
 
 {% block content %}
 
-<div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px;">
-    <div style="font-size: 14px; color: #1e40af;">
-        <strong>ℹ️ About Email Pre-Approval:</strong><br>
+<div class="alert alert-info">
+    {% if current_user.role == 'admin' %}
+        <strong>About Email Pre-Approval:</strong>
         Add an email address to allow someone to register for an account. After they register, the email will be marked as "used" and cannot be reused.
-    </div>
+    {% else %}
+        <strong>About Email Approval Requests:</strong>
+        Submit an email address for an administrator to approve. Once approved, that person will be able to register for an account.
+    {% endif %}
 </div>
 
 <div class="card">
@@ -32,7 +40,7 @@
 
             <div class="form-group">
                 {{ form.notes.label(class='form-label') }}
-                {{ form.notes(class='form-control', rows=3, placeholder='Optional notes about this approval (e.g., "New accountant - Maria Santos")') }}
+                {{ form.notes(class='form-control', rows=3, placeholder='Optional notes (e.g., "New accountant - Maria Santos")') }}
                 {% if form.notes.errors %}
                     <div class="error-message">
                         {% for error in form.notes.errors %}
@@ -40,12 +48,16 @@
                         {% endfor %}
                     </div>
                 {% endif %}
-                <div class="form-hint">Optional: Add notes to remember why this email was approved.</div>
+                <div class="form-hint">Optional: Add notes about why this email is being approved.</div>
             </div>
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">
-                    <span class="btn-icon">✓</span> Approve Email
+                    {% if current_user.role == 'admin' %}
+                        <span class="btn-icon">✓</span> Approve Email
+                    {% else %}
+                        <span class="btn-icon">↑</span> Submit for Approval
+                    {% endif %}
                 </button>
                 <a href="{{ url_for('users.list_approved_emails') }}" class="btn btn-secondary">
                     Cancel

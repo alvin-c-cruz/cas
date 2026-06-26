@@ -13,6 +13,7 @@ from app.users.models import User
 from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
 from app.utils import ph_now
 from app.audit.utils import log_audit, log_create, log_update, log_delete, model_to_dict
+from app.notifications.utils import create_notification
 
 
 users_bp = Blueprint('users', __name__, template_folder='templates')
@@ -598,30 +599,36 @@ def change_password():
 
 @users_bp.route('/approved-emails')
 @login_required
-@admin_required
 def list_approved_emails():
-    """List all approved emails for registration (admin only)."""
-    if current_user.role != 'admin':
-        flash('Only administrators can manage approved emails.', 'error')
+    """List all approved emails for registration (admin full access; accountant read-only)."""
+    if current_user.role not in ('admin', 'accountant'):
+        flash('You do not have permission to view this page.', 'error')
         return redirect(url_for('dashboard.index'))
     from app.users.approved_emails import ApprovedEmail
 
-    # Get all approved emails, ordered by status (available first, then used)
+    # Get all approved emails, ordered by pending first, then by date desc
     approved_emails = ApprovedEmail.query.order_by(
         ApprovedEmail.is_used.asc(),
         ApprovedEmail.approved_at.desc()
     ).all()
 
-    return render_template('users/approved_emails_list.html', approved_emails=approved_emails)
+    pending = [e for e in approved_emails if e.status == 'pending']
+
+    return render_template('users/approved_emails_list.html',
+                           approved_emails=approved_emails,
+                           pending=pending)
 
 
 @users_bp.route('/approved-emails/add', methods=['GET', 'POST'])
 @login_required
-@admin_required
 def add_approved_email():
-    """Add a new approved email for registration (admin only)."""
-    if current_user.role != 'admin':
-        flash('Only administrators can manage approved emails.', 'error')
+    """Add a new approved email for registration.
+
+    Admin → immediately approved (original behavior).
+    Accountant → creates a pending request; notifies all admins.
+    """
+    if current_user.role not in ('admin', 'accountant'):
+        flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard.index'))
     from app.users.forms import ApprovedEmailForm
     from app.users.approved_emails import ApprovedEmail
@@ -630,25 +637,61 @@ def add_approved_email():
 
     if form.validate_on_submit():
         try:
-            approved_email = ApprovedEmail(
-                email=form.email.data.lower(),
-                approved_by_user_id=current_user.id,
-                notes=form.notes.data
-            )
+            if current_user.role == 'admin':
+                # Admin direct-add → immediately approved
+                approved_email = ApprovedEmail(
+                    email=form.email.data.lower(),
+                    status='approved',
+                    approved_by_user_id=current_user.id,
+                    notes=form.notes.data
+                )
+                db.session.add(approved_email)
+                db.session.commit()
 
-            db.session.add(approved_email)
-            db.session.commit()
+                log_audit(
+                    module='approved_email',
+                    action='create',
+                    record_id=approved_email.id,
+                    record_identifier=approved_email.email,
+                    new_values={'email': approved_email.email, 'notes': approved_email.notes},
+                    notes='Email pre-approved for registration'
+                )
 
-            log_audit(
-                module='approved_email',
-                action='create',
-                record_id=approved_email.id,
-                record_identifier=approved_email.email,
-                new_values={'email': approved_email.email, 'notes': approved_email.notes},
-                notes='Email pre-approved for registration'
-            )
+                flash(f'Email "{form.email.data}" has been approved for registration.', 'success')
+            else:
+                # Accountant → pending, notify admins
+                approved_email = ApprovedEmail(
+                    email=form.email.data.lower(),
+                    status='pending',
+                    requested_by_user_id=current_user.id,
+                    notes=form.notes.data
+                )
+                db.session.add(approved_email)
+                db.session.commit()
 
-            flash(f'Email "{form.email.data}" has been approved for registration.', 'success')
+                # Notify all active admins
+                admins = User.query.filter_by(role='admin', is_active=True).all()
+                for admin in admins:
+                    create_notification(
+                        user_id=admin.id,
+                        title='Approved-email request',
+                        message=f'{current_user.full_name} requested approval for {approved_email.email}',
+                        category='info',
+                        related_type='approved_email',
+                        related_id=approved_email.id,
+                    )
+
+                log_audit(
+                    module='approved_email',
+                    action='request',
+                    record_id=approved_email.id,
+                    record_identifier=approved_email.email,
+                    new_values={'email': approved_email.email, 'notes': approved_email.notes},
+                    notes=f'Submitted by {current_user.username} for admin approval'
+                )
+
+                flash('Email request submitted for admin approval.', 'success')
+
             return redirect(url_for('users.list_approved_emails'))
         except Exception as e:
             from flask import current_app
@@ -663,7 +706,6 @@ def add_approved_email():
 
 @users_bp.route('/approved-emails/<int:id>/delete', methods=['POST'])
 @login_required
-@admin_required
 def delete_approved_email(id):
     """Delete an approved email (admin only)."""
     if current_user.role != 'admin':
