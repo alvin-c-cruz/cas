@@ -34,6 +34,33 @@
             </div>
 
             <div class="form-group">
+                {{ form.position.label(class='form-label') }}
+                {{ form.position(class='form-control') }}
+                {% if form.position.errors %}
+                    <div class="error-message">
+                        {% for error in form.position.errors %}{{ error }}{% endfor %}
+                    </div>
+                {% endif %}
+                <div class="form-hint">The role this person will be created with when they register.</div>
+            </div>
+
+            <div class="form-group">
+                {{ form.branch_ids.label(class='form-label') }}
+                {% if single_branch %}
+                    <input type="text" class="form-control" value="{{ single_branch.name }}" readonly>
+                    <div class="form-hint">Auto-assigned — this is your only branch.</div>
+                {% else %}
+                    {{ form.branch_ids(class='form-control', multiple=true, size=5, style='height: auto;') }}
+                    {% if form.branch_ids.errors %}
+                        <div class="error-message">
+                            {% for error in form.branch_ids.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                    <div class="form-hint">Hold Ctrl (Cmd on Mac) to select one or more branches the registrant will be assigned to.</div>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
                 {{ form.notes.label(class='form-label') }}
                 {{ form.notes(class='form-control', rows=3, placeholder='Optional notes (e.g., "New accountant - Maria Santos")') }}
                 {% if form.notes.errors %}

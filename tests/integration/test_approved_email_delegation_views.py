@@ -92,3 +92,30 @@ def test_accountant_submit_audit_and_notification_name_role(client, db_session, 
                                          related_id=ae.id).first()
     assert notif is not None
     assert 'staff' in notif.message.lower()
+
+
+# --- template render paths ----------------------------------------------------
+
+def test_multi_branch_form_renders_branch_picker(client, db_session, admin_user,
+                                                 main_branch, branch_manila):
+    """With >1 accessible branch, the form shows the multiselect (both branch names)."""
+    _login(client, admin_user, main_branch, 'admin123')
+    resp = client.get('/approved-emails/add')
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert main_branch.name in body and branch_manila.name in body
+    assert 'name="branch_ids"' in body
+
+
+def test_list_shows_position_and_branch(client, db_session, admin_user, main_branch):
+    ae = ApprovedEmail(email='listed@example.ph', status='approved', role='staff')
+    ae.branches = [main_branch]
+    db_session.add(ae)
+    db_session.commit()
+
+    _login(client, admin_user, main_branch, 'admin123')
+    resp = client.get('/approved-emails')
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'Staff' in body
+    assert main_branch.name in body

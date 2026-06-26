@@ -40,6 +40,8 @@
             <thead>
                 <tr>
                     <th>Email Address</th>
+                    <th>Position</th>
+                    <th>Branch(es)</th>
                     <th>Requested By</th>
                     <th>Notes</th>
                     {% if current_user.role == 'admin' %}
@@ -51,6 +53,8 @@
                 {% for email in pending %}
                 <tr>
                     <td><strong>{{ email.email }}</strong></td>
+                    <td>{% if email.role %}{{ email.role|capitalize }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td>{% if email.branches %}{{ email.branches|map(attribute='name')|join(', ') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                     <td>{{ email.requested_by.username if email.requested_by else '—' }}</td>
                     <td>
                         {% if email.notes %}
@@ -124,6 +128,8 @@
             <thead>
                 <tr>
                     <th>Email Address</th>
+                    <th>Position</th>
+                    <th>Branch(es)</th>
                     <th>Status</th>
                     <th>Registration Status</th>
                     <th>Approved/Reviewed By</th>
@@ -139,6 +145,8 @@
                 {% for email in approved_emails %}
                 <tr {% if email.is_used %}style="opacity:.7;"{% endif %}>
                     <td><strong>{{ email.email }}</strong></td>
+                    <td>{% if email.role %}{{ email.role|capitalize }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td>{% if email.branches %}{{ email.branches|map(attribute='name')|join(', ') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                     <td>
                         {% if email.status == 'approved' %}
                             <span class="badge badge-active">Approved</span>
