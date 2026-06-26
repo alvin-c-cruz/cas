@@ -99,6 +99,11 @@ class ChangePasswordForm(FlaskForm):
     ])
 
 
+class RejectReasonForm(FlaskForm):
+    """CSRF-protected form for capturing a reject reason (no other fields needed)."""
+    reason = TextAreaField('Reason', validators=[Optional(), Length(max=500)])
+
+
 class ApprovedEmailForm(FlaskForm):
     """Form for adding pre-approved email addresses for registration."""
     email = StringField('Email Address', validators=[

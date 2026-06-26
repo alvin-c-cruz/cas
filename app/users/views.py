@@ -704,6 +704,89 @@ def add_approved_email():
     return render_template('users/approved_email_form.html', form=form)
 
 
+@users_bp.route('/approved-emails/<int:id>/approve', methods=['POST'])
+@login_required
+def approve_approved_email(id):
+    """Approve a pending approved-email request (admin only)."""
+    if current_user.role != 'admin':
+        flash('Only administrators can approve email requests.', 'error')
+        return redirect(url_for('users.list_approved_emails'))
+
+    from app.users.approved_emails import ApprovedEmail
+    ae = ApprovedEmail.query.get_or_404(id)
+
+    if ae.status != 'pending':
+        flash('This request is not pending and cannot be approved.', 'error')
+        return redirect(url_for('users.list_approved_emails'))
+
+    ae.approve(current_user.id)
+
+    # Notify the requester (if any)
+    if ae.requested_by_user_id:
+        create_notification(
+            user_id=ae.requested_by_user_id,
+            title='Email approval approved',
+            message=f'Your request for {ae.email} has been approved.',
+            category='success',
+            related_type='approved_email',
+            related_id=ae.id,
+        )
+
+    log_audit(
+        module='approved_email',
+        action='approve',
+        record_id=ae.id,
+        record_identifier=ae.email,
+        notes=f'Approved by {current_user.username}'
+    )
+
+    flash(f'Email "{ae.email}" has been approved for registration.', 'success')
+    return redirect(url_for('users.list_approved_emails'))
+
+
+@users_bp.route('/approved-emails/<int:id>/reject', methods=['POST'])
+@login_required
+def reject_approved_email(id):
+    """Reject a pending approved-email request (admin only)."""
+    if current_user.role != 'admin':
+        flash('Only administrators can reject email requests.', 'error')
+        return redirect(url_for('users.list_approved_emails'))
+
+    from app.users.approved_emails import ApprovedEmail
+    from app.users.forms import RejectReasonForm
+
+    ae = ApprovedEmail.query.get_or_404(id)
+
+    if ae.status != 'pending':
+        flash('This request is not pending and cannot be rejected.', 'error')
+        return redirect(url_for('users.list_approved_emails'))
+
+    reason = request.form.get('reason', '').strip()
+    ae.reject(current_user.id, reason)
+
+    # Notify the requester (if any)
+    if ae.requested_by_user_id:
+        create_notification(
+            user_id=ae.requested_by_user_id,
+            title='Email approval rejected',
+            message=f'Your request for {ae.email} has been rejected.' + (f' Reason: {reason}' if reason else ''),
+            category='error',
+            related_type='approved_email',
+            related_id=ae.id,
+        )
+
+    log_audit(
+        module='approved_email',
+        action='reject',
+        record_id=ae.id,
+        record_identifier=ae.email,
+        notes=f'Rejected by {current_user.username}' + (f': {reason}' if reason else '')
+    )
+
+    flash(f'Email "{ae.email}" request has been rejected.', 'info')
+    return redirect(url_for('users.list_approved_emails'))
+
+
 @users_bp.route('/approved-emails/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_approved_email(id):

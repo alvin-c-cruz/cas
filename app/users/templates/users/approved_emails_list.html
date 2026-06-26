@@ -7,85 +7,195 @@
 
 <div class="content-header">
     <div class="page-actions">
+        {% if current_user.role in ('admin', 'accountant') %}
         <a href="{{ url_for('users.add_approved_email') }}" class="btn btn-primary">
-            <span class="btn-icon">+</span> Add Approved Email
+            {% if current_user.role == 'admin' %}
+                <span class="btn-icon">+</span> Add Approved Email
+            {% else %}
+                <span class="btn-icon">+</span> Request Approval
+            {% endif %}
         </a>
+        {% endif %}
         <a href="{{ url_for('users.list_users') }}" class="btn btn-secondary">
             <span class="btn-icon">←</span> Back to Users
         </a>
     </div>
 </div>
 
-<div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px;">
-    <div style="font-size: 14px; color: #1e40af;">
-        <strong>ℹ️ About Email Pre-Approval:</strong><br>
-        Only email addresses added to this list can be used for self-registration. Once an email is used, it cannot be reused.
-    </div>
+<div class="alert alert-info">
+    <strong>About Email Pre-Approval:</strong>
+    Only email addresses in this list can be used for self-registration. Once used, an email cannot be reused.
 </div>
 
+{# ---------------------------------------------------------- #}
+{# Pending requests section (admin sees full controls; accountant sees status) #}
+{# ---------------------------------------------------------- #}
+{% if pending %}
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h3 style="margin: 0;">Pending Requests ({{ pending|length }})</h3>
+    </div>
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Email Address</th>
+                    <th>Requested By</th>
+                    <th>Notes</th>
+                    {% if current_user.role == 'admin' %}
+                    <th>Actions</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for email in pending %}
+                <tr>
+                    <td><strong>{{ email.email }}</strong></td>
+                    <td>{{ email.requested_by.username if email.requested_by else '—' }}</td>
+                    <td>
+                        {% if email.notes %}
+                            <span title="{{ email.notes }}">{{ email.notes[:40] }}{% if email.notes|length > 40 %}...{% endif %}</span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    {% if current_user.role == 'admin' %}
+                    <td>
+                        <div class="action-buttons">
+                            {# Approve form #}
+                            <form method="POST" action="{{ url_for('users.approve_approved_email', id=email.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+                            </form>
+                            {# Reject button opens modal #}
+                            <button type="button" class="btn btn-secondary btn-sm"
+                                    onclick="document.getElementById('reject-modal-{{ email.id }}').style.display='flex'">
+                                Reject
+                            </button>
+                        </div>
+
+                        {# Reject modal — inline, no JS popup #}
+                        <div id="reject-modal-{{ email.id }}"
+                             style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
+                                    z-index:1000; align-items:center; justify-content:center;">
+                            <div class="card" style="width:400px; max-width:90vw; padding:0;">
+                                <div class="card-header">
+                                    <h3 style="margin:0;">Reject Request</h3>
+                                </div>
+                                <div class="card-body">
+                                    <p>Rejecting approval request for <strong>{{ email.email }}</strong>.</p>
+                                    <form method="POST" action="{{ url_for('users.reject_approved_email', id=email.id) }}">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                        <div class="form-group">
+                                            <label class="form-label" for="reason-{{ email.id }}">Reason (optional)</label>
+                                            <textarea id="reason-{{ email.id }}" name="reason" class="form-control" rows="3"
+                                                      placeholder="Reason for rejection…"></textarea>
+                                        </div>
+                                        <div class="form-actions">
+                                            <button type="submit" class="btn btn-danger">Confirm Reject</button>
+                                            <button type="button" class="btn btn-secondary"
+                                                    onclick="document.getElementById('reject-modal-{{ email.id }}').style.display='none'">
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{# ---------------------------------------------------------- #}
+{# All emails table #}
+{# ---------------------------------------------------------- #}
 <div class="card">
+    <div class="card-header">
+        <h3 style="margin: 0;">All Approved Emails</h3>
+    </div>
     <div class="card-body">
         <table class="data-table">
             <thead>
                 <tr>
                     <th>Email Address</th>
                     <th>Status</th>
-                    <th>Approved By</th>
-                    <th>Approved Date</th>
+                    <th>Registration Status</th>
+                    <th>Approved/Reviewed By</th>
+                    <th>Date</th>
                     <th>Used By</th>
-                    <th>Used Date</th>
                     <th>Notes</th>
+                    {% if current_user.role == 'admin' %}
                     <th>Actions</th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
                 {% for email in approved_emails %}
-                <tr {% if email.is_used %}style="background: #f8fafc;"{% endif %}>
+                <tr {% if email.is_used %}style="opacity:.7;"{% endif %}>
                     <td><strong>{{ email.email }}</strong></td>
+                    <td>
+                        {% if email.status == 'approved' %}
+                            <span class="badge badge-active">Approved</span>
+                        {% elif email.status == 'pending' %}
+                            <span class="badge badge-warning">Pending</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Rejected</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if email.is_used %}
                             <span class="badge badge-inactive">Used</span>
-                        {% else %}
+                        {% elif email.status == 'approved' %}
                             <span class="badge badge-success">Available</span>
+                        {% else %}
+                            <span class="text-muted">—</span>
                         {% endif %}
                     </td>
-                    <td>{{ email.approved_by.username }}</td>
-                    <td>{{ email.approved_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        {% if email.approved_by %}
+                            {{ email.approved_by.username }}
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ email.approved_at.strftime('%Y-%m-%d') if email.approved_at else '—' }}</td>
                     <td>
                         {% if email.used_by %}
                             <a href="{{ url_for('users.edit_user', id=email.used_by_user_id) }}">
                                 {{ email.used_by.username }}
                             </a>
                         {% else %}
-                            <span style="color: #94a3b8;">-</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if email.used_at %}
-                            {{ email.used_at.strftime('%Y-%m-%d %H:%M') }}
-                        {% else %}
-                            <span style="color: #94a3b8;">-</span>
+                            <span class="text-muted">—</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if email.notes %}
-                            <span title="{{ email.notes }}" style="cursor: help;">{{ email.notes[:30] }}{% if email.notes|length > 30 %}...{% endif %}</span>
+                            <span title="{{ email.notes }}">{{ email.notes[:30] }}{% if email.notes|length > 30 %}...{% endif %}</span>
                         {% else %}
-                            <span style="color: #94a3b8;">-</span>
+                            <span class="text-muted">—</span>
                         {% endif %}
                     </td>
+                    {% if current_user.role == 'admin' %}
                     <td>
                         <div class="action-buttons">
-                            {% if not email.is_used %}
-                            <form method="POST" action="{{ url_for('users.delete_approved_email', id=email.id) }}" style="display: inline;" data-confirm="Are you sure you want to remove {{ email.email }} from the approved list?">
+                            {% if not email.is_used and email.status != 'rejected' %}
+                            <form method="POST" action="{{ url_for('users.delete_approved_email', id=email.id) }}"
+                                  style="display:inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
                             </form>
                             {% else %}
-                            <span style="color: #94a3b8; font-size: 13px;">-</span>
+                            <span class="text-muted">—</span>
                             {% endif %}
                         </div>
                     </td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
