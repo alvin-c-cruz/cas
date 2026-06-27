@@ -1,5 +1,6 @@
 import pytest
 from app.settings import AppSettings
+from app.audit.models import AuditLog
 
 pytestmark = [pytest.mark.integration]
 
@@ -28,6 +29,9 @@ def test_admin_enables_self_approval(client, db_session, admin_user, main_branch
                        follow_redirects=True)
     assert resp.status_code == 200
     assert AppSettings.get_setting('accountant_email_self_approval') == '1'
+    audit = AuditLog.query.filter_by(module='settings', action='update').order_by(AuditLog.id.desc()).first()
+    assert audit is not None
+    assert 'accountant_email_self_approval' in (audit.new_values or '')
 
 
 def test_admin_disables_self_approval(client, db_session, admin_user, main_branch):
@@ -37,3 +41,6 @@ def test_admin_disables_self_approval(client, db_session, admin_user, main_branc
     resp = client.post('/settings', data=_base_form(), follow_redirects=True)
     assert resp.status_code == 200
     assert AppSettings.get_setting('accountant_email_self_approval') == '0'
+    audit = AuditLog.query.filter_by(module='settings', action='update').order_by(AuditLog.id.desc()).first()
+    assert audit is not None
+    assert 'accountant_email_self_approval' in (audit.new_values or '')
