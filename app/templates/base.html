@@ -1125,7 +1125,8 @@
             </div>
             {% endif %}
 
-            <!-- Ledger Section -->
+            <!-- Ledger Section (hidden entirely if no ledger modules granted) -->
+            {% if visible_modules(current_user, 'Ledger') %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="ledger">
                     <span>Ledger</span>
@@ -1158,8 +1159,10 @@
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
 
-            <!-- Financial Reports Section -->
+            <!-- Financial Reports Section (hidden entirely if no FR modules granted) -->
+            {% if visible_modules(current_user, 'Financial Reports') %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="financial-reports">
                     <span>Financial Reports</span>
@@ -1198,6 +1201,7 @@
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
 
             {% if can_access_module(current_user, 'bir_reports') %}
             <!-- BIR Reports Section -->
@@ -1226,8 +1230,9 @@
             </div>
             {% endif %}
 
-            <!-- Maintenance Section (hidden entirely if staff has no maintenance access) -->
-            {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') %}
+            <!-- Maintenance Section — also shown to admin/accountant so the Audit Log
+                 (entitled to both) is not coupled to customers/vendors access -->
+            {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') or current_user.role in ['admin', 'accountant'] %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="maintenance">
                     <span>Maintenance</span>

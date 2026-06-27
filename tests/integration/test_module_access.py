@@ -147,7 +147,7 @@ def test_viewer_gated_then_granted(client, db_session, branch):
 
 def test_sidebar_hides_ungranted_transactions_for_staff(client, db_session, branch):
     staff = _make_user(db_session, branch, 'staff',
-                       books={'accounts_payable': True}, username='staffap')
+                       books={'accounts_payable': True, 'chart_of_accounts': True}, username='staffap')
     _login(client, staff, branch)
     html = client.get('/dashboard').data.decode('utf-8', 'replace')
     # Scope to the Transactions nav section (a dashboard widget may link elsewhere).
