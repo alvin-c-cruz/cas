@@ -124,3 +124,15 @@ def get_active_units():
 def clear_uom_cache():
     """Clear units-of-measure cache after updates."""
     cache.delete_memoized(get_active_units)
+
+
+@cache.memoize(timeout=3600)
+def get_active_products():
+    """Get all active products (cached 1 hour)."""
+    from app.products.models import Product
+    return Product.query.filter_by(is_active=True).order_by(Product.code).all()
+
+
+def clear_product_cache():
+    """Clear products cache after updates."""
+    cache.delete_memoized(get_active_products)
