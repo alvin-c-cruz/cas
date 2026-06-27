@@ -229,70 +229,6 @@ class APVLineError(Exception):
     """
 
 
-def _parse_and_attach_line_items(ap, line_items_json, assign_ap_id=False):
-    """Parse a JSON string of line items and attach AccountsPayableItem objects to ap.
-
-    Mirrors the SI pattern. No validation — use _build_validated_ap_lines() for
-    the validated save path. Used directly by unit tests.
-    """
-    try:
-        items = json.loads(line_items_json) if line_items_json else []
-    except (json.JSONDecodeError, TypeError):
-        items = []
-
-    def _dec(v):
-        try:
-            return Decimal(str(v)) if v not in (None, '', 'null') else None
-        except (InvalidOperation, TypeError):
-            return None
-
-    def _int(v):
-        try:
-            return int(v) if v and str(v).strip() not in ('', 'null') else None
-        except (ValueError, TypeError):
-            return None
-
-    for idx, item_data in enumerate(items, start=1):
-        vat_rate = Decimal('0.00')
-        vat_category = item_data.get('vat_category') or None
-        if vat_category:
-            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
-            if vat_cat:
-                vat_rate = Decimal(str(vat_cat.rate))
-
-        raw_wt_id = item_data.get('wt_id')
-        wt_id = int(raw_wt_id) if raw_wt_id and str(raw_wt_id).strip() else None
-        wt_rate = None
-        if wt_id:
-            wt_obj = db.session.get(WithholdingTax, wt_id)
-            if wt_obj:
-                wt_rate = wt_obj.rate
-
-        raw_account_id = item_data.get('account_id')
-        account_id = int(raw_account_id) if raw_account_id and str(raw_account_id).strip() else None
-        if account_id and not db.session.get(Account, account_id):
-            account_id = None
-
-        line_item = AccountsPayableItem(
-            line_number=idx,
-            description=item_data.get('description', ''),
-            amount=Decimal(str(item_data.get('amount', '0') or '0')),
-            quantity=_dec(item_data.get('quantity')),
-            unit_price=_dec(item_data.get('unit_price')),
-            uom_text=(item_data.get('uom_text') or None),
-            unit_of_measure_id=_int(item_data.get('uom_id')),
-            product_id=_int(item_data.get('product_id')),
-            vat_category=vat_category,
-            vat_rate=vat_rate,
-            account_id=account_id,
-            wt_id=wt_id,
-            wt_rate=wt_rate,
-        )
-        if assign_ap_id:
-            line_item.ap_id = ap.id
-        line_item.calculate_amounts()
-        ap.line_items.append(line_item)
-
 
 def _units_for_form():
     return [u.to_dict() for u in get_active_units()]
@@ -319,6 +255,19 @@ def _build_validated_ap_lines():
     if not line_items:
         raise APVLineError('Add at least one line item before saving the AP Voucher.')
     leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
+
+    def _dec(v):
+        try:
+            return Decimal(str(v)) if v not in (None, '', 'null') else None
+        except (InvalidOperation, TypeError):
+            return None
+
+    def _int_safe(v):
+        try:
+            return int(v) if v and str(v).strip() not in ('', 'null') else None
+        except (ValueError, TypeError):
+            return None
+
     built = []
     for idx, item_data in enumerate(line_items, start=1):
         if not str(item_data.get('description') or '').strip():
@@ -346,18 +295,6 @@ def _build_validated_ap_lines():
             wt_obj = db.session.get(WithholdingTax, wt_id)
             if wt_obj:
                 wt_rate = wt_obj.rate
-
-        def _dec(v):
-            try:
-                return Decimal(str(v)) if v not in (None, '', 'null') else None
-            except (InvalidOperation, TypeError):
-                return None
-
-        def _int_safe(v):
-            try:
-                return int(v) if v and str(v).strip() not in ('', 'null') else None
-            except (ValueError, TypeError):
-                return None
 
         line_item = AccountsPayableItem(
             line_number=idx,
