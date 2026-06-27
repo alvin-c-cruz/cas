@@ -210,12 +210,16 @@
               <table class="table" id="revenueLinesTable">
                 <thead>
                   <tr>
-                    <th style="width:35%">Description</th>
-                    <th style="width:13%;text-align:right">Amount (VAT-incl.)</th>
-                    <th style="width:9%">VT</th>
-                    <th style="width:8%">WT</th>
-                    <th style="width:28%">Account Title</th>
-                    <th style="width:7%"></th>
+                    {% if module_enabled('products') %}<th style="width:9%">Product</th>{% endif %}
+                    <th>Description</th>
+                    <th style="width:7%;text-align:right">Qty</th>
+                    <th style="width:8%">UOM</th>
+                    <th style="width:9%;text-align:right">Unit Price</th>
+                    <th style="width:11%;text-align:right">Amount (VAT-incl.)</th>
+                    <th style="width:7%">VT</th>
+                    <th style="width:7%">WT</th>
+                    <th style="width:20%">Account Title</th>
+                    <th style="width:6%"></th>
                   </tr>
                 </thead>
                 <tbody id="revenueLinesBody"></tbody>
@@ -319,6 +323,10 @@
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts   = {{ all_accounts   | tojson }};
 const glAccounts    = {{ gl_accounts    | tojson }};
+const units         = {{ units          | tojson }};
+const products      = {{ products       | tojson }};
+const uomMasterOn   = {{ 'true' if module_enabled('units_of_measure') else 'false' }};
+const productMasterOn = {{ 'true' if module_enabled('products') else 'false' }};
 // All active WHT codes (reassigned per-customer at runtime)
 let currentWHTs = {{ all_whts | tojson }};
 
@@ -625,17 +633,43 @@ function addRevenueLine(existingItem) {
     // Auto-select the customer's sole WHT on a fresh line (parity with SI's first-line auto-add).
     const autoWht = currentWHTs.length === 1 ? currentWHTs[0] : null;
     const item = existingItem
-        ? { ...existingItem, id }
-        : { id, description: '', amount: 0, vat_category: '', account_id: defaultRevenueAccountId || null,
+        ? { ...existingItem, id,
+            // Server returns unit_of_measure_id; JS uses uom_id
+            uom_id: existingItem.uom_id != null ? existingItem.uom_id
+                      : (existingItem.unit_of_measure_id != null ? existingItem.unit_of_measure_id : null) }
+        : { id, description: '', product_id: null, quantity: null, uom_id: null, uom_text: '',
+            unit_price: null, amount: 0, vat_category: '',
+            account_id: defaultRevenueAccountId || null,
             wt_id: autoWht ? autoWht.id : null, wt_rate: autoWht ? autoWht.rate : null };
     revenueLines.push(item);
 
     const row = document.createElement('tr');
     row.id = `rev-${id}`;
     row.innerHTML = `
-        <td><input type="text" class="form-control" value="${escHtml(item.description || '')}"
+        ${productMasterOn ? `
+        <td><select class="form-control rev-prod" onchange="onProductPick(${id}, this.value)">
+              <option value="">—</option>
+              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+            </select></td>` : ''}
+        <td><input type="text" class="form-control rev-desc" value="${escHtml(item.description || '')}"
                    onchange="updateRevenue(${id}, 'description', this.value)"></td>
-        <td><input type="text" class="form-control" value="${amtFmt(item.amount || 0)}"
+        <td><input type="number" step="0.0001" min="0" class="form-control rev-qty"
+                   style="text-align:right;"
+                   value="${item.quantity != null ? item.quantity : ''}"
+                   onchange="updateRevenue(${id}, 'quantity', parseFloat(this.value) || null); updateDerivedAmount(${id})"></td>
+        ${uomMasterOn ? `
+        <td><select class="form-control rev-uom-sel" onchange="updateRevenue(${id}, 'uom_id', this.value ? parseInt(this.value) : null)">
+              <option value="">—</option>
+              ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
+            </select></td>` : `
+        <td><input type="text" maxlength="20" class="form-control rev-uom-txt"
+                   value="${escHtml(item.uom_text != null ? item.uom_text : '')}"
+                   onchange="updateRevenue(${id}, 'uom_text', this.value)"></td>`}
+        <td><input type="number" step="0.01" min="0" class="form-control rev-up"
+                   style="text-align:right; font-family:var(--mono);"
+                   value="${item.unit_price != null ? item.unit_price : ''}"
+                   onchange="updateRevenue(${id}, 'unit_price', parseFloat(this.value) || null); updateDerivedAmount(${id})"></td>
+        <td><input type="text" class="form-control rev-amt" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right;font-family:var(--mono)"
                    onfocus="amtFocus(this)" onblur="revAmtBlur(this, ${id})"></td>
         <td>
@@ -676,13 +710,65 @@ function addRevenueLine(existingItem) {
     whtSel.addEventListener('change',  () => updateRevenueWht(id, whtSel));
     acctSel.addEventListener('change', () => updateRevenue(id, 'account_id', parseInt(acctSel.value) || null));
     revenueChoices[id] = { vat: vatC, wht: whtC, acct: acctC };
-    recalculate();
+    updateDerivedAmount(id);
 }
 
 function revAmtBlur(input, id) {
     const v = parseFloat(input.value.replace(/,/g, '')) || 0;
     input.value = amtFmt(v);
     updateRevenue(id, 'amount', v);
+}
+
+function updateDerivedAmount(id) {
+    const item = revenueLines.find(i => i.id === id);
+    if (!item) return;
+    const amtInput = document.querySelector(`#rev-${id} .rev-amt`);
+    const q = parseFloat(item.quantity), up = parseFloat(item.unit_price);
+    if (q > 0 && up > 0) {
+        // Integer-centavo HALF_UP — matches server's Decimal ROUND_HALF_UP
+        const amt = Math.round(q * up * 100) / 100;
+        item.amount = amt;
+        if (amtInput) { amtInput.value = amtFmt(amt); amtInput.readOnly = true; }
+        revertVatOverride();
+    } else {
+        if (amtInput) amtInput.readOnly = false;
+    }
+    recalculate();
+}
+
+function onProductPick(id, productId) {
+    const item = revenueLines.find(i => i.id === id);
+    if (!item) return;
+    item.product_id = productId ? parseInt(productId) : null;
+    const p = products.find(pp => String(pp.id) === String(productId));
+    if (!p) { recalculate(); return; }
+    // Autofill description (overridable)
+    if (p.name) {
+        item.description = p.name;
+        const descEl = document.querySelector(`#rev-${id} .rev-desc`);
+        if (descEl) descEl.value = p.name;
+    }
+    // Autofill UOM
+    if (p.default_uom_id != null) {
+        item.uom_id = p.default_uom_id;
+        if (uomMasterOn) {
+            const uomEl = document.querySelector(`#rev-${id} .rev-uom-sel`);
+            if (uomEl) uomEl.value = String(p.default_uom_id);
+        }
+    }
+    // Autofill unit price
+    if (p.default_unit_price != null) {
+        item.unit_price = p.default_unit_price;
+        const upEl = document.querySelector(`#rev-${id} .rev-up`);
+        if (upEl) upEl.value = p.default_unit_price;
+    }
+    // Autofill account
+    if (p.default_account_id != null) {
+        item.account_id = p.default_account_id;
+        const rc = revenueChoices[id];
+        if (rc && rc.acct) rc.acct.setChoiceByValue(String(p.default_account_id));
+    }
+    updateDerivedAmount(id);
 }
 
 function updateRevenue(id, field, value) {
@@ -934,6 +1020,11 @@ function serializeData() {
     document.getElementById('revenueLinesData').value = JSON.stringify(
         revenueLines.map(item => ({
             description:  item.description,
+            product_id:   item.product_id   != null ? item.product_id   : null,
+            quantity:     item.quantity     != null ? item.quantity     : null,
+            uom_id:       item.uom_id       != null ? item.uom_id       : null,
+            uom_text:     item.uom_text     != null ? item.uom_text     : null,
+            unit_price:   item.unit_price   != null ? item.unit_price   : null,
             amount:       item.amount,
             vat_category: item.vat_category,
             account_id:   item.account_id,

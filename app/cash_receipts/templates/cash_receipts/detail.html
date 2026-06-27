@@ -163,7 +163,12 @@
       <table class="table">
         <thead>
           <tr>
-            <th>#</th><th>Description</th>
+            <th>#</th>
+            {% if module_enabled('products') %}<th>Product</th>{% endif %}
+            <th>Description</th>
+            <th style="text-align:right;">Qty</th>
+            <th>UOM</th>
+            <th style="text-align:right;">Unit Price</th>
             <th style="text-align:right;">Amount (VAT-incl.)</th>
             <th>VAT</th><th>WHT</th><th>Account</th>
           </tr>
@@ -172,7 +177,15 @@
           {% for rev in crv.revenue_lines %}
           <tr>
             <td>{{ rev.line_number }}</td>
+            {% if module_enabled('products') %}
+            <td style="font-size:12px;">
+              {%- if rev.product %}{{ rev.product.code }} — {{ rev.product.name }}{% else %}—{% endif %}
+            </td>
+            {% endif %}
             <td>{{ rev.description or '—' }}</td>
+            <td style="text-align:right;font-family:var(--mono);">{{ '{:.4f}'.format(rev.quantity) if rev.quantity is not none else '—' }}</td>
+            <td>{{ rev.unit_of_measure.code if rev.unit_of_measure else (rev.uom_text or '—') }}</td>
+            <td style="text-align:right;font-family:var(--mono);">{{ '₱{:,.2f}'.format(rev.unit_price) if rev.unit_price is not none else '—' }}</td>
             <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(rev.line_total) }}</td>
             <td>{{ rev.vat_category or 'None' }} ({{ '{:.2f}'.format(rev.vat_rate) }}%)</td>
             <td style="font-size:12px;">

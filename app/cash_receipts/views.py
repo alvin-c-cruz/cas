@@ -14,6 +14,7 @@ from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.wt_labels import wt_label
+from app.utils.cache_helpers import get_active_units, get_active_products
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.customers.views import build_customer_quick_add_form
@@ -475,6 +476,74 @@ def open_invoices():
 # Line-item parsing
 # ---------------------------------------------------------------------------
 
+def _parse_and_attach_revenue_lines(crv, revenue_lines_json):
+    """Parse a JSON string of revenue lines and attach CRVRevenueLine objects to crv.
+
+    Reads the 5 itemization fields (quantity, unit_price, uom_id → unit_of_measure_id,
+    uom_text, product_id) in addition to the original fields. calculate_amounts() then
+    derives amount = qty × unit_price when both are set.
+    """
+    try:
+        revenue_lines = json.loads(revenue_lines_json) if revenue_lines_json else []
+    except (json.JSONDecodeError, TypeError):
+        revenue_lines = []
+
+    def _dec(v):
+        """Return Decimal(v) or None on missing/null/invalid input."""
+        try:
+            return Decimal(str(v)) if v not in (None, '', 'null') else None
+        except (InvalidOperation, TypeError):
+            return None
+
+    def _int(v):
+        """Return int(v) or None on missing/null/invalid input."""
+        try:
+            return int(v) if v and str(v).strip() not in ('', 'null') else None
+        except (ValueError, TypeError):
+            return None
+
+    leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
+    for idx, item in enumerate(revenue_lines, start=1):
+        try:
+            amount = Decimal(str(item.get('amount', 0)))
+        except (ValueError, TypeError, InvalidOperation):
+            raise CRVLineError('A revenue line amount is invalid.')
+        account_id = int(item['account_id']) if item.get('account_id') else None
+        # Allow None account_id (form JS already prevents submit without account;
+        # only reject a supplied but invalid account ID).
+        if account_id is not None and account_id not in leaf_account_ids:
+            raise CRVLineError('Each revenue line must use a valid, postable account.')
+        vat_rate = Decimal('0.00')
+        vat_category = item.get('vat_category')
+        if vat_category:
+            vat_cat = SalesVATCategory.query.filter_by(code=vat_category, is_active=True).first()
+            if vat_cat:
+                vat_rate = Decimal(str(vat_cat.rate))
+        wt_id = int(item['wt_id']) if item.get('wt_id') else None
+        wt_rate = None
+        if wt_id:
+            wt_obj = db.session.get(WithholdingTax, wt_id)
+            if wt_obj:
+                wt_rate = wt_obj.rate
+        rev_line = CRVRevenueLine(
+            line_number=idx,
+            description=item.get('description', ''),
+            amount=amount,
+            quantity=_dec(item.get('quantity')),
+            unit_price=_dec(item.get('unit_price')),
+            uom_text=(item.get('uom_text') or None),
+            unit_of_measure_id=_int(item.get('uom_id')),
+            product_id=_int(item.get('product_id')),
+            vat_category=vat_category,
+            vat_rate=vat_rate,
+            account_id=account_id,
+            wt_id=wt_id,
+            wt_rate=wt_rate,
+        )
+        rev_line.calculate_amounts()
+        crv.revenue_lines.append(rev_line)
+
+
 def _parse_line_items(crv):
     ar_lines_data = request.form.getlist('ar_lines')
     ar_lines = json.loads(ar_lines_data[0]) if ar_lines_data and ar_lines_data[0] else []
@@ -503,45 +572,21 @@ def _parse_line_items(crv):
         ))
 
     revenue_lines_data = request.form.getlist('revenue_lines')
-    revenue_lines = json.loads(revenue_lines_data[0]) if revenue_lines_data and revenue_lines_data[0] else []
-    leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
-    for idx, item in enumerate(revenue_lines, start=1):
-        try:
-            amount = Decimal(str(item.get('amount', 0)))
-        except (ValueError, TypeError, InvalidOperation):
-            raise CRVLineError('A revenue line amount is invalid.')
-        account_id = int(item['account_id']) if item.get('account_id') else None
-        if account_id not in leaf_account_ids:
-            raise CRVLineError('Each revenue line must use a valid, postable account.')
-        vat_rate = Decimal('0.00')
-        vat_category = item.get('vat_category')
-        if vat_category:
-            vat_cat = SalesVATCategory.query.filter_by(code=vat_category, is_active=True).first()
-            if vat_cat:
-                vat_rate = Decimal(str(vat_cat.rate))
-        wt_id = int(item['wt_id']) if item.get('wt_id') else None
-        wt_rate = None
-        if wt_id:
-            wt_obj = db.session.get(WithholdingTax, wt_id)
-            if wt_obj:
-                wt_rate = wt_obj.rate
-        rev_line = CRVRevenueLine(
-            line_number=idx,
-            description=item.get('description', ''),
-            amount=amount,
-            vat_category=vat_category,
-            vat_rate=vat_rate,
-            account_id=account_id,
-            wt_id=wt_id,
-            wt_rate=wt_rate,
-        )
-        rev_line.calculate_amounts()
-        crv.revenue_lines.append(rev_line)
+    revenue_lines_json = revenue_lines_data[0] if revenue_lines_data and revenue_lines_data[0] else '[]'
+    _parse_and_attach_revenue_lines(crv, revenue_lines_json)
 
 
 # ---------------------------------------------------------------------------
 # Form context helper
 # ---------------------------------------------------------------------------
+
+def _units_for_form():
+    return [u.to_dict() for u in get_active_units()]
+
+
+def _products_for_form():
+    return [p.to_dict() for p in get_active_products()]
+
 
 def _form_context(all_accounts=None):
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
@@ -561,7 +606,9 @@ def _form_context(all_accounts=None):
                 all_whts=all_whts,
                 gl_accounts=gl_accounts,
                 customer_quick_add_form=build_customer_quick_add_form(),
-                customer_quick_add_whts=customer_quick_add_whts)
+                customer_quick_add_whts=customer_quick_add_whts,
+                units=_units_for_form(),
+                products=_products_for_form())
 
 
 # ---------------------------------------------------------------------------
