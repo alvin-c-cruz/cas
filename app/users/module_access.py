@@ -57,6 +57,9 @@ MODULE_REGISTRY = [
     {'key': 'units_of_measure', 'label': 'Units of Measure', 'section': 'Maintenance',
      'optional': True, 'depends_on': [], 'default_enabled': False,
      'endpoints': ('units_of_measure.',)},
+    {'key': 'products', 'label': 'Products', 'section': 'Maintenance',
+     'optional': True, 'depends_on': ['units_of_measure'], 'default_enabled': False,
+     'endpoints': ('products.',)},
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
      'optional': True, 'depends_on': [], 'default_enabled': True,

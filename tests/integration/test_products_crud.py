@@ -18,7 +18,26 @@ def _login(client, user, branch):
         sess['selected_branch_id'] = branch.id
 
 
-def test_create_product_persists_and_audits(client, db_session, admin_user, main_branch):
+@pytest.fixture
+def products_module_enabled(db_session):
+    """Enable the optional products module for the duration of the test.
+
+    products is default_enabled=False (optional); tests that hit product endpoints
+    need it enabled or the before_request hook aborts with 404.  The fixture clears the
+    memoize cache on both setup and teardown so the enabled state does not bleed into
+    subsequent tests that assert the default-off behaviour.
+    """
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:products', '1')
+    db.session.commit()
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
+def test_create_product_persists_and_audits(client, db_session, admin_user, main_branch,
+                                            products_module_enabled):
     u = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
     db.session.add(u)
     db.session.commit()
@@ -37,7 +56,8 @@ def test_create_product_persists_and_audits(client, db_session, admin_user, main
     assert AuditLog.query.filter_by(module='products', action='create').count() >= 1
 
 
-def test_edit_product_updates(client, db_session, admin_user, main_branch):
+def test_edit_product_updates(client, db_session, admin_user, main_branch,
+                              products_module_enabled):
     p = Product(code='X', name='X1', is_active=True)
     db.session.add(p)
     db.session.commit()
@@ -53,15 +73,17 @@ def test_edit_product_updates(client, db_session, admin_user, main_branch):
     assert AuditLog.query.filter_by(module='products', action='update').count() >= 1
 
 
-def test_list_products_renders(client, db_session, admin_user, main_branch):
+def test_list_products_renders(client, db_session, admin_user, main_branch,
+                               products_module_enabled):
     _login(client, admin_user, main_branch)
     resp = client.get('/products')
     assert resp.status_code == 200
     assert b'Products' in resp.data
 
 
-def test_staff_cannot_create_product(client, db_session, staff_user, main_branch):
-    """Staff users must be blocked from creating products (inline role guard)."""
+def test_staff_cannot_create_product(client, db_session, staff_user, main_branch,
+                                     products_module_enabled):
+    """Staff users must be blocked from creating products (module-level gate)."""
     staff_user.set_branches([main_branch])
     db_session.commit()
     _login(client, staff_user, main_branch)
@@ -73,13 +95,14 @@ def test_staff_cannot_create_product(client, db_session, staff_user, main_branch
     assert resp.status_code == 200
     # No row must have been inserted
     assert Product.query.filter_by(code='BLK-1').first() is None
-    # Role guard flash message
+    # Module-access block flash (before_request gate fires before the view)
     text = html_mod.unescape(resp.data.decode())
-    assert 'do not have permission to manage products' in text.lower()
+    assert 'do not have access to this module' in text.lower()
 
 
-def test_staff_cannot_edit_product(client, db_session, staff_user, main_branch):
-    """Staff users must be blocked from editing products (inline role guard on edit view)."""
+def test_staff_cannot_edit_product(client, db_session, staff_user, main_branch,
+                                   products_module_enabled):
+    """Staff users must be blocked from editing products (module-level gate on edit view)."""
     p = Product(code='EDIT-ME', name='Editable', is_active=True)
     db.session.add(p)
     db.session.commit()
@@ -95,4 +118,4 @@ def test_staff_cannot_edit_product(client, db_session, staff_user, main_branch):
     refreshed = db.session.get(Product, p.id)
     assert refreshed.name == 'Editable'  # unchanged
     text = html_mod.unescape(resp.data.decode())
-    assert 'do not have permission to manage products' in text.lower()
+    assert 'do not have access to this module' in text.lower()
