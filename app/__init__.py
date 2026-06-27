@@ -394,9 +394,7 @@ def create_app(config_name=None):
 
     @app.before_request
     def enforce_module_access():
-        """Block staff users from modules they have not been granted (book_permissions).
-        Admin/accountant/viewer are never gated here (staff-only). Nav hiding alone is not
-        access control — this is the server-side half.
+        """Block non-admin users from modules they have not been granted (book_permissions). Admin is never gated here.
 
         Optional modules disabled at the instance level return 404 for ALL roles (including
         admin) so that the route appears to not exist for this deployment package."""

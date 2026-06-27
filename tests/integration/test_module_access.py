@@ -1,6 +1,6 @@
 """Per-user module access (book_permissions) enforcement.
 
-Staff are gated by their granted transaction books; admin/accountant/viewer are never gated.
+Admin is never gated; accountant/staff/viewer are gated by their granted transaction books.
 Covers both layers: the `can_access_module` helper (matrix) and the server-side before_request
 guard (route redirects).
 """
@@ -42,11 +42,21 @@ def _login(client, user, branch):
 
 # ── Helper matrix ────────────────────────────────────────────────────────────
 
-def test_admin_accountant_viewer_never_gated(db_session, branch):
-    for role in ('admin', 'accountant', 'viewer'):
+def test_admin_ungated_accountant_viewer_now_gated(db_session, branch):
+    # Admin is never gated
+    admin = _make_user(db_session, branch, 'admin', books={}, username='admin')
+    for key in TRANSACTION_KEYS:
+        assert can_access_module(admin, key) is True, f'admin should access {key}'
+
+    # Accountant and viewer are now gated by book_permissions
+    for role in ('accountant', 'viewer'):
         u = _make_user(db_session, branch, role, books={}, username=role)
         for key in TRANSACTION_KEYS:
-            assert can_access_module(u, key) is True, f'{role} should access {key}'
+            assert can_access_module(u, key) is False, f'{role} with no perms should not access {key}'
+
+        # But with the permission granted, they can access
+        u.set_book_permissions({key: True})
+        assert can_access_module(u, key) is True, f'{role} with perm should access {key}'
 
 
 def test_staff_gated_by_book_permissions(db_session, branch):
@@ -121,9 +131,15 @@ def test_admin_reaches_ungranted_module(client, db_session, branch):
     assert client.get('/sales-invoices').status_code == 200
 
 
-def test_viewer_not_gated(client, db_session, branch):
+def test_viewer_gated_then_granted(client, db_session, branch):
+    # Viewer with no permissions is blocked
     viewer = _make_user(db_session, branch, 'viewer', books={}, username='viewer1')
     _login(client, viewer, branch)
+    assert client.get('/sales-invoices').status_code == 302
+
+    # But when granted accounts_receivable permission, viewer can access
+    viewer.set_book_permissions({'accounts_receivable': True})
+    db_session.commit()
     assert client.get('/sales-invoices').status_code == 200
 
 
