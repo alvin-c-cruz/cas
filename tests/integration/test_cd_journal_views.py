@@ -26,9 +26,13 @@ def branch(db_session):
 
 @pytest.fixture()
 def accountant(db_session, branch):
+    from app.users.module_access import default_all_permissions
     u = User(username='acc_cd', email='acc_cd@test.com', full_name='CD Accountant',
              role='accountant', is_active=True)
     u.set_password('pass')
+    # Accountants are now gated by book_permissions (Task 3); grant all so this
+    # fixture user can reach /journals/cd (payments module) and siblings.
+    u.set_book_permissions(default_all_permissions())
     db.session.add(u)
     db.session.flush()
     u.branches.append(branch)

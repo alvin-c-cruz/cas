@@ -1,11 +1,11 @@
-"""Per-user module access — enforce the existing `User.book_permissions` (staff-only).
+"""Per-user module access — enforce the existing `User.book_permissions` for all non-admin roles.
 
 The transaction "books" already existed as keys in `book_permissions`; this registry maps each
 grantable module to its sidebar item and route endpoints so a single global `before_request`
 hook and the sidebar template can gate them consistently.
 
-Gating is STAFF-ONLY: admin, accountant, and viewer are never restricted here (matches the
-branch-access model in `get_accessible_branches`). The `journals` blueprint is shared across
+Gating applies to ALL roles except admin: accountant, staff, and viewer are all subject to
+`book_permissions`. Admin is always granted.  The `journals` blueprint is shared across
 modules, so endpoints are matched per-prefix rather than per-blueprint.
 
 `section` groups the checkboxes on the user-edit form and mirrors the sidebar sections.

@@ -37,16 +37,25 @@ class TestAuthAudit:
 
     def test_user_edit_without_permission_change_writes_no_permission_row(
             self, client, db_session, admin_user, viewer_user, main_branch):
+        # viewer_user now has default_all_permissions() (all True); include every
+        # permission checkbox in the POST so the form sees no change and no audit
+        # row is written.  Omitting them would make all permissions appear False to
+        # the view, triggering a spurious permission_revoked row (feature-stale).
+        from app.users.module_access import all_permission_keys
+        perm_data = {f'book_{k}': '1' for k in all_permission_keys()}
         client.post('/login', data={'username': 'admin', 'password': 'admin123'},
                     follow_redirects=True)
-        resp = client.post(f'/users/{viewer_user.id}/edit', data={
+        post_data = {
             'username': viewer_user.username,
             'email': viewer_user.email,
             'full_name': viewer_user.full_name,
             'role': 'viewer',
             'is_active': 'y',
             'branch_ids': [str(main_branch.id)],
-        }, follow_redirects=True)
+        }
+        post_data.update(perm_data)
+        resp = client.post(f'/users/{viewer_user.id}/edit', data=post_data,
+                           follow_redirects=True)
         assert resp.status_code == 200
         rows = AuditLog.query.filter(
             AuditLog.module == 'user',

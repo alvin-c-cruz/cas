@@ -55,6 +55,7 @@ def setup(db_session):
     db_session.add(branch)
     db_session.commit()
 
+    from app.users.module_access import default_all_permissions
     users = {
         'admin': User(username='admin', email='admin@t.com', full_name='Admin',
                       role='admin', is_active=True),
@@ -65,8 +66,15 @@ def setup(db_session):
         'viewer': User(username='viewer', email='viewer@t.com', full_name='Viewer',
                        role='viewer', is_active=True),
     }
-    for u in users.values():
+    # Accountant and viewer are now gated by book_permissions (Task 3: gate flip).
+    # Grant all permissions so these role-access tests remain meaningful — they verify
+    # that a properly-permissioned accountant/viewer reaches the journal, while a
+    # staff user WITHOUT book_permissions is still redirected.
+    all_perms = default_all_permissions()
+    for role, u in users.items():
         u.set_password('pass')
+        if role in ('accountant', 'viewer'):
+            u.set_book_permissions(all_perms)
         u.branches.append(branch)
         db_session.add(u)
     db_session.commit()
@@ -83,10 +91,11 @@ def test_ap_journal_requires_login(client, setup):
     assert res.status_code in (302, 401)
 
 
-# admin/accountant/viewer are ungated for journals; staff is gated per-module
-# (each /journals/* endpoint maps to a book permission in module_access.py), so
-# a staff user without that permission is redirected. The positive
-# staff-with-permission path is covered in test_module_access.py.
+# admin is always ungated; accountant and viewer are gated but the setup fixture
+# grants them default_all_permissions(), so they can reach every journal.
+# Staff is created WITHOUT book_permissions, so it is redirected on every journal
+# route — that is the gating behavior we verify in the per-role assertions below.
+# The positive staff-with-permission path is covered in test_module_access.py.
 UNGATED_ROLES = ['admin', 'accountant', 'viewer']
 
 

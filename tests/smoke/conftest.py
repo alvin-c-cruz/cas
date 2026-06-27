@@ -49,6 +49,10 @@ def _seed_smoke_data(app):
             is_active=True,
         )
         user.set_password('Smoke123!')
+        # Grant all permissions: accountants are now gated by book_permissions
+        # (Task 3); without this the smoke user is blocked from /accounts-payable.
+        from app.users.module_access import default_all_permissions
+        user.set_book_permissions(default_all_permissions())
         _db.session.add(user)
         _db.session.flush()
         user.branches.append(branch)

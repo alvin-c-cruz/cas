@@ -43,9 +43,13 @@ def revenue_account(db_session):
 
 def _login(client, db_session, branch):
     """Create an accountant user, assign to branch, set session, and log in."""
+    from app.users.module_access import default_all_permissions
     u = User(username='acct_si', email='acct_si@example.com',
              full_name='Acct SI', role='accountant', is_active=True)
     u.set_password('Passw0rd!si')
+    # Accountants are now gated by book_permissions (Task 3); grant all so this
+    # fixture user can reach /journals/si (accounts_receivable module).
+    u.set_book_permissions(default_all_permissions())
     u.branches.append(branch)
     db.session.add(u)
     db.session.commit()

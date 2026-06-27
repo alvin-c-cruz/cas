@@ -26,9 +26,13 @@ def branch(db_session):
 
 @pytest.fixture()
 def accountant(db_session, branch):
+    from app.users.module_access import default_all_permissions
     u = User(username='acc_cr', email='acc_cr@test.com', full_name='CR Accountant',
              role='accountant', is_active=True)
     u.set_password('pass')
+    # Accountants are now gated by book_permissions (Task 3); grant all so this
+    # fixture user can reach /journals/cr (collections module) and siblings.
+    u.set_book_permissions(default_all_permissions())
     db.session.add(u)
     db.session.flush()
     u.branches.append(branch)
@@ -168,9 +172,13 @@ class TestCRJournalView:
         assert b'CASH RECEIPTS JOURNAL' in resp.data
 
     def test_role_gating_viewer_can_see(self, client, db_session, branch):
+        from app.users.module_access import default_all_permissions
         viewer = User(username='viewer_cr', email='viewer_cr@test.com',
                       full_name='CR Viewer', role='viewer', is_active=True)
         viewer.set_password('pass')
+        # Viewers are now gated by book_permissions (Task 3); grant all so this
+        # viewer can reach /journals/cr (collections module).
+        viewer.set_book_permissions(default_all_permissions())
         db.session.add(viewer)
         db.session.flush()
         # Viewers need explicit branch assignment to pass branch-validation hook
@@ -178,7 +186,7 @@ class TestCRJournalView:
         db.session.commit()
         _login(client, 'viewer_cr')
         resp = client.get('/journals/cr')
-        # Viewers can access the journal (read-only) — no role block on this route
+        # Viewers with the collections permission can access the journal (read-only)
         assert resp.status_code == 200
 
 

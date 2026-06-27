@@ -93,8 +93,12 @@ def test_build_columnar_draft_excluded_from_totals_and_columns(db_session):
 
 
 def _login(client, db_session, branch):
+    from app.users.module_access import default_all_permissions
     u = User(username='acc', email='acc@t.com', full_name='Acc', role='accountant', is_active=True)
     u.set_password('pass')
+    # Accountants are now gated by book_permissions (Task 3); grant all so this
+    # fixture user can reach /journals/ap (accounts_payable module) and siblings.
+    u.set_book_permissions(default_all_permissions())
     u.branches.append(branch)
     db.session.add(u)
     db.session.commit()
