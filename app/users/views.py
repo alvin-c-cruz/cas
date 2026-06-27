@@ -25,11 +25,11 @@ _DUMMY_PASSWORD_HASH = generate_password_hash('cas-login-timing-equalizer')
 
 
 def admin_required(f):
-    """Decorator to require admin or accountant role for user management."""
+    """Decorator to require admin role for user management."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role not in ['admin', 'accountant']:
-            flash('You need administrator or accountant privileges to access User Management.', 'error')
+        if not current_user.is_authenticated or current_user.role != 'admin':
+            flash('You need administrator privileges to access User Management.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
@@ -331,12 +331,8 @@ def register():
 @login_required
 @admin_required
 def list_users():
-    """List all users (admin and accountant)."""
-    # Accountants cannot see admin users
-    if current_user.role == 'accountant':
-        users = User.query.filter(User.role != 'admin').order_by(User.created_at.desc()).all()
-    else:
-        users = User.query.order_by(User.created_at.desc()).all()
+    """List all users (admin only)."""
+    users = User.query.order_by(User.created_at.desc()).all()
     return render_template('users/list.html', users=users)
 
 
@@ -353,11 +349,6 @@ def edit_user(id):
     """Edit existing user (admin only)."""
 
     user = db.get_or_404(User, id)
-
-    # Prevent accountants from editing admin users
-    if current_user.role == 'accountant' and user.role == 'admin':
-        flash('You cannot edit administrator accounts.', 'error')
-        return redirect(url_for('users.list_users'))
 
     form = UserForm(obj=user)
 
