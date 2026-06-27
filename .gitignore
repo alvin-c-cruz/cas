@@ -109,3 +109,6 @@ pytest.ini
 nul
 
 .analyze-page/
+
+# Stray SDD task report artifacts (Windows path-mangling) — never track
+*task-*-report.md
