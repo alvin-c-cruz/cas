@@ -44,4 +44,21 @@ def test_list_units_of_measure_renders(client, db_session, admin_user, main_bran
     _login(client, admin_user, main_branch)
     resp = client.get('/units-of-measure')
     assert resp.status_code == 200
-    assert b'Unit' in resp.data
+    assert b'Units of Measure' in resp.data
+
+
+def test_staff_cannot_create_unit_of_measure(client, db_session, staff_user, main_branch):
+    """Staff users (non-accountant/admin) must be blocked from POSTing to create."""
+    import html as html_mod
+    staff_user.set_branches([main_branch])
+    db_session.commit()
+    _login(client, staff_user, main_branch)
+    resp = client.post('/units-of-measure/create',
+                       data={'code': 'blk', 'name': 'Block', 'is_active': '1'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    # No row must have been inserted
+    assert UnitOfMeasure.query.filter_by(code='blk').first() is None
+    # Permission flash must be present
+    text = html_mod.unescape(resp.data.decode())
+    assert 'do not have permission to manage units of measure' in text.lower()

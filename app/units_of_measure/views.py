@@ -20,6 +20,9 @@ def list():
 @units_of_measure_bp.route('/units-of-measure/create', methods=['GET', 'POST'])
 @login_required
 def create():
+    if current_user.role not in ['accountant', 'admin']:
+        flash('You do not have permission to manage units of measure.', 'error')
+        return redirect(url_for('units_of_measure.list'))
     form = UnitOfMeasureForm()
     if form.validate_on_submit():
         u = UnitOfMeasure(
@@ -40,6 +43,9 @@ def create():
 @units_of_measure_bp.route('/units-of-measure/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit(id):
+    if current_user.role not in ['accountant', 'admin']:
+        flash('You do not have permission to manage units of measure.', 'error')
+        return redirect(url_for('units_of_measure.list'))
     u = db.get_or_404(UnitOfMeasure, id)
     form = UnitOfMeasureForm(obj=u)
     if request.method == 'GET':
