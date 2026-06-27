@@ -118,3 +118,19 @@ def visible_transactions(user):
     section when a staff user has been granted none of them."""
     return [m for m in MODULE_REGISTRY
             if m['section'] == 'Transactions' and can_access_module(user, m['key'])]
+
+
+def all_permission_keys():
+    """Non-optional module keys that make up the per-user permission grid.
+
+    Optional modules (e.g. bir_reports) are instance-gated via module_enabled,
+    never per-user, so they are excluded here — matching the admin user-save
+    path and the form grid."""
+    return [m['key'] for m in MODULE_REGISTRY if not m.get('optional')]
+
+
+def default_all_permissions():
+    """Grant dict for every non-optional module. Used by the migration backfill,
+    seeds, and test fixtures so newly-gated accountants/viewers keep full access
+    until deliberately narrowed."""
+    return {k: True for k in all_permission_keys()}
