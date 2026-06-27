@@ -1301,8 +1301,15 @@
             <!-- Approved Emails (accountant: request + read-only list) -->
             {% if current_user.is_authenticated and current_user.role == 'accountant' %}
             <div class="nav-section">
-                <div class="nav-label">Staff Management</div>
-                <div class="nav-section-content">
+                <div class="nav-label nav-label-collapsible" data-section="staff">
+                    <span>Staff Management</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-staff">
+                    <a href="{{ url_for('staff_management.list_staff') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('staff_management.') %}active{% endif %}">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-text">Staff Management</span>
+                    </a>
                     <a href="{{ url_for('users.list_approved_emails') }}" class="nav-item {% if request.endpoint == 'users.list_approved_emails' or request.endpoint == 'users.add_approved_email' %}active{% endif %}">
                         <span class="nav-icon">📧</span>
                         <span class="nav-text">Approved Emails</span>

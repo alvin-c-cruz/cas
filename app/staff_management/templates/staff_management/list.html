@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Staff Management{% endblock %}
+{% block page_title %}Staff Management{% endblock %}
+{% block content %}
+<div class="alert alert-info">
+    <strong>Staff Management:</strong> Manage the module access of staff and viewers in your
+    branches. New people are onboarded via the approved-email registration flow.
+</div>
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr><th>Username</th><th>Full Name</th><th>Role</th><th>Branches</th>
+                    <th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td><strong>{{ u.username }}</strong></td>
+                    <td>{{ u.full_name }}</td>
+                    <td>{{ u.role|capitalize }}</td>
+                    <td>{{ u.branches|map(attribute='name')|join(', ') }}</td>
+                    <td>{% if u.is_active %}<span class="badge badge-active">Active</span>
+                        {% else %}<span class="badge badge-inactive">Inactive</span>{% endif %}</td>
+                    <td>
+                        <a href="{{ url_for('staff_management.edit_staff', id=u.id) }}"
+                           class="btn btn-secondary btn-sm">Edit</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if not users %}<div class="empty-state"><p>No staff or viewers in your branches yet.</p></div>{% endif %}
+    </div>
+</div>
+{% endblock %}

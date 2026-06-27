@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ target.username }}{% endblock %}
+{% block page_title %}Edit {{ target.username }}{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+<form method="POST" action="{{ url_for('staff_management.edit_staff', id=target.id) }}">
+    {{ form.hidden_tag() }}
+    <div class="form-group">
+        <label class="form-label">Username</label>
+        <input type="text" class="form-control" value="{{ target.username }}" readonly>
+    </div>
+    <div class="form-group">
+        {{ form.role.label(class='form-label') }}
+        {{ form.role(class='form-control') }}
+    </div>
+    <div class="form-group">
+        {{ form.branch_ids.label(class='form-label') }}
+        {{ form.branch_ids(class='form-control', multiple=true, size=5, style='height:auto;') }}
+        <div class="form-hint">Only your branches are shown. Branches outside your scope are kept.</div>
+    </div>
+    <div class="form-group">
+        <label class="checkbox-label">{{ form.is_active() }} <span>Active</span></label>
+    </div>
+    <hr>
+    <div class="form-group">
+        <label class="form-label">Book Access Permissions</label>
+        <div class="form-hint">You can grant only modules you hold. Other modules the user
+            already has are preserved.</div>
+        {% for m in editable_mods %}
+        <label class="checkbox-label">
+            <input type="checkbox" name="book_{{ m.key }}" value="1"
+                   {% if target.get_book_permissions().get(m.key) %}checked{% endif %}>
+            <span>{{ m.label }}</span>
+        </label>
+        {% endfor %}
+        {% if not editable_mods %}<div class="form-hint">You hold no delegatable modules.</div>{% endif %}
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Update</button>
+        <a href="{{ url_for('staff_management.list_staff') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+</div></div>
+{% endblock %}
