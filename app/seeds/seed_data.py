@@ -487,6 +487,37 @@ def seed_app_settings():
     return True
 
 
+def seed_units_of_measure():
+    """
+    Seed default units of measure.
+
+    Idempotent: skips codes that already exist.
+    """
+    from app.units_of_measure.models import UnitOfMeasure
+    defaults = [
+        ('pcs',  'Pieces'),
+        ('unit', 'Unit'),
+        ('kg',   'Kilogram'),
+        ('g',    'Gram'),
+        ('L',    'Liter'),
+        ('hr',   'Hour'),
+        ('day',  'Day'),
+        ('lot',  'Lot'),
+        ('box',  'Box'),
+        ('set',  'Set'),
+    ]
+    added = 0
+    for code, name in defaults:
+        if not UnitOfMeasure.query.filter_by(code=code).first():
+            db.session.add(UnitOfMeasure(code=code, name=name, is_active=True))
+            added += 1
+    db.session.commit()
+    if added:
+        print(f"  [OK] {added} units of measure created")
+    else:
+        print("  [SKIP] Units of measure already exist")
+
+
 def seed_all(force=False):
     """
     Seed all initial data.
@@ -514,6 +545,7 @@ def seed_all(force=False):
         'sales_vat_categories': False,
         'withholding_tax_codes': False,
         'app_settings': False,
+        'units_of_measure': False,
     }
 
     try:
@@ -537,6 +569,10 @@ def seed_all(force=False):
 
         print("\n6. Seeding App Settings...")
         results['app_settings'] = seed_app_settings()
+
+        print("\n7. Seeding Units of Measure...")
+        seed_units_of_measure()
+        results['units_of_measure'] = True
 
         print("\n" + "="*60)
         print("SEEDING COMPLETE!")
@@ -788,6 +824,12 @@ def seed_minimal():
                 ))
             db.session.commit()
             print(f"  [OK] {len(wht_codes)} withholding tax codes created")
+
+        # ------------------------------------------------------------------
+        # 8. Units of Measure
+        # ------------------------------------------------------------------
+        print("\n8. Seeding Units of Measure...")
+        seed_units_of_measure()
 
         print("\n" + "="*60)
         print("MINIMAL SEEDING COMPLETE!")
