@@ -140,6 +140,13 @@ class CRVRevenueLine(db.Model):
     line_number = db.Column(db.Integer, nullable=False)
     description = db.Column(db.String(500), nullable=False)
     amount = db.Column(db.Numeric(15, 2), default=0, nullable=False)
+    quantity = db.Column(db.Numeric(15, 4), nullable=True)
+    unit_price = db.Column(db.Numeric(15, 2), nullable=True)
+    uom_text = db.Column(db.String(20), nullable=True)
+    unit_of_measure_id = db.Column(db.Integer, db.ForeignKey('units_of_measure.id'), nullable=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
+    unit_of_measure = db.relationship('UnitOfMeasure')
+    product = db.relationship('Product')
     vat_category = db.Column(db.String(100))
     vat_rate = db.Column(db.Numeric(5, 2), default=0, nullable=False)
     line_total = db.Column(db.Numeric(15, 2), default=0, nullable=False)
@@ -156,6 +163,11 @@ class CRVRevenueLine(db.Model):
         return f'<CRVRevenueLine crv={self.crv_id} line={self.line_number}>'
 
     def calculate_amounts(self):
+        # Derived amount when itemized: amount = qty × unit_price (VAT-inclusive).
+        if self.quantity is not None and self.unit_price is not None:
+            q = Decimal(str(self.quantity)); up = Decimal(str(self.unit_price))
+            if q > 0 and up > 0:
+                self.amount = (q * up).quantize(Decimal('0.01'), rounding='ROUND_HALF_UP')
         vat_rate = Decimal(str(self.vat_rate)) if self.vat_rate else Decimal('0')
         if vat_rate > 0:
             net_base = Decimal(str(self.amount)) / (1 + vat_rate / Decimal('100'))
@@ -177,6 +189,16 @@ class CRVRevenueLine(db.Model):
             'line_number': self.line_number,
             'description': self.description,
             'amount': float(self.amount),
+            'quantity': float(self.quantity) if self.quantity is not None else None,
+            'unit_price': float(self.unit_price) if self.unit_price is not None else None,
+            'uom_text': self.uom_text,
+            'unit_of_measure_id': self.unit_of_measure_id,
+            'uom_code': self.unit_of_measure.code if self.unit_of_measure else None,
+            'uom_name': self.unit_of_measure.name if self.unit_of_measure else None,
+            'uom_display': (self.unit_of_measure.code if self.unit_of_measure else self.uom_text),
+            'product_id': self.product_id,
+            'product_code': self.product.code if self.product else None,
+            'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
             'vat_rate': float(self.vat_rate),
             'line_total': float(self.line_total),
