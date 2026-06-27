@@ -15,6 +15,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
+from app.utils.cache_helpers import get_active_units, get_active_products
 from app.utils.export import export_to_excel, export_to_csv
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
@@ -484,6 +485,86 @@ def _build_cdv_je_preview(cdv):
     return entries
 
 
+def _parse_and_attach_expense_lines(cdv, exp_lines_json):
+    """Parse and attach CDVExpenseLine objects from a JSON string to *cdv*.
+
+    Validates that every expense line has a valid, postable (leaf) account —
+    an unconditional server-side guard that must NOT be weakened.  The JE builder
+    silently skips None-account lines, so a crafted POST without an account would
+    misattribute the line amount via the residual absorber.
+
+    Raises CDVLineError (user-safe, flashed by the caller) on any invalid line.
+    """
+    try:
+        exp_lines = json.loads(exp_lines_json) if exp_lines_json else []
+    except (json.JSONDecodeError, TypeError):
+        exp_lines = []
+
+    def _dec(v):
+        """Return Decimal(v) or None on missing/null/invalid input."""
+        try:
+            return Decimal(str(v)) if v not in (None, '', 'null') else None
+        except (InvalidOperation, TypeError):
+            return None
+
+    def _int(v):
+        """Return int(v) or None on missing/null/invalid input."""
+        try:
+            return int(v) if v and str(v).strip() not in ('', 'null') else None
+        except (ValueError, TypeError):
+            return None
+
+    # F-006: only active, postable (leaf) accounts may receive an expense line.
+    leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
+    for idx, item in enumerate(exp_lines, start=1):
+        try:
+            amount = Decimal(str(item.get('amount', 0)))
+        except (ValueError, TypeError, InvalidOperation):
+            raise CDVLineError('An expense line amount is invalid.')
+        account_id = int(item['account_id']) if item.get('account_id') else None
+        if account_id not in leaf_account_ids:
+            raise CDVLineError('Each expense line must use a valid, postable account.')
+        vat_rate = Decimal('0.00')
+        vat_category = item.get('vat_category')
+        if vat_category:
+            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
+            if vat_cat:
+                vat_rate = Decimal(str(vat_cat.rate))
+        wt_id = int(item['wt_id']) if item.get('wt_id') else None
+        wt_rate = None
+        if wt_id:
+            wt_obj = db.session.get(WithholdingTax, wt_id)
+            if wt_obj:
+                wt_rate = wt_obj.rate
+        exp_line = CDVExpenseLine(
+            line_number=idx,
+            description=item.get('description', ''),
+            amount=amount,
+            quantity=_dec(item.get('quantity')),
+            unit_price=_dec(item.get('unit_price')),
+            uom_text=(item.get('uom_text') or None),
+            unit_of_measure_id=_int(item.get('uom_id')),
+            product_id=_int(item.get('product_id')),
+            vat_category=vat_category,
+            vat_rate=vat_rate,
+            account_id=account_id,
+            wt_id=wt_id,
+            wt_rate=wt_rate,
+        )
+        exp_line.calculate_amounts()
+        cdv.expense_lines.append(exp_line)
+
+
+def _units_for_form():
+    """Return list of active UOM dicts for form JS."""
+    return [u.to_dict() for u in get_active_units()]
+
+
+def _products_for_form():
+    """Return list of active product dicts for form JS."""
+    return [p.to_dict() for p in get_active_products()]
+
+
 def _parse_line_items(cdv):
     """Parse ap_lines and expense_lines from request.form JSON. Mutates cdv in place.
 
@@ -524,41 +605,8 @@ def _parse_line_items(cdv):
         ))
 
     exp_lines_data = request.form.getlist('expense_lines')
-    exp_lines = json.loads(exp_lines_data[0]) if exp_lines_data and exp_lines_data[0] else []
-    # F-006: only active, postable (leaf) accounts may receive an expense line.
-    leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
-    for idx, item in enumerate(exp_lines, start=1):
-        try:
-            amount = Decimal(str(item.get('amount', 0)))
-        except (ValueError, TypeError, InvalidOperation):
-            raise CDVLineError('An expense line amount is invalid.')
-        account_id = int(item['account_id']) if item.get('account_id') else None
-        if account_id not in leaf_account_ids:
-            raise CDVLineError('Each expense line must use a valid, postable account.')
-        vat_rate = Decimal('0.00')
-        vat_category = item.get('vat_category')
-        if vat_category:
-            vat_cat = VATCategory.query.filter_by(code=vat_category, is_active=True).first()
-            if vat_cat:
-                vat_rate = Decimal(str(vat_cat.rate))
-        wt_id = int(item['wt_id']) if item.get('wt_id') else None
-        wt_rate = None
-        if wt_id:
-            wt_obj = db.session.get(WithholdingTax, wt_id)
-            if wt_obj:
-                wt_rate = wt_obj.rate
-        exp_line = CDVExpenseLine(
-            line_number=idx,
-            description=item.get('description', ''),
-            amount=amount,
-            vat_category=vat_category,
-            vat_rate=vat_rate,
-            account_id=account_id,
-            wt_id=wt_id,
-            wt_rate=wt_rate,
-        )
-        exp_line.calculate_amounts()
-        cdv.expense_lines.append(exp_line)
+    exp_lines_json = exp_lines_data[0] if exp_lines_data and exp_lines_data[0] else '[]'
+    _parse_and_attach_expense_lines(cdv, exp_lines_json)
 
 
 def _form_context(all_accounts=None, selected_vendor_id=None):
@@ -595,7 +643,9 @@ def _form_context(all_accounts=None, selected_vendor_id=None):
                 vendor_whts=vendor_whts,
                 gl_accounts=gl_accounts,
                 vendor_quick_add_form=quick_add_form,
-                vendor_quick_add_whts=quick_add_whts)
+                vendor_quick_add_whts=quick_add_whts,
+                units=_units_for_form(),
+                products=_products_for_form())
 
 
 @cash_disbursements_bp.route('/cash-disbursements/create', methods=['GET', 'POST'])

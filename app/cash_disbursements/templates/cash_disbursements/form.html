@@ -225,12 +225,16 @@
               <table class="table" id="expenseLinesTable">
                 <thead>
                   <tr>
-                    <th style="width:35%">Description</th>
-                    <th style="width:13%;text-align:right">Amount (VAT-incl.)</th>
-                    <th style="width:9%">VT</th>
-                    <th style="width:8%">WT</th>
-                    <th style="width:28%">Account Title</th>
-                    <th style="width:7%"></th>
+                    {% if module_enabled('products') %}<th style="width:10%">Product</th>{% endif %}
+                    <th style="width:28%">Description</th>
+                    <th style="width:6%;text-align:right">Qty</th>
+                    <th style="width:7%">UOM</th>
+                    <th style="width:9%;text-align:right">Unit Price</th>
+                    <th style="width:11%;text-align:right">Amount (VAT-incl.)</th>
+                    <th style="width:7%">VT</th>
+                    <th style="width:7%">WT</th>
+                    <th style="width:20%">Account Title</th>
+                    <th style="width:5%"></th>
                   </tr>
                 </thead>
                 <tbody id="expenseLinesBody"></tbody>
@@ -330,9 +334,13 @@
 <script src="{{ url_for('static', filename='vendor-quick-add.js') }}?v=2"></script>
 <script>
 // ── Data from server ──────────────────────────────────────────────────────────
-const vatCategories = {{ vat_categories | tojson }};
-const allAccounts   = {{ all_accounts   | tojson }};
-const glAccounts    = {{ gl_accounts    | tojson }};
+const vatCategories  = {{ vat_categories | tojson }};
+const allAccounts    = {{ all_accounts   | tojson }};
+const glAccounts     = {{ gl_accounts    | tojson }};
+const units          = {{ units          | tojson }};
+const products       = {{ products       | tojson }};
+const uomMasterOn    = {{ module_enabled('units_of_measure') | tojson }};
+const productMasterOn = {{ module_enabled('products') | tojson }};
 
 // ── State ────────────────────────────────────────────────────────────────────
 let apLines      = [];
@@ -663,17 +671,47 @@ function rebuildAllExpenseWhtSelects() {
 function addExpenseLine(existingItem) {
     expenseCounter++;
     const id = expenseCounter;
-    const item = existingItem
-        ? { ...existingItem, id }
-        : { id, description: '', amount: 0, vat_category: '', account_id: defaultExpenseAccountId || null, wt_id: null, wt_rate: null };
+    let item;
+    if (existingItem) {
+        item = { ...existingItem, id };
+        // Server to_dict() returns unit_of_measure_id; normalize to uom_id for JS state.
+        item.uom_id = item.uom_id ?? item.unit_of_measure_id ?? null;
+    } else {
+        item = { id, description: '', amount: 0, vat_category: '',
+                 account_id: defaultExpenseAccountId || null, wt_id: null, wt_rate: null,
+                 product_id: null, quantity: null, uom_id: null, uom_text: '', unit_price: null };
+    }
     expenseLines.push(item);
+
+    const uomCell = uomMasterOn
+        ? `<select class="form-control uom-sel" style="min-width:60px">
+               <option value="">—</option>
+               ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
+           </select>`
+        : `<input type="text" class="form-control uom-text-inp" style="min-width:50px" value="${escHtml(item.uom_text || '')}"
+                  onchange="updateExpense(${id}, 'uom_text', this.value)">`;
+    const productCell = productMasterOn
+        ? `<td><select class="form-control prod-sel" onchange="onProductPick(${id}, parseInt(this.value)||null)">
+               <option value="">—</option>
+               ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}</option>`).join('')}
+           </select></td>`
+        : '';
 
     const row = document.createElement('tr');
     row.id = `exp-${id}`;
     row.innerHTML = `
-        <td><input type="text" class="form-control" value="${escHtml(item.description || '')}"
+        ${productCell}
+        <td><input type="text" class="form-control" id="exp-desc-${id}" value="${escHtml(item.description || '')}"
                    onchange="updateExpense(${id}, 'description', this.value)"></td>
-        <td><input type="text" class="form-control" value="${amtFmt(item.amount || 0)}"
+        <td><input type="number" class="form-control" id="exp-qty-${id}" value="${item.quantity != null ? item.quantity : ''}"
+                   step="any" min="0" style="text-align:right;font-family:var(--mono);min-width:60px"
+                   oninput="updateExpense(${id}, 'quantity', parseFloat(this.value)||null); updateDerivedAmount(${id})"></td>
+        <td>${uomCell}</td>
+        <td><input type="text" class="form-control" id="exp-up-${id}" value="${item.unit_price != null ? amtFmt(item.unit_price) : ''}"
+                   style="text-align:right;font-family:var(--mono);min-width:70px"
+                   onfocus="amtFocus(this)"
+                   onblur="updateExpense(${id}, 'unit_price', parseFloat(this.value.replace(/,/g,''))||null); updateDerivedAmount(${id})"></td>
+        <td><input type="text" class="form-control exp-amt" id="exp-amt-${id}" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right;font-family:var(--mono)"
                    onfocus="amtFocus(this)" onblur="expAmtBlur(this, ${id})"></td>
         <td>
@@ -715,14 +753,70 @@ function addExpenseLine(existingItem) {
     vatSel.addEventListener('change',  () => updateExpense(id, 'vat_category', vatSel.value));
     whtSel.addEventListener('change',  () => updateExpenseWht(id, whtSel));
     acctSel.addEventListener('change', () => updateExpense(id, 'account_id', parseInt(acctSel.value) || null));
+    if (uomMasterOn) {
+        const uomSel = newRow.querySelector('.uom-sel');
+        if (uomSel) uomSel.addEventListener('change', () => updateExpense(id, 'uom_id', parseInt(uomSel.value) || null));
+    }
     expenseChoices[id] = { vat: vatC, wht: whtC, acct: acctC };
-    recalculate();
+    updateDerivedAmount(id);
 }
 
 function expAmtBlur(input, id) {
     const v = parseFloat(input.value.replace(/,/g, '')) || 0;
     input.value = amtFmt(v);
     updateExpense(id, 'amount', v);
+}
+
+// Derive amount = qty × unit_price using integer-centavo lock (no float drift).
+// When both qty and unit_price are positive, the amount input becomes read-only.
+// When either is absent/zero, the amount input reverts to manual entry.
+function updateDerivedAmount(id) {
+    const item = expenseLines.find(i => i.id === id);
+    if (!item) return;
+    const q  = parseFloat(item.quantity)   || 0;
+    const up = parseFloat(item.unit_price) || 0;
+    const amtInput = document.getElementById(`exp-amt-${id}`);
+    if (q > 0 && up > 0) {
+        const derived = Math.round(q * up * 100) / 100;
+        item.amount = derived;
+        if (amtInput) { amtInput.value = amtFmt(derived); amtInput.readOnly = true; }
+    } else {
+        if (amtInput) amtInput.readOnly = false;
+    }
+    revertVatOverride();
+    recalculate();
+}
+
+// Auto-fill description, UOM, unit_price, account from a selected product.
+function onProductPick(id, productId) {
+    const item = expenseLines.find(i => i.id === id);
+    if (!item) return;
+    item.product_id = productId;
+    if (!productId) { updateDerivedAmount(id); return; }
+    const p = products.find(pr => pr.id === productId);
+    if (!p) { updateDerivedAmount(id); return; }
+    const row = document.getElementById(`exp-${id}`);
+    if (p.name) {
+        item.description = p.name;
+        const descEl = document.getElementById(`exp-desc-${id}`);
+        if (descEl) descEl.value = p.name;
+    }
+    if (p.default_uom_id && uomMasterOn) {
+        item.uom_id = p.default_uom_id;
+        const uomSel = row ? row.querySelector('.uom-sel') : null;
+        if (uomSel) uomSel.value = String(p.default_uom_id);
+    }
+    if (p.default_unit_price != null) {
+        item.unit_price = p.default_unit_price;
+        const upEl = document.getElementById(`exp-up-${id}`);
+        if (upEl) upEl.value = amtFmt(p.default_unit_price);
+    }
+    if (p.default_account_id) {
+        item.account_id = p.default_account_id;
+        const acctC = expenseChoices[id] ? expenseChoices[id].acct : null;
+        if (acctC) acctC.setChoiceByValue(String(p.default_account_id));
+    }
+    updateDerivedAmount(id);
 }
 
 function updateExpense(id, field, value) {
@@ -976,6 +1070,11 @@ function serializeData() {
         expenseLines.map(item => ({
             description:  item.description,
             amount:       item.amount,
+            quantity:     item.quantity   ?? null,
+            unit_price:   item.unit_price ?? null,
+            uom_id:       item.uom_id     ?? null,
+            uom_text:     item.uom_text   || null,
+            product_id:   item.product_id ?? null,
             vat_category: item.vat_category,
             account_id:   item.account_id,
             wt_id:        item.wt_id,
