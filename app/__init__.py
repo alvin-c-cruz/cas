@@ -132,11 +132,13 @@ def create_app(config_name=None):
         return {'company_name': company_name, 'company_logo': company_logo}
 
     # Per-user module access helpers for templates (sidebar gating + the user-edit form)
-    from app.users.module_access import can_access_module, visible_transactions, visible_modules, MODULE_REGISTRY
+    from app.users.module_access import (can_access_module, visible_transactions,
+                                          visible_modules, MODULE_REGISTRY, module_enabled)
     app.jinja_env.globals['can_access_module'] = can_access_module
     app.jinja_env.globals['visible_transactions'] = visible_transactions
     app.jinja_env.globals['visible_modules'] = visible_modules
     app.jinja_env.globals['module_registry'] = MODULE_REGISTRY
+    app.jinja_env.globals['module_enabled'] = module_enabled
 
     # Add custom Jinja2 filter for JSON parsing
     @app.template_filter('from_json')

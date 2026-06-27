@@ -15,7 +15,26 @@ def _login(client, user, branch):
         sess['selected_branch_id'] = branch.id
 
 
-def test_create_unit_of_measure_persists_and_audits(client, db_session, admin_user, main_branch):
+@pytest.fixture
+def uom_module_enabled(db_session):
+    """Enable the optional units_of_measure module for the duration of the test.
+
+    units_of_measure is default_enabled=False (optional); tests that hit UOM endpoints
+    need it enabled or the before_request hook aborts with 404.  The fixture clears the
+    memoize cache on both setup and teardown so the enabled state does not bleed into
+    subsequent tests that assert the default-off behaviour.
+    """
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:units_of_measure', '1')
+    db.session.commit()
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
+def test_create_unit_of_measure_persists_and_audits(client, db_session, admin_user, main_branch,
+                                                    uom_module_enabled):
     _login(client, admin_user, main_branch)
     resp = client.post('/units-of-measure/create',
                        data={'code': 'pcs', 'name': 'Pieces', 'is_active': '1'},
@@ -26,7 +45,8 @@ def test_create_unit_of_measure_persists_and_audits(client, db_session, admin_us
     assert AuditLog.query.filter_by(module='units_of_measure', action='create').count() >= 1
 
 
-def test_edit_unit_of_measure_updates(client, db_session, admin_user, main_branch):
+def test_edit_unit_of_measure_updates(client, db_session, admin_user, main_branch,
+                                      uom_module_enabled):
     u = UnitOfMeasure(code='kg', name='Kilogram', is_active=True)
     db.session.add(u)
     db.session.commit()
@@ -40,15 +60,17 @@ def test_edit_unit_of_measure_updates(client, db_session, admin_user, main_branc
     assert AuditLog.query.filter_by(module='units_of_measure', action='update').count() >= 1
 
 
-def test_list_units_of_measure_renders(client, db_session, admin_user, main_branch):
+def test_list_units_of_measure_renders(client, db_session, admin_user, main_branch,
+                                       uom_module_enabled):
     _login(client, admin_user, main_branch)
     resp = client.get('/units-of-measure')
     assert resp.status_code == 200
     assert b'Units of Measure' in resp.data
 
 
-def test_staff_cannot_create_unit_of_measure(client, db_session, staff_user, main_branch):
-    """Staff users (non-accountant/admin) must be blocked from POSTing to create."""
+def test_staff_cannot_create_unit_of_measure(client, db_session, staff_user, main_branch,
+                                             uom_module_enabled):
+    """Staff users must be blocked from UOM endpoints (module is admin-only when enabled)."""
     import html as html_mod
     staff_user.set_branches([main_branch])
     db_session.commit()
@@ -59,6 +81,6 @@ def test_staff_cannot_create_unit_of_measure(client, db_session, staff_user, mai
     assert resp.status_code == 200
     # No row must have been inserted
     assert UnitOfMeasure.query.filter_by(code='blk').first() is None
-    # Permission flash must be present
+    # Module-access block flash (before_request gate fires before the view)
     text = html_mod.unescape(resp.data.decode())
-    assert 'do not have permission to manage units of measure' in text.lower()
+    assert 'do not have access to this module' in text.lower()

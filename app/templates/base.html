@@ -1250,6 +1250,11 @@
                         <span class="nav-text">Vendors</span>
                     </a>
                     {% endif %}
+                    {% if can_access_module(current_user, 'units_of_measure') %}
+                    <a href="{{ url_for('units_of_measure.list') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('units_of_measure.') %}active{% endif %}">
+                        <span class="nav-text">Units of Measure</span>
+                    </a>
+                    {% endif %}
                     {% if current_user.is_authenticated and current_user.role == 'admin' %}
                     <a href="{{ url_for('vat_categories.list_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_categories.') %}active{% endif %}">
                         <span class="nav-icon">📊</span>
