@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Units of Measure{% endblock %}
+{% block page_title %}Units of Measure{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Units of Measure</h1>
+        <p class="page-subheading">Manage unit of measure codes</p>
+    </div>
+    <div class="page-actions">
+        {% if current_user.role in ['accountant', 'admin'] %}
+        <a href="{{ url_for('units_of_measure.create') }}" class="btn btn-primary">+ Create Unit of Measure</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>CODE</th>
+                    <th>NAME</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for unit in units %}
+                <tr>
+                    <td><strong>{{ unit.code }}</strong></td>
+                    <td>{{ unit.name }}</td>
+                    <td>
+                        {% if unit.is_active %}
+                        <span class="badge badge-active">Active</span>
+                        {% else %}
+                        <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if current_user.role in ['accountant', 'admin'] %}
+                        <div class="action-buttons">
+                            <a href="{{ url_for('units_of_measure.edit', id=unit.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                        </div>
+                        {% else %}
+                        &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="empty-state-cell">
+                        <div>No units of measure found.</div>
+                        {% if current_user.role in ['accountant', 'admin'] %}
+                        <div style="margin-top: 12px;">
+                            <a href="{{ url_for('units_of_measure.create') }}" class="btn btn-primary">+ Create First Unit of Measure</a>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
