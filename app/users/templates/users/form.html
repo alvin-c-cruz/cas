@@ -154,7 +154,7 @@
             </div>
             {% endif %}
 
-            <!-- Book Permissions (only for Staff and Accountant roles) -->
+            <!-- Book Permissions (Staff, Accountant, Viewer) -->
             <div id="book-permissions-section" style="display: none;">
                 <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e8f0;">
 
@@ -225,7 +225,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to show/hide book permissions based on role
     function toggleBookPermissions() {
         const role = roleField.value;
-        if (role === 'staff' || role === 'accountant') {
+        if (role === 'staff' || role === 'accountant' || role === 'viewer') {
             bookPermissionsSection.style.display = 'block';
         } else {
             bookPermissionsSection.style.display = 'none';
