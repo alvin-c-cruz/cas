@@ -112,3 +112,15 @@ def get_module_override(key):
 def clear_module_config_cache():
     """Invalidate cached module-enablement after a toggle."""
     cache.delete_memoized(get_module_override)
+
+
+@cache.memoize(timeout=3600)
+def get_active_units():
+    """Get all active units of measure (cached 1 hour)."""
+    from app.units_of_measure.models import UnitOfMeasure
+    return UnitOfMeasure.query.filter_by(is_active=True).order_by(UnitOfMeasure.code).all()
+
+
+def clear_uom_cache():
+    """Clear units-of-measure cache after updates."""
+    cache.delete_memoized(get_active_units)
