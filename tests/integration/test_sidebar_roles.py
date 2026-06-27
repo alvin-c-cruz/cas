@@ -29,6 +29,13 @@ class TestSidebarRoles:
         resp = client.get('/under-development')
         assert b'User Management' not in resp.data
 
+    def test_admin_sees_audit_log(self, client, db_session, admin_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'admin', 'admin123')
+        resp = client.get('/under-development')
+        assert b'Audit Log' in resp.data
+
     def test_accountant_sees_audit_log(self, client, db_session,
                                        admin_user, accountant_user, main_branch):
         admin_user.add_branch(main_branch)

@@ -1230,10 +1230,8 @@
             </div>
             {% endif %}
 
-            {# Maintenance section — also shown to admin/accountant so the audit-log link
-               (entitled to both) is not coupled to customers/vendors access. Jinja comment
-               (not an HTML comment) so its text never leaks into the rendered page. #}
-            {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') or (current_user.is_authenticated and current_user.role in ['admin', 'accountant']) %}
+            {# Maintenance section — hidden entirely when the user has no maintenance access. #}
+            {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="maintenance">
                     <span>Maintenance</span>
@@ -1266,12 +1264,6 @@
                         <span class="nav-text">Withholding Tax Expanded</span>
                     </a>
                     {% endif %}
-                    {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant'] %}
-                    <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
-                        <span class="nav-icon">📜</span>
-                        <span class="nav-text">Audit Log</span>
-                    </a>
-                    {% endif %}
                 </div>
             </div>
             {% endif %}
@@ -1300,6 +1292,10 @@
                         <span class="nav-icon">📧</span>
                         <span class="nav-text">Approved Emails</span>
                     </a>
+                    <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
+                        <span class="nav-icon">📜</span>
+                        <span class="nav-text">Audit Log</span>
+                    </a>
                 </div>
             </div>
             {% endif %}
@@ -1319,6 +1315,10 @@
                     <a href="{{ url_for('users.list_approved_emails') }}" class="nav-item {% if request.endpoint == 'users.list_approved_emails' or request.endpoint == 'users.add_approved_email' %}active{% endif %}">
                         <span class="nav-icon">📧</span>
                         <span class="nav-text">Approved Emails</span>
+                    </a>
+                    <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
+                        <span class="nav-icon">📜</span>
+                        <span class="nav-text">Audit Log</span>
                     </a>
                 </div>
             </div>
