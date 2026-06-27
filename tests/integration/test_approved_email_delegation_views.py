@@ -119,7 +119,8 @@ def test_single_branch_form_hides_branch_field(client, db_session, accountant_us
     assert 'Auto-assigned' not in body
 
 
-def test_list_shows_position_and_branch(client, db_session, admin_user, main_branch):
+def test_list_shows_position_and_no_branch_column(client, db_session, admin_user, main_branch):
+    """Position is shown; the Branch(es) column was removed from the list."""
     ae = ApprovedEmail(email='listed@example.ph', status='approved', role='staff')
     ae.branches = [main_branch]
     db_session.add(ae)
@@ -130,4 +131,22 @@ def test_list_shows_position_and_branch(client, db_session, admin_user, main_bra
     assert resp.status_code == 200
     body = resp.data.decode()
     assert 'Staff' in body
-    assert main_branch.name in body
+    assert 'Branch(es)' not in body  # column header removed from both tables
+
+
+def test_list_combined_status_column(client, db_session, admin_user, main_branch):
+    """The two status columns are merged into one: approved-unused -> Available,
+    approved-used -> Used, and the old 'Registration Status' header is gone."""
+    avail = ApprovedEmail(email='avail@example.ph', status='approved', role='viewer')
+    used = ApprovedEmail(email='used@example.ph', status='approved', role='viewer',
+                         is_used=True, used_by_user_id=admin_user.id)
+    db_session.add_all([avail, used])
+    db_session.commit()
+
+    _login(client, admin_user, main_branch, 'admin123')
+    resp = client.get('/approved-emails')
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert '>Available</span>' in body
+    assert '>Used</span>' in body
+    assert 'Registration Status' not in body  # merged into the single Status column

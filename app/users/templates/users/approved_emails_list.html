@@ -41,7 +41,6 @@
                 <tr>
                     <th>Email Address</th>
                     <th>Position</th>
-                    <th>Branch(es)</th>
                     <th>Requested By</th>
                     <th>Notes</th>
                     {% if current_user.role == 'admin' %}
@@ -54,7 +53,6 @@
                 <tr>
                     <td><strong>{{ email.email }}</strong></td>
                     <td>{% if email.role %}{{ email.role|capitalize }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                    <td>{% if email.branches %}{{ email.branches|map(attribute='name')|join(', ') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                     <td>{{ email.requested_by.username if email.requested_by else '—' }}</td>
                     <td>
                         {% if email.notes %}
@@ -129,9 +127,7 @@
                 <tr>
                     <th>Email Address</th>
                     <th>Position</th>
-                    <th>Branch(es)</th>
                     <th>Status</th>
-                    <th>Registration Status</th>
                     <th>Approved/Reviewed By</th>
                     <th>Date</th>
                     <th>Used By</th>
@@ -146,23 +142,16 @@
                 <tr {% if email.is_used %}style="opacity:.7;"{% endif %}>
                     <td><strong>{{ email.email }}</strong></td>
                     <td>{% if email.role %}{{ email.role|capitalize }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                    <td>{% if email.branches %}{{ email.branches|map(attribute='name')|join(', ') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                     <td>
-                        {% if email.status == 'approved' %}
-                            <span class="badge badge-active">Approved</span>
-                        {% elif email.status == 'pending' %}
+                        {# Combined status: approval lifecycle + registration usage in one badge #}
+                        {% if email.status == 'pending' %}
                             <span class="badge badge-warning">Pending</span>
-                        {% else %}
+                        {% elif email.status == 'rejected' %}
                             <span class="badge badge-inactive">Rejected</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if email.is_used %}
+                        {% elif email.is_used %}
                             <span class="badge badge-inactive">Used</span>
-                        {% elif email.status == 'approved' %}
-                            <span class="badge badge-success">Available</span>
                         {% else %}
-                            <span class="text-muted">—</span>
+                            <span class="badge badge-success">Available</span>
                         {% endif %}
                     </td>
                     <td>
