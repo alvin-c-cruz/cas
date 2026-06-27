@@ -66,6 +66,10 @@
             <div class="form-group">
                 <label class="form-label">Access Permissions</label>
                 <div class="form-hint" style="margin-bottom: 12px;">Select the modules this person can access once registered. Leave blank to set them up later.</div>
+                <label class="checkbox-label" style="font-weight: 600; margin-bottom: 12px; display: inline-flex;">
+                    <input type="checkbox" id="book-select-all">
+                    <span>Select all</span>
+                </label>
                 {% for section in ['Transactions', 'Ledger', 'Financial Reports', 'Maintenance'] %}
                 {% set mods = module_registry | selectattr('section', 'equalto', section) | list %}
                 {% if mods %}
@@ -112,4 +116,25 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+{% if current_user.role == 'admin' %}
+<script>
+// "Select all" toggle for the Access Permissions grid (admin only).
+document.addEventListener('DOMContentLoaded', function () {
+    var selectAll = document.getElementById('book-select-all');
+    if (!selectAll) return;
+    var boxes = document.querySelectorAll('input[name^="book_"]');
+    selectAll.addEventListener('change', function () {
+        boxes.forEach(function (b) { b.checked = selectAll.checked; });
+    });
+    boxes.forEach(function (b) {
+        b.addEventListener('change', function () {
+            selectAll.checked = Array.prototype.every.call(boxes, function (x) { return x.checked; });
+        });
+    });
+});
+</script>
+{% endif %}
 {% endblock %}

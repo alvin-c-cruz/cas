@@ -54,6 +54,27 @@ def test_admin_add_stores_book_permissions(client, db_session, admin_user, main_
     assert perms.get('payments') is not True  # unchecked → not granted
 
 
+def test_admin_form_has_permission_select_all(client, db_session, admin_user, main_branch):
+    """Admin permission grid offers a 'Select all' toggle."""
+    _login(client, admin_user, main_branch, 'admin123')
+    resp = client.get('/approved-emails/add')
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'id="book-select-all"' in body
+    assert 'Select all' in body
+
+
+def test_accountant_form_has_no_permission_grid_or_select_all(client, db_session, admin_user,
+                                                              accountant_user, main_branch):
+    """Accountant request form has no permission grid (admin-only), so no select-all."""
+    _login(client, accountant_user, main_branch, 'accountant123')
+    resp = client.get('/approved-emails/add')
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'book-select-all' not in body
+    assert 'Access Permissions' not in body
+
+
 def test_accountant_add_does_not_store_book_permissions(client, db_session, admin_user,
                                                         accountant_user, main_branch):
     """Admin-only scope: an accountant's request never stamps book_permissions, even
