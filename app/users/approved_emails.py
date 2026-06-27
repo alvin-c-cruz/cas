@@ -8,6 +8,8 @@ Status lifecycle:
   approved  — approved (by admin direct-add or after review); eligible to register
   rejected  — rejected by admin; cannot register
 """
+import json
+
 from app import db
 from app.utils import ph_now
 
@@ -49,6 +51,11 @@ class ApprovedEmail(db.Model):
     # register behavior (viewer / inactive / pending admin activation).
     role = db.Column(db.String(20), nullable=True)  # 'accountant' | 'staff' | 'viewer'
 
+    # Book (module) access permissions the registrant is created with, as a JSON
+    # string mirroring User.book_permissions. Set by an admin on the approved-email
+    # form; applied to the new user at registration. Empty '{}' = configure later.
+    book_permissions = db.Column(db.Text, default='{}')
+
     # Who submitted this row (null for legacy/direct admin adds)
     requested_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     # When the admin reviewed it (null until approved/rejected)
@@ -77,6 +84,17 @@ class ApprovedEmail(db.Model):
     def get_branch_ids(self):
         """Return the list of branch ids this email is assigned to."""
         return [b.id for b in self.branches]
+
+    def get_book_permissions(self):
+        """Return the stamped book permissions as a dict ({} if unset/invalid)."""
+        try:
+            return json.loads(self.book_permissions) if self.book_permissions else {}
+        except (ValueError, TypeError):
+            return {}
+
+    def set_book_permissions(self, permissions_dict):
+        """Store book permissions from a dict."""
+        self.book_permissions = json.dumps(permissions_dict)
 
     def mark_as_used(self, user_id):
         """Mark this email as used by a specific user."""

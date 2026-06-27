@@ -60,6 +60,29 @@
             </div>
             {% endif %}
 
+            {# Book access permissions — admin only. The registrant is created with
+               whatever is checked here; leave all unchecked to configure later. #}
+            {% if current_user.role == 'admin' %}
+            <div class="form-group">
+                <label class="form-label">Book Access Permissions</label>
+                <div class="form-hint" style="margin-bottom: 12px;">Select the modules this person can access once registered. Leave blank to set them up later.</div>
+                {% for section in ['Transactions', 'Maintenance', 'Ledger'] %}
+                {% set mods = module_registry | selectattr('section', 'equalto', section) | list %}
+                {% if mods %}
+                <div class="form-hint" style="margin: 10px 0 6px; font-weight: 600;">{{ section }}</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    {% for m in mods %}
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="book_{{ m.key }}" value="1">
+                        <span>{{ m.label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
             <div class="form-group">
                 {{ form.notes.label(class='form-label') }}
                 {{ form.notes(class='form-control', rows=3, placeholder='Optional notes (e.g., "New accountant - Juan dela Cruz")') }}

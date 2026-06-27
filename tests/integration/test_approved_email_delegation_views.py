@@ -36,6 +36,39 @@ def test_admin_add_stores_role_and_branches(client, db_session, admin_user, main
     assert sorted(ae.get_branch_ids()) == sorted([main_branch.id, branch_manila.id])
 
 
+def test_admin_add_stores_book_permissions(client, db_session, admin_user, main_branch):
+    """Admin can set the permission grid on the approved-email form; it persists."""
+    _login(client, admin_user, main_branch, 'admin123')
+    resp = client.post('/approved-emails/add', data={
+        'email': 'perm.admin@example.ph', 'position': 'staff',
+        'branch_ids': [str(main_branch.id)],
+        'book_accounts_payable': '1',
+        'book_general_ledger': '1',
+    }, follow_redirects=False)
+    assert resp.status_code == 302
+
+    ae = ApprovedEmail.query.filter_by(email='perm.admin@example.ph').first()
+    perms = ae.get_book_permissions()
+    assert perms.get('accounts_payable') is True
+    assert perms.get('general_ledger') is True
+    assert perms.get('payments') is not True  # unchecked → not granted
+
+
+def test_accountant_add_does_not_store_book_permissions(client, db_session, admin_user,
+                                                        accountant_user, main_branch):
+    """Admin-only scope: an accountant's request never stamps book_permissions, even
+    if book_* fields are forged into the POST (grid is configured later in Staff Mgmt)."""
+    _login(client, accountant_user, main_branch, 'accountant123')
+    resp = client.post('/approved-emails/add', data={
+        'email': 'perm.acct@example.ph', 'position': 'staff',
+        'book_accounts_payable': '1',  # forged — must be ignored on the accountant path
+    }, follow_redirects=False)
+    assert resp.status_code == 302
+
+    ae = ApprovedEmail.query.filter_by(email='perm.acct@example.ph').first()
+    assert ae.get_book_permissions() == {}
+
+
 def test_admin_add_requires_at_least_one_branch(client, db_session, admin_user, main_branch, branch_manila):
     """Admin with multiple branches must pick >=1 — empty selection re-renders, no row."""
     _login(client, admin_user, main_branch, 'admin123')

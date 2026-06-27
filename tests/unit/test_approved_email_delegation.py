@@ -45,3 +45,17 @@ def test_branch_ids_helper(db_session, main_branch):
     db_session.commit()
 
     assert ae.get_branch_ids() == [main_branch.id]
+
+
+def test_book_permissions_default_and_helper(db_session):
+    """book_permissions defaults to {} and round-trips via get/set helpers."""
+    ae = ApprovedEmail(email='perm@example.ph', status='approved', role='staff')
+    db_session.add(ae)
+    db_session.commit()
+
+    assert ae.get_book_permissions() == {}  # default for a fresh row
+    ae.set_book_permissions({'accounts_payable': True, 'general_ledger': True})
+    db_session.commit()
+
+    fetched = ApprovedEmail.query.filter_by(email='perm@example.ph').first()
+    assert fetched.get_book_permissions() == {'accounts_payable': True, 'general_ledger': True}

@@ -43,6 +43,23 @@ def test_register_stamped_email_creates_active_user(client, db_session, main_bra
     assert audit is not None
 
 
+def test_register_applies_stamped_book_permissions(client, db_session, main_branch):
+    """A stamped email carrying book_permissions creates the user with them set."""
+    ae = ApprovedEmail(email='withperms@example.ph', status='approved', role='staff')
+    ae.branches = [main_branch]
+    ae.set_book_permissions({'accounts_payable': True, 'general_ledger': True})
+    db_session.add(ae)
+    db_session.commit()
+
+    resp = _register(client, 'permstaff', 'withperms@example.ph')
+    assert resp.status_code == 302
+
+    user = User.query.filter_by(email='withperms@example.ph').first()
+    perms = user.get_book_permissions()
+    assert perms.get('accounts_payable') is True
+    assert perms.get('general_ledger') is True
+
+
 def test_register_stamped_user_can_login(client, db_session, main_branch):
     """The active registrant can immediately log in (no pending-approval block)."""
     ae = ApprovedEmail(email='loginme@example.ph', status='approved', role='viewer')

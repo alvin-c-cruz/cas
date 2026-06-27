@@ -293,6 +293,8 @@ def register():
 
             if delegated:
                 user.set_branches(list(approved_email.branches))
+                # Apply any admin-stamped module permissions ({} = configure later)
+                user.set_book_permissions(approved_email.get_book_permissions())
 
             db.session.commit()
 
@@ -678,6 +680,12 @@ def add_approved_email():
                     notes=form.notes.data
                 )
                 approved_email.branches = branches
+                # Admin-only: stamp the chosen book (module) permissions so the
+                # registrant is created with them. Server-side built from the grid.
+                from app.users.module_access import all_permission_keys
+                approved_email.set_book_permissions(
+                    {k: request.form.get('book_' + k) == '1' for k in all_permission_keys()}
+                )
                 db.session.add(approved_email)
                 db.session.commit()
 
