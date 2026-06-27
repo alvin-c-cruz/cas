@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Products{% endblock %}
+{% block page_title %}Products{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Products</h1>
+        <p class="page-subheading">Manage product and item master records</p>
+    </div>
+    <div class="page-actions">
+        {% if current_user.role in ['accountant', 'admin'] %}
+        <a href="{{ url_for('products.create') }}" class="btn btn-primary">+ Create Product</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>CODE</th>
+                    <th>NAME</th>
+                    <th>DEFAULT UNIT</th>
+                    <th>DEFAULT PRICE</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in products %}
+                <tr>
+                    <td><strong>{{ product.code }}</strong></td>
+                    <td>{{ product.name }}</td>
+                    <td>{{ product.default_unit_of_measure.code if product.default_unit_of_measure else '—' }}</td>
+                    <td>
+                        {% if product.default_unit_price is not none %}
+                        ₱{{ '%.2f' | format(product.default_unit_price | float) }}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if product.is_active %}
+                        <span class="badge badge-active">Active</span>
+                        {% else %}
+                        <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if current_user.role in ['accountant', 'admin'] %}
+                        <div class="action-buttons">
+                            <a href="{{ url_for('products.edit', id=product.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                        </div>
+                        {% else %}
+                        &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="empty-state-cell">
+                        <p>No products found.</p>
+                        {% if current_user.role in ['accountant', 'admin'] %}
+                        <p><a href="{{ url_for('products.create') }}" class="btn btn-primary">+ Create First Product</a></p>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
