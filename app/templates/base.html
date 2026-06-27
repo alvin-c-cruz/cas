@@ -1232,7 +1232,7 @@
 
             <!-- Maintenance Section — also shown to admin/accountant so the Audit Log
                  (entitled to both) is not coupled to customers/vendors access -->
-            {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') or current_user.role in ['admin', 'accountant'] %}
+            {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') or (current_user.is_authenticated and current_user.role in ['admin', 'accountant']) %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="maintenance">
                     <span>Maintenance</span>

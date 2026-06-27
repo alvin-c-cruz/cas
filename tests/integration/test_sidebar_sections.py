@@ -1,8 +1,6 @@
 """Sidebar section visibility for permission-scoped accountants."""
 import pytest
-from app import db
 from app.users.models import User
-from app.branches.models import Branch
 
 pytestmark = [pytest.mark.integration]
 
