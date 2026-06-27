@@ -33,6 +33,16 @@ def test_toggle_off_accountant_request_is_pending(client, db_session, admin_user
     assert ae.approved_by_user_id is None
 
 
+def test_toggle_on_viewer_is_self_approved(client, db_session, admin_user,
+                                           accountant_user, main_branch):
+    AppSettings.set_setting('accountant_email_self_approval', '1')
+    _login(client, accountant_user, main_branch, 'accountant123')
+    _submit(client, 'selfview@example.ph', 'viewer')
+    ae = ApprovedEmail.query.filter_by(email='selfview@example.ph').first()
+    assert ae.status == 'approved'
+    assert ae.approved_by_user_id == accountant_user.id
+
+
 def test_toggle_on_staff_is_self_approved(client, db_session, admin_user,
                                           accountant_user, main_branch):
     AppSettings.set_setting('accountant_email_self_approval', '1')

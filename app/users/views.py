@@ -633,8 +633,10 @@ def list_approved_emails():
 def add_approved_email():
     """Add a new approved email for registration.
 
-    Admin → immediately approved (original behavior).
-    Accountant → creates a pending request; notifies all admins.
+    Admin → immediately approved (carries role + branches + permissions).
+    Accountant → creates a pending request for admin approval; but when the company
+    setting ``accountant_email_self_approval`` is ON, a staff/viewer request is
+    approved immediately (an accountant-position request still goes pending).
     """
     if current_user.role not in ('admin', 'accountant'):
         flash('You do not have permission to access this page.', 'error')
