@@ -43,9 +43,12 @@ class TestAccountsPayableItemCalculateAmounts:
         item = self._make_item(amount='5000.00', vat_rate=Decimal('0'), wt_rate=None)
         assert item.wt_amount == Decimal('0.00')
 
-    def test_no_quantity_or_unit_cost_attributes(self):
+    def test_has_quantity_and_unit_price_not_unit_cost(self):
+        # P-56 added optional quantity + unit_price (VAT-inclusive) to AP line items;
+        # the model uses unit_price, never unit_cost.
         item = AccountsPayableItem()
-        assert not hasattr(item, 'quantity')
+        assert hasattr(item, 'quantity')
+        assert hasattr(item, 'unit_price')
         assert not hasattr(item, 'unit_cost')
 
 
@@ -102,7 +105,7 @@ class TestAccountsPayableCalculateTotals:
 
 @pytest.mark.usefixtures("app")
 class TestAccountsPayableItemToDict:
-    def test_to_dict_has_amount_not_quantity_or_unit_cost(self):
+    def test_to_dict_has_amount_quantity_unit_price_not_unit_cost(self):
         item = AccountsPayableItem()
         item.id = 1
         item.line_number = 1
@@ -118,6 +121,7 @@ class TestAccountsPayableItemToDict:
         item.wt_amount = Decimal('0.00')
         d = item.to_dict()
         assert 'amount' in d
-        assert 'quantity' not in d
+        assert 'quantity' in d
+        assert 'unit_price' in d
         assert 'unit_cost' not in d
         assert d['amount'] == 11200.0
