@@ -128,9 +128,22 @@ def clear_uom_cache():
 
 @cache.memoize(timeout=3600)
 def get_active_products():
-    """Get all active products (cached 1 hour)."""
+    """Get all active products (cached 1 hour).
+
+    Eager-load default_unit_of_measure: Product.to_dict() reads
+    default_unit_of_measure.code, a relationship. Cached ORM objects outlive the
+    request/session that created them, so a lazy load on a later (detached) access
+    raises DetachedInstanceError (HTTP 500). joinedload populates the attribute at
+    query time, so reading it detached is safe — matching the column-only helpers
+    above that are already detach-safe.
+    """
+    from sqlalchemy.orm import joinedload
     from app.products.models import Product
-    return Product.query.filter_by(is_active=True).order_by(Product.code).all()
+    return (Product.query
+            .options(joinedload(Product.default_unit_of_measure))
+            .filter_by(is_active=True)
+            .order_by(Product.code)
+            .all())
 
 
 def clear_product_cache():
