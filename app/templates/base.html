@@ -1230,8 +1230,9 @@
             </div>
             {% endif %}
 
-            <!-- Maintenance Section — also shown to admin/accountant so the Audit Log
-                 (entitled to both) is not coupled to customers/vendors access -->
+            {# Maintenance section — also shown to admin/accountant so the audit-log link
+               (entitled to both) is not coupled to customers/vendors access. Jinja comment
+               (not an HTML comment) so its text never leaks into the rendered page. #}
             {% if can_access_module(current_user, 'customers') or can_access_module(current_user, 'vendors') or (current_user.is_authenticated and current_user.role in ['admin', 'accountant']) %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="maintenance">
