@@ -14,6 +14,7 @@ from app.audit.utils import log_create, log_update, log_delete, model_to_dict, l
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.wt_labels import wt_label
+from app.utils.cache_helpers import get_active_units, get_active_products
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
@@ -644,6 +645,8 @@ def create():
                                    line_items=_submitted_line_items(),
                                    gl_accounts=_gl_accounts_dict(),
                                    wht_codes=_wht_codes_for_form(),
+                                   units=_units_for_form(),
+                                   products=_products_for_form(),
                                    customer_quick_add_form=build_customer_quick_add_form(),
                                    customer_quick_add_whts=_customer_quick_add_whts())
         try:
@@ -656,6 +659,8 @@ def create():
                                        line_items=_submitted_line_items(),
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
+                                       units=_units_for_form(),
+                                       products=_products_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form(),
                                        customer_quick_add_whts=_customer_quick_add_whts())
 
@@ -668,6 +673,8 @@ def create():
                                        line_items=_submitted_line_items(),
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
+                                       units=_units_for_form(),
+                                       products=_products_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form(),
                                        customer_quick_add_whts=_customer_quick_add_whts())
 
@@ -736,6 +743,8 @@ def create():
                            line_items=_submitted_line_items(),
                            gl_accounts=_gl_accounts_dict(),
                            wht_codes=_wht_codes_for_form(),
+                           units=_units_for_form(),
+                           products=_products_for_form(),
                            customer_quick_add_form=build_customer_quick_add_form(),
                            customer_quick_add_whts=_customer_quick_add_whts())
 
@@ -769,6 +778,8 @@ def edit(id):
                                    line_items=restore_items,
                                    gl_accounts=_gl_accounts_dict(),
                                    wht_codes=_wht_codes_for_form(),
+                                   units=_units_for_form(),
+                                   products=_products_for_form(),
                                    customer_quick_add_form=build_customer_quick_add_form(),
                                    customer_quick_add_whts=_customer_quick_add_whts())
         try:
@@ -785,6 +796,8 @@ def edit(id):
                                        line_items=restore_items,
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
+                                       units=_units_for_form(),
+                                       products=_products_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form(),
                                        customer_quick_add_whts=_customer_quick_add_whts())
 
@@ -797,6 +810,8 @@ def edit(id):
                                        line_items=restore_items,
                                        gl_accounts=_gl_accounts_dict(),
                                        wht_codes=_wht_codes_for_form(),
+                                       units=_units_for_form(),
+                                       products=_products_for_form(),
                                        customer_quick_add_form=build_customer_quick_add_form(),
                                        customer_quick_add_whts=_customer_quick_add_whts())
 
@@ -868,6 +883,8 @@ def edit(id):
                            line_items=restore_items,
                            gl_accounts=_gl_accounts_dict(),
                            wht_codes=_wht_codes_for_form(),
+                           units=_units_for_form(),
+                           products=_products_for_form(),
                            customer_quick_add_form=build_customer_quick_add_form(),
                            customer_quick_add_whts=_customer_quick_add_whts())
 
@@ -894,6 +911,14 @@ def _wht_codes_for_form():
         d['label'] = wt_label(d, 'sales')
         codes.append(d)
     return codes
+
+
+def _units_for_form():
+    return [u.to_dict() for u in get_active_units()]
+
+
+def _products_for_form():
+    return [p.to_dict() for p in get_active_products()]
 
 
 def _line_items_error(line_items_json):
@@ -943,6 +968,15 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
     except (json.JSONDecodeError, TypeError):
         items = []
 
+    def _dec(v):
+        try:
+            return Decimal(str(v)) if v not in (None, '', 'null') else None
+        except (InvalidOperation, TypeError):
+            return None
+
+    def _int(v):
+        return int(v) if v and str(v).strip() not in ('', 'null') else None
+
     for idx, item_data in enumerate(items, start=1):
         vat_rate = Decimal('0.00')
         vat_category = item_data.get('vat_category') or None
@@ -968,6 +1002,11 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
             line_number=idx,
             description=item_data.get('description', ''),
             amount=Decimal(str(item_data.get('amount', '0') or '0')),
+            quantity=_dec(item_data.get('quantity')),
+            unit_price=_dec(item_data.get('unit_price')),
+            uom_text=(item_data.get('uom_text') or None),
+            unit_of_measure_id=_int(item_data.get('uom_id')),
+            product_id=_int(item_data.get('product_id')),
             vat_category=vat_category,
             vat_rate=vat_rate,
             account_id=account_id,
