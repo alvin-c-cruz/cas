@@ -107,6 +107,18 @@ def test_multi_branch_form_renders_branch_picker(client, db_session, admin_user,
     assert 'name="branch_ids"' in body
 
 
+def test_single_branch_form_hides_branch_field(client, db_session, accountant_user, main_branch):
+    """With exactly one accessible branch the Branch Assignment field is hidden
+    entirely — there is nothing to choose, the branch is auto-assigned server-side."""
+    _login(client, accountant_user, main_branch, 'accountant123')
+    resp = client.get('/approved-emails/add')
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'name="branch_ids"' not in body
+    assert 'Branch Assignment' not in body
+    assert 'Auto-assigned' not in body
+
+
 def test_list_shows_position_and_branch(client, db_session, admin_user, main_branch):
     ae = ApprovedEmail(email='listed@example.ph', status='approved', role='staff')
     ae.branches = [main_branch]
