@@ -509,9 +509,9 @@ def _parse_and_attach_revenue_lines(crv, revenue_lines_json):
         except (ValueError, TypeError, InvalidOperation):
             raise CRVLineError('A revenue line amount is invalid.')
         account_id = int(item['account_id']) if item.get('account_id') else None
-        # Allow None account_id (form JS already prevents submit without account;
-        # only reject a supplied but invalid account ID).
-        if account_id is not None and account_id not in leaf_account_ids:
+        if account_id is None:
+            raise CRVLineError('Each revenue line must have an account assigned.')
+        if account_id not in leaf_account_ids:
             raise CRVLineError('Each revenue line must use a valid, postable account.')
         vat_rate = Decimal('0.00')
         vat_category = item.get('vat_category')

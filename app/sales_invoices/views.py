@@ -980,6 +980,7 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
         except (ValueError, TypeError):
             return None
 
+    leaf_account_ids = {a['id'] for a in _get_all_accounts_for_select() if not a['is_group']}
     for idx, item_data in enumerate(items, start=1):
         vat_rate = Decimal('0.00')
         vat_category = item_data.get('vat_category') or None
@@ -1000,6 +1001,10 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
         account_id = int(raw_account_id) if raw_account_id and str(raw_account_id).strip() else None
         if account_id and not db.session.get(Account, account_id):
             account_id = None
+        if account_id is None:
+            raise ValueError('Each line item must have an account assigned.')
+        if account_id not in leaf_account_ids:
+            raise ValueError('Each line item must use a valid, postable account.')
 
         line_item = SalesInvoiceItem(
             line_number=idx,
