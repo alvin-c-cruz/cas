@@ -26,7 +26,8 @@ def test_admin_can_grant_viewer_a_module(client, db_session, admin_user, viewer_
 def test_viewer_permission_grid_is_rendered(client, db_session, admin_user, viewer_user, main_branch):
     _login(client, 'admin', 'admin123')
     resp = client.get(f'/users/{viewer_user.id}/edit')
-    assert b'Book Access Permissions' in resp.data
+    assert b'Access Permissions' in resp.data
+    assert b'Book Access Permissions' not in resp.data  # renamed
 
 
 def test_js_shows_grid_for_viewer(client, db_session, admin_user, viewer_user, main_branch):

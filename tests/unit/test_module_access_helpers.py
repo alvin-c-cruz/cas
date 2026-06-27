@@ -17,3 +17,16 @@ def test_default_all_permissions_grants_every_non_optional_key():
     perms = default_all_permissions()
     assert set(perms.keys()) == set(all_permission_keys())
     assert all(v is True for v in perms.values())
+
+
+def test_sections_align_with_sidebar():
+    """MODULE_REGISTRY section grouping mirrors the sidebar: Ledger and Financial
+    Reports are distinct groups (financial statements + year-end under Financial
+    Reports), and master data under Maintenance."""
+    sec = {m['key']: m['section'] for m in MODULE_REGISTRY}
+    for k in ('income_statement', 'balance_sheet', 'cash_flow', 'trial_balance', 'fiscal_year_close'):
+        assert sec[k] == 'Financial Reports', f'{k} should be under Financial Reports'
+    for k in ('chart_of_accounts', 'general_ledger', 'ar_aging', 'ap_aging'):
+        assert sec[k] == 'Ledger', f'{k} should be under Ledger'
+    for k in ('customers', 'vendors'):
+        assert sec[k] == 'Maintenance', f'{k} should be under Maintenance'

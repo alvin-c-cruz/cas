@@ -64,9 +64,9 @@
                whatever is checked here; leave all unchecked to configure later. #}
             {% if current_user.role == 'admin' %}
             <div class="form-group">
-                <label class="form-label">Book Access Permissions</label>
+                <label class="form-label">Access Permissions</label>
                 <div class="form-hint" style="margin-bottom: 12px;">Select the modules this person can access once registered. Leave blank to set them up later.</div>
-                {% for section in ['Transactions', 'Maintenance', 'Ledger'] %}
+                {% for section in ['Transactions', 'Ledger', 'Financial Reports', 'Maintenance'] %}
                 {% set mods = module_registry | selectattr('section', 'equalto', section) | list %}
                 {% if mods %}
                 <div class="form-hint" style="margin: 10px 0 6px; font-weight: 600;">{{ section }}</div>

@@ -159,10 +159,10 @@
                 <hr style="margin: 24px 0; border: none; border-top: 1px solid #e2e8f0;">
 
                 <div class="form-group">
-                    <label class="form-label">Book Access Permissions</label>
-                    <div class="form-hint" style="margin-bottom: 12px;">Select which books this user can access. Admins have access to all books by default.</div>
+                    <label class="form-label">Access Permissions</label>
+                    <div class="form-hint" style="margin-bottom: 12px;">Select which modules this user can access. Admins have access to everything by default.</div>
 
-                    {% for section in ['Transactions', 'Maintenance', 'Ledger'] %}
+                    {% for section in ['Transactions', 'Ledger', 'Financial Reports', 'Maintenance'] %}
                     {% set mods = module_registry | selectattr('section', 'equalto', section) | list %}
                     {% if mods %}
                     <div class="form-hint" style="margin: 10px 0 6px; font-weight: 600;">{{ section }}</div>

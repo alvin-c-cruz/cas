@@ -17,7 +17,7 @@ def test_accountant_blocked_from_edit_user(client, db_session, admin_user, accou
     _login(client, 'accountant', 'accountant123')
     resp = client.get(f'/users/{staff_user.id}/edit', follow_redirects=True)
     # redirected to dashboard, not the edit form
-    assert b'Book Access Permissions' not in resp.data
+    assert b'Access Permissions' not in resp.data
 
 
 def test_admin_still_reaches_users(client, db_session, admin_user, main_branch):
