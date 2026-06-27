@@ -2,7 +2,7 @@
 Forms for Company Settings
 """
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SelectField
+from wtforms import StringField, TextAreaField, SelectField, BooleanField
 from wtforms.validators import DataRequired, Length, Email, Optional
 
 
@@ -113,3 +113,7 @@ class CompanySettingsForm(FlaskForm):
     cr_print_access = SelectField(
         'CRV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )
+
+    # Administration / policy
+    accountant_email_self_approval = BooleanField(
+        'Allow accountants to self-approve Staff/Viewer registration emails')

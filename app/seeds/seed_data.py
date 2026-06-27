@@ -650,11 +650,12 @@ def seed_minimal():
                 {'key': 'cr_print_access',      'value': 'posted_only'},
                 {'key': 'company_logo',         'value': ''},
                 {'key': 'environment',          'value': 'dev'},
+                {'key': 'accountant_email_self_approval', 'value': '0'},
             ]
             for s in settings:
                 db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
             db.session.commit()
-            print(f"  [OK] 20 app settings created")
+            print(f"  [OK] 21 app settings created")
 
         # ------------------------------------------------------------------
         # 4. Chart of Accounts (canonical 146-account manufacturing COA)

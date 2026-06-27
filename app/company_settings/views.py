@@ -119,6 +119,15 @@ def edit_settings():
                 old_values[key] = old_val
                 new_values[key] = new_val
 
+            # Boolean policy flag — handled outside the text-strip loop above.
+            _sa_key = 'accountant_email_self_approval'
+            _sa_old = AppSettings.get_setting(_sa_key, '0')
+            _sa_new = '1' if form.accountant_email_self_approval.data else '0'
+            if _sa_old != _sa_new:
+                AppSettings.set_setting(_sa_key, _sa_new, updated_by=current_user.username)
+                old_values[_sa_key] = _sa_old
+                new_values[_sa_key] = _sa_new
+
             if new_values:
                 log_audit(
                     module='settings',
@@ -144,6 +153,9 @@ def edit_settings():
             value = AppSettings.get_setting(key)
             if value:
                 getattr(form, key).data = value
+
+        form.accountant_email_self_approval.data = (
+            AppSettings.get_setting('accountant_email_self_approval', '0') == '1')
 
     return render_template(
         'company_settings/form.html',

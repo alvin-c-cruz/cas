@@ -34,3 +34,10 @@ def backfill_accountant_branches():
     result = db.session.execute(sql)
     db.session.commit()
     return result.rowcount
+
+
+def accountant_self_approval_enabled():
+    """True when the company allows accountants to self-approve registration emails
+    (staff/viewer only). Reads the AppSettings policy flag; default off."""
+    from app.settings import AppSettings
+    return AppSettings.get_setting('accountant_email_self_approval', '0') == '1'
