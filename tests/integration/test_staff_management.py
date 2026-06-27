@@ -78,7 +78,9 @@ def test_edit_grants_subset_and_preserves_out_of_scope(client, db_session, admin
     assert perms.get('payments') is not True          # accountant has it but didn't grant
     assert perms.get('general_ledger') is True        # preserved (outside accountant's set)
     # audit row exists
-    assert AuditLog.query.filter_by(module='user', record_id=target.id).first() is not None
+    assert db.session.execute(
+        db.select(AuditLog).filter_by(module='user', record_id=target.id)
+    ).scalars().first() is not None
 
 
 def test_edit_cannot_promote_to_accountant(client, db_session, admin_user, accountant_user, main_branch):
@@ -89,3 +91,30 @@ def test_edit_cannot_promote_to_accountant(client, db_session, admin_user, accou
     }, follow_redirects=True)
     refreshed = db_session.get(User, target.id)
     assert refreshed.role in ('staff', 'viewer')      # forged accountant rejected by form choices
+
+
+def test_toggle_active_flips_and_audits(client, db_session, admin_user, accountant_user,
+                                        main_branch):
+    target = _staff(db_session, main_branch, username='toggler')
+    assert target.is_active is True
+    _login(client, 'accountant')
+    resp = client.post(f'/staff-management/{target.id}/toggle-active',
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db_session.expire(target)
+    assert target.is_active is False
+    # audit row logged for the toggle
+    row = db.session.execute(
+        db.select(AuditLog).filter_by(module='user', record_id=target.id,
+                                      action='status_changed')
+    ).scalars().first()
+    assert row is not None
+
+
+def test_toggle_active_out_of_scope_forbidden(client, db_session, admin_user, accountant_user,
+                                              main_branch, branch_manila):
+    outsider = _staff(db_session, branch_manila, username='outcast')
+    _login(client, 'accountant')
+    resp = client.post(f'/staff-management/{outsider.id}/toggle-active',
+                       follow_redirects=False)
+    assert resp.status_code == 403
