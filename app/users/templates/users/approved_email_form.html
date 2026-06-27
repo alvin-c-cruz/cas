@@ -60,9 +60,10 @@
             </div>
             {% endif %}
 
-            {# Book access permissions — admin only. The registrant is created with
-               whatever is checked here; leave all unchecked to configure later. #}
-            {% if current_user.role == 'admin' %}
+            {# Access permissions grid. Admin sees every module; an accountant sees only
+               the modules they hold (editable_mods is scoped per-approver in the view).
+               The registrant is created with whatever is checked; leave blank to set later. #}
+            {% if editable_mods %}
             <div class="form-group">
                 <label class="form-label">Access Permissions</label>
                 <div class="form-hint" style="margin-bottom: 12px;">Select the modules this person can access once registered. Leave blank to set them up later.</div>
@@ -71,7 +72,7 @@
                     <span>Select all</span>
                 </label>
                 {% for section in ['Transactions', 'Ledger', 'Financial Reports', 'Maintenance'] %}
-                {% set mods = module_registry | selectattr('section', 'equalto', section) | list %}
+                {% set mods = editable_mods | selectattr('section', 'equalto', section) | list %}
                 {% if mods %}
                 <div class="form-hint" style="margin: 10px 0 6px; font-weight: 600;">{{ section }}</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
@@ -119,9 +120,9 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if current_user.role == 'admin' %}
+{% if editable_mods %}
 <script>
-// "Select all" toggle for the Access Permissions grid (admin only).
+// "Select all" toggle for the Access Permissions grid (admin or accountant).
 document.addEventListener('DOMContentLoaded', function () {
     var selectAll = document.getElementById('book-select-all');
     if (!selectAll) return;

@@ -654,6 +654,16 @@ def add_approved_email():
     form.branch_ids.choices = [(b.id, b.name) for b in allowed_branches]
     single_branch = allowed_branches[0] if len(allowed_branches) == 1 else None
 
+    # Permission-grid scope: admin may grant any module; an accountant may grant only
+    # the modules they themselves hold (subset delegation, same rule as Staff Management).
+    from app.users.module_access import all_permission_keys, MODULE_REGISTRY
+    if current_user.role == 'admin':
+        editable_keys = set(all_permission_keys())
+    else:
+        from app.staff_management.scope import accountant_permission_keys
+        editable_keys = accountant_permission_keys(current_user)
+    editable_mods = [m for m in MODULE_REGISTRY if m['key'] in editable_keys]
+
     if form.validate_on_submit():
         # Resolve the branch assignment. A single-branch approver need not pick —
         # their one branch is auto-assigned; otherwise at least one must be chosen.
@@ -664,12 +674,16 @@ def add_approved_email():
         if not selected_ids:
             flash('Assign at least one branch for this registration.', 'error')
             return render_template('users/approved_email_form.html', form=form,
-                                   single_branch=single_branch)
+                                   single_branch=single_branch, editable_mods=editable_mods)
 
         branches = Branch.query.filter(Branch.id.in_(selected_ids)).all()
         branch_names = ', '.join(b.name for b in branches)
         position = form.position.data
         position_label = dict(form.position.choices).get(position, position)
+
+        # Permissions to stamp on the approved email — restricted to what the approver
+        # may grant (a forged book_* outside editable_keys is dropped server-side).
+        book_perms = {k: request.form.get('book_' + k) == '1' for k in editable_keys}
 
         try:
             if current_user.role == 'admin':
@@ -682,12 +696,7 @@ def add_approved_email():
                     notes=form.notes.data
                 )
                 approved_email.branches = branches
-                # Admin-only: stamp the chosen book (module) permissions so the
-                # registrant is created with them. Server-side built from the grid.
-                from app.users.module_access import all_permission_keys
-                approved_email.set_book_permissions(
-                    {k: request.form.get('book_' + k) == '1' for k in all_permission_keys()}
-                )
+                approved_email.set_book_permissions(book_perms)
                 db.session.add(approved_email)
                 db.session.commit()
 
@@ -719,6 +728,7 @@ def add_approved_email():
                         notes=form.notes.data
                     )
                     approved_email.branches = branches
+                    approved_email.set_book_permissions(book_perms)
                     db.session.add(approved_email)
                     db.session.commit()
 
@@ -758,6 +768,7 @@ def add_approved_email():
                         notes=form.notes.data
                     )
                     approved_email.branches = branches
+                    approved_email.set_book_permissions(book_perms)
                     db.session.add(approved_email)
                     db.session.commit()
 
@@ -796,7 +807,7 @@ def add_approved_email():
             flash(f'Error adding approved email: {str(e)}', 'error')
 
     return render_template('users/approved_email_form.html', form=form,
-                           single_branch=single_branch)
+                           single_branch=single_branch, editable_mods=editable_mods)
 
 
 @users_bp.route('/approved-emails/<int:id>/approve', methods=['POST'])

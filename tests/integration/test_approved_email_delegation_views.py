@@ -1,9 +1,11 @@
 """Integration tests for Feature B — add_approved_email stores role + branches,
 scoped to the approver's accessible branches with single-branch auto-assign."""
 import pytest
+from app.users.models import User
 from app.users.approved_emails import ApprovedEmail
 from app.audit.models import AuditLog
 from app.notifications.models import Notification
+from app.settings import AppSettings
 
 pytestmark = [pytest.mark.integration]
 
@@ -54,6 +56,58 @@ def test_admin_add_stores_book_permissions(client, db_session, admin_user, main_
     assert perms.get('payments') is not True  # unchecked → not granted
 
 
+def test_accountant_form_shows_only_own_permission_modules(client, db_session, admin_user,
+                                                           accountant_user, main_branch):
+    """The accountant's Access Permissions grid lists only modules they hold (subset)."""
+    accountant_user.set_book_permissions({'accounts_payable': True})
+    db_session.commit()
+    _login(client, accountant_user, main_branch, 'accountant123')
+    resp = client.get('/approved-emails/add')
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'Access Permissions' in body
+    assert 'name="book_accounts_payable"' in body
+    assert 'name="book_general_ledger"' not in body  # accountant doesn't hold GL → not offered
+
+
+def test_accountant_stamps_only_own_permissions(client, db_session, admin_user,
+                                                accountant_user, main_branch):
+    """An accountant can only grant a subset of their own permissions; a forged
+    out-of-scope book_* key is dropped server-side."""
+    accountant_user.set_book_permissions({'accounts_payable': True})
+    db_session.commit()
+    _login(client, accountant_user, main_branch, 'accountant123')
+    client.post('/approved-emails/add', data={
+        'email': 'acctperm@example.ph', 'position': 'staff',
+        'book_accounts_payable': '1',
+        'book_general_ledger': '1',  # forged — accountant lacks GL
+    }, follow_redirects=False)
+    ae = ApprovedEmail.query.filter_by(email='acctperm@example.ph').first()
+    perms = ae.get_book_permissions()
+    assert perms.get('accounts_payable') is True
+    assert perms.get('general_ledger') is not True  # forged key never granted
+
+
+def test_self_approved_email_carries_accountant_permissions_to_user(client, db_session, admin_user,
+                                                                    accountant_user, main_branch):
+    """End-to-end: accountant stamps a subset, self-approves, registrant gets those perms."""
+    AppSettings.set_setting('accountant_email_self_approval', '1')
+    accountant_user.set_book_permissions({'accounts_payable': True})
+    db_session.commit()
+    _login(client, accountant_user, main_branch, 'accountant123')
+    client.post('/approved-emails/add', data={
+        'email': 'acctreg@example.ph', 'position': 'staff', 'book_accounts_payable': '1',
+    }, follow_redirects=False)
+    client.get('/logout', follow_redirects=True)
+    client.post('/register', data={
+        'username': 'acctreguser', 'email': 'acctreg@example.ph', 'full_name': 'Acct Reg',
+        'password': 'Sup3rSecret!23', 'confirm_password': 'Sup3rSecret!23',
+    }, follow_redirects=False)
+    user = User.query.filter_by(email='acctreg@example.ph').first()
+    assert user is not None and user.is_active is True
+    assert user.get_book_permissions().get('accounts_payable') is True
+
+
 def test_admin_form_has_permission_select_all(client, db_session, admin_user, main_branch):
     """Admin permission grid offers a 'Select all' toggle."""
     _login(client, admin_user, main_branch, 'admin123')
@@ -64,30 +118,17 @@ def test_admin_form_has_permission_select_all(client, db_session, admin_user, ma
     assert 'Select all' in body
 
 
-def test_accountant_form_has_no_permission_grid_or_select_all(client, db_session, admin_user,
-                                                              accountant_user, main_branch):
-    """Accountant request form has no permission grid (admin-only), so no select-all."""
+def test_accountant_with_no_modules_has_no_permission_grid(client, db_session, admin_user,
+                                                          accountant_user, main_branch):
+    """An accountant who holds no delegatable modules sees no permission grid/select-all."""
+    accountant_user.set_book_permissions({})
+    db_session.commit()
     _login(client, accountant_user, main_branch, 'accountant123')
     resp = client.get('/approved-emails/add')
     assert resp.status_code == 200
     body = resp.data.decode()
     assert 'book-select-all' not in body
     assert 'Access Permissions' not in body
-
-
-def test_accountant_add_does_not_store_book_permissions(client, db_session, admin_user,
-                                                        accountant_user, main_branch):
-    """Admin-only scope: an accountant's request never stamps book_permissions, even
-    if book_* fields are forged into the POST (grid is configured later in Staff Mgmt)."""
-    _login(client, accountant_user, main_branch, 'accountant123')
-    resp = client.post('/approved-emails/add', data={
-        'email': 'perm.acct@example.ph', 'position': 'staff',
-        'book_accounts_payable': '1',  # forged — must be ignored on the accountant path
-    }, follow_redirects=False)
-    assert resp.status_code == 302
-
-    ae = ApprovedEmail.query.filter_by(email='perm.acct@example.ph').first()
-    assert ae.get_book_permissions() == {}
 
 
 def test_admin_add_requires_at_least_one_branch(client, db_session, admin_user, main_branch, branch_manila):
