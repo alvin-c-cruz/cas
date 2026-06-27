@@ -72,6 +72,8 @@ def ensure_accountant_user():
         u = User(username='accountant', email='accountant@cas.local',
                  full_name='Maria Accountant', role='accountant', is_active=True)
         u.set_password('cas-accountant')
+        from app.users.module_access import default_all_permissions
+        u.set_book_permissions(default_all_permissions())
         db.session.add(u)
         db.session.commit()
     return u

@@ -98,6 +98,8 @@ def accountant_user(db_session, main_branch):
         is_active=True
     )
     user.set_password('accountant123')
+    from app.users.module_access import default_all_permissions
+    user.set_book_permissions(default_all_permissions())
     db_session.add(user)
     db_session.flush()  # get user.id before set_branches
     user.set_branches([main_branch])
@@ -151,6 +153,8 @@ def viewer_user(db_session):
         is_active=True
     )
     user.set_password('viewer123')
+    from app.users.module_access import default_all_permissions
+    user.set_book_permissions(default_all_permissions())
     db_session.add(user)
     db_session.commit()
     return user
