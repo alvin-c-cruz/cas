@@ -1,0 +1,14 @@
+{# app/reports/templates/reports/_bir_book_header.html #}
+{% macro bir_book_header(company, book_title, period_label) %}
+<div class="bir-book-header">
+  {% if company.name %}<div class="bir-company">{{ company.name | upper }}</div>{% endif %}
+  {% set tin_bits = [] %}
+  {% if company.tin %}{% set _ = tin_bits.append('TIN: ' + company.tin + ('-' + company.tin_branch if company.tin_branch else '')) %}{% endif %}
+  {% if company.rdo %}{% set _ = tin_bits.append('RDO: ' + company.rdo) %}{% endif %}
+  {% if tin_bits %}<div class="bir-tin">{{ tin_bits | join(' · ') }}</div>{% endif %}
+  {% if company.address %}<div class="bir-address">{{ company.address }}</div>{% endif %}
+  {% if multi_branch and current_branch %}<div class="bir-branch">{{ current_branch.name }}</div>{% endif %}
+  <div class="bir-title">{{ book_title }}</div>
+  <div class="bir-period">{{ period_label }}</div>
+</div>
+{% endmacro %}

@@ -1,12 +1,12 @@
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <title>General Ledger</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=1">
     <style>
         body { font-family: Arial, sans-serif; font-size: 12px; color: #000; margin: 24px; }
-        h1 { font-size: 18px; margin: 0 0 4px 0; }
-        .period { color: #444; margin: 0 0 16px 0; }
         .acct { page-break-inside: avoid; margin-bottom: 18px; }
         .acct + .acct { page-break-before: always; }
         .acct-title { font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
@@ -18,8 +18,7 @@
     </style>
 </head>
 <body onload="window.print()">
-    <h1>General Ledger</h1>
-    <p class="period">{{ start_date.strftime('%B %d, %Y') }} &ndash; {{ end_date.strftime('%B %d, %Y') }}</p>
+    {{ bir_book_header(company, 'GENERAL LEDGER', period_label) }}
     {% macro bal(value) %}{% if value >= 0 %}₱{{ "{:,.2f}".format(value) }} Dr{% else %}₱{{ "{:,.2f}".format(-value) }} Cr{% endif %}{% endmacro %}
     {% for acct in ledger.accounts %}
     <div class="acct">

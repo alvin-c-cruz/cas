@@ -27,6 +27,7 @@ from app.reports.financial import (
     generate_cash_flow,
 )
 from app.utils.export import export_to_excel, export_to_csv
+from app.utils.bir_books import get_company_identity
 from datetime import date, timedelta, datetime
 from decimal import Decimal
 from sqlalchemy import func
@@ -356,8 +357,11 @@ def general_ledger_print():
     start_date, end_date, account_id, branch_id = _gl_params()
     ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
     _attach_source_links(ledger, branch_id)
+    period_label = (f"{start_date.strftime('%b %d, %Y')} to "
+                    f"{end_date.strftime('%b %d, %Y')}")
     return render_template('reports/general_ledger_print.html',
-                           ledger=ledger, start_date=start_date, end_date=end_date)
+                           ledger=ledger, start_date=start_date, end_date=end_date,
+                           company=get_company_identity(), period_label=period_label)
 
 
 # BIR Compliance Reports
