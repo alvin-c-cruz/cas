@@ -208,7 +208,11 @@
             <thead>
                 <tr>
                     <th>#</th>
+                    {% if module_enabled('products') %}<th>Product</th>{% endif %}
                     <th>Description</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th>UOM</th>
+                    <th style="text-align:right;">Unit Price</th>
                     <th style="text-align:right;">Amount (VAT-incl.)</th>
                     <th>VAT</th>
                     <th>WHT</th>
@@ -219,7 +223,21 @@
                 {% for item in ap.line_items %}
                 <tr>
                     <td>{{ item.line_number }}</td>
+                    {% if module_enabled('products') %}
+                    <td style="font-size:12px; color:var(--text-2);">
+                        {% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
+                    </td>
+                    {% endif %}
                     <td>{{ item.description or '—' }}</td>
+                    <td style="text-align:right; font-family:var(--mono);">
+                        {{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
+                    </td>
+                    <td style="font-size:12px;">
+                        {{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}
+                    </td>
+                    <td style="text-align:right; font-family:var(--mono);">
+                        {% if item.unit_price is not none %}₱{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
+                    </td>
                     <td style="text-align:right; font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(item.line_total) }}</td>
                     <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
                     <td style="font-size:12px;">

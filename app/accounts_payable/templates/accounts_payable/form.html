@@ -74,11 +74,15 @@
                     <table class="table" id="lineItemsTable">
                         <thead>
                             <tr>
-                                <th style="width: 38%;">Description</th>
-                                <th style="width: 13%; text-align: right;">Amount (VAT-incl.)</th>
-                                <th style="width: 9%;">VT</th>
-                                <th style="width: 8%;">WT</th>
-                                <th style="width: 27%;">Account Title</th>
+                                {% if module_enabled('products') %}<th style="width: 12%;">Product</th>{% endif %}
+                                <th style="width: {% if module_enabled('products') %}22{% else %}28{% endif %}%;">Description</th>
+                                <th style="width: 6%; text-align: right;">Qty</th>
+                                <th style="width: 7%;">UOM</th>
+                                <th style="width: 9%; text-align: right;">Unit Price</th>
+                                <th style="width: 10%; text-align: right;">Amount (VAT-incl.)</th>
+                                <th style="width: 7%;">VT</th>
+                                <th style="width: 6%;">WT</th>
+                                <th style="width: {% if module_enabled('products') %}16{% else %}22{% endif %}%;">Account Title</th>
                                 <th style="width: 5%;"></th>
                             </tr>
                         </thead>
@@ -329,6 +333,10 @@
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts = {{ all_accounts | tojson }};
 const glAccounts = {{ gl_accounts | tojson }};
+const units = {{ units | tojson }};
+const products = {{ products | tojson }};
+const uomMasterOn = {{ module_enabled('units_of_measure') | tojson }};
+const productMasterOn = {{ module_enabled('products') | tojson }};
 
 let currentVendorWHTs = [];
 let currentVendorVatCategory = '';
@@ -418,6 +426,11 @@ function addFirstLineItem() {
         wt_id: autoWht ? autoWht.id : null,
         wt_rate: autoWht ? autoWht.rate : null,
         account_id: currentVendorLastAccountId,
+        product_id: null,
+        quantity: null,
+        uom_id: null,
+        uom_text: '',
+        unit_price: null,
     });
 }
 
@@ -456,6 +469,11 @@ function addLineItem(existingItem, firstDefaults) {
             id,
             description: '',
             amount: 0.00,
+            product_id: firstDefaults.product_id || null,
+            quantity: firstDefaults.quantity || null,
+            uom_id: firstDefaults.uom_id || null,
+            uom_text: firstDefaults.uom_text || '',
+            unit_price: firstDefaults.unit_price || null,
             vat_category: currentVendorVatCategory || '',
             account_id: firstDefaults.account_id || null,
             wt_id: firstDefaults.wt_id || null,
@@ -467,6 +485,11 @@ function addLineItem(existingItem, firstDefaults) {
             id,
             description: '',
             amount: 0.00,
+            product_id: null,
+            quantity: null,
+            uom_id: null,
+            uom_text: '',
+            unit_price: null,
             vat_category: currentVendorVatCategory || '',
             account_id: null,
             wt_id: autoWht ? autoWht.id : null,
@@ -477,9 +500,32 @@ function addLineItem(existingItem, firstDefaults) {
     const row = document.createElement('tr');
     row.id = `line-${id}`;
     row.innerHTML = `
-        <td><input type="text" class="form-control" value="${escHtml(item.description || '')}"
+        ${productMasterOn ? `
+        <td>
+            <select class="form-control prod-select" id="prod-${id}">
+                <option value="">— none —</option>
+                ${products.map(p => `<option value="${p.id}" ${item.product_id === p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+            </select>
+        </td>` : ''}
+        <td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
                    onchange="updateLineItem(${id}, 'description', this.value)"></td>
-        <td><input type="text" class="form-control" value="${amtFmt(item.amount || 0)}"
+        <td><input type="number" id="qty-${id}" class="form-control" value="${item.quantity != null ? item.quantity : ''}"
+                   min="0" step="any" style="text-align:right;"
+                   oninput="updateLineItem(${id}, 'quantity', this.value ? parseFloat(this.value) : null); updateDerivedAmount(${id});"></td>
+        <td>
+            ${uomMasterOn ? `
+            <select class="form-control uom-select" id="uom-${id}">
+                <option value="">—</option>
+                ${units.map(u => `<option value="${u.id}" ${item.uom_id === u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
+            </select>` : `
+            <input type="text" id="uom-${id}" class="form-control" value="${escHtml(item.uom_text || '')}"
+                   placeholder="e.g. pcs" maxlength="20"
+                   oninput="updateLineItem(${id}, 'uom_text', this.value);">`}
+        </td>
+        <td><input type="number" id="up-${id}" class="form-control" value="${item.unit_price != null ? item.unit_price : ''}"
+                   min="0" step="any" style="text-align:right; font-family:var(--mono);"
+                   oninput="updateLineItem(${id}, 'unit_price', this.value ? parseFloat(this.value) : null); updateDerivedAmount(${id});"></td>
+        <td><input type="text" id="amt-${id}" class="form-control" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right; font-family: var(--mono);"
                    onfocus="amtFocus(this)" onblur="amtBlur(this, ${id})"></td>
         <td>
@@ -535,8 +581,24 @@ function addLineItem(existingItem, firstDefaults) {
     whtSel.addEventListener('change', () => updateWht(id, whtSel));
     acctSel.addEventListener('change', () => updateLineItem(id, 'account_id', parseInt(acctSel.value) || null));
     lineChoices[id] = { vat: vatC, wht: whtC, acct: acctC };
+
+    // Product picker event
+    if (productMasterOn) {
+        const prodSel = newRow.querySelector('.prod-select');
+        if (prodSel) {
+            prodSel.addEventListener('change', () => onProductPick(id, prodSel.value ? parseInt(prodSel.value) : null));
+        }
+    }
+    // UOM picker event (when unit master is on)
+    if (uomMasterOn) {
+        const uomSel = newRow.querySelector('.uom-select');
+        if (uomSel) {
+            uomSel.addEventListener('change', () => updateLineItem(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null));
+        }
+    }
+
     lineItems.push(item);
-    calculateTotals();
+    updateDerivedAmount(id);
 }
 
 function updateWht(id, sel) {
@@ -567,6 +629,71 @@ function removeLineItem(id) {
     document.getElementById(`line-${id}`).remove();
     lineItems = lineItems.filter(i => i.id !== id);
     calculateTotals();
+}
+
+// ── Derived amount (qty × unit_price, integer-centavo lock) ──────────────────
+
+function updateDerivedAmount(id) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    const q = item.quantity != null ? parseFloat(item.quantity) : NaN;
+    const up = item.unit_price != null ? parseFloat(item.unit_price) : NaN;
+    const amtEl = document.getElementById(`amt-${id}`);
+    if (!isNaN(q) && !isNaN(up) && q > 0 && up > 0) {
+        // Integer-centavo arithmetic matches server ROUND_HALF_UP
+        const derived = Math.round(q * up * 100) / 100;
+        item.amount = derived;
+        if (amtEl) { amtEl.value = amtFmt(derived); amtEl.readOnly = true; }
+    } else {
+        if (amtEl) amtEl.readOnly = false;
+    }
+    calculateTotals();
+}
+
+// ── Product autofill ──────────────────────────────────────────────────────────
+
+function onProductPick(id, productId) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    item.product_id = productId;
+    if (!productId) { calculateTotals(); return; }
+    const prod = products.find(p => p.id === productId);
+    if (!prod) { calculateTotals(); return; }
+
+    // Autofill description (overridable by user)
+    if (prod.name) {
+        item.description = prod.code + ' — ' + prod.name;
+        const descEl = document.getElementById(`desc-${id}`);
+        if (descEl) descEl.value = item.description;
+    }
+
+    // Autofill UOM
+    if (prod.unit_of_measure_id) {
+        item.uom_id = prod.unit_of_measure_id;
+        const uomEl = document.getElementById(`uom-${id}`);
+        if (uomEl && uomMasterOn) {
+            uomEl.value = String(prod.unit_of_measure_id);
+        } else if (uomEl && prod.uom_code) {
+            uomEl.value = prod.uom_code;
+            item.uom_text = prod.uom_code;
+        }
+    }
+
+    // Autofill unit price
+    if (prod.unit_price != null) {
+        item.unit_price = parseFloat(prod.unit_price);
+        const upEl = document.getElementById(`up-${id}`);
+        if (upEl) upEl.value = item.unit_price;
+    }
+
+    // Autofill default account
+    if (prod.default_account_id) {
+        item.account_id = prod.default_account_id;
+        const lc = lineChoices[id];
+        if (lc && lc.acct) lc.acct.setChoiceByValue(String(prod.default_account_id));
+    }
+
+    updateDerivedAmount(id);
 }
 
 function calculateTotals() {
@@ -808,6 +935,11 @@ document.getElementById('billForm').addEventListener('submit', function () {
     document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(item => ({
         description: item.description,
         amount: item.amount,
+        product_id: item.product_id || null,
+        quantity: item.quantity != null ? item.quantity : null,
+        uom_id: item.uom_id || null,
+        uom_text: item.uom_text || '',
+        unit_price: item.unit_price != null ? item.unit_price : null,
         vat_category: item.vat_category,
         account_id: item.account_id,
         wt_id: item.wt_id,
@@ -907,7 +1039,11 @@ function initItems() {
     } catch (e) { /* malformed payload — start clean */ }
     {% elif ap and line_items %}
     const existingItems = {{ line_items | tojson }};
-    existingItems.forEach(item => addLineItem(item));
+    existingItems.forEach(item => {
+        // Normalize server key unit_of_measure_id → uom_id used by JS
+        if (item.uom_id === undefined) item.uom_id = item.unit_of_measure_id || null;
+        addLineItem(item);
+    });
     {% endif %}
     // Create mode (no restore): no auto-add — first row added when vendor is selected
 }
