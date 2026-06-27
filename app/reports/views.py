@@ -28,6 +28,11 @@ from app.reports.financial import (
 )
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.bir_books import get_company_identity
+from app.journal_entries.models import JournalEntry
+from app.reports.general_journal_data import (build_general_journal,
+    build_general_journal_xlsx, VOUCHER_ENTRY_TYPES)
+from app.journals.ap_journal_data import resolve_period   # pure fn, not modified
+from app.utils import ph_now
 from datetime import date, timedelta, datetime
 from decimal import Decimal
 from sqlalchemy import func
@@ -1026,3 +1031,61 @@ def ar_aging_export_csv():
     headers = ['Customer', 'Current', '1-30', '31-60', '61-90', '90+', 'Total']
     return export_to_csv(rows, columns, headers,
                          filename=f'ar_aging_{as_of_date.isoformat()}.csv')
+
+
+# ============================================================================
+# BOOKS OF ACCOUNTS — General Journal
+# ============================================================================
+
+def _general_journal_entries(branch_id, period):
+    """Voucher-type journal entries for the given branch and period, ordered by date+id."""
+    return JournalEntry.query.filter(
+        JournalEntry.entry_type.in_(VOUCHER_ENTRY_TYPES),
+        JournalEntry.branch_id == branch_id,
+        JournalEntry.entry_date >= period['date_from'],
+        JournalEntry.entry_date <= period['date_to'],
+    ).order_by(JournalEntry.entry_date, JournalEntry.id).all()
+
+
+@reports_bp.route('/reports/general-journal')
+@login_required
+def general_journal():
+    """General Journal screen view — voucher entries only."""
+    branch_id = session.get('selected_branch_id')
+    if not branch_id:
+        flash('Please select a branch to view the General Journal.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+    period = resolve_period(request.args, ph_now().date())
+    gj = build_general_journal(_general_journal_entries(branch_id, period))
+    return render_template('reports/general_journal.html', gj=gj, period=period)
+
+
+@reports_bp.route('/reports/general-journal/print')
+@login_required
+def general_journal_print():
+    """General Journal printable view."""
+    branch_id = session.get('selected_branch_id')
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+    period = resolve_period(request.args, ph_now().date())
+    gj = build_general_journal(_general_journal_entries(branch_id, period))
+    return render_template('reports/general_journal_print.html', gj=gj, period=period,
+                           company=get_company_identity(), printed_at=ph_now())
+
+
+@reports_bp.route('/reports/general-journal/export')
+@login_required
+def general_journal_export():
+    """General Journal Excel export."""
+    from flask import send_file
+    branch_id = session.get('selected_branch_id')
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+    period = resolve_period(request.args, ph_now().date())
+    gj = build_general_journal(_general_journal_entries(branch_id, period))
+    bio = build_general_journal_xlsx(gj, period['label'], get_company_identity(),
+                                     None, 'General_Journal.xlsx')
+    return send_file(bio, as_attachment=True, download_name='General_Journal.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

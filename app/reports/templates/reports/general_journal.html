@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}General Journal{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div>
+        <h2 style="margin:0;">General Journal</h2>
+        <p style="margin:4px 0 0 0;color:var(--text-2);">{{ period.label }}</p>
+      </div>
+      <div class="card-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        {% set q = 'date_from=' ~ period.date_from.isoformat() ~ '&date_to=' ~ period.date_to.isoformat() ~ '&mode=custom' %}
+        <a href="{{ url_for('reports.general_journal_export') }}?{{ q }}"
+           class="btn btn-secondary">Excel</a>
+        <a href="{{ url_for('reports.general_journal_print') }}?{{ q }}"
+           class="btn btn-secondary" target="_blank">Print</a>
+        <a href="{{ url_for('reports.index') }}" class="btn btn-secondary">Back to Reports</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <form method="GET" style="margin-bottom:20px;">
+      <input type="hidden" name="mode" value="custom">
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;">
+          <label>From</label>
+          <input type="date" name="date_from" value="{{ period.date_from.isoformat() }}"
+                 class="form-control" style="width:180px;">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>To</label>
+          <input type="date" name="date_to" value="{{ period.date_to.isoformat() }}"
+                 class="form-control" style="width:180px;">
+        </div>
+        <button type="submit" class="btn btn-primary">Enter</button>
+      </div>
+    </form>
+
+    {% if gj.rows %}
+    <table class="table" style="font-size:0.9rem;">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Particulars</th>
+          <th>Ref</th>
+          <th style="text-align:right;">Debit</th>
+          <th style="text-align:right;">Credit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in gj.rows %}
+        {% set row_cls = 'gj-row-voided' if row.is_voided else ('gj-row-draft' if row.is_draft else '') %}
+        {% for d in row.debits %}
+        <tr class="{{ row_cls }}">
+          <td>{% if loop.first %}{{ row.entry.entry_date.strftime('%m/%d/%Y') }}{% endif %}</td>
+          <td>{{ d.account.name }}</td>
+          <td>{% if loop.first %}{{ row.entry.display_number }}{% endif %}</td>
+          <td style="text-align:right;">₱{{ '{:,.2f}'.format(d.amount) }}</td>
+          <td></td>
+        </tr>
+        {% endfor %}
+        {% for c in row.credits %}
+        <tr class="{{ row_cls }}">
+          <td></td>
+          <td style="padding-left:28px;">{{ c.account.name }}</td>
+          <td></td>
+          <td></td>
+          <td style="text-align:right;">₱{{ '{:,.2f}'.format(c.amount) }}</td>
+        </tr>
+        {% endfor %}
+        {% if row.explanation %}
+        <tr class="{{ row_cls }}">
+          <td></td>
+          <td colspan="4" style="font-style:italic;color:var(--text-2);">({{ row.explanation }})</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+      <tfoot style="border-top:2px solid var(--border);font-weight:600;">
+        <tr style="background:var(--bg);">
+          <td colspan="3">TOTAL</td>
+          <td style="text-align:right;">₱{{ '{:,.2f}'.format(gj.total_debit) }}</td>
+          <td style="text-align:right;">₱{{ '{:,.2f}'.format(gj.total_credit) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+    {% if not gj.balanced %}
+    <div class="alert alert-danger" style="margin-top:12px;">
+      Warning: General Journal debits and credits are out of balance.
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state">
+      <p>No General Journal entries for {{ period.label }}.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+.gj-row-draft td { background: var(--color-warning-bg, #fffde7); }
+.gj-row-voided td { background: var(--color-danger-bg, #ffebee); text-decoration: line-through; }
+@media print {
+  .btn, form, .card-header-actions { display: none !important; }
+  .sidebar { display: none !important; }
+  .main-content { margin-left: 0 !important; }
+}
+</style>
+{% endblock %}
