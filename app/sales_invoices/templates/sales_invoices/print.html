@@ -131,7 +131,7 @@
         <td>{{ item.line_number }}</td>
         <td>{{ item.description or '—' }}</td>
         {% if module_enabled('products') %}
-        <td>{% if item.product %}{{ item.product.code }}{% else %}—{% endif %}</td>
+        <td>{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}</td>
         {% endif %}
         <td class="amount">{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}</td>
         <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>

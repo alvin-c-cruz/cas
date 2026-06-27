@@ -975,7 +975,10 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
             return None
 
     def _int(v):
-        return int(v) if v and str(v).strip() not in ('', 'null') else None
+        try:
+            return int(v) if v and str(v).strip() not in ('', 'null') else None
+        except (ValueError, TypeError):
+            return None
 
     for idx, item_data in enumerate(items, start=1):
         vat_rate = Decimal('0.00')
