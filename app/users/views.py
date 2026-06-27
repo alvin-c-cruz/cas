@@ -702,43 +702,87 @@ def add_approved_email():
                 flash(f'Email "{form.email.data}" has been approved for registration '
                       f'as {position_label}.', 'success')
             else:
-                # Accountant → pending, notify admins
-                approved_email = ApprovedEmail(
-                    email=form.email.data.lower(),
-                    status='pending',
-                    role=position,
-                    requested_by_user_id=current_user.id,
-                    notes=form.notes.data
-                )
-                approved_email.branches = branches
-                db.session.add(approved_email)
-                db.session.commit()
+                from app.users.utils import accountant_self_approval_enabled
+                self_approve = (accountant_self_approval_enabled()
+                                and position in ('staff', 'viewer'))
 
-                # Notify all active admins
-                admins = User.query.filter_by(role='admin', is_active=True).all()
-                for admin in admins:
-                    create_notification(
-                        user_id=admin.id,
-                        title='Approved-email request',
-                        message=(f'{current_user.full_name} requested approval for '
-                                 f'{approved_email.email} as {position_label} ({branch_names})'),
-                        category='info',
-                        related_type='approved_email',
-                        related_id=approved_email.id,
+                if self_approve:
+                    # Company policy lets accountants self-approve staff/viewer registrations.
+                    approved_email = ApprovedEmail(
+                        email=form.email.data.lower(),
+                        status='approved',
+                        role=position,
+                        approved_by_user_id=current_user.id,
+                        reviewed_at=ph_now(),
+                        notes=form.notes.data
+                    )
+                    approved_email.branches = branches
+                    db.session.add(approved_email)
+                    db.session.commit()
+
+                    # FYI (not an action item) notification to all active admins
+                    admins = User.query.filter_by(role='admin', is_active=True).all()
+                    for admin in admins:
+                        create_notification(
+                            user_id=admin.id,
+                            title='Email self-approved',
+                            message=(f'{current_user.full_name} self-approved '
+                                     f'{approved_email.email} as {position_label} ({branch_names})'),
+                            category='info',
+                            related_type='approved_email',
+                            related_id=approved_email.id,
+                        )
+
+                    log_audit(
+                        module='approved_email',
+                        action='create',
+                        record_id=approved_email.id,
+                        record_identifier=approved_email.email,
+                        new_values={'email': approved_email.email, 'role': position,
+                                    'branch_ids': selected_ids, 'notes': approved_email.notes},
+                        notes=(f'Self-approved by accountant {current_user.username} '
+                               f'as {position_label} ({branch_names})')
                     )
 
-                log_audit(
-                    module='approved_email',
-                    action='request',
-                    record_id=approved_email.id,
-                    record_identifier=approved_email.email,
-                    new_values={'email': approved_email.email, 'role': position,
-                                'branch_ids': selected_ids, 'notes': approved_email.notes},
-                    notes=(f'Submitted by {current_user.username} for admin approval '
-                           f'as {position_label} ({branch_names})')
-                )
+                    flash(f'Email "{form.email.data}" has been approved for registration '
+                          f'as {position_label}.', 'success')
+                else:
+                    # Accountant → pending, notify admins (unchanged behavior)
+                    approved_email = ApprovedEmail(
+                        email=form.email.data.lower(),
+                        status='pending',
+                        role=position,
+                        requested_by_user_id=current_user.id,
+                        notes=form.notes.data
+                    )
+                    approved_email.branches = branches
+                    db.session.add(approved_email)
+                    db.session.commit()
 
-                flash('Email request submitted for admin approval.', 'success')
+                    admins = User.query.filter_by(role='admin', is_active=True).all()
+                    for admin in admins:
+                        create_notification(
+                            user_id=admin.id,
+                            title='Approved-email request',
+                            message=(f'{current_user.full_name} requested approval for '
+                                     f'{approved_email.email} as {position_label} ({branch_names})'),
+                            category='info',
+                            related_type='approved_email',
+                            related_id=approved_email.id,
+                        )
+
+                    log_audit(
+                        module='approved_email',
+                        action='request',
+                        record_id=approved_email.id,
+                        record_identifier=approved_email.email,
+                        new_values={'email': approved_email.email, 'role': position,
+                                    'branch_ids': selected_ids, 'notes': approved_email.notes},
+                        notes=(f'Submitted by {current_user.username} for admin approval '
+                               f'as {position_label} ({branch_names})')
+                    )
+
+                    flash('Email request submitted for admin approval.', 'success')
 
             return redirect(url_for('users.list_approved_emails'))
         except Exception as e:
