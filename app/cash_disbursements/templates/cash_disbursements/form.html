@@ -707,10 +707,9 @@ function addExpenseLine(existingItem) {
                    step="any" min="0" style="text-align:right;font-family:var(--mono);min-width:60px"
                    oninput="updateExpense(${id}, 'quantity', parseFloat(this.value)||null); updateDerivedAmount(${id})"></td>
         <td>${uomCell}</td>
-        <td><input type="text" class="form-control" id="exp-up-${id}" value="${item.unit_price != null ? amtFmt(item.unit_price) : ''}"
+        <td><input type="number" step="0.01" min="0" class="form-control" id="exp-up-${id}" value="${item.unit_price != null ? item.unit_price : ''}"
                    style="text-align:right;font-family:var(--mono);min-width:70px"
-                   onfocus="amtFocus(this)"
-                   onblur="updateExpense(${id}, 'unit_price', parseFloat(this.value.replace(/,/g,''))||null); updateDerivedAmount(${id})"></td>
+                   onchange="updateExpense(${id}, 'unit_price', parseFloat(this.value)||null); updateDerivedAmount(${id})"></td>
         <td><input type="text" class="form-control exp-amt" id="exp-amt-${id}" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right;font-family:var(--mono)"
                    onfocus="amtFocus(this)" onblur="expAmtBlur(this, ${id})"></td>
@@ -809,7 +808,7 @@ function onProductPick(id, productId) {
     if (p.default_unit_price != null) {
         item.unit_price = p.default_unit_price;
         const upEl = document.getElementById(`exp-up-${id}`);
-        if (upEl) upEl.value = amtFmt(p.default_unit_price);
+        if (upEl) upEl.value = p.default_unit_price;
     }
     if (p.default_account_id) {
         item.account_id = p.default_account_id;

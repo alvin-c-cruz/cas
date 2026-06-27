@@ -662,7 +662,7 @@ function onProductPick(id, productId) {
 
     // Autofill description (overridable by user)
     if (prod.name) {
-        item.description = prod.code + ' — ' + prod.name;
+        item.description = prod.name;
         const descEl = document.getElementById(`desc-${id}`);
         if (descEl) descEl.value = item.description;
     }
