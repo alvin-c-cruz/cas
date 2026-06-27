@@ -196,6 +196,7 @@ def create_app(config_name=None):
     from app.errors.models import ErrorLog
     from app.periods.models import AccountingPeriod
     from app.year_end.models import FiscalYearClose
+    from app.units_of_measure.models import UnitOfMeasure
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
