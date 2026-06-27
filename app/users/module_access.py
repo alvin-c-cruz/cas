@@ -116,11 +116,17 @@ def can_toggle(key, enable, enabled_keys, registry=MODULE_REGISTRY):
     return (not dependents, f"in use by {', '.join(dependents)}" if dependents else '')
 
 
-def visible_transactions(user):
-    """Transaction registry entries the user may see — used to hide the whole Transactions
-    section when a staff user has been granted none of them."""
+def visible_modules(user, section):
+    """Registry entries in `section` the user may access — used to hide a whole sidebar
+    section when the user has none of its modules. Mirrors the per-item gate so section
+    visibility and item visibility never disagree."""
     return [m for m in MODULE_REGISTRY
-            if m['section'] == 'Transactions' and can_access_module(user, m['key'])]
+            if m['section'] == section and can_access_module(user, m['key'])]
+
+
+def visible_transactions(user):
+    """Transaction entries the user may see (kept for existing callers)."""
+    return visible_modules(user, 'Transactions')
 
 
 def all_permission_keys():

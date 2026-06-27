@@ -30,3 +30,40 @@ def test_sections_align_with_sidebar():
         assert sec[k] == 'Ledger', f'{k} should be under Ledger'
     for k in ('customers', 'vendors'):
         assert sec[k] == 'Maintenance', f'{k} should be under Maintenance'
+
+
+def _u(role, perms=None):
+    from app.users.models import User
+    u = User(username=f'{role}_vm', email=f'{role}_vm@t.com', full_name='VM', role=role, is_active=True)
+    u.set_password('x')
+    if perms is not None:
+        u.set_book_permissions(perms)
+    return u
+
+
+def test_visible_modules_admin_sees_whole_section(db_session):
+    from app.users.module_access import visible_modules
+    keys = {m['key'] for m in visible_modules(_u('admin'), 'Ledger')}
+    assert keys == {'chart_of_accounts', 'general_ledger', 'ar_aging', 'ap_aging'}
+
+
+def test_visible_modules_accountant_sees_only_granted(db_session):
+    from app.users.module_access import visible_modules
+    acct = _u('accountant', {'general_ledger': True})  # one Ledger module
+    keys = {m['key'] for m in visible_modules(acct, 'Ledger')}
+    assert keys == {'general_ledger'}
+
+
+def test_visible_modules_empty_when_none_granted(db_session):
+    from app.users.module_access import visible_modules
+    acct = _u('accountant', {'accounts_receivable': True})  # no Ledger / FR modules
+    assert visible_modules(acct, 'Ledger') == []
+    assert visible_modules(acct, 'Financial Reports') == []
+
+
+def test_visible_transactions_delegates_to_visible_modules(db_session):
+    from app.users.module_access import visible_transactions, visible_modules
+    acct = _u('accountant', {'accounts_receivable': True, 'collections': True})
+    assert ({m['key'] for m in visible_transactions(acct)}
+            == {m['key'] for m in visible_modules(acct, 'Transactions')}
+            == {'accounts_receivable', 'collections'})
