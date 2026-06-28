@@ -673,6 +673,13 @@ def create():
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
             return _render_form()
+        # Uniqueness check: the user-typed (or pre-filled) CD number must not
+        # already be in use by any other CDV (regardless of status).
+        cdv_number = (form.cdv_number.data or '').strip()
+        if CashDisbursementVoucher.query.filter_by(cdv_number=cdv_number).first():
+            flash(f'CD number "{cdv_number}" is already in use. '
+                  'Enter a unique CD number.', 'error')
+            return _render_form()
         try:
             vendor = db.session.get(Vendor, form.vendor_id.data)
             if not vendor:
@@ -681,8 +688,7 @@ def create():
 
             cdv = CashDisbursementVoucher(
                 branch_id=session.get('selected_branch_id'),
-                # F-007: regenerate server-side; the read-only form value is never trusted.
-                cdv_number=generate_cdv_number(),
+                cdv_number=cdv_number,
                 cdv_date=form.cdv_date.data,
                 vendor_id=vendor.id,
                 vendor_name=vendor.name,
@@ -764,6 +770,17 @@ def edit(id):
             ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
             return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
+        # Uniqueness check: the edited CD number must not conflict with any OTHER
+        # CDV (self is excluded via id != cdv.id).
+        edit_cdv_number = (form.cdv_number.data or '').strip()
+        if CashDisbursementVoucher.query.filter(
+                CashDisbursementVoucher.cdv_number == edit_cdv_number,
+                CashDisbursementVoucher.id != cdv.id).first():
+            flash(f'CD number "{edit_cdv_number}" is already in use. '
+                  'Enter a unique CD number.', 'error')
+            ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
+            return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
+                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
         try:
             vendor = db.session.get(Vendor, form.vendor_id.data)
             if not vendor:
@@ -772,6 +789,7 @@ def edit(id):
                 return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
 
+            cdv.cdv_number = edit_cdv_number
             cdv.cdv_date = form.cdv_date.data
             cdv.vendor_id = vendor.id
             cdv.vendor_name = vendor.name

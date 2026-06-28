@@ -60,10 +60,22 @@ def make_posted_bill(db_session, vendor, ap_account, branch_id):
     return bill
 
 
-def create_draft_cdv(client, vendor, cash_account, ap_lines=None, expense_lines=None):
+_cdv_counter = 0
+
+
+def create_draft_cdv(client, vendor, cash_account, ap_lines=None, expense_lines=None,
+                     cdv_number=None):
+    """Helper: POST a CDV create form.
+
+    ``cdv_number`` defaults to a unique sentinel so the uniqueness guard added in
+    B-11 never fires when helpers are called multiple times within the same test.
+    """
+    global _cdv_counter
+    _cdv_counter += 1
+    number = cdv_number if cdv_number is not None else f'CD-TEST-{_cdv_counter:04d}'
     today = ph_now().date().isoformat()
     return client.post('/cash-disbursements/create', data={
-        'cdv_number': 'CD-TEST-0001',
+        'cdv_number': number,
         'cdv_date': today,
         'vendor_id': vendor.id,
         'payment_method': 'cash',

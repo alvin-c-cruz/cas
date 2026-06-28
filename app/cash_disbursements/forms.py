@@ -6,12 +6,13 @@ from datetime import date
 
 class CashDisbursementForm(FlaskForm):
 
-    # Auto-generated server-side (CD-YYYY-MM-NNNN) and regenerated on POST — the
-    # field is read-only so the client value is display-only and never trusted.
+    # Pre-filled with the next auto-generated CD-YYYY-MM-NNNN sequence as a
+    # suggested default, but editable by the user.  Uniqueness is validated
+    # server-side in the create and edit views.
     cdv_number = StringField('CD Number', validators=[
         DataRequired(message='CDV number is required.'),
         Length(max=50, message='CDV number must be 50 characters or less.')
-    ], render_kw={'readonly': True})
+    ])
 
     cdv_date = DateField('CDV Date', validators=[
         DataRequired(message='CDV date is required.')
