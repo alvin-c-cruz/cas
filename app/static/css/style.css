@@ -210,6 +210,16 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
   padding: 1px 6px; border-radius: 20px;
 }
 
+.nav-area { border-top: 1px solid rgba(255,255,255,.05); }
+.nav-area:first-of-type { border-top: none; }
+.nav-subgroup-label {
+  padding: 6px 20px 2px;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--text-3);
+  opacity: 0.65;
+}
+
 .sidebar-footer {
   padding: 14px 20px;
   border-top: 1px solid #1e293b;

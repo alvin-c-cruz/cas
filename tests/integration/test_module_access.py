@@ -150,13 +150,14 @@ def test_sidebar_hides_ungranted_transactions_for_staff(client, db_session, bran
                        books={'accounts_payable': True, 'chart_of_accounts': True}, username='staffap')
     _login(client, staff, branch)
     html = client.get('/dashboard').data.decode('utf-8', 'replace')
-    # Scope to the Transactions nav section (a dashboard widget may link elsewhere).
-    start = html.find('id="section-transactions"')
-    end = html.find('id="section-ledger"', start)
-    section = html[start:end]
+    # Area-based sidebar: AP is in Purchases area, CoA in Accounting area.
+    # Scope to the Purchases area to confirm AP link is present.
+    start = html.find('id="section-area-purchases"')
+    end = html.find('id="section-area-accounting"', start)
     assert start != -1 and end != -1
-    assert 'accounts-payable' in section       # granted -> nav link present
-    assert 'sales-invoices' not in section     # ungranted -> nav item hidden
+    section = html[start:end]
+    assert 'accounts-payable' in section       # granted -> AP link in Purchases area
+    assert 'sales-invoices' not in section     # ungranted -> Sales area absent, no SI link
 
 
 def test_staff_without_ar_aging_blocked_from_report(client, db_session, branch):
