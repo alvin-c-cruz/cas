@@ -16,10 +16,11 @@ from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.sales_orders.forms import SalesOrderForm
 from app.customers.models import Customer
 from app.customers.views import build_customer_quick_add_form
+from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
-from app.utils.cache_helpers import get_active_units, get_active_products
+from app.utils.cache_helpers import get_active_units, get_active_products, get_sales_vat_categories
 
 sales_orders_bp = Blueprint('sales_orders', __name__, template_folder='templates')
 
@@ -94,8 +95,11 @@ def _common_form_ctx():
     return {
         'units': [u.to_dict() for u in get_active_units()],
         'products': [p.to_dict() for p in get_active_products()],
+        'vat_categories': [v.to_dict() for v in get_sales_vat_categories()],
         'customers': customers,
         'customer_quick_add_form': build_customer_quick_add_form(),
+        'customer_quick_add_whts': WithholdingTax.query.filter_by(is_active=True)
+                                   .order_by(WithholdingTax.code).all(),
     }
 
 

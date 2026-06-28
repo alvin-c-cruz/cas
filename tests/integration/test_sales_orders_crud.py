@@ -52,6 +52,21 @@ def test_create_sales_order_persists_and_audits(client, db_session, admin_user, 
     assert AuditLog.query.filter_by(module='sales_orders', action='create').count() >= 1
 
 
+def test_create_form_renders_so_number_and_line_editor(client, db_session, admin_user, main_branch):
+    """GET /sales-orders/create → 200; full editor present (so_number editable, line table, add-line btn)."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/create')
+    assert resp.status_code == 200
+    # editable so_number input
+    assert b'so_number' in resp.data
+    # line-item editor markers
+    assert b'lineItemsTable' in resp.data
+    assert b'lineItemsBody' in resp.data
+    assert b'lineItemsData' in resp.data
+    assert b'addLineBtn' in resp.data
+
+
 def test_duplicate_so_number_rejected(client, db_session, admin_user, main_branch):
     import datetime
     c = _customer(db_session)

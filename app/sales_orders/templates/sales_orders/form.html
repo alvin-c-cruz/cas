@@ -1,50 +1,545 @@
 {% extends "base.html" %}
-{% block title %}{% if so %}Edit Sales Order{% else %}Create Sales Order{% endif %} — CAS{% endblock %}
+
+{% block title %}
+  {% if so %}Edit Sales Order {{ so.so_number }}{% else %}Enter Sales Order{% endif %}
+{% endblock %}
+{% block page_title %}
+  {% if so %}Edit Sales Order {{ so.so_number }}{% else %}Enter Sales Order{% endif %}
+{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>{% if so %}Edit Sales Order {{ so.so_number }}{% else %}Create Sales Order{% endif %}</h1>
+{% from "macros.html" import render_field %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='accounts_payable_form.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='customer-form.css') }}?v=1">
+
+<div class="card page-sales-invoice page-sales-order">
+    <div class="card-body">
+        <form method="POST" novalidate id="soForm">
+            {{ form.hidden_tag() }}
+
+            {# ── Header grid: left fields | customer card | notes ── #}
+            <div class="form-main-grid">
+
+                {# Left 1/3: header fields #}
+                <div class="left-col-fields header-fields{% if so %} header-fields--active{% endif %}">
+                    {{ render_field(form.so_number) }}
+                    {{ render_field(form.order_date) }}
+                    {{ render_field(form.expected_delivery_date) }}
+                    {{ render_field(form.payment_terms) }}
+                    {{ render_field(form.customer_po_number) }}
+                    {{ render_field(form.customer_po_date) }}
+                    {{ render_field(form.reference) }}
+                </div>
+
+                {# Right 2/3: customer picker card #}
+                <div class="right-col">
+                    <div class="vendor-step-card{% if so %} vendor-step-card--done{% endif %}" id="customerCard">
+                        <div class="vendor-step-label" id="customerCardLabel">
+                            {% if so %}&#10003; {{ so.customer_name }}{% else %}Select Customer{% endif %}
+                        </div>
+                        <div id="customerBadges" class="vendor-badges"></div>
+                        <div>
+                            <label class="form-label" for="customer_id_display">Customer *</label>
+                            <select id="customer_id_display" class="form-control"
+                                    {% if not so %}autofocus{% endif %}>
+                                <option value="">— Select —</option>
+                                {% for cust in customers %}
+                                <option value="{{ cust.id }}"
+                                    {% if so and so.customer_id == cust.id %}selected{% endif %}
+                                    {% if not so and line_items and form.customer_id.data == cust.id|string %}selected{% endif %}>
+                                    {{ cust.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                {# Notes: spans full width below #}
+                <div class="notes-col header-fields{% if so %} header-fields--active{% endif %}">
+                    {{ form.notes.label(class='form-label') }}
+                    {{ form.notes(class='form-control', style='resize:vertical', autocomplete='new-password',
+                                  **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
+                    {% if form.notes.errors %}<div class="form-error">{{ form.notes.errors[0] }}</div>{% endif %}
+                </div>
+            </div>
+
+            {# ── Line Items Locked Placeholder (create only) ── #}
+            <div id="lineItemsLocked" class="line-items-locked{% if so or line_items %} line-items-locked--hidden{% endif %}">
+                <div style="font-size: 28px; margin-bottom: 10px;">&#128274;</div>
+                <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
+                    Select a customer above to add line items
+                </div>
+            </div>
+
+            {# ── Line Items Section (hidden on create, visible on edit) ── #}
+            <div id="lineItemsSection" style="margin-top: 24px;{% if not so and not line_items %}display:none;{% endif %}">
+                <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 12px;">Line Items</h3>
+
+                <table class="table" id="lineItemsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 1%; white-space: nowrap; color: var(--text-2);">#</th>
+                            <th style="width: 28%;">Description</th>
+                            {% if module_enabled('products') %}<th style="width: 12%;">Product</th>{% endif %}
+                            <th style="width: 6%; text-align: right;">Qty</th>
+                            <th style="width: 7%;">UOM</th>
+                            <th style="width: 10%; text-align: right;">Unit Price (₱)</th>
+                            <th style="width: 12%; text-align: right;">Amount (₱, VAT-incl.)</th>
+                            <th style="width: 14%;">VAT Category</th>
+                            <th style="width: 5%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="lineItemsBody"></tbody>
+                </table>
+
+                <button type="button" class="btn btn-secondary" id="addLineBtn" onclick="addLineItem()" style="margin-top: 8px;">+ Add Line</button>
+                <input type="hidden" name="line_items" id="lineItemsData">
+
+                {# ── Bottom: Summary panel ── #}
+                <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Sales Order Summary</div>
+                        <div class="bill-summary-panel">
+
+                            {# Row 1: Subtotal (VAT-inclusive) #}
+                            <div class="bsr">
+                                <span class="bsr-label">Subtotal (VAT-incl.)</span>
+                                <span id="subtotalDisplay" class="bsr-amt">0.00</span>
+                            </div>
+
+                            {# Row 2: Less: Output VAT #}
+                            <div class="bsr">
+                                <span class="bsr-label">Less: Output VAT</span>
+                                <span id="vatDisplay" class="bsr-amt">0.00</span>
+                            </div>
+
+                            {# Row 3: Net of VAT #}
+                            <div class="bsr bsr--sep">
+                                <span class="bsr-label">Net of VAT</span>
+                                <span id="netOfVatDisplay" class="bsr-amt">0.00</span>
+                            </div>
+
+                            {# Row 4: Total Amount (= Subtotal for SO — no WHT deduction) #}
+                            <div class="bsr bsr--total">
+                                <span class="bsr-label bsr-label--total">Total Amount</span>
+                                <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
+                            </div>
+
+                        </div>{# end .bill-summary-panel #}
+                    </div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 32px;">
+                    <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
+                        {% if so %}Update{% else %}Save{% endif %}
+                    </button>
+                    {% if so %}
+                    <a href="{{ url_for('sales_orders.view', id=so.id) }}" class="btn btn-secondary">Cancel</a>
+                    {% else %}
+                    <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary">Cancel</a>
+                    {% endif %}
+                </div>
+                <p id="saveHint"></p>
+            </div>{# end #lineItemsSection #}
+
+        </form>
+    </div>
 </div>
 
-<form method="POST" action="" novalidate>
-    {{ form.hidden_tag() }}
+{% include "customers/_quick_add_modal.html" %}
 
-    {# Hidden customer fields populated by JS picker (Task 5) #}
-    {{ form.customer_id() }}
-    {{ form.customer_name() }}
-    {{ form.customer_tin() }}
-    {{ form.customer_address() }}
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}"></script>
+<script src="{{ url_for('static', filename='customer-form-widgets.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='customer-quick-add.js') }}?v=2"></script>
+<script>
+// ── Context data from server ─────────────────────────────────────────────────
+const vatCategories   = {{ vat_categories | tojson }};
+const units           = {{ units          | tojson }};
+const products        = {{ products       | tojson }};
+const uomMasterOn     = {{ 'true' if module_enabled('units_of_measure') else 'false' }};
+const productMasterOn = {{ 'true' if module_enabled('products') else 'false' }};
 
-    <div class="form-group">
-        {{ form.so_number.label }}
-        {{ form.so_number(class="form-control") }}
-    </div>
+// ── State ────────────────────────────────────────────────────────────────────
+let lineItems   = [];
+let lineCounter = 0;
+let lineChoices = {};
 
-    <div class="form-group">
-        {{ form.order_date.label }}
-        {{ form.order_date(class="form-control") }}
-    </div>
+// ── Customer card state ───────────────────────────────────────────────────────
+let currentCustomerVatCategory = '';
+let currentCustomerName        = '';
 
-    <div class="form-group">
-        {{ form.payment_terms.label }}
-        {{ form.payment_terms(class="form-control") }}
-    </div>
+// Resolve a VAT name-or-code to the canonical code.
+function resolveVatCode(nameOrCode) {
+    const match = vatCategories.find(v => v.code === nameOrCode || v.name === nameOrCode);
+    return match ? match.code : nameOrCode;
+}
 
-    <div class="form-group">
-        {{ form.notes.label }}
-        {{ form.notes(class="form-control") }}
-    </div>
+// ── Choices.js: customer display picker ──────────────────────────────────────
+const customerSel = document.getElementById('customer_id_display');
+if (customerSel) {
+    initCustomerQuickAdd({ selectEl: customerSel });
+}
 
-    {# Line items JSON — submitted by the JS editor (Task 5); keep the field name 'line_items'
-       so create/edit views can read request.form.get('line_items', '[]') consistently. #}
-    <input type="hidden" name="line_items" id="line_items"
-           value="{{ line_items | tojson if line_items else '[]' }}">
+function setCustomerDone(customerName, defaults) {
+    const card   = document.getElementById('customerCard');
+    const label  = document.getElementById('customerCardLabel');
+    const badges = document.getElementById('customerBadges');
 
-    <div class="form-actions">
-        <button type="submit" class="btn btn-primary">
-            {% if so %}Update{% else %}Save{% endif %}
-        </button>
-        <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary">Cancel</a>
-    </div>
-</form>
+    currentCustomerName = customerName;
+    card.classList.add('vendor-step-card--done');
+    label.textContent = '✓ ' + customerName;
+
+    badges.textContent = '';
+    const vatBadge = currentCustomerVatCategory || defaults.default_vat_category;
+    if (vatBadge) {
+        const span = document.createElement('span');
+        span.className = 'vendor-badge';
+        span.textContent = 'VAT: ' + vatBadge;
+        badges.appendChild(span);
+    }
+
+    document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
+    document.getElementById('lineItemsSection').style.display = '';
+    document.querySelectorAll('.header-fields').forEach(el => el.classList.add('header-fields--active'));
+}
+
+function setLineItemsLoading() {
+    const locked = document.getElementById('lineItemsLocked');
+    locked.classList.remove('line-items-locked--hidden');
+    locked.innerHTML =
+        '<div class="inline-spinner" style="margin:0 auto 12px;"></div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Loading customer details…</div>';
+}
+function setLineItemsLoadError() {
+    const locked = document.getElementById('lineItemsLocked');
+    locked.classList.remove('line-items-locked--hidden');
+    locked.innerHTML =
+        '<div style="font-size:28px;margin-bottom:10px;">&#9888;&#65039;</div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Could not load customer details — please re-select the customer.</div>';
+}
+
+function applyCustomerTerms(terms) {
+    if (paymentTermsChoices && terms) paymentTermsChoices.setChoiceByValue(terms);
+}
+
+function addFirstCustomerLine() {
+    addLineItem({
+        description: '', amount: 0.00,
+        vat_category: currentCustomerVatCategory || '',
+    });
+}
+
+function rebuildCustomerLineDefaults() {
+    lineItems.forEach(item => {
+        const lc = lineChoices[item.id];
+        if (!lc) return;
+        if (currentCustomerVatCategory) {
+            lc.vat.setChoiceByValue(currentCustomerVatCategory);
+            item.vat_category = currentCustomerVatCategory;
+        }
+    });
+    calculateTotals();
+}
+
+// ── Customer select: load defaults + reveal line items ────────────────────────
+if (customerSel) {
+    customerSel.addEventListener('change', function () {
+        const cid = customerSel.value;
+        if (!cid || cid === '0' || cid === '__add_customer__') return;
+
+        // Sync the hidden customer_id field (submitted with the form via hidden_tag())
+        const hiddenCid = document.getElementById('customer_id');
+        if (hiddenCid) hiddenCid.value = cid;
+
+        const customerName = customerSel.options[customerSel.selectedIndex]
+            ? customerSel.options[customerSel.selectedIndex].text : '';
+
+        setLineItemsLoading();
+        fetch(`/customers/${cid}/defaults`)
+            .then(r => r.json())
+            .then(data => {
+                currentCustomerVatCategory = resolveVatCode(data.default_vat_category || '');
+                applyCustomerTerms(data.payment_terms || 'Net 30');
+
+                const hadItems = lineItems.length > 0;
+                setCustomerDone(customerName, data);
+
+                if (hadItems) {
+                    rebuildCustomerLineDefaults();
+                } else {
+                    addFirstCustomerLine();
+                }
+            })
+            .catch(() => setLineItemsLoadError());
+    });
+}
+
+// ── Choices.js: payment terms ────────────────────────────────────────────────
+const ptSel = document.getElementById('payment_terms');
+let paymentTermsChoices = null;
+if (ptSel) {
+    paymentTermsChoices = new Choices(ptSel, {
+        searchEnabled: false, itemSelectText: '', shouldSort: false, allowHTML: false,
+    });
+}
+
+// ── Line item helpers ──────────────────────────────────────────────────────────
+
+function addLineItem(existingItem) {
+    lineCounter++;
+    const id = lineCounter;
+    const item = existingItem
+        ? { ...existingItem, id }
+        : { id, description: '', product_id: null, quantity: null, uom_id: null, uom_text: null,
+            unit_price: null, amount: 0.00, vat_category: '' };
+
+    const rowNum = lineItems.length + 1;
+    const row = document.createElement('tr');
+    row.id = `line-${id}`;
+    row.innerHTML = `
+        <td style="text-align:center; color:var(--text-2); font-size:12px; white-space:nowrap;" class="line-num-cell">${rowNum}</td>
+        <td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
+                   onchange="updateLineItem(${id}, 'description', this.value)"></td>
+        ${productMasterOn ? `
+        <td><select class="form-control" onchange="onProductPick(${id}, this.value)">
+              <option value="">—</option>
+              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+            </select></td>` : ''}
+        <td><input type="number" step="0.0001" min="0" id="qty-${id}" class="form-control"
+                   style="text-align:right;"
+                   value="${item.quantity != null ? item.quantity : ''}"
+                   onchange="updateLineItem(${id}, 'quantity', this.value); updateDerivedAmount(${id})"></td>
+        ${uomMasterOn ? `
+        <td><select class="form-control" id="uom-sel-${id}" onchange="updateLineItem(${id}, 'uom_id', this.value)">
+              <option value="">—</option>
+              ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
+            </select></td>` : `
+        <td><input type="text" maxlength="20" id="uom-txt-${id}" class="form-control"
+                   value="${escHtml(item.uom_text != null ? item.uom_text : '')}"
+                   onchange="updateLineItem(${id}, 'uom_text', this.value)"></td>`}
+        <td><input type="number" step="0.01" min="0" id="up-${id}" class="form-control"
+                   style="text-align:right;"
+                   value="${item.unit_price != null ? item.unit_price : ''}"
+                   onchange="updateLineItem(${id}, 'unit_price', this.value); updateDerivedAmount(${id})"></td>
+        <td><input type="text" id="amt-${id}" class="form-control" value="${amtFmt(item.amount || 0)}"
+                   style="text-align:right; font-family:var(--mono);"
+                   onfocus="amtFocus(this)" onblur="amtBlur(this, ${id})"></td>
+        <td>
+            <select class="form-control vat-select">
+                <option value="">No VAT</option>
+                ${vatCategories.map(v => {
+                    const lbl = `${escHtml(v.code)} — ${escHtml(v.name)}`;
+                    return `<option value="${escHtml(v.code)}" ${item.vat_category === v.code ? 'selected' : ''}>${lbl}</option>`;
+                }).join('')}
+            </select>
+        </td>
+        <td style="text-align:center;">
+            <button type="button" class="li-btn-action" onclick="removeLineItem(${id})" title="Remove line">\u{1F5D1}</button>
+        </td>
+    `;
+    document.getElementById('lineItemsBody').appendChild(row);
+
+    // Init Choices.js on the VAT select
+    const newRow = document.getElementById(`line-${id}`);
+    const vatSel = newRow.querySelector('.vat-select');
+
+    const codeOnlyOpts = {
+        searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
+        allowHTML: false,
+        callbackOnCreateTemplates: function(tmpl) {
+            return {
+                item: function(cfg, data) {
+                    const cn = cfg.classNames;
+                    const code = (data.customProperties && data.customProperties.code) || data.value || '—';
+                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(code))}</div>`);
+                }
+            };
+        }
+    };
+
+    const vatC = new Choices(vatSel, codeOnlyOpts);
+    vatSel.addEventListener('change', () => { updateLineItem(id, 'vat_category', vatSel.value); calculateTotals(); });
+
+    lineChoices[id] = { vat: vatC };
+    lineItems.push(item);
+    refreshLineNumbers();
+    updateDerivedAmount(id);
+}
+
+function updateLineItem(id, field, value) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    item[field] = value;
+    calculateTotals();
+}
+
+function removeLineItem(id) {
+    if (lineChoices[id]) {
+        lineChoices[id].vat.destroy();
+        delete lineChoices[id];
+    }
+    document.getElementById(`line-${id}`).remove();
+    lineItems = lineItems.filter(i => i.id !== id);
+    refreshLineNumbers();
+    calculateTotals();
+}
+
+function refreshLineNumbers() {
+    const cells = document.querySelectorAll('#lineItemsBody .line-num-cell');
+    cells.forEach((cell, idx) => { cell.textContent = idx + 1; });
+}
+
+function updateDerivedAmount(id) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    const amtInput = document.getElementById(`amt-${id}`);
+    const q = parseFloat(item.quantity), up = parseFloat(item.unit_price);
+    if (q > 0 && up > 0) {
+        const amt = Math.round(q * up * 100) / 100;   // integer-centavo HALF_UP, matches server
+        item.amount = amt;
+        if (amtInput) { amtInput.value = amtFmt(amt); amtInput.readOnly = true; }
+    } else {
+        if (amtInput) amtInput.readOnly = false;
+    }
+    calculateTotals();
+}
+
+function onProductPick(id, productId) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    item.product_id = productId || null;
+    const p = products.find(pp => String(pp.id) === String(productId));
+    if (!p) return;
+    if (p.name) {
+        item.description = p.name;
+        const descEl = document.getElementById(`desc-${id}`);
+        if (descEl) descEl.value = p.name;
+    }
+    if (p.default_uom_id != null) {
+        item.uom_id = p.default_uom_id;
+        const uomEl = document.getElementById(`uom-sel-${id}`);
+        if (uomEl) uomEl.value = String(p.default_uom_id);
+    }
+    if (p.default_unit_price != null) {
+        item.unit_price = p.default_unit_price;
+        const upEl = document.getElementById(`up-${id}`);
+        if (upEl) upEl.value = p.default_unit_price;
+    }
+    updateDerivedAmount(id);
+}
+
+// ── Totals calculation ─────────────────────────────────────────────────────────
+// Accumulate in integer centavos (matches server Decimal ROUND_HALF_UP).
+// Formula: VAT = round2(Gross - Gross/1.12); Net of VAT = Gross - VAT.
+// SO has no WHT deduction; Total Amount = Subtotal.
+
+function calculateTotals() {
+    let subtotalC = 0, autoVatC = 0;
+
+    lineItems.forEach(item => {
+        const amtC = Math.round((item.amount || 0) * 100);
+        subtotalC += amtC;
+        const vat = vatCategories.find(v => v.code === item.vat_category);
+        const vatRate = vat ? vat.rate : 0;
+        const vatC = vatRate > 0 ? Math.round(amtC - amtC / (1 + vatRate / 100)) : 0;
+        autoVatC += vatC;
+    });
+
+    const subtotal  = subtotalC / 100;
+    const vatAmt    = autoVatC  / 100;
+    const netOfVat  = subtotal - vatAmt;
+
+    document.getElementById('subtotalDisplay').textContent  = fmt(subtotal);
+    document.getElementById('vatDisplay').textContent       = fmt(vatAmt);
+    document.getElementById('netOfVatDisplay').textContent  = fmt(netOfVat);
+    document.getElementById('totalDisplay').textContent     = fmt(subtotal);
+
+    validateForm();
+}
+
+// ── Form validation ─────────────────────────────────────────────────────────────
+
+function validateForm() {
+    const btn  = document.getElementById('submitBtn');
+    const hint = document.getElementById('saveHint');
+    if (!btn || !hint) return;
+
+    function block(msg) { btn.disabled = true; hint.textContent = msg; }
+    function allow()    { btn.disabled = false; hint.textContent = ''; }
+
+    if (lineItems.length === 0) { block('Add at least one line item.'); return; }
+
+    for (let i = 0; i < lineItems.length; i++) {
+        const item = lineItems[i];
+        const n = i + 1;
+        if (!item.amount || item.amount <= 0) { block(`Line ${n}: enter an amount greater than zero.`); return; }
+        if (lineItems.length > 1 && !(item.description || '').trim()) {
+            block(`Line ${n}: enter a description.`); return;
+        }
+    }
+
+    allow();
+}
+
+// ── Form submit: serialize line items ──────────────────────────────────────────
+
+document.getElementById('soForm').addEventListener('submit', function () {
+    document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(item => {
+        const vat     = vatCategories.find(v => v.code === item.vat_category);
+        const vatRate = vat ? vat.rate : 0;
+        return {
+            description:  item.description,
+            product_id:   item.product_id  != null ? item.product_id  : null,
+            quantity:     item.quantity    != null ? item.quantity    : null,
+            uom_id:       item.uom_id      != null ? item.uom_id      : null,
+            uom_text:     item.uom_text    != null ? item.uom_text    : null,
+            unit_price:   item.unit_price  != null ? item.unit_price  : null,
+            amount:       item.amount,
+            vat_category: item.vat_category,
+            vat_rate:     vatRate,
+        };
+    }));
+});
+
+// ── Init: load existing items on edit ──────────────────────────────────────────
+
+function initItems() {
+    {% if line_items %}
+    const existingItems = {{ line_items | tojson }};
+    existingItems.forEach(item => {
+        // Server returns unit_of_measure_id; JS uses uom_id
+        if (item.uom_id === undefined) {
+            item.uom_id = item.unit_of_measure_id != null ? item.unit_of_measure_id : null;
+        }
+        addLineItem(item);
+    });
+    {% endif %}
+}
+
+initItems();
+
+// ── Edit mode: populate the customer card badges on load ────────────────────────
+{% if so %}
+(function initCustomerCardOnEdit() {
+    const sel = document.getElementById('customer_id_display');
+    const cid = sel ? sel.value : '';
+    if (!cid || cid === '0') return;
+    const name = sel.options[sel.selectedIndex]
+        ? sel.options[sel.selectedIndex].text : '{{ so.customer_name | e }}';
+    fetch(`/customers/${cid}/defaults`)
+        .then(r => r.json())
+        .then(data => {
+            currentCustomerVatCategory = resolveVatCode(data.default_vat_category || '');
+            setCustomerDone(name, data);
+        })
+        .catch(() => {});
+})();
+{% endif %}
+</script>
+
 {% endblock %}
