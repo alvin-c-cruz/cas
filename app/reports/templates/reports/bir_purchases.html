@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% block title %}Summary List of Purchases{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=1">
+{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  {{ bir_book_header(company, 'SUMMARY LIST OF PURCHASES', month_name ~ ' ' ~ year) }}
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead>
+      <tr>
+        <th>TIN</th>
+        <th>Vendor</th>
+        <th>Address</th>
+        <th>Invoice #</th>
+        <th style="text-align:right;">Vatable</th>
+        <th style="text-align:right;">VAT-Exempt</th>
+        <th style="text-align:right;">Zero-Rated</th>
+        <th style="text-align:right;">Input VAT</th>
+        <th style="text-align:right;">Gross</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in purchases_data %}
+      <tr{% if r.vendor_name == 'TOTAL' %} style="font-weight:700;border-top:2px solid var(--color-text,#111);"{% endif %}>
+        <td>{{ r.vendor_tin }}</td>
+        <td>{{ r.vendor_name }}</td>
+        <td>{{ r.vendor_address }}</td>
+        <td>{{ r.vendor_invoice_number }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.vatable_purchases) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.vat_exempt_purchases) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.zero_rated_purchases) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.input_vat) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.gross_purchases) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" style="color:var(--color-text-muted,#555);">No purchases for {{ month_name }} {{ year }}.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin-top:10px;">
+    <a class="btn btn-secondary btn-sm"
+       href="{{ url_for('reports.bir_purchases_export_excel', year=year, month=month) }}">Export Excel</a>
+  </p>
+</div></div>
+{% endblock %}

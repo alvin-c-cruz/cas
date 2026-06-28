@@ -400,7 +400,8 @@ def bir_sales():
                          sales_data=sales_data,
                          year=year,
                          month=month,
-                         month_name=get_month_name(month))
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
 
 
 @reports_bp.route('/reports/bir/sales/export/excel')
@@ -438,7 +439,8 @@ def bir_purchases():
                          purchases_data=purchases_data,
                          year=year,
                          month=month,
-                         month_name=get_month_name(month))
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
 
 
 @reports_bp.route('/reports/bir/purchases/export/excel')
