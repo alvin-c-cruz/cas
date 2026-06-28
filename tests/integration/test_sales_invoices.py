@@ -639,3 +639,10 @@ def test_si_create_form_vat_context(client, db_session, accountant_user, branch)
     # All 3 WHT codes must appear
     for code in ['WC158', 'WC160', 'WC100']:
         assert code.encode() in response.data, f"WHT code {code} missing from form context"
+
+    # B-13: header fields must be locked on create — the HTML class combination
+    # "header-fields header-fields--active" must not appear (JS unlock runs later in-browser)
+    assert b'header-fields header-fields--active' not in response.data
+    # B-14: Add-Customer modal button must say "Save Customer" not "Create Customer"
+    assert b'Save Customer' in response.data
+    assert b'Create Customer' not in response.data

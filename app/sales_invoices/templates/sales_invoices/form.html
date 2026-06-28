@@ -23,7 +23,7 @@
             <div class="form-main-grid">
 
                 <!-- Left 1/3: header fields -->
-                <div class="left-col-fields header-fields header-fields--active">
+                <div class="left-col-fields header-fields{% if invoice %} header-fields--active{% endif %}">
                     {{ render_field(form.invoice_number) }}
                     {{ render_field(form.invoice_date) }}
                     {{ render_field(form.due_date) }}
@@ -61,7 +61,7 @@
                 </div>
 
                 <!-- Notes: spans full width below -->
-                <div class="notes-col header-fields header-fields--active">
+                <div class="notes-col header-fields{% if invoice %} header-fields--active{% endif %}">
                     {{ form.notes.label(class='form-label') }}
                     {{ form.notes(class='form-control', style='resize:vertical', autocomplete='new-password',
                                   **{'data-lpignore': 'true', 'data-form-type': 'other'}) }}
@@ -398,6 +398,7 @@ function setCustomerDone(customerName, defaults) {
 
     document.getElementById('lineItemsLocked').classList.add('line-items-locked--hidden');
     document.getElementById('lineItemsSection').style.display = '';
+    document.querySelectorAll('.header-fields').forEach(el => el.classList.add('header-fields--active'));
 }
 
 // Loading / error states for the line-items placeholder while customer defaults load.
