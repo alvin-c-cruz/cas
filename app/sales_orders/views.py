@@ -380,19 +380,87 @@ def print_so(id):
                            company=company, printed_at=ph_now())
 
 
-# ── confirm / cancel stubs (Task 8) ──────────────────────────────────────────
+# ── confirm / cancel ──────────────────────────────────────────────────────────
 
 @sales_orders_bp.route('/sales-orders/<int:id>/confirm', methods=['POST'])
 @login_required
 def confirm(id):
-    """Stub — wired in Task 8."""
-    flash('Confirm not yet implemented.', 'warning')
+    """Draft → confirmed.  No journal entry — SO posts nothing."""
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+
+    # Role guard: staff/accountant/admin (mirrors detail.html gating)
+    if current_user.role not in ['staff', 'accountant', 'admin']:
+        flash('You do not have permission to confirm Sales Orders.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    if so.status != 'draft':
+        flash('Only draft Sales Orders can be confirmed.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    old_values = model_to_dict(so, ['status'])
+    so.status = 'confirmed'
+    so.confirmed_by_id = current_user.id
+    so.confirmed_at = ph_now()
+    db.session.commit()
+
+    log_update(
+        module='sales_orders',
+        record_id=so.id,
+        record_identifier=so.so_number,
+        old_values=old_values,
+        new_values=model_to_dict(so, ['status']),
+        notes='Confirmed',
+    )
+
+    flash(f'Sales Order "{so.so_number}" has been confirmed.', 'success')
     return redirect(url_for('sales_orders.view', id=id))
 
 
 @sales_orders_bp.route('/sales-orders/<int:id>/cancel', methods=['POST'])
 @login_required
 def cancel(id):
-    """Stub — wired in Task 8."""
-    flash('Cancel not yet implemented.', 'warning')
+    """Non-terminal SO → cancelled.  Captures a reason from the custom modal form."""
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+
+    # Role guard: accountant/admin (mirrors detail.html gating)
+    if current_user.role not in ['accountant', 'admin']:
+        flash('You do not have permission to cancel Sales Orders.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    # Terminal-status guard
+    if so.status in ('cancelled', 'closed'):
+        flash('This Sales Order has already been cancelled or closed.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    # P-60 billed guard: do not cancel an SO that has been invoiced
+    if so.sales_invoice_id is not None:
+        flash('A billed Sales Order cannot be cancelled. Void the invoice first.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Please provide a cancellation reason (at least 10 characters).', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    old_values = model_to_dict(so, ['status'])
+    so.status = 'cancelled'
+    so.cancelled_by_id = current_user.id
+    so.cancelled_at = ph_now()
+    so.cancel_reason = cancel_reason
+    db.session.commit()
+
+    log_update(
+        module='sales_orders',
+        record_id=so.id,
+        record_identifier=so.so_number,
+        old_values=old_values,
+        new_values=model_to_dict(so, ['status']),
+        notes=f'Cancelled: {cancel_reason}',
+    )
+
+    flash(f'Sales Order "{so.so_number}" has been cancelled.', 'success')
     return redirect(url_for('sales_orders.view', id=id))
