@@ -690,7 +690,7 @@ function addRevenueLine(existingItem) {
                 ${allAccounts.map(a => {
                     const props = escHtml(JSON.stringify({ code: a.code }));
                     const lbl = escHtml(a.code) + ' : ' + escHtml(a.name);
-                    if (a.is_group) return `<option disabled value="">${lbl}</option>`;
+                    if (a.is_group) return `<option disabled value="${a.id}" data-custom-properties="${props}">${lbl}</option>`;
                     return `<option value="${a.id}" data-custom-properties="${props}" ${item.account_id === a.id ? 'selected' : ''}>${lbl}</option>`;
                 }).join('')}
             </select>
