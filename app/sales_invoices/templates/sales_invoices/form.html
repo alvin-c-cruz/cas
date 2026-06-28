@@ -84,17 +84,17 @@
                 <table class="table" id="lineItemsTable">
                     <thead>
                         <tr>
-                            <th style="width: 1%; white-space: nowrap; color: var(--text-2);">#</th>
-                            <th style="width: 20%;">Description</th>
-                            {% if module_enabled('products') %}<th style="width: 10%;">Product</th>{% endif %}
-                            <th style="width: 5%; text-align: right;">Qty</th>
+                            <th style="width: 3%; white-space: nowrap; color: var(--text-2);">#</th>
+                            {% if not module_enabled('products') %}<th style="width: 27%;">Description</th>{% endif %}
+                            {% if module_enabled('products') %}<th style="width: 23%;">Product</th>{% endif %}
+                            <th style="width: 6%; text-align: right;">Qty</th>
                             <th style="width: 6%;">UOM</th>
-                            <th style="width: 8%; text-align: right;">Unit Price (₱)</th>
-                            <th style="width: 9%; text-align: right;">Amount (₱, VAT-incl.)</th>
-                            <th style="width: 11%;">VAT Category</th>
-                            <th style="width: 9%;">WHT Code</th>
-                            <th style="width: 16%;">Account</th>
-                            <th style="width: 5%;"></th>
+                            <th style="width: 9%; text-align: right;">UP</th>
+                            <th style="width: 9%; text-align: right;">Amount</th>
+                            <th style="width: 9%;">VT</th>
+                            <th style="width: 8%;">WT</th>
+                            <th style="width: 19%;">Account</th>
+                            <th style="width: 4%;"></th>
                         </tr>
                     </thead>
                     <tbody id="lineItemsBody"></tbody>
@@ -581,19 +581,20 @@ function addLineItem(existingItem) {
     row.id = `line-${id}`;
     row.innerHTML = `
         <td style="text-align:center; color:var(--text-2); font-size:12px; white-space:nowrap;" class="line-num-cell">${rowNum}</td>
-        <td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
-                   onchange="updateLineItem(${id}, 'description', this.value)"></td>
+        ${!productMasterOn ? `<td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
+                   style="border:none; background:transparent; padding-left:0;"
+                   onchange="updateLineItem(${id}, 'description', this.value)"></td>` : ''}
         ${productMasterOn ? `
-        <td><select class="form-control" onchange="onProductPick(${id}, this.value)">
+        <td><select class="form-control prod-select">
               <option value="">—</option>
               ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
             </select></td>` : ''}
         <td><input type="number" step="0.0001" min="0" id="qty-${id}" class="form-control"
-                   style="text-align:right;"
+                   style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
                    value="${item.quantity != null ? item.quantity : ''}"
                    onchange="updateLineItem(${id}, 'quantity', this.value); updateDerivedAmount(${id})"></td>
         ${uomMasterOn ? `
-        <td><select class="form-control" id="uom-sel-${id}" onchange="updateLineItem(${id}, 'uom_id', this.value)">
+        <td><select class="form-control uom-select" id="uom-sel-${id}">
               <option value="">—</option>
               ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
             </select></td>` : `
@@ -601,11 +602,11 @@ function addLineItem(existingItem) {
                    value="${escHtml(item.uom_text != null ? item.uom_text : '')}"
                    onchange="updateLineItem(${id}, 'uom_text', this.value)"></td>`}
         <td><input type="number" step="0.01" min="0" id="up-${id}" class="form-control"
-                   style="text-align:right;"
+                   style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
                    value="${item.unit_price != null ? item.unit_price : ''}"
                    onchange="updateLineItem(${id}, 'unit_price', this.value); updateDerivedAmount(${id})"></td>
         <td><input type="text" id="amt-${id}" class="form-control" value="${amtFmt(item.amount || 0)}"
-                   style="text-align:right; font-family:var(--mono);"
+                   style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
                    onfocus="amtFocus(this)" onblur="amtBlur(this, ${id})"></td>
         <td>
             <select class="form-control vat-select">
@@ -626,8 +627,9 @@ function addLineItem(existingItem) {
                 <option value="">Select Account</option>
                 ${allAccounts.map(a => {
                     const label = escHtml(a.code) + ' : ' + escHtml(a.name);
-                    if (a.is_group) return `<option disabled value="${a.id}">${label}</option>`;
-                    return `<option value="${a.id}" ${item.account_id === a.id ? 'selected' : ''}>${label}</option>`;
+                    const props = escHtml(JSON.stringify({ code: a.code }));
+                    if (a.is_group) return `<option disabled value="${a.id}" data-custom-properties="${props}">${label}</option>`;
+                    return `<option value="${a.id}" data-custom-properties="${props}" ${item.account_id === a.id ? 'selected' : ''}>${label}</option>`;
                 }).join('')}
             </select>
         </td>
@@ -656,18 +658,38 @@ function addLineItem(existingItem) {
             };
         }
     };
-    const acctOpts = { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 100, allowHTML: false };
-
     const vatC  = new Choices(vatSel,  codeOnlyOpts);
     const whtC  = new Choices(whtSel,  codeOnlyOpts);
     if (currentCustomerWHTs.length === 0) whtC.disable();
-    const acctC = new Choices(acctSel, acctOpts);
+    const acctC = new Choices(acctSel, codeOnlyOpts);
 
     vatSel.addEventListener('change',  () => { updateLineItem(id, 'vat_category', vatSel.value); revertVatOverride(); });
     whtSel.addEventListener('change',  () => updateWht(id, whtSel));
     acctSel.addEventListener('change', () => updateLineItem(id, 'account_id', parseInt(acctSel.value) || null));
 
-    lineChoices[id] = { vat: vatC, wht: whtC, acct: acctC };
+    // Init Product Choices (if products module on)
+    const prodSel = newRow.querySelector('.prod-select');
+    let prodC = null;
+    if (prodSel) {
+        prodC = new Choices(prodSel, {
+            searchEnabled: true, itemSelectText: '', shouldSort: false,
+            searchResultLimit: 50, allowHTML: false,
+        });
+        prodSel.addEventListener('change', () => onProductPick(id, prodSel.value));
+    }
+
+    // Init UOM Choices (if uom module on)
+    const uomSel = newRow.querySelector('.uom-select');
+    let uomC = null;
+    if (uomSel) {
+        uomC = new Choices(uomSel, {
+            searchEnabled: true, itemSelectText: '', shouldSort: false,
+            searchResultLimit: 30, allowHTML: false,
+        });
+        uomSel.addEventListener('change', () => updateLineItem(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null));
+    }
+
+    lineChoices[id] = { vat: vatC, wht: whtC, acct: acctC, prod: prodC, uom: uomC };
     lineItems.push(item);
     refreshLineNumbers();
     updateDerivedAmount(id);   // derives amount from qty×price if set; calls calculateTotals() internally
@@ -695,6 +717,8 @@ function removeLineItem(id) {
         lineChoices[id].vat.destroy();
         lineChoices[id].wht.destroy();
         lineChoices[id].acct.destroy();
+        if (lineChoices[id].prod) lineChoices[id].prod.destroy();
+        if (lineChoices[id].uom)  lineChoices[id].uom.destroy();
         delete lineChoices[id];
     }
     document.getElementById(`line-${id}`).remove();
@@ -916,7 +940,7 @@ function validateForm() {
         const n = i + 1;
         if (!item.account_id)                { block(`Line ${n}: select an account title.`); return; }
         if (!item.amount || item.amount <= 0) { block(`Line ${n}: enter an amount greater than zero.`); return; }
-        if (lineItems.length > 1 && !(item.description || '').trim()) {
+        if (!productMasterOn && lineItems.length > 1 && !(item.description || '').trim()) {
             block(`Line ${n}: enter a description.`); return;
         }
     }
