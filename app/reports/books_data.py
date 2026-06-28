@@ -57,6 +57,10 @@ def collect_books(branch_id, args):
     """
     from app.utils import ph_now
     today = ph_now().date()   # PH time (CLAUDE.md: never naive datetime.now())
+    # Part B defense-in-depth: honor explicit date_from/date_to even when the
+    # caller omitted mode='custom' (the hub did not send it before the template fix).
+    if args.get('date_from') and args.get('date_to') and args.get('mode') != 'custom':
+        args = {'mode': 'custom', 'date_from': args.get('date_from'), 'date_to': args.get('date_to')}
     period = resolve_period(args, today)
     df, dt = period['date_from'], period['date_to']
 

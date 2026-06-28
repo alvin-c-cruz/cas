@@ -67,6 +67,7 @@
         <div class="books-hub-card-header">
             {# Date-range filter — list/launch verb per CLAUDE.md "Enter" convention #}
             <form method="get" class="books-hub-filter">
+                <input type="hidden" name="mode" value="custom">
                 <label>
                     From
                     <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
@@ -80,9 +81,9 @@
 
             {# Print All / Export All — Task 8 will wire the real multi-book endpoints #}
             <div class="books-hub-actions">
-                <a href="{{ url_for('reports.books_print_all', date_from=date_from, date_to=date_to) }}"
+                <a href="{{ url_for('reports.books_print_all', mode='custom', date_from=date_from, date_to=date_to) }}"
                    class="btn btn-outline-primary btn-sm">Print All</a>
-                <a href="{{ url_for('reports.books_export_all', date_from=date_from, date_to=date_to) }}"
+                <a href="{{ url_for('reports.books_export_all', mode='custom', date_from=date_from, date_to=date_to) }}"
                    class="btn btn-outline-primary btn-sm">Export All</a>
             </div>
         </div>
@@ -106,7 +107,7 @@
                 <tr>
                     <td>{{ b.title }}</td>
                     <td>
-                        <a href="{{ url_for(b.view_endpoint, date_from=date_from, date_to=date_to) }}"
+                        <a href="{{ url_for(b.view_endpoint, mode='custom', date_from=date_from, date_to=date_to) }}"
                            class="btn btn-secondary btn-sm">View</a>
                     </td>
                 </tr>
