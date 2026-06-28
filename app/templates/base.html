@@ -1183,6 +1183,7 @@
                     {% for m in group.modules %}
                     {% if m.key == 'bir_reports' %}
                     {# BIR Reports module gates 3 sub-links, not a single endpoint #}
+                    <div class="nav-subgroup-label">BIR Reports</div>
                     <a href="{{ url_for('reports.bir_index') }}" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('reports.bir') %}active{% endif %}">
                         <span class="nav-icon">🏛</span>
                         <span class="nav-text">VAT Reports</span>
@@ -1540,6 +1541,21 @@
                     }
                 }
             });
+
+            // Default-expand the first area when no active item exists and no saved state
+            if (!activeSectionName) {
+                var firstAreaLabel = document.querySelector('[data-section^="area-"]');
+                if (firstAreaLabel) {
+                    var firstAreaSection = firstAreaLabel.getAttribute('data-section');
+                    var firstAreaKey = 'sidebar:' + firstAreaSection;
+                    if (localStorage.getItem(firstAreaKey) === null) {
+                        var firstAreaContent = document.getElementById('section-' + firstAreaSection);
+                        firstAreaLabel.classList.remove('collapsed');
+                        if (firstAreaContent) { firstAreaContent.classList.remove('collapsed'); }
+                        localStorage.setItem(firstAreaKey, 'expanded');
+                    }
+                }
+            }
 
             // Add click handlers — independent toggle per section
             collapsibleLabels.forEach(function(label) {
