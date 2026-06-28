@@ -8,7 +8,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, render_template, redirect, url_for, flash,
-                   request, session, abort)
+                   request, session, abort, current_app)
 from flask_login import login_required, current_user
 
 from app import db
@@ -17,6 +17,7 @@ from app.sales_orders.forms import SalesOrderForm
 from app.customers.models import Customer
 from app.customers.views import build_customer_quick_add_form
 from app.audit.utils import log_create, log_update, model_to_dict
+from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products
 
@@ -185,7 +186,9 @@ def create():
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Error creating Sales Order: {str(e)}', 'error')
+            current_app.logger.error('Error creating sales order', exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_orders.create')
+            flash('An error occurred while entering the Sales Order. Please try again.', 'error')
 
     if request.method == 'GET':
         form.so_number.data = generate_so_number()
@@ -279,7 +282,9 @@ def edit(id):
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Error updating Sales Order: {str(e)}', 'error')
+            current_app.logger.error('Error updating sales order', exc_info=True)
+            log_exception(e, severity='ERROR', module='sales_orders.edit')
+            flash('An error occurred while saving the Sales Order. Please try again.', 'error')
 
     return render_template('sales_orders/form.html', form=form, so=so,
                            line_items=restore_items, **_common_form_ctx())
