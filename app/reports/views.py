@@ -1091,3 +1091,42 @@ def general_journal_export():
                                      None, 'General_Journal.xlsx')
     return send_file(bio, as_attachment=True, download_name='General_Journal.xlsx',
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+# ============================================================================
+# BOOKS OF ACCOUNTS — Hub
+# ============================================================================
+
+@reports_bp.route('/reports/books-of-accounts')
+@login_required
+@accountant_or_admin_required
+def books_of_accounts():
+    """Hub page listing all six BIR books of accounts with per-book View links."""
+    from app.reports.books_data import BOOKS
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
+    date_to = request.args.get('date_to', f'{year}-12-31')
+    return render_template('reports/books_of_accounts.html',
+                           books=BOOKS, date_from=date_from, date_to=date_to)
+
+
+@reports_bp.route('/reports/books-of-accounts/print-all')
+@login_required
+@accountant_or_admin_required
+def books_print_all():
+    """Stub — Task 8 will implement the full multi-book PDF."""
+    flash('Print All is coming in the next release.', 'info')
+    return redirect(url_for('reports.books_of_accounts',
+                            date_from=request.args.get('date_from', ''),
+                            date_to=request.args.get('date_to', '')))
+
+
+@reports_bp.route('/reports/books-of-accounts/export-all')
+@login_required
+@accountant_or_admin_required
+def books_export_all():
+    """Stub — Task 8 will implement the full multi-sheet Excel workbook."""
+    flash('Export All is coming in the next release.', 'info')
+    return redirect(url_for('reports.books_of_accounts',
+                            date_from=request.args.get('date_from', ''),
+                            date_to=request.args.get('date_to', '')))

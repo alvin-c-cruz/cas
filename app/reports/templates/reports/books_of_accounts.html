@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Books of Accounts{% endblock %}
+{% block page_title %}Books of Accounts{% endblock %}
+
+{% block extra_css %}
+<style>
+.books-hub-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+}
+.books-hub-filter label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.875rem;
+    color: var(--color-text-muted, #555);
+}
+.books-hub-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.books-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.books-table thead th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--border, #dee2e6);
+    font-size: 0.85rem;
+    color: var(--color-text-muted, #555);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.books-table tbody td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border, #dee2e6);
+    vertical-align: middle;
+}
+.books-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.books-hub-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border, #dee2e6);
+    margin-bottom: 16px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-card">
+    <div class="card-body">
+
+        <div class="books-hub-card-header">
+            {# Date-range filter — list/launch verb per CLAUDE.md "Enter" convention #}
+            <form method="get" class="books-hub-filter">
+                <label>
+                    From
+                    <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+                </label>
+                <label>
+                    To
+                    <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+                </label>
+                <button type="submit" class="btn btn-secondary btn-sm">Enter</button>
+            </form>
+
+            {# Print All / Export All — Task 8 will wire the real multi-book endpoints #}
+            <div class="books-hub-actions">
+                <a href="{{ url_for('reports.books_print_all', date_from=date_from, date_to=date_to) }}"
+                   class="btn btn-outline-primary btn-sm">Print All</a>
+                <a href="{{ url_for('reports.books_export_all', date_from=date_from, date_to=date_to) }}"
+                   class="btn btn-outline-primary btn-sm">Export All</a>
+            </div>
+        </div>
+
+        <p class="text-muted" style="margin-bottom: 16px;">
+            BIR-formatted books for the selected period.
+            <strong>Print All</strong> produces a single print-ready document;
+            <strong>Export All</strong> produces a single Excel workbook with one sheet per book.
+            The per-book <strong>View</strong> links open each individual working view.
+        </p>
+
+        <table class="books-table">
+            <thead>
+                <tr>
+                    <th>Book</th>
+                    <th style="width: 120px;">View</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in books %}
+                <tr>
+                    <td>{{ b.title }}</td>
+                    <td>
+                        <a href="{{ url_for(b.view_endpoint, date_from=date_from, date_to=date_to) }}"
+                           class="btn btn-secondary btn-sm">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+    </div>
+</div>
+{% endblock %}
