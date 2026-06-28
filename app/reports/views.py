@@ -1141,6 +1141,7 @@ def books_export_all():
     from flask import send_file
     from openpyxl import Workbook
     from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
     from app.reports.books_data import collect_books
     from app.utils.bir_books import write_bir_book_header
 
@@ -1191,7 +1192,23 @@ def books_export_all():
                 cell.font = Font(bold=True)
             for r in m['rows']:
                 if r.get('is_voided') and r.get('entry') is None:
-                    # voided row with no JE — skip (amounts are zero anyway)
+                    # Voided row — emit a [VOIDED] marker row mirroring the print
+                    # template's col-row-voided rendering: date from the source
+                    # document, "[VOIDED]" in the Ref column, doc number in
+                    # Particulars, blank/zero amounts.  Sales Journal rows carry
+                    # key 'invoice'; Purchase Journal rows carry key 'ap'.
+                    inv = r.get('invoice')
+                    ap = r.get('ap')
+                    if inv:
+                        date_str = inv.invoice_date.strftime('%m/%d/%Y') if inv.invoice_date else ''
+                        particulars = inv.invoice_number or ''
+                    elif ap:
+                        date_str = ap.ap_date.strftime('%m/%d/%Y') if ap.ap_date else ''
+                        particulars = ap.ap_number or ''
+                    else:
+                        date_str = ''
+                        particulars = ''
+                    ws.append([date_str, '[VOIDED]', particulars] + [None] * len(m['columns']))
                     continue
                 e = r['entry']
                 ws.append(
@@ -1206,7 +1223,6 @@ def books_export_all():
             for cell in ws[ws.max_row]:
                 cell.font = Font(bold=True)
             # Apply number format to amount columns (D onward)
-            from openpyxl.utils import get_column_letter
             for col_idx in range(4, 4 + len(m['columns'])):
                 col_letter = get_column_letter(col_idx)
                 for cell in ws[col_letter]:
