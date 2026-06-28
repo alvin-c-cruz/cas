@@ -1502,58 +1502,63 @@
             }
 
             // Sidebar section collapse/expand functionality
+            // Each section has its own localStorage key: "sidebar:<sectionName>"
+            // Default state: collapsed. Active area is always forced expanded on load.
             const collapsibleLabels = document.querySelectorAll('.nav-label-collapsible');
 
-            // Load saved expanded section from localStorage (only one section can be expanded)
-            // Default: 'transactions' is expanded
-            let expandedSection = localStorage.getItem('expandedSidebarSection') || 'transactions';
+            // Determine which section contains the active nav-item (server-rendered active class)
+            function getActiveSectionName() {
+                var activeItem = document.querySelector('.nav-item.active');
+                if (!activeItem) return null;
+                var content = activeItem.closest('.nav-section-content');
+                if (!content) return null;
+                return content.id.replace(/^section-/, '');
+            }
 
-            // Apply initial state - expand only the saved section, collapse all others
-            collapsibleLabels.forEach(label => {
-                const sectionName = label.getAttribute('data-section');
-                const content = document.getElementById('section-' + sectionName);
+            var activeSectionName = getActiveSectionName();
 
-                if (sectionName === expandedSection) {
-                    // This section is expanded
+            // Apply initial state: restore per-section saved state; force-expand the active area
+            collapsibleLabels.forEach(function(label) {
+                var sectionName = label.getAttribute('data-section');
+                var content = document.getElementById('section-' + sectionName);
+                var storageKey = 'sidebar:' + sectionName;
+
+                if (sectionName === activeSectionName) {
+                    // Active area is always expanded on load, regardless of saved state
                     label.classList.remove('collapsed');
                     content.classList.remove('collapsed');
+                    localStorage.setItem(storageKey, 'expanded');
                 } else {
-                    // All other sections are collapsed
-                    label.classList.add('collapsed');
-                    content.classList.add('collapsed');
+                    // Restore saved state; default is collapsed
+                    var saved = localStorage.getItem(storageKey);
+                    if (saved === 'expanded') {
+                        label.classList.remove('collapsed');
+                        content.classList.remove('collapsed');
+                    } else {
+                        label.classList.add('collapsed');
+                        content.classList.add('collapsed');
+                    }
                 }
             });
 
-            // Add click handlers
-            collapsibleLabels.forEach(label => {
+            // Add click handlers — independent toggle per section
+            collapsibleLabels.forEach(function(label) {
                 label.addEventListener('click', function() {
-                    const sectionName = this.getAttribute('data-section');
-                    const content = document.getElementById('section-' + sectionName);
-                    const isCurrentlyExpanded = !this.classList.contains('collapsed');
+                    var sectionName = this.getAttribute('data-section');
+                    var content = document.getElementById('section-' + sectionName);
+                    var storageKey = 'sidebar:' + sectionName;
+                    var isCurrentlyExpanded = !this.classList.contains('collapsed');
 
                     if (isCurrentlyExpanded) {
-                        // Clicking on the currently expanded section does nothing
-                        // (Keep at least one section expanded at all times)
-                        return;
+                        // Collapse this section
+                        this.classList.add('collapsed');
+                        content.classList.add('collapsed');
+                        localStorage.setItem(storageKey, 'collapsed');
                     } else {
-                        // Expand this section and collapse all others
-                        collapsibleLabels.forEach(otherLabel => {
-                            const otherSectionName = otherLabel.getAttribute('data-section');
-                            const otherContent = document.getElementById('section-' + otherSectionName);
-
-                            if (otherSectionName === sectionName) {
-                                // Expand this section
-                                otherLabel.classList.remove('collapsed');
-                                otherContent.classList.remove('collapsed');
-                            } else {
-                                // Collapse all other sections
-                                otherLabel.classList.add('collapsed');
-                                otherContent.classList.add('collapsed');
-                            }
-                        });
-
-                        expandedSection = sectionName;
-                        localStorage.setItem('expandedSidebarSection', sectionName);
+                        // Expand this section
+                        this.classList.remove('collapsed');
+                        content.classList.remove('collapsed');
+                        localStorage.setItem(storageKey, 'expanded');
                     }
                 });
             });
