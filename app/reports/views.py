@@ -31,6 +31,7 @@ from app.utils.bir_books import get_company_identity
 from app.journal_entries.models import JournalEntry
 from app.reports.general_journal_data import (build_general_journal,
     build_general_journal_xlsx, VOUCHER_ENTRY_TYPES)
+from app.reports.books_data import BOOKS
 from app.journals.ap_journal_data import resolve_period   # pure fn, not modified
 from app.utils import ph_now
 from datetime import date, timedelta, datetime
@@ -1102,7 +1103,6 @@ def general_journal_export():
 @accountant_or_admin_required
 def books_of_accounts():
     """Hub page listing all six BIR books of accounts with per-book View links."""
-    from app.reports.books_data import BOOKS
     year = ph_now().year
     date_from = request.args.get('date_from', f'{year}-01-01')
     date_to = request.args.get('date_to', f'{year}-12-31')
