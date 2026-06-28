@@ -1,40 +1,206 @@
 {% extends "base.html" %}
-{% block title %}Sales Orders — CAS{% endblock %}
-
+{% block title %}Sales Orders{% endblock %}
+{% block page_title %}Sales Orders{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<style>
+.so-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+}
+.so-filter-bar .form-control { width: auto; }
+.so-filter-bar select.form-control { width: 160px; }
+.so-filter-bar input[type="date"].form-control { width: 150px; }
+.so-filter-search { flex: 1 1 200px; min-width: 180px; }
+.so-date-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.so-date-group__label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+    padding-left: 2px;
+}
+/* Customer Choices.js — match native select appearance */
+.so-filter-bar .choices { width: 160px; margin-bottom: 0; }
+.so-filter-bar .choices__inner {
+    padding: 10px 36px 10px 14px;
+    font-size: 14px;
+    border: 1px solid var(--form-border);
+    border-radius: 6px;
+    background: var(--card);
+    min-height: unset;
+    font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+.so-filter-bar .choices.is-focused .choices__inner,
+.so-filter-bar .choices.is-open .choices__inner {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    outline: none;
+}
+.so-filter-bar .choices__list--single { padding: 0; }
+.so-filter-bar .choices__list--single .choices__item {
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+}
+.so-filter-bar .choices[data-type*='select-one']::after {
+    border-color: var(--text-2) transparent transparent;
+    right: 14px;
+}
+.so-filter-bar .choices[data-type*='select-one'].is-open::after {
+    border-color: transparent transparent var(--text-2);
+}
+.so-filter-bar .choices__list--dropdown { min-width: 220px; }
+.so-filter-bar .choices__list--dropdown .choices__list { max-height: 200px; overflow-y: auto; }
+.btn-action {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 14px;
+}
+.btn-action:hover { background: var(--border); }
+@media (max-width: 640px) {
+    .so-filter-bar .form-control,
+    .so-filter-bar select.form-control,
+    .so-filter-bar input[type="date"].form-control,
+    .so-filter-bar .choices { width: 100%; }
+}
+</style>
+{% endblock %}
 {% block content %}
-<div class="page-header">
-    <h1>Sales Orders</h1>
-    {% if can_access_module(current_user, 'sales_orders') %}
-    <a href="{{ url_for('sales_orders.create') }}" class="btn btn-primary">+ Enter Sales Order</a>
+
+{# ── Filter bar ─────────────────────────────────────────────────────────── #}
+<form method="GET" action="{{ url_for('sales_orders.list') }}" class="so-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search SO # or customer"
+           class="form-control form-control-sm so-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft"     {% if status_filter == 'draft'     %}selected{% endif %}>Draft</option>
+        <option value="confirmed" {% if status_filter == 'confirmed' %}selected{% endif %}>Confirmed</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+        <option value="closed"    {% if status_filter == 'closed'    %}selected{% endif %}>Closed</option>
+    </select>
+    <select name="customer_id" id="so-customer-filter" class="form-control form-control-sm">
+        <option value="all">All Customers</option>
+        {% for c in customers %}
+        <option value="{{ c.id }}" {% if customer_filter == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+    </select>
+    <label class="so-date-group">
+        <span class="so-date-group__label">From</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </label>
+    <label class="so-date-group">
+        <span class="so-date-group__label">To</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center; justify-content:flex-end;">
+            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('sales_orders.create') }}" class="btn btn-green">&#x2795; Enter Sales Order</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        {% if orders %}
+        {# Badge map: draft→draft, confirmed→posted, cancelled→cancelled, closed→paid #}
+        {% set badge_map = {'draft': 'draft', 'confirmed': 'posted', 'cancelled': 'cancelled', 'closed': 'paid'} %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>SO #</th>
+                    <th>Order Date</th>
+                    <th>Customer</th>
+                    <th>Status</th>
+                    <th style="text-align:right;">Total</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('sales_orders.view', id=order.id) }}"
+                           style="font-weight:600;color:var(--blue);">{{ order.so_number }}</a>
+                    </td>
+                    <td>{{ order.order_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ order.customer_name }}</td>
+                    <td>
+                        <span class="badge badge-{{ badge_map.get(order.status, 'draft') }}">
+                            {{ order.status|replace('_', ' ')|title }}
+                        </span>
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);font-weight:600;">
+                        ₱{{ '{:,.2f}'.format(order.total_amount) }}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('sales_orders.view', id=order.id) }}" class="btn-action">&#x1F441;&#xFE0F;</a>
+                        {% if order.status == 'draft' %}
+                        <a href="{{ url_for('sales_orders.edit', id=order.id) }}" class="btn-action">&#x270F;&#xFE0F;</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No sales orders found.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px;">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} order{{ 's' if pagination.total != 1 else '' }}
+        </div>
+        <div style="display:flex;gap:8px;">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('sales_orders.list', page=pagination.prev_num, status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">&larr; Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('sales_orders.list', page=pagination.next_num, status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next &rarr;</a>
+            {% endif %}
+        </div>
+    </div>
     {% endif %}
 </div>
 
-<table class="table">
-    <thead>
-        <tr>
-            <th>SO #</th>
-            <th>Date</th>
-            <th>Customer</th>
-            <th>Status</th>
-            <th>Total</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for order in orders %}
-        <tr>
-            <td>{{ order.so_number }}</td>
-            <td>{{ order.order_date }}</td>
-            <td>{{ order.customer_name }}</td>
-            <td>{{ order.status }}</td>
-            <td>{{ order.total_amount }}</td>
-            <td>
-                <a href="{{ url_for('sales_orders.view', id=order.id) }}">View</a>
-            </td>
-        </tr>
-    {% else %}
-        <tr><td colspan="6">No sales orders found.</td></tr>
-    {% endfor %}
-    </tbody>
-</table>
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const customerSel = document.getElementById('so-customer-filter');
+    if (customerSel) {
+        new Choices(customerSel, {
+            searchEnabled: true,
+            itemSelectText: '',
+            shouldSort: false,
+            allowHTML: false,
+        });
+    }
+})();
+</script>
 {% endblock %}

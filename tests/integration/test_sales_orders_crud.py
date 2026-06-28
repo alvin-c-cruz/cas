@@ -87,3 +87,30 @@ def test_duplicate_so_number_rejected(client, db_session, admin_user, main_branc
         'notes': '', 'line_items': '[]'}, follow_redirects=True)
     # must not create a second SO with the same number
     assert SalesOrder.query.filter_by(so_number='SO-DUP').count() == 1
+
+
+def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, main_branch):
+    """GET /sales-orders → 200; SO number and draft status badge appear in the list."""
+    import datetime
+    c = _customer(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    # Create one SO directly in the DB (branch-scoped)
+    so = SalesOrder(
+        so_number='SO-2026-06-LIST1',
+        order_date=datetime.date(2026, 6, 28),
+        customer_id=c.id,
+        customer_name='Acme',
+        branch_id=main_branch.id,
+        status='draft',
+    )
+    db_session.add(so)
+    db_session.commit()
+
+    resp = client.get('/sales-orders')
+    assert resp.status_code == 200
+    assert b'SO-2026-06-LIST1' in resp.data
+    # Status badge renders the text "Draft"
+    assert b'badge-draft' in resp.data
+    assert b'Draft' in resp.data

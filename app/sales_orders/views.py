@@ -24,6 +24,8 @@ from app.utils.cache_helpers import get_active_units, get_active_products, get_s
 
 sales_orders_bp = Blueprint('sales_orders', __name__, template_folder='templates')
 
+VALID_SO_STATUSES = {'draft', 'confirmed', 'cancelled', 'closed'}
+
 
 # ── line-item helpers (kept from Tasks 1-3) ──────────────────────────────────
 
@@ -110,13 +112,60 @@ def _common_form_ctx():
 def list():
     branch_id = session.get('selected_branch_id')
     page = request.args.get('page', 1, type=int)
-    q = (SalesOrder.query
-         .filter_by(branch_id=branch_id)
-         .order_by(SalesOrder.order_date.desc(), SalesOrder.id.desc()))
-    pagination = q.paginate(page=page, per_page=50, error_out=False)
+
+    query = SalesOrder.query.filter_by(branch_id=branch_id)
+
+    # Status filter
+    status_filter = request.args.get('status', 'all')
+    if status_filter in VALID_SO_STATUSES:
+        query = query.filter_by(status=status_filter)
+
+    # Customer filter
+    customer_filter = request.args.get('customer_id', 'all')
+    if customer_filter != 'all':
+        try:
+            query = query.filter_by(customer_id=int(customer_filter))
+        except ValueError:
+            pass
+
+    # Text search
+    q_text = request.args.get('q', '').strip()
+    if q_text:
+        like = f'%{q_text}%'
+        query = query.filter(
+            db.or_(SalesOrder.so_number.ilike(like),
+                   SalesOrder.customer_name.ilike(like))
+        )
+
+    # Date range
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
+    if date_from:
+        try:
+            query = query.filter(SalesOrder.order_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', f'{year}-12-31')
+    if date_to:
+        try:
+            query = query.filter(SalesOrder.order_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    query = query.order_by(SalesOrder.order_date.desc(), SalesOrder.id.desc())
+    pagination = query.paginate(page=page, per_page=50, error_out=False)
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+
     return render_template('sales_orders/list.html',
                            orders=pagination.items,
-                           pagination=pagination)
+                           pagination=pagination,
+                           customers=customers,
+                           status_filter=status_filter,
+                           customer_filter=customer_filter,
+                           q=q_text,
+                           date_from=date_from,
+                           date_to=date_to)
 
 
 @sales_orders_bp.route('/sales-orders/create', methods=['GET', 'POST'])
