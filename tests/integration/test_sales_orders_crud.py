@@ -8,7 +8,7 @@ from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.customers.models import Customer
 from app.audit.models import AuditLog
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

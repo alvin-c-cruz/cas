@@ -4,7 +4,7 @@ from decimal import Decimal
 from app.sales_orders.models import SalesOrder
 from app.sales_orders.views import _parse_and_attach_so_lines
 
-pytestmark = pytest.mark.usefixtures("app")
+pytestmark = [pytest.mark.usefixtures("app"), pytest.mark.sales_orders]
 
 
 def test_parser_reads_qty_uom_price_product(db_session, main_branch):

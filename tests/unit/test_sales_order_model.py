@@ -4,7 +4,7 @@ from datetime import date
 from app import db
 from app.sales_orders.models import SalesOrder, SalesOrderItem
 
-pytestmark = pytest.mark.usefixtures("app")
+pytestmark = [pytest.mark.usefixtures("app"), pytest.mark.sales_orders]
 
 
 def test_item_derived_amount_and_vat():

@@ -2,7 +2,7 @@ import pytest
 from app import db
 from app.sales_orders.models import SalesOrder
 from app.sales_orders.views import generate_so_number
-pytestmark = pytest.mark.usefixtures("app")
+pytestmark = [pytest.mark.usefixtures("app"), pytest.mark.sales_orders]
 
 
 def test_first_number_format(db_session):

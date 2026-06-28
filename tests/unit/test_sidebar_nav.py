@@ -2,7 +2,7 @@ import pytest
 from app.users.module_access import MODULE_REGISTRY, AREA_ORDER, GROUP_ORDER, build_sidebar
 from app.users.models import User
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.sidebar_nav]
 
 
 def _user(role, perms=None):

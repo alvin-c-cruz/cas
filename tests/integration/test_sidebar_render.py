@@ -5,7 +5,7 @@ tree renders correctly in base.html for different user roles.
 """
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.sidebar_nav]
 
 
 def _login(client, user):

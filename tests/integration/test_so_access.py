@@ -2,7 +2,7 @@
 import pytest
 from app.users.module_access import MODULE_REGISTRY, all_permission_keys
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
 
 def test_sales_orders_registered_core_transactions():

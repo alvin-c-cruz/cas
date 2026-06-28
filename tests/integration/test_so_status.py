@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from app import db
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
 
 # ── helpers (pasted from test_sales_invoices.py pattern) ────────────────────
