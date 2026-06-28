@@ -1114,19 +1114,114 @@ def books_of_accounts():
 @login_required
 @accountant_or_admin_required
 def books_print_all():
-    """Stub — Task 8 will implement the full multi-book PDF."""
-    flash('Print All is coming in the next release.', 'info')
-    return redirect(url_for('reports.books_of_accounts',
-                            date_from=request.args.get('date_from', ''),
-                            date_to=request.args.get('date_to', '')))
+    """Render all six BIR books stacked in a single print-ready page."""
+    from app.reports.books_data import collect_books
+    branch_id = session.get('selected_branch_id')
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+    bundle = collect_books(branch_id, request.args)
+    # Build ordered list so the template can iterate with loop.first
+    books = [{'title': m['title'], **bundle['books'][m['key']]} for m in BOOKS]
+    return render_template(
+        'reports/books_print_all.html',
+        company=get_company_identity(),
+        period=bundle['period'],
+        books=books,
+        printed_at=ph_now(),
+    )
 
 
 @reports_bp.route('/reports/books-of-accounts/export-all')
 @login_required
 @accountant_or_admin_required
 def books_export_all():
-    """Stub — Task 8 will implement the full multi-sheet Excel workbook."""
-    flash('Export All is coming in the next release.', 'info')
-    return redirect(url_for('reports.books_of_accounts',
-                            date_from=request.args.get('date_from', ''),
-                            date_to=request.args.get('date_to', '')))
+    """One openpyxl workbook with one sheet per BIR book."""
+    from io import BytesIO
+    from flask import send_file
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from app.reports.books_data import collect_books
+    from app.utils.bir_books import write_bir_book_header
+
+    branch_id = session.get('selected_branch_id')
+    if not branch_id:
+        flash('Please select a branch.', 'warning')
+        return redirect(url_for('users.select_branch', next=request.url))
+
+    bundle = collect_books(branch_id, request.args)
+    company = get_company_identity()
+    period_label = bundle['period']['label']
+    NUM = '#,##0.00;(#,##0.00)'
+
+    wb = Workbook()
+    wb.remove(wb.active)  # remove default empty sheet
+
+    for meta in BOOKS:
+        ws = wb.create_sheet(meta['sheet'])
+        book = bundle['books'][meta['key']]
+        write_bir_book_header(ws, company, meta['title'].upper(), period_label)
+
+        if book['kind'] == 'gj':
+            gj = book['data']
+            ws.append(['Date', 'Particulars', 'Ref', 'Debit', 'Credit'])
+            for cell in ws[ws.max_row]:
+                cell.font = Font(bold=True)
+            for row in gj['rows']:
+                e = row['entry']
+                ws.append([e.entry_date.strftime('%m/%d/%Y'), '', e.display_number, None, None])
+                for d in row['debits']:
+                    ws.append(['', d['account'].name, '', float(d['amount']), None])
+                for c in row['credits']:
+                    ws.append(['', '    ' + c['account'].name, '', None, float(c['amount'])])
+                if row['explanation']:
+                    ws.append(['', '(' + row['explanation'] + ')', '', None, None])
+            ws.append(['', 'TOTAL', '', float(gj['total_debit']), float(gj['total_credit'])])
+            for cell in ws[ws.max_row]:
+                cell.font = Font(bold=True)
+            for col_letter in ('D', 'E'):
+                for cell in ws[col_letter]:
+                    cell.number_format = NUM
+
+        elif book['kind'] == 'columnar':
+            m = book['data']
+            header = ['Date', 'Ref', 'Particulars'] + [col['name'] for col in m['columns']]
+            ws.append(header)
+            for cell in ws[ws.max_row]:
+                cell.font = Font(bold=True)
+            for r in m['rows']:
+                if r.get('is_voided') and r.get('entry') is None:
+                    # voided row with no JE — skip (amounts are zero anyway)
+                    continue
+                e = r['entry']
+                ws.append(
+                    [e.entry_date.strftime('%m/%d/%Y'), e.display_number, e.description or ''] +
+                    [float(r['cells'].get(col['account_id'], 0) or 0) for col in m['columns']]
+                )
+            totals_row = ['', '', 'TOTAL'] + [
+                float(m['totals'].get(col['account_id'], 0) or 0)
+                for col in m['columns']
+            ]
+            ws.append(totals_row)
+            for cell in ws[ws.max_row]:
+                cell.font = Font(bold=True)
+            # Apply number format to amount columns (D onward)
+            from openpyxl.utils import get_column_letter
+            for col_idx in range(4, 4 + len(m['columns'])):
+                col_letter = get_column_letter(col_idx)
+                for cell in ws[col_letter]:
+                    cell.number_format = NUM
+
+        else:  # 'gl' — pointer row; full detail is available via the standalone GL export
+            ws.append(['See the General Ledger report for full per-account detail.'])
+            ws.cell(ws.max_row, 1).font = Font(italic=True)
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name='Books_of_Accounts.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )

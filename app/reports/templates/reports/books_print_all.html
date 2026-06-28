@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% block title %}Books of Accounts — {{ period.label }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=1">
+<style>
+  /* ── Shared book section ───────────────────────────────────────── */
+  .book-section { margin-bottom: 40px; }
+  .book-actions { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 12px; }
+
+  /* ── GJ table ─────────────────────────────────────────────────── */
+  .gj-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .gj-table th, .gj-table td { border: 1px solid var(--color-border, #aaa); padding: 3px 6px; }
+  .gj-table th { background: var(--color-text, #222); color: #fff; }
+  .gj-table td.num { text-align: right; font-family: monospace; }
+  .gj-indent { padding-left: 28px !important; }
+  .gj-expl { font-style: italic; color: var(--color-text-muted, #555); }
+  .gj-row-draft td { background: var(--color-warning-bg, #fffde7); }
+  .gj-row-voided td { background: var(--color-danger-bg, #ffebee); text-decoration: line-through; }
+  .gj-total td { border-top: 2px solid var(--color-text, #111); font-weight: 700; }
+
+  /* ── Columnar journal table ────────────────────────────────────── */
+  .col-scroll { overflow-x: auto; }
+  .col-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .col-table th, .col-table td { border: 1px solid var(--color-border, #aaa); padding: 3px 6px; }
+  .col-table th { background: var(--color-text, #222); color: #fff; }
+  .col-table th.num { text-align: center; }
+  .col-table td.num { text-align: right; font-family: monospace; }
+  .col-row-draft td { background: var(--color-warning-bg, #fffde7); }
+  .col-row-voided td { background: var(--color-danger-bg, #ffebee); text-decoration: line-through; }
+  .col-total td { border-top: 2px solid var(--color-text, #111); font-weight: 700; }
+
+  /* ── GL table ─────────────────────────────────────────────────── */
+  .gl-acct { margin-bottom: 16px; }
+  .gl-acct-title { font-weight: 700; border-bottom: 1px solid var(--color-border, #aaa);
+                   padding-bottom: 4px; margin-bottom: 6px; font-size: 11px; }
+  .gl-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .gl-table th, .gl-table td { border-bottom: 1px solid var(--color-border, #ddd); padding: 3px 6px; }
+  .gl-table th { background: var(--color-text, #222); color: #fff; }
+  .gl-table td.num { text-align: right; font-family: monospace; }
+  .gl-table tfoot td { font-weight: 700; border-top: 1px solid var(--color-text, #111); }
+
+  /* ── Empty state ───────────────────────────────────────────────── */
+  .book-empty { color: var(--color-text-muted, #555); font-style: italic;
+                padding: 12px 0; font-size: 11px; }
+
+  /* ── Print media ───────────────────────────────────────────────── */
+  @media print {
+    nav.sidebar, header.topbar, .book-actions { display: none !important; }
+    .main { margin-left: 0 !important; padding: 0 !important; }
+    .book-section { page-break-before: always; }
+    .book-section:first-child { page-break-before: auto; }
+    @page { size: A4 landscape; margin: 10mm; }
+    .col-table, .gj-table, .gl-table { font-size: 8px; }
+    .col-table thead, .gj-table thead, .gl-table thead { display: table-header-group; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div class="book-actions">
+      <button onclick="window.print()" class="btn btn-secondary btn-sm">Print</button>
+      <a href="{{ url_for('reports.books_of_accounts') }}" class="btn btn-secondary btn-sm">Back</a>
+    </div>
+  </div>
+  <div class="card-body">
+
+    {% for book in books %}
+    <section class="book-section"{% if not loop.first %} style="page-break-before: always;"{% endif %}>
+
+      {{ bir_book_header(company, book.title | upper, period.label) }}
+
+      {# ── General Journal ────────────────────────────────────────── #}
+      {% if book.kind == 'gj' %}
+        {% set gj = book.data %}
+        {% if gj.rows %}
+        <table class="gj-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Particulars</th><th>Ref</th>
+              <th class="num">Debit</th><th class="num">Credit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in gj.rows %}
+            {% set cls = 'gj-row-voided' if row.is_voided else ('gj-row-draft' if row.is_draft else '') %}
+            {% for d in row.debits %}
+            <tr class="{{ cls }}">
+              <td>{% if loop.first %}{{ row.entry.entry_date.strftime('%m/%d/%Y') }}{% endif %}</td>
+              <td>{{ d.account.name }}</td>
+              <td>{% if loop.first %}{{ row.entry.display_number }}{% endif %}</td>
+              <td class="num">{{ '{:,.2f}'.format(d.amount) }}</td>
+              <td class="num"></td>
+            </tr>
+            {% endfor %}
+            {% for c in row.credits %}
+            <tr class="{{ cls }}">
+              <td></td>
+              <td class="gj-indent">{{ c.account.name }}</td>
+              <td></td>
+              <td class="num"></td>
+              <td class="num">{{ '{:,.2f}'.format(c.amount) }}</td>
+            </tr>
+            {% endfor %}
+            {% if row.explanation %}
+            <tr class="{{ cls }}">
+              <td></td>
+              <td class="gj-expl" colspan="4">({{ row.explanation }})</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+            <tr class="gj-total">
+              <td colspan="3">TOTAL</td>
+              <td class="num">{{ '{:,.2f}'.format(gj.total_debit) }}</td>
+              <td class="num">{{ '{:,.2f}'.format(gj.total_credit) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        {% if not gj.balanced %}
+        <p style="color:var(--color-danger,#b91c1c);font-weight:700;margin-top:8px;font-size:11px;">
+          Warning: debits and credits are out of balance.
+        </p>
+        {% endif %}
+        {% else %}
+        <p class="book-empty">No General Journal entries found for {{ period.label }}.</p>
+        {% endif %}
+
+      {# ── Columnar special journals (SI / AP / CR / CD) ──────────── #}
+      {% elif book.kind == 'columnar' %}
+        {% set m = book.data %}
+        {% if m.rows %}
+        <div class="col-scroll">
+        <table class="col-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Ref</th><th>Particulars</th>
+              {% for col in m.columns %}
+              <th class="num">{{ col.name }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in m.rows %}
+            {% if row.is_voided %}
+            <tr class="col-row-voided">
+              {% set inv = row.get('invoice') %}
+              <td>{% if inv %}{{ inv.invoice_date.strftime('%m/%d/%Y') if inv.invoice_date else '' }}{% endif %}</td>
+              <td>[VOIDED]</td>
+              <td>{{ inv.invoice_number if inv and inv.invoice_number else '' }}</td>
+              {% for col in m.columns %}<td class="num"></td>{% endfor %}
+            </tr>
+            {% elif row.is_draft %}
+            <tr class="col-row-draft">
+              <td>{{ row.entry.entry_date.strftime('%m/%d/%Y') }}</td>
+              <td>{{ row.entry.display_number }}</td>
+              <td>[DRAFT] {{ row.entry.description or '' }}</td>
+              {% for col in m.columns %}<td class="num"></td>{% endfor %}
+            </tr>
+            {% else %}
+            <tr>
+              <td>{{ row.entry.entry_date.strftime('%m/%d/%Y') }}</td>
+              <td>{{ row.entry.display_number }}</td>
+              <td>{{ row.entry.description or '' }}</td>
+              {% for col in m.columns %}
+              <td class="num">
+                {%- set v = row.cells.get(col.account_id, 0) or 0 -%}
+                {%- if v != 0 -%}
+                  {%- if v < 0 -%}({{ '{:,.2f}'.format(-v) }}){%- else -%}{{ '{:,.2f}'.format(v) }}{%- endif -%}
+                {%- endif -%}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endif %}
+            {% endfor %}
+            <tr class="col-total">
+              <td colspan="3">TOTAL</td>
+              {% for col in m.columns %}
+              <td class="num">
+                {%- set t = m.totals.get(col.account_id, 0) or 0 -%}
+                {%- if t != 0 -%}
+                  {%- if t < 0 -%}({{ '{:,.2f}'.format(-t) }}){%- else -%}{{ '{:,.2f}'.format(t) }}{%- endif -%}
+                {%- endif -%}
+              </td>
+              {% endfor %}
+            </tr>
+          </tbody>
+        </table>
+        </div>
+        {% if not m.balanced %}
+        <p style="color:var(--color-danger,#b91c1c);font-weight:700;margin-top:8px;font-size:11px;">
+          Warning: column totals do not net to zero.
+        </p>
+        {% endif %}
+        {% else %}
+        <p class="book-empty">No entries found for {{ period.label }}.</p>
+        {% endif %}
+
+      {# ── General Ledger ─────────────────────────────────────────── #}
+      {% elif book.kind == 'gl' %}
+        {% set ledger = book.data %}
+        {% macro bal(value) %}{% if value >= 0 %}₱{{ "{:,.2f}".format(value) }} Dr{% else %}₱{{ "{:,.2f}".format(-value) }} Cr{% endif %}{% endmacro %}
+        {% if ledger.accounts %}
+        {% for acct in ledger.accounts %}
+        <div class="gl-acct">
+          <div class="gl-acct-title">{{ acct.code }} — {{ acct.name }}</div>
+          <table class="gl-table">
+            <thead>
+              <tr>
+                <th>Date</th><th>Source</th><th>Particulars</th>
+                <th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="5"><em>Opening balance</em></td>
+                <td class="num">{{ bal(acct.opening_balance) }}</td>
+              </tr>
+              {% for line in acct.lines %}
+              <tr>
+                <td>{{ line.entry_date.strftime('%Y-%m-%d') if line.entry_date else '' }}</td>
+                <td>{{ line.get('display_number', line.get('entry_number', '')) }}</td>
+                <td>{{ line.description or '' }}</td>
+                <td class="num">{% if line.debit %}₱{{ "{:,.2f}".format(line.debit) }}{% endif %}</td>
+                <td class="num">{% if line.credit %}₱{{ "{:,.2f}".format(line.credit) }}{% endif %}</td>
+                <td class="num">{{ bal(line.running_balance) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3">Period totals</td>
+                <td class="num">₱{{ "{:,.2f}".format(acct.total_debit) }}</td>
+                <td class="num">₱{{ "{:,.2f}".format(acct.total_credit) }}</td>
+                <td class="num"></td>
+              </tr>
+              <tr>
+                <td colspan="5">Closing balance</td>
+                <td class="num">{{ bal(acct.closing_balance) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="book-empty">No General Ledger activity found for {{ period.label }}.</p>
+        {% endif %}
+
+      {% endif %}{# end kind #}
+
+    </section>
+    {% endfor %}{# end books #}
+
+    <p style="margin-top:20px;font-size:11px;color:var(--color-text-muted,#555);">
+      Printed: {{ printed_at.strftime('%B %d, %Y %I:%M %p') }}
+    </p>
+
+  </div>{# card-body #}
+</div>{# card #}
+{% endblock %}
