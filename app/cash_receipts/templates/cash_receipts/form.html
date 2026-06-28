@@ -230,7 +230,6 @@
             <!-- Bottom: Entry (JE preview) + Summary panel -->
             <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:24px; margin-top:16px; align-items:start;">
               <div id="jePreviewSection" style="min-width:0; overflow-x:auto;">
-                <div class="crv-section-label">Entry</div>
                 <table class="table" style="font-size:12px;" id="jePreviewTable">
                   <thead>
                     <tr>
@@ -245,7 +244,6 @@
                 </table>
               </div>
               <div>
-                <div class="crv-section-label">CRV Summary</div>
                 <div class="bill-summary-panel">
 
                   <div class="bsr">
@@ -649,6 +647,7 @@ function addRevenueLine(existingItem) {
         ${productMasterOn ? `
         <td><select class="form-control rev-prod prod-select">
               <option value="">—</option>
+              <option value="__add_product__">+ Add Product</option>
               ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
             </select></td>` : ''}
         ${!productMasterOn ? `<td><input type="text" class="form-control rev-desc" value="${escHtml(item.description || '')}"
@@ -657,10 +656,12 @@ function addRevenueLine(existingItem) {
         <td><input type="number" step="0.0001" min="0" class="form-control rev-qty"
                    style="text-align:right; border:none; background:transparent; font-family:var(--mono);"
                    value="${item.quantity != null ? item.quantity : ''}"
+                   onfocus="this.select()"
                    onchange="updateRevenue(${id}, 'quantity', parseFloat(this.value) || null); updateDerivedAmount(${id})"></td>
         ${uomMasterOn ? `
         <td><select class="form-control rev-uom-sel uom-select">
               <option value="">—</option>
+              <option value="__add_uom__">+ Add UOM</option>
               ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
             </select></td>` : `
         <td><input type="text" maxlength="20" class="form-control rev-uom-txt"
@@ -669,6 +670,7 @@ function addRevenueLine(existingItem) {
         <td><input type="number" step="0.01" min="0" class="form-control rev-up"
                    style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
                    value="${item.unit_price != null ? item.unit_price : ''}"
+                   onfocus="this.select()"
                    onchange="updateRevenue(${id}, 'unit_price', parseFloat(this.value) || null); updateDerivedAmount(${id})"></td>
         <td><input type="text" class="form-control rev-amt" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right;font-family:var(--mono);border:none;background:transparent;"
@@ -728,13 +730,19 @@ function addRevenueLine(existingItem) {
     let prodC = null;
     if (prodSel) {
         prodC = new Choices(prodSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50, allowHTML: false });
-        prodSel.addEventListener('change', () => onProductPick(id, prodSel.value));
+        prodSel.addEventListener('change', () => {
+            if (prodSel.value === '__add_product__') { window.open('/products/create', '_blank'); prodC.setChoiceByValue(''); return; }
+            onProductPick(id, prodSel.value);
+        });
     }
     const uomSel = newRow.querySelector('.uom-select');
     let uomC = null;
     if (uomSel) {
         uomC = new Choices(uomSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 30, allowHTML: false });
-        uomSel.addEventListener('change', () => updateRevenue(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null));
+        uomSel.addEventListener('change', () => {
+            if (uomSel.value === '__add_uom__') { window.open('/units-of-measure/create', '_blank'); uomC.setChoiceByValue(''); return; }
+            updateRevenue(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null);
+        });
     }
     revenueChoices[id] = { vat: vatC, wht: whtC, acct: acctC, prod: prodC, uom: uomC };
     updateDerivedAmount(id);

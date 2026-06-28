@@ -98,7 +98,6 @@
 
                     <!-- JE Preview -->
                     <div id="jePreviewSection">
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Journal Entry</div>
                         <table class="table" style="font-size: 12px;" id="jePreviewTable">
                             <thead>
                                 <tr>
@@ -115,7 +114,6 @@
 
                     <!-- AP Voucher Summary Panel -->
                     <div>
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">AP Voucher Summary</div>
                         <div class="ap-summary-panel">
 
                         <!-- Row 1: Gross Amount -->
@@ -504,6 +502,7 @@ function addLineItem(existingItem, firstDefaults) {
         <td>
             <select class="form-control prod-select" id="prod-${id}">
                 <option value="">— none —</option>
+                <option value="__add_product__">+ Add Product</option>
                 ${products.map(p => `<option value="${p.id}" ${item.product_id === p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
             </select>
         </td>` : ''}
@@ -512,11 +511,13 @@ function addLineItem(existingItem, firstDefaults) {
                    onchange="updateLineItem(${id}, 'description', this.value)"></td>` : ''}
         <td><input type="number" id="qty-${id}" class="form-control" value="${item.quantity != null ? item.quantity : ''}"
                    min="0" step="any" style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
+                   onfocus="this.select()"
                    oninput="updateLineItem(${id}, 'quantity', this.value ? parseFloat(this.value) : null); updateDerivedAmount(${id});"></td>
         <td>
             ${uomMasterOn ? `
             <select class="form-control uom-select" id="uom-${id}">
                 <option value="">—</option>
+                <option value="__add_uom__">+ Add UOM</option>
                 ${units.map(u => `<option value="${u.id}" ${item.uom_id === u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
             </select>` : `
             <input type="text" id="uom-${id}" class="form-control" value="${escHtml(item.uom_text || '')}"
@@ -525,6 +526,7 @@ function addLineItem(existingItem, firstDefaults) {
         </td>
         <td><input type="number" id="up-${id}" class="form-control" value="${item.unit_price != null ? item.unit_price : ''}"
                    min="0" step="any" style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
+                   onfocus="this.select()"
                    oninput="updateLineItem(${id}, 'unit_price', this.value ? parseFloat(this.value) : null); updateDerivedAmount(${id});"></td>
         <td><input type="text" id="amt-${id}" class="form-control" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
@@ -586,13 +588,19 @@ function addLineItem(existingItem, firstDefaults) {
     let prodC = null;
     if (prodSel) {
         prodC = new Choices(prodSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50, allowHTML: false });
-        prodSel.addEventListener('change', () => onProductPick(id, prodSel.value ? parseInt(prodSel.value) : null));
+        prodSel.addEventListener('change', () => {
+            if (prodSel.value === '__add_product__') { window.open('/products/create', '_blank'); prodC.setChoiceByValue(''); return; }
+            onProductPick(id, prodSel.value ? parseInt(prodSel.value) : null);
+        });
     }
     const uomSel = newRow.querySelector('.uom-select');
     let uomC = null;
     if (uomSel) {
         uomC = new Choices(uomSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 30, allowHTML: false });
-        uomSel.addEventListener('change', () => updateLineItem(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null));
+        uomSel.addEventListener('change', () => {
+            if (uomSel.value === '__add_uom__') { window.open('/units-of-measure/create', '_blank'); uomC.setChoiceByValue(''); return; }
+            updateLineItem(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null);
+        });
     }
     lineChoices[id] = { vat: vatC, wht: whtC, acct: acctC, prod: prodC, uom: uomC };
 
