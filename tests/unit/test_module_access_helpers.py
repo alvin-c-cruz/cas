@@ -26,7 +26,7 @@ def test_sections_align_with_sidebar():
     sec = {m['key']: m['section'] for m in MODULE_REGISTRY}
     for k in ('income_statement', 'balance_sheet', 'cash_flow', 'trial_balance', 'fiscal_year_close'):
         assert sec[k] == 'Financial Reports', f'{k} should be under Financial Reports'
-    for k in ('chart_of_accounts', 'general_ledger', 'ar_aging', 'ap_aging'):
+    for k in ('chart_of_accounts', 'general_ledger', 'ar_aging', 'ap_aging', 'books_of_accounts'):
         assert sec[k] == 'Ledger', f'{k} should be under Ledger'
     for k in ('customers', 'vendors'):
         assert sec[k] == 'Maintenance', f'{k} should be under Maintenance'
@@ -44,7 +44,7 @@ def _u(role, perms=None):
 def test_visible_modules_admin_sees_whole_section(db_session):
     from app.users.module_access import visible_modules
     keys = {m['key'] for m in visible_modules(_u('admin'), 'Ledger')}
-    assert keys == {'chart_of_accounts', 'general_ledger', 'ar_aging', 'ap_aging'}
+    assert keys == {'chart_of_accounts', 'general_ledger', 'ar_aging', 'ap_aging', 'books_of_accounts'}
 
 
 def test_visible_modules_accountant_sees_only_granted(db_session):
