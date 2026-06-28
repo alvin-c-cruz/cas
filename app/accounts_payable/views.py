@@ -899,6 +899,12 @@ def edit(id):
                 line_item.ap_id = ap.id
                 db.session.add(line_item)
 
+            # flush so new rows are in DB, then expire the collection so that
+            # calculate_totals() and _post_ap_je() lazy-load fresh rows instead
+            # of the stale pre-delete ORM cache (Query.delete does not evict it).
+            db.session.flush()
+            db.session.expire(ap, ['line_items'])
+
             ap.calculate_totals()
 
             err = _apply_overrides(ap)

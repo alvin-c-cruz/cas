@@ -257,3 +257,53 @@ class TestBillCreatePostsJE:
         ap_line = next((l for l in new_je.lines if l.account_id == ap.id), None)
         assert ap_line is not None
         assert ap_line.credit_amount == Decimal('6000.00')
+
+    def test_edit_bill_subtotal_reflects_new_amount(
+            self, client, db_session, accountant_user, main_branch):
+        """Regression: ap.subtotal/total_amount must be written from the NEW lines after edit.
+
+        A bulk Query.delete() does not evict the ORM line_items collection.  Without
+        db.session.expire(ap, ['line_items']) after the flush, calculate_totals() iterates
+        stale old lines and commits the wrong totals — this test catches that.
+        """
+        login(client)
+        vendor = make_vendor(db_session, code='JEV005')
+        get_or_create_account(db_session, '20101', 'Accounts Payable - Trade', 'Liability')
+        exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
+
+        # Create the bill at 5000
+        client.post('/accounts-payable/create', data={
+            'ap_number': 'PBJ-005',
+            'ap_date': date.today().isoformat(),
+            'due_date': date.today().isoformat(),
+            'vendor_id': vendor.id,
+            'payment_terms': 'Net 30',
+            'notes': 'Test subtotal',
+            'line_items': make_line_items_payload(amount=5000.00, vat_code='', account_id=exp.id),
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '0', 'wt_override_value': '0',
+        }, follow_redirects=True)
+
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
+        assert bill is not None, "Bill PBJ-005 not created"
+
+        # Edit the bill to 7500
+        client.post(f'/accounts-payable/{bill.id}/edit', data={
+            'ap_number': 'PBJ-005',
+            'ap_date': date.today().isoformat(),
+            'due_date': date.today().isoformat(),
+            'vendor_id': vendor.id,
+            'payment_terms': 'Net 30',
+            'notes': 'Test subtotal',
+            'line_items': make_line_items_payload(amount=7500.00, vat_code='', account_id=exp.id),
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '0', 'wt_override_value': '0',
+        }, follow_redirects=True)
+
+        # expire_all forces a fresh DB read — ensures we are not hitting the ORM cache
+        db_session.expire_all()
+        bill = AccountsPayable.query.order_by(AccountsPayable.id.desc()).first()
+        assert bill.subtotal == Decimal('7500.00'), (
+            f"Expected subtotal 7500, got {bill.subtotal} — stale line_items collection in calculate_totals?")
+        assert bill.total_amount == Decimal('7500.00'), (
+            f"Expected total_amount 7500, got {bill.total_amount}")
