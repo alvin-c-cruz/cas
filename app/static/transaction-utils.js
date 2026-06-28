@@ -28,6 +28,22 @@ function amtBlur(el, id) {
     updateLineItem(id, 'amount', n);
 }
 
+// qtyBlur / upBlur: called by SI and AP (which use updateLineItem).
+// CDV/CRV define their own expQtyBlur/expUpBlur / revQtyBlur/revUpBlur.
+function qtyBlur(el, id) {
+    const n = parseFloat(el.value.replace(/,/g, '')) || null;
+    el.value = n != null ? amtFmt(n) : '';
+    updateLineItem(id, 'quantity', n);
+    updateDerivedAmount(id);
+}
+
+function upBlur(el, id) {
+    const n = parseFloat(el.value.replace(/,/g, '')) || null;
+    el.value = n != null ? amtFmt(n) : '';
+    updateLineItem(id, 'unit_price', n);
+    updateDerivedAmount(id);
+}
+
 function escHtml(s) {
     return String(s)
         .replace(/&/g, '&amp;')
