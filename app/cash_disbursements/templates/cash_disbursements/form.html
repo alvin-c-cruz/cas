@@ -225,16 +225,16 @@
               <table class="table" id="expenseLinesTable">
                 <thead>
                   <tr>
-                    {% if module_enabled('products') %}<th style="width:10%">Product</th>{% endif %}
-                    <th style="width:28%">Description</th>
+                    {% if module_enabled('products') %}<th style="width:23%">Product</th>{% endif %}
+                    {% if not module_enabled('products') %}<th style="width:28%">Description</th>{% endif %}
                     <th style="width:6%;text-align:right">Qty</th>
-                    <th style="width:7%">UOM</th>
-                    <th style="width:9%;text-align:right">Unit Price</th>
-                    <th style="width:11%;text-align:right">Amount (VAT-incl.)</th>
-                    <th style="width:7%">VT</th>
-                    <th style="width:7%">WT</th>
-                    <th style="width:20%">Account Title</th>
-                    <th style="width:5%"></th>
+                    <th style="width:6%">UOM</th>
+                    <th style="width:9%;text-align:right">UP</th>
+                    <th style="width:9%;text-align:right">Amount</th>
+                    <th style="width:9%">VT</th>
+                    <th style="width:8%">WT</th>
+                    <th style="width:19%">Account Title</th>
+                    <th style="width:4%"></th>
                   </tr>
                 </thead>
                 <tbody id="expenseLinesBody"></tbody>
@@ -274,7 +274,7 @@
                   </div>
 
                   <div id="vatDisplayMode" class="bsr">
-                    <span class="bsr-label">Input VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override VAT">&#9998;</button></span>
+                    <span class="bsr-label">Input VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override VAT">✏️</button></span>
                     <span id="vatDisplay" class="bsr-amt">0.00</span>
                   </div>
                   <div id="vatEditMode" class="bsr" style="display:none">
@@ -286,7 +286,7 @@
                   </div>
 
                   <div id="wtDisplayMode" class="bsr">
-                    <span class="bsr-label">Less: WHT <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override WHT">&#9998;</button></span>
+                    <span class="bsr-label">Less: WHT <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override WHT">✏️</button></span>
                     <span id="wtDisplay" class="bsr-amt bsr-amt--red">-0.00</span>
                   </div>
                   <div id="wtEditMode" class="bsr" style="display:none">
@@ -684,14 +684,14 @@ function addExpenseLine(existingItem) {
     expenseLines.push(item);
 
     const uomCell = uomMasterOn
-        ? `<select class="form-control uom-sel" style="min-width:60px">
+        ? `<select class="form-control uom-select" style="min-width:60px">
                <option value="">—</option>
                ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
            </select>`
         : `<input type="text" class="form-control uom-text-inp" style="min-width:50px" value="${escHtml(item.uom_text || '')}"
                   onchange="updateExpense(${id}, 'uom_text', this.value)">`;
     const productCell = productMasterOn
-        ? `<td><select class="form-control prod-sel" onchange="onProductPick(${id}, parseInt(this.value)||null)">
+        ? `<td><select class="form-control prod-select">
                <option value="">—</option>
                ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}</option>`).join('')}
            </select></td>`
@@ -701,17 +701,18 @@ function addExpenseLine(existingItem) {
     row.id = `exp-${id}`;
     row.innerHTML = `
         ${productCell}
-        <td><input type="text" class="form-control" id="exp-desc-${id}" value="${escHtml(item.description || '')}"
-                   onchange="updateExpense(${id}, 'description', this.value)"></td>
+        ${!productMasterOn ? `<td><input type="text" class="form-control" id="exp-desc-${id}" value="${escHtml(item.description || '')}"
+                   style="border:none; background:transparent; padding-left:0;"
+                   onchange="updateExpense(${id}, 'description', this.value)"></td>` : ''}
         <td><input type="number" class="form-control" id="exp-qty-${id}" value="${item.quantity != null ? item.quantity : ''}"
-                   step="any" min="0" style="text-align:right;font-family:var(--mono);min-width:60px"
+                   step="any" min="0" style="text-align:right;font-family:var(--mono);min-width:60px;border:none;background:transparent;"
                    oninput="updateExpense(${id}, 'quantity', parseFloat(this.value)||null); updateDerivedAmount(${id})"></td>
         <td>${uomCell}</td>
         <td><input type="number" step="0.01" min="0" class="form-control" id="exp-up-${id}" value="${item.unit_price != null ? item.unit_price : ''}"
-                   style="text-align:right;font-family:var(--mono);min-width:70px"
+                   style="text-align:right;font-family:var(--mono);min-width:70px;border:none;background:transparent;"
                    onchange="updateExpense(${id}, 'unit_price', parseFloat(this.value)||null); updateDerivedAmount(${id})"></td>
         <td><input type="text" class="form-control exp-amt" id="exp-amt-${id}" value="${amtFmt(item.amount || 0)}"
-                   style="text-align:right;font-family:var(--mono)"
+                   style="text-align:right;font-family:var(--mono);border:none;background:transparent;"
                    onfocus="amtFocus(this)" onblur="expAmtBlur(this, ${id})"></td>
         <td>
             <select class="form-control vat-sel">
@@ -728,9 +729,9 @@ function addExpenseLine(existingItem) {
             <select class="form-control acct-sel">
                 <option value="">Select Account</option>
                 ${allAccounts.map(a => {
-                    const lbl = escHtml(a.code) + ' : ' + escHtml(a.name);
-                    if (a.is_group) return `<option disabled value="">${lbl}</option>`;
-                    return `<option value="${a.id}" ${item.account_id === a.id ? 'selected' : ''}>${lbl}</option>`;
+                    const props = escHtml(JSON.stringify({ code: a.code }));
+                    if (a.is_group) return `<option disabled value="" data-custom-properties="${props}">${escHtml(a.code)} : ${escHtml(a.name)}</option>`;
+                    return `<option value="${a.id}" data-custom-properties="${props}" ${item.account_id === a.id ? 'selected' : ''}>${escHtml(a.code)} : ${escHtml(a.name)}</option>`;
                 }).join('')}
             </select>
         </td>
@@ -743,20 +744,41 @@ function addExpenseLine(existingItem) {
     const whtSel  = newRow.querySelector('.wht-sel');
     const acctSel = newRow.querySelector('.acct-sel');
     const codeOpts = { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false };
+    const codeOnlyOpts = {
+        searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
+        allowHTML: false,
+        callbackOnCreateTemplates: function(tmpl) {
+            return {
+                item: function(cfg, data) {
+                    const cn = cfg.classNames;
+                    const code = (data.customProperties && data.customProperties.code) || data.value || '—';
+                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(code))}</div>`);
+                }
+            };
+        }
+    };
     const vatC  = new Choices(vatSel,  codeOpts);
     const whtC  = new Choices(whtSel,  codeOpts);
     // Lock to the notice only when the vendor has no codes AND this line has no
     // orphaned saved code to preserve.
     if (currentVendorWHTs.length === 0 && !expenseWhtOrphan(item)) whtC.disable();
-    const acctC = new Choices(acctSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
+    const acctC = new Choices(acctSel, codeOnlyOpts);
     vatSel.addEventListener('change',  () => updateExpense(id, 'vat_category', vatSel.value));
     whtSel.addEventListener('change',  () => updateExpenseWht(id, whtSel));
     acctSel.addEventListener('change', () => updateExpense(id, 'account_id', parseInt(acctSel.value) || null));
-    if (uomMasterOn) {
-        const uomSel = newRow.querySelector('.uom-sel');
-        if (uomSel) uomSel.addEventListener('change', () => updateExpense(id, 'uom_id', parseInt(uomSel.value) || null));
+    const prodSel = newRow.querySelector('.prod-select');
+    let prodC = null;
+    if (prodSel) {
+        prodC = new Choices(prodSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50, allowHTML: false });
+        prodSel.addEventListener('change', () => onProductPick(id, prodSel.value ? parseInt(prodSel.value) : null));
     }
-    expenseChoices[id] = { vat: vatC, wht: whtC, acct: acctC };
+    const uomSel = newRow.querySelector('.uom-select');
+    let uomC = null;
+    if (uomSel) {
+        uomC = new Choices(uomSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 30, allowHTML: false });
+        uomSel.addEventListener('change', () => updateExpense(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null));
+    }
+    expenseChoices[id] = { vat: vatC, wht: whtC, acct: acctC, prod: prodC, uom: uomC };
     updateDerivedAmount(id);
 }
 
@@ -802,8 +824,8 @@ function onProductPick(id, productId) {
     }
     if (p.default_uom_id && uomMasterOn) {
         item.uom_id = p.default_uom_id;
-        const uomSel = row ? row.querySelector('.uom-sel') : null;
-        if (uomSel) uomSel.value = String(p.default_uom_id);
+        const uomC = expenseChoices[id] ? expenseChoices[id].uom : null;
+        if (uomC) uomC.setChoiceByValue(String(p.default_uom_id));
     }
     if (p.default_unit_price != null) {
         item.unit_price = p.default_unit_price;
@@ -841,6 +863,8 @@ function removeExpenseLine(id) {
         expenseChoices[id].vat.destroy();
         expenseChoices[id].wht.destroy();
         expenseChoices[id].acct.destroy();
+        if (expenseChoices[id].prod) expenseChoices[id].prod.destroy();
+        if (expenseChoices[id].uom) expenseChoices[id].uom.destroy();
         delete expenseChoices[id];
     }
     document.getElementById(`exp-${id}`).remove();
