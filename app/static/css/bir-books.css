@@ -25,7 +25,7 @@
 .bir-book-header .bir-branch {
   font-size: 13px;
   font-weight: 700;
-  color: var(--color-text-muted, #444);
+  color: var(--color-text-muted, #555);
   margin-top: 2px;
 }
 
