@@ -1145,6 +1145,12 @@
                         <span class="nav-text">General Ledger</span>
                     </a>
                     {% endif %}
+                    {% if can_access_module(current_user, 'books_of_accounts') %}
+                    <a href="{{ url_for('reports.books_of_accounts') }}" class="nav-item {% if request.endpoint and (request.endpoint.startswith('reports.books') or request.endpoint.startswith('reports.general_journal')) %}active{% endif %}">
+                        <span class="nav-icon">📚</span>
+                        <span class="nav-text">Books of Accounts</span>
+                    </a>
+                    {% endif %}
                     {% if can_access_module(current_user, 'ar_aging') %}
                     <a href="{{ url_for('reports.ar_aging') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.ar_aging') %}active{% endif %}">
                         <span class="nav-icon">📅</span>
