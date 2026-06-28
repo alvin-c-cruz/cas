@@ -463,3 +463,61 @@ def test_customer_quick_add_json_persists_wht(
     assert resp.status_code == 200 and resp.get_json()['ok'] is True
     c = Customer.query.filter_by(code='C902').first()
     assert [w.code for w in c.withholding_taxes] == ['WC158']
+
+
+# ---------------------------------------------------------------------------
+# B-10: warn-but-allow on duplicate customer names (case-insensitive)
+# ---------------------------------------------------------------------------
+
+def test_customer_create_duplicate_name_warns_and_saves(
+        client, db_session, accountant_user, main_branch):
+    """Creating two customers with the same name (different case) warns and saves both."""
+    import html as html_mod
+    from app.customers.models import Customer
+    _login_accountant(client, accountant_user, main_branch)
+    # Create first customer
+    client.post('/customers/create', data={
+        'code': 'C101', 'name': 'Acme Corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'default_vat_category': '', 'default_wt_code': '',
+    }, follow_redirects=True)
+    # Create second customer with different-cased name
+    resp = client.post('/customers/create', data={
+        'code': 'C102', 'name': 'acme corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'default_vat_category': '', 'default_wt_code': '',
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    # Both customers must be saved (warn-but-allow, not a block)
+    count = Customer.query.filter(Customer.name.ilike('acme corp')).count()
+    assert count == 2, f"Expected 2 customers with name 'acme corp' but got {count}"
+    # Warning flash must be present
+    body = html_mod.unescape(resp.data.decode())
+    assert 'already exists' in body
+
+
+def test_customer_create_unique_name_no_warning(
+        client, db_session, accountant_user, main_branch):
+    """Creating a customer with a unique name shows no duplicate-name warning."""
+    _login_accountant(client, accountant_user, main_branch)
+    resp = client.post('/customers/create', data={
+        'code': 'C103', 'name': 'Totally Unique Customer 9999', 'payment_terms': 'Net 30',
+        'is_active': '1', 'default_vat_category': '', 'default_wt_code': '',
+    }, follow_redirects=True)
+    body = resp.data.decode()
+    assert 'already exists' not in body
+
+
+def test_customer_edit_keeping_own_name_no_warning(
+        client, db_session, accountant_user, main_branch):
+    """Editing a customer while keeping its own name must NOT trigger a duplicate warning."""
+    import html as html_mod
+    from app.customers.models import Customer
+    _login_accountant(client, accountant_user, main_branch)
+    c = Customer(code='C104', name='Self Name Corp', payment_terms='Net 30', is_active=True)
+    db_session.add(c)
+    db_session.commit()
+    resp = client.post(f'/customers/{c.id}/edit', data={
+        'code': 'C104', 'name': 'Self Name Corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'default_vat_category': '', 'default_wt_code': '',
+    }, follow_redirects=True)
+    body = html_mod.unescape(resp.data.decode())
+    assert 'already exists' not in body

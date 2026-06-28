@@ -4,6 +4,7 @@ Customer management views (Admin and Accountant only)
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
+from sqlalchemy import func
 from app import db
 from app.customers.models import Customer
 from app.sales_vat_categories.models import SalesVATCategory
@@ -218,6 +219,11 @@ def create():
             flash(f'Customer code "{form.code.data}" already exists.', 'error')
             return render_template('customers/form.html', form=form, customer=None)
 
+        # Check for duplicate customer name (case-insensitive, warn-but-allow)
+        _dup_name = Customer.query.filter(
+            func.lower(Customer.name) == form.name.data.strip().lower()
+        ).first()
+
         try:
             customer = Customer(
                 code=form.code.data,
@@ -259,6 +265,8 @@ def create():
                     'id': customer.id,
                     'label': f'{customer.code} - {customer.name}',
                 })
+            if _dup_name:
+                flash(f"A customer named '{customer.name}' already exists.", 'warning')
             flash(f'Customer "{customer.name}" created successfully!', 'success')
             return redirect(url_for('customers.list_customers'))
         except Exception as e:
@@ -300,6 +308,12 @@ def edit(id):
             flash(f'Customer code "{form.code.data}" already exists.', 'error')
             return render_template('customers/form.html', form=form, customer=customer)
 
+        # Check for duplicate customer name (case-insensitive, warn-but-allow, self-excluded)
+        _dup_name = Customer.query.filter(
+            func.lower(Customer.name) == form.name.data.strip().lower(),
+            Customer.id != id
+        ).first()
+
         try:
             # Capture old values before update
             old_values = model_to_dict(customer, CUSTOMER_FIELDS)
@@ -337,6 +351,8 @@ def edit(id):
                 new_values=new_values
             )
 
+            if _dup_name:
+                flash(f"A customer named '{customer.name}' already exists.", 'warning')
             flash(f'Customer "{customer.name}" updated successfully!', 'success')
             return redirect(url_for('customers.list_customers'))
         except Exception as e:

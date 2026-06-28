@@ -543,3 +543,55 @@ class TestVendorListSearchPagination:
         resp = client.get('/vendors/export/excel')
         assert resp.status_code == 302
 
+
+class TestVendorDuplicateName:
+    """B-10: warn-but-allow on duplicate vendor names (case-insensitive)."""
+
+    def test_create_duplicate_name_warns_and_saves(self, client, db_session, admin_user, main_branch):
+        """Creating two vendors with the same name (different case) warns and saves both."""
+        import html as html_mod
+        make_vat_category(db_session)
+        login(client)
+        # Create first vendor
+        client.post('/vendors/create', data={
+            'code': 'DN001', 'name': 'Acme Corp',
+            'payment_terms': 'Net 30', 'default_vat_category': 'V12DG', 'is_active': '1',
+        }, follow_redirects=True)
+        # Create second vendor with different-cased name
+        resp = client.post('/vendors/create', data={
+            'code': 'DN002', 'name': 'acme corp',
+            'payment_terms': 'Net 30', 'default_vat_category': 'V12DG', 'is_active': '1',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        # Both vendors must be saved (warn-but-allow, not a block)
+        count = Vendor.query.filter(Vendor.name.ilike('acme corp')).count()
+        assert count == 2, f"Expected 2 vendors with name 'acme corp' but got {count}"
+        # Warning flash must be present
+        body = html_mod.unescape(resp.data.decode())
+        assert 'already exists' in body
+
+    def test_create_unique_name_no_warning(self, client, db_session, admin_user, main_branch):
+        """Creating a vendor with a unique name shows no duplicate-name warning."""
+        make_vat_category(db_session)
+        login(client)
+        resp = client.post('/vendors/create', data={
+            'code': 'DN003', 'name': 'Totally Unique Vendor 9999',
+            'payment_terms': 'Net 30', 'default_vat_category': 'V12DG', 'is_active': '1',
+        }, follow_redirects=True)
+        body = resp.data.decode()
+        assert 'already exists' not in body
+
+    def test_edit_keeping_own_name_no_warning(self, client, db_session, admin_user, main_branch):
+        """Editing a vendor while keeping its own name must NOT trigger a duplicate warning."""
+        import html as html_mod
+        make_vat_category(db_session)
+        login(client)
+        vendor = make_vendor(db_session, code='DN004', name='Self Name Corp')
+        resp = client.post(f'/vendors/{vendor.id}/edit', data={
+            'code': 'DN004', 'name': 'Self Name Corp',
+            'check_payee_name': 'Self Name Corp',
+            'payment_terms': 'Net 30', 'default_vat_category': 'V12DG', 'is_active': '1',
+        }, follow_redirects=True)
+        body = html_mod.unescape(resp.data.decode())
+        assert 'already exists' not in body
+

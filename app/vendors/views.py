@@ -4,6 +4,7 @@ Vendor management views (Admin and Accountant only)
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from app import db
 from app.utils import ph_now
@@ -145,6 +146,11 @@ def create():
             flash(f'Vendor code "{form.code.data}" already exists.', 'error')
             return render_template('vendors/form.html', form=form, vendor=None)
 
+        # Check for duplicate vendor name (case-insensitive, warn-but-allow)
+        _dup_name = Vendor.query.filter(
+            func.lower(Vendor.name) == form.name.data.strip().lower()
+        ).first()
+
         try:
             vendor = Vendor(
                 code=form.code.data,
@@ -178,6 +184,8 @@ def create():
                 new_values=model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
             )
 
+            if _dup_name:
+                flash(f"A vendor named '{vendor.name}' already exists.", 'warning')
             flash(f'Vendor "{vendor.name}" created successfully!', 'success')
             if _wants_json():
                 return jsonify(ok=True, vendor={
@@ -224,6 +232,12 @@ def edit(id):
             flash(f'Vendor code "{form.code.data}" already exists.', 'error')
             return render_template('vendors/form.html', form=form, vendor=vendor)
 
+        # Check for duplicate vendor name (case-insensitive, warn-but-allow, self-excluded)
+        _dup_name = Vendor.query.filter(
+            func.lower(Vendor.name) == form.name.data.strip().lower(),
+            Vendor.id != id
+        ).first()
+
         try:
             # Capture old values before update
             old_values = model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
@@ -258,6 +272,8 @@ def edit(id):
                 new_values=new_values
             )
 
+            if _dup_name:
+                flash(f"A vendor named '{vendor.name}' already exists.", 'warning')
             flash(f'Vendor "{vendor.name}" updated successfully!', 'success')
             return redirect(url_for('vendors.list_vendors'))
         except Exception as e:
