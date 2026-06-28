@@ -79,6 +79,61 @@ def test_export_all_requires_accountant_or_admin(client, db_session, main_branch
     assert resp.status_code == 302
 
 
+def test_print_all_flows_sale_and_purchase_amounts(client, db_session, main_branch, admin_user,
+                                                    cash_account, revenue_account,
+                                                    expense_account):
+    """Posted sale+purchase JEs must flow into the correct columnar journal and GL sections."""
+    from decimal import Decimal
+    from datetime import date
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    _set_company()
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    def _je(entry_type, dr_acct, cr_acct, amount, num):
+        e = JournalEntry(
+            entry_number=num, entry_date=date(2026, 6, 10),
+            description=f'{entry_type} test',
+            entry_type=entry_type, branch_id=main_branch.id,
+            status='posted', total_debit=amount, total_credit=amount,
+            reference=num,
+        )
+        db.session.add(e); db.session.flush()
+        db.session.add(JournalEntryLine(
+            entry_id=e.id, line_number=1, account_id=dr_acct.id,
+            debit_amount=amount, credit_amount=Decimal('0.00'),
+        ))
+        db.session.add(JournalEntryLine(
+            entry_id=e.id, line_number=2, account_id=cr_acct.id,
+            debit_amount=Decimal('0.00'), credit_amount=amount,
+        ))
+        db.session.commit()
+        return e
+
+    # Sale JE: DR Cash 1,234.00 / CR Sales Revenue 1,234.00
+    _je('sale', cash_account, revenue_account, Decimal('1234.00'), 'JE-SALE-001')
+    # Purchase JE: DR Office Supplies 567.00 / CR Cash 567.00
+    _je('purchase', expense_account, cash_account, Decimal('567.00'), 'JE-PURCH-001')
+
+    resp = client.get(
+        '/reports/books-of-accounts/print-all'
+        '?date_from=2026-06-01&date_to=2026-06-30'
+    )
+    assert resp.status_code == 200
+    body = resp.data
+
+    # Sales Journal: cash_account column should appear (DR side of sale JE)
+    assert b'Cash on Hand' in body, 'Cash on Hand missing from print-all (expected in Sales Journal + GL)'
+    # The sale amount must be present in the output
+    assert b'1,234.00' in body, 'Sale amount 1,234.00 not found in print-all output'
+    # The purchase amount must be present
+    assert b'567.00' in body, 'Purchase amount 567.00 not found in print-all output'
+    # GL section includes both accounts' activity
+    assert b'Sales Revenue' in body, 'Sales Revenue account missing from GL section'
+    assert b'Office Supplies' in body, 'Office Supplies account missing from GL section'
+
+
 def test_export_all_xlsx_includes_voided_ap_row(client, db_session, main_branch, accountant_user):
     """Voided AP bills must appear in the Purchase Journal sheet as [VOIDED] rows,
     matching the print template's behaviour — not silently dropped."""

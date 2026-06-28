@@ -30,17 +30,9 @@ def build_general_journal(entries):
             'balanced': total_debit == total_credit}
 
 
-def build_general_journal_xlsx(gj, period_label, company, branch_name, filename):
-    from openpyxl import Workbook
+def _write_gj_rows(ws, gj):
+    """Write GJ data rows + TOTAL row to ws. Callers apply number formats and widths."""
     from openpyxl.styles import Font
-    from app.utils.bir_books import write_bir_book_header
-
-    NUM = '#,##0.00;(#,##0.00)'
-    wb = Workbook(); ws = wb.active; ws.title = 'General Journal'
-    write_bir_book_header(ws, company, 'GENERAL JOURNAL', period_label, branch_name)
-    ws.append(['Date', 'Particulars', 'Ref', 'Debit', 'Credit'])
-    for cell in ws[ws.max_row]:
-        cell.font = Font(bold=True)
     for row in gj['rows']:
         e = row['entry']
         ws.append([e.entry_date.strftime('%m/%d/%Y'), '', e.display_number, None, None])
@@ -53,6 +45,20 @@ def build_general_journal_xlsx(gj, period_label, company, branch_name, filename)
     ws.append(['', 'TOTAL', '', float(gj['total_debit']), float(gj['total_credit'])])
     for cell in ws[ws.max_row]:
         cell.font = Font(bold=True)
+
+
+def build_general_journal_xlsx(gj, period_label, company, branch_name, filename):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from app.utils.bir_books import write_bir_book_header
+
+    NUM = '#,##0.00;(#,##0.00)'
+    wb = Workbook(); ws = wb.active; ws.title = 'General Journal'
+    write_bir_book_header(ws, company, 'GENERAL JOURNAL', period_label, branch_name)
+    ws.append(['Date', 'Particulars', 'Ref', 'Debit', 'Credit'])
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True)
+    _write_gj_rows(ws, gj)
     for col in ('D', 'E'):
         for cell in ws[col]:
             cell.number_format = NUM

@@ -30,7 +30,7 @@ from app.utils.export import export_to_excel, export_to_csv
 from app.utils.bir_books import get_company_identity
 from app.journal_entries.models import JournalEntry
 from app.reports.general_journal_data import (build_general_journal,
-    build_general_journal_xlsx, VOUCHER_ENTRY_TYPES)
+    build_general_journal_xlsx, _write_gj_rows, VOUCHER_ENTRY_TYPES)
 from app.reports.books_data import BOOKS
 from app.journals.ap_journal_data import resolve_period   # pure fn, not modified
 from app.utils import ph_now
@@ -1082,14 +1082,17 @@ def general_journal_print():
 def general_journal_export():
     """General Journal Excel export."""
     from flask import send_file
+    from app.branches.models import Branch
     branch_id = session.get('selected_branch_id')
     if not branch_id:
         flash('Please select a branch.', 'warning')
         return redirect(url_for('users.select_branch', next=request.url))
     period = resolve_period(request.args, ph_now().date())
     gj = build_general_journal(_general_journal_entries(branch_id, period))
+    branch = db.session.get(Branch, branch_id)
+    branch_name = branch.name if branch else None
     bio = build_general_journal_xlsx(gj, period['label'], get_company_identity(),
-                                     None, 'General_Journal.xlsx')
+                                     branch_name, 'General_Journal.xlsx')
     return send_file(bio, as_attachment=True, download_name='General_Journal.xlsx',
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
@@ -1168,18 +1171,7 @@ def books_export_all():
             ws.append(['Date', 'Particulars', 'Ref', 'Debit', 'Credit'])
             for cell in ws[ws.max_row]:
                 cell.font = Font(bold=True)
-            for row in gj['rows']:
-                e = row['entry']
-                ws.append([e.entry_date.strftime('%m/%d/%Y'), '', e.display_number, None, None])
-                for d in row['debits']:
-                    ws.append(['', d['account'].name, '', float(d['amount']), None])
-                for c in row['credits']:
-                    ws.append(['', '    ' + c['account'].name, '', None, float(c['amount'])])
-                if row['explanation']:
-                    ws.append(['', '(' + row['explanation'] + ')', '', None, None])
-            ws.append(['', 'TOTAL', '', float(gj['total_debit']), float(gj['total_credit'])])
-            for cell in ws[ws.max_row]:
-                cell.font = Font(bold=True)
+            _write_gj_rows(ws, gj)
             for col_letter in ('D', 'E'):
                 for cell in ws[col_letter]:
                     cell.number_format = NUM

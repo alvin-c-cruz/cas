@@ -147,9 +147,18 @@
             {% if row.is_voided %}
             <tr class="col-row-voided">
               {% set inv = row.get('invoice') %}
-              <td>{% if inv %}{{ inv.invoice_date.strftime('%m/%d/%Y') if inv.invoice_date else '' }}{% endif %}</td>
+              {% set ap_doc = row.get('ap') %}
+              <td>
+                {%- if inv and inv.invoice_date -%}{{ inv.invoice_date.strftime('%m/%d/%Y') }}
+                {%- elif ap_doc and ap_doc.ap_date -%}{{ ap_doc.ap_date.strftime('%m/%d/%Y') }}
+                {%- endif -%}
+              </td>
               <td>[VOIDED]</td>
-              <td>{{ inv.invoice_number if inv and inv.invoice_number else '' }}</td>
+              <td>
+                {%- if inv -%}{{ inv.invoice_number or '' }}
+                {%- elif ap_doc -%}{{ ap_doc.ap_number or '' }}
+                {%- endif -%}
+              </td>
               {% for col in m.columns %}<td class="num"></td>{% endfor %}
             </tr>
             {% elif row.is_draft %}

@@ -2,7 +2,7 @@ from decimal import Decimal
 from datetime import date
 from app import db
 from app.journal_entries.models import JournalEntry, JournalEntryLine
-from app.reports.general_journal_data import build_general_journal, build_general_journal_xlsx
+from app.reports.general_journal_data import build_general_journal, build_general_journal_xlsx, _write_gj_rows
 
 
 def _entry(branch_id, dr, cr, amount, status='posted', etype='adjustment'):
