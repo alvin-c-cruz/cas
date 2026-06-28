@@ -26,6 +26,12 @@
         <label class="form-label">Access Permissions</label>
         <div class="form-hint">You can grant only modules you hold. Other modules the user
             already has are preserved.</div>
+        {% if editable_mods %}
+        <label class="checkbox-label" style="margin-bottom: 10px;">
+            <input type="checkbox" id="book_select_all">
+            <span>Select all</span>
+        </label>
+        {% endif %}
         {% for m in editable_mods %}
         <label class="checkbox-label">
             <input type="checkbox" name="book_{{ m.key }}" value="1"
@@ -41,4 +47,53 @@
     </div>
 </form>
 </div></div>
+{% endblock %}
+
+{% block extra_js %}
+{% if editable_mods %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const masterCheckbox = document.getElementById('book_select_all');
+
+    // Strictly scope to book_* permission checkboxes (excludes is_active)
+    function getBookCheckboxes() {
+        return Array.from(document.querySelectorAll('input[type="checkbox"][name^="book_"]'));
+    }
+
+    function syncMaster() {
+        if (!masterCheckbox) return;
+        const boxes = getBookCheckboxes();
+        if (!boxes.length) return;
+        const checkedCount = boxes.filter(function(cb) { return cb.checked; }).length;
+        if (checkedCount === 0) {
+            masterCheckbox.checked = false;
+            masterCheckbox.indeterminate = false;
+        } else if (checkedCount === boxes.length) {
+            masterCheckbox.checked = true;
+            masterCheckbox.indeterminate = false;
+        } else {
+            masterCheckbox.checked = false;
+            masterCheckbox.indeterminate = true;
+        }
+    }
+
+    // Master checkbox: check/uncheck all book_* children
+    if (masterCheckbox) {
+        masterCheckbox.addEventListener('change', function() {
+            const checked = masterCheckbox.checked;
+            getBookCheckboxes().forEach(function(cb) { cb.checked = checked; });
+            syncMaster();
+        });
+    }
+
+    // Sync master when any child changes
+    getBookCheckboxes().forEach(function(cb) {
+        cb.addEventListener('change', syncMaster);
+    });
+
+    // Reflect initial Jinja-pre-populated checked state
+    syncMaster();
+});
+</script>
+{% endif %}
 {% endblock %}
