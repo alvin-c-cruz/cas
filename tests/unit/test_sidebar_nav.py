@@ -16,12 +16,33 @@ def _user(role, perms=None):
 def test_admin_sees_all_areas_ordered(db_session):
     tree = build_sidebar(_user('admin'))
     areas = [a['area'] for a in tree]
-    # admin can access every enabled module; Payroll has no modules so it is omitted
-    assert areas == ['Sales', 'Purchases', 'Inventory', 'Accounting', 'Compliance']
+    # admin can access every ENABLED module; Payroll has no modules so it is omitted.
+    # Inventory is also omitted because products + units_of_measure are optional and
+    # default_enabled=False — admin still cannot see an optional area that is turned off.
+    assert areas == ['Sales', 'Purchases', 'Accounting', 'Compliance']
     sales = next(a for a in tree if a['area'] == 'Sales')
     assert [g['group'] for g in sales['groups']] == ['Documents', 'Masters', 'Reports']
     docs = next(g for g in sales['groups'] if g['group'] == 'Documents')['modules']
     assert [m['key'] for m in docs] == ['sales_orders', 'accounts_receivable', 'collections']
+
+
+def test_enabling_inventory_modules_shows_inventory_area(db_session):
+    """When the optional products + UOM modules are turned on, admin sees an Inventory area."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+
+    # Enable both optional Inventory modules (AppSettings.set_setting commits internally)
+    AppSettings.set_setting('module_enabled:units_of_measure', '1')
+    AppSettings.set_setting('module_enabled:products', '1')
+    clear_module_config_cache()
+
+    tree = build_sidebar(_user('admin'))
+    areas = [a['area'] for a in tree]
+    assert 'Inventory' in areas, f"Expected Inventory area after enabling modules; got {areas}"
+
+    inv = next(a for a in tree if a['area'] == 'Inventory')
+    all_module_keys = [m['key'] for g in inv['groups'] for m in g['modules']]
+    assert set(all_module_keys) == {'products', 'units_of_measure'}
 
 
 def test_empty_areas_and_groups_omitted(db_session):
