@@ -647,6 +647,18 @@ def create():
                 flash('Selected vendor not found.', 'error')
                 return _render_form(request.form.get('line_items', ''))
 
+            # B-09: block duplicate vendor invoice number per vendor (voided/cancelled excluded)
+            inv_num = form.vendor_invoice_number.data
+            if inv_num:
+                dup = AccountsPayable.query.filter(
+                    AccountsPayable.vendor_id == vendor.id,
+                    AccountsPayable.vendor_invoice_number == inv_num,
+                    AccountsPayable.status.notin_(['voided', 'cancelled'])
+                ).first()
+                if dup:
+                    flash(f"Vendor invoice number '{inv_num}' already exists for this vendor.", 'error')
+                    return _render_form(request.form.get('line_items', ''))
+
             ap = AccountsPayable(
                 branch_id=session.get('selected_branch_id'),
                 # Regenerate server-side; the read-only form value is never trusted.
@@ -851,6 +863,19 @@ def edit(id):
             if not vendor:
                 flash('Selected vendor not found.', 'error')
                 return _render_edit_form(request.form.get('line_items', ''))
+
+            # B-09: block duplicate vendor invoice number per vendor (exclude self; voided/cancelled excluded)
+            inv_num = form.vendor_invoice_number.data
+            if inv_num:
+                dup = AccountsPayable.query.filter(
+                    AccountsPayable.vendor_id == vendor.id,
+                    AccountsPayable.vendor_invoice_number == inv_num,
+                    AccountsPayable.status.notin_(['voided', 'cancelled']),
+                    AccountsPayable.id != ap.id
+                ).first()
+                if dup:
+                    flash(f"Vendor invoice number '{inv_num}' already exists for this vendor.", 'error')
+                    return _render_edit_form(request.form.get('line_items', ''))
 
             # ap_number is immutable after creation — never trust the client value.
             ap.ap_date = form.ap_date.data

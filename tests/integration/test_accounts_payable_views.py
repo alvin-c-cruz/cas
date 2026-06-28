@@ -1,9 +1,13 @@
 """Integration tests for the purchase bills list page redesign."""
+import html as _html
+import json
 import re
 import pytest
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
+from app.accounts.models import Account
+from app.vat_categories.models import VATCategory
 from app.vendors.models import Vendor
 from app.accounts_payable.models import AccountsPayable
 from app.utils import ph_now
@@ -419,3 +423,117 @@ class TestCreateFormUpload:
         assert 'enctype="multipart/form-data"' in html
         assert 'name="attachments"' in html
         assert 'multiple' in html
+
+
+class TestDuplicateVendorInvoice:
+    """B-09: duplicate vendor_invoice_number per vendor must be blocked at create and edit."""
+
+    def _setup(self, db_session):
+        for code, name, typ, bal in [
+            ('20101', 'Accounts Payable - Trade', 'Liability', 'Credit'),
+            ('20301', 'Withholding Tax Payable - Expanded', 'Liability', 'Credit'),
+            ('10502', 'Input VAT - Domestic Goods', 'Asset', 'Debit'),
+            ('69903', 'Test Expense B09', 'Expense', 'Debit'),
+        ]:
+            db_session.add(Account(code=code, name=name, account_type=typ,
+                                   normal_balance=bal, is_active=True))
+        db_session.commit()
+        db_session.add(VATCategory(code='V12DG', name='Input Tax Domestic Goods', rate=12.00,
+                                   is_active=True,
+                                   input_vat_account_id=Account.query.filter_by(code='10502').first().id))
+        v1 = Vendor(code='B09V1', name='B09 Vendor One', check_payee_name='B09 Vendor One', is_active=True)
+        v2 = Vendor(code='B09V2', name='B09 Vendor Two', check_payee_name='B09 Vendor Two', is_active=True)
+        db_session.add(v1)
+        db_session.add(v2)
+        db_session.commit()
+        exp = Account.query.filter_by(code='69903').first()
+        return v1, v2, exp
+
+    def _login(self, client, user, branch):
+        client.post('/login', data={'username': user.username, 'password': 'admin123'},
+                    follow_redirects=True)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = branch.id
+
+    def _post_create(self, client, vendor, exp, invoice_number='INV-001'):
+        return client.post('/accounts-payable/create', data={
+            'ap_number': 'AP-B09-0001',
+            'ap_date': date.today().isoformat(),
+            'due_date': date.today().isoformat(),
+            'vendor_id': vendor.id,
+            'vendor_invoice_number': invoice_number,
+            'payment_terms': 'Net 30',
+            'notes': 'Test particulars B09',
+            'line_items': json.dumps([{
+                'description': 'Test item', 'amount': 1000.0,
+                'vat_category': None, 'account_id': exp.id,
+                'wt_id': None, 'wt_rate': None,
+            }]),
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '0', 'wt_override_value': '0',
+        })
+
+    def test_duplicate_invoice_same_vendor_blocked(self, client, db_session, admin_user, main_branch):
+        """Same vendor + same invoice number → 2nd create must be rejected (count stays 1)."""
+        v1, v2, exp = self._setup(db_session)
+        self._login(client, admin_user, main_branch)
+        resp = self._post_create(client, v1, exp, invoice_number='INV-DUP')
+        assert resp.status_code == 302, "First AP must succeed"
+        assert AccountsPayable.query.count() == 1
+        resp = self._post_create(client, v1, exp, invoice_number='INV-DUP')
+        assert resp.status_code == 200, "Duplicate must be rejected (re-render)"
+        assert AccountsPayable.query.count() == 1, "No 2nd AP should be persisted"
+        body = _html.unescape(resp.data.decode())
+        assert 'INV-DUP' in body and 'already exists' in body
+
+    def test_same_invoice_different_vendor_allowed(self, client, db_session, admin_user, main_branch):
+        """Same invoice number but a different vendor → allowed (cross-vendor reuse is OK)."""
+        v1, v2, exp = self._setup(db_session)
+        self._login(client, admin_user, main_branch)
+        resp = self._post_create(client, v1, exp, invoice_number='INV-CROSS')
+        assert resp.status_code == 302
+        assert AccountsPayable.query.count() == 1
+        resp = self._post_create(client, v2, exp, invoice_number='INV-CROSS')
+        assert resp.status_code == 302, "Different vendor must be allowed"
+        assert AccountsPayable.query.count() == 2
+
+    def test_voided_invoice_number_can_be_reused(self, client, db_session, admin_user, main_branch):
+        """A voided bill's invoice number can be reused by the same vendor."""
+        v1, v2, exp = self._setup(db_session)
+        self._login(client, admin_user, main_branch)
+        resp = self._post_create(client, v1, exp, invoice_number='INV-VOID')
+        assert resp.status_code == 302
+        ap = AccountsPayable.query.first()
+        ap.status = 'voided'
+        db_session.commit()
+        resp = self._post_create(client, v1, exp, invoice_number='INV-VOID')
+        assert resp.status_code == 302, "Reuse after void must be allowed"
+        assert AccountsPayable.query.count() == 2
+
+    def test_edit_keeping_own_invoice_not_blocked(self, client, db_session, admin_user, main_branch):
+        """Editing an AP and keeping its own invoice number must not trigger the self-duplicate guard."""
+        v1, v2, exp = self._setup(db_session)
+        self._login(client, admin_user, main_branch)
+        resp = self._post_create(client, v1, exp, invoice_number='INV-SELF')
+        assert resp.status_code == 302, "Initial create must succeed"
+        ap = AccountsPayable.query.first()
+        assert ap.status == 'draft'
+        resp = client.post(f'/accounts-payable/{ap.id}/edit', data={
+            'ap_number': ap.ap_number,
+            'ap_date': date.today().isoformat(),
+            'due_date': date.today().isoformat(),
+            'vendor_id': v1.id,
+            'vendor_invoice_number': 'INV-SELF',
+            'payment_terms': 'Net 30',
+            'notes': 'Updated particulars B09',
+            'line_items': json.dumps([{
+                'description': 'Updated item', 'amount': 1500.0,
+                'vat_category': None, 'account_id': exp.id,
+                'wt_id': None, 'wt_rate': None,
+            }]),
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '0', 'wt_override_value': '0',
+        })
+        assert resp.status_code == 302, "Edit with own invoice number must not be blocked"
+        db_session.refresh(ap)
+        assert ap.notes == 'Updated particulars B09'
