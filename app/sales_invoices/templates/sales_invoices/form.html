@@ -760,8 +760,11 @@ function onProductPick(id, productId) {
     }
     if (p.default_uom_id != null) {
         item.uom_id = p.default_uom_id;
-        const uomEl = document.getElementById(`uom-sel-${id}`);
-        if (uomEl) uomEl.value = String(p.default_uom_id);
+        const lc = lineChoices[id];
+        if (lc && lc.uom) {
+            lc.uom.setChoiceByValue(String(p.default_uom_id));
+            updateLineItem(id, 'uom_id', p.default_uom_id);
+        }
     }
     if (p.default_unit_price != null) {
         item.unit_price = p.default_unit_price;
