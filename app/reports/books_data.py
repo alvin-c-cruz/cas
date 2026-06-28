@@ -55,8 +55,8 @@ def collect_books(branch_id, args):
     query + account-id grouping that journals/views.py uses, then calling the
     existing pure build_columnar* functions.
     """
-    from datetime import datetime
-    today = datetime.now().date()
+    from app.utils import ph_now
+    today = ph_now().date()   # PH time (CLAUDE.md: never naive datetime.now())
     period = resolve_period(args, today)
     df, dt = period['date_from'], period['date_to']
 
