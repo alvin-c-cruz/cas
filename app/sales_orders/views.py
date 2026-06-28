@@ -17,6 +17,8 @@ from app.sales_orders.forms import SalesOrderForm
 from app.customers.models import Customer
 from app.customers.views import build_customer_quick_add_form
 from app.withholding_tax.models import WithholdingTax
+from app.users.models import User
+from app.settings import AppSettings
 from app.audit.utils import log_create, log_update, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
@@ -346,11 +348,36 @@ def edit(id):
 @sales_orders_bp.route('/sales-orders/<int:id>')
 @login_required
 def view(id):
-    """View stub — detail template will be built in Task 6."""
+    """Read-only detail view for a Sales Order."""
     so = db.get_or_404(SalesOrder, id)
     if so.branch_id != session.get('selected_branch_id'):
         abort(404)
-    return render_template('sales_orders/view.html', so=so)
+    created_by_user = (db.session.get(User, so.created_by_id)
+                       if so.created_by_id else None)
+    confirmed_by_user = (db.session.get(User, so.confirmed_by_id)
+                         if so.confirmed_by_id else None)
+    cancelled_by_user = (db.session.get(User, so.cancelled_by_id)
+                         if so.cancelled_by_id else None)
+    return render_template('sales_orders/detail.html', so=so,
+                           created_by_user=created_by_user,
+                           confirmed_by_user=confirmed_by_user,
+                           cancelled_by_user=cancelled_by_user)
+
+
+@sales_orders_bp.route('/sales-orders/<int:id>/print')
+@login_required
+def print_so(id):
+    """Print-friendly view for a Sales Order."""
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    return render_template('sales_orders/print.html', so=so,
+                           company=company, printed_at=ph_now())
 
 
 # ── confirm / cancel stubs (Task 8) ──────────────────────────────────────────

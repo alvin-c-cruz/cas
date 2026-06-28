@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+
+{% block title %}SO {{ so.so_number }}{% endblock %}
+{% block page_title %}Sales Order — {{ so.so_number }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=1">
+
+{# ── Confirm modal (draft only, Task 8 wires the logic) ─────────────────── #}
+{% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin'] %}
+<div id="confirmModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+     z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Confirm this Sales Order?</h3>
+        <p style="color:var(--text-2); margin-bottom:24px;">
+            The Sales Order will be marked as confirmed and can no longer be edited.
+        </p>
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary"
+                    onclick="document.getElementById('confirmModal').style.display='none'">
+                Keep Draft
+            </button>
+            <form method="POST" action="{{ url_for('sales_orders.confirm', id=so.id) }}"
+                  style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-success">Confirm Order</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# ── Cancel modal (confirmed only, Task 8 wires the logic) ──────────────── #}
+{% if so.status == 'confirmed' and current_user.role in ['accountant', 'admin'] %}
+<div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+     z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Cancel this Sales Order?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;">
+            <strong>{{ so.so_number }}</strong> will be marked as cancelled. This cannot be undone.
+        </p>
+        <form method="POST" action="{{ url_for('sales_orders.cancel', id=so.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    Reason <span style="color:var(--red);">*</span>
+                </label>
+                <textarea name="cancel_reason" rows="3" class="form-control"
+                          placeholder="Minimum 10 characters" required minlength="10"
+                          style="width:100%; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary"
+                        onclick="document.getElementById('cancelModal').style.display='none'">
+                    Keep Order
+                </button>
+                <button type="submit" class="btn btn-danger">Cancel Order</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="card page-sales-order">
+    <div class="card-header">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <span style="font-size:20px; font-weight:700;">{{ so.so_number }}</span>
+            <span class="badge badge-{{ 'secondary' if so.status=='draft'
+                                        else 'success' if so.status=='confirmed'
+                                        else 'danger' if so.status=='cancelled'
+                                        else 'info' if so.status=='closed'
+                                        else 'dark' }}">
+                {{ so.status | title }}
+            </span>
+        </div>
+        <div class="card-header-actions">
+            <a href="{{ url_for('sales_orders.print_so', id=so.id) }}"
+               target="_blank" rel="noopener noreferrer"
+               class="btn btn-secondary">Print</a>
+            {# Confirm: staff/accountant/admin, draft only (logic wired in Task 8) #}
+            {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin'] %}
+            <button type="button" class="btn btn-success"
+                    onclick="document.getElementById('confirmModal').style.display='flex'">
+                Confirm Order
+            </button>
+            {% endif %}
+            {# Edit: staff/accountant/admin, draft only #}
+            {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin'] %}
+            <a href="{{ url_for('sales_orders.edit', id=so.id) }}" class="btn btn-primary">Edit</a>
+            {% endif %}
+            {# Cancel: accountant/admin, confirmed only (logic wired in Task 8) #}
+            {% if so.status == 'confirmed' and current_user.role in ['accountant', 'admin'] %}
+            <button type="button" class="btn btn-danger"
+                    onclick="document.getElementById('cancelModal').style.display='flex'">
+                Cancel Order
+            </button>
+            {% endif %}
+            <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary">&#8592; Back to List</a>
+        </div>
+    </div>
+
+    <div class="card-body">
+
+        {# ── Two-column header ────────────────────────────────────────────── #}
+        <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:24px; margin-bottom:32px;">
+
+            {# LEFT: order metadata #}
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">SO #</span>
+                    <span style="font-weight:600; font-family:var(--mono);">{{ so.so_number }}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Order Date</span>
+                    <span>{{ so.order_date.strftime('%b %d, %Y') if so.order_date else '&#8212;' }}</span>
+                </div>
+                {% if so.expected_delivery_date %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Expected Delivery</span>
+                    <span>{{ so.expected_delivery_date.strftime('%b %d, %Y') }}</span>
+                </div>
+                {% endif %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Payment Terms</span>
+                    <span>{{ so.payment_terms or '&#8212;' }}</span>
+                </div>
+                {% if so.reference %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Reference</span>
+                    <span>{{ so.reference }}</span>
+                </div>
+                {% endif %}
+                {% if so.customer_po_number %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Customer PO #</span>
+                    <span style="font-family:var(--mono);">{{ so.customer_po_number }}</span>
+                </div>
+                {% endif %}
+                {% if so.customer_po_date %}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">PO Date</span>
+                    <span>{{ so.customer_po_date.strftime('%b %d, %Y') }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            {# RIGHT: customer + notes #}
+            <div style="display:flex; flex-direction:column; gap:16px;">
+                <div>
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase;
+                                letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">
+                        Customer
+                    </div>
+                    <div style="border:2px solid var(--blue, #3b82f6);
+                                background:var(--alert-info-bg); border-radius:8px;
+                                padding:16px 20px;">
+                        <div style="font-weight:700; font-size:15px; margin-bottom:4px;">
+                            {{ so.customer_name }}
+                        </div>
+                        {% if so.customer_tin %}
+                        <div style="color:var(--text-2); font-size:12px; margin-bottom:2px;">
+                            TIN: {{ so.customer_tin }}
+                        </div>
+                        {% endif %}
+                        {% if so.customer_address %}
+                        <div style="color:var(--text-2); font-size:12px;">
+                            {{ so.customer_address }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div style="flex:1;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase;
+                                letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">
+                        Notes
+                    </div>
+                    <div style="background:var(--bg); border-radius:6px; padding:14px 16px;
+                                min-height:48px; height:100%;">
+                        <p style="margin:0; color:var(--text-2); white-space:pre-wrap;
+                                  font-size:13px;">{{ so.notes or '' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Line Items ────────────────────────────────────────────────────── #}
+        <div style="overflow-x:auto; margin-bottom:24px;">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Description</th>
+                        {% if module_enabled('products') %}<th>Product</th>{% endif %}
+                        <th style="text-align:right;">Qty</th>
+                        <th>UOM</th>
+                        <th style="text-align:right;">Unit Price (₱)</th>
+                        <th style="text-align:right;">Amount (₱)</th>
+                        <th>VAT Category</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in so.line_items %}
+                    <tr>
+                        <td>{{ item.line_number }}</td>
+                        <td>{{ item.description or '&#8212;' }}</td>
+                        {% if module_enabled('products') %}
+                        <td style="font-size:12px; color:var(--text-2);">
+                            {% if item.product %}
+                                {{ item.product.code }} &#8212; {{ item.product.name }}
+                            {% else %}
+                                &#8212;
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                        <td style="text-align:right; font-family:var(--mono);">
+                            {{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '&#8212;' }}
+                        </td>
+                        <td style="font-size:12px;">
+                            {{ item.unit_of_measure.code if item.unit_of_measure
+                               else (item.uom_text or '&#8212;') }}
+                        </td>
+                        <td style="text-align:right; font-family:var(--mono);">
+                            {% if item.unit_price is not none %}
+                                ₱{{ '{:,.2f}'.format(item.unit_price) }}
+                            {% else %}
+                                &#8212;
+                            {% endif %}
+                        </td>
+                        <td style="text-align:right; font-family:var(--mono); font-weight:600;">
+                            ₱{{ '{:,.2f}'.format(item.amount) }}
+                        </td>
+                        <td>
+                            {% if item.vat_category %}
+                                {{ item.vat_category }} ({{ '{:.2f}'.format(item.vat_rate) }}%)
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# ── Order Summary ─────────────────────────────────────────────────── #}
+        <div style="display:flex; justify-content:flex-end; margin-bottom:24px;">
+            <div>
+                <div style="font-size:11px; font-weight:700; text-transform:uppercase;
+                            letter-spacing:.05em; color:var(--text-2); margin-bottom:10px;">
+                    Order Summary
+                </div>
+                <div class="bill-summary-panel">
+                    <div class="bsr">
+                        <span class="bsr-label">Subtotal (VAT-incl.)</span>
+                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.subtotal) }}</span>
+                    </div>
+                    <div class="bsr">
+                        <span class="bsr-label">Less: VAT</span>
+                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.vat_amount) }}</span>
+                    </div>
+                    <div class="bsr bsr--sep">
+                        <span class="bsr-label">Net of VAT</span>
+                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.subtotal - so.vat_amount) }}</span>
+                    </div>
+                    <div class="bsr">
+                        <span class="bsr-label">Add: VAT</span>
+                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.vat_amount) }}</span>
+                    </div>
+                    <div class="bsr bsr--total">
+                        <span class="bsr-label bsr-label--total">Total Amount</span>
+                        <span class="bsr-amt bsr-amt--total">₱{{ '{:,.2f}'.format(so.total_amount) }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Audit footer ──────────────────────────────────────────────────── #}
+        <div style="margin-top:8px; padding-top:16px; border-top:1px solid var(--border);
+                    font-size:12px; color:var(--text-3);">
+            Created
+            {% if created_by_user %} by {{ created_by_user.username }}{% endif %}
+            {% if so.created_at %} on {{ so.created_at.strftime('%b %d, %Y %H:%M') }}{% endif %}
+            {% if confirmed_by_user %}
+            &mdash; Confirmed by {{ confirmed_by_user.username }}
+            {% if so.confirmed_at %} on {{ so.confirmed_at.strftime('%b %d, %Y %H:%M') }}{% endif %}
+            {% endif %}
+            {% if cancelled_by_user %}
+            &mdash; Cancelled by {{ cancelled_by_user.username }}
+            {% if so.cancelled_at %} on {{ so.cancelled_at.strftime('%b %d, %Y %H:%M') }}{% endif %}
+            {% if so.cancel_reason %} &mdash; <em>{{ so.cancel_reason }}</em>{% endif %}
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+<style>
+.badge { padding:4px 8px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; }
+.badge-secondary { background:var(--text-3); color:white; }
+.badge-success { background:var(--green); color:white; }
+.badge-danger { background:var(--red); color:white; }
+.badge-info { background:var(--blue); color:white; }
+.badge-dark { background:var(--text-1, #374151); color:white; }
+@media (max-width: 640px) {
+    .card-header { flex-direction:column; align-items:flex-start; gap:12px; }
+    .card-header-actions { flex-wrap:wrap; }
+    div[style*="grid-template-columns:1fr 1.5fr"] { grid-template-columns: 1fr !important; }
+}
+</style>
+{% endblock %}

@@ -1,9 +1,10 @@
 """Integration tests — Sales Orders create/edit, uniqueness, audit."""
 import json
+import datetime
 import pytest
 from decimal import Decimal
 from app import db
-from app.sales_orders.models import SalesOrder
+from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.customers.models import Customer
 from app.audit.models import AuditLog
 
@@ -87,6 +88,45 @@ def test_duplicate_so_number_rejected(client, db_session, admin_user, main_branc
         'notes': '', 'line_items': '[]'}, follow_redirects=True)
     # must not create a second SO with the same number
     assert SalesOrder.query.filter_by(so_number='SO-DUP').count() == 1
+
+
+def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
+    """GET /sales-orders/<id> → 200; SO number, line description, and amount render."""
+    c = _customer(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    so = SalesOrder(
+        so_number='SO-VIEW-0001',
+        order_date=datetime.date(2026, 6, 28),
+        customer_id=c.id,
+        customer_name='Acme',
+        branch_id=main_branch.id,
+        status='draft',
+    )
+    db_session.add(so)
+    db_session.flush()
+
+    line = SalesOrderItem(
+        sales_order_id=so.id,
+        line_number=1,
+        description='Blue Widget',
+        quantity=Decimal('3.0000'),
+        unit_price=Decimal('50.00'),
+        amount=Decimal('150.00'),
+        vat_rate=Decimal('0.00'),
+        line_total=Decimal('150.00'),
+        vat_amount=Decimal('0.00'),
+    )
+    so.line_items.append(line)
+    so.calculate_totals()
+    db_session.commit()
+
+    resp = client.get(f'/sales-orders/{so.id}')
+    assert resp.status_code == 200
+    assert b'SO-VIEW-0001' in resp.data
+    assert b'Blue Widget' in resp.data
+    assert b'150' in resp.data  # amount appears in the line
 
 
 def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, main_branch):
