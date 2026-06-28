@@ -1,0 +1,39 @@
+{# Inline "Add Unit of Measure" quick-add modal for transaction forms. #}
+<div id="uomQuickAddOverlay"
+     style="display:none; position:fixed; inset:0; background:var(--backdrop);
+            z-index:1200; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
+  <div style="background:var(--card); border-radius:8px; padding:24px; max-width:420px; width:100%;
+              box-shadow:var(--shadow-md);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px;">Add Unit of Measure</h3>
+      <button type="button" id="uomQuickAddClose"
+              style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text);"
+              aria-label="Close">&times;</button>
+    </div>
+
+    <div id="uomQuickAddError" class="form-error"
+         style="display:none; margin-bottom:12px; color:var(--alert-error-text);"></div>
+
+    <form id="uomQuickAddForm" method="POST"
+          action="{{ url_for('units_of_measure.create') }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="is_active" value="1">
+
+      <div class="form-row-2" style="margin-bottom:16px;">
+        <div class="form-group">
+          <label class="form-label" for="uqa_code">Code <span style="color:var(--alert-error-text);">*</span></label>
+          <input type="text" id="uqa_code" name="code" class="form-control" maxlength="20" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="uqa_name">Name <span style="color:var(--alert-error-text);">*</span></label>
+          <input type="text" id="uqa_name" name="name" class="form-control" maxlength="100" required>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button type="button" id="uomQuickAddCancel" class="btn btn-secondary">Cancel</button>
+        <button type="submit" id="uomQuickAddSubmit" class="btn btn-primary">Create</button>
+      </div>
+    </form>
+  </div>
+</div>

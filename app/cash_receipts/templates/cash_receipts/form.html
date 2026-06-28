@@ -310,19 +310,23 @@
 </div>
 
 {% include "customers/_quick_add_modal.html" %}
+{% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
+{% if module_enabled('units_of_measure') %}{% include "units_of_measure/_quick_add_modal.html" %}{% endif %}
 
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
 <script src="{{ url_for('static', filename='search-select.js') }}"></script>
 <script src="{{ url_for('static', filename='customer-form-widgets.js') }}?v=3"></script>
 <script src="{{ url_for('static', filename='customer-quick-add.js') }}?v=2"></script>
+{% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
+{% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
 <script>
 // Data from server
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts   = {{ all_accounts   | tojson }};
 const glAccounts    = {{ gl_accounts    | tojson }};
-const units         = {{ units          | tojson }};
-const products      = {{ products       | tojson }};
+let units           = {{ units          | tojson }};
+let products        = {{ products       | tojson }};
 const uomMasterOn   = {{ 'true' if module_enabled('units_of_measure') else 'false' }};
 const productMasterOn = {{ 'true' if module_enabled('products') else 'false' }};
 // All active WHT codes (reassigned per-customer at runtime)
@@ -344,6 +348,8 @@ let defaultRevenueAccountId = null;
 const customerSel = document.getElementById('customer_id');
 initCustomerQuickAdd({ selectEl: customerSel });
 customerSel.addEventListener('change', () => onCustomerChange(customerSel.value));
+if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
+if (uomMasterOn    && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
 
 // Cash account Choices.js
 const cashAccSel = document.getElementById('cash_account_id');
@@ -731,7 +737,16 @@ function addRevenueLine(existingItem) {
     if (prodSel) {
         prodC = new Choices(prodSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50, allowHTML: false });
         prodSel.addEventListener('change', () => {
-            if (prodSel.value === '__add_product__') { window.open('/products/create', '_blank'); prodC.setChoiceByValue(''); return; }
+            if (prodSel.value === '__add_product__') {
+                prodC.setChoiceByValue('');
+                openProductModal(id, function(p) {
+                    products.push(p);
+                    prodC.setChoices([{value: String(p.id), label: escHtml(p.code) + ' — ' + escHtml(p.name)}], 'value', 'label', false);
+                    prodC.setChoiceByValue(String(p.id));
+                    onProductPick(id, String(p.id));
+                });
+                return;
+            }
             onProductPick(id, prodSel.value);
         });
     }
@@ -740,7 +755,16 @@ function addRevenueLine(existingItem) {
     if (uomSel) {
         uomC = new Choices(uomSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 30, allowHTML: false });
         uomSel.addEventListener('change', () => {
-            if (uomSel.value === '__add_uom__') { window.open('/units-of-measure/create', '_blank'); uomC.setChoiceByValue(''); return; }
+            if (uomSel.value === '__add_uom__') {
+                uomC.setChoiceByValue('');
+                openUomModal(id, function(u) {
+                    units.push(u);
+                    uomC.setChoices([{value: String(u.id), label: escHtml(u.code)}], 'value', 'label', false);
+                    uomC.setChoiceByValue(String(u.id));
+                    updateRevenue(id, 'uom_id', u.id);
+                });
+                return;
+            }
             updateRevenue(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null);
         });
     }

@@ -1,5 +1,5 @@
 """Product / Item master (Maintenance). Mirrors the Vendor/UOM CRUD pattern."""
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
 from app.products.models import Product
@@ -42,6 +42,7 @@ def create():
         return redirect(url_for('products.list'))
     form = ProductForm()
     _populate_choices(form)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if form.validate_on_submit():
         p = Product(
             code=form.code.data.strip(),
@@ -57,8 +58,19 @@ def create():
         db.session.commit()
         clear_product_cache()
         log_create('products', p.id, p.code, p.to_dict())
+        if is_ajax:
+            return jsonify(ok=True, product={
+                'id': p.id, 'code': p.code, 'name': p.name,
+                'label': f'{p.code} — {p.name}',
+                'default_uom_id': p.default_unit_of_measure_id,
+                'unit_price': float(p.default_unit_price or 0),
+                'default_account_id': p.default_account_id,
+            })
         flash('Product created.', 'success')
         return redirect(url_for('products.list'))
+    if is_ajax and request.method == 'POST':
+        errors = {f.name: f.errors[0] for f in form if f.errors}
+        return jsonify(ok=False, errors=errors), 400
     return render_template('products/form.html', form=form, title='Create Product', product=None)
 
 

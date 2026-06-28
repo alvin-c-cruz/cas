@@ -1,5 +1,5 @@
 """Units of Measure master (Maintenance). Mirrors the Vendor CRUD pattern."""
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
 from app.units_of_measure.models import UnitOfMeasure
@@ -24,6 +24,7 @@ def create():
         flash('You do not have permission to manage units of measure.', 'error')
         return redirect(url_for('units_of_measure.list'))
     form = UnitOfMeasureForm()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if form.validate_on_submit():
         u = UnitOfMeasure(
             code=form.code.data.strip(),
@@ -35,8 +36,13 @@ def create():
         db.session.commit()
         clear_uom_cache()
         log_create('units_of_measure', u.id, u.code, u.to_dict())
+        if is_ajax:
+            return jsonify(ok=True, unit={'id': u.id, 'code': u.code, 'name': u.name})
         flash('Unit of measure created.', 'success')
         return redirect(url_for('units_of_measure.list'))
+    if is_ajax and request.method == 'POST':
+        errors = {f.name: f.errors[0] for f in form if f.errors}
+        return jsonify(ok=False, errors=errors), 400
     return render_template('units_of_measure/form.html', form=form, title='Create Unit of Measure', unit=None)
 
 

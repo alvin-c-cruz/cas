@@ -322,17 +322,21 @@
 {% endif %}
 
 {% include "vendors/_quick_add_modal.html" %}
+{% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
+{% if module_enabled('units_of_measure') %}{% include "units_of_measure/_quick_add_modal.html" %}{% endif %}
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor-form-widgets.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='search-select.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor-quick-add.js') }}?v=2"></script>
+{% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
+{% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
 <script>
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts = {{ all_accounts | tojson }};
 const glAccounts = {{ gl_accounts | tojson }};
-const units = {{ units | tojson }};
-const products = {{ products | tojson }};
+let units = {{ units | tojson }};
+let products = {{ products | tojson }};
 const uomMasterOn = {{ module_enabled('units_of_measure') | tojson }};
 const productMasterOn = {{ module_enabled('products') | tojson }};
 
@@ -589,7 +593,16 @@ function addLineItem(existingItem, firstDefaults) {
     if (prodSel) {
         prodC = new Choices(prodSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50, allowHTML: false });
         prodSel.addEventListener('change', () => {
-            if (prodSel.value === '__add_product__') { window.open('/products/create', '_blank'); prodC.setChoiceByValue(''); return; }
+            if (prodSel.value === '__add_product__') {
+                prodC.setChoiceByValue('');
+                openProductModal(id, function(p) {
+                    products.push(p);
+                    prodC.setChoices([{value: String(p.id), label: escHtml(p.code) + ' — ' + escHtml(p.name)}], 'value', 'label', false);
+                    prodC.setChoiceByValue(String(p.id));
+                    onProductPick(id, p.id);
+                });
+                return;
+            }
             onProductPick(id, prodSel.value ? parseInt(prodSel.value) : null);
         });
     }
@@ -598,7 +611,16 @@ function addLineItem(existingItem, firstDefaults) {
     if (uomSel) {
         uomC = new Choices(uomSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 30, allowHTML: false });
         uomSel.addEventListener('change', () => {
-            if (uomSel.value === '__add_uom__') { window.open('/units-of-measure/create', '_blank'); uomC.setChoiceByValue(''); return; }
+            if (uomSel.value === '__add_uom__') {
+                uomC.setChoiceByValue('');
+                openUomModal(id, function(u) {
+                    units.push(u);
+                    uomC.setChoices([{value: String(u.id), label: escHtml(u.code)}], 'value', 'label', false);
+                    uomC.setChoiceByValue(String(u.id));
+                    updateLineItem(id, 'uom_id', u.id);
+                });
+                return;
+            }
             updateLineItem(id, 'uom_id', uomSel.value ? parseInt(uomSel.value) : null);
         });
     }
@@ -1090,6 +1112,8 @@ if (vendorSel) {
     // instance and wires typeahead + the "Add Vendor" action.
     initVendorQuickAdd({ selectEl: vendorSel });
 }
+if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
+if (uomMasterOn    && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
 
 // ── Payment Terms search-select ───────────────────────────────────────────────
 const ptSel = document.getElementById('payment_terms');
