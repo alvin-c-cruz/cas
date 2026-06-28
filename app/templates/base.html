@@ -1091,6 +1091,12 @@
                     <span class="nav-label-arrow">▼</span>
                 </div>
                 <div class="nav-section-content" id="section-transactions">
+                    {% if can_access_module(current_user, 'sales_orders') %}
+                    <a href="{{ url_for('sales_orders.list') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_orders.') %}active{% endif %}">
+                        <span class="nav-icon">📦</span>
+                        <span class="nav-text">Sales Orders<span class="nav-subtext">(Customer Order)</span></span>
+                    </a>
+                    {% endif %}
                     {% if can_access_module(current_user, 'accounts_receivable') %}
                     <a href="{{ url_for('sales_invoices.list_invoices') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_invoices.') %}active{% endif %}">
                         <span class="nav-icon">📄</span>

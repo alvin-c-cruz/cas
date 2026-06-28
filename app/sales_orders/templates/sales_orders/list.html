@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Sales Orders — CAS{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Sales Orders</h1>
+    {% if can_access_module(current_user, 'sales_orders') %}
+    <a href="{{ url_for('sales_orders.create') }}" class="btn btn-primary">+ Enter Sales Order</a>
+    {% endif %}
+</div>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>SO #</th>
+            <th>Date</th>
+            <th>Customer</th>
+            <th>Status</th>
+            <th>Total</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for order in orders %}
+        <tr>
+            <td>{{ order.so_number }}</td>
+            <td>{{ order.order_date }}</td>
+            <td>{{ order.customer_name }}</td>
+            <td>{{ order.status }}</td>
+            <td>{{ order.total_amount }}</td>
+            <td>
+                <a href="{{ url_for('sales_orders.view', id=order.id) }}">View</a>
+            </td>
+        </tr>
+    {% else %}
+        <tr><td colspan="6">No sales orders found.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

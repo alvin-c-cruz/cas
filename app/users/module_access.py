@@ -12,7 +12,9 @@ modules, so endpoints are matched per-prefix rather than per-blueprint.
 """
 
 MODULE_REGISTRY = [
-    # ── Transactions (Phase 1) ──────────────────────────────────────────────
+    # ── Transactions (Phase 1 + Sales Orders) ──────────────────────────────
+    {'key': 'sales_orders', 'label': 'Sales Orders', 'section': 'Transactions',
+     'endpoints': ('sales_orders.',)},
     {'key': 'accounts_receivable', 'label': 'Sales Invoices', 'section': 'Transactions',
      'endpoints': ('sales_invoices.', 'journals.si_journal')},
     {'key': 'collections', 'label': 'Cash Receipts', 'section': 'Transactions',

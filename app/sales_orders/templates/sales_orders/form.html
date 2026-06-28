@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{% if so %}Edit Sales Order{% else %}Create Sales Order{% endif %} — CAS{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{% if so %}Edit Sales Order {{ so.so_number }}{% else %}Create Sales Order{% endif %}</h1>
+</div>
+
+<form method="POST" action="" novalidate>
+    {{ form.hidden_tag() }}
+
+    {# Hidden customer fields populated by JS picker (Task 5) #}
+    {{ form.customer_id() }}
+    {{ form.customer_name() }}
+    {{ form.customer_tin() }}
+    {{ form.customer_address() }}
+
+    <div class="form-group">
+        {{ form.so_number.label }}
+        {{ form.so_number(class="form-control") }}
+    </div>
+
+    <div class="form-group">
+        {{ form.order_date.label }}
+        {{ form.order_date(class="form-control") }}
+    </div>
+
+    <div class="form-group">
+        {{ form.payment_terms.label }}
+        {{ form.payment_terms(class="form-control") }}
+    </div>
+
+    <div class="form-group">
+        {{ form.notes.label }}
+        {{ form.notes(class="form-control") }}
+    </div>
+
+    {# Line items JSON — submitted by the JS editor (Task 5); keep the field name 'line_items'
+       so create/edit views can read request.form.get('line_items', '[]') consistently. #}
+    <input type="hidden" name="line_items" id="line_items"
+           value="{{ line_items | tojson if line_items else '[]' }}">
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+            {% if so %}Update{% else %}Save{% endif %}
+        </button>
+        <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}
