@@ -128,9 +128,6 @@
             <p><a href="{{ url_for('customers.list_customers') }}" class="btn btn-secondary">Clear search</a></p>
             {% else %}
             <p>No customers found.</p>
-            {% if current_user.role in ['accountant', 'admin'] %}
-            <p><a href="{{ url_for('customers.create') }}" class="btn btn-primary">Create your first customer</a></p>
-            {% endif %}
             {% endif %}
         </div>
         {% endif %}
