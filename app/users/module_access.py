@@ -179,3 +179,22 @@ def default_all_permissions():
     seeds, and test fixtures so newly-gated accountants/viewers keep full access
     until deliberately narrowed."""
     return {k: True for k in all_permission_keys()}
+
+
+def build_sidebar(user):
+    """Nested visible Area -> group -> module tree for the sidebar.
+    Visibility reuses can_access_module (no gating reimplemented)."""
+    visible = [m for m in MODULE_REGISTRY if can_access_module(user, m['key'])]
+    tree = []
+    for area in AREA_ORDER:
+        area_mods = [m for m in visible if m.get('area') == area]
+        if not area_mods:
+            continue
+        groups = []
+        for group in GROUP_ORDER:
+            group_mods = [m for m in area_mods if m.get('group') == group]
+            if group_mods:
+                groups.append({'group': group, 'modules': group_mods})
+        if groups:
+            tree.append({'area': area, 'groups': groups})
+    return tree
