@@ -184,14 +184,14 @@ def create():
                 new_values=model_to_dict(vendor, ['code', 'name', 'contact_person', 'phone', 'email', 'tin', 'payment_terms', 'address', 'check_payee_name', 'postal_code', 'default_vat_category', 'is_active'])
             )
 
-            if _dup_name:
-                flash(f"A vendor named '{vendor.name}' already exists.", 'warning')
-            flash(f'Vendor "{vendor.name}" created successfully!', 'success')
             if _wants_json():
                 return jsonify(ok=True, vendor={
                     'id': vendor.id,
                     'label': f'{vendor.code} - {vendor.name}',
                 })
+            if _dup_name:
+                flash(f"A vendor named '{vendor.name}' already exists.", 'warning')
+            flash(f'Vendor "{vendor.name}" created successfully!', 'success')
             return redirect(url_for('vendors.list_vendors'))
         except Exception as e:
             from flask import current_app

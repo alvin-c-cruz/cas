@@ -26,6 +26,26 @@ def make_vat_category(db_session, code='V12DG', name='Input Tax Domestic Goods',
 
 
 class TestVendorQuickAddEndpoint:
+    def test_ajax_create_does_not_queue_flash(self, client, db_session, admin_user, main_branch):
+        """B-08: AJAX quick-add must NOT queue a flash message.
+        A queued flash lingers into the next full-page render (the AP Save), causing
+        double-flash.  After a JSON quick-add the session _flashes must be empty."""
+        login(client)
+        make_vat_category(db_session)
+        resp = client.post('/vendors/create', data={
+            'code': 'QA000',
+            'name': 'No Flash Vendor',
+            'check_payee_name': 'No Flash Vendor',
+            'payment_terms': 'Net 30',
+            'default_vat_category': 'V12DG',
+            'is_active': '1',
+        }, headers=AJAX)
+        assert resp.status_code == 200
+        assert resp.get_json()['ok'] is True
+        with client.session_transaction() as sess:
+            flashes = sess.get('_flashes', [])
+        assert flashes == [], f"Expected no queued flashes after AJAX quick-add, got: {flashes}"
+
     def test_ajax_create_returns_json_and_audits(self, client, db_session, admin_user, main_branch):
         login(client)
         make_vat_category(db_session)
