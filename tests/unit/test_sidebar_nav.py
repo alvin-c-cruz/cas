@@ -23,8 +23,8 @@ def test_admin_sees_all_areas_ordered(db_session):
     sales = next(a for a in tree if a['area'] == 'Sales')
     assert [g['group'] for g in sales['groups']] == ['Documents', 'Masters', 'Reports']
     docs = next(g for g in sales['groups'] if g['group'] == 'Documents')['modules']
-    # sales_orders is optional (default_enabled=False) so absent when disabled
-    assert [m['key'] for m in docs] == ['accounts_receivable', 'collections']
+    # sales_orders is CORE (non-optional per P-58) so always visible for admin
+    assert [m['key'] for m in docs] == ['sales_orders', 'accounts_receivable', 'collections']
 
 
 def test_enabling_inventory_modules_shows_inventory_area(db_session):
