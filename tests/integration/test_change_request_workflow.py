@@ -233,6 +233,8 @@ def wht_form_data(code='WCX', name='Test WHT', reason='Needed for BIR compliance
         'description': 'test',
         'rate': '2.00',
         'is_active': '1',
+        'payable_account_id': '0',
+        'receivable_account_id': '0',
     }
     if reason is not None:
         data['request_reason'] = reason

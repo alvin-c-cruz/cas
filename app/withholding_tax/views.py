@@ -17,6 +17,16 @@ import json
 withholding_tax_bp = Blueprint('withholding_tax', __name__, template_folder='templates')
 
 
+def _wht_account_choices(placeholder='-- None --'):
+    """Active leaf accounts for WHT GL pickers (groups are not postable)."""
+    from app.accounts.models import Account
+    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
+    choices = [(0, placeholder)]
+    choices += [(a.id, f'{a.code} : {a.name}') for a in accounts if a.id not in parent_ids]
+    return choices
+
+
 PENDING_SUBMITTED_MESSAGE = ('Change request submitted — pending review. '
                              'It will appear under Action Items until approved or rejected.')
 
@@ -77,6 +87,8 @@ def list_withholding_tax():
 def create():
     """Create new withholding tax - submits for approval"""
     form = WithholdingTaxForm()
+    form.payable_account_id.choices = _wht_account_choices('-- No payable account --')
+    form.receivable_account_id.choices = _wht_account_choices('-- No receivable account --')
 
     if form.validate_on_submit():
         # Check for duplicate code
@@ -105,7 +117,9 @@ def create():
                 'sales_name': form.sales_name.data,
                 'description': form.description.data,
                 'rate': float(form.rate.data),
-                'is_active': bool(int(form.is_active.data)) if form.is_active.data else True
+                'is_active': bool(int(form.is_active.data)) if form.is_active.data else True,
+                'payable_account_id': form.payable_account_id.data or None,
+                'receivable_account_id': form.receivable_account_id.data or None,
             }
 
             # Shared create flow (mirrors vat_categories) — auto-approve or
@@ -142,6 +156,8 @@ def edit(id):
     """Edit withholding tax - submits for approval"""
     withholding_tax = db.get_or_404(WithholdingTax, id)
     form = WithholdingTaxForm(obj=withholding_tax, require_reason=True)
+    form.payable_account_id.choices = _wht_account_choices('-- No payable account --')
+    form.receivable_account_id.choices = _wht_account_choices('-- No receivable account --')
 
     if form.validate_on_submit():
         # Check for duplicate code (excluding current)
@@ -176,13 +192,15 @@ def edit(id):
                 'sales_name': form.sales_name.data,
                 'description': form.description.data,
                 'rate': float(form.rate.data),
-                'is_active': bool(int(form.is_active.data)) if form.is_active.data else True
+                'is_active': bool(int(form.is_active.data)) if form.is_active.data else True,
+                'payable_account_id': form.payable_account_id.data or None,
+                'receivable_account_id': form.receivable_account_id.data or None,
             }
 
             # Check if auto-approval is allowed
             if sole_admin_can_auto_approve():
                 # Capture old values before update
-                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
+                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
 
                 # Update withholding tax directly
                 withholding_tax.code = change_data['code']
@@ -191,6 +209,8 @@ def edit(id):
                 withholding_tax.description = change_data['description']
                 withholding_tax.rate = change_data['rate']
                 withholding_tax.is_active = change_data['is_active']
+                withholding_tax.payable_account_id = change_data['payable_account_id']
+                withholding_tax.receivable_account_id = change_data['receivable_account_id']
                 withholding_tax.updated_by_id = current_user.id
                 withholding_tax.updated_at = ph_now()
 
@@ -224,7 +244,7 @@ def edit(id):
                 db.session.flush()  # Get the ID before commit
 
                 # Audit log for update change request submission
-                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
+                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
                 log_audit(
                     module='withholding_tax',
                     action='update',
@@ -256,6 +276,8 @@ def edit(id):
         form.description.data = withholding_tax.description
         form.rate.data = withholding_tax.rate
         form.is_active.data = '1' if withholding_tax.is_active else '0'
+        form.payable_account_id.data = withholding_tax.payable_account_id or 0
+        form.receivable_account_id.data = withholding_tax.receivable_account_id or 0
 
     return render_template('withholding_tax/form.html', form=form, withholding_tax=withholding_tax)
 
@@ -286,7 +308,7 @@ def delete(id):
         # Check if auto-approval is allowed
         if sole_admin_can_auto_approve():
             # Capture values before delete
-            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
+            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
             wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
             wt_id = withholding_tax.id
             wt_name = withholding_tax.name
@@ -322,7 +344,7 @@ def delete(id):
             db.session.flush()  # Get the ID before commit
 
             # Audit log for delete change request submission
-            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
+            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
             log_audit(
                 module='withholding_tax',
                 action='delete',
@@ -427,6 +449,8 @@ def review_change_request(id):
                         description=proposed_data.get('description'),
                         rate=proposed_data['rate'],
                         is_active=proposed_data.get('is_active', True),
+                        payable_account_id=proposed_data.get('payable_account_id') or None,
+                        receivable_account_id=proposed_data.get('receivable_account_id') or None,
                         created_by_id=change_request.requested_by_id,
                         updated_by_id=current_user.id
                     )
@@ -439,7 +463,7 @@ def review_change_request(id):
                         action='create',
                         record_id=withholding_tax.id,
                         record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
-                        new_values=model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active']),
+                        new_values=model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id']),
                         notes=f'Approved by {current_user.username}'
                     )
                     clear_withholding_tax_cache()
@@ -451,7 +475,7 @@ def review_change_request(id):
                     withholding_tax = change_request.withholding_tax
                     if withholding_tax:
                         # Capture old values before update
-                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
+                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
 
                         withholding_tax.code = proposed_data['code']
                         withholding_tax.name = proposed_data['name']
@@ -459,11 +483,13 @@ def review_change_request(id):
                         withholding_tax.description = proposed_data.get('description')
                         withholding_tax.rate = proposed_data['rate']
                         withholding_tax.is_active = proposed_data.get('is_active', True)
+                        withholding_tax.payable_account_id = proposed_data.get('payable_account_id') or None
+                        withholding_tax.receivable_account_id = proposed_data.get('receivable_account_id') or None
                         withholding_tax.updated_by_id = current_user.id
                         withholding_tax.updated_at = ph_now()
 
                         # Audit log for approved update
-                        new_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
+                        new_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
                         log_audit(
                             module='withholding_tax',
                             action='update',
@@ -482,7 +508,7 @@ def review_change_request(id):
                     withholding_tax = change_request.withholding_tax
                     if withholding_tax:
                         # Capture values before delete
-                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active'])
+                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
                         wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
                         wt_id = withholding_tax.id
                         wt_name = withholding_tax.name

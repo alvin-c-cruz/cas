@@ -6,6 +6,13 @@ from wtforms import StringField, TextAreaField, DecimalField, SelectField
 from wtforms.validators import DataRequired, Length, NumberRange, Optional
 
 
+def _coerce_int_opt(v):
+    """Coerce to int; treat None/empty as 0 (no account selected)."""
+    if v is None or v == '':
+        return 0
+    return int(v)
+
+
 class WithholdingTaxForm(FlaskForm):
     """Form for creating/editing withholding tax codes.
 
@@ -31,6 +38,12 @@ class WithholdingTaxForm(FlaskForm):
         DataRequired(message='WT rate is required'),
         NumberRange(min=0, max=100, message='WT rate must be between 0 and 100')
     ], places=2)
+    payable_account_id = SelectField('WHT Payable GL Account',
+        coerce=_coerce_int_opt, validators=[], default=0,
+        description='GL account for WHT payable (APV/CDV — crediting held tax)')
+    receivable_account_id = SelectField('WHT Receivable GL Account',
+        coerce=_coerce_int_opt, validators=[], default=0,
+        description='GL account for WHT receivable (SI/CRV — creditable tax withheld by customers)')
     is_active = SelectField('Status', choices=[
         ('1', 'Active'),
         ('0', 'Inactive')

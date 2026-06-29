@@ -5,6 +5,7 @@
 
 {% block content %}
 {% from "macros.html" import render_field, status_toggle %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}?v=1">
 
 <div class="card">
     <div class="card-body">
@@ -62,6 +63,40 @@
                     </div>
 
                     {{ status_toggle(form.is_active, hint='Only active withholding taxes appear in vendor forms') }}
+                </div>
+            </div>
+
+            {# GL Accounts Section #}
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">📊</span>
+                    <div>
+                        <h3 class="form-section-title">GL Accounts</h3>
+                        <p class="form-section-desc">Optional GL accounts for automatic journal entry routing</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        {{ form.payable_account_id.label(class="form-label") }}
+                        {{ form.payable_account_id(class="form-control", id="payableAccountSelect") }}
+                        {% if form.payable_account_id.errors %}
+                            {% for error in form.payable_account_id.errors %}
+                                <div class="form-error">{{ error }}</div>
+                            {% endfor %}
+                        {% endif %}
+                        <small class="form-hint">WHT payable account for APV/CDV (creditable tax held for vendor)</small>
+                    </div>
+                    <div class="form-group">
+                        {{ form.receivable_account_id.label(class="form-label") }}
+                        {{ form.receivable_account_id(class="form-control", id="receivableAccountSelect") }}
+                        {% if form.receivable_account_id.errors %}
+                            {% for error in form.receivable_account_id.errors %}
+                                <div class="form-error">{{ error }}</div>
+                            {% endfor %}
+                        {% endif %}
+                        <small class="form-hint">WHT receivable account for SI/CRV (creditable tax withheld by customer)</small>
+                    </div>
                 </div>
             </div>
 
@@ -167,6 +202,7 @@
 }
 </style>
 
+<script src="{{ url_for('static', filename='choices.min.js') }}?v=1"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Rate input live preview
@@ -184,6 +220,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Status toggle is wired globally by initStatusToggle() in cas-ui.js.
+
+    // Account pickers
+    ['payableAccountSelect', 'receivableAccountSelect'].forEach(function(id) {
+        const sel = document.getElementById(id);
+        if (sel && window.Choices) {
+            new Choices(sel, {searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false, searchResultLimit: 100});
+        }
+    });
 });
 </script>
 {% endblock %}
