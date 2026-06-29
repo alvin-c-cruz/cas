@@ -161,6 +161,14 @@
               </td>
               {% for col in m.columns %}<td class="num"></td>{% endfor %}
             </tr>
+            {% elif row.is_cancelled %}
+            {# CR/CD cancelled rows: entry exists; reference is the CRV/CDV number #}
+            <tr class="col-row-voided">
+              <td>{{ row.entry.entry_date.strftime('%m/%d/%Y') }}</td>
+              <td>[VOID]</td>
+              <td>{{ row.entry.reference or '' }}</td>
+              {% for col in m.columns %}<td class="num"></td>{% endfor %}
+            </tr>
             {% elif row.is_draft %}
             <tr class="col-row-draft">
               <td>{{ row.entry.entry_date.strftime('%m/%d/%Y') }}</td>

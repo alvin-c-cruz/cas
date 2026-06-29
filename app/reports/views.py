@@ -1202,6 +1202,12 @@ def books_export_all():
                         particulars = ''
                     ws.append([date_str, '[VOIDED]', particulars] + [None] * len(m['columns']))
                     continue
+                if r.get('is_cancelled'):
+                    # CR/CD cancelled rows: JE exists; reference is the CRV/CDV number.
+                    e = r['entry']
+                    date_str = e.entry_date.strftime('%m/%d/%Y') if e.entry_date else ''
+                    ws.append([date_str, '[VOID]', e.reference or ''] + [None] * len(m['columns']))
+                    continue
                 e = r['entry']
                 ws.append(
                     [e.entry_date.strftime('%m/%d/%Y'), e.display_number, e.description or ''] +
