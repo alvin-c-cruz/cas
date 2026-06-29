@@ -332,6 +332,7 @@ class TestCRVPosting:
                             'account_id': revenue_acct.id,
                         }], status='draft')
         # Override: user manually set total_vat to 130 (10 more than auto)
+        crv.vat_override = True
         crv.total_vat = Decimal('130.00')
         db_session.flush()
 
@@ -369,6 +370,7 @@ class TestCRVPosting:
                             'account_id': revenue_acct.id,
                         }], status='draft')
         # Override: total_vat set to -5 → bucket absorbs diff (-5-120=-125) → bucket becomes -5
+        crv.vat_override = True
         crv.total_vat = Decimal('-5.00')
         db_session.flush()
 
@@ -444,7 +446,8 @@ class TestCRVPosting:
 
 
     def test_negative_section_b_with_vat_crv(self, db_session, admin_user, main_branch):
-        """Negative Section B line with 12% VAT: Dr Revenue 1000, Dr Output VAT 120, Cr Cash 1120."""
+        """Negative Section B line: bare abs(amount) only — no VAT extraction.
+        Dr Revenue 1120, Cr Cash 1120. No Output VAT line."""
         from app.cash_receipts.views import _post_crv_je
 
         _, _ = self._setup_base_accounts(db_session)
@@ -461,7 +464,7 @@ class TestCRVPosting:
         customer = make_customer(db_session, code='C004')
         make_vat_category(db_session, 'VAT12', rate=12, output_vat_account=output_vat_acct)
 
-        # -1120 inclusive: vat = -120, net = -1000
+        # -1120 inclusive; new rule: post bare abs(amount), no VAT
         crv = build_crv(db_session, main_branch, customer, cash,
                         revenue_lines=[{
                             'description': 'Reversal w/ VAT',
@@ -480,13 +483,15 @@ class TestCRVPosting:
 
         assert je.is_balanced
 
+        # Bare abs(line_total) — no VAT extraction on negative lines
         rev_line = next(l for l in je.lines if l.account_id == revenue_acct.id)
-        assert rev_line.debit_amount == Decimal('1000.00')
+        assert rev_line.debit_amount == Decimal('1120.00')
         assert rev_line.credit_amount == Decimal('0.00')
 
-        vat_line = next(l for l in je.lines if l.account_id == output_vat_acct.id)
-        assert vat_line.debit_amount == Decimal('120.00')
-        assert vat_line.credit_amount == Decimal('0.00')
+        # No Output VAT line for negative lines
+        je_lines = list(je.lines)
+        vat_lines = [l for l in je_lines if l.account_id == output_vat_acct.id]
+        assert len(vat_lines) == 0
 
         cash_line = next(l for l in je.lines if l.account_id == cash.id)
         assert cash_line.credit_amount == Decimal('1120.00')
@@ -494,7 +499,7 @@ class TestCRVPosting:
 
 
     def test_negative_section_b_with_negative_wht_crv(self, db_session, admin_user, main_branch):
-        """Negative Section B flips WHT direction: total_wt < 0 → Cr WHT Receivable."""
+        """Negative Section B: no WHT on negative lines — WHT line must be absent."""
         from app.cash_receipts.views import _post_crv_je
 
         _, wht_acct = self._setup_base_accounts(db_session)
@@ -506,7 +511,7 @@ class TestCRVPosting:
                                     normal_balance='Credit')
         customer = make_customer(db_session, code='C005')
 
-        # -1000 gross, 2% WHT → total_wt = -20
+        # -1000 gross with wt_amount=-20; new rule: negative lines have no WHT
         crv = build_crv(db_session, main_branch, customer, cash,
                         revenue_lines=[{
                             'description': 'Reversal w/ WHT',
@@ -516,7 +521,6 @@ class TestCRVPosting:
                             'wt_amount': Decimal('-20.00'),
                             'account_id': revenue_acct.id,
                         }], status='posted')
-        # calculate_totals sums wt_amount, so total_wt = -20
         db_session.flush()
 
         je = _post_crv_je(crv, admin_user.id)
@@ -524,8 +528,7 @@ class TestCRVPosting:
 
         assert je.is_balanced
 
+        # No WHT line for negative lines
         wht_line = next((l for l in je.lines if l.account_id == wht_acct.id), None)
-        assert wht_line is not None
-        assert wht_line.credit_amount == Decimal('20.00')
-        assert wht_line.debit_amount == Decimal('0.00')
+        assert wht_line is None
 

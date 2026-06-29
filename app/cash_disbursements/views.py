@@ -219,6 +219,9 @@ def _cdv_input_vat_buckets(cdv):
     categories = {c.code: c for c in VATCategory.query.all()}
     buckets = {}
     for line in cdv.expense_lines:
+        # Skip non-positive lines (simplified design — negative lines have no VAT)
+        if Decimal(str(line.line_total)) <= Decimal('0'):
+            continue
         vat_amt = Decimal(str(line.vat_amount or 0))
         if vat_amt == 0:
             continue
@@ -233,13 +236,14 @@ def _cdv_input_vat_buckets(cdv):
         buckets[acct.id][1] += vat_amt
     ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
     total = sum((amt for _, amt in ordered), Decimal('0.00'))
-    override_diff = Decimal(str(cdv.total_vat)) - total
-    if override_diff != Decimal('0.00') and ordered:
-        largest_id = max(ordered, key=lambda b: abs(b[1]))[0].id
-        ordered = [
-            (acct, amt + override_diff if acct.id == largest_id else amt)
-            for acct, amt in ordered
-        ]
+    if cdv.vat_override and ordered:
+        override_diff = Decimal(str(cdv.total_vat)) - total
+        if override_diff != Decimal('0.00'):
+            largest_id = max(ordered, key=lambda b: abs(b[1]))[0].id
+            ordered = [
+                (acct, amt + override_diff if acct.id == largest_id else amt)
+                for acct, amt in ordered
+            ]
     ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
     return ordered
 
@@ -258,7 +262,12 @@ def _post_cdv_je(cdv, user_id):
         raise ValueError("Cash/Bank account not found.")
 
     wt_account = None
-    total_wt = Decimal(str(cdv.total_wt)) if cdv.total_wt else Decimal('0.00')
+    # WHT: sum from positive expense lines only (negative lines have no WHT)
+    total_wt = sum(
+        Decimal(str(el.wt_amount or 0))
+        for el in cdv.expense_lines
+        if Decimal(str(el.line_total or 0)) > 0
+    )
     if total_wt != Decimal('0.00'):
         wt_account = _accts['wt']
         if not wt_account:
@@ -300,24 +309,49 @@ def _post_cdv_je(cdv, user_id):
         all_lines.append(je_line)
         line_num += 1
 
-    # Expense lines — sign-aware (positive → Dr Expense; negative → Cr Expense)
+    # Expense lines: positive → Dr Expense (VAT-extracted); negative → Cr Expense (bare, no VAT)
+    positive_auto_vat = sum(
+        Decimal(str(el.vat_amount or 0))
+        for el in cdv.expense_lines
+        if Decimal(str(el.line_total or 0)) > 0
+    )
+    override_delta = (Decimal(str(cdv.total_vat)) - positive_auto_vat
+                      if cdv.vat_override else Decimal('0.00'))
+    first_positive_expense = True
     for exp_line in cdv.expense_lines:
         if not exp_line.account_id:
             continue
-        net_base = Decimal(str(exp_line.line_total)) - Decimal(str(exp_line.vat_amount))
-        if net_base >= Decimal('0.00'):
-            dr, cr = net_base, Decimal('0.00')
+        line_total = Decimal(str(exp_line.line_total or 0))
+        if line_total < Decimal('0.00'):
+            # Negative line: bare amount only — no VAT, no WHT
+            je_line = JournalEntryLine(
+                entry_id=je.id, line_number=line_num,
+                account_id=exp_line.account_id,
+                description=exp_line.description or '',
+                debit_amount=Decimal('0.00'), credit_amount=abs(line_total)
+            )
+            db.session.add(je_line)
+            all_lines.append(je_line)
+            line_num += 1
         else:
-            dr, cr = Decimal('0.00'), abs(net_base)
-        je_line = JournalEntryLine(
-            entry_id=je.id, line_number=line_num,
-            account_id=exp_line.account_id,
-            description=exp_line.description or '',
-            debit_amount=dr, credit_amount=cr
-        )
-        db.session.add(je_line)
-        all_lines.append(je_line)
-        line_num += 1
+            # Positive line: VAT-inclusive extraction + override absorber on first positive
+            net_base = line_total - Decimal(str(exp_line.vat_amount or 0))
+            if first_positive_expense:
+                net_base -= override_delta
+                first_positive_expense = False
+            if net_base >= Decimal('0.00'):
+                dr, cr = net_base, Decimal('0.00')
+            else:
+                dr, cr = Decimal('0.00'), abs(net_base)
+            je_line = JournalEntryLine(
+                entry_id=je.id, line_number=line_num,
+                account_id=exp_line.account_id,
+                description=exp_line.description or '',
+                debit_amount=dr, credit_amount=cr
+            )
+            db.session.add(je_line)
+            all_lines.append(je_line)
+            line_num += 1
 
     # Input VAT buckets — sign-aware
     for vat_acct, vat_amt in _cdv_input_vat_buckets(cdv):
@@ -474,16 +508,33 @@ def _build_cdv_je_preview(cdv):
         if accts['ap']:
             entries.append({'code': accts['ap'].code, 'name': accts['ap'].name,
                             'debit': Decimal(str(ap_line.amount_applied)), 'credit': Decimal('0.00')})
+    # Expense lines: positive → Dr Expense (VAT-extracted); negative → Cr Expense (bare, no VAT)
+    positive_auto_vat = sum(
+        Decimal(str(el.vat_amount or 0))
+        for el in cdv.expense_lines
+        if Decimal(str(el.line_total or 0)) > 0
+    )
+    override_delta = (Decimal(str(cdv.total_vat)) - positive_auto_vat
+                      if cdv.vat_override else Decimal('0.00'))
+    first_positive_expense = True
     for exp_line in cdv.expense_lines:
         if not exp_line.account_id or not exp_line.account:
             continue
-        net_base = Decimal(str(exp_line.line_total)) - Decimal(str(exp_line.vat_amount))
-        if net_base >= Decimal('0.00'):
-            dr, cr = net_base, Decimal('0.00')
+        line_total = Decimal(str(exp_line.line_total or 0))
+        if line_total < Decimal('0.00'):
+            entries.append({'code': exp_line.account.code, 'name': exp_line.account.name,
+                            'debit': Decimal('0.00'), 'credit': abs(line_total)})
         else:
-            dr, cr = Decimal('0.00'), abs(net_base)
-        entries.append({'code': exp_line.account.code, 'name': exp_line.account.name,
-                        'debit': dr, 'credit': cr})
+            net_base = line_total - Decimal(str(exp_line.vat_amount or 0))
+            if first_positive_expense:
+                net_base -= override_delta
+                first_positive_expense = False
+            if net_base >= Decimal('0.00'):
+                dr, cr = net_base, Decimal('0.00')
+            else:
+                dr, cr = Decimal('0.00'), abs(net_base)
+            entries.append({'code': exp_line.account.code, 'name': exp_line.account.name,
+                            'debit': dr, 'credit': cr})
     try:
         for vat_acct, vat_amt in _cdv_input_vat_buckets(cdv):
             if vat_amt > Decimal('0.00'):
@@ -494,7 +545,12 @@ def _build_cdv_je_preview(cdv):
                                 'debit': Decimal('0.00'), 'credit': abs(vat_amt)})
     except ValueError:
         pass
-    total_wt = Decimal(str(cdv.total_wt)) if cdv.total_wt else Decimal('0.00')
+    # WHT — positive lines only
+    total_wt = sum(
+        Decimal(str(el.wt_amount or 0))
+        for el in cdv.expense_lines
+        if Decimal(str(el.line_total or 0)) > 0
+    )
     if total_wt != Decimal('0.00') and accts['wt']:
         if total_wt > Decimal('0.00'):
             entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,

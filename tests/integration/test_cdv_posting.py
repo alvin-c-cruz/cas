@@ -157,7 +157,8 @@ class TestCDVPosting:
         assert cash_line.debit_amount == Decimal('0.00')
 
     def test_negative_section_b_with_vat_cdv(self, db_session, admin_user, main_branch):
-        """Negative Section B + VAT: Cr Expense 1000, Cr Input VAT 120, Dr Cash 1120."""
+        """Negative Section B line: bare abs(amount) only — no VAT extraction.
+        Cr Expense 1120, Dr Cash 1120. No Input VAT line."""
         from app.cash_disbursements.views import _post_cdv_je
 
         _, _ = self._setup_base_accounts(db_session)
@@ -173,6 +174,7 @@ class TestCDVPosting:
         vendor = make_vendor(db_session, code='V003')
         make_input_vat_category(db_session, 'VAT12', rate=12, input_vat_account=input_vat_acct)
 
+        # -1120 inclusive; new rule: post bare abs(amount), no VAT
         cdv = build_cdv(db_session, main_branch, vendor, cash,
                         expense_lines=[{
                             'description': 'Reversal w/ VAT',
@@ -189,20 +191,22 @@ class TestCDVPosting:
 
         assert je.is_balanced
 
+        # Bare abs(line_total) — no VAT extraction on negative lines
         exp_line = next(l for l in je.lines if l.account_id == expense_acct.id)
-        assert exp_line.credit_amount == Decimal('1000.00')
+        assert exp_line.credit_amount == Decimal('1120.00')
         assert exp_line.debit_amount == Decimal('0.00')
 
-        vat_line = next(l for l in je.lines if l.account_id == input_vat_acct.id)
-        assert vat_line.credit_amount == Decimal('120.00')
-        assert vat_line.debit_amount == Decimal('0.00')
+        # No Input VAT line for negative lines
+        je_lines = list(je.lines)
+        vat_lines = [l for l in je_lines if l.account_id == input_vat_acct.id]
+        assert len(vat_lines) == 0
 
         cash_line = next(l for l in je.lines if l.account_id == cash.id)
         assert cash_line.debit_amount == Decimal('1120.00')
         assert cash_line.credit_amount == Decimal('0.00')
 
     def test_negative_section_b_with_negative_wht_cdv(self, db_session, admin_user, main_branch):
-        """Negative Section B flips WHT direction: total_wt < 0 -> Dr WHT Payable."""
+        """Negative Section B: no WHT on negative lines — WHT line must be absent."""
         from app.cash_disbursements.views import _post_cdv_je
 
         _, wht_acct = self._setup_base_accounts(db_session)
@@ -214,6 +218,7 @@ class TestCDVPosting:
                                     normal_balance='Debit')
         vendor = make_vendor(db_session, code='V004')
 
+        # -1000 gross with wt_amount=-20; new rule: negative lines have no WHT
         cdv = build_cdv(db_session, main_branch, vendor, cash,
                         expense_lines=[{
                             'description': 'Reversal w/ WHT',
@@ -228,7 +233,6 @@ class TestCDVPosting:
 
         assert je.is_balanced
 
+        # No WHT line for negative lines
         wht_line = next((l for l in je.lines if l.account_id == wht_acct.id), None)
-        assert wht_line is not None
-        assert wht_line.debit_amount == Decimal('20.00')
-        assert wht_line.credit_amount == Decimal('0.00')
+        assert wht_line is None

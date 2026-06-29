@@ -129,6 +129,9 @@ def _output_vat_buckets(crv):
     categories = {c.code: c for c in SalesVATCategory.query.all()}
     buckets = {}
     for line in crv.revenue_lines:
+        # Skip non-positive lines (simplified design — negative lines have no VAT)
+        if Decimal(str(line.line_total)) <= Decimal('0'):
+            continue
         vat_amt = Decimal(str(line.vat_amount or 0))
         if vat_amt == 0:
             continue
@@ -144,13 +147,14 @@ def _output_vat_buckets(crv):
         buckets[acct.id][1] += vat_amt
     ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
     total = sum((amt for _, amt in ordered), Decimal('0.00'))
-    override_diff = Decimal(str(crv.total_vat)) - total
-    if override_diff != Decimal('0.00') and ordered:
-        largest_id = max(ordered, key=lambda b: abs(b[1]))[0].id
-        ordered = [
-            (acct, amt + override_diff if acct.id == largest_id else amt)
-            for acct, amt in ordered
-        ]
+    if crv.vat_override and ordered:
+        override_diff = Decimal(str(crv.total_vat)) - total
+        if override_diff != Decimal('0.00'):
+            largest_id = max(ordered, key=lambda b: abs(b[1]))[0].id
+            ordered = [
+                (acct, amt + override_diff if acct.id == largest_id else amt)
+                for acct, amt in ordered
+            ]
     ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
     return ordered
 
@@ -168,7 +172,12 @@ def _post_crv_je(crv, user_id):
         raise ValueError("Cash/Bank account not set on the receipt.")
 
     wt_account = None
-    total_wt = Decimal(str(crv.total_wt)) if crv.total_wt else Decimal('0.00')
+    # WHT: sum from positive revenue lines only (negative lines have no WHT)
+    total_wt = sum(
+        Decimal(str(rl.wt_amount or 0))
+        for rl in crv.revenue_lines
+        if Decimal(str(rl.line_total or 0)) > 0
+    )
     if total_wt != Decimal('0.00'):
         wt_account = accts['wt']
         if not wt_account:
@@ -205,20 +214,41 @@ def _post_crv_je(crv, user_id):
             credit_amount=Decimal(str(ar_line.amount_applied)))
         db.session.add(jl); all_lines.append(jl); line_num += 1
 
-    # Revenue lines — sign-aware (positive → Cr Revenue; negative → Dr Revenue)
+    # Revenue lines: positive → Cr Revenue (VAT-extracted); negative → Dr Revenue (bare, no VAT)
+    positive_auto_vat = sum(
+        Decimal(str(rl.vat_amount or 0))
+        for rl in crv.revenue_lines
+        if Decimal(str(rl.line_total or 0)) > 0
+    )
+    override_delta = (Decimal(str(crv.total_vat)) - positive_auto_vat
+                      if crv.vat_override else Decimal('0.00'))
+    first_positive_revenue = True
     for rl in crv.revenue_lines:
         if not rl.account_id:
             continue
-        net_base = Decimal(str(rl.line_total)) - Decimal(str(rl.vat_amount))
-        if net_base >= Decimal('0.00'):
-            dr, cr = Decimal('0.00'), net_base
+        line_total = Decimal(str(rl.line_total or 0))
+        if line_total < Decimal('0.00'):
+            # Negative line: bare amount only — no VAT, no WHT
+            jl = JournalEntryLine(
+                entry_id=je.id, line_number=line_num, account_id=rl.account_id,
+                description=rl.description or '',
+                debit_amount=abs(line_total), credit_amount=Decimal('0.00'))
+            db.session.add(jl); all_lines.append(jl); line_num += 1
         else:
-            dr, cr = abs(net_base), Decimal('0.00')
-        jl = JournalEntryLine(
-            entry_id=je.id, line_number=line_num, account_id=rl.account_id,
-            description=rl.description or '',
-            debit_amount=dr, credit_amount=cr)
-        db.session.add(jl); all_lines.append(jl); line_num += 1
+            # Positive line: VAT-inclusive extraction + override absorber on first positive
+            net_base = line_total - Decimal(str(rl.vat_amount or 0))
+            if first_positive_revenue:
+                net_base -= override_delta
+                first_positive_revenue = False
+            if net_base >= Decimal('0.00'):
+                dr, cr = Decimal('0.00'), net_base
+            else:
+                dr, cr = abs(net_base), Decimal('0.00')
+            jl = JournalEntryLine(
+                entry_id=je.id, line_number=line_num, account_id=rl.account_id,
+                description=rl.description or '',
+                debit_amount=dr, credit_amount=cr)
+            db.session.add(jl); all_lines.append(jl); line_num += 1
 
     # Output VAT buckets — sign-aware
     for vat_acct, vat_amt in _output_vat_buckets(crv):
@@ -341,17 +371,33 @@ def _build_crv_je_preview(crv):
                             'debit': Decimal('0.00'),
                             'credit': Decimal(str(ar_line.amount_applied))})
 
-    # Revenue lines — sign-aware
+    # Revenue lines: positive → Cr Revenue (VAT-extracted); negative → Dr Revenue (bare, no VAT)
+    positive_auto_vat = sum(
+        Decimal(str(rl.vat_amount or 0))
+        for rl in crv.revenue_lines
+        if Decimal(str(rl.line_total or 0)) > 0
+    )
+    override_delta = (Decimal(str(crv.total_vat)) - positive_auto_vat
+                      if crv.vat_override else Decimal('0.00'))
+    first_positive_revenue = True
     for rl in crv.revenue_lines:
         if not rl.account_id or not rl.account:
             continue
-        net_base = Decimal(str(rl.line_total)) - Decimal(str(rl.vat_amount))
-        if net_base >= Decimal('0.00'):
-            dr, cr = Decimal('0.00'), net_base
+        line_total = Decimal(str(rl.line_total or 0))
+        if line_total < Decimal('0.00'):
+            entries.append({'code': rl.account.code, 'name': rl.account.name,
+                            'debit': abs(line_total), 'credit': Decimal('0.00')})
         else:
-            dr, cr = abs(net_base), Decimal('0.00')
-        entries.append({'code': rl.account.code, 'name': rl.account.name,
-                        'debit': dr, 'credit': cr})
+            net_base = line_total - Decimal(str(rl.vat_amount or 0))
+            if first_positive_revenue:
+                net_base -= override_delta
+                first_positive_revenue = False
+            if net_base >= Decimal('0.00'):
+                dr, cr = Decimal('0.00'), net_base
+            else:
+                dr, cr = abs(net_base), Decimal('0.00')
+            entries.append({'code': rl.account.code, 'name': rl.account.name,
+                            'debit': dr, 'credit': cr})
 
     # Output VAT buckets — sign-aware
     try:
@@ -371,8 +417,12 @@ def _build_crv_je_preview(crv):
             entries.append({'code': vat_acct.code, 'name': vat_acct.name,
                             'debit': abs(vat_amt), 'credit': Decimal('0.00')})
 
-    # WHT Receivable — sign-aware
-    total_wt = Decimal(str(crv.total_wt)) if crv.total_wt else Decimal('0.00')
+    # WHT Receivable — positive lines only
+    total_wt = sum(
+        Decimal(str(rl.wt_amount or 0))
+        for rl in crv.revenue_lines
+        if Decimal(str(rl.line_total or 0)) > 0
+    )
     if total_wt != Decimal('0.00') and accts['wt']:
         if total_wt > Decimal('0.00'):
             entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,

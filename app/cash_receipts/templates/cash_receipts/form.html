@@ -936,10 +936,17 @@ function renderCrvJEPreview(arApplied, vatUsed, wtUsed, total) {
         if (!item.account_id) return;
         const acct = allAccounts.find(a => a.id === item.account_id);
         if (!acct) return;
+        const amount = item.amount || 0;
+        if (amount < 0) {
+            // Negative line: bare debit only — no VAT, no WHT
+            revenueRows.push({ code: acct.code, name: acct.name, debit: Math.abs(amount), credit: 0 });
+            return;
+        }
+        // Positive line: existing VAT-inclusive logic
         const vat = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
-        const amtC = Math.round((item.amount || 0) * 100);
-        const vatC = vatRate > 0 ? Math.round(Math.abs(amtC) - Math.abs(amtC) / (1 + vatRate / 100)) * Math.sign(amtC) : 0;
+        const amtC = Math.round(amount * 100);
+        const vatC = vatRate > 0 ? Math.round(amtC - amtC / (1 + vatRate / 100)) : 0;
         const vatAmt = vatC / 100;
         const netBase = (amtC - vatC) / 100;
 
@@ -950,12 +957,7 @@ function renderCrvJEPreview(arApplied, vatUsed, wtUsed, total) {
             if (!vatBuckets[acctId]) vatBuckets[acctId] = { code, name, amt: 0 };
             vatBuckets[acctId].amt += vatAmt;
         }
-        // Sign-aware revenue row
-        if (netBase >= 0) {
-            revenueRows.push({ code: acct.code, name: acct.name, debit: 0, credit: netBase });
-        } else {
-            revenueRows.push({ code: acct.code, name: acct.name, debit: Math.abs(netBase), credit: 0 });
-        }
+        revenueRows.push({ code: acct.code, name: acct.name, debit: 0, credit: netBase });
     });
 
     // VAT buckets — sign-aware
