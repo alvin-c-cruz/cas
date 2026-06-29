@@ -78,7 +78,9 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">Accounts Receivable</div>
+      {% if can_access_module(current_user, 'accounts_receivable') %}
       <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary btn-sm">View All →</a>
+      {% endif %}
     </div>
     <div class="card-body">
       <div class="ar-ap-summary">
@@ -101,7 +103,9 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">Accounts Payable</div>
+      {% if can_access_module(current_user, 'accounts_payable') %}
       <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary btn-sm">View All →</a>
+      {% endif %}
     </div>
     <div class="card-body">
       <div class="ar-ap-summary">
@@ -166,7 +170,9 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">Top Customers</div>
+      {% if can_access_module(current_user, 'customers') %}
       <a href="{{ url_for('customers.list_customers') }}" class="btn btn-secondary btn-sm">View All →</a>
+      {% endif %}
     </div>
     <div class="card-body">
       {% if top_customers %}
@@ -200,7 +206,9 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">Top Vendors</div>
+      {% if can_access_module(current_user, 'vendors') %}
       <a href="{{ url_for('vendors.list_vendors') }}" class="btn btn-secondary btn-sm">View All →</a>
+      {% endif %}
     </div>
     <div class="card-body">
       {% if top_vendors %}
