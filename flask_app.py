@@ -22,4 +22,5 @@ app = create_app(config_name=env)
 if __name__ == '__main__':
     # Get debug mode from config (already set from .env)
     debug_mode = app.config.get('DEBUG', False)
-    app.run(debug=debug_mode, port=5050)
+    port = int(os.environ.get('FLASK_PORT', 5050))
+    app.run(debug=debug_mode, port=port)
