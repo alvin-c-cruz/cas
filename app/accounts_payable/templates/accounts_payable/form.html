@@ -31,12 +31,12 @@
                 <div class="right-col">
                     <div id="vendorCard" class="vendor-step-card{% if ap %} vendor-step-card--done{% endif %}">
                         <div class="vendor-step-label" id="vendorCardLabel">
-                            {% if ap %}âœ“ {{ ap.vendor_name }}{% else %}Step 1 â€” Select Vendor{% endif %}
+                            {% if ap %}✓ {{ ap.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
                         </div>
                         <div id="vendorBadges" class="vendor-badges"></div>
                         <select name="vendor_id" id="vendor_id" class="form-control" required
                                 {% if not ap %}autofocus{% endif %}>
-                            <option value="">Search or select a vendorâ€¦</option>
+                            <option value="">Search or select a vendor…</option>
                             {% for choice in form.vendor_id.choices %}
                             <option value="{{ choice[0] }}"
                                 {% if (ap and ap.vendor_id == choice[0]) or (restore_lines and form.vendor_id.data == choice[0]) %}selected{% endif %}>
@@ -57,9 +57,9 @@
                 </div>
             </div>
 
-            <!-- â‘¢ Line Items Locked Placeholder -->
+            <!-- ③ Line Items Locked Placeholder -->
             <div id="lineItemsLocked" class="line-items-locked{% if ap %} line-items-locked--hidden{% endif %}">
-                <div style="font-size: 28px; margin-bottom: 10px;">ðŸ”’</div>
+                <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
                 <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
                     Select a vendor above to add line items
                 </div>
@@ -68,7 +68,7 @@
                 </div>
             </div>
 
-            <!-- â‘£ Line Items Section (hidden on create, visible on edit) -->
+            <!-- ④ Line Items Section (hidden on create, visible on edit) -->
             <div id="lineItemsSection"{% if not ap %} style="display:none"{% endif %}>
                 <div style="margin-top: 16px;">
                     <table class="table" id="lineItemsTable">
@@ -93,7 +93,7 @@
                     <input type="hidden" name="line_items" id="lineItemsData">
                 </div>
 
-                <!-- â‘¤ Bottom: JE Preview (left) + Totals Panel (right) -->
+                <!-- ⑤ Bottom: JE Preview (left) + Totals Panel (right) -->
                 <div style="display: grid; grid-template-columns: 1fr auto; gap: 24px; margin-top: 24px; align-items: start;">
 
                     <!-- JE Preview -->
@@ -122,13 +122,13 @@
                             <span id="subtotalDisplay" class="bsr-amt">0.00</span>
                         </div>
 
-                        <!-- Row 2: Less: Input VAT â€” pencil-click override -->
+                        <!-- Row 2: Less: Input VAT — pencil-click override -->
                         <div id="vatDisplayMode" class="bsr">
-                            <span class="bsr-label">Less: Input VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">âœï¸</button></span>
+                            <span class="bsr-label">Less: Input VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override Input VAT" aria-label="Override Input VAT">✏️</button></span>
                             <span id="vatDisplay" class="bsr-amt">0.00</span>
                         </div>
                         <div id="vatEditMode" class="bsr" style="display:none">
-                            <span class="bsr-label">Less: Input VAT <button type="button" class="totals-revert" onclick="revertVatOverride()" title="Revert to auto">â†º</button><span id="vatAutoHint" style="display:none"></span></span>
+                            <span class="bsr-label">Less: Input VAT <button type="button" class="totals-revert" onclick="revertVatOverride()" title="Revert to auto">↺</button><span id="vatAutoHint" style="display:none"></span></span>
                             <input type="text" id="vatOverrideInput" class="bsr-input"
                                    onfocus="amtFocus(this)"
                                    oninput="onVatOverrideInput(this.value)"
@@ -149,11 +149,11 @@
 
                         <!-- Row 5: Less: Withholding Tax -->
                         <div id="wtDisplayMode" class="bsr">
-                            <span class="bsr-label">Less: Withholding Tax <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">âœï¸</button></span>
+                            <span class="bsr-label">Less: Withholding Tax <button type="button" class="totals-pencil" onclick="startWtOverride()" title="Override Withholding Tax" aria-label="Override Withholding Tax">✏️</button></span>
                             <span id="wtDisplay" class="bsr-amt bsr-amt--red">0.00</span>
                         </div>
                         <div id="wtEditMode" class="bsr" style="display:none">
-                            <span class="bsr-label">Less: Withholding Tax <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">â†º</button><span id="wtAutoHint" style="display:none"></span></span>
+                            <span class="bsr-label">Less: Withholding Tax <button type="button" class="totals-revert" onclick="revertWtOverride()" title="Revert to auto">↺</button><span id="wtAutoHint" style="display:none"></span></span>
                             <input type="text" id="wtOverrideInput" class="bsr-input"
                                    onfocus="amtFocus(this)"
                                    oninput="onWtOverrideInput(this.value)"
@@ -185,12 +185,12 @@
             <input type="hidden" name="wt_override_value" id="wtOverrideValue" value="0">
 
             {% if not ap %}
-            <!-- â”€â”€ Attachments (create mode: held in browser, saved on Save) â”€â”€ -->
+            <!-- ── Attachments (create mode: held in browser, saved on Save) ── -->
             <div class="card" style="margin-top:16px;">
               <div class="card-body">
                 <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:8px;">
                   Attachments
-                  <span style="font-weight:400; color:var(--text-3);">(optional â€” saved when you click Save)</span>
+                  <span style="font-weight:400; color:var(--text-3);">(optional — saved when you click Save)</span>
                 </h3>
                 <input type="file" id="createAttachments" name="attachments" multiple
                        accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
@@ -251,7 +251,7 @@
 </div>
 {% endfor %}
 
-<!-- â”€â”€ Attachments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+<!-- ── Attachments ────────────────────────────────────────────────── -->
 <div class="card" style="margin-top:16px;">
   <div class="card-body">
     <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
@@ -353,18 +353,18 @@ let paymentTermsChoices = null;
 let vatOverrideActive = false;
 let wtOverrideActive = false;
 
-// â”€â”€ Helper functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helper functions ──────────────────────────────────────────────────────────
 
 function buildWhtOptions(selectedId) {
     if (currentVendorWHTs.length === 0) {
-        // Vendor has no withholding tax codes â€” show a clear notice instead of a
+        // Vendor has no withholding tax codes — show a clear notice instead of a
         // confusing empty "None". The select is disabled after Choices init.
         const cp = escHtml(JSON.stringify({ code: 'No WT' }));
         return `<option value="" data-custom-properties="${cp}">No WT</option>`;
     }
     return '<option value="">None</option>' +
         currentVendorWHTs.map(wt => {
-            const long = `${escHtml(wt.code)} â€” ${escHtml(wt.name)} (${wt.rate}%)`;
+            const long = `${escHtml(wt.code)} — ${escHtml(wt.name)} (${wt.rate}%)`;
             const cp = escHtml(JSON.stringify({ code: wt.code }));
             return `<option value="${wt.id}" data-rate="${wt.rate}" data-custom-properties="${cp}" ${selectedId == wt.id ? 'selected' : ''}>${long}</option>`;
         }).join('');
@@ -393,7 +393,7 @@ function rebuildAllWhtSelects() {
         const choices = [noneChoice].concat(
             currentVendorWHTs.map(wt => ({
                 value: String(wt.id),
-                label: `${wt.code} â€” ${wt.name} (${wt.rate}%)`,
+                label: `${wt.code} — ${wt.name} (${wt.rate}%)`,
                 customProperties: { code: wt.code }
             }))
         );
@@ -401,13 +401,13 @@ function rebuildAllWhtSelects() {
         lc.wht.clearChoices();
         lc.wht.setChoices(choices, 'value', 'label', false);
         lc.wht.setChoiceByValue(item.wt_id ? String(item.wt_id) : '');
-        // No codes for this vendor â†’ lock the control so the notice can't be
+        // No codes for this vendor → lock the control so the notice can't be
         // mistaken for a pickable option.
         if (noWht) lc.wht.disable();
     });
     if (dropped.length && typeof showToast === 'function') {
         const uniq = [...new Set(dropped)];
-        showToast(`Removed ${uniq.join(', ')} â€” not valid for the selected vendor.`, 'warn');
+        showToast(`Removed ${uniq.join(', ')} — not valid for the selected vendor.`, 'warn');
     }
 }
 
@@ -505,7 +505,7 @@ function addLineItem(existingItem, firstDefaults) {
         ${productMasterOn ? `
         <td>
             <select class="form-control prod-select" id="prod-${id}">
-                <option value="">â€” none â€”</option>
+                <option value="">— none —</option>
                 <option value="__add_product__">+ Add Product</option>
                 ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id === p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
             </select>
@@ -520,7 +520,7 @@ function addLineItem(existingItem, firstDefaults) {
         <td>
             ${uomMasterOn ? `
             <select class="form-control uom-select" id="uom-${id}">
-                <option value="">â€”</option>
+                <option value="">—</option>
                 <option value="__add_uom__">+ Add UOM</option>
                 ${units.map(u => `<option value="${u.id}" ${item.uom_id === u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
             </select>` : `
@@ -539,7 +539,7 @@ function addLineItem(existingItem, firstDefaults) {
             <select class="form-control vat-select">
                 <option value="">No VAT</option>
                 ${vatCategories.map(v => {
-                    const long = `${escHtml(v.code)} â€” ${escHtml(v.name)}`;
+                    const long = `${escHtml(v.code)} — ${escHtml(v.name)}`;
                     return `<option value="${escHtml(v.code)}" ${item.vat_category === v.code ? 'selected' : ''}>${long}</option>`;
                 }).join('')}
             </select>
@@ -560,7 +560,7 @@ function addLineItem(existingItem, firstDefaults) {
                 }).join('')}
             </select>
         </td>
-        <td><button type="button" class="li-btn-action" onclick="removeLineItem(${id})" title="Remove">ðŸ—‘ï¸</button></td>
+        <td><button type="button" class="li-btn-action" onclick="removeLineItem(${id})" title="Remove">🗑️</button></td>
     `;
     document.getElementById('lineItemsBody').appendChild(row);
     const newRow = document.getElementById(`line-${id}`);
@@ -574,7 +574,7 @@ function addLineItem(existingItem, firstDefaults) {
             return {
                 item: function(cfg, data) {
                     const cn = cfg.classNames;
-                    const code = (data.customProperties && data.customProperties.code) || data.value || 'â€”';
+                    const code = (data.customProperties && data.customProperties.code) || data.value || '—';
                     return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(code))}</div>`);
                 }
             };
@@ -582,7 +582,7 @@ function addLineItem(existingItem, firstDefaults) {
     };
     const vatC = new Choices(vatSel, codeOnlyOpts);
     const whtC = new Choices(whtSel, codeOnlyOpts);
-    if (currentVendorWHTs.length === 0) whtC.disable();   // no codes â†’ locked notice
+    if (currentVendorWHTs.length === 0) whtC.disable();   // no codes → locked notice
     const acctC = new Choices(acctSel, codeOnlyOpts);
     vatSel.addEventListener('change', () => updateLineItem(id, 'vat_category', vatSel.value));
     whtSel.addEventListener('change', () => updateWht(id, whtSel));
@@ -673,7 +673,7 @@ function removeLineItem(id) {
     calculateTotals();
 }
 
-// â”€â”€ Derived amount (qty Ã— unit_price, integer-centavo lock) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Derived amount (qty × unit_price, integer-centavo lock) ──────────────────
 
 function updateDerivedAmount(id) {
     const item = lineItems.find(i => i.id === id);
@@ -692,7 +692,7 @@ function updateDerivedAmount(id) {
     calculateTotals();
 }
 
-// â”€â”€ Product autofill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Product autofill ──────────────────────────────────────────────────────────
 
 function onProductPick(id, productId) {
     const item = lineItems.find(i => i.id === id);
@@ -784,7 +784,7 @@ function calculateTotals() {
     validateForm();
 }
 
-// â”€â”€ Form validation gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Form validation gate ──────────────────────────────────────────────────────
 
 function validateForm() {
     const btn = document.getElementById('submitBtn');
@@ -800,7 +800,7 @@ function validateForm() {
         block('Due date cannot be earlier than the voucher date.'); return;
     }
 
-    // Vendor invoice # / date are intentionally NOT required to SAVE a draft â€”
+    // Vendor invoice # / date are intentionally NOT required to SAVE a draft —
     // they may not be known yet. They are enforced at POST time (when VAT or
     // withholding tax applies) by the post() view.
 
@@ -822,7 +822,7 @@ function validateForm() {
     allow();
 }
 
-// â”€â”€ VAT override UX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── VAT override UX ───────────────────────────────────────────────────────────
 
 function startVatOverride() {
     vatOverrideActive = true;
@@ -856,7 +856,7 @@ function revertVatOverride() {
     calculateTotals();
 }
 
-// â”€â”€ WHT override UX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── WHT override UX ───────────────────────────────────────────────────────────
 
 function startWtOverride() {
     wtOverrideActive = true;
@@ -890,7 +890,7 @@ function revertWtOverride() {
     calculateTotals();
 }
 
-// â”€â”€ JE Preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── JE Preview ────────────────────────────────────────────────────────────────
 
 function renderJEPreview(subtotal, vatUsed, wtUsed) {
     const rows = [];
@@ -914,10 +914,10 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         }
         if (firstExpenseIdx === -1) firstExpenseIdx = rows.length;
         rows.push({
-            code: acct ? acct.code : 'â€”',
+            code: acct ? acct.code : '—',
             // Account Title column shows the account name (matches the posted JE
             // in print.html); the line description lives in the line-items table.
-            name: acct ? acct.name : 'â€”',
+            name: acct ? acct.name : '—',
             debit: netBase,
             credit: 0
         });
@@ -973,7 +973,7 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
         </tr>`;
 }
 
-// â”€â”€ Form submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Form submit ───────────────────────────────────────────────────────────────
 
 document.getElementById('billForm').addEventListener('submit', function () {
     document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(item => ({
@@ -996,7 +996,7 @@ function resolveVatCode(nameOrCode) {
     return match ? match.code : nameOrCode;
 }
 
-// â”€â”€ Vendor card state management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Vendor card state management ──────────────────────────────────────────────
 
 function setVendorDone(vendorName, defaults) {
     const card = document.getElementById('vendorCard');
@@ -1006,7 +1006,7 @@ function setVendorDone(vendorName, defaults) {
     currentVendorName = vendorName;
 
     card.classList.add('vendor-step-card--done');
-    label.textContent = 'âœ“ ' + vendorName;
+    label.textContent = '✓ ' + vendorName;
 
     badges.textContent = '';
     (defaults.withholding_taxes || []).forEach(wt => {
@@ -1027,7 +1027,7 @@ function setVendorDone(vendorName, defaults) {
     document.getElementById('lineItemsSection').style.display = '';
 }
 
-// â”€â”€ Vendor change handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Vendor change handler ─────────────────────────────────────────────────────
 
 // Loading / error states for the line-items placeholder while vendor defaults load.
 function setLineItemsLoading() {
@@ -1035,14 +1035,14 @@ function setLineItemsLoading() {
     locked.classList.remove('line-items-locked--hidden');
     locked.innerHTML =
         '<div class="inline-spinner" style="margin:0 auto 12px;"></div>' +
-        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Loading vendor detailsâ€¦</div>';
+        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Loading vendor details…</div>';
 }
 function setLineItemsLoadError() {
     const locked = document.getElementById('lineItemsLocked');
     locked.classList.remove('line-items-locked--hidden');
     locked.innerHTML =
-        '<div style="font-size:28px;margin-bottom:10px;">âš ï¸</div>' +
-        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Could not load vendor details â€” please re-select the vendor.</div>';
+        '<div style="font-size:28px;margin-bottom:10px;">⚠️</div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Could not load vendor details — please re-select the vendor.</div>';
 }
 
 document.getElementById('vendor_id').addEventListener('change', function () {
@@ -1073,23 +1073,23 @@ document.getElementById('vendor_id').addEventListener('change', function () {
         .catch(() => setLineItemsLoadError());
 });
 
-// â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Init ──────────────────────────────────────────────────────────────────────
 
 function initItems() {
     {% if restore_lines %}
-    // Create POST bounced (validation error) â€” re-hydrate the typed line items.
+    // Create POST bounced (validation error) — re-hydrate the typed line items.
     try {
         JSON.parse({{ restore_lines | tojson }}).forEach(item => addLineItem(item));
-    } catch (e) { /* malformed payload â€” start clean */ }
+    } catch (e) { /* malformed payload — start clean */ }
     {% elif ap and line_items %}
     const existingItems = {{ line_items | tojson }};
     existingItems.forEach(item => {
-        // Normalize server key unit_of_measure_id â†’ uom_id used by JS
+        // Normalize server key unit_of_measure_id → uom_id used by JS
         if (item.uom_id === undefined) item.uom_id = item.unit_of_measure_id || null;
         addLineItem(item);
     });
     {% endif %}
-    // Create mode (no restore): no auto-add â€” first row added when vendor is selected
+    // Create mode (no restore): no auto-add — first row added when vendor is selected
 }
 
 function initOverrides() {
@@ -1116,7 +1116,7 @@ function initOverrides() {
     calculateTotals();
 }
 
-// â”€â”€ Vendor search-select â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Vendor search-select ──────────────────────────────────────────────────────
 const vendorSel = document.getElementById('vendor_id');
 if (vendorSel) {
     // The shared search-select (via initVendorQuickAdd) creates the Choices
@@ -1126,7 +1126,7 @@ if (vendorSel) {
 if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
 if (uomMasterOn    && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
 
-// â”€â”€ Payment Terms search-select â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Payment Terms search-select ───────────────────────────────────────────────
 const ptSel = document.getElementById('payment_terms');
 if (ptSel) {
     paymentTermsChoices = new Choices(ptSel, {
@@ -1181,7 +1181,7 @@ initItems();
 </script>
 
 <script>
-// â”€â”€ Create-form attachment queue (held in browser until Save) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Create-form attachment queue (held in browser until Save) ────────────────
 (function () {
     var input = document.getElementById('createAttachments');
     if (!input) return;                      // edit mode: no create-attachments input
@@ -1206,7 +1206,7 @@ initItems();
                 + (bad ? 'color:var(--danger, #c0392b);' : '');
             var label = document.createElement('span');
             label.textContent = f.name + ' (' + humanSize(f.size) + ')'
-                + (bad ? ' â€” unsupported type, will be skipped' : '');
+                + (bad ? ' — unsupported type, will be skipped' : '');
             var rm = document.createElement('button');
             rm.type = 'button';
             rm.className = 'btn btn-secondary';

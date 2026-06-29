@@ -12,10 +12,10 @@
         </div>
         <div class="card-header-actions" style="display:flex;gap:8px;">
             <a href="{{ url_for('reports.income_statement_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
-               class="btn btn-secondary">ðŸ“Š Excel</a>
+               class="btn btn-secondary">📊 Excel</a>
             <a href="{{ url_for('reports.income_statement_print', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
                target="_blank" class="btn btn-secondary">Print</a>
-            <button class="btn btn-secondary" onclick="showPeriodPicker()">ðŸ“… Change Period</button>
+            <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Period</button>
         </div>
     </div>
 
@@ -33,7 +33,7 @@
                     <td class="num-col" style="width:180px;"></td>
                 </tr>
                 {% endif %}
-                {# Section header row â€” always shown #}
+                {# Section header row — always shown #}
                 <tr class="fs-section-header">
                     <td style="width:30px;"></td>
                     <td{% if sec.key in ['selling', 'admin'] %} style="padding-left:18px;"{% endif %}>{{ sec.label }}</td>
@@ -53,7 +53,7 @@
                         {% if line.children %}
                         <button class="fs-caret-btn" data-fs-expand="{{ lkey }}"
                                 aria-expanded="false" title="Show / hide breakdown">
-                            <span class="fs-caret">â–¶</span>
+                            <span class="fs-caret">▶</span>
                         </button>
                         {% endif %}
                     </td>

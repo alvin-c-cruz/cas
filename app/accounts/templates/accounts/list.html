@@ -13,21 +13,21 @@
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
         <a href="{{ url_for('accounts.export_excel') }}" class="btn btn-secondary">
-            <span class="btn-icon">â¬‡ï¸</span> Export Excel
+            <span class="btn-icon">⬇️</span> Export Excel
         </a>
         <a href="{{ url_for('accounts.export_csv') }}" class="btn btn-secondary">
-            <span class="btn-icon">â¬‡ï¸</span> Export CSV
+            <span class="btn-icon">⬇️</span> Export CSV
         </a>
         {% if current_user.role in ['accountant', 'admin'] %}
         {% if pending_requests %}
         <a href="{{ url_for('accounts.pending_approvals') }}" class="btn btn-warning">
-            <span class="btn-icon">â³</span> Pending Approvals ({{ pending_requests|length }})
+            <span class="btn-icon">⏳</span> Pending Approvals ({{ pending_requests|length }})
         </a>
         {% endif %}
         <a href="{{ url_for('accounts.change_requests') }}" class="btn btn-secondary">
-            <span class="btn-icon">ðŸ•˜</span> Request History
+            <span class="btn-icon">🕘</span> Request History
         </a>
-        <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">ï¼‹ Add Account</a>
+        <a href="{{ url_for('accounts.create') }}" class="btn btn-primary">＋ Add Account</a>
         {% endif %}
     </div>
 </div>
@@ -35,12 +35,12 @@
 <!-- Summary cards -->
 <div class="coa-cards">
     {% set card_types = [
-        ('Asset',     'asset',     'ðŸ¦', 'Assets'),
-        ('Liability', 'liability', 'ðŸ“‹', 'Liabilities'),
-        ('Equity',    'equity',    'ðŸ¢', 'Equity'),
-        ('Revenue',   'revenue',   'ðŸ“ˆ', 'Revenue'),
-        ('COGS',      'cogs',      'ðŸ­', 'COGS'),
-        ('Opex',      'opex',      'ðŸ“‰', 'Opex'),
+        ('Asset',     'asset',     '🏦', 'Assets'),
+        ('Liability', 'liability', '📋', 'Liabilities'),
+        ('Equity',    'equity',    '🏢', 'Equity'),
+        ('Revenue',   'revenue',   '📈', 'Revenue'),
+        ('COGS',      'cogs',      '🏭', 'COGS'),
+        ('Opex',      'opex',      '📉', 'Opex'),
     ] %}
     {% for type_key, css_key, icon, label in card_types %}
     <div class="coa-card coa-card-{{ css_key }}" onclick="setTab('{{ type_key }}')" role="button" tabindex="0" aria-label="Filter by {{ label }}">
@@ -65,18 +65,18 @@
         <button class="coa-tab"        data-type="Opex"      onclick="setTab('Opex')"      role="tab">Opex</button>
     </div>
     <div class="coa-search-wrap">
-        <span class="coa-search-icon">ðŸ”</span>
+        <span class="coa-search-icon">🔍</span>
         <input type="text" id="coa-search" class="coa-search-input"
-               placeholder="Search by name or codeâ€¦"
+               placeholder="Search by name or code…"
                oninput="filterAccounts()" autocomplete="off">
-        <button class="coa-search-clear" id="coa-search-clear" onclick="clearSearch()" aria-label="Clear search" style="display:none;">âœ•</button>
+        <button class="coa-search-clear" id="coa-search-clear" onclick="clearSearch()" aria-label="Clear search" style="display:none;">✕</button>
     </div>
 </div>
 
 <!-- Accounts table -->
 <div class="card" style="overflow: hidden;">
     <div id="coa-no-results" class="coa-empty" style="display: none;">
-        <div style="font-size: 2rem; margin-bottom: 8px;">ðŸ”</div>
+        <div style="font-size: 2rem; margin-bottom: 8px;">🔍</div>
         <div>No accounts match your search.</div>
     </div>
     <div class="table-wrap" id="coa-table-wrap">
@@ -105,7 +105,7 @@
                         <td>
                             <div class="account-name-wrapper" style="padding-left: {{ row.depth * 18 }}px;">
                                 {% if row.depth > 0 %}
-                                <span class="child-indicator">â””â”€</span>
+                                <span class="child-indicator">└─</span>
                                 {% endif %}
                                 <div class="account-name {% if row.is_header %}account-name-group{% endif %}">{{ account.name }}</div>
                                 {% if account.id in pending_account_ids %}
@@ -114,7 +114,7 @@
                             </div>
                             {% if account.description %}
                             <div class="account-desc" style="padding-left: {{ row.depth * 18 + (12 if row.depth > 0 else 0) }}px;">
-                                {{ account.description[:60] }}{% if account.description|length > 60 %}â€¦{% endif %}
+                                {{ account.description[:60] }}{% if account.description|length > 60 %}…{% endif %}
                             </div>
                             {% endif %}
                         </td>
@@ -125,7 +125,7 @@
                             <span class="badge badge-{{ account.base_category.lower() }}">{{ account.account_type }}</span>
                             {% endif %}
                         </td>
-                        <td class="account-classification">{{ account.classification or 'â€”' }}</td>
+                        <td class="account-classification">{{ account.classification or '—' }}</td>
                         <td>
                             {% if not row.is_header %}
                                 {% if account.normal_balance == 'debit' %}
@@ -134,19 +134,19 @@
                                 <span class="balance-credit">Cr</span>
                                 {% endif %}
                             {% else %}
-                            â€”
+                            —
                             {% endif %}
                         </td>
                         <td style="text-align: center;">
                             <div class="action-buttons">
-                                <a href="{{ url_for('accounts.view', id=account.id) }}" class="btn-icon" title="View">ðŸ‘ï¸</a>
+                                <a href="{{ url_for('accounts.view', id=account.id) }}" class="btn-icon" title="View">👁️</a>
                                 {% if current_user.role in ['accountant', 'admin'] %}
-                                <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn-icon" title="Edit">âœï¸</a>
+                                <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn-icon" title="Edit">✏️</a>
                                 {% if row.is_header %}
-                                <span class="btn-icon btn-icon-disabled" title="Remove all sub-accounts before deleting this group">ðŸ—‘ï¸</span>
+                                <span class="btn-icon btn-icon-disabled" title="Remove all sub-accounts before deleting this group">🗑️</span>
                                 {% else %}
                                 <button type="button" class="btn-icon" title="Delete"
-                                        onclick="showDeleteModal({{ account.id }}, '{{ account.code }}', '{{ account.name | e }}')">ðŸ—‘ï¸</button>
+                                        onclick="showDeleteModal({{ account.id }}, '{{ account.code }}', '{{ account.name | e }}')">🗑️</button>
                                 {% endif %}
                                 {% endif %}
                             </div>
@@ -156,7 +156,7 @@
                 {% else %}
                     <tr>
                         <td colspan="6" class="empty-state-cell">
-                            <div class="empty-icon">ðŸ“‹</div>
+                            <div class="empty-icon">📋</div>
                             <div>No accounts found. Click "Add Account" to create your first account.</div>
                         </td>
                     </tr>
@@ -190,7 +190,7 @@
 </div>
 
 <style>
-/* â”€â”€ Summary cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Summary cards ─────────────────────────────────────────── */
 .coa-cards {
     display: flex;
     gap: 12px;
@@ -242,7 +242,7 @@
     letter-spacing: .4px;
 }
 
-/* â”€â”€ Filter bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Filter bar ────────────────────────────────────────────── */
 .coa-filter-bar {
     display: flex;
     align-items: center;
@@ -304,7 +304,7 @@
 }
 .coa-search-clear:hover { color: #374151; background: #f3f4f6; }
 
-/* â”€â”€ Row count footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Row count footer ──────────────────────────────────────── */
 .coa-row-count {
     padding: 8px 16px;
     font-size: 12px;
@@ -313,7 +313,7 @@
     text-align: right;
 }
 
-/* â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Empty state ───────────────────────────────────────────── */
 .coa-empty {
     padding: 48px 0;
     text-align: center;
@@ -321,7 +321,7 @@
     font-size: 14px;
 }
 
-/* â”€â”€ Group rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Group rows ────────────────────────────────────────────── */
 .account-group-row { background: #f8f9fa; }
 .account-group-row:hover { background: #f1f3f5; }
 .account-code-group { font-weight: 700; }
@@ -334,7 +334,7 @@
 }
 .btn-icon-disabled { opacity: .25; cursor: not-allowed; display: inline-flex; align-items: center; justify-content: center; }
 
-/* â”€â”€ Delete modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Delete modal ──────────────────────────────────────────── */
 .modal {
     position: fixed; inset: 0;
     background: var(--backdrop);
@@ -349,7 +349,7 @@
 .btn-danger { background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; }
 .btn-danger:hover { background: #b91c1c; }
 
-/* â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 768px) {
     .coa-card { min-width: 120px; padding: 10px 12px; }
     .coa-card-icon { font-size: 1.3rem; }
