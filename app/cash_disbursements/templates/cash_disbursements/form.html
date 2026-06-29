@@ -974,7 +974,6 @@ function recalculate() {
 // Stays in sync with the detail-view "Entry".
 function renderCdvJEPreview(apApplied, vatUsed, wtUsed, total) {
     const expenseRows = [];
-    let firstExpIdx = -1;
     const vatBuckets = {};
 
     expenseLines.forEach(item => {
@@ -984,49 +983,60 @@ function renderCdvJEPreview(apApplied, vatUsed, wtUsed, total) {
         const vat = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
         const amtC = Math.round((item.amount || 0) * 100);
-        const vatC = vatRate > 0 ? Math.round(amtC - amtC / (1 + vatRate / 100)) : 0;
+        const vatC = vatRate > 0 ? Math.round(Math.abs(amtC) - Math.abs(amtC) / (1 + vatRate / 100)) * Math.sign(amtC) : 0;
         const vatAmt = vatC / 100;
         const netBase = (amtC - vatC) / 100;
-        if (vatAmt > 0) {
+
+        if (vatAmt !== 0) {
             const acctId = (vat && vat.input_vat_account_id) ? vat.input_vat_account_id : '??';
             const code   = (vat && vat.input_vat_account_code) ? vat.input_vat_account_code : '??';
             const name   = (vat && vat.input_vat_account_name) ? vat.input_vat_account_name : 'No Input Tax account configured';
             if (!vatBuckets[acctId]) vatBuckets[acctId] = { code, name, amt: 0 };
             vatBuckets[acctId].amt += vatAmt;
         }
-        if (firstExpIdx === -1) firstExpIdx = expenseRows.length;
-        expenseRows.push({ code: acct.code, name: acct.name, debit: netBase, credit: 0 });
+        // Sign-aware expense row
+        if (netBase >= 0) {
+            expenseRows.push({ code: acct.code, name: acct.name, debit: netBase, credit: 0 });
+        } else {
+            expenseRows.push({ code: acct.code, name: acct.name, debit: 0, credit: Math.abs(netBase) });
+        }
     });
 
-    // Input VAT buckets (debits) + residual absorber on the first expense line
-    let bucketList = [];
-    if (vatUsed > 0) {
-        bucketList = Object.values(vatBuckets).sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
-        const bucketTotal = bucketList.reduce((s, b) => s + b.amt, 0);
-        const diff = vatUsed - bucketTotal;
-        if (Math.abs(diff) > 0.004 && bucketList.length) {
-            bucketList.reduce((max, b) => (b.amt > max.amt ? b : max), bucketList[0]).amt += diff;
-        }
-        bucketList = bucketList.filter(b => Math.abs(b.amt) > 0.004);
-    }
-    const vatRowsTotal = bucketList.reduce((s, b) => s + b.amt, 0);
-    if (firstExpIdx >= 0) expenseRows[firstExpIdx].debit -= (vatRowsTotal - autoVat);
+    // VAT buckets — sign-aware
+    let bucketList = Object.values(vatBuckets).sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
+        .filter(b => Math.abs(b.amt) > 0.004);
 
-    // Assemble debits-first: AP, Expense, Input VAT; then credits: WHT Payable, Cash.
+    // Assemble rows: AP (Dr), Expense (sign-aware), Input VAT (sign-aware), WHT (sign-aware), Cash (sign-aware)
     const rows = [];
-    if (apApplied > 0 && glAccounts && glAccounts.ap) rows.push({ code: glAccounts.ap.code, name: glAccounts.ap.name, debit: apApplied, credit: 0 });
-    expenseRows.forEach(r => rows.push(r));
-    bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: b.amt, credit: 0 }));
-    if (wtUsed > 0 && glAccounts && glAccounts.wt) rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: 0, credit: wtUsed });
-    const cashAcct = allAccounts.find(a => a.id === (parseInt(cashAccSel.value) || -1));
-    if (cashAcct && total > 0) rows.push({ code: cashAcct.code, name: cashAcct.name, debit: 0, credit: total });
+    if (apApplied > 0 && glAccounts && glAccounts.ap)
+        rows.push({ code: glAccounts.ap.code, name: glAccounts.ap.name, debit: apApplied, credit: 0 });
 
-    // Consolidate by account (mirror _consolidate_je), preserving first-seen order.
+    expenseRows.forEach(r => rows.push(r));
+
+    bucketList.forEach(b => {
+        if (b.amt > 0) rows.push({ code: b.code, name: b.name, debit: b.amt, credit: 0 });
+        else           rows.push({ code: b.code, name: b.name, debit: 0, credit: Math.abs(b.amt) });
+    });
+
+    // WHT direction
+    if (wtUsed !== 0 && glAccounts && glAccounts.wt) {
+        if (wtUsed > 0) rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: 0, credit: wtUsed });
+        else            rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: Math.abs(wtUsed), credit: 0 });
+    }
+
+    // Cash direction based on sign of total
+    const cashAcct = allAccounts.find(a => a.id === (parseInt(cashAccSel.value) || -1));
+    if (cashAcct) {
+        if (total > 0)      rows.push({ code: cashAcct.code, name: cashAcct.name, debit: 0, credit: total });
+        else if (total < 0) rows.push({ code: cashAcct.code, name: cashAcct.name, debit: Math.abs(total), credit: 0 });
+    }
+
+    // Consolidate by account, preserving first-seen order.
     const byKey = {}, order = [];
     rows.forEach(r => {
         const key = r.code + '|' + r.name;
         if (!byKey[key]) { byKey[key] = { code: r.code, name: r.name, debit: 0, credit: 0 }; order.push(key); }
-        byKey[key].debit += r.debit;
+        byKey[key].debit  += r.debit;
         byKey[key].credit += r.credit;
     });
     const finalRows = order.map(k => byKey[k]);
@@ -1083,7 +1093,7 @@ function validateForm() {
         const item = expenseLines[i];
         const n = i + 1;
         if (!item.account_id) { block(`Expense line ${n}: select an account title.`); return; }
-        if (!item.amount || item.amount <= 0) { block(`Expense line ${n}: enter an amount > 0.`); return; }
+        if (!item.amount || item.amount === 0) { block(`Expense line ${n}: enter a non-zero amount.`); return; }
     }
 
     allow();
