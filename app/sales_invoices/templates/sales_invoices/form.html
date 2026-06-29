@@ -185,9 +185,9 @@
                         {% if invoice %}Update{% else %}Save{% endif %}
                     </button>
                     {% if invoice %}
-                    <a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" class="btn btn-secondary">Cancel</a>
+                    <a href="{{ url_for('sales_invoices.view', id=invoice.id) }}" class="btn btn-secondary">Back</a>
                     {% else %}
-                    <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">Cancel</a>
+                    <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">Back</a>
                     {% endif %}
                 </div>
                 <p id="saveHint"></p>

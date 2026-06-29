@@ -137,9 +137,9 @@
                         {% if so %}Update{% else %}Save{% endif %}
                     </button>
                     {% if so %}
-                    <a href="{{ url_for('sales_orders.view', id=so.id) }}" class="btn btn-secondary">Cancel</a>
+                    <a href="{{ url_for('sales_orders.view', id=so.id) }}" class="btn btn-secondary">Back</a>
                     {% else %}
-                    <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary">Cancel</a>
+                    <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary">Back</a>
                     {% endif %}
                 </div>
                 <p id="saveHint"></p>
