@@ -222,7 +222,7 @@
                     {% if not module_enabled('products') %}<td>{{ item.description or '—' }}</td>{% endif %}
                     {% if module_enabled('products') %}
                     <td style="font-size:12px; color:var(--text-2);">
-                        {% if item.product %}{{ item.product.code }}: {{ item.product.name }}{% else %}—{% endif %}
+                        {% if item.product %}{{ item.product.name }}{% else %}—{% endif %}
                     </td>
                     {% endif %}
                     <td style="text-align:right; font-family:var(--mono);">{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}</td>
