@@ -54,12 +54,13 @@ def test_submit_enabled_when_all_required_fields_present(logged_in_page):
     _select_vendor(page)
     page.fill('textarea[name="notes"]', 'Test particulars')
 
-    # Enter amount on first row — td:nth-child(2) holds the amount input
-    amount_input = page.locator('#lineItemsBody tr:first-child td:nth-child(2) input[type="text"]')
+    # Enter amount on first row — use stable id prefix; td:nth-child(2) broke when
+    # P-56 added Qty/UOM/UP columns before Amount
+    amount_input = page.locator('#lineItemsBody tr:first-child input[id^="amt-"]')
     amount_input.click()
     amount_input.fill('1000.00')
     # Trigger blur explicitly so amtBlur fires and updates lineItems[].amount
-    page.evaluate("() => { const el = document.querySelector('#lineItemsBody tr:first-child td:nth-child(2) input[type=\"text\"]'); if(el){ el.blur(); } }")
+    page.evaluate("() => { const el = document.querySelector('#lineItemsBody tr:first-child input[id^=\"amt-\"]'); if(el){ el.blur(); } }")
 
     # Use the first real (non-group) account ID from the JS allAccounts array via evaluate
     page.evaluate("""() => {

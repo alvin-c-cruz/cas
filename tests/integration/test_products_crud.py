@@ -28,12 +28,14 @@ def products_module_enabled(db_session):
     subsequent tests that assert the default-off behaviour.
     """
     from app.settings import AppSettings
-    from app.utils.cache_helpers import clear_module_config_cache
+    from app.utils.cache_helpers import clear_module_config_cache, clear_uom_cache
     AppSettings.set_setting('module_enabled:products', '1')
     db.session.commit()
     clear_module_config_cache()
+    clear_uom_cache()
     yield
     clear_module_config_cache()
+    clear_uom_cache()
 
 
 def test_create_product_persists_and_audits(client, db_session, admin_user, main_branch,
