@@ -4,19 +4,19 @@
 {% block page_title %}Statement of Cash Flows{% endblock %}
 
 {% block content %}
-{% macro amt(v) %}<td style="text-align:right;font-family:var(--mono);">{% if v < 0 %}(â‚±{{ '{:,.2f}'.format(-v) }}){% else %}â‚±{{ '{:,.2f}'.format(v) }}{% endif %}</td>{% endmacro %}
+{% macro amt(v) %}<td style="text-align:right;font-family:var(--mono);">{% if v < 0 %}(₱{{ '{:,.2f}'.format(-v) }}){% else %}₱{{ '{:,.2f}'.format(v) }}{% endif %}</td>{% endmacro %}
 <div class="card">
     <div class="card-header">
         <div>
             <div class="card-title">Statement of Cash Flows</div>
-            <div class="card-sub">Indirect Method Â· {{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
+            <div class="card-sub">Indirect Method · {{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
         </div>
         <div class="card-header-actions" style="display:flex;gap:8px;">
             <a href="{{ url_for('reports.cash_flow_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
-               class="btn btn-secondary">ðŸ“Š Excel</a>
+               class="btn btn-secondary">📊 Excel</a>
             <a href="{{ url_for('reports.cash_flow_print', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
                target="_blank" class="btn btn-secondary">Print</a>
-            <button class="btn btn-secondary" onclick="showPeriodPicker()">ðŸ“… Change Period</button>
+            <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Period</button>
         </div>
     </div>
 
@@ -48,9 +48,9 @@
         <div class="alert {% if cash_flow.is_reconciled %}alert-success{% else %}alert-danger{% endif %}"
              style="margin-top:24px;border-radius:8px;padding:16px;">
             {% if cash_flow.is_reconciled %}
-            <strong>âœ… Reconciled</strong> â€” net change in cash ties to ending minus beginning cash.
+            <strong>✅ Reconciled</strong> — net change in cash ties to ending minus beginning cash.
             {% else %}
-            <strong>âš ï¸ Not Reconciled</strong> â€” difference of â‚±{{ '{:,.2f}'.format(cash_flow.difference) }}. Please review journal entries.
+            <strong>⚠️ Not Reconciled</strong> — difference of ₱{{ '{:,.2f}'.format(cash_flow.difference) }}. Please review journal entries.
             {% endif %}
         </div>
     </div>

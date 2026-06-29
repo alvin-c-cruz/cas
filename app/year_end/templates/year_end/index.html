@@ -4,7 +4,7 @@
 
 {% block content %}
 
-{# â”€â”€ Close-Year modals (one per eligible year) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
+{# ── Close-Year modals (one per eligible year) ─────────────────────────── #}
 {% for y in eligible_years %}
 <div id="close-modal-{{ y }}" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
@@ -26,7 +26,7 @@
 </div>
 {% endfor %}
 
-{# â”€â”€ Reopen-Year modals (one per closed record) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
+{# ── Reopen-Year modals (one per closed record) ────────────────────────── #}
 {% for c in closes %}
 {% if c.status == 'closed' %}
 <div id="reopen-modal-{{ c.id }}" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
@@ -49,7 +49,7 @@
 {% endif %}
 {% endfor %}
 
-{# â”€â”€ Eligible Years to Close â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
+{# ── Eligible Years to Close ───────────────────────────────────────────── #}
 <div class="card">
   <div class="card-header">
     <div class="card-title">Close a Fiscal Year</div>
@@ -84,7 +84,7 @@
   </div>
 </div>
 
-{# â”€â”€ Closed Years â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
+{# ── Closed Years ──────────────────────────────────────────────────────── #}
 <div class="card">
   <div class="card-header">
     <div class="card-title">Closed Years</div>
@@ -108,7 +108,7 @@
         <tr>
           <td>{{ c.fiscal_year }}</td>
           <td>{{ c.branch.name if c.branch else c.branch_id }}</td>
-          <td style="text-align:right;font-family:var(--mono);">â‚±{{ '{:,.2f}'.format(c.net_income) }}</td>
+          <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(c.net_income) }}</td>
           <td>
             <span class="badge badge-{{ 'active' if c.status == 'closed' else 'inactive' }}">
               {{ c.status|title }}

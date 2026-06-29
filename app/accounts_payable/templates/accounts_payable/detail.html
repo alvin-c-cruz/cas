@@ -130,13 +130,13 @@
             {% if current_user.role in ['accountant', 'admin'] and ap.status == 'posted' and ap.amount_paid == 0 %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel APV</button>
             {% endif %}
-            <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary">â† Back to List</a>
+            <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary">← Back to List</a>
         </div>
     </div>
 
     <div class="card-body">
 
-        <!-- â”€â”€ Two-column header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── Two-column header ──────────────────────────────────────────── -->
         <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:24px; margin-bottom:32px;">
 
             <!-- LEFT: header fields -->
@@ -147,11 +147,11 @@
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Voucher Date</span>
-                    <span>{{ ap.ap_date.strftime('%b %d, %Y') if ap.ap_date else 'â€”' }}</span>
+                    <span>{{ ap.ap_date.strftime('%b %d, %Y') if ap.ap_date else '—' }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Due Date</span>
-                    <span>{{ ap.due_date.strftime('%b %d, %Y') if ap.due_date else 'â€”' }}</span>
+                    <span>{{ ap.due_date.strftime('%b %d, %Y') if ap.due_date else '—' }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Payment Terms</span>
@@ -203,7 +203,7 @@
             </div>
         </div>
 
-        <!-- â”€â”€ Line Items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── Line Items ──────────────────────────────────────────────────── -->
         <table class="table" style="margin-bottom:24px;">
             <thead>
                 <tr>
@@ -225,31 +225,31 @@
                     <td>{{ item.line_number }}</td>
                     {% if module_enabled('products') %}
                     <td style="font-size:12px; color:var(--text-2);">
-                        {% if item.product %}{{ item.product.code }} â€” {{ item.product.name }}{% else %}â€”{% endif %}
+                        {% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
                     </td>
                     {% endif %}
-                    <td>{{ item.description or 'â€”' }}</td>
+                    <td>{{ item.description or '—' }}</td>
                     <td style="text-align:right; font-family:var(--mono);">
-                        {{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else 'â€”' }}
+                        {{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
                     </td>
                     <td style="font-size:12px;">
-                        {{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or 'â€”') }}
+                        {{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}
                     </td>
                     <td style="text-align:right; font-family:var(--mono);">
-                        {% if item.unit_price is not none %}â‚±{{ '{:,.2f}'.format(item.unit_price) }}{% else %}â€”{% endif %}
+                        {% if item.unit_price is not none %}₱{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
                     </td>
-                    <td style="text-align:right; font-family:var(--mono); font-weight:600;">â‚±{{ '{:,.2f}'.format(item.line_total) }}</td>
+                    <td style="text-align:right; font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(item.line_total) }}</td>
                     <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
                     <td style="font-size:12px;">
-                        {% if item.withholding_tax %}{{ item.withholding_tax.code }} ({{ '{:.2f}'.format(item.wt_rate) }}%){% else %}â€”{% endif %}
+                        {% if item.withholding_tax %}{{ item.withholding_tax.code }} ({{ '{:.2f}'.format(item.wt_rate) }}%){% else %}—{% endif %}
                     </td>
-                    <td style="font-size:12px; color:var(--text-2);">{{ item.account.code ~ ' : ' ~ item.account.name if item.account else 'â€”' }}</td>
+                    <td style="font-size:12px; color:var(--text-2);">{{ item.account.code ~ ' : ' ~ item.account.name if item.account else '—' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
 
-        <!-- â”€â”€ Journal Entry + AP Voucher Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── Journal Entry + AP Voucher Summary ───────────────────────────────── -->
         <div style="display:grid; grid-template-columns:1fr 340px; gap:24px;">
 
             <!-- Journal Entry -->
@@ -273,10 +273,10 @@
                             <td style="color:var(--text-2); font-size:12px;">{{ entry.code }}</td>
                             <td style="{{ 'padding-left:24px;' if entry.credit > 0 else '' }}">{{ entry.name }}</td>
                             <td style="text-align:right; font-family:var(--mono);">
-                                {% if entry.debit > 0 %}{{ '{:,.2f}'.format(entry.debit) }}{% else %}â€”{% endif %}
+                                {% if entry.debit > 0 %}{{ '{:,.2f}'.format(entry.debit) }}{% else %}—{% endif %}
                             </td>
                             <td style="text-align:right; font-family:var(--mono);">
-                                {% if entry.credit > 0 %}{{ '{:,.2f}'.format(entry.credit) }}{% else %}â€”{% endif %}
+                                {% if entry.credit > 0 %}{{ '{:,.2f}'.format(entry.credit) }}{% else %}—{% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -295,51 +295,51 @@
             <div style="background:var(--bg); padding:20px; border-radius:6px;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">Gross Amount:</span>
-                    <span style="font-family:var(--mono); font-weight:600;">â‚±{{ '{:,.2f}'.format(ap.subtotal) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(ap.subtotal) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">
                         Less: Input VAT:
                         {% if ap.vat_override %}<span style="font-size:10px; font-weight:700; color:var(--amber); margin-left:4px; border:1px solid currentColor; border-radius:3px; padding:1px 4px;">MANUAL</span>{% endif %}
                     </span>
-                    <span style="font-family:var(--mono); font-weight:600;">â‚±{{ '{:,.2f}'.format(ap.vat_amount) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(ap.vat_amount) }}</span>
                 </div>
                 <div style="height:1px; background:var(--border); margin:8px 0;"></div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">Net of VAT:</span>
-                    <span style="font-family:var(--mono); font-weight:600;">â‚±{{ '{:,.2f}'.format(ap.subtotal - ap.vat_amount) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(ap.subtotal - ap.vat_amount) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">Add: Input VAT:</span>
-                    <span style="font-family:var(--mono); font-weight:600;">â‚±{{ '{:,.2f}'.format(ap.vat_amount) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(ap.vat_amount) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                     <span style="color:var(--text-2);">
                         Less: Withholding Tax:
                         {% if ap.wt_override %}<span style="font-size:10px; font-weight:700; color:var(--amber); margin-left:4px; border:1px solid currentColor; border-radius:3px; padding:1px 4px;">MANUAL</span>{% endif %}
                     </span>
-                    <span style="font-family:var(--mono); font-weight:600; color:var(--red);">-â‚±{{ '{:,.2f}'.format(ap.withholding_tax_amount) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600; color:var(--red);">-₱{{ '{:,.2f}'.format(ap.withholding_tax_amount) }}</span>
                 </div>
                 <div style="height:2px; background:var(--border); margin:10px 0;"></div>
                 <div style="display:flex; justify-content:space-between;">
                     <span style="font-size:16px; font-weight:700;">Net Amount Payable:</span>
-                    <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--blue);">â‚±{{ '{:,.2f}'.format(ap.total_amount) }}</span>
+                    <span style="font-family:var(--mono); font-size:18px; font-weight:700; color:var(--blue);">₱{{ '{:,.2f}'.format(ap.total_amount) }}</span>
                 </div>
                 {% if ap.amount_paid and ap.amount_paid > 0 %}
                 <div style="display:flex; justify-content:space-between; margin-top:10px;">
                     <span style="color:var(--text-2);">Amount Paid:</span>
-                    <span style="font-family:var(--mono);">â‚±{{ '{:,.2f}'.format(ap.amount_paid) }}</span>
+                    <span style="font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap.amount_paid) }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; padding-top:8px; border-top:1px solid var(--border);">
                     <span style="font-weight:600;">Balance:</span>
-                    <span style="font-family:var(--mono); font-weight:600; color:{{ 'var(--red)' if ap.balance > 0 else 'var(--green)' }};">â‚±{{ '{:,.2f}'.format(ap.balance) }}</span>
+                    <span style="font-family:var(--mono); font-weight:600; color:{{ 'var(--red)' if ap.balance > 0 else 'var(--green)' }};">₱{{ '{:,.2f}'.format(ap.balance) }}</span>
                 </div>
                 {% endif %}
             </div>
             </div>
         </div>
 
-        <!-- â”€â”€ Attachments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── Attachments ────────────────────────────────────────────────── -->
         <div style="margin-top:32px; padding-top:24px; border-top:1px solid var(--border);">
             <h3 style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:16px;">
                 Attachments
@@ -393,17 +393,17 @@
             {% endif %}
         </div>
 
-        <!-- â”€â”€ Audit Trail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── Audit Trail ─────────────────────────────────────────────────── -->
         <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">
-            Created by {{ ap.created_by.username if ap.created_by else 'â€”' }} on {{ ap.created_at.strftime('%b %d, %Y %H:%M') if ap.created_at else 'â€”' }}
+            Created by {{ ap.created_by.username if ap.created_by else '—' }} on {{ ap.created_at.strftime('%b %d, %Y %H:%M') if ap.created_at else '—' }}
             {% if ap.posted_by %}
-             &mdash; Posted by {{ ap.posted_by.username }} on {{ ap.posted_at.strftime('%b %d, %Y %H:%M') if ap.posted_at else 'â€”' }}
+             &mdash; Posted by {{ ap.posted_by.username }} on {{ ap.posted_at.strftime('%b %d, %Y %H:%M') if ap.posted_at else '—' }}
             {% endif %}
             {% if ap.voided_by %}
-             &mdash; Voided by {{ ap.voided_by.username }} on {{ ap.voided_at.strftime('%b %d, %Y %H:%M') if ap.voided_at else 'â€”' }} &mdash; <em>{{ ap.void_reason }}</em>
+             &mdash; Voided by {{ ap.voided_by.username }} on {{ ap.voided_at.strftime('%b %d, %Y %H:%M') if ap.voided_at else '—' }} &mdash; <em>{{ ap.void_reason }}</em>
             {% endif %}
             {% if ap.cancel_reason %}
-             &mdash; Cancelled on {{ ap.cancelled_at.strftime('%b %d, %Y %H:%M') if ap.cancelled_at else 'â€”' }} &mdash; <em>{{ ap.cancel_reason }}</em>
+             &mdash; Cancelled on {{ ap.cancelled_at.strftime('%b %d, %Y %H:%M') if ap.cancelled_at else '—' }} &mdash; <em>{{ ap.cancel_reason }}</em>
             {% endif %}
         </div>
 
