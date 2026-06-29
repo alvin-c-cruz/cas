@@ -121,3 +121,38 @@ def test_staff_cannot_edit_product(client, db_session, staff_user, main_branch,
     assert refreshed.name == 'Editable'  # unchanged
     text = html_mod.unescape(resp.data.decode())
     assert 'do not have access to this module' in text.lower()
+
+
+def test_ajax_create_product_returns_json(client, db_session, admin_user, main_branch,
+                                          products_module_enabled):
+    """AJAX POST to /products/create returns JSON with ok=True and product data."""
+    u = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+    db.session.add(u)
+    db.session.commit()
+    _login(client, admin_user, main_branch)
+    resp = client.post('/products/create',
+                       data={'code': 'P-AJAX', 'name': 'Ajax Product', 'description': '',
+                             'default_unit_of_measure_id': str(u.id),
+                             'default_unit_price': '', 'default_account_id': '',
+                             'is_active': '1'},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['ok'] is True
+    assert data['product']['code'] == 'P-AJAX'
+    assert data['product']['name'] == 'Ajax Product'
+    assert Product.query.filter_by(code='P-AJAX').count() == 1
+
+
+def test_ajax_create_product_validation_error(client, db_session, admin_user, main_branch,
+                                              products_module_enabled):
+    """AJAX POST to /products/create with missing required fields returns JSON with ok=False."""
+    _login(client, admin_user, main_branch)
+    resp = client.post('/products/create',
+                       data={},  # missing code and name
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data['ok'] is False
+    assert 'errors' in data
+    assert Product.query.count() == 0

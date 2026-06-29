@@ -84,3 +84,32 @@ def test_staff_cannot_create_unit_of_measure(client, db_session, staff_user, mai
     # Module-access block flash (before_request gate fires before the view)
     text = html_mod.unescape(resp.data.decode())
     assert 'do not have access to this module' in text.lower()
+
+
+def test_ajax_create_uom_returns_json(client, db_session, admin_user, main_branch,
+                                      uom_module_enabled):
+    """AJAX POST to /units-of-measure/create returns JSON with ok=True and unit data."""
+    _login(client, admin_user, main_branch)
+    resp = client.post('/units-of-measure/create',
+                       data={'code': 'KG', 'name': 'Kilogram', 'is_active': '1'},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['ok'] is True
+    assert data['unit']['code'] == 'KG'
+    assert data['unit']['name'] == 'Kilogram'
+    assert UnitOfMeasure.query.filter_by(code='KG').count() == 1
+
+
+def test_ajax_create_uom_validation_error(client, db_session, admin_user, main_branch,
+                                          uom_module_enabled):
+    """AJAX POST to /units-of-measure/create with missing required fields returns ok=False."""
+    _login(client, admin_user, main_branch)
+    resp = client.post('/units-of-measure/create',
+                       data={},  # missing code and name
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data['ok'] is False
+    assert 'errors' in data
+    assert UnitOfMeasure.query.count() == 0

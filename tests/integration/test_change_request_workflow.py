@@ -395,8 +395,7 @@ class TestStatusToggleControl:
 
     The toggle was extracted into a shared component: markup via the
     status_toggle() macro, behaviour wired by initStatusToggle() in cas-ui.js.
-    The WHT form is driven by that shared JS (verified here); VAT Categories
-    still carries its own inline copy (asserted inline below)."""
+    Both WHT and VAT Categories forms are driven by that shared JS."""
 
     def test_shared_toggle_js_driven_by_select_value(self):
         # The shared behaviour lives in cas-ui.js — guard the FINDING-001 fix there.
@@ -419,12 +418,15 @@ class TestStatusToggleControl:
         assert b".value === '1'" not in resp.data
 
     def test_vat_create_form_toggle_driven_by_select_value(self, client, db_session, two_reviewers):
-        # VAT Categories still uses its own inline toggle JS (not yet extracted).
+        # VAT Categories now uses the shared component (migrated from inline JS).
         login(client)
         resp = client.get('/vat-categories/create')
         assert resp.status_code == 200
+        assert b'class="toggle-input"' in resp.data
+        assert b'class="toggle-switch' in resp.data
+        assert b'cas-ui.js' in resp.data
+        assert b".value === '1'" not in resp.data  # inline JS must be gone
         assert b"this.checked ? 'Active'" not in resp.data
-        assert b".value === '1'" in resp.data
 
 
 class TestWithholdingTaxFlashTerminology:
