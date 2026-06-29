@@ -328,7 +328,7 @@
 {% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
 {% if module_enabled('units_of_measure') %}{% include "units_of_measure/_quick_add_modal.html" %}{% endif %}
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
-<script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='transaction-utils.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='vendor-form-widgets.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='search-select.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor-quick-add.js') }}?v=2"></script>
