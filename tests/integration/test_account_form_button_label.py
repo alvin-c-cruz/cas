@@ -4,8 +4,8 @@ The account create/edit form serves both group headers (top-level, no parent)
 and postable child accounts. The submit button reflects which one is being
 created/edited:
 
-- create, no parent  -> "Save Group"
-- create, has parent -> "Save Account"
+- create, no parent  -> "Create Group"
+- create, has parent -> "Create Account"
 - edit,   no parent  -> "Update Group"
 - edit,   has parent -> "Update Account"
 
@@ -32,15 +32,15 @@ def make_group(db_session, code='90000', name='Test Group'):
 
 
 class TestAccountFormButtonLabel:
-    def test_create_defaults_to_save_group(self, client, db_session,
-                                           accountant_user, main_branch):
+    def test_create_defaults_to_create_group(self, client, db_session,
+                                            accountant_user, main_branch):
         login(client)
         resp = client.get('/accounts/create')
         assert resp.status_code == 200
         html = resp.data.decode()
         # Default create form has no parent selected -> it's a group header.
-        assert 'Save Group' in html
-        assert 'Save Account' not in html
+        assert 'Create Group' in html
+        assert 'Create Account' not in html
 
     def test_edit_group_shows_update_group(self, client, db_session,
                                            accountant_user, main_branch):
