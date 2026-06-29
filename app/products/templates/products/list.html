@@ -64,9 +64,6 @@
                 <tr>
                     <td colspan="6" class="empty-state-cell">
                         <p>No products found.</p>
-                        {% if current_user.role in ['accountant', 'admin'] %}
-                        <p><a href="{{ url_for('products.create') }}" class="btn btn-primary">+ Create First Product</a></p>
-                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

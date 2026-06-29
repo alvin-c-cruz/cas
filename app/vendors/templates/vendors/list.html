@@ -136,9 +136,6 @@
             <p><a href="{{ url_for('vendors.list_vendors') }}" class="btn btn-secondary">Clear search</a></p>
             {% else %}
             <p>No vendors found.</p>
-            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
-            <p><a href="{{ url_for('vendors.create') }}" class="btn btn-primary">Create your first vendor</a></p>
-            {% endif %}
             {% endif %}
         </div>
         {% endif %}

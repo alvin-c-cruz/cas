@@ -81,11 +81,6 @@
                         <td colspan="6" class="empty-state-cell">
                             <div class="empty-icon">ðŸ“‹</div>
                             <div>No withholding tax codes found</div>
-                            {% if current_user.role in ['accountant', 'admin'] %}
-                            <div style="margin-top: 12px;">
-                                <a href="{{ url_for('withholding_tax.create') }}" class="btn btn-primary">+ Create First ATC</a>
-                            </div>
-                            {% endif %}
                         </td>
                     </tr>
                 {% endif %}
