@@ -146,11 +146,11 @@
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Invoice Date</span>
-                    <span>{{ invoice.invoice_date.strftime('%b %d, %Y') if invoice.invoice_date else '&#8212;' }}</span>
+                    <span>{{ invoice.invoice_date.strftime('%b %d, %Y') if invoice.invoice_date else '—' }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Due Date</span>
-                    <span>{{ invoice.due_date.strftime('%b %d, %Y') if invoice.due_date else '&#8212;' }}</span>
+                    <span>{{ invoice.due_date.strftime('%b %d, %Y') if invoice.due_date else '—' }}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Payment Terms</span>
@@ -219,21 +219,21 @@
                 {% for item in invoice.line_items %}
                 <tr>
                     <td>{{ item.line_number }}</td>
-                    <td>{{ item.description or '&#8212;' }}</td>
+                    <td>{{ item.description or '—' }}</td>
                     {% if module_enabled('products') %}
                     <td style="font-size:12px; color:var(--text-2);">
-                        {% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}&#8212;{% endif %}
+                        {% if item.product %}{{ item.product.code }}: {{ item.product.name }}{% else %}—{% endif %}
                     </td>
                     {% endif %}
-                    <td style="text-align:right; font-family:var(--mono);">{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '&#8212;' }}</td>
-                    <td style="font-size:12px;">{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '&#8212;') }}</td>
+                    <td style="text-align:right; font-family:var(--mono);">{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}</td>
+                    <td style="font-size:12px;">{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
                     <td style="text-align:right; font-family:var(--mono);">{% if item.unit_price is not none %}₱{{ '{:,.2f}'.format(item.unit_price) }}{% else %}&#8212;{% endif %}</td>
                     <td style="text-align:right; font-family:var(--mono); font-weight:600;">₱{{ '{:,.2f}'.format(item.line_total) }}</td>
                     <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
                     <td style="font-size:12px;">
                         {% if item.withholding_tax %}{{ item.withholding_tax.code }} ({{ '{:.2f}'.format(item.wt_rate) }}%){% else %}&#8212;{% endif %}
                     </td>
-                    <td style="font-size:12px; color:var(--text-2);">{{ item.account.code ~ ' : ' ~ item.account.name if item.account else '&#8212;' }}</td>
+                    <td style="font-size:12px; color:var(--text-2);">{{ item.account.code ~ ': ' ~ item.account.name if item.account else '—' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -244,11 +244,7 @@
 
             {# Journal Entry #}
             <div style="min-width:0; overflow-x:auto;">
-                <details open>
-                    <summary style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:12px; cursor:pointer; user-select:none;">
-                        Entry
-                    </summary>
-                    <table class="table" style="margin-top:10px;">
+                    <table class="table">
                         <thead>
                             <tr>
                                 <th>Code</th>
@@ -280,12 +276,10 @@
                             </tr>
                         </tbody>
                     </table>
-                </details>
             </div>
 
             {# Invoice Summary #}
             <div>
-                <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); margin-bottom:10px;">Sales Invoice Summary</div>
                 <div class="bill-summary-panel">
                     <div class="bsr">
                         <span class="bsr-label">Subtotal (VAT-incl.)</span>
