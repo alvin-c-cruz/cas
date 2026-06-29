@@ -36,7 +36,7 @@ def test_sidebar_renders_area_headers(client, db_session, admin_user, main_branc
         )
 
     # Representative module links within those areas
-    assert 'Sales Orders' in html, 'Sales Orders link missing from Sales area'
+    # (Sales Orders is optional/default-off — not checked here)
     assert 'Chart of Accounts' in html, 'Chart of Accounts link missing from Accounting area'
     assert 'Books of Accounts' in html, 'Books of Accounts link missing from Compliance area'
 
@@ -82,8 +82,8 @@ def test_sidebar_hides_area_with_no_access(client, db_session, accountant_user, 
     accountant_user has default_all_permissions (all non-optional modules granted).
     The Inventory area requires products + units_of_measure, both optional and
     default_enabled=False, so it should be absent.  The Sales area should be
-    visible because accounts_receivable, collections, customers, and sales_orders
-    are all non-optional and granted.
+    visible because accounts_receivable, collections, and customers are
+    non-optional and granted (sales_orders is optional/default-off).
     """
     _login(client, accountant_user)
     _select_branch(client, main_branch.id)

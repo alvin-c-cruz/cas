@@ -11,6 +11,18 @@ from app.audit.models import AuditLog
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
 
+@pytest.fixture(autouse=True)
+def sales_orders_module_enabled(db_session):
+    """Enable the optional sales_orders module for all SO tests."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    db_session.commit()
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _login(client, user):

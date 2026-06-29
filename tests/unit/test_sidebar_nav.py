@@ -23,7 +23,8 @@ def test_admin_sees_all_areas_ordered(db_session):
     sales = next(a for a in tree if a['area'] == 'Sales')
     assert [g['group'] for g in sales['groups']] == ['Documents', 'Masters', 'Reports']
     docs = next(g for g in sales['groups'] if g['group'] == 'Documents')['modules']
-    assert [m['key'] for m in docs] == ['sales_orders', 'accounts_receivable', 'collections']
+    # sales_orders is optional (default_enabled=False) so absent when disabled
+    assert [m['key'] for m in docs] == ['accounts_receivable', 'collections']
 
 
 def test_enabling_inventory_modules_shows_inventory_area(db_session):
@@ -35,14 +36,16 @@ def test_enabling_inventory_modules_shows_inventory_area(db_session):
     AppSettings.set_setting('module_enabled:units_of_measure', '1')
     AppSettings.set_setting('module_enabled:products', '1')
     clear_module_config_cache()
+    try:
+        tree = build_sidebar(_user('admin'))
+        areas = [a['area'] for a in tree]
+        assert 'Inventory' in areas, f"Expected Inventory area after enabling modules; got {areas}"
 
-    tree = build_sidebar(_user('admin'))
-    areas = [a['area'] for a in tree]
-    assert 'Inventory' in areas, f"Expected Inventory area after enabling modules; got {areas}"
-
-    inv = next(a for a in tree if a['area'] == 'Inventory')
-    all_module_keys = [m['key'] for g in inv['groups'] for m in g['modules']]
-    assert set(all_module_keys) == {'products', 'units_of_measure'}
+        inv = next(a for a in tree if a['area'] == 'Inventory')
+        all_module_keys = [m['key'] for g in inv['groups'] for m in g['modules']]
+        assert set(all_module_keys) == {'products', 'units_of_measure'}
+    finally:
+        clear_module_config_cache()
 
 
 def test_empty_areas_and_groups_omitted(db_session):

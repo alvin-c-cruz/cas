@@ -12,9 +12,11 @@ modules, so endpoints are matched per-prefix rather than per-blueprint.
 """
 
 MODULE_REGISTRY = [
-    # ── Transactions (Phase 1 + Sales Orders) ──────────────────────────────
+    # ── Transactions (Phase 1) ─────────────────────────────────────────────
+    # ── Sales Area (optional — per-company configurable) ───────────────────
     {'key': 'sales_orders', 'label': 'Sales Orders', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
+     'optional': True, 'depends_on': [], 'default_enabled': False,
      'endpoints': ('sales_orders.',)},
     {'key': 'accounts_receivable', 'label': 'Sales Invoices', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
@@ -98,7 +100,8 @@ MODULE_REGISTRY = [
 AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Accounting', 'Compliance', 'Payroll', 'Admin']
 GROUP_ORDER = ['Documents', 'Masters', 'Journals', 'Ledger', 'Financial Statements', 'Reports', 'BIR', 'Admin']
 
-TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY if m['section'] == 'Transactions']
+TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY
+                    if m['section'] == 'Transactions' and not m.get('optional')]
 
 # Vendor sub-actions reached FROM transaction forms (inline quick-add + autofill). These must
 # stay reachable for a staff user who has a transaction module but not the Vendors module —
