@@ -37,7 +37,7 @@
                 <tr class="fs-section-header">
                     <td style="width:30px;"></td>
                     <td{% if sec.key in ['selling', 'admin'] %} style="padding-left:18px;"{% endif %}>{{ sec.label }}</td>
-                    <td class="num-col" style="width:180px;">{% if sec.sign == -1 %}(â‚±{{ '{:,.2f}'.format(sec.total) }}){% else %}â‚±{{ '{:,.2f}'.format(sec.total) }}{% endif %}</td>
+                    <td class="num-col" style="width:180px;">{% if sec.sign == -1 %}(₱{{ '{:,.2f}'.format(sec.total) }}){% else %}₱{{ '{:,.2f}'.format(sec.total) }}{% endif %}</td>
                 </tr>
 
                 {# Roll-up lines within the section #}
@@ -61,7 +61,7 @@
                         {% if line.code %}<span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ line.code }}</span>&nbsp;{% endif %}
                         {{ line.name }}
                     </td>
-                    <td class="num-col">â‚±{{ '{:,.2f}'.format(line.total) }}</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(line.total) }}</td>
                 </tr>
 
                 {# Child detail rows (collapsed by default) #}
@@ -77,7 +77,7 @@
                         <span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ child.code }}</span>
                         &nbsp;{{ child.name }}
                     </td>
-                    <td class="num-col">â‚±{{ '{:,.2f}'.format(child.amount) }}</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(child.amount) }}</td>
                 </tr>
                 {% endfor %}
                 {% endfor %}
@@ -87,7 +87,7 @@
                 <tr class="fs-subtotal-row">
                     <td></td>
                     <td style="color:var(--blue);">{{ sec.subtotal_label }}</td>
-                    <td class="num-col" style="color:var(--blue);">â‚±{{ '{:,.2f}'.format(sec.subtotal) }}</td>
+                    <td class="num-col" style="color:var(--blue);">₱{{ '{:,.2f}'.format(sec.subtotal) }}</td>
                 </tr>
                 {% endif %}
                 {% endfor %}
@@ -104,7 +104,7 @@
                         {% endif %}
                     </td>
                     <td class="num-col" style="color:{% if income_statement.net_income >= 0 %}var(--green){% else %}var(--red){% endif %};">
-                        â‚±{{ '{:,.2f}'.format(income_statement.net_income) }}
+                        ₱{{ '{:,.2f}'.format(income_statement.net_income) }}
                     </td>
                 </tr>
             </tbody>

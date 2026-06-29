@@ -16,7 +16,7 @@ MODULE_REGISTRY = [
     # ── Sales Area (optional — per-company configurable) ───────────────────
     {'key': 'sales_orders', 'label': 'Sales Orders', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
-     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'optional': False, 'depends_on': [],
      'endpoints': ('sales_orders.',)},
     {'key': 'accounts_receivable', 'label': 'Sales Invoices', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
