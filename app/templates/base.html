@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=11">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=12">
     <style>
         /* Minimal scrollbar styling for better accessibility */
         * {
@@ -526,7 +526,7 @@
             align-items: center;
         }
 
-        /* Card styles — .card itself is defined in style.css using design tokens;
+        /* Card styles â€” .card itself is defined in style.css using design tokens;
            do not redefine it here (a hardcoded copy shadowed .dashboard-hero's gradient). */
         .card-body {
             padding: 0;
@@ -1023,7 +1023,7 @@
                 {% if company_logo %}
                 <img src="{{ url_for('company_settings.logo') }}" alt="{{ company_name }} logo" class="brand-img">
                 {% else %}
-                <div class="brand-icon">⚖</div>
+                <div class="brand-icon">âš–</div>
                 {% endif %}
                 <div>
                     <h4>{{ company_name }}</h4>
@@ -1037,18 +1037,18 @@
         <div class="sidebar-branch-switch" id="branchSwitch">
             <div class="sidebar-branch-indicator branch-switch-trigger" id="branchSwitchTrigger"
                  role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
-                <div class="branch-icon-sidebar">🏢</div>
+                <div class="branch-icon-sidebar">ðŸ¢</div>
                 <div class="branch-details-sidebar">
                     <div class="branch-label-sidebar">Current Branch</div>
                     <div class="branch-name-sidebar">{{ current_branch.name }}</div>
                 </div>
-                <span class="branch-switch-caret" aria-hidden="true">▾</span>
+                <span class="branch-switch-caret" aria-hidden="true">â–¾</span>
             </div>
             <div class="branch-switch-menu" id="branchSwitchMenu" role="menu" hidden>
                 {% for b in accessible_branches %}
                 {% if b.id == current_branch.id %}
                 <div class="branch-switch-item is-current" role="menuitemradio" aria-checked="true">
-                    <span class="branch-switch-check" aria-hidden="true">✓</span>{{ b.name }}
+                    <span class="branch-switch-check" aria-hidden="true">âœ“</span>{{ b.name }}
                     <span class="branch-switch-tag">current</span>
                 </div>
                 {% else %}
@@ -1068,12 +1068,12 @@
             <!-- Main Section -->
             <div class="nav-label">Main</div>
             <a href="{{ url_for('dashboard.home') }}" class="nav-item {% if request.endpoint == 'dashboard.home' %}active{% endif %}">
-                <span class="nav-icon">🏠</span>
+                <span class="nav-icon">ðŸ </span>
                 <span class="nav-text">Dashboard</span>
             </a>
             {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant', 'staff'] %}
             <a href="{{ url_for('dashboard.action_items') }}" class="nav-item {% if request.endpoint == 'dashboard.action_items' %}active{% endif %}">
-                <span class="nav-icon">⚡</span>
+                <span class="nav-icon">âš¡</span>
                 <span class="nav-text">Action Items</span>
                 {% if action_items_count and action_items_count > 0 %}
                 <span class="nav-badge" id="nav-action-badge">{{ action_items_count }}</span>
@@ -1083,7 +1083,7 @@
             </a>
             {% endif %}
 
-            {# ── Dynamic sidebar tree: Area → Group → Module ──────────────────────
+            {# â”€â”€ Dynamic sidebar tree: Area â†’ Group â†’ Module â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                Replaces the old hardcoded Transactions / Ledger / Financial Reports /
                BIR / Maintenance blocks.  build_sidebar(user) returns only the areas
                and modules the current user may access (via can_access_module).
@@ -1119,8 +1119,8 @@
             {%- endif -%}
             {%- endmacro %}
 
-            {# nav_ep: module key → Flask endpoint name (for url_for).
-               nav_icon: module key → sidebar icon.
+            {# nav_ep: module key â†’ Flask endpoint name (for url_for).
+               nav_icon: module key â†’ sidebar icon.
                NOTE: bir_reports is handled separately below (it gates 3 sub-links).
                When adding a new module to MODULE_REGISTRY, add its entry here too. #}
             {% set _nav_ep = {
@@ -1146,33 +1146,33 @@
                 'products':           'products.list'
             } %}
             {% set _nav_icon = {
-                'sales_orders':       '📦',
-                'accounts_receivable':'📄',
-                'collections':        '💰',
-                'accounts_payable':   '📋',
-                'payments':           '💸',
-                'journal_entries':    '📓',
-                'chart_of_accounts':  '📋',
-                'general_ledger':     '📖',
-                'books_of_accounts':  '📚',
-                'ar_aging':           '📅',
-                'ap_aging':           '📆',
-                'income_statement':   '💰',
-                'balance_sheet':      '📈',
-                'cash_flow':          '💸',
-                'trial_balance':      '⚖️',
-                'fiscal_year_close':  '🔒',
-                'customers':          '👥',
-                'vendors':            '🏢',
-                'units_of_measure':   '📏',
-                'products':           '📦'
+                'sales_orders':       'ðŸ“¦',
+                'accounts_receivable':'ðŸ“„',
+                'collections':        'ðŸ’°',
+                'accounts_payable':   'ðŸ“‹',
+                'payments':           'ðŸ’¸',
+                'journal_entries':    'ðŸ““',
+                'chart_of_accounts':  'ðŸ“‹',
+                'general_ledger':     'ðŸ“–',
+                'books_of_accounts':  'ðŸ“š',
+                'ar_aging':           'ðŸ“…',
+                'ap_aging':           'ðŸ“†',
+                'income_statement':   'ðŸ’°',
+                'balance_sheet':      'ðŸ“ˆ',
+                'cash_flow':          'ðŸ’¸',
+                'trial_balance':      'âš–ï¸',
+                'fiscal_year_close':  'ðŸ”’',
+                'customers':          'ðŸ‘¥',
+                'vendors':            'ðŸ¢',
+                'units_of_measure':   'ðŸ“',
+                'products':           'ðŸ“¦'
             } %}
 
             {% for area in build_sidebar(current_user) %}
             <div class="nav-section nav-area" data-area="{{ area.area | lower | replace(' ', '-') }}">
                 <div class="nav-label nav-label-collapsible" data-section="area-{{ area.area | lower | replace(' ', '-') }}">
                     <span>{{ area.area }}</span>
-                    <span class="nav-label-arrow">▼</span>
+                    <span class="nav-label-arrow">â–¼</span>
                 </div>
                 <div class="nav-section-content" id="section-area-{{ area.area | lower | replace(' ', '-') }}">
                     {% for group in area.groups %}
@@ -1185,22 +1185,22 @@
                     {# BIR Reports module gates 3 sub-links, not a single endpoint #}
                     <div class="nav-subgroup-label">BIR Reports</div>
                     <a href="{{ url_for('reports.bir_index') }}" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('reports.bir') %}active{% endif %}">
-                        <span class="nav-icon">🏛</span>
+                        <span class="nav-icon">ðŸ›</span>
                         <span class="nav-text">VAT Reports</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('reports.bir_alphalist') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.bir_alphalist' %}active{% endif %}">
-                        <span class="nav-icon">📋</span>
+                        <span class="nav-icon">ðŸ“‹</span>
                         <span class="nav-text">Withholding Tax</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('dashboard.under_development', feature='Annual ITR') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Annual ITR' %}active{% endif %}">
-                        <span class="nav-icon">📄</span>
+                        <span class="nav-icon">ðŸ“„</span>
                         <span class="nav-text">Annual ITR</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
                     {% else %}
-                    {# Standard single-endpoint nav link — exact url_for + icon from old hardcoded blocks #}
+                    {# Standard single-endpoint nav link â€” exact url_for + icon from old hardcoded blocks #}
                     <a href="{{ url_for(_nav_ep[m.key]) }}" class="nav-item {{ active_class(m.key) }}">
                         <span class="nav-icon">{{ _nav_icon[m.key] }}</span>
                         <span class="nav-text">
@@ -1224,39 +1224,39 @@
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="admin">
                     <span>Admin</span>
-                    <span class="nav-label-arrow">▼</span>
+                    <span class="nav-label-arrow">â–¼</span>
                 </div>
                 <div class="nav-section-content" id="section-admin">
                     <a href="{{ url_for('company_settings.edit_settings') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('company_settings.') %}active{% endif %}">
-                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-icon">âš™ï¸</span>
                         <span class="nav-text">Company Settings</span>
                     </a>
                     <a href="{{ url_for('branches.list_branches') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('branches.') %}active{% endif %}">
-                        <span class="nav-icon">🏪</span>
+                        <span class="nav-icon">ðŸª</span>
                         <span class="nav-text">Branch Management</span>
                     </a>
                     <a href="{{ url_for('users.list_users') }}" class="nav-item {% if request.endpoint == 'users.list_users' or request.endpoint == 'users.edit_user' %}active{% endif %}">
-                        <span class="nav-icon">👤</span>
+                        <span class="nav-icon">ðŸ‘¤</span>
                         <span class="nav-text">User Management</span>
                     </a>
                     <a href="{{ url_for('users.list_approved_emails') }}" class="nav-item {% if request.endpoint == 'users.list_approved_emails' or request.endpoint == 'users.add_approved_email' %}active{% endif %}">
-                        <span class="nav-icon">📧</span>
+                        <span class="nav-icon">ðŸ“§</span>
                         <span class="nav-text">Approved Emails</span>
                     </a>
                     <a href="{{ url_for('vat_categories.list_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_categories.') %}active{% endif %}">
-                        <span class="nav-icon">📊</span>
+                        <span class="nav-icon">ðŸ“Š</span>
                         <span class="nav-text">VAT Categories</span>
                     </a>
                     <a href="{{ url_for('sales_vat_categories.list_sales_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('sales_vat_categories.') %}active{% endif %}">
-                        <span class="nav-icon">🧾</span>
+                        <span class="nav-icon">ðŸ§¾</span>
                         <span class="nav-text">Sales VAT Categories</span>
                     </a>
                     <a href="{{ url_for('withholding_tax.list_withholding_tax') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('withholding_tax.') %}active{% endif %}">
-                        <span class="nav-icon">💼</span>
+                        <span class="nav-icon">ðŸ’¼</span>
                         <span class="nav-text">Withholding Tax Expanded</span>
                     </a>
                     <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
-                        <span class="nav-icon">📜</span>
+                        <span class="nav-icon">ðŸ“œ</span>
                         <span class="nav-text">Audit Log</span>
                     </a>
                 </div>
@@ -1268,19 +1268,19 @@
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="staff">
                     <span>Staff Management</span>
-                    <span class="nav-label-arrow">▼</span>
+                    <span class="nav-label-arrow">â–¼</span>
                 </div>
                 <div class="nav-section-content" id="section-staff">
                     <a href="{{ url_for('staff_management.list_staff') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('staff_management.') %}active{% endif %}">
-                        <span class="nav-icon">👥</span>
+                        <span class="nav-icon">ðŸ‘¥</span>
                         <span class="nav-text">Staff Management</span>
                     </a>
                     <a href="{{ url_for('users.list_approved_emails') }}" class="nav-item {% if request.endpoint == 'users.list_approved_emails' or request.endpoint == 'users.add_approved_email' %}active{% endif %}">
-                        <span class="nav-icon">📧</span>
+                        <span class="nav-icon">ðŸ“§</span>
                         <span class="nav-text">Approved Emails</span>
                     </a>
                     <a href="{{ url_for('audit.audit_log') }}" class="nav-item {% if request.endpoint == 'audit.audit_log' %}active{% endif %}">
-                        <span class="nav-icon">📜</span>
+                        <span class="nav-icon">ðŸ“œ</span>
                         <span class="nav-text">Audit Log</span>
                     </a>
                 </div>
@@ -1304,7 +1304,7 @@
                 </div>
             </div>
             <a href="{{ url_for('users.logout') }}" class="logout-btn" title="Logout">
-                <span>🚪</span>
+                <span>ðŸšª</span>
             </a>
         </div>
         {% endif %}
@@ -1342,14 +1342,14 @@
                     </button>
                     <div class="topbar-user-dropdown" id="topbarUserDropdown">
                         <a href="{{ url_for('users.profile') }}" class="topbar-user-dropdown-item">
-                            <span>👤</span> Profile
+                            <span>ðŸ‘¤</span> Profile
                         </a>
                         <a href="{{ url_for('users.change_password') }}" class="topbar-user-dropdown-item">
-                            <span>🔐</span> Change password
+                            <span>ðŸ”</span> Change password
                         </a>
                         <div class="topbar-user-dropdown-divider"></div>
                         <a href="{{ url_for('users.logout') }}" class="topbar-user-dropdown-item">
-                            <span style="color: #ef4444;">⏻</span> Sign out
+                            <span style="color: #ef4444;">â»</span> Sign out
                         </a>
                     </div>
                 </div>
@@ -1370,7 +1370,7 @@
                     <button class="user-menu-btn" id="userMenuBtn">
                         <div class="user-avatar">{{ current_user.full_name[0].upper() }}</div>
                         <span class="user-name">{{ current_user.full_name }}</span>
-                        <span class="user-arrow">▼</span>
+                        <span class="user-arrow">â–¼</span>
                     </button>
                     <div class="user-dropdown" id="userDropdown">
                         <div class="user-dropdown-header">
@@ -1379,14 +1379,14 @@
                         </div>
                         <div class="user-dropdown-divider"></div>
                         <a href="{{ url_for('users.profile') }}" class="user-dropdown-item">
-                            <span>👤</span> My Profile
+                            <span>ðŸ‘¤</span> My Profile
                         </a>
                         <a href="{{ url_for('users.change_password') }}" class="user-dropdown-item">
-                            <span>🔒</span> Change Password
+                            <span>ðŸ”’</span> Change Password
                         </a>
                         <div class="user-dropdown-divider"></div>
                         <a href="{{ url_for('users.logout') }}" class="user-dropdown-item">
-                            <span>🚪</span> Logout
+                            <span>ðŸšª</span> Logout
                         </a>
                     </div>
                 </div>
@@ -1557,7 +1557,7 @@
                 }
             }
 
-            // Add click handlers — independent toggle per section
+            // Add click handlers â€” independent toggle per section
             collapsibleLabels.forEach(function(label) {
                 label.addEventListener('click', function() {
                     var sectionName = this.getAttribute('data-section');
@@ -1652,7 +1652,7 @@
     </script>
 
     <!-- Custom Confirm Modal -->
-    <div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center;">
+    <div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--backdrop); z-index: 10000; align-items: center; justify-content: center;">
         <div style="background: white; border-radius: 12px; padding: 24px; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
             <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #1e293b;">Confirm Action</h3>
             <p id="confirmMessage" style="margin: 0 0 24px 0; color: #475569; font-size: 14px; line-height: 1.5;"></p>

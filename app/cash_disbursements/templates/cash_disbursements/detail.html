@@ -1,12 +1,12 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}CDV {{ cdv.cdv_number }}{% endblock %}
-{% block page_title %}Cash Disbursement Voucher — {{ cdv.cdv_number }}{% endblock %}
+{% block page_title %}Cash Disbursement Voucher â€” {{ cdv.cdv_number }}{% endblock %}
 
 {% block content %}
 
 <!-- Post modal (draft only) -->
 {% if cdv.status == 'draft' %}
-<div id="postModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+<div id="postModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
     <h3 style="margin:0 0 12px 0;">Post this CDV?</h3>
     <p style="color:var(--text-2);margin-bottom:24px;">Posting will make the CDV final, update AP bill balances, and enter it in the GL.</p>
@@ -21,7 +21,7 @@
 </div>
 
 <!-- Void modal (draft only) -->
-<div id="voidModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+<div id="voidModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--card);border-radius:8px;padding:32px;max-width:480px;width:90%;">
     <h3 style="margin:0 0 12px 0;">Void this CDV?</h3>
     <p style="color:var(--text-2);margin-bottom:20px;"><strong>{{ cdv.cdv_number }}</strong> will be voided. The draft journal entry will be deleted. This cannot be undone.</p>
@@ -42,7 +42,7 @@
 
 <!-- Cancel modal (posted only) -->
 {% if cdv.status == 'posted' %}
-<div id="cancelModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+<div id="cancelModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--card);border-radius:8px;padding:32px;max-width:480px;width:90%;">
     <h3 style="margin:0 0 12px 0;">Cancel this CDV?</h3>
     <p style="color:var(--text-2);margin-bottom:20px;">Cancelling <strong>{{ cdv.cdv_number }}</strong> will create a reversal JE and restore all AP bill balances. This cannot be undone.</p>
@@ -88,7 +88,7 @@
       {% if current_user.role in ['accountant','admin'] and cdv.status == 'posted' %}
       <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel CDV</button>
       {% endif %}
-      <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">← Back</a>
+      <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">â† Back</a>
     </div>
   </div>
 
@@ -107,11 +107,11 @@
         {{ field('CDV Date', cdv.cdv_date.strftime('%b %d, %Y')) }}
         {{ field('Payment Method', cdv.payment_method|replace('_',' ')|title) }}
         {% if cdv.payment_method == 'check' %}
-        {{ field('Check #', cdv.check_number or '—') }}
-        {{ field('Check Date', cdv.check_date.strftime('%b %d, %Y') if cdv.check_date else '—') }}
-        {{ field('Bank', cdv.check_bank or '—') }}
+        {{ field('Check #', cdv.check_number or 'â€”') }}
+        {{ field('Check Date', cdv.check_date.strftime('%b %d, %Y') if cdv.check_date else 'â€”') }}
+        {{ field('Bank', cdv.check_bank or 'â€”') }}
         {% endif %}
-        {{ field('Cash / Bank Acct', (cdv.cash_account.code ~ ' — ' ~ cdv.cash_account.name) if cdv.cash_account else '—') }}
+        {{ field('Cash / Bank Acct', (cdv.cash_account.code ~ ' â€” ' ~ cdv.cash_account.name) if cdv.cash_account else 'â€”') }}
       </div>
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div>
@@ -133,7 +133,7 @@
     <!-- Section A: AP Lines -->
     {% if cdv.ap_lines %}
     <div style="margin-bottom:24px;">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Section A — AP Bills Paid</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Section A â€” AP Bills Paid</div>
       <table class="table">
         <thead>
           <tr>
@@ -147,9 +147,9 @@
           <tr>
             <td><a href="{{ url_for('accounts_payable.view', id=ap_line.ap_id) }}"
                    style="color:var(--blue);font-weight:600;">{{ ap_line.ap_number }}</a></td>
-            <td>{{ ap_line.accounts_payable.ap_date.strftime('%b %d, %Y') if ap_line.accounts_payable else '—' }}</td>
-            <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap_line.original_balance) }}</td>
-            <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(ap_line.amount_applied) }}</td>
+            <td>{{ ap_line.accounts_payable.ap_date.strftime('%b %d, %Y') if ap_line.accounts_payable else 'â€”' }}</td>
+            <td style="text-align:right;font-family:var(--mono);">â‚±{{ '{:,.2f}'.format(ap_line.original_balance) }}</td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:600;">â‚±{{ '{:,.2f}'.format(ap_line.amount_applied) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -160,7 +160,7 @@
     <!-- Section B: Expense Lines -->
     {% if cdv.expense_lines %}
     <div style="margin-bottom:24px;">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Section B — Direct Expenses</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Section B â€” Direct Expenses</div>
       <table class="table">
         <thead>
           <tr>
@@ -180,23 +180,23 @@
             <td>{{ exp.line_number }}</td>
             {% if module_enabled('products') %}
             <td style="font-size:12px;color:var(--text-2);">
-              {% if exp.product %}{{ exp.product.code }} — {{ exp.product.name }}{% else %}—{% endif %}
+              {% if exp.product %}{{ exp.product.code }} â€” {{ exp.product.name }}{% else %}â€”{% endif %}
             </td>
             {% endif %}
-            <td>{{ exp.description or '—' }}</td>
+            <td>{{ exp.description or 'â€”' }}</td>
             <td style="text-align:right;font-family:var(--mono);">
-              {% if exp.quantity is not none %}{{ '{:,.4f}'.format(exp.quantity) }}{% else %}—{% endif %}
+              {% if exp.quantity is not none %}{{ '{:,.4f}'.format(exp.quantity) }}{% else %}â€”{% endif %}
             </td>
-            <td>{{ exp.unit_of_measure.code if exp.unit_of_measure else (exp.uom_text or '—') }}</td>
+            <td>{{ exp.unit_of_measure.code if exp.unit_of_measure else (exp.uom_text or 'â€”') }}</td>
             <td style="text-align:right;font-family:var(--mono);">
-              {% if exp.unit_price is not none %}₱{{ '{:,.2f}'.format(exp.unit_price) }}{% else %}—{% endif %}
+              {% if exp.unit_price is not none %}â‚±{{ '{:,.2f}'.format(exp.unit_price) }}{% else %}â€”{% endif %}
             </td>
-            <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(exp.line_total) }}</td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:600;">â‚±{{ '{:,.2f}'.format(exp.line_total) }}</td>
             <td>{{ exp.vat_category or 'None' }} ({{ '{:.2f}'.format(exp.vat_rate) }}%)</td>
             <td style="font-size:12px;">
-              {% if exp.withholding_tax %}{{ exp.withholding_tax.code }} ({{ '{:.2f}'.format(exp.wt_rate) }}%){% else %}—{% endif %}
+              {% if exp.withholding_tax %}{{ exp.withholding_tax.code }} ({{ '{:.2f}'.format(exp.wt_rate) }}%){% else %}â€”{% endif %}
             </td>
-            <td style="font-size:12px;color:var(--text-2);">{{ exp.account.code ~ ' : ' ~ exp.account.name if exp.account else '—' }}</td>
+            <td style="font-size:12px;color:var(--text-2);">{{ exp.account.code ~ ' : ' ~ exp.account.name if exp.account else 'â€”' }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -222,8 +222,8 @@
             <tr>
               <td style="color:var(--text-2);font-size:12px;">{{ e.code }}</td>
               <td {{ 'style="padding-left:24px;"' | safe if e.credit > 0 }}>{{ e.name }}</td>
-              <td style="text-align:right;font-family:var(--mono);">{% if e.debit > 0 %}{{ '{:,.2f}'.format(e.debit) }}{% else %}—{% endif %}</td>
-              <td style="text-align:right;font-family:var(--mono);">{% if e.credit > 0 %}{{ '{:,.2f}'.format(e.credit) }}{% else %}—{% endif %}</td>
+              <td style="text-align:right;font-family:var(--mono);">{% if e.debit > 0 %}{{ '{:,.2f}'.format(e.debit) }}{% else %}â€”{% endif %}</td>
+              <td style="text-align:right;font-family:var(--mono);">{% if e.credit > 0 %}{{ '{:,.2f}'.format(e.credit) }}{% else %}â€”{% endif %}</td>
             </tr>
             {% endfor %}
             <tr style="font-weight:700;border-top:2px solid var(--border);">
@@ -245,15 +245,15 @@
             <span style="font-family:var(--mono);font-weight:{{ '700' if bold else '600' }};{{ 'color:var(--red);' if red }}">{{ val }}</span>
           </div>
           {% endmacro %}
-          {{ sumrow('AP Applied:', '₱' ~ '{:,.2f}'.format(cdv.total_ap_applied)) }}
-          {{ sumrow('Direct Expenses:', '₱' ~ '{:,.2f}'.format(cdv.total_expense)) }}
-          {{ sumrow('Input VAT:' ~ (' ⚙' if cdv.vat_override else ''), '₱' ~ '{:,.2f}'.format(cdv.total_vat)) }}
+          {{ sumrow('AP Applied:', 'â‚±' ~ '{:,.2f}'.format(cdv.total_ap_applied)) }}
+          {{ sumrow('Direct Expenses:', 'â‚±' ~ '{:,.2f}'.format(cdv.total_expense)) }}
+          {{ sumrow('Input VAT:' ~ (' âš™' if cdv.vat_override else ''), 'â‚±' ~ '{:,.2f}'.format(cdv.total_vat)) }}
           <div style="height:1px;background:var(--border);margin:8px 0;"></div>
-          {{ sumrow('Less: WHT:' ~ (' ⚙' if cdv.wt_override else ''), '-₱' ~ '{:,.2f}'.format(cdv.total_wt), red=true) }}
+          {{ sumrow('Less: WHT:' ~ (' âš™' if cdv.wt_override else ''), '-â‚±' ~ '{:,.2f}'.format(cdv.total_wt), red=true) }}
           <div style="height:2px;background:var(--border);margin:10px 0;"></div>
           <div style="display:flex;justify-content:space-between;">
             <span style="font-size:15px;font-weight:700;">Net Cash Disbursed:</span>
-            <span style="font-family:var(--mono);font-size:17px;font-weight:700;color:var(--blue);">₱{{ '{:,.2f}'.format(cdv.total_amount) }}</span>
+            <span style="font-family:var(--mono);font-size:17px;font-weight:700;color:var(--blue);">â‚±{{ '{:,.2f}'.format(cdv.total_amount) }}</span>
           </div>
         </div>
       </div>
@@ -261,17 +261,17 @@
 
     <!-- Audit trail -->
     <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3);">
-      Created by {{ cdv.created_by.username if cdv.created_by else '—' }}
-      on {{ cdv.created_at.strftime('%b %d, %Y %H:%M') if cdv.created_at else '—' }}
+      Created by {{ cdv.created_by.username if cdv.created_by else 'â€”' }}
+      on {{ cdv.created_at.strftime('%b %d, %Y %H:%M') if cdv.created_at else 'â€”' }}
       {% if cdv.posted_by %}
-       &mdash; Posted by {{ cdv.posted_by.username }} on {{ cdv.posted_at.strftime('%b %d, %Y %H:%M') if cdv.posted_at else '—' }}
+       &mdash; Posted by {{ cdv.posted_by.username }} on {{ cdv.posted_at.strftime('%b %d, %Y %H:%M') if cdv.posted_at else 'â€”' }}
       {% endif %}
       {% if cdv.voided_by %}
-       &mdash; Voided by {{ cdv.voided_by.username }} on {{ cdv.voided_at.strftime('%b %d, %Y %H:%M') if cdv.voided_at else '—' }}
+       &mdash; Voided by {{ cdv.voided_by.username }} on {{ cdv.voided_at.strftime('%b %d, %Y %H:%M') if cdv.voided_at else 'â€”' }}
        &mdash; <em>{{ cdv.void_reason }}</em>
       {% endif %}
       {% if cdv.cancel_reason %}
-       &mdash; Cancelled on {{ cdv.cancelled_at.strftime('%b %d, %Y %H:%M') if cdv.cancelled_at else '—' }}
+       &mdash; Cancelled on {{ cdv.cancelled_at.strftime('%b %d, %Y %H:%M') if cdv.cancelled_at else 'â€”' }}
        &mdash; <em>{{ cdv.cancel_reason }}</em>
       {% endif %}
     </div>

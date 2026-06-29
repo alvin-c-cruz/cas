@@ -73,6 +73,15 @@
     <!-- Audit Entries Container -->
     <div class="audit-entries-container">
         {% if logs %}
+            <div class="audit-entry-header{% if not multi_branch %} audit-entry-header--no-branch{% endif %}">
+                <span>Timestamp</span>
+                {% if multi_branch %}<span>Branch</span>{% endif %}
+                <span>User</span>
+                <span>Module</span>
+                <span>Action</span>
+                <span>Record</span>
+                <span>Details</span>
+            </div>
             {% for log in logs %}
             <div class="audit-entry" data-entry-id="{{ log.id }}">
                 <!-- Main Row -->

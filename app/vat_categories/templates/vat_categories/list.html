@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}VAT Categories{% endblock %}
 {% block page_title %}VAT Categories{% endblock %}
@@ -85,7 +85,7 @@
                 {% else %}
                     <tr>
                         <td colspan="7" class="empty-state-cell">
-                            <div class="empty-icon">📋</div>
+                            <div class="empty-icon">ðŸ“‹</div>
                             <div>No VAT categories found</div>
                             {% if current_user.role in ['accountant', 'admin'] %}
                             <div style="margin-top: 12px;">
@@ -125,7 +125,7 @@
 <style>
 .modal-overlay {
     position: fixed; inset: 0;
-    background: rgba(0,0,0,.5);
+    background: var(--backdrop);
     display: flex; align-items: center; justify-content: center;
     z-index: 1000;
 }

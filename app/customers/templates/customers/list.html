@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Customer Maintenance{% endblock %}
 {% block page_title %}Customer Maintenance{% endblock %}
@@ -14,10 +14,10 @@
     </div>
     <div class="page-actions" style="display: flex; gap: 8px;">
         <a href="{{ url_for('customers.export_excel') }}" class="btn btn-secondary">
-            📊 Export Excel
+            ðŸ“Š Export Excel
         </a>
         <a href="{{ url_for('customers.export_csv_route') }}" class="btn btn-secondary">
-            📄 Export CSV
+            ðŸ“„ Export CSV
         </a>
         {% if current_user.role in ['accountant', 'admin'] %}
         <a href="{{ url_for('customers.create') }}" class="btn btn-primary">
@@ -55,25 +55,25 @@
                         {% if not customer.address %}{% set bir_missing = bir_missing + ['Address'] %}{% endif %}
                         {% if not customer.postal_code %}{% set bir_missing = bir_missing + ['Postal Code'] %}{% endif %}
                         {% if bir_missing %}
-                        <br><span class="badge-bir-warn" title="BIR info missing: {{ bir_missing | join(', ') }}">⚠ BIR incomplete</span>
+                        <br><span class="badge-bir-warn" title="BIR info missing: {{ bir_missing | join(', ') }}">âš  BIR incomplete</span>
                         {% endif %}
                     </td>
-                    <td>{{ customer.contact_person or '—' }}</td>
-                    <td>{{ customer.phone or '—' }}</td>
-                    <td>{{ customer.tin or '—' }}</td>
-                    <td>{{ customer.payment_terms or '—' }}</td>
+                    <td>{{ customer.contact_person or 'â€”' }}</td>
+                    <td>{{ customer.phone or 'â€”' }}</td>
+                    <td>{{ customer.tin or 'â€”' }}</td>
+                    <td>{{ customer.payment_terms or 'â€”' }}</td>
                     <td>
                         {% if customer.default_vat_category %}
                         <span class="badge badge-vat">{{ customer.default_vat_category }}</span>
                         {% else %}
-                        —
+                        â€”
                         {% endif %}
                     </td>
                     <td>
                         {% if customer.default_wt_code %}
                         <span class="badge badge-wt">{{ customer.default_wt_code }}</span>
                         {% else %}
-                        —
+                        â€”
                         {% endif %}
                     </td>
                     <td>
@@ -94,11 +94,11 @@
                         </div>
                         <!-- Delete confirmation modal -->
                         <div id="delete-modal-{{ customer.id }}"
-                             style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+                             style="display:none; position:fixed; inset:0; background:var(--backdrop); z-index:1000; align-items:center; justify-content:center;">
                             <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%; box-shadow:0 8px 24px rgba(0,0,0,0.2);">
                                 <h3 style="margin:0 0 12px 0;">Delete Customer</h3>
                                 <p style="color:var(--text-2); margin-bottom:24px;">
-                                    Delete <strong>{{ customer.code }} — {{ customer.name }}</strong>? This cannot be undone.
+                                    Delete <strong>{{ customer.code }} â€” {{ customer.name }}</strong>? This cannot be undone.
                                 </p>
                                 <div style="display:flex; gap:12px; justify-content:flex-end;">
                                     <button type="button" class="btn btn-secondary btn-sm"
@@ -113,7 +113,7 @@
                             </div>
                         </div>
                         {% else %}
-                        —
+                        â€”
                         {% endif %}
                     </td>
                 </tr>
@@ -135,11 +135,11 @@
         {% if pagination and pagination.pages > 1 %}
         <div class="customer-pagination">
             {% if pagination.has_prev %}
-            <a class="btn btn-secondary btn-sm" href="{{ url_for('customers.list_customers', page=pagination.prev_num, q=search_query) }}">← Prev</a>
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('customers.list_customers', page=pagination.prev_num, q=search_query) }}">â† Prev</a>
             {% endif %}
             <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
             {% if pagination.has_next %}
-            <a class="btn btn-secondary btn-sm" href="{{ url_for('customers.list_customers', page=pagination.next_num, q=search_query) }}">Next →</a>
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('customers.list_customers', page=pagination.next_num, q=search_query) }}">Next â†’</a>
             {% endif %}
         </div>
         {% endif %}

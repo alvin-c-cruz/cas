@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Income Statement{% endblock %}
 {% block page_title %}Income Statement (P&L){% endblock %}
@@ -12,10 +12,10 @@
         </div>
         <div class="card-header-actions" style="display:flex;gap:8px;">
             <a href="{{ url_for('reports.income_statement_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
-               class="btn btn-secondary">📊 Excel</a>
+               class="btn btn-secondary">ðŸ“Š Excel</a>
             <a href="{{ url_for('reports.income_statement_print', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
                target="_blank" class="btn btn-secondary">Print</a>
-            <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Period</button>
+            <button class="btn btn-secondary" onclick="showPeriodPicker()">ðŸ“… Change Period</button>
         </div>
     </div>
 
@@ -33,11 +33,11 @@
                     <td class="num-col" style="width:180px;"></td>
                 </tr>
                 {% endif %}
-                {# Section header row — always shown #}
+                {# Section header row â€” always shown #}
                 <tr class="fs-section-header">
                     <td style="width:30px;"></td>
                     <td{% if sec.key in ['selling', 'admin'] %} style="padding-left:18px;"{% endif %}>{{ sec.label }}</td>
-                    <td class="num-col" style="width:180px;">{% if sec.sign == -1 %}(₱{{ '{:,.2f}'.format(sec.total) }}){% else %}₱{{ '{:,.2f}'.format(sec.total) }}{% endif %}</td>
+                    <td class="num-col" style="width:180px;">{% if sec.sign == -1 %}(â‚±{{ '{:,.2f}'.format(sec.total) }}){% else %}â‚±{{ '{:,.2f}'.format(sec.total) }}{% endif %}</td>
                 </tr>
 
                 {# Roll-up lines within the section #}
@@ -53,7 +53,7 @@
                         {% if line.children %}
                         <button class="fs-caret-btn" data-fs-expand="{{ lkey }}"
                                 aria-expanded="false" title="Show / hide breakdown">
-                            <span class="fs-caret">▶</span>
+                            <span class="fs-caret">â–¶</span>
                         </button>
                         {% endif %}
                     </td>
@@ -61,7 +61,7 @@
                         {% if line.code %}<span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ line.code }}</span>&nbsp;{% endif %}
                         {{ line.name }}
                     </td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(line.total) }}</td>
+                    <td class="num-col">â‚±{{ '{:,.2f}'.format(line.total) }}</td>
                 </tr>
 
                 {# Child detail rows (collapsed by default) #}
@@ -77,7 +77,7 @@
                         <span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ child.code }}</span>
                         &nbsp;{{ child.name }}
                     </td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(child.amount) }}</td>
+                    <td class="num-col">â‚±{{ '{:,.2f}'.format(child.amount) }}</td>
                 </tr>
                 {% endfor %}
                 {% endfor %}
@@ -87,7 +87,7 @@
                 <tr class="fs-subtotal-row">
                     <td></td>
                     <td style="color:var(--blue);">{{ sec.subtotal_label }}</td>
-                    <td class="num-col" style="color:var(--blue);">₱{{ '{:,.2f}'.format(sec.subtotal) }}</td>
+                    <td class="num-col" style="color:var(--blue);">â‚±{{ '{:,.2f}'.format(sec.subtotal) }}</td>
                 </tr>
                 {% endif %}
                 {% endfor %}
@@ -104,7 +104,7 @@
                         {% endif %}
                     </td>
                     <td class="num-col" style="color:{% if income_statement.net_income >= 0 %}var(--green){% else %}var(--red){% endif %};">
-                        ₱{{ '{:,.2f}'.format(income_statement.net_income) }}
+                        â‚±{{ '{:,.2f}'.format(income_statement.net_income) }}
                     </td>
                 </tr>
             </tbody>
@@ -115,7 +115,7 @@
 {% include 'reports/_ledger_modal.html' %}
 
 <!-- Period Picker Modal -->
-<div id="periodPicker" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+<div id="periodPicker" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
     <div style="background:var(--card);padding:30px;border-radius:8px;max-width:500px;width:90%;">
         <h3 style="margin-top:0;">Select Period</h3>
         <form action="{{ url_for('reports.income_statement') }}" method="get">

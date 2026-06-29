@@ -1,14 +1,14 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}SO {{ so.so_number }}{% endblock %}
-{% block page_title %}Sales Order — {{ so.so_number }}{% endblock %}
+{% block page_title %}Sales Order â€” {{ so.so_number }}{% endblock %}
 
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=1">
 
-{# ── Confirm modal (draft only, Task 8 wires the logic) ─────────────────── #}
+{# â”€â”€ Confirm modal (draft only, Task 8 wires the logic) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
 {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin'] %}
-<div id="confirmModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+<div id="confirmModal" style="display:none; position:fixed; inset:0; background:var(--backdrop);
      z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Confirm this Sales Order?</h3>
@@ -30,9 +30,9 @@
 </div>
 {% endif %}
 
-{# ── Cancel modal (confirmed only, Task 8 wires the logic) ──────────────── #}
+{# â”€â”€ Cancel modal (confirmed only, Task 8 wires the logic) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
 {% if so.status == 'confirmed' and current_user.role in ['accountant', 'admin'] %}
-<div id="cancelModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+<div id="cancelModal" style="display:none; position:fixed; inset:0; background:var(--backdrop);
      z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Cancel this Sales Order?</h3>
@@ -101,7 +101,7 @@
 
     <div class="card-body">
 
-        {# ── Two-column header ────────────────────────────────────────────── #}
+        {# â”€â”€ Two-column header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
         <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:24px; margin-bottom:32px;">
 
             {# LEFT: order metadata #}
@@ -190,7 +190,7 @@
             </div>
         </div>
 
-        {# ── Line Items ────────────────────────────────────────────────────── #}
+        {# â”€â”€ Line Items â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
         <div style="overflow-x:auto; margin-bottom:24px;">
             <table class="table">
                 <thead>
@@ -200,8 +200,8 @@
                         {% if module_enabled('products') %}<th>Product</th>{% endif %}
                         <th style="text-align:right;">Qty</th>
                         <th>UOM</th>
-                        <th style="text-align:right;">Unit Price (₱)</th>
-                        <th style="text-align:right;">Amount (₱)</th>
+                        <th style="text-align:right;">Unit Price (â‚±)</th>
+                        <th style="text-align:right;">Amount (â‚±)</th>
                         <th>VAT Category</th>
                     </tr>
                 </thead>
@@ -228,13 +228,13 @@
                         </td>
                         <td style="text-align:right; font-family:var(--mono);">
                             {% if item.unit_price is not none %}
-                                ₱{{ '{:,.2f}'.format(item.unit_price) }}
+                                â‚±{{ '{:,.2f}'.format(item.unit_price) }}
                             {% else %}
                                 &#8212;
                             {% endif %}
                         </td>
                         <td style="text-align:right; font-family:var(--mono); font-weight:600;">
-                            ₱{{ '{:,.2f}'.format(item.amount) }}
+                            â‚±{{ '{:,.2f}'.format(item.amount) }}
                         </td>
                         <td>
                             {% if item.vat_category %}
@@ -249,7 +249,7 @@
             </table>
         </div>
 
-        {# ── Order Summary ─────────────────────────────────────────────────── #}
+        {# â”€â”€ Order Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
         <div style="display:flex; justify-content:flex-end; margin-bottom:24px;">
             <div>
                 <div style="font-size:11px; font-weight:700; text-transform:uppercase;
@@ -259,29 +259,29 @@
                 <div class="bill-summary-panel">
                     <div class="bsr">
                         <span class="bsr-label">Subtotal (VAT-incl.)</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.subtotal) }}</span>
+                        <span class="bsr-amt">â‚±{{ '{:,.2f}'.format(so.subtotal) }}</span>
                     </div>
                     <div class="bsr">
                         <span class="bsr-label">Less: VAT</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.vat_amount) }}</span>
+                        <span class="bsr-amt">â‚±{{ '{:,.2f}'.format(so.vat_amount) }}</span>
                     </div>
                     <div class="bsr bsr--sep">
                         <span class="bsr-label">Net of VAT</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.subtotal - so.vat_amount) }}</span>
+                        <span class="bsr-amt">â‚±{{ '{:,.2f}'.format(so.subtotal - so.vat_amount) }}</span>
                     </div>
                     <div class="bsr">
                         <span class="bsr-label">Add: VAT</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.vat_amount) }}</span>
+                        <span class="bsr-amt">â‚±{{ '{:,.2f}'.format(so.vat_amount) }}</span>
                     </div>
                     <div class="bsr bsr--total">
                         <span class="bsr-label bsr-label--total">Total Amount</span>
-                        <span class="bsr-amt bsr-amt--total">₱{{ '{:,.2f}'.format(so.total_amount) }}</span>
+                        <span class="bsr-amt bsr-amt--total">â‚±{{ '{:,.2f}'.format(so.total_amount) }}</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        {# ── Audit footer ──────────────────────────────────────────────────── #}
+        {# â”€â”€ Audit footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
         <div style="margin-top:8px; padding-top:16px; border-top:1px solid var(--border);
                     font-size:12px; color:var(--text-3);">
             Created

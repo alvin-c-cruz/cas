@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Approved Emails for Registration{% endblock %}
 {% block page_title %}Approved Emails for Registration{% endblock %}
@@ -17,7 +17,7 @@
         </a>
         {% endif %}
         <a href="{{ url_for('users.list_users') }}" class="btn btn-secondary">
-            <span class="btn-icon">←</span> Back to Users
+            <span class="btn-icon">â†</span> Back to Users
         </a>
     </div>
 </div>
@@ -52,13 +52,13 @@
                 {% for email in pending %}
                 <tr>
                     <td><strong>{{ email.email }}</strong></td>
-                    <td>{% if email.role %}{{ email.role|capitalize }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                    <td>{{ email.requested_by.username if email.requested_by else '—' }}</td>
+                    <td>{% if email.role %}{{ email.role|capitalize }}{% else %}<span class="text-muted">â€”</span>{% endif %}</td>
+                    <td>{{ email.requested_by.username if email.requested_by else 'â€”' }}</td>
                     <td>
                         {% if email.notes %}
                             <span title="{{ email.notes }}">{{ email.notes[:40] }}{% if email.notes|length > 40 %}...{% endif %}</span>
                         {% else %}
-                            <span class="text-muted">—</span>
+                            <span class="text-muted">â€”</span>
                         {% endif %}
                     </td>
                     {% if current_user.role == 'admin' %}
@@ -76,9 +76,9 @@
                             </button>
                         </div>
 
-                        {# Reject modal — inline, no JS popup #}
+                        {# Reject modal â€” inline, no JS popup #}
                         <div id="reject-modal-{{ email.id }}"
-                             style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5);
+                             style="display:none; position:fixed; inset:0; background:var(--backdrop);
                                     z-index:1000; align-items:center; justify-content:center;">
                             <div class="card" style="width:400px; max-width:90vw; padding:0;">
                                 <div class="card-header">
@@ -91,7 +91,7 @@
                                         <div class="form-group">
                                             <label class="form-label" for="reason-{{ email.id }}">Reason (optional)</label>
                                             <textarea id="reason-{{ email.id }}" name="reason" class="form-control" rows="3"
-                                                      placeholder="Reason for rejection…"></textarea>
+                                                      placeholder="Reason for rejectionâ€¦"></textarea>
                                         </div>
                                         <div class="form-actions">
                                             <button type="submit" class="btn btn-danger">Confirm Reject</button>
@@ -141,7 +141,7 @@
                 {% for email in approved_emails %}
                 <tr {% if email.is_used %}style="opacity:.7;"{% endif %}>
                     <td><strong>{{ email.email }}</strong></td>
-                    <td>{% if email.role %}{{ email.role|capitalize }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                    <td>{% if email.role %}{{ email.role|capitalize }}{% else %}<span class="text-muted">â€”</span>{% endif %}</td>
                     <td>
                         {# Combined status: approval lifecycle + registration usage in one badge #}
                         {% if email.status == 'pending' %}
@@ -158,24 +158,24 @@
                         {% if email.approved_by %}
                             {{ email.approved_by.username }}
                         {% else %}
-                            <span class="text-muted">—</span>
+                            <span class="text-muted">â€”</span>
                         {% endif %}
                     </td>
-                    <td>{{ email.approved_at.strftime('%Y-%m-%d') if email.approved_at else '—' }}</td>
+                    <td>{{ email.approved_at.strftime('%Y-%m-%d') if email.approved_at else 'â€”' }}</td>
                     <td>
                         {% if email.used_by %}
                             <a href="{{ url_for('users.edit_user', id=email.used_by_user_id) }}">
                                 {{ email.used_by.username }}
                             </a>
                         {% else %}
-                            <span class="text-muted">—</span>
+                            <span class="text-muted">â€”</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if email.notes %}
                             <span title="{{ email.notes }}">{{ email.notes[:30] }}{% if email.notes|length > 30 %}...{% endif %}</span>
                         {% else %}
-                            <span class="text-muted">—</span>
+                            <span class="text-muted">â€”</span>
                         {% endif %}
                     </td>
                     {% if current_user.role == 'admin' %}
@@ -189,7 +189,7 @@
                                 <button type="submit" class="btn-action btn-action-delete" title="Delete">Delete</button>
                             </form>
                             {% else %}
-                            <span class="text-muted">—</span>
+                            <span class="text-muted">â€”</span>
                             {% endif %}
                         </div>
                     </td>

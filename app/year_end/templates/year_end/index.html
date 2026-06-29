@@ -1,12 +1,12 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}Year-End Close - CAS{% endblock %}
 {% block page_title %}Year-End Close{% endblock %}
 
 {% block content %}
 
-{# ── Close-Year modals (one per eligible year) ─────────────────────────── #}
+{# â”€â”€ Close-Year modals (one per eligible year) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
 {% for y in eligible_years %}
-<div id="close-modal-{{ y }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+<div id="close-modal-{{ y }}" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
     <h3 style="margin:0 0 12px 0;">Close Fiscal Year {{ y }}?</h3>
     <p style="color:var(--text-2);margin-bottom:24px;">
@@ -26,10 +26,10 @@
 </div>
 {% endfor %}
 
-{# ── Reopen-Year modals (one per closed record) ────────────────────────── #}
+{# â”€â”€ Reopen-Year modals (one per closed record) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
 {% for c in closes %}
 {% if c.status == 'closed' %}
-<div id="reopen-modal-{{ c.id }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+<div id="reopen-modal-{{ c.id }}" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
     <h3 style="margin:0 0 12px 0;">Reopen Fiscal Year {{ c.fiscal_year }}?</h3>
     <p style="color:var(--text-2);margin-bottom:24px;">
@@ -49,7 +49,7 @@
 {% endif %}
 {% endfor %}
 
-{# ── Eligible Years to Close ───────────────────────────────────────────── #}
+{# â”€â”€ Eligible Years to Close â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
 <div class="card">
   <div class="card-header">
     <div class="card-title">Close a Fiscal Year</div>
@@ -84,7 +84,7 @@
   </div>
 </div>
 
-{# ── Closed Years ──────────────────────────────────────────────────────── #}
+{# â”€â”€ Closed Years â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #}
 <div class="card">
   <div class="card-header">
     <div class="card-title">Closed Years</div>
@@ -108,7 +108,7 @@
         <tr>
           <td>{{ c.fiscal_year }}</td>
           <td>{{ c.branch.name if c.branch else c.branch_id }}</td>
-          <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(c.net_income) }}</td>
+          <td style="text-align:right;font-family:var(--mono);">â‚±{{ '{:,.2f}'.format(c.net_income) }}</td>
           <td>
             <span class="badge badge-{{ 'active' if c.status == 'closed' else 'inactive' }}">
               {{ c.status|title }}

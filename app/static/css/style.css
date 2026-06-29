@@ -1061,6 +1061,25 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
     grid-template-columns: 150px 110px 120px 220px 1fr 110px;
 }
 
+/* Column header row — same grid as .audit-entry-row, hidden on mobile */
+.audit-entry-header {
+    display: grid;
+    grid-template-columns: 150px 130px 110px 120px 220px 1fr 110px;
+    gap: 16px;
+    padding: 8px 16px;
+    background: var(--bg);
+    border-bottom: 2px solid var(--form-border);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-2);
+    min-width: 950px;
+}
+.audit-entry-header--no-branch {
+    grid-template-columns: 150px 110px 120px 220px 1fr 110px;
+}
+
 .audit-entry-row:hover {
     background-color: #f8fafc;
 }
@@ -1297,6 +1316,8 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 
 /* Responsive Design */
 @media (max-width: 1024px) {
+    .audit-entry-header { display: none; }
+
     .audit-entry-row {
         grid-template-columns: 1fr;
         gap: 8px;

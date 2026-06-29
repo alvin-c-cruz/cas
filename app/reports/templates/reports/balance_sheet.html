@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Balance Sheet{% endblock %}
 {% block page_title %}Balance Sheet{% endblock %}
@@ -12,10 +12,10 @@
         </div>
         <div class="card-header-actions" style="display:flex;gap:8px;">
             <a href="{{ url_for('reports.balance_sheet_export_excel', as_of=as_of_date.isoformat()) }}"
-               class="btn btn-secondary">📊 Excel</a>
+               class="btn btn-secondary">ðŸ“Š Excel</a>
             <a href="{{ url_for('reports.balance_sheet_print', as_of=as_of_date.isoformat()) }}"
                target="_blank" class="btn btn-secondary">Print</a>
-            <button class="btn btn-secondary" onclick="showDatePicker()">📅 Change Date</button>
+            <button class="btn btn-secondary" onclick="showDatePicker()">ðŸ“… Change Date</button>
         </div>
     </div>
 
@@ -38,7 +38,7 @@
                 {# Skip divisions that are empty (total==0 and no lines) #}
                 {% if div.total != 0 or div.lines %}
 
-                {# Division header (e.g. "Current Assets") — only if multiple divs #}
+                {# Division header (e.g. "Current Assets") â€” only if multiple divs #}
                 {% if sec.divisions | length > 1 %}
                 <tr class="fs-division-header">
                     <td></td>
@@ -59,7 +59,7 @@
                         {% if line.children %}
                         <button class="fs-caret-btn" data-fs-expand="{{ lkey }}"
                                 aria-expanded="false" title="Show / hide breakdown">
-                            <span class="fs-caret">▶</span>
+                            <span class="fs-caret">â–¶</span>
                         </button>
                         {% endif %}
                     </td>
@@ -67,7 +67,7 @@
                         {% if line.code %}<span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ line.code }}</span>&nbsp;{% endif %}
                         {{ line.name }}
                     </td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(line.total) }}</td>
+                    <td class="num-col">â‚±{{ '{:,.2f}'.format(line.total) }}</td>
                 </tr>
 
                 {# Child detail rows (collapsed by default) #}
@@ -82,7 +82,7 @@
                         {% if child.code %}<span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ child.code }}</span>&nbsp;{% endif %}
                         {{ child.name }}
                     </td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(child.amount) }}</td>
+                    <td class="num-col">â‚±{{ '{:,.2f}'.format(child.amount) }}</td>
                 </tr>
                 {% endfor %}
                 {% endfor %}
@@ -92,7 +92,7 @@
                 <tr class="fs-subtotal-row">
                     <td></td>
                     <td style="padding-left:14px;">Total {{ div.label }}</td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(div.total) }}</td>
+                    <td class="num-col">â‚±{{ '{:,.2f}'.format(div.total) }}</td>
                 </tr>
                 {% endif %}
 
@@ -103,7 +103,7 @@
                 <tr class="fs-total-row">
                     <td></td>
                     <td>TOTAL {{ sec.label }}</td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(sec.total) }}</td>
+                    <td class="num-col">â‚±{{ '{:,.2f}'.format(sec.total) }}</td>
                 </tr>
                 {% endfor %}
 
@@ -111,7 +111,7 @@
                 <tr class="fs-grand-total-row">
                     <td></td>
                     <td>TOTAL LIABILITIES AND EQUITY</td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(balance_sheet.total_liabilities_equity) }}</td>
+                    <td class="num-col">â‚±{{ '{:,.2f}'.format(balance_sheet.total_liabilities_equity) }}</td>
                 </tr>
             </tbody>
         </table>
@@ -119,9 +119,9 @@
         <div class="alert {% if balance_sheet.is_balanced %}alert-success{% else %}alert-danger{% endif %}"
              style="margin-top:24px;border-radius:8px;padding:16px;">
             {% if balance_sheet.is_balanced %}
-            <strong>Balanced</strong> — Total Assets = Total Liabilities + Equity.
+            <strong>Balanced</strong> â€” Total Assets = Total Liabilities + Equity.
             {% else %}
-            <strong>Not Balanced</strong> — difference of ₱{{ '{:,.2f}'.format(balance_sheet.difference) }}. Please review journal entries.
+            <strong>Not Balanced</strong> â€” difference of â‚±{{ '{:,.2f}'.format(balance_sheet.difference) }}. Please review journal entries.
             {% endif %}
         </div>
     </div>
@@ -130,7 +130,7 @@
 {% include 'reports/_ledger_modal.html' %}
 
 <!-- Date Picker Modal -->
-<div id="datePicker" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+<div id="datePicker" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
     <div style="background:var(--card);padding:30px;border-radius:8px;max-width:400px;width:90%;">
         <h3 style="margin-top:0;">Select Date</h3>
         <form action="{{ url_for('reports.balance_sheet') }}" method="get">
