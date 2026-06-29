@@ -654,7 +654,7 @@ function addRevenueLine(existingItem) {
         <td><select class="form-control rev-prod prod-select">
               <option value="">—</option>
               <option value="__add_product__">+ Add Product</option>
-              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+              ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
             </select></td>` : ''}
         ${!productMasterOn ? `<td><input type="text" class="form-control rev-desc" value="${escHtml(item.description || '')}"
                    style="border:none; background:transparent; padding-left:0;"
@@ -733,13 +733,24 @@ function addRevenueLine(existingItem) {
     const prodSel = newRow.querySelector('.prod-select');
     let prodC = null;
     if (prodSel) {
-        prodC = new Choices(prodSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50, allowHTML: false });
+        prodC = new Choices(prodSel, {
+            searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50, allowHTML: false,
+            callbackOnCreateTemplates: function(tmpl) {
+                return {
+                    item: function(cfg, data) {
+                        const cn = cfg.classNames;
+                        const name = (data.customProperties && data.customProperties.name) || data.label || data.value;
+                        return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(name))}</div>`);
+                    }
+                };
+            }
+        });
         prodSel.addEventListener('change', () => {
             if (prodSel.value === '__add_product__') {
                 prodC.setChoiceByValue('');
                 openProductModal(id, function(p) {
                     products.push(p);
-                    prodC.setChoices([{value: String(p.id), label: escHtml(p.code) + ' — ' + escHtml(p.name)}], 'value', 'label', false);
+                    prodC.setChoices([{value: String(p.id), label: escHtml(p.code) + ': ' + escHtml(p.name), customProperties: {name: p.name}}], 'value', 'label', false);
                     prodC.setChoiceByValue(String(p.id));
                     onProductPick(id, String(p.id));
                 });
