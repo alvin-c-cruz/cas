@@ -130,7 +130,7 @@ def _output_vat_buckets(crv):
     buckets = {}
     for line in crv.revenue_lines:
         vat_amt = Decimal(str(line.vat_amount or 0))
-        if vat_amt <= 0:
+        if vat_amt == 0:
             continue
         cat = categories.get(line.vat_category)
         acct = cat.output_vat_account if cat else None
@@ -146,19 +146,17 @@ def _output_vat_buckets(crv):
     total = sum((amt for _, amt in ordered), Decimal('0.00'))
     override_diff = Decimal(str(crv.total_vat)) - total
     if override_diff != Decimal('0.00') and ordered:
-        largest_id = max(ordered, key=lambda b: b[1])[0].id
+        largest_id = max(ordered, key=lambda b: abs(b[1]))[0].id
         ordered = [
             (acct, amt + override_diff if acct.id == largest_id else amt)
             for acct, amt in ordered
         ]
     ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
-    if any(amt < Decimal('0.00') for _, amt in ordered):
-        raise ValueError('VAT override is too far below computed VAT to allocate.')
     return ordered
 
 
 def _post_crv_je(crv, user_id):
-    """Create the receipt JE: Cr AR + Cr Revenue + Cr Output VAT; Dr WHT Recv + Dr Cash."""
+    """Create the receipt JE: Cr AR + Cr/Dr Revenue (sign-aware) + Cr/Dr Output VAT; Dr/Cr WHT Recv + Dr/Cr Cash."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
     accts = _get_gl_accounts()
@@ -170,7 +168,8 @@ def _post_crv_je(crv, user_id):
         raise ValueError("Cash/Bank account not set on the receipt.")
 
     wt_account = None
-    if crv.total_wt and Decimal(str(crv.total_wt)) > 0:
+    total_wt = Decimal(str(crv.total_wt)) if crv.total_wt else Decimal('0.00')
+    if total_wt != Decimal('0.00'):
         wt_account = accts['wt']
         if not wt_account:
             raise ValueError("Creditable Withholding Tax (10212) not found in COA.")
@@ -195,7 +194,6 @@ def _post_crv_je(crv, user_id):
     db.session.flush()
 
     line_num = 1
-    first_revenue_line = None
     all_lines = []
 
     # Credit: AR per applied invoice
@@ -207,50 +205,60 @@ def _post_crv_je(crv, user_id):
             credit_amount=Decimal(str(ar_line.amount_applied)))
         db.session.add(jl); all_lines.append(jl); line_num += 1
 
-    # Credit: revenue (net base) per direct revenue line
+    # Revenue lines — sign-aware (positive → Cr Revenue; negative → Dr Revenue)
     for rl in crv.revenue_lines:
         if not rl.account_id:
             continue
         net_base = Decimal(str(rl.line_total)) - Decimal(str(rl.vat_amount))
+        if net_base >= Decimal('0.00'):
+            dr, cr = Decimal('0.00'), net_base
+        else:
+            dr, cr = abs(net_base), Decimal('0.00')
         jl = JournalEntryLine(
             entry_id=je.id, line_number=line_num, account_id=rl.account_id,
             description=rl.description or '',
-            debit_amount=Decimal('0.00'), credit_amount=net_base)
-        db.session.add(jl); all_lines.append(jl)
-        if first_revenue_line is None:
-            first_revenue_line = jl
-        line_num += 1
+            debit_amount=dr, credit_amount=cr)
+        db.session.add(jl); all_lines.append(jl); line_num += 1
 
-    # Credit: output VAT buckets
+    # Output VAT buckets — sign-aware
     for vat_acct, vat_amt in _output_vat_buckets(crv):
-        if vat_amt <= 0:
+        if vat_amt > Decimal('0.00'):
+            dr, cr = Decimal('0.00'), vat_amt
+        elif vat_amt < Decimal('0.00'):
+            dr, cr = abs(vat_amt), Decimal('0.00')
+        else:
             continue
         jl = JournalEntryLine(
             entry_id=je.id, line_number=line_num, account_id=vat_acct.id,
             description=f'Output VAT: {crv.crv_number}',
-            debit_amount=Decimal('0.00'), credit_amount=vat_amt)
+            debit_amount=dr, credit_amount=cr)
         db.session.add(jl); all_lines.append(jl); line_num += 1
 
-    # Debit: Creditable WHT Receivable
-    if wt_account and Decimal(str(crv.total_wt)) > 0:
+    # Creditable WHT Receivable — sign-aware
+    if wt_account:
+        if total_wt > Decimal('0.00'):
+            wt_dr, wt_cr = total_wt, Decimal('0.00')
+        else:
+            wt_dr, wt_cr = Decimal('0.00'), abs(total_wt)
         jl = JournalEntryLine(
             entry_id=je.id, line_number=line_num, account_id=wt_account.id,
             description=f'Creditable WHT: {crv.crv_number}',
-            debit_amount=Decimal(str(crv.total_wt)), credit_amount=Decimal('0.00'))
+            debit_amount=wt_dr, credit_amount=wt_cr)
         db.session.add(jl); all_lines.append(jl); line_num += 1
 
-    # Debit: Cash/Bank
+    # Cash line — computed from net residual of all other lines
+    sum_cr = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
+    sum_dr = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
+    cash_net = sum_cr - sum_dr   # positive = cash comes in (Dr Cash); negative = cash goes out (Cr Cash)
+    if cash_net >= Decimal('0.00'):
+        cash_dr, cash_cr = cash_net, Decimal('0.00')
+    else:
+        cash_dr, cash_cr = Decimal('0.00'), abs(cash_net)
     cash_line = JournalEntryLine(
         entry_id=je.id, line_number=line_num, account_id=cash_account.id,
         description=f'CR {crv.crv_number} — {crv.customer_name}',
-        debit_amount=Decimal(str(crv.total_amount)), credit_amount=Decimal('0.00'))
+        debit_amount=cash_dr, credit_amount=cash_cr)
     db.session.add(cash_line); all_lines.append(cash_line)
-
-    sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
-    sum_credits = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
-    residual = sum_debits - sum_credits
-    if residual != Decimal('0.00') and first_revenue_line is not None:
-        first_revenue_line.credit_amount += residual
 
     db.session.flush()
     je.calculate_totals()
@@ -326,46 +334,64 @@ def _build_crv_je_preview(crv):
     accts = _get_gl_accounts()
     entries = []
 
-    # Credit: AR per applied invoice
+    # Credit: AR per applied invoice (unchanged)
     for ar_line in crv.ar_lines:
         if accts['ar']:
             entries.append({'code': accts['ar'].code, 'name': accts['ar'].name,
                             'debit': Decimal('0.00'),
                             'credit': Decimal(str(ar_line.amount_applied))})
 
-    # Credit: revenue (net base) per direct revenue line
+    # Revenue lines — sign-aware
     for rl in crv.revenue_lines:
         if not rl.account_id or not rl.account:
             continue
         net_base = Decimal(str(rl.line_total)) - Decimal(str(rl.vat_amount))
+        if net_base >= Decimal('0.00'):
+            dr, cr = Decimal('0.00'), net_base
+        else:
+            dr, cr = abs(net_base), Decimal('0.00')
         entries.append({'code': rl.account.code, 'name': rl.account.name,
-                        'debit': Decimal('0.00'), 'credit': net_base})
+                        'debit': dr, 'credit': cr})
 
-    # Credit: output VAT buckets
+    # Output VAT buckets — sign-aware
     try:
         vat_buckets = _output_vat_buckets(crv)
     except ValueError as e:
         vat_buckets = []
         vat_amount = Decimal(str(crv.total_vat))
-        if vat_amount > 0:
+        if vat_amount != Decimal('0.00'):
             entries.append({'code': '—', 'name': str(e),
-                            'debit': Decimal('0.00'), 'credit': vat_amount})
+                            'debit': Decimal('0.00'), 'credit': abs(vat_amount)})
 
     for vat_acct, vat_amt in vat_buckets:
-        if vat_amt <= 0:
-            continue
-        entries.append({'code': vat_acct.code, 'name': vat_acct.name,
-                        'debit': Decimal('0.00'), 'credit': vat_amt})
+        if vat_amt > Decimal('0.00'):
+            entries.append({'code': vat_acct.code, 'name': vat_acct.name,
+                            'debit': Decimal('0.00'), 'credit': vat_amt})
+        elif vat_amt < Decimal('0.00'):
+            entries.append({'code': vat_acct.code, 'name': vat_acct.name,
+                            'debit': abs(vat_amt), 'credit': Decimal('0.00')})
 
-    # Debit: Creditable WHT Receivable
-    if crv.total_wt and Decimal(str(crv.total_wt)) > 0 and accts['wt']:
-        entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
-                        'debit': Decimal(str(crv.total_wt)), 'credit': Decimal('0.00')})
+    # WHT Receivable — sign-aware
+    total_wt = Decimal(str(crv.total_wt)) if crv.total_wt else Decimal('0.00')
+    if total_wt != Decimal('0.00') and accts['wt']:
+        if total_wt > Decimal('0.00'):
+            entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
+                            'debit': total_wt, 'credit': Decimal('0.00')})
+        else:
+            entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
+                            'debit': Decimal('0.00'), 'credit': abs(total_wt)})
 
-    # Debit: Cash/Bank
+    # Cash line — computed from net residual
     if crv.cash_account:
-        entries.append({'code': crv.cash_account.code, 'name': crv.cash_account.name,
-                        'debit': Decimal(str(crv.total_amount)), 'credit': Decimal('0.00')})
+        sum_cr = sum(e['credit'] for e in entries)
+        sum_dr = sum(e['debit'] for e in entries)
+        cash_net = sum_cr - sum_dr
+        if cash_net >= Decimal('0.00'):
+            entries.append({'code': crv.cash_account.code, 'name': crv.cash_account.name,
+                            'debit': cash_net, 'credit': Decimal('0.00')})
+        else:
+            entries.append({'code': crv.cash_account.code, 'name': crv.cash_account.name,
+                            'debit': Decimal('0.00'), 'credit': abs(cash_net)})
 
     return entries
 

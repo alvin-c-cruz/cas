@@ -340,8 +340,8 @@ class TestCRVPosting:
         assert total_bucket_vat == Decimal('130.00'), (
             f'Expected bucket total 130.00, got {total_bucket_vat}')
 
-    def test_vat_override_negative_bucket_raises(self, db_session, admin_user, main_branch):
-        """If override drives a bucket negative, ValueError is raised."""
+    def test_vat_override_negative_bucket_sign_aware(self, db_session, admin_user, main_branch):
+        """When override drives a bucket negative, the negative bucket is returned (sign-aware; no raise)."""
         from app.cash_receipts.views import _output_vat_buckets
 
         output_vat_acct = make_account(db_session, '20401', 'Output VAT',
@@ -368,10 +368,164 @@ class TestCRVPosting:
                             'vat_amount': Decimal('120.00'),
                             'account_id': revenue_acct.id,
                         }], status='draft')
-        # Override: user manually set total_vat to -5 (impossible — bucket is 120, diff = -5-120 = -125 → bucket goes negative)
+        # Override: total_vat set to -5 → bucket absorbs diff (-5-120=-125) → bucket becomes -5
         crv.total_vat = Decimal('-5.00')
         db_session.flush()
 
-        with pytest.raises(ValueError, match='too far below'):
-            _output_vat_buckets(crv)
+        buckets = _output_vat_buckets(crv)
+        total_bucket_vat = sum(amt for _, amt in buckets)
+        assert total_bucket_vat == Decimal('-5.00')
+
+    def test_pure_negative_section_b_crv(self, db_session, admin_user, main_branch):
+        """Pure negative Section B line: Dr Revenue 1000, Cr Cash 1000."""
+        from app.cash_receipts.views import _post_crv_je
+
+        _, _ = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        revenue_acct = make_account(db_session, '4001', 'Sales Revenue',
+                                    account_type='Income', classification='Operating Revenue',
+                                    normal_balance='Credit')
+        customer = make_customer(db_session, code='C002')
+
+        # -1000: pure negative revenue reversal (no VAT)
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        revenue_lines=[{
+                            'description': 'Revenue reversal',
+                            'amount': -1000,
+                            'line_total': -1000,
+                            'vat_amount': 0,
+                            'account_id': revenue_acct.id,
+                        }], status='posted')
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced, f"JE not balanced: dr={je.total_debit} cr={je.total_credit}"
+
+        rev_line = next(l for l in je.lines if l.account_id == revenue_acct.id)
+        assert rev_line.debit_amount == Decimal('1000.00')
+        assert rev_line.credit_amount == Decimal('0.00')
+
+        cash_line = next(l for l in je.lines if l.account_id == cash.id)
+        assert cash_line.credit_amount == Decimal('1000.00')
+        assert cash_line.debit_amount == Decimal('0.00')
+
+
+    def test_mixed_positive_negative_section_b_crv(self, db_session, admin_user, main_branch):
+        """Mixed +3000 and -1000 Section B: net cash debit = 2000."""
+        from app.cash_receipts.views import _post_crv_je
+
+        _, _ = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        revenue_acct = make_account(db_session, '4001', 'Sales Revenue',
+                                    account_type='Income', classification='Operating Revenue',
+                                    normal_balance='Credit')
+        customer = make_customer(db_session, code='C003')
+
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        revenue_lines=[
+                            {'description': 'Fee', 'amount': 3000, 'line_total': 3000,
+                             'vat_amount': 0, 'account_id': revenue_acct.id},
+                            {'description': 'Reversal', 'amount': -1000, 'line_total': -1000,
+                             'vat_amount': 0, 'account_id': revenue_acct.id},
+                        ], status='posted')
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced
+        cash_line = next(l for l in je.lines if l.account_id == cash.id)
+        assert cash_line.debit_amount == Decimal('2000.00')
+        assert cash_line.credit_amount == Decimal('0.00')
+
+
+    def test_negative_section_b_with_vat_crv(self, db_session, admin_user, main_branch):
+        """Negative Section B line with 12% VAT: Dr Revenue 1000, Dr Output VAT 120, Cr Cash 1120."""
+        from app.cash_receipts.views import _post_crv_je
+
+        _, _ = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        revenue_acct = make_account(db_session, '4001', 'Sales Revenue',
+                                    account_type='Income', classification='Operating Revenue',
+                                    normal_balance='Credit')
+        output_vat_acct = make_account(db_session, '20401', 'Output VAT',
+                                       account_type='Liability',
+                                       classification='Current Liability',
+                                       normal_balance='Credit')
+        customer = make_customer(db_session, code='C004')
+        make_vat_category(db_session, 'VAT12', rate=12, output_vat_account=output_vat_acct)
+
+        # -1120 inclusive: vat = -120, net = -1000
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        revenue_lines=[{
+                            'description': 'Reversal w/ VAT',
+                            'amount': -1120,
+                            'line_total': -1120,
+                            'vat_category': 'VAT12',
+                            'vat_rate': 12,
+                            'vat_amount': Decimal('-120.00'),
+                            'account_id': revenue_acct.id,
+                        }], status='posted')
+        crv.total_vat = Decimal('-120.00')
+        db_session.flush()
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced
+
+        rev_line = next(l for l in je.lines if l.account_id == revenue_acct.id)
+        assert rev_line.debit_amount == Decimal('1000.00')
+        assert rev_line.credit_amount == Decimal('0.00')
+
+        vat_line = next(l for l in je.lines if l.account_id == output_vat_acct.id)
+        assert vat_line.debit_amount == Decimal('120.00')
+        assert vat_line.credit_amount == Decimal('0.00')
+
+        cash_line = next(l for l in je.lines if l.account_id == cash.id)
+        assert cash_line.credit_amount == Decimal('1120.00')
+        assert cash_line.debit_amount == Decimal('0.00')
+
+
+    def test_negative_section_b_with_negative_wht_crv(self, db_session, admin_user, main_branch):
+        """Negative Section B flips WHT direction: total_wt < 0 → Cr WHT Receivable."""
+        from app.cash_receipts.views import _post_crv_je
+
+        _, wht_acct = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        revenue_acct = make_account(db_session, '4001', 'Sales Revenue',
+                                    account_type='Income', classification='Operating Revenue',
+                                    normal_balance='Credit')
+        customer = make_customer(db_session, code='C005')
+
+        # -1000 gross, 2% WHT → total_wt = -20
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        revenue_lines=[{
+                            'description': 'Reversal w/ WHT',
+                            'amount': -1000,
+                            'line_total': -1000,
+                            'vat_amount': 0,
+                            'wt_amount': Decimal('-20.00'),
+                            'account_id': revenue_acct.id,
+                        }], status='posted')
+        # calculate_totals sums wt_amount, so total_wt = -20
+        db_session.flush()
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced
+
+        wht_line = next((l for l in je.lines if l.account_id == wht_acct.id), None)
+        assert wht_line is not None
+        assert wht_line.credit_amount == Decimal('20.00')
+        assert wht_line.debit_amount == Decimal('0.00')
 

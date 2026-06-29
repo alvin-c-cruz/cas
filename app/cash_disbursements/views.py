@@ -214,13 +214,13 @@ def open_bills():
 
 def _cdv_input_vat_buckets(cdv):
     """Group expense lines' input VAT by VATCategory.input_vat_account."""
-    if Decimal(str(cdv.total_vat)) <= 0:
+    if Decimal(str(cdv.total_vat)) == 0:
         return []
     categories = {c.code: c for c in VATCategory.query.all()}
     buckets = {}
     for line in cdv.expense_lines:
         vat_amt = Decimal(str(line.vat_amount or 0))
-        if vat_amt <= 0:
+        if vat_amt == 0:
             continue
         cat = categories.get(line.vat_category)
         acct = cat.input_vat_account if cat else None
@@ -235,19 +235,17 @@ def _cdv_input_vat_buckets(cdv):
     total = sum((amt for _, amt in ordered), Decimal('0.00'))
     override_diff = Decimal(str(cdv.total_vat)) - total
     if override_diff != Decimal('0.00') and ordered:
-        largest_id = max(ordered, key=lambda b: b[1])[0].id
+        largest_id = max(ordered, key=lambda b: abs(b[1]))[0].id
         ordered = [
             (acct, amt + override_diff if acct.id == largest_id else amt)
             for acct, amt in ordered
         ]
     ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
-    if any(amt < Decimal('0.00') for _, amt in ordered):
-        raise ValueError('VAT override is too far below computed VAT to allocate.')
     return ordered
 
 
 def _post_cdv_je(cdv, user_id):
-    """Create a draft or posted disbursement JE for a CDV."""
+    """Create a draft or posted disbursement JE for a CDV (sign-aware for negative Section B)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
     _accts = _get_gl_accounts()
@@ -260,7 +258,8 @@ def _post_cdv_je(cdv, user_id):
         raise ValueError("Cash/Bank account not found.")
 
     wt_account = None
-    if cdv.total_wt and Decimal(str(cdv.total_wt)) > 0:
+    total_wt = Decimal(str(cdv.total_wt)) if cdv.total_wt else Decimal('0.00')
+    if total_wt != Decimal('0.00'):
         wt_account = _accts['wt']
         if not wt_account:
             raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
@@ -286,9 +285,9 @@ def _post_cdv_je(cdv, user_id):
     db.session.flush()
 
     line_num = 1
-    first_expense_line = None
     all_lines = []
 
+    # AP lines: Dr AP (unchanged)
     for ap_line in cdv.ap_lines:
         je_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
@@ -301,64 +300,75 @@ def _post_cdv_je(cdv, user_id):
         all_lines.append(je_line)
         line_num += 1
 
+    # Expense lines — sign-aware (positive → Dr Expense; negative → Cr Expense)
     for exp_line in cdv.expense_lines:
         if not exp_line.account_id:
             continue
         net_base = Decimal(str(exp_line.line_total)) - Decimal(str(exp_line.vat_amount))
+        if net_base >= Decimal('0.00'):
+            dr, cr = net_base, Decimal('0.00')
+        else:
+            dr, cr = Decimal('0.00'), abs(net_base)
         je_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=exp_line.account_id,
             description=exp_line.description or '',
-            debit_amount=net_base,
-            credit_amount=Decimal('0.00')
+            debit_amount=dr, credit_amount=cr
         )
         db.session.add(je_line)
         all_lines.append(je_line)
-        if first_expense_line is None:
-            first_expense_line = je_line
         line_num += 1
 
+    # Input VAT buckets — sign-aware
     for vat_acct, vat_amt in _cdv_input_vat_buckets(cdv):
-        if vat_amt <= 0:
+        if vat_amt > Decimal('0.00'):
+            dr, cr = vat_amt, Decimal('0.00')
+        elif vat_amt < Decimal('0.00'):
+            dr, cr = Decimal('0.00'), abs(vat_amt)
+        else:
             continue
         vat_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=vat_acct.id,
             description=f'Input VAT: {cdv.cdv_number}',
-            debit_amount=vat_amt,
-            credit_amount=Decimal('0.00')
+            debit_amount=dr, credit_amount=cr
         )
         db.session.add(vat_line)
         all_lines.append(vat_line)
         line_num += 1
 
-    if wt_account and Decimal(str(cdv.total_wt)) > 0:
+    # WHT Payable — sign-aware
+    if wt_account:
+        if total_wt > Decimal('0.00'):
+            wt_dr, wt_cr = Decimal('0.00'), total_wt
+        else:
+            wt_dr, wt_cr = abs(total_wt), Decimal('0.00')
         wt_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=wt_account.id,
             description=f'WHT Payable: {cdv.cdv_number}',
-            debit_amount=Decimal('0.00'),
-            credit_amount=Decimal(str(cdv.total_wt))
+            debit_amount=wt_dr, credit_amount=wt_cr
         )
         db.session.add(wt_line)
         all_lines.append(wt_line)
         line_num += 1
 
+    # Cash line — computed from net residual of all other lines
+    sum_dr = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
+    sum_cr = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
+    cash_net = sum_dr - sum_cr   # positive = cash goes out (Cr Cash); negative = cash comes in (Dr Cash)
+    if cash_net >= Decimal('0.00'):
+        cash_dr, cash_cr = Decimal('0.00'), cash_net
+    else:
+        cash_dr, cash_cr = abs(cash_net), Decimal('0.00')
     cash_line = JournalEntryLine(
         entry_id=je.id, line_number=line_num,
         account_id=cash_account.id,
         description=f'CD {cdv.cdv_number} — {cdv.vendor_name}',
-        debit_amount=Decimal('0.00'),
-        credit_amount=Decimal(str(cdv.total_amount))
+        debit_amount=cash_dr, credit_amount=cash_cr
     )
     db.session.add(cash_line)
     all_lines.append(cash_line)
-
-    sum_debits = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
-    sum_credits = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
-    residual = sum_credits - sum_debits
-    if residual != Decimal('0.00') and first_expense_line is not None:
-        first_expense_line.debit_amount += residual
 
     db.session.flush()
     je.calculate_totals()
@@ -468,20 +478,40 @@ def _build_cdv_je_preview(cdv):
         if not exp_line.account_id or not exp_line.account:
             continue
         net_base = Decimal(str(exp_line.line_total)) - Decimal(str(exp_line.vat_amount))
+        if net_base >= Decimal('0.00'):
+            dr, cr = net_base, Decimal('0.00')
+        else:
+            dr, cr = Decimal('0.00'), abs(net_base)
         entries.append({'code': exp_line.account.code, 'name': exp_line.account.name,
-                        'debit': net_base, 'credit': Decimal('0.00')})
+                        'debit': dr, 'credit': cr})
     try:
         for vat_acct, vat_amt in _cdv_input_vat_buckets(cdv):
-            entries.append({'code': vat_acct.code, 'name': vat_acct.name,
-                            'debit': vat_amt, 'credit': Decimal('0.00')})
+            if vat_amt > Decimal('0.00'):
+                entries.append({'code': vat_acct.code, 'name': vat_acct.name,
+                                'debit': vat_amt, 'credit': Decimal('0.00')})
+            elif vat_amt < Decimal('0.00'):
+                entries.append({'code': vat_acct.code, 'name': vat_acct.name,
+                                'debit': Decimal('0.00'), 'credit': abs(vat_amt)})
     except ValueError:
         pass
-    if cdv.total_wt and Decimal(str(cdv.total_wt)) > 0 and accts['wt']:
-        entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
-                        'debit': Decimal('0.00'), 'credit': Decimal(str(cdv.total_wt))})
+    total_wt = Decimal(str(cdv.total_wt)) if cdv.total_wt else Decimal('0.00')
+    if total_wt != Decimal('0.00') and accts['wt']:
+        if total_wt > Decimal('0.00'):
+            entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
+                            'debit': Decimal('0.00'), 'credit': total_wt})
+        else:
+            entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
+                            'debit': abs(total_wt), 'credit': Decimal('0.00')})
     if cdv.cash_account:
-        entries.append({'code': cdv.cash_account.code, 'name': cdv.cash_account.name,
-                        'debit': Decimal('0.00'), 'credit': Decimal(str(cdv.total_amount))})
+        sum_dr = sum(e['debit'] for e in entries)
+        sum_cr = sum(e['credit'] for e in entries)
+        cash_net = sum_dr - sum_cr
+        if cash_net >= Decimal('0.00'):
+            entries.append({'code': cdv.cash_account.code, 'name': cdv.cash_account.name,
+                            'debit': Decimal('0.00'), 'credit': cash_net})
+        else:
+            entries.append({'code': cdv.cash_account.code, 'name': cdv.cash_account.name,
+                            'debit': abs(cash_net), 'credit': Decimal('0.00')})
     return entries
 
 
