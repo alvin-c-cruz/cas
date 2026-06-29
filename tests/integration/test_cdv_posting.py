@@ -239,9 +239,13 @@ class TestCDVPosting:
 
     def test_net_zero_vat_cancellation_cdv(self, db_session, admin_user, main_branch):
         """C1: +1120 and -1120 lines with same VAT category must not cancel Input VAT.
-        After the parse fix, negative line vat_amount=0, so total_vat stays 120.
-        Input VAT line must be posted; JE must be balanced."""
-        from app.cash_disbursements.views import _post_cdv_je
+        _parse_and_attach_expense_lines zeroes vat_amount on negative lines, so
+        total_vat stays 120. Input VAT line must be posted; JE must be balanced.
+        Regression guard: if the zeroing guard is removed from the parse function,
+        neg_line.vat_amount would be -120 and total_vat would net to 0, causing
+        this test to fail on the vat_line assertion."""
+        import json
+        from app.cash_disbursements.views import _parse_and_attach_expense_lines, _post_cdv_je
 
         _, _ = self._setup_base_accounts(db_session)
         cash = make_account(db_session, '1001', 'Cash on Hand',
@@ -257,30 +261,62 @@ class TestCDVPosting:
         make_input_vat_category(db_session, 'VAT12', rate=12,
                                 input_vat_account=input_vat_acct)
 
-        # Positive line: VAT included, vat_amount=120
-        # Negative line: vat_amount=0 (what the FIXED parse zeroes it to)
-        cdv = build_cdv(db_session, main_branch, vendor, cash,
-                        expense_lines=[
-                            {
-                                'description': 'Expense',
-                                'amount': 1120, 'line_total': 1120,
-                                'vat_category': 'VAT12', 'vat_rate': 12,
-                                'vat_amount': Decimal('120.00'),
-                                'account_id': expense_acct.id,
-                            },
-                            {
-                                'description': 'Advance offset',
-                                'amount': -1120, 'line_total': -1120,
-                                'vat_category': 'VAT12', 'vat_rate': 12,
-                                'vat_amount': Decimal('0.00'),  # fixed: negative line zeroed
-                                'account_id': expense_acct.id,
-                            },
-                        ], status='posted')
+        # Build a minimal CDV header; lines are added via the real parse function
+        cdv = CashDisbursementVoucher(
+            branch_id=main_branch.id,
+            cdv_number='CD-C1-TEST',
+            cdv_date=date.today(),
+            vendor_id=vendor.id,
+            vendor_name=vendor.name,
+            payment_method='cash',
+            cash_account_id=cash.id,
+            notes='',
+            status='draft',
+            total_ap_applied=Decimal('0.00'),
+            total_expense=Decimal('0.00'),
+            total_vat=Decimal('0.00'),
+            total_wt=Decimal('0.00'),
+            total_amount=Decimal('0.00'),
+        )
+        db_session.add(cdv)
+        db_session.flush()
 
-        # total_vat must be 120 (positive only), not 0 (pre-fix bug)
+        # Call the real parse function — this is the code path the zeroing guard lives in.
+        # The negative line carries vat_category='VAT12' so calculate_amounts() would produce
+        # vat_amount=-120 before the guard zeroes it.
+        lines_json = json.dumps([
+            {
+                'amount': 1120,
+                'account_id': str(expense_acct.id),
+                'vat_category': 'VAT12',
+                'description': 'Expense',
+            },
+            {
+                'amount': -1120,
+                'account_id': str(expense_acct.id),
+                'vat_category': 'VAT12',
+                'description': 'Advance offset',
+            },
+        ])
+        _parse_and_attach_expense_lines(cdv, lines_json)
+        db_session.flush()
+
+        assert len(cdv.expense_lines) == 2
+        neg_line = next(l for l in cdv.expense_lines if l.amount < 0)
+
+        # Regression guard: zeroing fix must have run inside the parse function
+        assert neg_line.vat_amount == Decimal('0.00'), (
+            f'Expected vat_amount=0 on negative line, got {neg_line.vat_amount}')
+
+        # total_vat must be 120 (positive line only), not 0 (pre-fix bug)
+        db_session.refresh(cdv)
+        cdv.calculate_totals()
+        db_session.flush()
         assert cdv.total_vat == Decimal('120.00'), (
             f'total_vat should be 120 (positive line only), got {cdv.total_vat}')
 
+        cdv.status = 'posted'
+        db_session.flush()
         je = _post_cdv_je(cdv, admin_user.id)
         db_session.commit()
 

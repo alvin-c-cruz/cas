@@ -534,9 +534,13 @@ class TestCRVPosting:
 
     def test_net_zero_vat_cancellation_crv(self, db_session, admin_user, main_branch):
         """C1: +1120 and -1120 lines with same VAT category must not cancel Output VAT.
-        After the parse fix, negative line vat_amount=0, so total_vat stays 120.
-        Output VAT line must be posted; JE must be balanced."""
-        from app.cash_receipts.views import _post_crv_je
+        _parse_and_attach_revenue_lines zeroes vat_amount on negative lines, so
+        total_vat stays 120. Output VAT line must be posted; JE must be balanced.
+        Regression guard: if the zeroing guard is removed from the parse function,
+        neg_line.vat_amount would be -120 and total_vat would net to 0, causing
+        this test to fail on the vat_line assertion."""
+        import json
+        from app.cash_receipts.views import _parse_and_attach_revenue_lines, _post_crv_je
 
         _, _ = self._setup_base_accounts(db_session)
         cash = make_account(db_session, '1001', 'Cash on Hand',
@@ -552,34 +556,62 @@ class TestCRVPosting:
         customer = make_customer(db_session, code='C006')
         make_vat_category(db_session, 'VAT12', rate=12, output_vat_account=output_vat_acct)
 
-        # Positive line: VAT included, vat_amount = 120 (as parse produces for positive lines)
-        # Negative line: vat_amount = 0 (what the FIXED parse zeroes it to)
-        crv = build_crv(db_session, main_branch, customer, cash,
-                        revenue_lines=[
-                            {
-                                'description': 'Service fee',
-                                'amount': 1120,
-                                'line_total': 1120,
-                                'vat_category': 'VAT12',
-                                'vat_rate': 12,
-                                'vat_amount': Decimal('120.00'),
-                                'account_id': revenue_acct.id,
-                            },
-                            {
-                                'description': 'Revenue reversal',
-                                'amount': -1120,
-                                'line_total': -1120,
-                                'vat_category': 'VAT12',
-                                'vat_rate': 12,
-                                'vat_amount': Decimal('0.00'),  # fixed: negative line zeroed
-                                'account_id': revenue_acct.id,
-                            },
-                        ], status='posted')
+        # Build a minimal CRV header; lines are added via the real parse function
+        crv = CashReceiptVoucher(
+            branch_id=main_branch.id,
+            crv_number='CR-C1-TEST',
+            crv_date=date.today(),
+            customer_id=customer.id,
+            customer_name=customer.name,
+            payment_method='cash',
+            cash_account_id=cash.id,
+            notes='',
+            status='draft',
+            total_ar_applied=Decimal('0.00'),
+            total_revenue=Decimal('0.00'),
+            total_vat=Decimal('0.00'),
+            total_wt=Decimal('0.00'),
+            total_amount=Decimal('0.00'),
+        )
+        db_session.add(crv)
+        db_session.flush()
 
-        # total_vat must be 120 (positive only), not 0 (which the pre-fix bug produced)
+        # Call the real parse function — this is the code path the zeroing guard lives in.
+        # The negative line carries vat_category='VAT12' so calculate_amounts() would produce
+        # vat_amount=-120 before the guard zeroes it.
+        lines_json = json.dumps([
+            {
+                'amount': 1120,
+                'account_id': str(revenue_acct.id),
+                'vat_category': 'VAT12',
+                'description': 'Service fee',
+            },
+            {
+                'amount': -1120,
+                'account_id': str(revenue_acct.id),
+                'vat_category': 'VAT12',
+                'description': 'Revenue reversal',
+            },
+        ])
+        _parse_and_attach_revenue_lines(crv, lines_json)
+        db_session.flush()
+
+        assert len(crv.revenue_lines) == 2
+        neg_line = next(l for l in crv.revenue_lines if l.amount < 0)
+
+        # Regression guard: zeroing fix must have run inside the parse function
+        assert neg_line.vat_amount == Decimal('0.00'), (
+            f'Expected vat_amount=0 on negative line, got {neg_line.vat_amount}')
+
+        # total_vat must be 120 (positive line only), not 0 (which the pre-fix bug produced)
+        db_session.refresh(crv)
+        crv.calculate_totals()
+        db_session.flush()
         assert crv.total_vat == Decimal('120.00'), (
             f'total_vat should be 120 (positive line only), got {crv.total_vat}')
 
+        crv.status = 'posted'
+        db_session.flush()
         je = _post_crv_je(crv, admin_user.id)
         db_session.commit()
 
