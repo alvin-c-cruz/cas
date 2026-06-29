@@ -39,10 +39,10 @@ class WithholdingTaxForm(FlaskForm):
         NumberRange(min=0, max=100, message='WT rate must be between 0 and 100')
     ], places=2)
     payable_account_id = SelectField('WHT Payable GL Account',
-        coerce=_coerce_int_opt, validators=[], default=0,
+        coerce=_coerce_int_opt, validators=[], default=0, validate_choice=False,
         description='GL account for WHT payable (APV/CDV — crediting held tax)')
     receivable_account_id = SelectField('WHT Receivable GL Account',
-        coerce=_coerce_int_opt, validators=[], default=0,
+        coerce=_coerce_int_opt, validators=[], default=0, validate_choice=False,
         description='GL account for WHT receivable (SI/CRV — creditable tax withheld by customers)')
     is_active = SelectField('Status', choices=[
         ('1', 'Active'),
