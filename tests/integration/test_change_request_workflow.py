@@ -348,13 +348,13 @@ class TestWithholdingTaxLabels:
         assert b'+ New Withholding Tax' not in resp.data
         assert b'Withholding Tax Codes' not in resp.data
 
-    def test_empty_state_button_uses_atc(self, client, db_session, two_reviewers):
-        """With no codes, the empty-state CTA reads '+ Create First ATC'."""
+    def test_empty_state_no_cta(self, client, db_session, two_reviewers):
+        """With no codes, the empty state shows only a plain message — no CTA button."""
         login(client)
         resp = client.get('/withholding-tax/')
         assert resp.status_code == 200
-        assert b'+ Create First ATC' in resp.data
-        assert b'+ Create First Withholding Tax' not in resp.data
+        assert b'No withholding tax codes found' in resp.data
+        assert b'+ Create First' not in resp.data
 
     def test_list_table_uses_atc_header(self, client, db_session, two_reviewers):
         login(client)

@@ -20,7 +20,7 @@ class RegistrationForm(FlaskForm):
     ])
     email = StringField('Email', validators=[
         DataRequired(),
-        Email(message='Please enter a valid email address.')
+        Email(message='Please enter a valid email address.', check_deliverability=False)
     ])
     full_name = StringField('Full Name', validators=[
         DataRequired(),
@@ -62,7 +62,7 @@ class UserForm(FlaskForm):
     ])
     email = StringField('Email', validators=[
         DataRequired(),
-        Email(message='Please enter a valid email address.')
+        Email(message='Please enter a valid email address.', check_deliverability=False)
     ])
     full_name = StringField('Full Name', validators=[
         DataRequired(),
@@ -118,7 +118,7 @@ class ApprovedEmailForm(FlaskForm):
     """
     email = StringField('Email Address', validators=[
         DataRequired(),
-        Email(message='Please enter a valid email address.')
+        Email(message='Please enter a valid email address.', check_deliverability=False)
     ])
     position = SelectField('Position', choices=[
         ('viewer', 'Viewer'),
