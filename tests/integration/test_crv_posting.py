@@ -532,3 +532,130 @@ class TestCRVPosting:
         wht_line = next((l for l in je.lines if l.account_id == wht_acct.id), None)
         assert wht_line is None
 
+    def test_net_zero_vat_cancellation_crv(self, db_session, admin_user, main_branch):
+        """C1: +1120 and -1120 lines with same VAT category must not cancel Output VAT.
+        After the parse fix, negative line vat_amount=0, so total_vat stays 120.
+        Output VAT line must be posted; JE must be balanced."""
+        from app.cash_receipts.views import _post_crv_je
+
+        _, _ = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        revenue_acct = make_account(db_session, '4001', 'Sales Revenue',
+                                    account_type='Income', classification='Operating Revenue',
+                                    normal_balance='Credit')
+        output_vat_acct = make_account(db_session, '20401', 'Output VAT',
+                                       account_type='Liability',
+                                       classification='Current Liability',
+                                       normal_balance='Credit')
+        customer = make_customer(db_session, code='C006')
+        make_vat_category(db_session, 'VAT12', rate=12, output_vat_account=output_vat_acct)
+
+        # Positive line: VAT included, vat_amount = 120 (as parse produces for positive lines)
+        # Negative line: vat_amount = 0 (what the FIXED parse zeroes it to)
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        revenue_lines=[
+                            {
+                                'description': 'Service fee',
+                                'amount': 1120,
+                                'line_total': 1120,
+                                'vat_category': 'VAT12',
+                                'vat_rate': 12,
+                                'vat_amount': Decimal('120.00'),
+                                'account_id': revenue_acct.id,
+                            },
+                            {
+                                'description': 'Revenue reversal',
+                                'amount': -1120,
+                                'line_total': -1120,
+                                'vat_category': 'VAT12',
+                                'vat_rate': 12,
+                                'vat_amount': Decimal('0.00'),  # fixed: negative line zeroed
+                                'account_id': revenue_acct.id,
+                            },
+                        ], status='posted')
+
+        # total_vat must be 120 (positive only), not 0 (which the pre-fix bug produced)
+        assert crv.total_vat == Decimal('120.00'), (
+            f'total_vat should be 120 (positive line only), got {crv.total_vat}')
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced, f"JE not balanced: dr={je.total_debit} cr={je.total_credit}"
+
+        # Output VAT line must be present (C1 bug: it was absent because total_vat netted to 0)
+        vat_line = next((l for l in je.lines if l.account_id == output_vat_acct.id), None)
+        assert vat_line is not None, 'Output VAT JE line must be present for positive revenue line'
+        assert vat_line.credit_amount == Decimal('120.00')
+
+    def test_negative_line_totals_match_je_crv(self, db_session, admin_user, main_branch):
+        """I1: _parse_and_attach_revenue_lines must zero vat_amount/wt_amount on negative lines.
+        After parse, stored totals must reflect no VAT/WHT on negative lines."""
+        import json
+        from app.cash_receipts.views import _parse_and_attach_revenue_lines
+        from app.withholding_tax.models import WithholdingTax
+
+        _, wht_acct = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        revenue_acct = make_account(db_session, '4001', 'Sales Revenue',
+                                    account_type='Income', classification='Operating Revenue',
+                                    normal_balance='Credit')
+        customer = make_customer(db_session, code='C007')
+
+        # Create a WHT code at 10%
+        wt = WithholdingTax(code='WC010', name='EWT 10%', rate=Decimal('10.00'), is_active=True)
+        db_session.add(wt)
+        db_session.flush()
+
+        # Create a minimal CRV to hold lines
+        from datetime import date
+        crv = CashReceiptVoucher(
+            branch_id=main_branch.id,
+            crv_number='CR-I1-TEST',
+            crv_date=date.today(),
+            customer_id=customer.id,
+            customer_name=customer.name,
+            payment_method='cash',
+            cash_account_id=cash.id,
+            notes='',
+            status='draft',
+            total_ar_applied=Decimal('0.00'),
+            total_revenue=Decimal('0.00'),
+            total_vat=Decimal('0.00'),
+            total_wt=Decimal('0.00'),
+            total_amount=Decimal('0.00'),
+        )
+        db_session.add(crv)
+        db_session.flush()
+
+        # Parse a negative line with WHT set — fix should zero vat_amount and wt_amount
+        lines_json = json.dumps([{
+            'amount': -1000,
+            'account_id': str(revenue_acct.id),
+            'vat_category': None,
+            'wt_id': str(wt.id),
+            'description': 'Reversal',
+        }])
+        _parse_and_attach_revenue_lines(crv, lines_json)
+        db_session.flush()
+
+        assert len(crv.revenue_lines) == 1
+        neg_line = crv.revenue_lines[0]
+
+        # Fix: vat_amount and wt_amount must be 0 on a negative line
+        assert neg_line.vat_amount == Decimal('0.00'), (
+            f'Expected vat_amount=0 on negative line, got {neg_line.vat_amount}')
+        assert neg_line.wt_amount == Decimal('0.00'), (
+            f'Expected wt_amount=0 on negative line, got {neg_line.wt_amount}')
+
+        # total_amount must equal the raw negative amount (no WHT offset)
+        db_session.refresh(crv)
+        crv.calculate_totals()
+        db_session.flush()
+        assert crv.total_amount == Decimal('-1000.00'), (
+            f'Expected total_amount=-1000 (no WHT offset on negative line), got {crv.total_amount}')
+

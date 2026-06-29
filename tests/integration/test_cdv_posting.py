@@ -236,3 +236,57 @@ class TestCDVPosting:
         # No WHT line for negative lines
         wht_line = next((l for l in je.lines if l.account_id == wht_acct.id), None)
         assert wht_line is None
+
+    def test_net_zero_vat_cancellation_cdv(self, db_session, admin_user, main_branch):
+        """C1: +1120 and -1120 lines with same VAT category must not cancel Input VAT.
+        After the parse fix, negative line vat_amount=0, so total_vat stays 120.
+        Input VAT line must be posted; JE must be balanced."""
+        from app.cash_disbursements.views import _post_cdv_je
+
+        _, _ = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        expense_acct = make_account(db_session, '5001', 'Expense',
+                                    account_type='Expense', classification='Operating Expense',
+                                    normal_balance='Debit')
+        input_vat_acct = make_account(db_session, '10301', 'Input VAT',
+                                      account_type='Asset', classification='Current Asset',
+                                      normal_balance='Debit')
+        vendor = make_vendor(db_session, code='V005')
+        make_input_vat_category(db_session, 'VAT12', rate=12,
+                                input_vat_account=input_vat_acct)
+
+        # Positive line: VAT included, vat_amount=120
+        # Negative line: vat_amount=0 (what the FIXED parse zeroes it to)
+        cdv = build_cdv(db_session, main_branch, vendor, cash,
+                        expense_lines=[
+                            {
+                                'description': 'Expense',
+                                'amount': 1120, 'line_total': 1120,
+                                'vat_category': 'VAT12', 'vat_rate': 12,
+                                'vat_amount': Decimal('120.00'),
+                                'account_id': expense_acct.id,
+                            },
+                            {
+                                'description': 'Advance offset',
+                                'amount': -1120, 'line_total': -1120,
+                                'vat_category': 'VAT12', 'vat_rate': 12,
+                                'vat_amount': Decimal('0.00'),  # fixed: negative line zeroed
+                                'account_id': expense_acct.id,
+                            },
+                        ], status='posted')
+
+        # total_vat must be 120 (positive only), not 0 (pre-fix bug)
+        assert cdv.total_vat == Decimal('120.00'), (
+            f'total_vat should be 120 (positive line only), got {cdv.total_vat}')
+
+        je = _post_cdv_je(cdv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced, f"JE not balanced: dr={je.total_debit} cr={je.total_credit}"
+
+        # Input VAT line must be present (C1 bug: it was absent because total_vat netted to 0)
+        vat_line = next((l for l in je.lines if l.account_id == input_vat_acct.id), None)
+        assert vat_line is not None, 'Input VAT JE line must be present for positive expense line'
+        assert vat_line.debit_amount == Decimal('120.00')

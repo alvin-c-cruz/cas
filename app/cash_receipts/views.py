@@ -617,6 +617,10 @@ def _parse_and_attach_revenue_lines(crv, revenue_lines_json):
             wt_rate=wt_rate,
         )
         rev_line.calculate_amounts()
+        # Negative lines: no VAT, no WHT (zero out what calculate_amounts stored)
+        if (rev_line.amount or Decimal('0')) < Decimal('0'):
+            rev_line.vat_amount = Decimal('0.00')
+            rev_line.wt_amount = Decimal('0.00')
         crv.revenue_lines.append(rev_line)
 
 

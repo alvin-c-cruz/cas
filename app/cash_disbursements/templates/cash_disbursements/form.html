@@ -939,6 +939,7 @@ function recalculate() {
     expenseLines.forEach(item => {
         const amtC = Math.round((item.amount || 0) * 100);
         expenseC += amtC;
+        if (amtC < 0) return; // negative lines: no VAT, no WHT in summary
         const vat = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
         const vatC = vatRate > 0 ? Math.round(amtC - amtC / (1 + vatRate / 100)) : 0;

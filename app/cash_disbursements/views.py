@@ -638,6 +638,10 @@ def _parse_and_attach_expense_lines(cdv, exp_lines_json):
             wt_rate=wt_rate,
         )
         exp_line.calculate_amounts()
+        # Negative lines: no VAT, no WHT (zero out what calculate_amounts stored)
+        if (exp_line.amount or Decimal('0')) < Decimal('0'):
+            exp_line.vat_amount = Decimal('0.00')
+            exp_line.wt_amount = Decimal('0.00')
         cdv.expense_lines.append(exp_line)
 
 
