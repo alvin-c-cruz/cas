@@ -828,12 +828,12 @@ def edit(id):
             invoice.reference = form.reference.data
             invoice.notes = form.notes.data or ''
 
-            SalesInvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
+            db.session.execute(db.delete(SalesInvoiceItem).where(SalesInvoiceItem.invoice_id == invoice.id))
             _parse_and_attach_line_items(invoice, request.form.get('line_items', '[]'),
                                          assign_invoice_id=True)
             # flush new rows to DB, then expire the collection so that
             # calculate_totals() and _post_invoice_je() reload fresh rows
-            # rather than the stale pre-delete ORM cache (Query.delete does
+            # rather than the stale pre-delete ORM cache (bulk deletes do
             # not evict the in-memory collection).
             db.session.flush()
             db.session.expire(invoice, ['line_items'])

@@ -894,14 +894,14 @@ def edit(id):
             # Build + validate the new lines BEFORE deleting the old ones, so an
             # invalid submission rejects without destroying the existing lines.
             new_lines = _build_validated_ap_lines()
-            AccountsPayableItem.query.filter_by(ap_id=ap.id).delete()
+            db.session.execute(db.delete(AccountsPayableItem).where(AccountsPayableItem.ap_id == ap.id))
             for line_item in new_lines:
                 line_item.ap_id = ap.id
                 db.session.add(line_item)
 
             # flush so new rows are in DB, then expire the collection so that
             # calculate_totals() and _post_ap_je() lazy-load fresh rows instead
-            # of the stale pre-delete ORM cache (Query.delete does not evict it).
+            # of the stale pre-delete ORM cache (bulk deletes do not evict it).
             db.session.flush()
             db.session.expire(ap, ['line_items'])
 

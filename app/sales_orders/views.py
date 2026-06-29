@@ -317,9 +317,10 @@ def edit(id):
             so.reference = form.reference.data or None
             so.notes = form.notes.data or ''
 
-            SalesOrderItem.query.filter_by(sales_order_id=so.id).delete()
+            db.session.execute(db.delete(SalesOrderItem).where(SalesOrderItem.sales_order_id == so.id))
             _parse_and_attach_so_lines(so, request.form.get('line_items', '[]'))
             db.session.flush()
+            db.session.expire(so, ['line_items'])
             so.calculate_totals()
             db.session.commit()
 

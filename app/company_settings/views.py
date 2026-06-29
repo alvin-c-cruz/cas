@@ -282,7 +282,7 @@ def upload_logo():
                         LOGO_SETTING_KEY, old_logo, updated_by=current_user.username
                     )
                 else:
-                    AppSettings.query.filter_by(key=LOGO_SETTING_KEY).delete()
+                    db.session.execute(db.delete(AppSettings).where(AppSettings.key == LOGO_SETTING_KEY))
                     db.session.commit()
             except Exception:
                 db.session.rollback()
@@ -309,7 +309,7 @@ def remove_logo():
         return redirect(url_for('company_settings.edit_settings'))
 
     try:
-        AppSettings.query.filter_by(key=LOGO_SETTING_KEY).delete()
+        db.session.execute(db.delete(AppSettings).where(AppSettings.key == LOGO_SETTING_KEY))
         db.session.commit()
         _delete_logo_file(old_logo)
 
