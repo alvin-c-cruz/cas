@@ -58,7 +58,7 @@ def opening_account_choices():
     result = []
     for a in all_accts:
         d = a.to_dict()
-        d['is_group'] = a.id in parent_ids
+        d['is_group'] = (a.parent_id is None) or (a.id in parent_ids)
         d['depth'] = _depth(a)
         result.append(d)
     return result

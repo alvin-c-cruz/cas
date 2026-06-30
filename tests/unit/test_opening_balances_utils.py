@@ -5,7 +5,7 @@ from app.opening_balances.utils import (
     LOCK_KEY, get_opening_entry, is_opening_locked,
     opening_account_choices, opening_leaf_account_ids,
 )
-from app.journal_entries.models import JournalEntry, JournalEntryLine
+from app.journal_entries.models import JournalEntry
 from app.accounts.models import Account
 from app.settings import AppSettings
 from app.periods.models import AccountingPeriod
@@ -67,11 +67,17 @@ def test_leaf_account_helpers_exclude_group_accounts(db_session):
                     normal_balance='Debit', is_active=True, parent_id=parent.id)
     db.session.add(child)
     db.session.commit()
+    standalone = Account(code='9999', name='Standalone Top-Level', account_type='Asset',
+                         normal_balance='Debit', is_active=True)
+    db.session.add(standalone)
+    db.session.commit()
 
     leaf_ids = opening_leaf_account_ids()
     assert child.id in leaf_ids
     assert parent.id not in leaf_ids
+    assert standalone.id not in leaf_ids
 
     by_id = {a['id']: a for a in opening_account_choices()}
     assert by_id[parent.id]['is_group'] is True
     assert by_id[child.id]['is_group'] is False
+    assert by_id[standalone.id]['is_group'] is True
