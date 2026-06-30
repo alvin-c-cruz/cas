@@ -596,17 +596,64 @@ def seed_all(force=False):
         raise
 
 
+# Lean general-purpose CORE Chart of Accounts seeded by seed_minimal() — the
+# /reset-database baseline. Just what the app needs to function: the posting anchors the
+# views hardcode (AR 10201, creditable WHT 10212, input VAT 10501-04, AP 20101, output VAT
+# 20201, WHT payable 20301, year-end 30201/30301) + cash + generic Sales revenue + one
+# expense (so APV lines have a debit target). Codes/types/classification follow the FS
+# taxonomy. Hierarchy is derived (parent=None or has children -> non-postable group).
+# (code, name, type, classification, normal_balance, parent_code)
+BASELINE_COA = [
+    # Assets - Current
+    ('10100', 'Cash and Cash Equivalents',           'Asset', 'Current', 'debit',  None),
+    ('10101', 'Cash on Hand',                        'Asset', 'Current', 'debit',  '10100'),
+    ('10110', 'Cash in Bank - Current Account',      'Asset', 'Current', 'debit',  '10100'),
+    ('10200', 'Trade and Other Receivables',         'Asset', 'Current', 'debit',  None),
+    ('10201', 'Accounts Receivable - Trade',         'Asset', 'Current', 'debit',  '10200'),
+    ('10212', 'Creditable Withholding Tax',          'Asset', 'Current', 'debit',  '10200'),
+    ('10500', 'Input VAT',                           'Asset', 'Current', 'debit',  None),
+    ('10501', 'Input VAT - Capital Goods',           'Asset', 'Current', 'debit',  '10500'),
+    ('10502', 'Input VAT - Domestic Goods',          'Asset', 'Current', 'debit',  '10500'),
+    ('10503', 'Input VAT - Services',                'Asset', 'Current', 'debit',  '10500'),
+    ('10504', 'Input VAT - Importation',             'Asset', 'Current', 'debit',  '10500'),
+    # Liabilities - Current
+    ('20100', 'Trade and Other Payables',            'Liability', 'Current', 'credit', None),
+    ('20101', 'Accounts Payable - Trade',            'Liability', 'Current', 'credit', '20100'),
+    ('20200', 'Output VAT',                          'Liability', 'Current', 'credit', None),
+    ('20201', 'Output VAT - Sales',                  'Liability', 'Current', 'credit', '20200'),
+    ('20300', 'Withholding and Other Taxes Payable', 'Liability', 'Current', 'credit', None),
+    ('20301', 'Withholding Tax Payable - Expanded',  'Liability', 'Current', 'credit', '20300'),
+    # Equity
+    ('30200', 'Retained Earnings',                   'Equity', None, 'credit', None),
+    ('30201', 'Retained Earnings - Unappropriated',  'Equity', None, 'credit', '30200'),
+    ('30301', 'Current Year Earnings',               'Equity', None, 'credit', None),
+    # Revenue (generic / general-purpose)
+    ('40100', 'Sales',                               'Revenue', None, 'credit', None),
+    ('40101', 'Sales - Goods',                       'Revenue', None, 'credit', '40100'),
+    ('40102', 'Sales - Services',                    'Revenue', None, 'credit', '40100'),
+    # Expense (one postable leaf so APV/purchase lines have a debit target)
+    ('50220', 'General and Administrative Expenses', 'Administrative Expense', None, 'debit', None),
+    ('50226', 'Office Supplies Expense',             'Administrative Expense', None, 'debit', '50220'),
+]
+
+
 def seed_minimal():
     """
-    Seed a bare-minimum database for client demo/testing.
+    Seed the bare-minimum, general-purpose CORE baseline used by /reset-database.
 
     Creates:
-    - 1 admin user
-    - 1 main branch (assigned to admin)
-    - 20 app settings
-    - 146 accounts (canonical manufacturing COA: FS taxonomy + Current/Non-Current classification)
-    - 7 VAT categories (V12CG/V12DG/V12SV/V12IM/V0/VEX/INV)
-    - 3 WHT codes (WC158, WC160, WC100)
+    - 1 admin user (admin / admin123), assigned to
+    - 1 Main Branch
+    - 24 app settings (21 settings + 3 core-only module flags: bir_reports/units_of_measure/
+      products all OFF)
+    - 25 accounts (BASELINE_COA: posting anchors + cash/AR/AP + input/output VAT + year-end
+      equity + generic Sales + one expense; FS taxonomy + Current/Non-Current classification)
+    - 7 input VAT categories (V12CG/V12DG/V12SV/V12IM/V0/VEX/INV)
+    - 3 sales VAT categories (V12/V0/VEX)
+    - 8 withholding tax codes (WC/WI x goods 1% / services 2% / rentals 5% / professionals)
+
+    Company identity fields are left blank (company_name defaults to 'Company Name') for the
+    company to fill via Company Settings. Only CORE modules are enabled.
     """
     print("\n" + "="*60)
     print("MINIMAL DATABASE SEEDING")
@@ -666,20 +713,21 @@ def seed_minimal():
             print(f"  [SKIP] {existing_settings} app settings already exist")
         else:
             settings = [
-                {'key': 'company_name',         'value': 'ABC Company'},
-                {'key': 'company_tin',          'value': '123-456-789'},
-                {'key': 'company_address',      'value': 'Unit 5, 123 Rizal Street, Poblacion, Makati City, Metro Manila'},
-                {'key': 'fiscal_year_start',    'value': '01'},
-                {'key': 'email',                'value': 'info@alvincruzaccounting.ph'},
-                {'key': 'phone',                'value': '(02) 8765-4321'},
-                {'key': 'postal_code',          'value': '1210'},
-                {'key': 'rdo_code',             'value': '050'},
+                # Company identity — left blank for the company to fill via Company Settings.
+                {'key': 'company_name',         'value': 'Company Name'},
+                {'key': 'trade_name',           'value': ''},
+                {'key': 'company_tin',          'value': ''},
                 {'key': 'tin_branch_code',      'value': '000'},
-                {'key': 'trade_name',           'value': 'ACAS'},
+                {'key': 'rdo_code',             'value': ''},
                 {'key': 'vat_registration_type','value': 'VAT'},
-                {'key': 'officer_president',    'value': 'Alvin C. Cruz'},
-                {'key': 'officer_secretary',    'value': 'Sofia Esperanza M. Cruz'},
-                {'key': 'officer_treasurer',    'value': 'Joan Hazel M. Cruz'},
+                {'key': 'company_address',      'value': ''},
+                {'key': 'postal_code',          'value': ''},
+                {'key': 'phone',                'value': ''},
+                {'key': 'email',                'value': ''},
+                {'key': 'fiscal_year_start',    'value': '01'},
+                {'key': 'officer_president',    'value': ''},
+                {'key': 'officer_treasurer',    'value': ''},
+                {'key': 'officer_secretary',    'value': ''},
                 {'key': 'apv_print_access',     'value': 'posted_only'},
                 {'key': 'sv_print_access',      'value': 'posted_only'},
                 {'key': 'cd_print_access',      'value': 'posted_only'},
@@ -687,43 +735,46 @@ def seed_minimal():
                 {'key': 'company_logo',         'value': ''},
                 {'key': 'environment',          'value': 'dev'},
                 {'key': 'accountant_email_self_approval', 'value': '0'},
+                # Module package gate: CORE-only baseline — every optional module OFF.
+                {'key': 'module_enabled:bir_reports',      'value': '0'},
+                {'key': 'module_enabled:units_of_measure', 'value': '0'},
+                {'key': 'module_enabled:products',         'value': '0'},
             ]
             for s in settings:
                 db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
             db.session.commit()
-            print(f"  [OK] 21 app settings created")
+            print(f"  [OK] {len(settings)} app settings created")
 
         # ------------------------------------------------------------------
-        # 4. Chart of Accounts (canonical 146-account manufacturing COA)
+        # 4. Chart of Accounts (lean general-purpose BASELINE_COA)
         # ------------------------------------------------------------------
         print("\n4. Seeding Chart of Accounts...")
         existing_accounts = Account.query.count()
         if existing_accounts > 0:
             print(f"  [SKIP] {existing_accounts} accounts already exist")
         else:
-            from app.seeds.manufacturing_coa import MANUFACTURING_COA
             # Pass 1: create every account (parent wired in pass 2). account_type
-            # already carries the FS taxonomy; hierarchy is derived from parent_id.
+            # carries the FS taxonomy; hierarchy is derived from parent_id.
             code_to_account = {}
-            for a in MANUFACTURING_COA:
+            for code, name, atype, classification, nb, _parent in BASELINE_COA:
                 acct = Account(
-                    code=a['code'],
-                    name=a['name'],
-                    account_type=a['type'],
-                    classification=a['classification'],
-                    normal_balance=a['normal_balance'],
+                    code=code,
+                    name=name,
+                    account_type=atype,
+                    classification=classification,
+                    normal_balance=nb,
                     is_active=True,
                 )
                 db.session.add(acct)
-                code_to_account[a['code']] = acct
+                code_to_account[code] = acct
             db.session.flush()  # assign IDs
 
             # Pass 2: wire parent relationships by code
-            for a in MANUFACTURING_COA:
-                if a['parent']:
-                    code_to_account[a['code']].parent_id = code_to_account[a['parent']].id
+            for code, _n, _t, _c, _nb, parent in BASELINE_COA:
+                if parent:
+                    code_to_account[code].parent_id = code_to_account[parent].id
             db.session.commit()
-            print(f"  [OK] {len(MANUFACTURING_COA)} accounts created in Chart of Accounts")
+            print(f"  [OK] {len(BASELINE_COA)} accounts created in Chart of Accounts")
 
         # ------------------------------------------------------------------
         # 5. VAT Categories
@@ -808,10 +859,18 @@ def seed_minimal():
             else:
                 print(f"  [SKIP] {len(existing_wht)} withholding tax codes already exist")
         else:
+            # WC = payments to corporations/non-individuals, WI = to individuals.
+            # Rate follows the income type, so each pair shares a rate. Professional
+            # fees are dual-rate ATCs (threshold-based); we default to the lower tier.
             wht_codes = [
-                {'code': 'WC158', 'name': 'Withholding Tax - Goods',   'rate': 1.00},
-                {'code': 'WC160', 'name': 'Withholding Tax - Services', 'rate': 2.00},
-                {'code': 'WC100', 'name': 'Withholding Tax - Rentals',  'rate': 5.00},
+                {'code': 'WC158', 'name': 'Withholding Tax - Goods (Corporation)',    'rate':  1.00},
+                {'code': 'WI158', 'name': 'Withholding Tax - Goods (Individual)',     'rate':  1.00},
+                {'code': 'WC160', 'name': 'Withholding Tax - Services (Corporation)', 'rate':  2.00},
+                {'code': 'WI160', 'name': 'Withholding Tax - Services (Individual)',  'rate':  2.00},
+                {'code': 'WC100', 'name': 'Withholding Tax - Rentals (Corporation)',  'rate':  5.00},
+                {'code': 'WI100', 'name': 'Withholding Tax - Rentals (Individual)',   'rate':  5.00},
+                {'code': 'WC010', 'name': 'Professional Fees (Corporation)',          'rate': 10.00},
+                {'code': 'WI010', 'name': 'Professional Fees (Individual)',           'rate':  5.00},
             ]
             for wt in wht_codes:
                 db.session.add(WithholdingTax(
@@ -819,17 +878,14 @@ def seed_minimal():
                     name=wt['name'],
                     description='',
                     rate=wt['rate'],
-                    sales_name=_WT_SALES_NAMES.get(wt['code']),
+                    sales_name=None,
                     is_active=True
                 ))
             db.session.commit()
             print(f"  [OK] {len(wht_codes)} withholding tax codes created")
 
-        # ------------------------------------------------------------------
-        # 8. Units of Measure
-        # ------------------------------------------------------------------
-        print("\n8. Seeding Units of Measure...")
-        seed_units_of_measure()
+        # Units of Measure / Products are OPTIONAL modules, disabled in this core-only
+        # baseline (module flags above) — so their master data is intentionally NOT seeded.
 
         print("\n" + "="*60)
         print("MINIMAL SEEDING COMPLETE!")

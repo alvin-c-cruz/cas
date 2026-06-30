@@ -12,8 +12,12 @@ holds the parent account's CODE (None = top-level group).
 
 Provenance: reconstructed from scripts/retype_manufacturing_coa.py (authoritative
 codes + FS account_type + classification + grouping) plus names harvested from the
-older COA seed; remaining names follow standard PH-manufacturing convention. This is
-the canonical COA seeded by seed_minimal() (and therefore by /reset-database).
+older COA seed; remaining names follow standard PH-manufacturing convention.
+
+NOTE: as of the core-baseline rewrite, seed_minimal() no longer uses this module — it
+seeds the lean general-purpose BASELINE_COA (see seed_data.py), which is what
+/reset-database produces. This 146-account manufacturing COA is retained for the
+demo/pitch datasets and its own type test (tests/unit/test_manufacturing_coa_types.py).
 """
 
 MANUFACTURING_COA = [
