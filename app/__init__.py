@@ -231,6 +231,7 @@ def create_app(config_name=None):
     from app.units_of_measure.views import units_of_measure_bp
     from app.products.views import products_bp
     from app.sales_orders.views import sales_orders_bp
+    from app.opening_balances.views import opening_balances_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -258,6 +259,7 @@ def create_app(config_name=None):
     app.register_blueprint(units_of_measure_bp)
     app.register_blueprint(products_bp)
     app.register_blueprint(sales_orders_bp)
+    app.register_blueprint(opening_balances_bp)
 
     migrate.init_app(app, db)
 
