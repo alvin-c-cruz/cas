@@ -10,6 +10,7 @@ from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journal_entries.utils import generate_jv_number
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.periods.utils import validate_transaction_date_with_flash
+from app.settings import AppSettings
 from app.utils import ph_now
 from app.opening_balances.forms import OpeningBalanceForm
 from app.opening_balances.utils import (
@@ -28,6 +29,16 @@ def accountant_or_admin_required(f):
     def wrapper(*args, **kwargs):
         if current_user.role not in ['accountant', 'admin']:
             flash('You do not have permission to manage opening balances.', 'error')
+            return redirect(url_for('opening_balances.index'))
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def admin_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if current_user.role != 'admin':
+            flash('Only an administrator can finalize opening balances.', 'error')
             return redirect(url_for('opening_balances.index'))
         return f(*args, **kwargs)
     return wrapper
@@ -212,4 +223,22 @@ def reopen():
               record_identifier=f'{entry.entry_number} - Opening Balances',
               notes='Re-opened posted opening balances for editing.')
     flash('Opening balances re-opened for editing.', 'success')
+    return redirect(url_for('opening_balances.index'))
+
+
+@opening_balances_bp.route('/opening-balances/finalize', methods=['POST'])
+@login_required
+@admin_required
+def finalize():
+    branch_id = _branch_id()
+    entry = get_opening_entry(branch_id)
+    if entry is None or entry.status != 'posted':
+        flash('Post the opening balances before finalizing.', 'error')
+        return redirect(url_for('opening_balances.index'))
+
+    AppSettings.set_setting(LOCK_KEY(branch_id), '1', updated_by=current_user.username)
+    log_audit(module='opening_balances', action='finalize', record_id=entry.id,
+              record_identifier=f'{entry.entry_number} - Opening Balances',
+              notes='Finalized opening balances (locked).')
+    flash('Opening balances finalized and locked.', 'success')
     return redirect(url_for('opening_balances.index'))

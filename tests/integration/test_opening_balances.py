@@ -275,3 +275,40 @@ def test_reopen_refused_when_finalized(client, db_session, admin_user, main_bran
     resp = client.post('/opening-balances/reopen', follow_redirects=True)
     assert get_opening_entry(main_branch.id).status == 'posted'  # unchanged
     assert b'locked' in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Task 6: finalize tests
+# ---------------------------------------------------------------------------
+
+def test_finalize_locks_and_freezes_editing(client, db_session, admin_user, main_branch,
+                                            cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    client.post('/opening-balances/post')
+    client.post('/opening-balances/finalize', follow_redirects=True)
+
+    assert AppSettings.get_setting(LOCK_KEY(main_branch.id)) == '1'
+    # subsequent save is refused
+    resp = client.post('/opening-balances/save', data=_save_payload('2026-01-01', [
+        (cash_account.id, '5.00', '0'), (revenue_account.id, '0', '5.00'),
+    ]), follow_redirects=True)
+    assert b'locked' in resp.data
+    assert float(get_opening_entry(main_branch.id).total_debit) == 1000.00  # unchanged
+
+
+def test_finalize_blocked_for_accountant(client, db_session, accountant_user, main_branch,
+                                         cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    client.post('/opening-balances/post')
+    resp = client.post('/opening-balances/finalize', follow_redirects=True)
+    assert AppSettings.get_setting(LOCK_KEY(main_branch.id), '0') == '0'  # not finalized
