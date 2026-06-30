@@ -234,3 +234,44 @@ def test_post_blocked_when_locked(client, db_session, admin_user, main_branch,
     resp = client.post('/opening-balances/post', follow_redirects=True)
     assert get_opening_entry(main_branch.id).status == 'draft'  # lock blocked the post
     assert b'locked' in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Task 5: reopen tests
+# ---------------------------------------------------------------------------
+
+from app.settings import AppSettings
+from app.opening_balances.utils import LOCK_KEY
+
+
+def test_reopen_posted_entry_returns_to_draft(client, db_session, admin_user, main_branch,
+                                              cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    client.post('/opening-balances/post')
+    assert get_opening_entry(main_branch.id).status == 'posted'
+
+    client.post('/opening-balances/reopen', follow_redirects=True)
+    entry = get_opening_entry(main_branch.id)
+    assert entry.status == 'draft'
+    assert entry.posted_at is None
+
+
+def test_reopen_refused_when_finalized(client, db_session, admin_user, main_branch,
+                                       cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    client.post('/opening-balances/post')
+    AppSettings.set_setting(LOCK_KEY(main_branch.id), '1', updated_by='admin')
+
+    resp = client.post('/opening-balances/reopen', follow_redirects=True)
+    assert get_opening_entry(main_branch.id).status == 'posted'  # unchanged
+    assert b'locked' in resp.data

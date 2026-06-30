@@ -189,3 +189,27 @@ def post_entry():
               notes=f'Posted opening balances ({entry.total_debit}).')
     flash('Opening balances posted.', 'success')
     return redirect(url_for('opening_balances.index'))
+
+
+@opening_balances_bp.route('/opening-balances/reopen', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def reopen():
+    branch_id = _branch_id()
+    if is_opening_locked(branch_id):
+        flash('Opening balances are locked and can no longer be edited.', 'error')
+        return redirect(url_for('opening_balances.index'))
+    entry = get_opening_entry(branch_id)
+    if entry is None or entry.status != 'posted':
+        flash('No posted opening balances to re-open.', 'error')
+        return redirect(url_for('opening_balances.index'))
+
+    entry.status = 'draft'
+    entry.posted_at = None
+    entry.posted_by_id = None
+    db.session.commit()
+    log_audit(module='opening_balances', action='reopen', record_id=entry.id,
+              record_identifier=f'{entry.entry_number} - Opening Balances',
+              notes='Re-opened posted opening balances for editing.')
+    flash('Opening balances re-opened for editing.', 'success')
+    return redirect(url_for('opening_balances.index'))
