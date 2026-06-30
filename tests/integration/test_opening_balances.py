@@ -312,3 +312,4 @@ def test_finalize_blocked_for_accountant(client, db_session, accountant_user, ma
     client.post('/opening-balances/post')
     resp = client.post('/opening-balances/finalize', follow_redirects=True)
     assert AppSettings.get_setting(LOCK_KEY(main_branch.id), '0') == '0'  # not finalized
+    assert b'administrator' in resp.data  # the role gate (not a missing route) refused it
