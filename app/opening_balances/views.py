@@ -9,6 +9,8 @@ from app import db
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journal_entries.utils import generate_jv_number
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
+from app.periods.utils import validate_transaction_date_with_flash
+from app.utils import ph_now
 from app.opening_balances.forms import OpeningBalanceForm
 from app.opening_balances.utils import (
     get_opening_entry, is_opening_locked, opening_account_choices,
@@ -154,4 +156,36 @@ def save_draft():
                    record_identifier=identifier, old_values=old_values,
                    new_values=model_to_dict(entry, AUDIT_FIELDS))
     flash('Opening balances draft saved.', 'success')
+    return redirect(url_for('opening_balances.index'))
+
+
+@opening_balances_bp.route('/opening-balances/post', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def post_entry():
+    branch_id = _branch_id()
+    entry = get_opening_entry(branch_id)
+    if entry is None or entry.status != 'draft':
+        flash('No draft opening balances to post.', 'error')
+        return redirect(url_for('opening_balances.index'))
+    if is_opening_locked(branch_id):
+        flash('Opening balances are locked and can no longer be edited.', 'error')
+        return redirect(url_for('opening_balances.index'))
+    if not validate_transaction_date_with_flash(entry.entry_date, 'opening balances'):
+        return redirect(url_for('opening_balances.index'))
+
+    entry.calculate_totals()
+    if not entry.is_balanced or entry.total_debit <= 0:
+        flash('Opening balances must be balanced (total debits = total credits) before posting.', 'error')
+        return redirect(url_for('opening_balances.index'))
+
+    entry.status = 'posted'
+    entry.posted_by_id = current_user.id
+    entry.posted_at = ph_now()
+    db.session.commit()
+
+    log_audit(module='opening_balances', action='post', record_id=entry.id,
+              record_identifier=f'{entry.entry_number} - Opening Balances',
+              notes=f'Posted opening balances ({entry.total_debit}).')
+    flash('Opening balances posted.', 'success')
     return redirect(url_for('opening_balances.index'))

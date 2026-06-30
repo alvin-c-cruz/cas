@@ -134,3 +134,86 @@ def test_save_draft_blocked_for_viewer(client, db_session, viewer_user, main_bra
     ]), follow_redirects=False)
     assert resp.status_code == 302  # bounced by role guard
     assert get_opening_entry(main_branch.id) is None
+
+
+# ---------------------------------------------------------------------------
+# Task 4: post_entry tests
+# ---------------------------------------------------------------------------
+
+from app.reports.financial import generate_trial_balance
+from app.periods.models import AccountingPeriod
+
+
+def _save_and_get(client, branch_id, cutover, lines):
+    client.post('/opening-balances/save', data=_save_payload(cutover, lines))
+    return get_opening_entry(branch_id)
+
+
+def test_post_blocked_when_unbalanced(client, db_session, admin_user, main_branch,
+                                      cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '700.00'),
+    ])
+    resp = client.post('/opening-balances/post', follow_redirects=True)
+    assert get_opening_entry(main_branch.id).status == 'draft'
+    assert b'must be balanced' in resp.data
+
+
+def test_post_succeeds_and_appears_in_trial_balance(client, db_session, admin_user,
+                                                    main_branch, cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    resp = client.post('/opening-balances/post', follow_redirects=True)
+    assert get_opening_entry(main_branch.id).status == 'posted'
+
+    tb = generate_trial_balance(as_of_date=date(2026, 12, 31), branch_id=main_branch.id)
+    codes = {row['code'] for row in tb['accounts']}
+    assert cash_account.code in codes
+    # post is audited
+    assert AuditLog.query.filter_by(module='opening_balances', action='post').first() is not None
+
+
+def test_post_into_closed_period_refused(client, db_session, admin_user, main_branch,
+                                         cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    db.session.add(AccountingPeriod(year=2026, month=1, status='closed'))
+    db.session.commit()
+    resp = client.post('/opening-balances/post', follow_redirects=True)
+    assert get_opening_entry(main_branch.id).status == 'draft'
+
+
+def test_post_with_no_period_row_succeeds_rvb4(client, db_session, admin_user, main_branch,
+                                               cash_account, revenue_account):
+    # No AccountingPeriod row for 2026-03 -> period is OPEN -> post allowed.
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-03-15', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    client.post('/opening-balances/post', follow_redirects=True)
+    assert get_opening_entry(main_branch.id).status == 'posted'
+
+
+def test_branch_isolation(client, db_session, admin_user, main_branch, branch_manila,
+                          cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    client.post('/opening-balances/post', follow_redirects=True)
+    assert get_opening_entry(branch_manila.id) is None
