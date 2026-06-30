@@ -217,3 +217,20 @@ def test_branch_isolation(client, db_session, admin_user, main_branch, branch_ma
     ])
     client.post('/opening-balances/post', follow_redirects=True)
     assert get_opening_entry(branch_manila.id) is None
+
+
+def test_post_blocked_when_locked(client, db_session, admin_user, main_branch,
+                                  cash_account, revenue_account):
+    """A locked opening (finalized flag set) refuses a post — guard coverage (review finding)."""
+    from app.settings import AppSettings
+    from app.opening_balances.utils import LOCK_KEY
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    AppSettings.set_setting(LOCK_KEY(main_branch.id), '1', updated_by='admin')
+    resp = client.post('/opening-balances/post', follow_redirects=True)
+    assert get_opening_entry(main_branch.id).status == 'draft'  # lock blocked the post
+    assert b'locked' in resp.data
