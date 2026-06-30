@@ -32,6 +32,8 @@
       if (first) {
         clone = first.cloneNode(true);
         clone.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+        // cloneNode copies the <select>'s selection — reset so a new line starts unselected.
+        clone.querySelectorAll('select').forEach(function (s) { s.selectedIndex = 0; });
       } else {
         return; // server always renders at least one template row when editable
       }
