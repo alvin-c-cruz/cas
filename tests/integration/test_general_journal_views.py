@@ -37,7 +37,7 @@ def test_general_journal_renders_voucher_entries_only(client, db_session, main_b
     _je(main_branch.id, cash_account, revenue_account, Decimal('100'), 'adjustment', 'JV-A')
     _je(main_branch.id, cash_account, revenue_account, Decimal('999'), 'purchase', 'JE-P')
     _login(client, admin_user); _select_branch(client, main_branch.id)
-    resp = client.get('/reports/general-journal?date_from=2026-01-01&date_to=2026-12-31')
+    resp = client.get('/reports/general-journal?mode=custom&date_from=2026-01-01&date_to=2026-12-31')
     assert resp.status_code == 200
     assert b'adjustment entry' in resp.data and b'999' not in resp.data
 
@@ -46,9 +46,9 @@ def test_general_journal_print_and_export(client, db_session, main_branch,
                                           admin_user, cash_account, revenue_account):
     _je(main_branch.id, cash_account, revenue_account, Decimal('100'), 'adjustment', 'JV-A')
     _login(client, admin_user); _select_branch(client, main_branch.id)
-    p = client.get('/reports/general-journal/print?date_from=2026-01-01&date_to=2026-12-31')
+    p = client.get('/reports/general-journal/print?mode=custom&date_from=2026-01-01&date_to=2026-12-31')
     assert p.status_code == 200 and b'GENERAL JOURNAL' in p.data
-    x = client.get('/reports/general-journal/export?date_from=2026-01-01&date_to=2026-12-31')
+    x = client.get('/reports/general-journal/export?mode=custom&date_from=2026-01-01&date_to=2026-12-31')
     assert x.status_code == 200
     assert x.headers['Content-Type'].startswith(
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
