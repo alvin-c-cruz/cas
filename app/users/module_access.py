@@ -35,6 +35,9 @@ MODULE_REGISTRY = [
      'endpoints': ('journal_entries.', 'journals.voucher')},
     # ── Ledger (Phase 2; deny-by-default for staff) — mirrors the sidebar's
     #    "Ledger" section, in the same order ──────────────────────────────────
+    {'key': 'opening_balances', 'label': 'Opening Balances', 'section': 'Ledger',
+     'area': 'Accounting', 'group': 'Journals',
+     'endpoints': ('opening_balances.',)},
     {'key': 'chart_of_accounts', 'label': 'Chart of Accounts', 'section': 'Ledger',
      'area': 'Accounting', 'group': 'Ledger',
      'endpoints': ('accounts.',)},

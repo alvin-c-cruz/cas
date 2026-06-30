@@ -1,13 +1,123 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Opening Balances</h1>
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% for category, message in messages %}<p class="flash {{ category }}">{{ message }}</p>{% endfor %}
-{% endwith %}
-<form method="post" action="{{ url_for('opening_balances.save_draft') }}">
-  {{ form.hidden_tag() }}
-  <input type="date" name="cutover_date"
-         value="{{ entry.entry_date.strftime('%Y-%m-%d') if entry else form.cutover_date.data }}">
-  {# Task 7 replaces this stub with the full line grid + totals + buttons #}
-</form>
+<div class="page-opening-balances">
+  <header class="page-head">
+    <h1>Opening Balances</h1>
+    {% if locked %}<span class="badge badge-locked">Finalized — locked</span>{% endif %}
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <p class="help-text">
+    Enter this branch's balances as of the cutover date. Retained Earnings here carries
+    <strong>prior-year</strong> accumulated earnings only — current-year-to-date profit goes in the
+    seeded revenue/expense lines, not in opening Retained Earnings (avoids double-counting).
+  </p>
+
+  <form method="post" action="{{ url_for('opening_balances.save_draft') }}" id="ob-form">
+    {{ form.hidden_tag() }}
+    <label>Cutover Date
+      <input type="date" name="cutover_date"
+             value="{{ entry.entry_date.strftime('%Y-%m-%d') if entry else (form.cutover_date.data.strftime('%Y-%m-%d') if form.cutover_date.data else '') }}"
+             {{ 'disabled' if locked else '' }}>
+    </label>
+
+    <table class="ob-lines" id="ob-lines">
+      <thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th><th></th></tr></thead>
+      <tbody>
+        {% if entry %}
+          {% for line in entry.lines %}
+          <tr class="ob-line">
+            <td>
+              <select name="account_id" class="ob-account" {{ 'disabled' if locked else '' }}>
+                {% for a in accounts %}
+                  <option value="{{ a.id }}" {{ 'disabled' if a.is_group else '' }}
+                    {{ 'selected' if a.id == line.account_id else '' }}>
+                    {{ '— ' * a.depth }}{{ a.code }} : {{ a.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </td>
+            <td class="num"><input type="text" name="debit" class="ob-debit"
+                  value="{{ '%.2f'|format(line.debit_amount) if line.debit_amount else '' }}"
+                  {{ 'disabled' if locked else '' }}></td>
+            <td class="num"><input type="text" name="credit" class="ob-credit"
+                  value="{{ '%.2f'|format(line.credit_amount) if line.credit_amount else '' }}"
+                  {{ 'disabled' if locked else '' }}></td>
+            <td><button type="button" class="ob-remove" {{ 'disabled' if locked else '' }}>×</button></td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          {# Empty template row — cloned by "+ Add line" JS when no entry exists yet #}
+          {% if can_edit and not locked %}
+          <tr class="ob-line">
+            <td>
+              <select name="account_id" class="ob-account">
+                {% for a in accounts %}
+                  <option value="{{ a.id }}" {{ 'disabled' if a.is_group else '' }}>
+                    {{ '— ' * a.depth }}{{ a.code }} : {{ a.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </td>
+            <td class="num"><input type="text" name="debit" class="ob-debit" value=""></td>
+            <td class="num"><input type="text" name="credit" class="ob-credit" value=""></td>
+            <td><button type="button" class="ob-remove">×</button></td>
+          </tr>
+          {% endif %}
+        {% endif %}
+      </tbody>
+    </table>
+
+    {% if can_edit and not locked %}
+      <button type="button" id="ob-add-row">+ Add line</button>
+    {% endif %}
+
+    <div class="ob-totals">
+      <span>Total Debit: <strong>₱<span id="ob-total-debit">0.00</span></strong></span>
+      <span>Total Credit: <strong>₱<span id="ob-total-credit">0.00</span></strong></span>
+      <span>Difference: <strong>₱<span id="ob-diff">0.00</span></strong></span>
+    </div>
+
+    {% if can_edit and not locked %}
+      <div class="ob-actions">
+        <button type="submit">{{ 'Update' if entry else 'Save' }}</button>
+      </div>
+    {% endif %}
+  </form>
+
+  {% if can_edit and not locked and entry and entry.status == 'draft' %}
+    <form method="post" action="{{ url_for('opening_balances.post_entry') }}">
+      {{ form.csrf_token }}
+      <button type="submit" id="ob-post">Post</button>
+    </form>
+  {% endif %}
+
+  {% if can_edit and not locked and entry and entry.status == 'posted' %}
+    <form method="post" action="{{ url_for('opening_balances.reopen') }}">
+      {{ form.csrf_token }}
+      <button type="submit">Edit</button>
+    </form>
+  {% endif %}
+
+  {% if is_admin and not locked and entry and entry.status == 'posted' %}
+    <button type="button" id="ob-finalize-open">Finalize</button>
+    <div class="modal" id="ob-finalize-modal" hidden>
+      <div class="modal-body">
+        <p>Finalize locks the opening balances for this branch. Later corrections require an adjusting journal entry. Continue?</p>
+        <form method="post" action="{{ url_for('opening_balances.finalize') }}">
+          {{ form.csrf_token }}
+          <button type="submit">Yes, finalize</button>
+          <button type="button" id="ob-finalize-cancel">Cancel</button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='js/opening_balances.js') }}?v=1"></script>
 {% endblock %}

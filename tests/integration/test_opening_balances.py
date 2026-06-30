@@ -2,6 +2,7 @@ import pytest
 from app import db
 from app.journals.views import VOUCHER_TYPES
 from app.reports.general_journal_data import VOUCHER_ENTRY_TYPES
+from app.users.module_access import MODULE_REGISTRY
 
 pytestmark = [pytest.mark.integration]
 
@@ -313,3 +314,37 @@ def test_finalize_blocked_for_accountant(client, db_session, accountant_user, ma
     resp = client.post('/opening-balances/finalize', follow_redirects=True)
     assert AppSettings.get_setting(LOCK_KEY(main_branch.id), '0') == '0'  # not finalized
     assert b'administrator' in resp.data  # the role gate (not a missing route) refused it
+
+
+# ---------------------------------------------------------------------------
+# Task 7: module registry + editor screen rendering
+# ---------------------------------------------------------------------------
+
+def test_opening_balances_in_module_registry_as_core():
+    entry = next((m for m in MODULE_REGISTRY if m['key'] == 'opening_balances'), None)
+    assert entry is not None
+    assert entry.get('optional') is None  # core, always on
+    assert entry['area'] == 'Accounting'
+    assert 'opening_balances.' in entry['endpoints']
+
+
+def test_index_renders_for_admin(client, db_session, admin_user, main_branch):
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/opening-balances')
+    assert resp.status_code == 200
+    assert b'Opening Balances' in resp.data
+
+
+def test_index_shows_locked_state(client, db_session, admin_user, main_branch,
+                                  cash_account, revenue_account):
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    client.post('/opening-balances/post')
+    AppSettings.set_setting(LOCK_KEY(main_branch.id), '1', updated_by='admin')
+    resp = client.get('/opening-balances')
+    assert resp.status_code == 200
+    assert b'Finalized' in resp.data or b'locked' in resp.data.lower()
