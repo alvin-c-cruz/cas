@@ -63,8 +63,8 @@ def gather_draft_items(user, branch_id):
 
 
 def gather_approval_items(user):
-    """Pending master-data change requests. Admin/accountant only."""
-    if not user or user.role not in ('admin', 'accountant'):
+    """Pending master-data change requests. Full-access users (admin/chief accountant) + accountants."""
+    if not user or not (user.has_full_access or user.role == 'accountant'):
         return []
     items = []
 

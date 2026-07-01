@@ -78,3 +78,15 @@ def test_ca_counts_change_request_action_items(db_session, chief_accountant_user
     db.session.commit()
     # CA sees pending change-request approvals in its badge (branch_id None: approvals only).
     assert count_action_items(chief_accountant_user, None) >= 1
+
+
+def test_ca_sees_approval_items_list(db_session, chief_accountant_user):
+    from app.dashboard.action_items_service import gather_approval_items
+    from app.accounts.approval_models import AccountChangeRequest
+    db.session.add(AccountChangeRequest(
+        change_type='create', change_data='{}', status='pending', requested_by='someone'))
+    db.session.commit()
+    # CA sees pending approval items in the list, not just the badge count.
+    items = gather_approval_items(chief_accountant_user)
+    assert len(items) >= 1
+    assert any(item['type'] == 'Chart of Accounts' for item in items)
