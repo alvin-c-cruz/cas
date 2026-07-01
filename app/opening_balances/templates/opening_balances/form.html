@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+{# Save only edits drafts: a posted opening is read-only until re-opened (see save_draft guard). #}
+{% set editable = can_edit and not locked and (not entry or entry.status == 'draft') %}
 <div class="page-opening-balances">
   <header class="page-head">
     <h1>Opening Balances</h1>
@@ -23,7 +25,7 @@
     <label>Cutover Date
       <input type="date" name="cutover_date"
              value="{{ entry.entry_date.strftime('%Y-%m-%d') if entry else (form.cutover_date.data.strftime('%Y-%m-%d') if form.cutover_date.data else '') }}"
-             {{ 'disabled' if locked else '' }}>
+             {{ 'disabled' if not editable else '' }}>
     </label>
 
     <table class="ob-lines" id="ob-lines">
@@ -33,7 +35,7 @@
           {% for line in entry.lines %}
           <tr class="ob-line">
             <td>
-              <select name="account_id" class="ob-account" {{ 'disabled' if locked else '' }}>
+              <select name="account_id" class="ob-account" {{ 'disabled' if not editable else '' }}>
                 {% for a in accounts %}
                   <option value="{{ a.id }}" {{ 'disabled' if a.is_group else '' }}
                     {{ 'selected' if a.id == line.account_id else '' }}>
@@ -44,16 +46,16 @@
             </td>
             <td class="num"><input type="text" name="debit" class="ob-debit"
                   value="{{ '%.2f'|format(line.debit_amount) if line.debit_amount else '' }}"
-                  {{ 'disabled' if locked else '' }}></td>
+                  {{ 'disabled' if not editable else '' }}></td>
             <td class="num"><input type="text" name="credit" class="ob-credit"
                   value="{{ '%.2f'|format(line.credit_amount) if line.credit_amount else '' }}"
-                  {{ 'disabled' if locked else '' }}></td>
-            <td><button type="button" class="ob-remove" {{ 'disabled' if locked else '' }}>×</button></td>
+                  {{ 'disabled' if not editable else '' }}></td>
+            <td><button type="button" class="ob-remove" {{ 'disabled' if not editable else '' }}>×</button></td>
           </tr>
           {% endfor %}
         {% else %}
           {# Empty template row — cloned by "+ Add line" JS when no entry exists yet #}
-          {% if can_edit and not locked %}
+          {% if editable %}
           <tr class="ob-line">
             <td>
               <select name="account_id" class="ob-account">
@@ -73,7 +75,7 @@
       </tbody>
     </table>
 
-    {% if can_edit and not locked %}
+    {% if editable %}
       <button type="button" id="ob-add-row">+ Add line</button>
     {% endif %}
 
@@ -83,7 +85,7 @@
       <span>Difference: <strong>₱<span id="ob-diff">0.00</span></strong></span>
     </div>
 
-    {% if can_edit and not locked %}
+    {% if editable %}
       <div class="ob-actions">
         <button type="submit">{{ 'Update' if entry else 'Save' }}</button>
       </div>

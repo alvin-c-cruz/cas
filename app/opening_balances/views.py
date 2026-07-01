@@ -139,6 +139,12 @@ def save_draft():
         return redirect(url_for('opening_balances.index'))
 
     entry = get_opening_entry(branch_id)
+    if entry is not None and entry.status != 'draft':
+        # Save only edits drafts. A posted opening must be re-opened first, so we
+        # never rebuild a 'posted' entry in place (which could push an unbalanced
+        # entry into the trial balance). Mirrors the lifecycle: post -> reopen -> edit.
+        flash('Re-open the posted opening balances before editing.', 'error')
+        return redirect(url_for('opening_balances.index'))
     is_new = entry is None
     if is_new:
         entry = JournalEntry(

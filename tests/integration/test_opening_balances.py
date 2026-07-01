@@ -137,6 +137,31 @@ def test_save_draft_blocked_for_viewer(client, db_session, viewer_user, main_bra
     assert get_opening_entry(main_branch.id) is None
 
 
+def test_save_draft_refused_on_posted_entry(client, db_session, admin_user, main_branch,
+                                            cash_account, revenue_account):
+    """A POSTED opening can't be edited via Save — must be re-opened first (final-review fix).
+
+    Guards against rebuilding a posted entry in place (which could push an unbalanced
+    entry into the trial balance)."""
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    _save_and_get(client, main_branch.id, '2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
+    ])
+    client.post('/opening-balances/post')
+    assert get_opening_entry(main_branch.id).status == 'posted'
+
+    # Try to edit the posted entry via Save with an (unbalanced) change — must be refused.
+    resp = client.post('/opening-balances/save', data=_save_payload('2026-01-01', [
+        (cash_account.id, '5.00', '0'),
+    ]), follow_redirects=True)
+    entry = get_opening_entry(main_branch.id)
+    assert entry.status == 'posted'              # unchanged
+    assert float(entry.total_debit) == 1000.00   # lines NOT rebuilt
+    assert b'Re-open' in resp.data
+
+
 # ---------------------------------------------------------------------------
 # Task 4: post_entry tests
 # ---------------------------------------------------------------------------
