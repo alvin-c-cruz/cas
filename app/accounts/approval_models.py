@@ -84,8 +84,10 @@ class AccountChangeRequest(db.Model):
         Check if a user can approve this request.
 
         Rules:
-        - User must be accountant or admin
-        - User cannot approve their own request (unless they're the only accountant)
+        - Full-access users (admin or chief accountant) can always approve, including
+          their own requests.
+        - Other accountants can approve requests made by others; they can approve their
+          own request only when they are the sole active accountant/admin.
         """
         from app.users.models import User
 

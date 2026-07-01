@@ -17,7 +17,7 @@ def admin_required(list_endpoint, noun):
             if not current_user.is_authenticated:
                 return redirect(url_for('users.login'))
             if not current_user.has_full_access:
-                flash(f'Only Administrators can access {noun}.', 'error')
+                flash(f'Only Administrators and Chief Accountants can access {noun}.', 'error')
                 return redirect(url_for('dashboard.home'))
             return f(*args, **kwargs)
         return wrapped
