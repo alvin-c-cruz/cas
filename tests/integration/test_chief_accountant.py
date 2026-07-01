@@ -119,3 +119,23 @@ def test_ca_can_approve_own_coa_change_request(db_session, chief_accountant_user
     db.session.add(cr)
     db.session.commit()
     assert cr.can_be_approved_by(chief_accountant_user.username) is True
+
+
+def test_ca_can_finalize_opening_balances(client, db_session, admin_user, chief_accountant_user, main_branch,
+                                          cash_account, revenue_account):
+    from tests.integration.test_opening_balances import _make_postable, _save_payload
+    from app.opening_balances.utils import get_opening_entry, LOCK_KEY
+    from app.settings import AppSettings
+    _make_postable(db_session, cash_account, revenue_account)
+    # Admin sets up and posts the entry
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    client.post('/opening-balances/save', data=_save_payload('2026-01-01', [
+        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00')]))
+    client.post('/opening-balances/post')
+    # CA finalizes it
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/opening-balances/finalize', follow_redirects=True)
+    assert AppSettings.get_setting(LOCK_KEY(main_branch.id)) == '1'
+    assert b'administrator' not in resp.data  # not refused
