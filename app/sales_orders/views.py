@@ -428,7 +428,7 @@ def cancel(id):
         abort(404)
 
     # Role guard: accountant/admin (mirrors detail.html gating)
-    if current_user.role not in ['accountant', 'admin']:
+    if not (current_user.role == 'accountant' or current_user.has_full_access):
         flash('You do not have permission to cancel Sales Orders.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 

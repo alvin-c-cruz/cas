@@ -35,7 +35,7 @@ def accountant_or_admin_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('users.login'))
-        if current_user.role not in ['accountant', 'admin']:
+        if not (current_user.role == 'accountant' or current_user.has_full_access):
             flash('Only Accountants and Administrators can manage vendors.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)

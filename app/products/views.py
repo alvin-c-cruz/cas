@@ -37,7 +37,7 @@ def list():
 @products_bp.route('/products/create', methods=['GET', 'POST'])
 @login_required
 def create():
-    if current_user.role not in ['accountant', 'admin']:
+    if not (current_user.role == 'accountant' or current_user.has_full_access):
         flash('You do not have permission to manage products.', 'error')
         return redirect(url_for('products.list'))
     form = ProductForm()
@@ -77,7 +77,7 @@ def create():
 @products_bp.route('/products/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit(id):
-    if current_user.role not in ['accountant', 'admin']:
+    if not (current_user.role == 'accountant' or current_user.has_full_access):
         flash('You do not have permission to manage products.', 'error')
         return redirect(url_for('products.list'))
     p = db.get_or_404(Product, id)

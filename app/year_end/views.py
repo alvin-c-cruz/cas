@@ -11,7 +11,7 @@ year_end_bp = Blueprint('year_end', __name__,
 
 
 def _accountant_or_admin():
-    return current_user.role in ('accountant', 'admin')
+    return current_user.role == 'accountant' or current_user.has_full_access
 
 
 @year_end_bp.route('/year-end')
