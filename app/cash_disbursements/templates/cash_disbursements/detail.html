@@ -78,14 +78,14 @@
       <a href="{{ url_for('cash_disbursements.print_cdv', id=cdv.id) }}" target="_blank"
          rel="noopener noreferrer" class="btn btn-secondary">Print</a>
       {% endif %}
-      {% if current_user.role in ['accountant','admin'] and cdv.status == 'draft' %}
+      {% if (current_user.has_full_access or current_user.role == 'accountant') and cdv.status == 'draft' %}
       <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post CDV</button>
       {% endif %}
-      {% if current_user.role in ['staff','accountant','admin'] and cdv.status == 'draft' %}
+      {% if current_user.role in ['staff','accountant','admin','chief_accountant'] and cdv.status == 'draft' %}
       <a href="{{ url_for('cash_disbursements.edit', id=cdv.id) }}" class="btn btn-primary">Edit</a>
       <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void</button>
       {% endif %}
-      {% if current_user.role in ['accountant','admin'] and cdv.status == 'posted' %}
+      {% if (current_user.has_full_access or current_user.role == 'accountant') and cdv.status == 'posted' %}
       <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel CDV</button>
       {% endif %}
       <a href="{{ url_for('cash_disbursements.list_cdvs') }}" class="btn btn-secondary">← Back</a>

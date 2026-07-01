@@ -96,9 +96,9 @@ class AccountChangeRequest(db.Model):
         if reviewer and reviewer.has_full_access:
             return True  # full-access users always can approve, including own requests
 
-        # Get total number of accountants (including admins who can act as accountants)
+        # Get total number of accountants (including admins/chief accountants who can act as accountants)
         total_accountants = User.query.filter(
-            User.role.in_(['accountant', 'admin']),
+            User.role.in_(['accountant', 'admin', 'chief_accountant']),
             User.is_active == True
         ).count()
 

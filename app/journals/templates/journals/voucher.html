@@ -11,7 +11,7 @@
                class="btn btn-secondary btn-sm">Print</a>
             <a href="{{ url_for('journals.voucher_export', status=status_filter, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">Download Excel</a>
-            {% if current_user.role in ['accountant', 'admin'] %}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') %}
             <a href="{{ url_for('journal_entries.create') }}" class="btn btn-green">📝 Enter Journal Voucher</a>
             {% endif %}
         </div>

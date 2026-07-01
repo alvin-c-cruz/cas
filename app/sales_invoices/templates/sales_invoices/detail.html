@@ -114,19 +114,19 @@
                class="btn btn-secondary">Print</a>
             {% endif %}
             {# Post: accountant/admin only #}
-            {% if current_user.role in ['accountant', 'admin'] and invoice.status == 'draft' %}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') and invoice.status == 'draft' %}
             <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post Invoice</button>
             {% endif %}
             {# Edit: staff/accountant/admin, draft only #}
-            {% if current_user.role in ['staff', 'accountant', 'admin'] and invoice.status == 'draft' %}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] and invoice.status == 'draft' %}
             <a href="{{ url_for('sales_invoices.edit', id=invoice.id) }}" class="btn btn-primary">Edit</a>
             {% endif %}
             {# Void: staff/accountant/admin, draft only #}
-            {% if current_user.role in ['staff', 'accountant', 'admin'] and invoice.status == 'draft' %}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] and invoice.status == 'draft' %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void Invoice</button>
             {% endif %}
             {# Cancel: accountant/admin, posted + no payments #}
-            {% if current_user.role in ['accountant', 'admin'] and invoice.status == 'posted' and invoice.amount_paid == 0 %}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') and invoice.status == 'posted' and invoice.amount_paid == 0 %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Invoice</button>
             {% endif %}
             <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">&#8592; Back to List</a>

@@ -124,7 +124,7 @@
                class="btn btn-secondary cdv-export-link" style="font-size:13px;">&#11015; Export Excel</a>
             <a href="{{ url_for('cash_disbursements.export_csv') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
                class="btn btn-secondary cdv-export-link" style="font-size:13px;">&#11015; Export CSV</a>
-            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <a href="{{ url_for('cash_disbursements.create') }}" class="btn btn-green">&#10133; Enter CDV</a>
             {% endif %}
         </div>
@@ -186,7 +186,7 @@
             <p>No CDVs match your filters.</p>
             {% else %}
             <p>No Cash Disbursement Vouchers found.</p>
-            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <a href="{{ url_for('cash_disbursements.create') }}" class="btn btn-green">Enter First CDV</a>
             {% endif %}
             {% endif %}

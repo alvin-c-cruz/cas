@@ -20,13 +20,13 @@ periods_bp = Blueprint('periods', __name__, template_folder='templates')
 
 
 def admin_required(f):
-    """Decorator to require admin role for period management."""
+    """Decorator to require admin role (or Chief Accountant) for period management."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('users.login'))
         if not current_user.has_full_access:
-            flash('Only Administrators can manage accounting periods.', 'error')
+            flash('Only Administrators or Chief Accountants can manage accounting periods.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function

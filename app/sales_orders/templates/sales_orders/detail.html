@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}?v=1">
 
 {# ── Confirm modal (draft only, Task 8 wires the logic) ─────────────────── #}
-{% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin'] %}
+{% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
 <div id="confirmModal" style="display:none; position:fixed; inset:0; background:var(--backdrop);
      z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
@@ -31,7 +31,7 @@
 {% endif %}
 
 {# ── Cancel modal (confirmed only, Task 8 wires the logic) ──────────────── #}
-{% if so.status == 'confirmed' and current_user.role in ['accountant', 'admin'] %}
+{% if so.status == 'confirmed' and (current_user.has_full_access or current_user.role == 'accountant') %}
 <div id="cancelModal" style="display:none; position:fixed; inset:0; background:var(--backdrop);
      z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
@@ -78,18 +78,18 @@
                target="_blank" rel="noopener noreferrer"
                class="btn btn-secondary">Print</a>
             {# Confirm: staff/accountant/admin, draft only (logic wired in Task 8) #}
-            {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin'] %}
+            {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <button type="button" class="btn btn-success"
                     onclick="document.getElementById('confirmModal').style.display='flex'">
                 Confirm Order
             </button>
             {% endif %}
             {# Edit: staff/accountant/admin, draft only #}
-            {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin'] %}
+            {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <a href="{{ url_for('sales_orders.edit', id=so.id) }}" class="btn btn-primary">Edit</a>
             {% endif %}
             {# Cancel: accountant/admin, confirmed only (logic wired in Task 8) #}
-            {% if so.status == 'confirmed' and current_user.role in ['accountant', 'admin'] %}
+            {% if so.status == 'confirmed' and (current_user.has_full_access or current_user.role == 'accountant') %}
             <button type="button" class="btn btn-danger"
                     onclick="document.getElementById('cancelModal').style.display='flex'">
                 Cancel Order

@@ -13,7 +13,7 @@
             {{ 'Active' if customer.is_active else 'Inactive' }}
         </span>
     </div>
-    {% if current_user.role in ['accountant', 'admin'] %}
+    {% if (current_user.has_full_access or current_user.role == 'accountant') %}
     <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn btn-primary btn-sm">Edit Customer</a>
     {% endif %}
 </div>

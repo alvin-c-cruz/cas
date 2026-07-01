@@ -12,7 +12,7 @@
             <p class="page-subheading">Manage Philippine BIR VAT Categories</p>
         </div>
         <div class="page-actions">
-            {% if current_user.role in ['accountant', 'admin'] %}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') %}
             {% if pending_requests|length > 0 %}
             <a href="{{ url_for('vat_categories.change_requests') }}" class="btn btn-secondary">
                 View Pending Requests ({{ pending_requests|length }})
@@ -70,7 +70,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if current_user.role in ['accountant', 'admin'] %}
+                            {% if (current_user.has_full_access or current_user.role == 'accountant') %}
                             <div class="action-buttons">
                                 <a href="{{ url_for('vat_categories.edit', id=vat_category.id) }}" class="btn-action btn-action-edit">Edit</a>
                                 <button type="button" class="btn-action btn-action-delete"

@@ -11,7 +11,7 @@
         <p class="page-subheading">Manage unit of measure codes</p>
     </div>
     <div class="page-actions">
-        {% if current_user.role in ['accountant', 'admin'] %}
+        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
         <a href="{{ url_for('units_of_measure.create') }}" class="btn btn-primary">+ Create Unit of Measure</a>
         {% endif %}
     </div>
@@ -41,7 +41,7 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if current_user.role in ['accountant', 'admin'] %}
+                        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
                         <div class="action-buttons">
                             <a href="{{ url_for('units_of_measure.edit', id=unit.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
                         </div>

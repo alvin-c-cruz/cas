@@ -19,7 +19,7 @@
         <a href="{{ url_for('customers.export_csv_route') }}" class="btn btn-secondary">
             📄 Export CSV
         </a>
-        {% if current_user.role in ['accountant', 'admin'] %}
+        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
         <a href="{{ url_for('customers.create') }}" class="btn btn-primary">
             + Create Customer
         </a>
@@ -84,7 +84,7 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if current_user.role in ['accountant', 'admin'] %}
+                        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
                         <div class="action-buttons">
                             <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
                             <button type="button" class="btn-action btn-action-delete"

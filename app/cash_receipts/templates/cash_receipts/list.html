@@ -119,7 +119,7 @@
                class="btn btn-secondary crv-export-link" style="font-size:13px;">&#11015; Export Excel</a>
             <a href="{{ url_for('cash_receipts.export_csv') }}{{ '?' ~ request.query_string.decode() if request.query_string }}"
                class="btn btn-secondary crv-export-link" style="font-size:13px;">&#11015; Export CSV</a>
-            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-green">&#10133; Enter CRV</a>
             {% endif %}
         </div>
@@ -181,7 +181,7 @@
             <p>No CRVs match your filters.</p>
             {% else %}
             <p>No Cash Receipt Vouchers found.</p>
-            {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <a href="{{ url_for('cash_receipts.create') }}" class="btn btn-green">Enter First CRV</a>
             {% endif %}
             {% endif %}

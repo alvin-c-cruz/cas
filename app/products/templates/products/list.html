@@ -11,7 +11,7 @@
         <p class="page-subheading">Manage product and item master records</p>
     </div>
     <div class="page-actions">
-        {% if current_user.role in ['accountant', 'admin'] %}
+        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
         <a href="{{ url_for('products.create') }}" class="btn btn-primary">+ Create Product</a>
         {% endif %}
     </div>
@@ -51,7 +51,7 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if current_user.role in ['accountant', 'admin'] %}
+                        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
                         <div class="action-buttons">
                             <a href="{{ url_for('products.edit', id=product.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
                         </div>

@@ -38,7 +38,7 @@ def admin_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not current_user.has_full_access:
-            flash('Only an administrator can finalize opening balances.', 'error')
+            flash('Only an administrator or Chief Accountant can finalize opening balances.', 'error')
             return redirect(url_for('opening_balances.index'))
         return f(*args, **kwargs)
     return wrapper

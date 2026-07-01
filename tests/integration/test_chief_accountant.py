@@ -394,3 +394,114 @@ def test_ca_can_reach_core_create_forms(client, db_session, chief_accountant_use
         f'CA should reach {path} directly, got {resp.status_code} '
         f'(Location={resp.headers.get("Location")})'
     )
+
+
+# ---------------------------------------------------------------------------
+# Final review — TEMPLATE write-button visibility (not just view-layer 200s).
+# The view-layer gates above prove CA reaches the write ROUTE; these prove the
+# write BUTTON is actually rendered on the page CA is looking at — the gap the
+# final review flagged (templates still gated on the literal pre-CA role list,
+# so CA landed on a page with no way to trigger the write action it's allowed
+# to reach). One LIST-tier pair (create/launch button) + one DETAIL-tier pair
+# (Post/Edit buttons on a real draft APV) — two tiers, each with a CA-sees /
+# viewer-does-not-see pair so neither assertion is vacuous.
+# ---------------------------------------------------------------------------
+
+def test_ca_sees_apv_list_create_button(client, db_session, chief_accountant_user, main_branch):
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/accounts-payable', follow_redirects=True)
+    assert b'Enter APV' in resp.data
+
+
+def test_viewer_does_not_see_apv_list_create_button(client, db_session, viewer_user, main_branch):
+    """Positive/negative pair for test_ca_sees_apv_list_create_button — a
+    plain viewer (no write access anywhere) must not see the launch button."""
+    viewer_user.set_branches([main_branch])
+    db.session.commit()
+    _login(client, viewer_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/accounts-payable', follow_redirects=True)
+    assert b'Enter APV' not in resp.data
+
+
+def _make_draft_apv(db_session, main_branch):
+    """Build a minimal draft APV so the detail page's status-gated Post/Edit
+    buttons (draft-only) have something to render against."""
+    from decimal import Decimal
+    from app.accounts.models import Account
+    from app.vendors.models import Vendor
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    from app.utils import ph_now
+
+    def get_or_create_account(code, name, acct_type, normal_balance):
+        a = Account.query.filter_by(code=code).first()
+        if not a:
+            a = Account(code=code, name=name, account_type=acct_type,
+                        normal_balance=normal_balance, is_active=True)
+            db.session.add(a)
+            db.session.commit()
+        return a
+
+    vendor = Vendor.query.filter_by(code='CATV001').first()
+    if not vendor:
+        vendor = Vendor(code='CATV001', name='CA Test Vendor',
+                         check_payee_name='CA Test Vendor', is_active=True)
+        db.session.add(vendor)
+        db.session.commit()
+
+    expense = get_or_create_account('CA6000', 'CA Test Expense', 'Expense', 'Debit')
+    get_or_create_account('CA2010', 'CA Test AP - Trade', 'Liability', 'Credit')
+
+    today = ph_now().date()
+    bill = AccountsPayable(
+        ap_number='CA-DET-001', vendor_id=vendor.id, vendor_name=vendor.name,
+        vendor_tin='123-456-789', vendor_address='Test Address, Manila',
+        branch_id=main_branch.id, ap_date=today, due_date=today,
+        payment_terms='Net 30', status='draft',
+        subtotal=Decimal('1120.00'), vat_amount=Decimal('120.00'),
+        total_before_wt=Decimal('1120.00'), withholding_tax_rate=Decimal('0.00'),
+        withholding_tax_amount=Decimal('0.00'), total_amount=Decimal('1120.00'),
+        amount_paid=Decimal('0.00'), balance=Decimal('1120.00'),
+    )
+    db.session.add(bill)
+    db.session.flush()
+    db.session.add(AccountsPayableItem(
+        ap_id=bill.id, line_number=1, description='CA Test Service',
+        amount=Decimal('1120.00'), vat_category='VATABLE', vat_rate=Decimal('12.00'),
+        line_total=Decimal('1120.00'), vat_amount=Decimal('120.00'),
+        account_id=expense.id,
+    ))
+    db.session.commit()
+    return bill
+
+
+# The "Post APV" trigger button text also appears (unconditionally, whenever
+# ap.status == 'draft') inside the hidden confirmation modal's own submit
+# button — that modal isn't role-gated, only the visible trigger is. So the
+# assertion targets the trigger's distinguishing onclick handler, not the bare
+# label text, to avoid a false positive/negative against the modal markup.
+_POST_TRIGGER = b"postModal').style.display='flex'\">Post APV"
+
+
+def test_ca_sees_apv_detail_post_and_edit_buttons(client, db_session, chief_accountant_user, main_branch):
+    bill = _make_draft_apv(db_session, main_branch)
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(f'/accounts-payable/{bill.id}', follow_redirects=True)
+    assert _POST_TRIGGER in resp.data
+    assert b'>Edit<' in resp.data
+
+
+def test_viewer_does_not_see_apv_detail_post_and_edit_buttons(client, db_session, viewer_user, main_branch):
+    """Positive/negative pair for test_ca_sees_apv_detail_post_and_edit_buttons —
+    a plain viewer reaches the (read-only) detail page but must not see the
+    Post/Edit write buttons."""
+    bill = _make_draft_apv(db_session, main_branch)
+    viewer_user.set_branches([main_branch])
+    db.session.commit()
+    _login(client, viewer_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(f'/accounts-payable/{bill.id}', follow_redirects=True)
+    assert _POST_TRIGGER not in resp.data
+    assert b'>Edit<' not in resp.data

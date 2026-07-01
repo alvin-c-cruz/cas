@@ -18,7 +18,7 @@
         <a href="{{ url_for('accounts.export_csv') }}" class="btn btn-secondary">
             <span class="btn-icon">⬇️</span> Export CSV
         </a>
-        {% if current_user.role in ['accountant', 'admin'] %}
+        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
         {% if pending_requests %}
         <a href="{{ url_for('accounts.pending_approvals') }}" class="btn btn-warning">
             <span class="btn-icon">⏳</span> Pending Approvals ({{ pending_requests|length }})
@@ -140,7 +140,7 @@
                         <td style="text-align: center;">
                             <div class="action-buttons">
                                 <a href="{{ url_for('accounts.view', id=account.id) }}" class="btn-icon" title="View">👁️</a>
-                                {% if current_user.role in ['accountant', 'admin'] %}
+                                {% if (current_user.has_full_access or current_user.role == 'accountant') %}
                                 <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn-icon" title="Edit">✏️</a>
                                 {% if row.is_header %}
                                 <span class="btn-icon btn-icon-disabled" title="Remove all sub-accounts before deleting this group">🗑️</span>

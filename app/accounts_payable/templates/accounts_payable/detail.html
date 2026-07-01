@@ -116,18 +116,18 @@
                class="btn btn-secondary">Print</a>
             {% endif %}
             {# Tier 2: accountant/admin only can post #}
-            {% if current_user.role in ['accountant', 'admin'] and ap.status == 'draft' %}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') and ap.status == 'draft' %}
             <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post APV</button>
             {% endif %}
             {# Tier 1: staff/accountant/admin can edit draft #}
-            {% if current_user.role in ['staff', 'accountant', 'admin'] and ap.status == 'draft' %}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] and ap.status == 'draft' %}
             <a href="{{ url_for('accounts_payable.edit', id=ap.id) }}" class="btn btn-primary">Edit</a>
             {% endif %}
             {# Tier 1: staff/accountant/admin can void draft #}
-            {% if current_user.role in ['staff', 'accountant', 'admin'] and ap.status == 'draft' %}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] and ap.status == 'draft' %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void APV</button>
             {% endif %}
-            {% if current_user.role in ['accountant', 'admin'] and ap.status == 'posted' and ap.amount_paid == 0 %}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') and ap.status == 'posted' and ap.amount_paid == 0 %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel APV</button>
             {% endif %}
             <a href="{{ url_for('accounts_payable.list_ap') }}" class="btn btn-secondary">← Back to List</a>

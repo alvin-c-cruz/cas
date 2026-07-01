@@ -5,7 +5,7 @@
 <div class="card">
     <div class="card-header">
         <div class="card-header-actions">
-            {% if current_user.role in ['accountant', 'admin'] %}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') %}
             <a href="{{ url_for('journal_entries.create') }}" class="btn btn-primary">📝 Enter Journal Entry</a>
             {% endif %}
         </div>
@@ -73,7 +73,7 @@
             </tbody>
         </table>
         {% else %}
-        <div class="empty-state"><p>No journal entries found.</p>{% if current_user.role in ['accountant', 'admin'] %}<a href="{{ url_for('journal_entries.create') }}" class="btn btn-primary">Enter First Entry</a>{% endif %}</div>
+        <div class="empty-state"><p>No journal entries found.</p>{% if (current_user.has_full_access or current_user.role == 'accountant') %}<a href="{{ url_for('journal_entries.create') }}" class="btn btn-primary">Enter First Entry</a>{% endif %}</div>
         {% endif %}
     </div>
 </div>

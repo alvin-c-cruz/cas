@@ -19,7 +19,7 @@
         <a href="{{ url_for('vendors.export_csv_route') }}" class="btn btn-secondary">
             📄 Export CSV
         </a>
-        {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+        {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
         <a href="{{ url_for('vendors.create') }}" class="btn btn-primary">
             + Create Vendor
         </a>
@@ -86,19 +86,19 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if current_user.role in ['staff', 'accountant', 'admin'] %}
+                        {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
                         <div class="action-buttons">
                             {# Edit is allowed for staff+ (the edit view is @staff_or_above_required). #}
                             <a href="{{ url_for('vendors.edit', id=vendor.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
                             {# Delete is Tier 2 — accountant/admin only (matches the delete view). #}
-                            {% if current_user.role in ['accountant', 'admin'] %}
+                            {% if (current_user.has_full_access or current_user.role == 'accountant') %}
                             <button type="button" class="btn-action btn-action-delete"
                                     onclick="document.getElementById('delete-modal-{{ vendor.id }}').style.display='flex'">
                                 Delete
                             </button>
                             {% endif %}
                         </div>
-                        {% if current_user.role in ['accountant', 'admin'] %}
+                        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
                         <!-- Delete confirmation modal -->
                         <div id="delete-modal-{{ vendor.id }}"
                              style="display:none; position:fixed; inset:0; background:var(--backdrop); z-index:1000; align-items:center; justify-content:center;">
