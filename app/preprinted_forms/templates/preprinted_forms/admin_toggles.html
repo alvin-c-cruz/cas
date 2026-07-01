@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Pre-Printed Forms{% endblock %}
+{% block page_title %}Pre-Printed Forms{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Pre-Printed Forms</h1>
+        <p class="page-subheading">Enable pre-printed overlay printing per voucher type</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>VOUCHER TYPE</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vt in voucher_types %}
+                {% set layout = layouts.get(vt) %}
+                <tr>
+                    <td>{{ vt }}</td>
+                    <td>{{ 'Active' if layout and layout.active else 'Inactive' }}</td>
+                    <td>
+                        {% if current_user.is_admin %}
+                        <form method="post" action="{{ url_for('preprinted_forms.toggle', vt=vt) }}" style="display:inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-secondary btn-sm">
+                                {{ 'Disable' if layout and layout.active else 'Enable' }}
+                            </button>
+                        </form>
+                        {% endif %}
+                        <a href="{{ url_for('preprinted_forms.designer', vt=vt) }}" class="btn btn-primary btn-sm">Design</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

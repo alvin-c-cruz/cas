@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Design {{ vt }} Pre-Printed Form{% endblock %}
+{% block page_title %}Design {{ vt }} Pre-Printed Form{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Design {{ vt }} Pre-Printed Form</h1>
+        <p class="page-subheading">Position data fields on the background image (stub — Task 5 builds the full designer)</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post" action="{{ url_for('preprinted_forms.upload_image', vt=vt) }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="image">Background image (PNG/JPEG, max 2 MB)</label>
+            <input type="file" id="image" name="image" accept=".png,.jpg,.jpeg">
+            <button type="submit" class="btn btn-secondary">Upload Image</button>
+        </form>
+
+        {% if layout and layout.background_image %}
+        <p><img src="{{ url_for('preprinted_forms.image', vt=vt) }}" alt="{{ vt }} background" style="max-width:100%"></p>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('preprinted_forms.save', vt=vt) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="fields_json" value="{{ layout.fields_json if layout else '[]' }}">
+            <input type="hidden" name="line_band_json" value="{{ layout.line_band_json if layout else '{}' }}">
+            <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
