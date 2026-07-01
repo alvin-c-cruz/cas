@@ -233,15 +233,25 @@ def test_admin_reaches_sysadmin(client, db_session, admin_user,
 
     Positive (non-vacuous) pair for test_ca_blocked_from_sysadmin.
     Single-user test: only admin is logged in.
-    The page_marker is a unique heading that only appears on the management
-    page, never in flash messages or the dashboard.
+
+    Primary signal: a direct 200 with follow_redirects=False. This is the
+    robust guard — an over-blocked admin gets a 302 to the dashboard, so a
+    direct 200 proves the admin actually landed on the management view
+    without needing a page-unique marker. Three of the five page_marker
+    strings ("User Management", "Branch Management", "Company Settings")
+    ALSO appear in the always-rendered Admin sidebar nav on every admin
+    page (including the dashboard), so a marker-only assertion would still
+    pass even if the admin were wrongly redirected — a vacuous positive.
+    Only "Modules / Package" and "Error Logs" are genuinely page-unique
+    today; the marker is asserted there as an additional, non-primary check.
     """
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
-    resp = client.get(path, follow_redirects=True)
+    resp = client.get(path, follow_redirects=False)
     assert resp.status_code == 200, (
-        f'Admin should reach {path} (got {resp.status_code})'
+        f'admin should reach {path}, got {resp.status_code}'
     )
-    assert page_marker in resp.data, (
-        f'Admin response for {path} should contain {page_marker!r}'
-    )
+    if path in ('/settings/modules', '/admin/errors'):
+        assert page_marker in resp.data, (
+            f'Admin response for {path} should contain {page_marker!r}'
+        )
