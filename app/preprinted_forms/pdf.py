@@ -22,6 +22,9 @@ def _sanitize(s):
 
 def _text(pdf, f, s):
     s = _sanitize(str(s))
+    # Empty strings are no-ops; skip to avoid fpdf2 ValueError on empty fragments.
+    if not s:
+        return
     pdf.set_font('Helvetica', size=f.get('font_size', 10))
     x = float(f['x_mm'])
     y = float(f['y_mm'])
@@ -31,8 +34,9 @@ def _text(pdf, f, s):
         pdf.set_xy(x, y)
         pdf.cell(w=width, align=align, text=s)
     else:
+        width = float(f.get('width_mm') or _DEFAULT_FIELD_WIDTH_MM)
         pdf.set_xy(x, y)
-        pdf.cell(text=s)
+        pdf.cell(w=width, align='L', text=s)
 
 
 def _draw_background(pdf, layout, w, h):
@@ -64,7 +68,6 @@ def render_preprinted(layout, record, *, test=False):
     pdf.set_auto_page_break(False)
     pdf.set_margins(0, 0, 0)
     pdf.add_page()
-    pdf.set_font('Helvetica', size=10)
 
     if test and layout.background_image:
         _draw_background(pdf, layout, w, h)
@@ -79,6 +82,7 @@ def render_preprinted(layout, record, *, test=False):
 
     band = layout.get_line_band()
     if band and band.get('columns'):
+        # max_rows: 0 is treated as unlimited (0 → falsy → None for slice).
         max_rows = int(band.get('max_rows', 0)) or None
         rows = iter_lines(vt, record)[:max_rows]
         for i, line in enumerate(rows):
