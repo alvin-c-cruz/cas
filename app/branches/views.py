@@ -215,9 +215,9 @@ def assign_user(id, user_id):
     branch = db.get_or_404(Branch, id)
     user = db.get_or_404(User, user_id)
 
-    # Admins automatically have access to all branches and cannot be assigned
-    if user.role == 'admin':
-        flash('Administrators automatically have access to all branches.', 'error')
+    # Admins and Chief Accountants automatically have access to all branches and cannot be assigned
+    if user.has_full_access:
+        flash('This user automatically has access to all branches and cannot be assigned.', 'error')
         return redirect(url_for('branches.branch_users', id=id))
 
     try:

@@ -128,8 +128,8 @@ class User(UserMixin, db.Model):
 
     def has_book_access(self, book_name):
         """Check if user has access to a specific book."""
-        # Admins have access to all books
-        if self.role == 'admin':
+        # Admins and Chief Accountants have access to all books
+        if self.has_full_access:
             return True
 
         # Check specific permissions
@@ -142,8 +142,8 @@ class User(UserMixin, db.Model):
 
     def has_branch_access(self, branch_id):
         """Check if user has access to a specific branch."""
-        # Admins have access to all branches
-        if self.role == 'admin':
+        # Admins and Chief Accountants have access to all branches
+        if self.has_full_access:
             return True
 
         # Check if user is assigned to this branch

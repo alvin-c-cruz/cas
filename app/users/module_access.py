@@ -140,7 +140,7 @@ def can_access_module(user, key):
         return False
     if user is None or not getattr(user, 'is_authenticated', False):
         return False
-    if user.role == 'admin':
+    if user.has_full_access:
         return True
     return user.get_book_permissions().get(key, False)
 
