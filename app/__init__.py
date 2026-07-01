@@ -203,6 +203,7 @@ def create_app(config_name=None):
     from app.units_of_measure.models import UnitOfMeasure
     from app.products.models import Product
     from app.sales_orders.models import SalesOrder, SalesOrderItem
+    from app.preprinted_forms.models import PrintLayout
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
