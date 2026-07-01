@@ -106,7 +106,7 @@
     </form>
   {% endif %}
 
-  {% if is_admin and not locked and entry and entry.status == 'posted' %}
+  {% if can_finalize and not locked and entry and entry.status == 'posted' %}
     <button type="button" id="ob-finalize-open">Finalize</button>
     <div class="modal" id="ob-finalize-modal" hidden>
       <div class="modal-body">

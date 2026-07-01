@@ -27,7 +27,7 @@ AUDIT_FIELDS = ['entry_number', 'entry_date', 'reference', 'entry_type',
 def accountant_or_admin_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if current_user.role not in ['accountant', 'admin']:
+        if not (current_user.role == 'accountant' or current_user.has_full_access):
             flash('You do not have permission to manage opening balances.', 'error')
             return redirect(url_for('opening_balances.index'))
         return f(*args, **kwargs)
@@ -113,8 +113,8 @@ def index():
         entry=entry,
         accounts=opening_account_choices(),
         locked=is_opening_locked(branch_id) if branch_id else False,
-        can_edit=current_user.role in ['accountant', 'admin'],
-        is_admin=current_user.role == 'admin',
+        can_edit=(current_user.role == 'accountant' or current_user.has_full_access),
+        can_finalize=current_user.has_full_access,
     )
 
 

@@ -121,6 +121,47 @@ def test_ca_can_approve_own_coa_change_request(db_session, chief_accountant_user
     assert cr.can_be_approved_by(chief_accountant_user.username) is True
 
 
+def test_ca_can_save_and_post_opening_balances(client, db_session, chief_accountant_user, main_branch,
+                                               cash_account, revenue_account):
+    from tests.integration.test_opening_balances import _make_postable, _save_payload
+    from app.opening_balances.utils import get_opening_entry
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/opening-balances/save', data=_save_payload('2026-01-01', [
+        (cash_account.id, '2000.00', '0'), (revenue_account.id, '0', '2000.00'),
+    ]), follow_redirects=False)
+    assert resp.status_code == 302  # CA passed the accountant_or_admin_required gate
+    entry = get_opening_entry(main_branch.id)
+    assert entry is not None
+    assert entry.status == 'draft'
+
+    resp = client.post('/opening-balances/post', follow_redirects=False)
+    assert resp.status_code == 302
+    entry = get_opening_entry(main_branch.id)
+    assert entry.status == 'posted'
+
+
+def test_ca_can_reopen_opening_balances(client, db_session, chief_accountant_user, main_branch,
+                                        cash_account, revenue_account):
+    from tests.integration.test_opening_balances import _make_postable, _save_payload
+    from app.opening_balances.utils import get_opening_entry
+    _make_postable(db_session, cash_account, revenue_account)
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    client.post('/opening-balances/save', data=_save_payload('2026-01-01', [
+        (cash_account.id, '3000.00', '0'), (revenue_account.id, '0', '3000.00'),
+    ]))
+    client.post('/opening-balances/post')
+    entry = get_opening_entry(main_branch.id)
+    assert entry.status == 'posted'
+
+    resp = client.post('/opening-balances/reopen', follow_redirects=False)
+    assert resp.status_code == 302
+    entry = get_opening_entry(main_branch.id)
+    assert entry.status == 'draft'
+
+
 def test_ca_can_finalize_opening_balances(client, db_session, admin_user, chief_accountant_user, main_branch,
                                           cash_account, revenue_account):
     from tests.integration.test_opening_balances import _make_postable, _save_payload
