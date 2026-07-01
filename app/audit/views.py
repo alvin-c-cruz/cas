@@ -19,7 +19,7 @@ def accountant_or_admin_required(f):
         if not current_user.is_authenticated:
             from flask import redirect, url_for
             return redirect(url_for('users.login'))
-        if current_user.role not in ['accountant', 'admin']:
+        if not (current_user.role == 'accountant' or current_user.has_full_access):
             from flask import flash
             flash('Only Accountants and Administrators can view audit logs.', 'error')
             from flask import redirect, url_for

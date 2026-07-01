@@ -130,7 +130,7 @@ def count_action_items(user, branch_id):
     if branch_id:
         for _label, _icon, Model, _num, _edit in _draft_sources():
             n += _draft_query(Model, user, branch_id).count()
-    if user.role in ('admin', 'accountant'):
+    if user.has_full_access or user.role == 'accountant':
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()
         n += WithholdingTaxChangeRequest.query.filter_by(status='pending').count()

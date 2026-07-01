@@ -46,3 +46,35 @@ def test_ca_still_subject_to_disabled_optional_module(db_session, chief_accounta
         assert can_access_module(chief_accountant_user, 'bir_reports') is False
     finally:
         clear_module_config_cache()  # don't leak stale '0' into later tests
+
+
+def _login(client, user):
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.id)
+        sess['_fresh'] = True
+
+
+def _select_branch(client, branch_id):
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch_id
+
+
+def test_ca_can_reach_periods_and_audit(client, db_session, chief_accountant_user, main_branch):
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    # Periods management page: not redirected away with the admin-only flash.
+    resp = client.get('/periods/', follow_redirects=True)
+    assert b'Only Administrators can manage accounting periods' not in resp.data
+    # Audit log: reachable (accountant+admin+CA).
+    resp = client.get('/audit-log', follow_redirects=True)
+    assert b'Only Accountants and Administrators' not in resp.data
+
+
+def test_ca_counts_change_request_action_items(db_session, chief_accountant_user):
+    from app.dashboard.action_items_service import count_action_items
+    from app.accounts.approval_models import AccountChangeRequest
+    db.session.add(AccountChangeRequest(
+        change_type='create', change_data='{}', status='pending', requested_by='someone'))
+    db.session.commit()
+    # CA sees pending change-request approvals in its badge (branch_id None: approvals only).
+    assert count_action_items(chief_accountant_user, None) >= 1
