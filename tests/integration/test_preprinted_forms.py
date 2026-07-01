@@ -6,6 +6,7 @@ _admin_required) and the save/toggle/design/test-print routes.
 """
 import json
 from datetime import date
+from io import BytesIO
 
 import pytest
 from app import db
@@ -200,8 +201,10 @@ def test_designer_page_renders_palette_and_controls(client, db_session, accounta
     assert b'Save' in body
     # Upload control
     assert b'Upload' in body
-    # Test-print control
-    assert b'Test' in body
+    # Test-print control: assert the actual test-print URL fragment, not the
+    # word "Test" -- base.html's env-badge script always contains "Testing",
+    # which makes a bare b'Test' in body assertion vacuously true on any page.
+    assert b'/preprinted-forms/JV/test-print' in body
     # JS asset, versioned
     assert b'preprinted_designer.js?v=1' in body
 
@@ -245,3 +248,63 @@ def test_test_print_returns_pdf_when_record_exists(client, db_session, accountan
     assert resp.status_code == 200
     assert resp.headers['Content-Type'] == 'application/pdf'
     assert resp.data.startswith(b'%PDF')
+
+
+def test_test_print_is_branch_scoped(client, db_session, accountant_user, main_branch,
+                                      branch_manila, cash_account, revenue_account,
+                                      preprinted_module_enabled):
+    """A branch-scoped accountant hitting test-print for JV must only ever see
+    the latest record from their OWN selected branch, never another branch's
+    (regression for the system-wide `.order_by(id.desc()).first()` bug)."""
+    # A layout with the 'particulars' field visible so the JE description
+    # (the marker) actually appears in the rendered PDF text.
+    layout = PrintLayout(voucher_type='JV', active=True,
+                          page_width_mm=215.9, page_height_mm=279.4)
+    layout.set_fields([
+        {'key': 'particulars', 'x_mm': 20, 'y_mm': 20, 'font_size': 10, 'align': 'L', 'visible': True},
+    ])
+    layout.set_line_band({})
+    db.session.add(layout)
+    db.session.commit()
+
+    # Manila JE created (and thus the newest row by id) AFTER the main-branch
+    # JE, so a system-wide "latest record" query would pick Manila's data.
+    _build_je(main_branch, cash_account, revenue_account, number='JV-2026-01-0501')
+    main_je = JournalEntry.query.filter_by(entry_number='JV-2026-01-0501').first()
+    main_je.description = 'BR-MAIN-DESC'
+    db.session.commit()
+
+    manila_je = JournalEntry(
+        entry_number='JV-2026-01-0502',
+        entry_date=date(2026, 1, 21),
+        description='BR-MANILA-DESC',
+        entry_type='adjustment',
+        branch_id=branch_manila.id,
+        status='draft',
+    )
+    db.session.add(manila_je)
+    db.session.flush()
+    line1 = JournalEntryLine(entry_id=manila_je.id, line_number=1, account_id=cash_account.id,
+                              debit_amount=750, credit_amount=0)
+    line2 = JournalEntryLine(entry_id=manila_je.id, line_number=2, account_id=revenue_account.id,
+                              debit_amount=0, credit_amount=750)
+    db.session.add_all([line1, line2])
+    db.session.commit()
+    assert manila_je.id > main_je.id  # Manila IS the system-wide "latest" row
+
+    accountant_user.set_branches([main_branch])
+    db.session.commit()
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get('/preprinted-forms/JV/test-print')
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'] == 'application/pdf'
+
+    from pypdf import PdfReader
+    reader = PdfReader(BytesIO(resp.data))
+    text = ' '.join(page.extract_text() for page in reader.pages)
+    normalized = ' '.join(text.split())
+
+    assert 'BR-MAIN-DESC' in normalized
+    assert 'BR-MANILA-DESC' not in normalized

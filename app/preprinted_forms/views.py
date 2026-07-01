@@ -19,7 +19,7 @@ from functools import wraps
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
-    current_app, send_file, abort
+    current_app, send_file, abort, session
 )
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -175,7 +175,15 @@ def test_print(vt):
     module = __import__(module_name, fromlist=[class_name])
     model = getattr(module, class_name)
 
-    record = model.query.order_by(model.id.desc()).first()
+    # Branch-scope: without this, a branch-scoped accountant could render
+    # another branch's most recent record (customer/TIN/amounts) since all
+    # five models carry branch_id. Matches how document lists scope to the
+    # selected branch.
+    branch_id = session.get('selected_branch_id')
+    query = model.query
+    if branch_id:
+        query = query.filter_by(branch_id=branch_id)
+    record = query.order_by(model.id.desc()).first()
     if record is None:
         flash('Create a document first to test print.', 'warning')
         return redirect(url_for('preprinted_forms.designer', vt=vt))

@@ -64,7 +64,10 @@
     left: 0;
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    /* Must match pdf.py's _draw_background: pdf.image(path, 0, 0, w, h) stretches
+       the scan to the full page (fpdf2 default keep_aspect_ratio=False) -- fill
+       (not contain) reproduces that same stretch so chip alignment is honest. */
+    object-fit: fill;
     pointer-events: none;
     opacity: .85;
 }

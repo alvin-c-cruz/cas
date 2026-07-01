@@ -4,7 +4,7 @@
 {% block page_title %}Design {{ vt }} Pre-Printed Form{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/preprinted_designer.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/preprinted_designer.css') }}?v=2">
 {% endblock %}
 
 {% block content %}
@@ -34,11 +34,12 @@
 
     <div class="card designer-canvas-wrap">
         <div class="card-body">
+            {# The 3 here (px/mm scale) must agree with `scale: 3` in the
+               window.__PREPRINTED_DESIGNER__ bootstrap object below -- that
+               object is the single source of truth the JS reads; these inline
+               style dimensions are the only other place the literal appears. #}
             <div id="designer-canvas" class="designer-canvas"
-                 style="width: {{ (page_width_mm * 3) | round(0, 'floor') | int }}px; height: {{ (page_height_mm * 3) | round(0, 'floor') | int }}px;"
-                 data-scale="3"
-                 data-page-width-mm="{{ page_width_mm }}"
-                 data-page-height-mm="{{ page_height_mm }}">
+                 style="width: {{ (page_width_mm * 3) | round(0, 'floor') | int }}px; height: {{ (page_height_mm * 3) | round(0, 'floor') | int }}px;">
                 {% if layout and layout.background_image %}
                 <img src="{{ url_for('preprinted_forms.image', vt=vt) }}" alt="{{ vt }} background" class="designer-bg-image">
                 {% endif %}
