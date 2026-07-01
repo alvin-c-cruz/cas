@@ -285,3 +285,112 @@ def test_admin_sidebar_shows_sysadmin(client, db_session, admin_user, main_branc
     _select_branch(client, main_branch.id)
     resp = client.get('/dashboard', follow_redirects=True)
     assert b'User Management' in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Task 8: End-to-end acceptance — CA full read-write in an unassigned branch;
+# CA blocked from all four system-administration areas.
+# ---------------------------------------------------------------------------
+
+def test_ca_full_readwrite_in_unassigned_branch(client, db_session, chief_accountant_user,
+                                                branch_manila):
+    """CA (no branch assignment) can transact in ANY active branch.
+
+    Uses follow_redirects=False and asserts a direct 200 with the form's own
+    page title in the body. This is deliberately NOT `follow_redirects=True`
+    + bare `status_code == 200`: if the branch/module gates pass but the
+    view's OWN role check then denies (flash + redirect to dashboard), a
+    followed redirect still lands on the dashboard with status 200 — a
+    vacuous pass that would hide exactly the kind of gap this acceptance
+    test exists to catch. `resp.data` containing 'New Journal Entry' (the
+    form.html page title) is the non-vacuous signal that CA actually reached
+    the write form, not the dashboard.
+    """
+    _login(client, chief_accountant_user)
+    _select_branch(client, branch_manila.id)   # a branch CA was never assigned to
+    resp = client.get('/journal-entries/create', follow_redirects=False)
+    assert resp.status_code == 200, (
+        f'CA should reach the JE create form directly in an unassigned branch, '
+        f'got {resp.status_code} (Location={resp.headers.get("Location")})'
+    )
+    assert b'New Journal Entry' in resp.data
+
+
+# NOTE: kept as two separate single-purpose test functions (not one loop with a
+# re-login in the middle) — see the Task 6 comment above: session_transaction()
+# reads the last response's cookie, so a 302 denial followed by a same-function
+# re-login can silently keep the denied user's session. Each function here logs
+# in exactly one user and issues no prior request.
+
+def test_ca_blocked_from_all_four_sysadmin_areas(client, db_session, chief_accountant_user,
+                                                 main_branch):
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    for path in ['/users', '/branches', '/settings', '/settings/modules']:
+        resp = client.get(path, follow_redirects=False)
+        assert resp.status_code == 302, (
+            f'CA should be refused (302) at {path}, got {resp.status_code}'
+        )
+
+
+def test_admin_reaches_all_four_sysadmin_areas(client, db_session, admin_user, main_branch):
+    """Positive pair for test_ca_blocked_from_all_four_sysadmin_areas — guards
+    against a vacuous absence test."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    for path in ['/users', '/branches', '/settings', '/settings/modules']:
+        resp = client.get(path, follow_redirects=False)
+        assert resp.status_code == 200, (
+            f'admin should reach {path}, got {resp.status_code}'
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task 8: per-module acceptance — CA reaches every CORE transaction/master-data
+# create form directly (200, not a role-deny 302). These are the write gates
+# swept from `role not in ['accountant', 'admin']` to `has_full_access` so the
+# Chief Accountant is no longer excluded. Core modules only (SI/AP/CR/CD/
+# customers/vendors are always enabled; products/UOM are OPTIONAL and can be
+# disabled by default, so they're deliberately not in this set).
+#
+# follow_redirects=False + a direct 200 is the non-vacuous signal: a role-deny
+# would 302 to the dashboard (which also returns 200 under follow_redirects=True),
+# so only an un-followed 200 proves CA actually reached the write form.
+# ---------------------------------------------------------------------------
+
+_CORE_CREATE_ROUTES = pytest.mark.parametrize('path', [
+    '/sales-invoices/create',
+    '/accounts-payable/create',
+    '/cash-receipts/create',
+    '/cash-disbursements/create',
+    '/customers/create',
+    '/vendors/create',
+])
+
+
+@_CORE_CREATE_ROUTES
+def test_admin_reaches_core_create_forms(client, db_session, admin_user,
+                                         main_branch, path):
+    """Positive control: admin reaches the same forms (guards against a route
+    that 302s for a NON-role reason, which would make the CA test vacuous)."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(path, follow_redirects=False)
+    assert resp.status_code == 200, (
+        f'admin should reach {path} directly, got {resp.status_code} '
+        f'(Location={resp.headers.get("Location")})'
+    )
+
+
+@_CORE_CREATE_ROUTES
+def test_ca_can_reach_core_create_forms(client, db_session, chief_accountant_user,
+                                        main_branch, path):
+    """Per-module guard for the write-gate sweep: CA reaches every core
+    transaction + master create form directly (200), not a role-denial redirect."""
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(path, follow_redirects=False)
+    assert resp.status_code == 200, (
+        f'CA should reach {path} directly, got {resp.status_code} '
+        f'(Location={resp.headers.get("Location")})'
+    )
