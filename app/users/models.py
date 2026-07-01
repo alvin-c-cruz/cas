@@ -114,6 +114,18 @@ class User(UserMixin, db.Model):
         """Set book permissions from a dictionary."""
         self.book_permissions = json.dumps(permissions_dict)
 
+    @property
+    def is_admin(self):
+        """True only for the system administrator role (the 4 sysadmin areas)."""
+        return self.role == 'admin'
+
+    @property
+    def has_full_access(self):
+        """Admin OR Chief Accountant — full accounting reach across all branches.
+        Used for branches, module access, approvals, periods, audit, year-end.
+        Does NOT grant the 4 system-administration areas (those stay is_admin)."""
+        return self.role in ('admin', 'chief_accountant')
+
     def has_book_access(self, book_name):
         """Check if user has access to a specific book."""
         # Admins have access to all books

@@ -82,6 +82,20 @@ def admin_user(db_session):
 
 
 @pytest.fixture
+def chief_accountant_user(db_session):
+    """A Chief Accountant: admin-level accounting reach, all branches, no branch
+    assignment and no book_permissions needed (granted by role)."""
+    user = User(
+        username='chief', email='chief@test.com', full_name='Chief Accountant',
+        role='chief_accountant', is_active=True
+    )
+    user.set_password('chief123')
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
 def accountant_user(db_session, main_branch):
     """Create an accountant user assigned to main_branch.
 
