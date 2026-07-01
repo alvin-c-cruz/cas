@@ -180,3 +180,68 @@ def test_ca_can_finalize_opening_balances(client, db_session, admin_user, chief_
     resp = client.post('/opening-balances/finalize', follow_redirects=True)
     assert AppSettings.get_setting(LOCK_KEY(main_branch.id)) == '1'
     assert b'administrator' not in resp.data  # not refused
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Sysadmin areas stay admin-only; CA is blocked
+# ---------------------------------------------------------------------------
+# Markers chosen: each is a unique heading that ONLY appears when you actually
+# land on the management page, not in any flash message or redirect target.
+# Deny flash messages for branches/users CONTAIN the page title (e.g. "Branch
+# Management"), so we do NOT follow redirects for the CA check — a 302 redirect
+# is the definitive signal that the deny gate fired and CA never reached the
+# management view. With `follow_redirects=False`, flash-message content is
+# irrelevant; only the status code matters.
+#
+# NOTE: The two tests below use SEPARATE test functions (not one combined test)
+# because Flask's test-client `session_transaction()` reads from the last
+# response cookie. If CA gets a 302 (denial), the following `_select_branch`
+# call in the same function would restore CA's `_user_id` from that 302 cookie,
+# causing admin's request to fire as CA. Separate functions avoid this entirely
+# — each function has a single user, a fresh session state, and no prior
+# response to contaminate it.
+
+_SYSADMIN_PATHS = pytest.mark.parametrize('path,page_marker', [
+    ('/users', b'User Management'),
+    ('/branches', b'Branch Management'),
+    ('/settings', b'Company Settings'),
+    ('/settings/modules', b'Modules / Package'),
+    ('/admin/errors', b'Error Logs'),
+])
+
+
+@_SYSADMIN_PATHS
+def test_ca_blocked_from_sysadmin(client, db_session, chief_accountant_user,
+                                   main_branch, path, page_marker):
+    """CA is refused (302) from every sysadmin area — deny gate works.
+
+    Single-user test: only CA is logged in, no prior request.
+    A 302 redirect (not the management page) proves the gate fired.
+    """
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(path)  # no follow_redirects — 302 proves denial
+    assert resp.status_code == 302, (
+        f'CA should be redirected away from {path} (got {resp.status_code})'
+    )
+
+
+@_SYSADMIN_PATHS
+def test_admin_reaches_sysadmin(client, db_session, admin_user,
+                                 main_branch, path, page_marker):
+    """Admin reaches every sysadmin area — deny gate does not over-block.
+
+    Positive (non-vacuous) pair for test_ca_blocked_from_sysadmin.
+    Single-user test: only admin is logged in.
+    The page_marker is a unique heading that only appears on the management
+    page, never in flash messages or the dashboard.
+    """
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(path, follow_redirects=True)
+    assert resp.status_code == 200, (
+        f'Admin should reach {path} (got {resp.status_code})'
+    )
+    assert page_marker in resp.data, (
+        f'Admin response for {path} should contain {page_marker!r}'
+    )
