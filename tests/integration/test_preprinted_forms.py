@@ -1,15 +1,19 @@
-"""Integration tests for the pre-printed voucher forms designer backend (P-69 Task 4).
+"""Integration tests for the pre-printed voucher forms designer backend (P-69 Task 4)
+and the designer UI + test-print route (P-69 Task 5).
 
 Covers the blueprint's permission decorators (_module_required, _edit_required,
-_admin_required) and the save/toggle routes.
+_admin_required) and the save/toggle/design/test-print routes.
 """
 import json
+from datetime import date
+
 import pytest
 from app import db
 from app.settings import AppSettings
 from app.utils.cache_helpers import clear_module_config_cache
 from app.audit.models import AuditLog
 from app.preprinted_forms.models import PrintLayout
+from app.journal_entries.models import JournalEntry, JournalEntryLine
 
 pytestmark = [pytest.mark.integration]
 
@@ -174,3 +178,70 @@ def test_designer_and_save_denied_when_module_disabled(client, db_session, accou
         assert PrintLayout.query.filter_by(voucher_type='JV').first() is None
     finally:
         clear_module_config_cache()
+
+
+# ---------------------------------------------------------------------------
+# Designer UI + test-print route (P-69 Task 5)
+# ---------------------------------------------------------------------------
+
+def test_designer_page_renders_palette_and_controls(client, db_session, accountant_user,
+                                                      main_branch, preprinted_module_enabled):
+    """Designer GET returns 200 and contains a catalog field label, the Save
+    control, the Upload control, the Test-print control, and the versioned JS
+    link (?v=1)."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/preprinted-forms/JV/design')
+    assert resp.status_code == 200
+    body = resp.data
+    # A real catalog label for JV (FIELD_CATALOG['JV']['header'])
+    assert b'JV Number' in body
+    # Save control
+    assert b'Save' in body
+    # Upload control
+    assert b'Upload' in body
+    # Test-print control
+    assert b'Test' in body
+    # JS asset, versioned
+    assert b'preprinted_designer.js?v=1' in body
+
+
+def _build_je(main_branch, cash_account, revenue_account, number='JV-2026-01-0500'):
+    je = JournalEntry(
+        entry_number=number,
+        entry_date=date(2026, 1, 20),
+        description='Test-print JE',
+        entry_type='adjustment',
+        branch_id=main_branch.id,
+        status='draft',
+    )
+    db.session.add(je)
+    db.session.flush()
+    line1 = JournalEntryLine(entry_id=je.id, line_number=1, account_id=cash_account.id,
+                              debit_amount=500, credit_amount=0)
+    line2 = JournalEntryLine(entry_id=je.id, line_number=2, account_id=revenue_account.id,
+                              debit_amount=0, credit_amount=500)
+    db.session.add_all([line1, line2])
+    db.session.commit()
+    return je
+
+
+def test_test_print_redirects_when_no_record(client, db_session, accountant_user,
+                                               main_branch, preprinted_module_enabled):
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/preprinted-forms/JV/test-print')
+    assert resp.status_code == 302
+    assert '/preprinted-forms/JV/design' in resp.headers['Location']
+
+
+def test_test_print_returns_pdf_when_record_exists(client, db_session, accountant_user,
+                                                     main_branch, cash_account, revenue_account,
+                                                     preprinted_module_enabled):
+    _build_je(main_branch, cash_account, revenue_account)
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/preprinted-forms/JV/test-print')
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'] == 'application/pdf'
+    assert resp.data.startswith(b'%PDF')

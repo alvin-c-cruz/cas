@@ -24,12 +24,27 @@ from flask import (
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
+from flask import Response
+
 from app import db
 from app.preprinted_forms.models import PrintLayout, VOUCHER_TYPES
+from app.preprinted_forms.field_catalog import FIELD_CATALOG
+from app.preprinted_forms.pdf import render_preprinted
 from app.users.module_access import module_enabled
 from app.audit.utils import log_audit
 
 preprinted_forms_bp = Blueprint('preprinted_forms', __name__, template_folder='templates')
+
+# voucher type -> model class providing the "most recent record" for test-print.
+# Imported lazily inside test_print() to avoid import-order issues at blueprint
+# import time (these blueprints all import app.db too).
+_TEST_PRINT_MODEL_NAMES = {
+    'SI': ('app.sales_invoices.models', 'SalesInvoice'),
+    'CR': ('app.cash_receipts.models', 'CashReceiptVoucher'),
+    'CD': ('app.cash_disbursements.models', 'CashDisbursementVoucher'),
+    'AP': ('app.accounts_payable.models', 'AccountsPayable'),
+    'JV': ('app.journal_entries.models', 'JournalEntry'),
+}
 
 # Server-side allowlist: extension -> canonical MIME type. SVG excluded (executes
 # JS when served inline) — mirrors app/company_settings/views.py's logo chain.
@@ -130,7 +145,44 @@ def admin():
 def designer(vt):
     _validate_voucher_type(vt)
     layout = PrintLayout.query.filter_by(voucher_type=vt).first()
-    return render_template('preprinted_forms/designer.html', vt=vt, layout=layout)
+    catalog = FIELD_CATALOG.get(vt, {'header': [], 'line_columns': []})
+    header_fields = [{'key': f['key'], 'label': f['label']} for f in catalog['header']]
+    line_columns = [{'key': f['key'], 'label': f['label']} for f in catalog['line_columns']]
+    page_width_mm = float(layout.page_width_mm) if layout else 215.90
+    page_height_mm = float(layout.page_height_mm) if layout else 279.40
+    return render_template(
+        'preprinted_forms/designer.html', vt=vt, layout=layout,
+        header_fields=header_fields, line_columns=line_columns,
+        page_width_mm=page_width_mm, page_height_mm=page_height_mm,
+        fields_json=(layout.fields_json if layout else '[]'),
+        line_band_json=(layout.line_band_json if layout else '{}'),
+        fields=(layout.get_fields() if layout else []),
+        line_band=(layout.get_line_band() if layout else {}),
+    )
+
+
+@preprinted_forms_bp.route('/preprinted-forms/<vt>/test-print')
+@login_required
+@_edit_required
+def test_print(vt):
+    """Render the most recent record of this voucher type through the
+    layout as a test PDF (background drawn for alignment). Redirects back
+    to the designer with a flash if no record of the type exists yet."""
+    _validate_voucher_type(vt)
+    layout = _get_or_create_layout(vt)
+
+    module_name, class_name = _TEST_PRINT_MODEL_NAMES[vt]
+    module = __import__(module_name, fromlist=[class_name])
+    model = getattr(module, class_name)
+
+    record = model.query.order_by(model.id.desc()).first()
+    if record is None:
+        flash('Create a document first to test print.', 'warning')
+        return redirect(url_for('preprinted_forms.designer', vt=vt))
+
+    pdf_bytes = render_preprinted(layout, record, test=True)
+    return Response(pdf_bytes, mimetype='application/pdf',
+                     headers={'Content-Disposition': 'inline; filename="test-print.pdf"'})
 
 
 @preprinted_forms_bp.route('/preprinted-forms/<vt>/save', methods=['POST'])

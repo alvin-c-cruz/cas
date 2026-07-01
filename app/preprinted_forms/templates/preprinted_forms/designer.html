@@ -3,35 +3,141 @@
 {% block title %}Design {{ vt }} Pre-Printed Form{% endblock %}
 {% block page_title %}Design {{ vt }} Pre-Printed Form{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/preprinted_designer.css') }}?v=1">
+{% endblock %}
+
 {% block content %}
 
 <div class="content-header">
     <div>
         <h1 class="page-heading">Design {{ vt }} Pre-Printed Form</h1>
-        <p class="page-subheading">Position data fields on the background image (stub — Task 5 builds the full designer)</p>
+        <p class="page-subheading">Position data fields on the background image, then Save. Right-click a placed field to hide/show it.</p>
     </div>
 </div>
 
-<div class="card">
+<div class="designer-layout">
+    <div class="card designer-palette">
+        <div class="card-body">
+            <h2 class="designer-section-title">Header Fields</h2>
+            <p class="designer-hint">Click a field to place it on the canvas. Drag to reposition; right-click to hide/show.</p>
+            <ul class="designer-palette-list" id="designer-palette-list">
+                {% for f in header_fields %}
+                <li>
+                    <button type="button" class="btn btn-secondary btn-sm designer-palette-btn"
+                            data-key="{{ f.key }}" data-label="{{ f.label }}">{{ f.label }}</button>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="card designer-canvas-wrap">
+        <div class="card-body">
+            <div id="designer-canvas" class="designer-canvas"
+                 style="width: {{ (page_width_mm * 3) | round(0, 'floor') | int }}px; height: {{ (page_height_mm * 3) | round(0, 'floor') | int }}px;"
+                 data-scale="3"
+                 data-page-width-mm="{{ page_width_mm }}"
+                 data-page-height-mm="{{ page_height_mm }}">
+                {% if layout and layout.background_image %}
+                <img src="{{ url_for('preprinted_forms.image', vt=vt) }}" alt="{{ vt }} background" class="designer-bg-image">
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card designer-line-band">
     <div class="card-body">
-        <form method="post" action="{{ url_for('preprinted_forms.upload_image', vt=vt) }}" enctype="multipart/form-data">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <label for="image">Background image (PNG/JPEG, max 2 MB)</label>
-            <input type="file" id="image" name="image" accept=".png,.jpg,.jpeg">
-            <button type="submit" class="btn btn-secondary">Upload Image</button>
-        </form>
+        <h2 class="designer-section-title">Line Band</h2>
+        <p class="designer-hint">Repeating row area for line items. Check the columns to include, and set their position.</p>
 
-        {% if layout and layout.background_image %}
-        <p><img src="{{ url_for('preprinted_forms.image', vt=vt) }}" alt="{{ vt }} background" style="max-width:100%"></p>
-        {% endif %}
+        <div class="designer-line-band-globals">
+            <label>Anchor Y (mm)
+                <input type="number" step="0.5" id="lb-anchor-y" value="{{ line_band.get('anchor_y_mm', 0) }}">
+            </label>
+            <label>Row Height (mm)
+                <input type="number" step="0.5" id="lb-row-height" value="{{ line_band.get('row_height_mm', 6) }}">
+            </label>
+            <label>Max Rows (0 = unlimited)
+                <input type="number" step="1" id="lb-max-rows" value="{{ line_band.get('max_rows', 0) }}">
+            </label>
+            <label>Font Size
+                <input type="number" step="1" id="lb-font-size" value="{{ line_band.get('font_size', 9) }}">
+            </label>
+        </div>
 
-        <form method="post" action="{{ url_for('preprinted_forms.save', vt=vt) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="fields_json" value="{{ layout.fields_json if layout else '[]' }}">
-            <input type="hidden" name="line_band_json" value="{{ layout.line_band_json if layout else '{}' }}">
-            <button type="submit" class="btn btn-primary">Save</button>
-        </form>
+        <table class="data-table designer-line-columns-table" id="lb-columns-table">
+            <thead>
+                <tr>
+                    <th>Include</th>
+                    <th>Column</th>
+                    <th>X (mm)</th>
+                    <th>Width (mm)</th>
+                    <th>Align</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in line_columns %}
+                <tr data-key="{{ c.key }}">
+                    <td><input type="checkbox" class="lb-col-include"></td>
+                    <td>{{ c.label }}</td>
+                    <td><input type="number" step="0.5" class="lb-col-x" value="0"></td>
+                    <td><input type="number" step="0.5" class="lb-col-width" value="40"></td>
+                    <td>
+                        <select class="lb-col-align">
+                            <option value="L">Left</option>
+                            <option value="C">Center</option>
+                            <option value="R">Right</option>
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
+
+<div class="designer-actions-row">
+    <div class="card designer-upload-card">
+        <div class="card-body">
+            <h2 class="designer-section-title">Background Image</h2>
+            <form method="post" action="{{ url_for('preprinted_forms.upload_image', vt=vt) }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label for="image">Upload image (PNG/JPEG, max 2 MB)</label>
+                <input type="file" id="image" name="image" accept=".png,.jpg,.jpeg">
+                <button type="submit" class="btn btn-secondary">Upload Image</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card designer-save-card">
+        <div class="card-body">
+            <form method="post" action="{{ url_for('preprinted_forms.save', vt=vt) }}" id="designer-save-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="fields_json" id="designer-fields-json" value="{{ fields_json }}">
+                <input type="hidden" name="line_band_json" id="designer-line-band-json" value="{{ line_band_json }}">
+                <button type="submit" class="btn btn-primary" id="designer-save-btn">Save</button>
+            </form>
+
+            <a href="{{ url_for('preprinted_forms.test_print', vt=vt) }}" class="btn btn-secondary"
+               id="designer-test-print-btn" target="_blank" rel="noopener">Test Print</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.__PREPRINTED_DESIGNER__ = {
+        vt: {{ vt | tojson }},
+        scale: 3,
+        pageWidthMm: {{ page_width_mm | tojson }},
+        pageHeightMm: {{ page_height_mm | tojson }},
+        headerFields: {{ header_fields | tojson }},
+        lineColumns: {{ line_columns | tojson }},
+        fields: {{ fields | tojson }},
+        lineBand: {{ line_band | tojson }}
+    };
+</script>
+<script src="{{ url_for('static', filename='js/preprinted_designer.js') }}?v=1"></script>
 
 {% endblock %}

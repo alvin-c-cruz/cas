@@ -1,0 +1,155 @@
+/* Pre-printed voucher form designer (P-69 Task 5).
+   Design tokens only -- see app/static/css/style.css for the variable set. */
+
+.designer-layout {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.designer-palette {
+    flex: 0 0 220px;
+    min-width: 200px;
+}
+
+.designer-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 8px;
+}
+
+.designer-hint {
+    font-size: 12px;
+    color: var(--text-3);
+    margin: 0 0 12px;
+}
+
+.designer-palette-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.designer-palette-btn {
+    width: 100%;
+    text-align: left;
+}
+
+.designer-palette-btn.is-placed {
+    opacity: .55;
+}
+
+.designer-canvas-wrap {
+    flex: 1 1 auto;
+    overflow: auto;
+}
+
+.designer-canvas {
+    position: relative;
+    background-color: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.designer-bg-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    opacity: .85;
+}
+
+.designer-chip {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    line-height: 1.4;
+    background-color: rgba(59, 130, 246, .15);
+    border: 1px solid var(--blue);
+    border-radius: 4px;
+    color: var(--text);
+    cursor: move;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.designer-chip.is-hidden {
+    background-color: var(--bg);
+    border-style: dashed;
+    border-color: var(--text-3);
+    color: var(--text-3);
+    opacity: .65;
+}
+
+.designer-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+}
+
+.designer-line-band {
+    margin-bottom: 16px;
+}
+
+.designer-line-band-globals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.designer-line-band-globals label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-2);
+}
+
+.designer-line-band-globals input {
+    width: 120px;
+}
+
+.designer-line-columns-table input[type="number"] {
+    width: 80px;
+}
+
+.designer-actions-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.designer-upload-card,
+.designer-save-card {
+    flex: 1 1 260px;
+}
+
+.designer-save-card .card-body {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
