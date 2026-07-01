@@ -25,9 +25,17 @@ def test_backfill_fills_empty_accountant_and_viewer(db_session):
     db.session.commit()
 
     assert n == 2
+    # Accountant: every non-optional key, all granted.
     assert set(acct.get_book_permissions().keys()) == set(all_permission_keys())
     assert all(acct.get_book_permissions().values())
-    assert all(view.get_book_permissions().values())
+    # Viewer: every key EXCEPT print_layouts (an EDIT-capability key reserved
+    # for staff delegation per P-69 spec — viewers are read-only and are
+    # denied at the _edit_required gate regardless, so granting it would be
+    # inert and misleading). All granted keys are still True.
+    viewer_perms = view.get_book_permissions()
+    assert set(viewer_perms.keys()) == set(all_permission_keys()) - {'print_layouts'}
+    assert 'print_layouts' not in viewer_perms
+    assert all(viewer_perms.values())
 
 
 def test_backfill_skips_admin_staff_and_already_configured(db_session):

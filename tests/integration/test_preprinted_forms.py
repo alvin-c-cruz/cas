@@ -116,6 +116,33 @@ def test_viewer_cannot_save_layout(client, db_session, viewer_user, main_branch,
     assert b'You do not have permission to design pre-printed forms.' in resp.data
 
 
+def test_granted_viewer_still_cannot_edit(client, db_session, viewer_user, main_branch,
+                                           preprinted_module_enabled):
+    """Fix pass 2 (P-69 review): even a viewer explicitly GRANTED the
+    print_layouts book permission must be denied — _edit_required now requires
+    role == 'staff' (not just any role) to honor the grant, so viewers can
+    never edit regardless of what's in their permission dict. Decisive test
+    for Fix 1."""
+    viewer_user.set_branches([main_branch])
+    perms = viewer_user.get_book_permissions()
+    perms['print_layouts'] = True
+    viewer_user.set_book_permissions(perms)
+    db.session.commit()
+    _login(client, viewer_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get('/preprinted-forms/JV/design', follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'You do not have permission to design pre-printed forms.' in resp.data
+
+    resp = client.post('/preprinted-forms/JV/save',
+                        data={'fields_json': '[]', 'line_band_json': '{}'},
+                        follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'You do not have permission to design pre-printed forms.' in resp.data
+    assert PrintLayout.query.filter_by(voucher_type='JV').first() is None
+
+
 def test_admin_can_toggle_layout(client, db_session, admin_user, main_branch,
                                   preprinted_module_enabled):
     _login(client, admin_user)
@@ -351,6 +378,22 @@ def test_nav_link_hidden_for_viewer_even_when_module_enabled(client, db_session,
     deny print_layouts here so the viewer is truly ungranted."""
     perms = viewer_user.get_book_permissions()
     perms['print_layouts'] = False
+    viewer_user.set_book_permissions(perms)
+    viewer_user.set_branches([main_branch])
+    db.session.commit()
+    _login(client, viewer_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/dashboard').data.decode()
+    assert 'Pre-Printed Forms' not in html
+
+
+def test_nav_link_hidden_for_granted_viewer_when_module_enabled(client, db_session, viewer_user,
+                                                                   main_branch, preprinted_module_enabled):
+    """Fix pass 2 (P-69 review): a viewer explicitly GRANTED print_layouts must
+    still never see the nav link — the nav gate mirrors _edit_required and
+    only honors the grant for role == 'staff'."""
+    perms = viewer_user.get_book_permissions()
+    perms['print_layouts'] = True
     viewer_user.set_book_permissions(perms)
     viewer_user.set_branches([main_branch])
     db.session.commit()

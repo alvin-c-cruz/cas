@@ -9,7 +9,8 @@ Permission model (blueprint-enforced; the registry auto-gate in
 listed in MODULE_REGISTRY):
     _module_required  -> instance flag only (module_enabled('preprinted_forms'))
     _edit_required    -> instance flag AND (full access OR accountant OR
-                          has_book_access('print_layouts'))
+                          staff with an explicit print_layouts grant;
+                          viewers never, regardless of grant)
     _admin_required   -> instance flag AND current_user.is_admin
 """
 import json
@@ -69,15 +70,15 @@ def _module_required(f):
 
 
 def _edit_required(f):
-    """Instance flag AND per-user grant (full access, accountant, or explicit
-    print_layouts book permission)."""
+    """Instance flag AND per-user grant (full access, accountant, or staff via
+    the explicit print_layouts book permission; viewers never)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if not module_enabled('preprinted_forms'):
             flash('The pre-printed forms module is not enabled.', 'error')
             return redirect(url_for('dashboard.index'))
         if not (current_user.has_full_access or current_user.role == 'accountant'
-                or current_user.has_book_access('print_layouts')):
+                or (current_user.role == 'staff' and current_user.has_book_access('print_layouts'))):
             flash('You do not have permission to design pre-printed forms.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
