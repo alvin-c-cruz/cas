@@ -10,7 +10,7 @@ from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
-from app.utils.admin_approval import admin_required, sole_admin_can_auto_approve, another_active_admin_exists
+from app.utils.admin_approval import admin_required, sole_full_access_user_can_auto_approve, another_active_reviewer_exists
 from app.utils.cache_helpers import clear_withholding_tax_cache
 import json
 
@@ -130,7 +130,7 @@ def create():
                 module='withholding_tax',
                 noun='Withholding tax',
                 change_data=change_data,
-                auto_approve=sole_admin_can_auto_approve(),
+                auto_approve=sole_full_access_user_can_auto_approve(),
                 list_endpoint='withholding_tax.list_withholding_tax',
                 approved_note='Auto-approved (single admin)'
             )
@@ -198,7 +198,7 @@ def edit(id):
             }
 
             # Check if auto-approval is allowed
-            if sole_admin_can_auto_approve():
+            if sole_full_access_user_can_auto_approve():
                 # Capture old values before update
                 old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
 
@@ -306,7 +306,7 @@ def delete(id):
 
     try:
         # Check if auto-approval is allowed
-        if sole_admin_can_auto_approve():
+        if sole_full_access_user_can_auto_approve():
             # Capture values before delete
             old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
             wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
@@ -404,7 +404,7 @@ def review_change_request(id):
     change_request = db.get_or_404(WithholdingTaxChangeRequest, id)
 
     # Cannot review own requests when another admin exists (four-eyes rule)
-    if change_request.requested_by_id == current_user.id and another_active_admin_exists():
+    if change_request.requested_by_id == current_user.id and another_active_reviewer_exists():
         flash('You cannot review your own change request.', 'error')
         return redirect(url_for('withholding_tax.change_requests'))
 

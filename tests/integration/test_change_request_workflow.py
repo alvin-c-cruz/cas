@@ -36,10 +36,10 @@ def login(client, username='admin', password='admin123'):
 
 @pytest.fixture
 def two_reviewers(admin_user, db_session, main_branch):
-    """Two active admin users so sole_admin_can_auto_approve() is False.
+    """Two active full-access users so sole_full_access_user_can_auto_approve() is False.
 
-    VAT Categories and Withholding Tax are now admin-only (sole-admin auto-approves).
-    With two admins, all creates/updates go to a pending change request.
+    VAT Categories and Withholding Tax are now full-access-only (sole reviewer auto-approves).
+    With two full-access users, all creates/updates go to a pending change request.
     A branch must exist for login to succeed.
     """
     from app.users.models import User
@@ -461,7 +461,7 @@ class TestWithholdingTaxFlashTerminology:
 
     def test_auto_approved_create_success_flash_is_capitalized(self, client, db_session,
                                                                admin_user, main_branch):
-        # Sole active admin => sole_admin_can_auto_approve() is True => direct create.
+        # Sole active full-access user => sole_full_access_user_can_auto_approve() is True => direct create.
         login(client, username='admin', password='admin123')
         resp = client.post('/withholding-tax/create',
                            data=wht_form_data(code='WCX', name='Test WHT'),

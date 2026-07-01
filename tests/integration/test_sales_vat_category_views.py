@@ -91,7 +91,7 @@ class TestSalesVatSelfReviewBlock:
         with client.session_transaction() as sess:
             sess['selected_branch_id'] = db_with_data['branch'].id
 
-        # POST create — 2 admins exist so sole_admin_can_auto_approve() is False
+        # POST create — 2 full-access users exist so sole_full_access_user_can_auto_approve() is False
         # → a SalesVATCategoryChangeRequest is created with status=pending
         client.post('/sales-vat-categories/create', data={
             'code': 'SVAT-TEST1',

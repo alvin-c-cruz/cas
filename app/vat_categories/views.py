@@ -11,7 +11,7 @@ from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
-from app.utils.admin_approval import admin_required, sole_admin_can_auto_approve, another_active_admin_exists
+from app.utils.admin_approval import admin_required, sole_full_access_user_can_auto_approve, another_active_reviewer_exists
 from app.utils.cache_helpers import clear_vat_cache
 import json
 
@@ -129,7 +129,7 @@ def create():
 
             # Shared create flow (mirrors withholding_tax) — auto-approve or
             # pending change request, with audit + flash.
-            auto_approve = sole_admin_can_auto_approve()
+            auto_approve = sole_full_access_user_can_auto_approve()
             result = process_create_change_request(
                 model_cls=VATCategory,
                 cr_cls=VATCategoryChangeRequest,
@@ -202,7 +202,7 @@ def edit(id):
             }
 
             # Check if auto-approval is allowed
-            if sole_admin_can_auto_approve():
+            if sole_full_access_user_can_auto_approve():
                 # Capture old values before update
                 old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
 
@@ -306,7 +306,7 @@ def delete(id):
 
     try:
         # Check if auto-approval is allowed
-        if sole_admin_can_auto_approve():
+        if sole_full_access_user_can_auto_approve():
             # Capture values before delete
             old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id'])
             vat_identifier = f'{vat_category.code} - {vat_category.name}'
@@ -425,7 +425,7 @@ def review_change_request(id):
     change_request = db.get_or_404(VATCategoryChangeRequest, id)
 
     # Cannot review own requests when another admin exists (four-eyes rule)
-    if change_request.requested_by_id == current_user.id and another_active_admin_exists():
+    if change_request.requested_by_id == current_user.id and another_active_reviewer_exists():
         flash('You cannot review your own change request.', 'error')
         return redirect(url_for('vat_categories.change_requests'))
 

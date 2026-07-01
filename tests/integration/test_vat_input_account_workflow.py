@@ -1,6 +1,6 @@
 """Input-tax account flows through the VAT change-request workflow (B-014).
 
-VAT Categories are now admin-only (sole-admin auto-approves).
+VAT Categories are now full-access-only (sole reviewer auto-approves).
 Tests updated to use admin actors for all VAT maintenance operations.
 """
 import json
@@ -42,7 +42,7 @@ def vat_data(account_id, code='V12T', rate='12.00'):
 class TestInputAccountWorkflow:
     def test_admin_create_pending_then_approved_applies_account(
             self, client, db_session, admin_user, accountant_user, main_branch):
-        """Two admins (admin + admin2) so sole_admin_can_auto_approve() is False.
+        """Two full-access users (admin + admin2) so sole_full_access_user_can_auto_approve() is False.
         admin2 approves (accountant cannot access admin-only vat-categories)."""
         from app.users.models import User
         second_admin = User(username='admin2', email='admin2@example.com', full_name='Second Admin', role='admin',
@@ -77,8 +77,8 @@ class TestInputAccountWorkflow:
 
     def test_sole_admin_autoapprove_sets_account(
             self, client, db_session, admin_user, accountant_user, main_branch):
-        """Sole active admin => sole_admin_can_auto_approve() is True => direct create.
-        (accountant_user exists but is not an admin, so admin count = 1.)"""
+        """Sole active full-access user => sole_full_access_user_can_auto_approve() is True => direct create.
+        (accountant_user exists but is not a full-access user, so full-access count = 1.)"""
         acct = make_account(db_session, code='10503', name='Input VAT - Services')
         login(client, 'admin', 'admin123')
         client.post('/vat-categories/create', data=vat_data(acct.id, code='V12S'),

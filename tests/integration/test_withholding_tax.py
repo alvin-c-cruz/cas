@@ -13,7 +13,7 @@ def login(client, username='admin', password='admin123'):
                 follow_redirects=True)
 
 
-# Two-admin fixture so sole_admin_can_auto_approve() returns False for the
+# Two-reviewer fixture so sole_full_access_user_can_auto_approve() returns False for the
 # form-fields test (which only checks HTML, not the approval outcome).
 @pytest.fixture
 def two_reviewers(admin_user, db_session, main_branch):

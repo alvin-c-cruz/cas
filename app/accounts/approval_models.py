@@ -89,10 +89,10 @@ class AccountChangeRequest(db.Model):
         """
         from app.users.models import User
 
-        # Admin can always approve, including own requests
+        # Admin / Chief Accountant can always approve, including own requests
         reviewer = User.query.filter_by(username=username).first()
-        if reviewer and reviewer.role == 'admin':
-            return True  # admin always can approve, including own requests
+        if reviewer and reviewer.has_full_access:
+            return True  # full-access users always can approve, including own requests
 
         # Get total number of accountants (including admins who can act as accountants)
         total_accountants = User.query.filter(

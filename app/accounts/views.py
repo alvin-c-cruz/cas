@@ -21,7 +21,7 @@ def accountant_or_admin_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('users.login'))
-        if current_user.role not in ['accountant', 'admin']:
+        if not (current_user.role == 'accountant' or current_user.has_full_access):
             flash('Only Accountants and Administrators can modify the Chart of Accounts.', 'error')
             return redirect(url_for('accounts.list_accounts'))
         return f(*args, **kwargs)

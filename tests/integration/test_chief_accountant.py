@@ -90,3 +90,19 @@ def test_ca_sees_approval_items_list(db_session, chief_accountant_user):
     items = gather_approval_items(chief_accountant_user)
     assert len(items) >= 1
     assert any(item['type'] == 'Chart of Accounts' for item in items)
+
+
+def test_ca_can_approve_coa_change_request(db_session, chief_accountant_user):
+    from app.accounts.approval_models import AccountChangeRequest
+    cr = AccountChangeRequest(change_type='create', change_data='{}',
+                              status='pending', requested_by='accountant')
+    db.session.add(cr)
+    db.session.commit()
+    assert cr.can_be_approved_by(chief_accountant_user.username) is True
+
+
+def test_ca_cannot_reach_vat_review_is_now_allowed(client, db_session, chief_accountant_user, main_branch):
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/vat-categories/', follow_redirects=True)
+    assert b'Only Administrators can access VAT Categories' not in resp.data
