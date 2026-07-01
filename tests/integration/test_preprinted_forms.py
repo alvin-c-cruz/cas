@@ -91,6 +91,8 @@ def test_granted_staff_can_save_layout(client, db_session, staff_user, main_bran
 
 def test_viewer_cannot_save_layout(client, db_session, viewer_user, main_branch,
                                     preprinted_module_enabled):
+    viewer_user.set_branches([main_branch])
+    db.session.commit()
     _login(client, viewer_user)
     _select_branch(client, main_branch.id)
     resp = client.post('/preprinted-forms/JV/save',
@@ -98,6 +100,7 @@ def test_viewer_cannot_save_layout(client, db_session, viewer_user, main_branch,
                         follow_redirects=True)
     assert resp.status_code == 200
     assert PrintLayout.query.filter_by(voucher_type='JV').first() is None
+    assert b'You do not have permission to design pre-printed forms.' in resp.data
 
 
 def test_admin_can_toggle_layout(client, db_session, admin_user, main_branch,
@@ -117,6 +120,35 @@ def test_non_admin_cannot_toggle_layout(client, db_session, accountant_user, mai
     _select_branch(client, main_branch.id)
     resp = client.post('/preprinted-forms/JV/toggle', follow_redirects=True)
     assert resp.status_code == 200
+    layout = PrintLayout.query.filter_by(voucher_type='JV').first()
+    assert layout is None  # never created; toggle refused before get-or-create
+
+
+def test_chief_accountant_can_save_layout(client, db_session, chief_accountant_user,
+                                           main_branch, preprinted_module_enabled):
+    """Chief Accountant has full access and can save layouts."""
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    fields = json.dumps([{'key': 'invoice_number', 'x': 15, 'y': 25}])
+    line_band = json.dumps({'y_start': 110, 'row_height': 14})
+    resp = client.post('/preprinted-forms/JV/save',
+                        data={'fields_json': fields, 'line_band_json': line_band},
+                        follow_redirects=True)
+    assert resp.status_code == 200
+    layout = PrintLayout.query.filter_by(voucher_type='JV').first()
+    assert layout is not None
+    assert layout.get_fields() == [{'key': 'invoice_number', 'x': 15, 'y': 25}]
+    assert layout.get_line_band() == {'y_start': 110, 'row_height': 14}
+
+
+def test_chief_accountant_cannot_toggle(client, db_session, chief_accountant_user,
+                                         main_branch, preprinted_module_enabled):
+    """Chief Accountant cannot toggle (admin-only)."""
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/preprinted-forms/JV/toggle', follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'Only administrators can enable pre-printed forms.' in resp.data
     layout = PrintLayout.query.filter_by(voucher_type='JV').first()
     assert layout is None  # never created; toggle refused before get-or-create
 
