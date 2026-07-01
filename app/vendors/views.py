@@ -48,7 +48,7 @@ def staff_or_above_required(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('users.login'))
-        if current_user.role not in ['staff', 'accountant', 'admin']:
+        if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
             flash('You do not have permission to perform this action.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)

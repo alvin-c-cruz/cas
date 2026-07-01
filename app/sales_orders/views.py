@@ -85,7 +85,7 @@ def generate_so_number():
 
 def _role_gate():
     """Returns a redirect if the current user may not write SOs, else None."""
-    if current_user.role not in ['staff', 'accountant', 'admin']:
+    if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(url_for('sales_orders.list'))
     return None
@@ -392,7 +392,7 @@ def confirm(id):
         abort(404)
 
     # Role guard: staff/accountant/admin (mirrors detail.html gating)
-    if current_user.role not in ['staff', 'accountant', 'admin']:
+    if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
         flash('You do not have permission to confirm Sales Orders.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 
