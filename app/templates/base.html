@@ -1071,7 +1071,7 @@
                 <span class="nav-icon">🏠</span>
                 <span class="nav-text">Dashboard</span>
             </a>
-            {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant', 'staff'] %}
+            {% if current_user.is_authenticated and current_user.role in ['admin', 'accountant', 'staff', 'chief_accountant'] %}
             <a href="{{ url_for('dashboard.action_items') }}" class="nav-item {% if request.endpoint == 'dashboard.action_items' %}active{% endif %}">
                 <span class="nav-icon">⚡</span>
                 <span class="nav-text">Action Items</span>
@@ -1221,8 +1221,8 @@
             </div>
             {% endfor %}
 
-            <!-- Admin Section (admin only) -->
-            {% if current_user.is_authenticated and current_user.role == 'admin' %}
+            {# Admin Section (sysadmin only — CA is has_full_access but NOT is_admin) #}
+            {% if current_user.is_authenticated and current_user.is_admin %}
             <div class="nav-section">
                 <div class="nav-label nav-label-collapsible" data-section="admin">
                     <span>Admin</span>
@@ -1245,6 +1245,18 @@
                         <span class="nav-icon">📧</span>
                         <span class="nav-text">Approved Emails</span>
                     </a>
+                </div>
+            </div>
+            {% endif %}
+
+            {# Accounting oversight (admin + Chief Accountant via has_full_access) #}
+            {% if current_user.is_authenticated and current_user.has_full_access %}
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="accounting-oversight">
+                    <span>Accounting</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-accounting-oversight">
                     <a href="{{ url_for('vat_categories.list_vat_categories') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_categories.') %}active{% endif %}">
                         <span class="nav-icon">📊</span>
                         <span class="nav-text">VAT Categories</span>
@@ -1298,6 +1310,7 @@
                 <div class="user-name">{{ current_user.full_name }}</div>
                 <div class="user-role-label">
                     {% if current_user.role == 'admin' %}Administrator
+                    {% elif current_user.role == 'chief_accountant' %}Chief Accountant
                     {% elif current_user.role == 'accountant' %}Accountant
                     {% elif current_user.role == 'staff' %}Staff
                     {% elif current_user.role == 'viewer' %}Viewer
@@ -1334,6 +1347,7 @@
                             <div class="topbar-user-name">{{ current_user.full_name }}</div>
                             <div class="topbar-user-role">
                                 {% if current_user.role == 'admin' %}Administrator
+                                {% elif current_user.role == 'chief_accountant' %}Chief Accountant
                                 {% elif current_user.role == 'accountant' %}Accountant
                                 {% elif current_user.role == 'staff' %}Staff
                                 {% elif current_user.role == 'viewer' %}Viewer

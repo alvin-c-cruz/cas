@@ -255,3 +255,33 @@ def test_admin_reaches_sysadmin(client, db_session, admin_user,
         assert page_marker in resp.data, (
             f'Admin response for {path} should contain {page_marker!r}'
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Sidebar nav — CA sees accounting/audit, sysadmin stays hidden
+# ---------------------------------------------------------------------------
+
+def test_ca_sidebar_shows_accounting_hides_sysadmin(client, db_session, chief_accountant_user,
+                                                    main_branch):
+    _login(client, chief_accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/dashboard', follow_redirects=True)
+    body = resp.data
+    # Accounting oversight visible:
+    assert b'VAT Categories' in body
+    assert b'Withholding Tax' in body
+    assert b'Audit Log' in body
+    # Sysadmin hidden (Jinja {# #} comments in the template near these so the
+    # names don't leak into the HTML — see CLAUDE.md gotcha):
+    assert b'User Management' not in body
+    assert b'Branch Management' not in body
+    assert b'Company Settings' not in body
+
+
+def test_admin_sidebar_shows_sysadmin(client, db_session, admin_user, main_branch):
+    """Positive pair for test_ca_sidebar_shows_accounting_hides_sysadmin — guards
+    against a vacuous absence test (e.g. if the nav section were removed entirely)."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/dashboard', follow_redirects=True)
+    assert b'User Management' in resp.data
