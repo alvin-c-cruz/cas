@@ -74,7 +74,19 @@ def test_never_includes_inaccessible_module(db_session):
 
 
 def test_every_registry_entry_has_valid_area_and_group():
+    """Every entry that build_sidebar can render needs a valid area/group.
+
+    Deliberate exception (P-69 Task 6): entries with `endpoints == ()` are
+    endpoint-less by design (e.g. preprinted_forms/print_layouts) — the
+    before_request auto-gate never maps a route to them, and they carry
+    area=None/group=None on purpose so build_sidebar never surfaces them; their
+    nav (if any) is added by hand instead. See app/users/module_access.py.
+    """
     for m in MODULE_REGISTRY:
+        if m['endpoints'] == ():
+            assert m.get('area') is None, f"{m['key']} is endpoint-less but has a non-None area"
+            assert m.get('group') is None, f"{m['key']} is endpoint-less but has a non-None group"
+            continue
         assert m.get('area') in AREA_ORDER, f"{m['key']} has invalid/missing area {m.get('area')!r}"
         assert m.get('group') in GROUP_ORDER, f"{m['key']} has invalid/missing group {m.get('group')!r}"
 

@@ -27,7 +27,7 @@ from werkzeug.utils import secure_filename
 from flask import Response
 
 from app import db
-from app.preprinted_forms.models import PrintLayout, VOUCHER_TYPES
+from app.preprinted_forms.models import PrintLayout, VOUCHER_TYPES, VOUCHER_LABELS
 from app.preprinted_forms.field_catalog import FIELD_CATALOG
 from app.preprinted_forms.pdf import render_preprinted
 from app.users.module_access import module_enabled
@@ -136,7 +136,8 @@ def admin():
     """List the 5 voucher types with their pre-printed active/inactive toggle."""
     layouts = {l.voucher_type: l for l in PrintLayout.query.all()}
     return render_template('preprinted_forms/admin_toggles.html',
-                            voucher_types=VOUCHER_TYPES, layouts=layouts)
+                            voucher_types=VOUCHER_TYPES, voucher_labels=VOUCHER_LABELS,
+                            layouts=layouts)
 
 
 @preprinted_forms_bp.route('/preprinted-forms/<vt>/design')

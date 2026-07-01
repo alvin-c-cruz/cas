@@ -5,6 +5,14 @@ from app.utils import ph_now
 
 VOUCHER_TYPES = ('SI', 'CR', 'CD', 'AP', 'JV')
 
+VOUCHER_LABELS = {
+    'SI': 'Sales Invoice',
+    'CR': 'Cash Receipt Voucher',
+    'CD': 'Cash Disbursement Voucher',
+    'AP': 'Accounts Payable Voucher',
+    'JV': 'Journal Voucher',
+}
+
 
 class PrintLayout(db.Model):
     __tablename__ = 'print_layouts'

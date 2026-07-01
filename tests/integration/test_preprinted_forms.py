@@ -97,6 +97,14 @@ def test_granted_staff_can_save_layout(client, db_session, staff_user, main_bran
 def test_viewer_cannot_save_layout(client, db_session, viewer_user, main_branch,
                                     preprinted_module_enabled):
     viewer_user.set_branches([main_branch])
+    # viewer_user's conftest fixture grants default_all_permissions() (every
+    # non-optional/core registry key) for unrelated tests' convenience. Now that
+    # 'print_layouts' is a core key (P-69 Task 6), that blanket grant would
+    # include it too — explicitly deny it here so this test actually exercises
+    # an ungranted viewer, matching its name/intent.
+    perms = viewer_user.get_book_permissions()
+    perms['print_layouts'] = False
+    viewer_user.set_book_permissions(perms)
     db.session.commit()
     _login(client, viewer_user)
     _select_branch(client, main_branch.id)
@@ -158,13 +166,27 @@ def test_chief_accountant_cannot_toggle(client, db_session, chief_accountant_use
     assert layout is None  # never created; toggle refused before get-or-create
 
 
-@pytest.mark.skip(reason='TODO(P-69 Task 6): module_enabled() returns True for any key not yet '
-                         'in MODULE_REGISTRY (core/unknown -> True, override ignored) — see '
-                         'app/users/module_access.py::module_enabled. The preprinted_forms '
-                         'registry entry ships in Task 6; until then this disabled-module case '
-                         'cannot be exercised through the real registry lookup without faking it.')
-def test_designer_and_save_denied_when_module_disabled(client, db_session, accountant_user,
-                                                        main_branch):
+def test_designer_and_save_denied_when_module_disabled_by_default(client, db_session,
+                                                                    accountant_user, main_branch):
+    """P-69 Task 6: 'preprinted_forms' is now a real MODULE_REGISTRY entry with
+    optional=True, default_enabled=False. With NO AppSettings override at all,
+    module_enabled('preprinted_forms') must resolve to False (not the old
+    core/unknown -> True fallback), and the designer/save routes must deny."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/preprinted-forms/JV/design', follow_redirects=True)
+    assert b'not enabled' in resp.data.lower()
+    resp = client.post('/preprinted-forms/JV/save',
+                        data={'fields_json': '[]', 'line_band_json': '{}'},
+                        follow_redirects=True)
+    assert PrintLayout.query.filter_by(voucher_type='JV').first() is None
+
+
+def test_designer_and_save_denied_when_module_explicitly_disabled(client, db_session,
+                                                                   accountant_user, main_branch):
+    """An admin who explicitly set the override to '0' (e.g. after having enabled it)
+    also denies — mirrors test above but through an explicit AppSettings row rather
+    than relying on default_enabled."""
     AppSettings.set_setting('module_enabled:preprinted_forms', '0')
     db.session.commit()
     clear_module_config_cache()
@@ -308,3 +330,78 @@ def test_test_print_is_branch_scoped(client, db_session, accountant_user, main_b
 
     assert 'BR-MAIN-DESC' in normalized
     assert 'BR-MANILA-DESC' not in normalized
+
+
+# ---------------------------------------------------------------------------
+# Manual nav link + admin toggles page (P-69 Task 6)
+# ---------------------------------------------------------------------------
+
+def test_nav_link_visible_for_accountant_when_module_enabled(client, db_session, accountant_user,
+                                                               main_branch, preprinted_module_enabled):
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/dashboard').data.decode()
+    assert 'Pre-Printed Forms' in html
+
+
+def test_nav_link_hidden_for_viewer_even_when_module_enabled(client, db_session, viewer_user,
+                                                               main_branch, preprinted_module_enabled):
+    """viewer_user's fixture grants default_all_permissions() (every core key,
+    now including print_layouts) for unrelated tests' convenience — explicitly
+    deny print_layouts here so the viewer is truly ungranted."""
+    perms = viewer_user.get_book_permissions()
+    perms['print_layouts'] = False
+    viewer_user.set_book_permissions(perms)
+    viewer_user.set_branches([main_branch])
+    db.session.commit()
+    _login(client, viewer_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/dashboard').data.decode()
+    assert 'Pre-Printed Forms' not in html
+
+
+def test_nav_link_hidden_for_ungranted_staff_when_module_enabled(client, db_session, staff_user,
+                                                                   main_branch, preprinted_module_enabled):
+    staff_user.set_branches([main_branch])
+    db.session.commit()
+    _login(client, staff_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/dashboard').data.decode()
+    assert 'Pre-Printed Forms' not in html
+
+
+def test_nav_link_visible_for_granted_staff_when_module_enabled(client, db_session, staff_user,
+                                                                  main_branch, preprinted_module_enabled):
+    staff_user.set_branches([main_branch])
+    perms = staff_user.get_book_permissions()
+    perms['print_layouts'] = True
+    staff_user.set_book_permissions(perms)
+    db.session.commit()
+    _login(client, staff_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/dashboard').data.decode()
+    assert 'Pre-Printed Forms' in html
+
+
+def test_nav_link_hidden_for_accountant_when_module_disabled(client, db_session, accountant_user,
+                                                               main_branch):
+    """Module is default-off (no preprinted_module_enabled fixture here) — even an
+    accountant, who would otherwise pass the per-user gate, must not see the link."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/dashboard').data.decode()
+    assert 'Pre-Printed Forms' not in html
+
+
+def test_admin_toggles_page_renders_five_voucher_rows(client, db_session, admin_user, main_branch,
+                                                        preprinted_module_enabled):
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/preprinted-forms')
+    assert resp.status_code == 200
+    body = resp.data
+    for vt in ('SI', 'CR', 'CD', 'AP', 'JV'):
+        assert vt.encode() in body
+    # Admin sees the toggle action and the designer link
+    assert b'/preprinted-forms/SI/toggle' in body
+    assert b'/preprinted-forms/SI/design' in body

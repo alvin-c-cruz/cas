@@ -18,6 +18,7 @@
             <thead>
                 <tr>
                     <th>VOUCHER TYPE</th>
+                    <th>HAS LAYOUT?</th>
                     <th>STATUS</th>
                     <th>ACTIONS</th>
                 </tr>
@@ -25,10 +26,25 @@
             <tbody>
                 {% for vt in voucher_types %}
                 {% set layout = layouts.get(vt) %}
+                {# "Has layout" = at least one field has been placed, or a background
+                   reference image has been uploaded — i.e. the designer has been
+                   used at least once for this voucher type. #}
+                {% set has_layout = layout and (layout.get_fields() or layout.background_image) %}
                 <tr>
-                    <td>{{ vt }}</td>
-                    <td>{{ 'Active' if layout and layout.active else 'Inactive' }}</td>
+                    <td>{{ voucher_labels.get(vt, vt) }} ({{ vt }})</td>
                     <td>
+                        <span class="badge {{ 'badge-active' if has_layout else 'badge-inactive' }}">
+                            {{ 'Yes' if has_layout else 'No' }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge {{ 'badge-active' if layout and layout.active else 'badge-inactive' }}">
+                            {{ 'Active' if layout and layout.active else 'Inactive' }}
+                        </span>
+                    </td>
+                    <td>
+                        {# Toggle is admin-only — visible only to current_user.is_admin, matching
+                           the blueprint's _admin_required decorator on the toggle route. #}
                         {% if current_user.is_admin %}
                         <form method="post" action="{{ url_for('preprinted_forms.toggle', vt=vt) }}" style="display:inline">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
