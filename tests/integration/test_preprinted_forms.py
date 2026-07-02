@@ -30,6 +30,19 @@ def _login(client, user):
     with client.session_transaction() as sess:
         sess['_user_id'] = str(user.id)
         sess['_fresh'] = True
+    # Every test in this module shares one long-lived app context (pushed once by
+    # the db_session fixture's `with app.app_context():`), so Flask's test client
+    # reuses that same context -- and therefore the same `flask.g` -- across every
+    # simulated request in a test. Flask-Login caches the resolved user on
+    # `g._login_user` for the lifetime of the app context, so a test that logs in
+    # as one user and later switches to another (Task 8's full-flow test does
+    # this: accountant saves, then admin toggles) would otherwise keep seeing the
+    # FIRST user on every subsequent request even though the session cookie's
+    # _user_id has genuinely changed. Popping the cache here makes _login() a
+    # true identity switch regardless of how many logins happen in one test.
+    from flask import g
+    if hasattr(g, '_login_user'):
+        del g._login_user
 
 
 def _select_branch(client, branch_id):
@@ -654,3 +667,184 @@ def test_html_fallback_when_layout_inactive(client, db_session, admin_user, main
     assert resp.status_code == 200
     assert resp.headers['Content-Type'].startswith('text/html')
     assert _HTML_PRINT_MARKER in resp.data
+
+
+# ---------------------------------------------------------------------------
+# End-to-end acceptance tests + module-off default (P-69 Task 8)
+# ---------------------------------------------------------------------------
+#
+# Module-off default HTML behavior and the "draft JV still prints / draft SI
+# under posted_only still redirects even with an active layout" guard+PDF
+# interplay are already exercised by Task 7's tests above:
+#   - test_print_guard_allows_posted_status (SI/AP/CR/CD, module OFF -> HTML)
+#   - test_jv_print_default_allows_any_status_no_setting (JV, module OFF -> HTML)
+#   - test_guard_fires_before_pdf_path (draft SI, posted_only, active layout -> redirect)
+#   - test_jv_pdf_routing_when_module_enabled_and_layout_active (draft JV, active
+#     layout -> PDF; _build_je's default status is 'draft')
+# so they are not duplicated here. What's added below: a compact parametrized
+# sweep of all 5 routes (module off, no settings overrides at all) as a single
+# belt-and-suspenders check; admin-index/toggle denial when the module is off
+# (not covered above -- only design/save were); the full JV designer->print
+# flow; and per-voucher PDF text-content smoke tests for SI/AP/CR/CD.
+
+def test_module_off_default_all_five_print_routes_return_html(client, db_session, admin_user,
+                                                                main_branch, cash_account,
+                                                                revenue_account):
+    """(a) Module-off default, no AppSettings overrides at all: every one of the
+    5 print routes (SI/AP/CR/CD/JV) returns the existing HTML print template,
+    never a PDF."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    si = _build_record('SI', main_branch, cash_account, status='posted')
+    ap = _build_record('AP', main_branch, cash_account, status='posted')
+    cr = _build_record('CR', main_branch, cash_account, status='posted')
+    cd = _build_record('CD', main_branch, cash_account, status='posted')
+    je = _build_je(main_branch, cash_account, revenue_account, number='JV-PP-0900', status='posted')
+
+    paths = {
+        'SI': f'/sales-invoices/{si.id}/print',
+        'AP': f'/accounts-payable/{ap.id}/print',
+        'CR': f'/cash-receipts/{cr.id}/print',
+        'CD': f'/cash-disbursements/{cd.id}/print',
+        'JV': f'/journal-entries/{je.id}/print',
+    }
+    for vt, path in paths.items():
+        resp = client.get(path)
+        assert resp.status_code == 200, vt
+        assert resp.headers['Content-Type'].startswith('text/html'), vt
+        assert _HTML_PRINT_MARKER in resp.data, vt
+
+
+def test_admin_index_denied_when_module_disabled_by_default(client, db_session, admin_user,
+                                                              main_branch):
+    """(a) The admin toggles list (/preprinted-forms) is also gated by
+    _module_required -- denied when the module is off by default."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/preprinted-forms', follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'not enabled' in resp.data.lower()
+
+
+def test_toggle_denied_when_module_disabled_by_default(client, db_session, admin_user, main_branch):
+    """(a) The toggle route is gated by _admin_required, which checks the
+    module flag first -- denied (and no layout row created) when off by default."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/preprinted-forms/JV/toggle', follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'not enabled' in resp.data.lower()
+    assert PrintLayout.query.filter_by(voucher_type='JV').first() is None
+
+
+def test_full_flow_jv_designer_to_pdf(client, db_session, accountant_user, admin_user, main_branch,
+                                       cash_account, revenue_account, preprinted_module_enabled):
+    """(b) Full flow: module enabled (fixture) -> accountant saves a JV layout
+    with visible 'number' + 'particulars' header fields, a hidden 'reference'
+    field, and a debit/credit line band -> background_image set directly ->
+    admin toggles active -> a posted JV prints as application/pdf whose
+    extracted text contains the JV number, the description, and a line's
+    account code/debit amount -- and the hidden field's value does NOT appear."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+
+    fields = json.dumps([
+        {'key': 'number', 'x_mm': 20, 'y_mm': 15, 'font_size': 10, 'align': 'L', 'visible': True},
+        {'key': 'particulars', 'x_mm': 20, 'y_mm': 25, 'font_size': 10, 'align': 'L', 'visible': True},
+        {'key': 'reference', 'x_mm': 20, 'y_mm': 35, 'font_size': 10, 'align': 'L', 'visible': False},
+    ])
+    line_band = json.dumps({
+        'anchor_y_mm': 100, 'row_height_mm': 8, 'font_size': 9,
+        'columns': [
+            {'key': 'account_code', 'x_mm': 10, 'align': 'L'},
+            {'key': 'account_name', 'x_mm': 40, 'align': 'L'},
+            {'key': 'debit', 'x_mm': 100, 'align': 'R'},
+            {'key': 'credit', 'x_mm': 130, 'align': 'R'},
+        ],
+    })
+    resp = client.post('/preprinted-forms/JV/save',
+                        data={'fields_json': fields, 'line_band_json': line_band},
+                        follow_redirects=True)
+    assert resp.status_code == 200
+    layout = PrintLayout.query.filter_by(voucher_type='JV').first()
+    assert layout is not None
+    assert layout.get_fields()[0]['key'] == 'number'
+    assert layout.get_line_band()['columns'][0]['key'] == 'account_code'
+
+    # Set background_image directly (bypassing the upload route, per brief).
+    layout.background_image = 'jv-background.png'
+    db.session.commit()
+
+    # Admin toggles active.
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/preprinted-forms/JV/toggle', follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(layout)
+    assert layout.active is True
+
+    # A posted JV with a distinct description + a hidden reference + account lines.
+    je = _build_je(main_branch, cash_account, revenue_account, number='JV-2026-07-0900',
+                    status='posted')
+    je.description = 'FULL-FLOW-JV-DESCRIPTION'
+    je.reference = 'HIDDEN-REF-999'
+    db.session.commit()
+
+    resp = client.get(f'/journal-entries/{je.id}/print')
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'] == 'application/pdf'
+
+    from pypdf import PdfReader
+    reader = PdfReader(BytesIO(resp.data))
+    text = ' '.join(page.extract_text() for page in reader.pages)
+    normalized = ' '.join(text.split())
+
+    assert 'JV-2026-07-0900' in normalized
+    assert 'FULL-FLOW-JV-DESCRIPTION' in normalized
+    assert '1001' in normalized       # cash_account code, via the line band
+    assert '500.00' in normalized     # line debit amount, via the line band
+    assert 'HIDDEN-REF-999' not in normalized
+
+
+@pytest.mark.parametrize('vt', ['SI', 'AP', 'CR', 'CD'])
+def test_per_voucher_smoke_pdf_contains_document_number(client, db_session, admin_user, main_branch,
+                                                          cash_account, preprinted_module_enabled, vt):
+    """(c) Per-voucher smoke: an active layout (one visible 'number' field +
+    background set) -> the doc's print route returns a PDF whose extracted
+    text contains the document's own number."""
+    layout = PrintLayout(voucher_type=vt, active=True, background_image='x.png',
+                          page_width_mm=215.9, page_height_mm=279.4)
+    layout.set_fields([
+        {'key': 'number', 'x_mm': 20, 'y_mm': 20, 'font_size': 10, 'align': 'L', 'visible': True},
+    ])
+    layout.set_line_band({})
+    db.session.add(layout)
+    db.session.commit()
+
+    rec = _build_record(vt, main_branch, cash_account, status='posted')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(VT_INFO[vt]['print_path'](rec.id))
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'] == 'application/pdf'
+
+    from pypdf import PdfReader
+    reader = PdfReader(BytesIO(resp.data))
+    text = ' '.join(page.extract_text() for page in reader.pages)
+    normalized = ' '.join(text.split())
+
+    # NOTE: not a dict-literal lookup -- each SI/AP/CR/CD model only defines its
+    # own number attribute, so building a dict of all four eagerly would raise
+    # AttributeError on the branches not taken (e.g. a SalesInvoice has no
+    # ap_number).
+    if vt == 'SI':
+        expected_number = rec.invoice_number
+    elif vt == 'AP':
+        expected_number = rec.ap_number
+    elif vt == 'CR':
+        expected_number = rec.crv_number
+    else:
+        expected_number = rec.cdv_number
+    assert expected_number in normalized
