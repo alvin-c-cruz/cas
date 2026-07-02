@@ -1,8 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='opening_balances.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='transactions.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='opening_balances.css') }}?v=2">
 {# Save only edits drafts: a posted opening is read-only until re-opened (see save_draft guard). #}
 {% set editable = can_edit and not locked and (not entry or entry.status == 'draft') %}
+
+{# One row of the opening-balances grid — used by the entry rows, the starter row,
+   and the #ob-row-template that JS clones for "+ Add line". #}
+{% macro ob_row(accounts, line=None, editable=True) %}
+<tr class="ob-line">
+  <td>
+    <select name="account_id" class="ob-account" {{ 'disabled' if not editable else '' }}>
+      <option value="" placeholder>— Select account —</option>
+      {% for a in accounts %}
+        <option value="{{ a.id }}" {{ 'disabled' if a.is_group else '' }}
+          {{ 'selected' if line and a.id == line.account_id else '' }}>
+          {{ '— ' * a.depth }}{{ a.code }} : {{ a.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </td>
+  <td class="num"><input type="text" name="debit" class="ob-debit"
+        value="{{ '%.2f'|format(line.debit_amount) if line and line.debit_amount else '' }}"
+        {{ 'disabled' if not editable else '' }}></td>
+  <td class="num"><input type="text" name="credit" class="ob-credit"
+        value="{{ '%.2f'|format(line.credit_amount) if line and line.credit_amount else '' }}"
+        {{ 'disabled' if not editable else '' }}></td>
+  <td><button type="button" class="ob-remove" {{ 'disabled' if not editable else '' }}>×</button></td>
+</tr>
+{% endmacro %}
+
 <div class="page-opening-balances">
   <header class="page-head">
     <h1>Opening Balances</h1>
@@ -34,49 +62,17 @@
       <tbody>
         {% if entry %}
           {% for line in entry.lines %}
-          <tr class="ob-line">
-            <td>
-              <select name="account_id" class="ob-account" {{ 'disabled' if not editable else '' }}>
-                {% for a in accounts %}
-                  <option value="{{ a.id }}" {{ 'disabled' if a.is_group else '' }}
-                    {{ 'selected' if a.id == line.account_id else '' }}>
-                    {{ '— ' * a.depth }}{{ a.code }} : {{ a.name }}
-                  </option>
-                {% endfor %}
-              </select>
-            </td>
-            <td class="num"><input type="text" name="debit" class="ob-debit"
-                  value="{{ '%.2f'|format(line.debit_amount) if line.debit_amount else '' }}"
-                  {{ 'disabled' if not editable else '' }}></td>
-            <td class="num"><input type="text" name="credit" class="ob-credit"
-                  value="{{ '%.2f'|format(line.credit_amount) if line.credit_amount else '' }}"
-                  {{ 'disabled' if not editable else '' }}></td>
-            <td><button type="button" class="ob-remove" {{ 'disabled' if not editable else '' }}>×</button></td>
-          </tr>
+            {{ ob_row(accounts, line=line, editable=editable) }}
           {% endfor %}
-        {% else %}
-          {# Empty template row — cloned by "+ Add line" JS when no entry exists yet #}
-          {% if editable %}
-          <tr class="ob-line">
-            <td>
-              <select name="account_id" class="ob-account">
-                {% for a in accounts %}
-                  <option value="{{ a.id }}" {{ 'disabled' if a.is_group else '' }}>
-                    {{ '— ' * a.depth }}{{ a.code }} : {{ a.name }}
-                  </option>
-                {% endfor %}
-              </select>
-            </td>
-            <td class="num"><input type="text" name="debit" class="ob-debit" value=""></td>
-            <td class="num"><input type="text" name="credit" class="ob-credit" value=""></td>
-            <td><button type="button" class="ob-remove">×</button></td>
-          </tr>
-          {% endif %}
+        {% elif editable %}
+          {{ ob_row(accounts, editable=True) }}
         {% endif %}
       </tbody>
     </table>
 
     {% if editable %}
+      {# Cloned by "+ Add line" JS. Kept out of the tbody so the on-load upgrade skips it. #}
+      <template id="ob-row-template">{{ ob_row(accounts, editable=True) }}</template>
       <button type="button" id="ob-add-row">+ Add line</button>
     {% endif %}
 
@@ -122,5 +118,8 @@
   {% endif %}
 </div>
 
-<script src="{{ url_for('static', filename='js/opening_balances.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}"></script>
+<script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/opening_balances.js') }}?v=3"></script>
 {% endblock %}
