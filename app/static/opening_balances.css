@@ -1,0 +1,77 @@
+/* opening_balances.css — line-item table, styled to match the transaction forms.
+   Fix: the native <select> was sized to the COA's longest indented option
+   (e.g. "— — 10112 : Cash in Bank - Payroll Account"), which blew the Account
+   column wide and pushed the Credit column off the right edge. `table-layout:
+   fixed` + %-width columns keep the table inside the content area; the account
+   <select> then fills its (wide) fixed cell, so the full account title shows. */
+
+.page-opening-balances .ob-lines {
+    table-layout: fixed;              /* widths come from the columns, not the widest <option> */
+    margin-top: 16px;
+}
+
+/* Column widths — Account takes the bulk so titles show in full */
+.page-opening-balances .ob-lines th:nth-child(1),
+.page-opening-balances .ob-lines td:nth-child(1) { width: 56%; }   /* Account */
+.page-opening-balances .ob-lines th:nth-child(2),
+.page-opening-balances .ob-lines th:nth-child(3),
+.page-opening-balances .ob-lines td:nth-child(2),
+.page-opening-balances .ob-lines td:nth-child(3) { width: 19%; }   /* Debit / Credit */
+.page-opening-balances .ob-lines th:nth-child(4),
+.page-opening-balances .ob-lines td:nth-child(4) { width: 6%; text-align: center; }
+
+.page-opening-balances .ob-lines th.num { text-align: right; }
+
+/* Tighter cells than the global default so the inputs line up edge-to-edge */
+.page-opening-balances .ob-lines thead th { padding: 8px 8px; }
+.page-opening-balances .ob-lines tbody td { padding: 6px 8px; }
+
+/* Inputs fill their cell — the account picker is now wide enough for the full title */
+.page-opening-balances .ob-account,
+.page-opening-balances .ob-debit,
+.page-opening-balances .ob-credit {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 13px;
+    border: 1px solid var(--form-border);
+    border-radius: 4px;
+    background: var(--card);
+    color: var(--text);
+}
+.page-opening-balances .ob-debit,
+.page-opening-balances .ob-credit {
+    text-align: right;
+    font-family: var(--mono);
+}
+.page-opening-balances .ob-account:focus,
+.page-opening-balances .ob-debit:focus,
+.page-opening-balances .ob-credit:focus {
+    outline: none;
+    border-color: var(--blue);
+}
+.page-opening-balances .ob-account:disabled,
+.page-opening-balances .ob-debit:disabled,
+.page-opening-balances .ob-credit:disabled {
+    background: var(--bg);
+    color: var(--text-2);
+}
+
+/* Remove-line button */
+.page-opening-balances .ob-remove {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text-2);
+    cursor: pointer;
+    line-height: 1;
+}
+.page-opening-balances .ob-remove:hover:not(:disabled) { background: var(--border); }
+.page-opening-balances .ob-remove:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Add-line + totals + actions spacing */
+.page-opening-balances #ob-add-row { margin-top: 10px; }
+.page-opening-balances .ob-totals { margin-top: 16px; display: flex; gap: 24px; font-size: 14px; }
+.page-opening-balances .ob-actions { margin-top: 16px; }
