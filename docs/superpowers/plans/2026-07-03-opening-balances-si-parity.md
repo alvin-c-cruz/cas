@@ -171,8 +171,8 @@ Replace the entire file `app/opening_balances/templates/opening_balances/form.ht
 
   <p class="help-text">
     Enter this branch's balances as of the cutover date. Retained Earnings here carries
-    <strong>prior-year</strong> accumulated earnings only — current-year-to-date profit goes in the
-    seeded revenue/expense lines, not in opening Retained Earnings (avoids double-counting).
+    <strong>prior-year</strong> accumulated earnings only — enter this year's profit-to-date on the
+    revenue and expense accounts, not in opening Retained Earnings, so it isn't counted twice.
   </p>
 
   <form method="post" action="{{ url_for('opening_balances.save_draft') }}" id="ob-form">
