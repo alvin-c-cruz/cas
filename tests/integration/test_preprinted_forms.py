@@ -6,6 +6,7 @@ _admin_required) and the save/toggle/design/test-print routes.
 """
 import json
 from datetime import date
+from decimal import Decimal
 from io import BytesIO
 
 import pytest
@@ -15,6 +16,12 @@ from app.utils.cache_helpers import clear_module_config_cache
 from app.audit.models import AuditLog
 from app.preprinted_forms.models import PrintLayout
 from app.journal_entries.models import JournalEntry, JournalEntryLine
+from app.customers.models import Customer
+from app.vendors.models import Vendor
+from app.sales_invoices.models import SalesInvoice
+from app.accounts_payable.models import AccountsPayable
+from app.cash_receipts.models import CashReceiptVoucher
+from app.cash_disbursements.models import CashDisbursementVoucher
 
 pytestmark = [pytest.mark.integration]
 
@@ -258,14 +265,14 @@ def test_designer_page_renders_palette_and_controls(client, db_session, accounta
     assert b'preprinted_designer.js?v=1' in body
 
 
-def _build_je(main_branch, cash_account, revenue_account, number='JV-2026-01-0500'):
+def _build_je(main_branch, cash_account, revenue_account, number='JV-2026-01-0500', status='draft'):
     je = JournalEntry(
         entry_number=number,
         entry_date=date(2026, 1, 20),
         description='Test-print JE',
         entry_type='adjustment',
         branch_id=main_branch.id,
-        status='draft',
+        status=status,
     )
     db.session.add(je)
     db.session.flush()
@@ -448,3 +455,202 @@ def test_admin_toggles_page_renders_five_voucher_rows(client, db_session, admin_
     # Admin sees the toggle action and the designer link
     assert b'/preprinted-forms/SI/toggle' in body
     assert b'/preprinted-forms/SI/design' in body
+
+
+# ---------------------------------------------------------------------------
+# Server-side print-access guard + PDF/HTML routing (P-69 Task 7)
+# ---------------------------------------------------------------------------
+
+# HTML print templates for all five documents share this marker (the on-screen
+# Print button), which never appears in a PDF response -- a reliable "we got
+# the HTML fallback, not the pre-printed PDF" signal.
+_HTML_PRINT_MARKER = b'onclick="window.print()"'
+
+VT_INFO = {
+    'SI': {'setting': 'sv_print_access', 'print_path': lambda id: f'/sales-invoices/{id}/print'},
+    'AP': {'setting': 'apv_print_access', 'print_path': lambda id: f'/accounts-payable/{id}/print'},
+    'CR': {'setting': 'cr_print_access', 'print_path': lambda id: f'/cash-receipts/{id}/print'},
+    'CD': {'setting': 'cd_print_access', 'print_path': lambda id: f'/cash-disbursements/{id}/print'},
+}
+
+
+def _build_record(vt, main_branch, cash_account, status):
+    """Build a minimal SI/AP/CR/CD record in the given status. Each call uses a
+    status-qualified code/number so draft+posted records built in the same test
+    don't collide on unique constraints."""
+    if vt == 'SI':
+        customer = Customer(code=f'PPC-{status}', name='PP Customer', is_active=True)
+        db.session.add(customer)
+        db.session.commit()
+        rec = SalesInvoice(
+            branch_id=main_branch.id, invoice_number=f'SI-PP-{status}',
+            invoice_date=date(2026, 1, 15), due_date=date(2026, 2, 15),
+            customer_id=customer.id, customer_name=customer.name,
+            notes='', status=status, amount_paid=Decimal('0.00'),
+        )
+    elif vt == 'AP':
+        vendor = Vendor(code=f'PPV-{status}', name='PP Vendor',
+                         check_payee_name='PP Vendor', is_active=True)
+        db.session.add(vendor)
+        db.session.commit()
+        today = date(2026, 1, 15)
+        rec = AccountsPayable(
+            ap_number=f'AP-PP-{status}', vendor_id=vendor.id, vendor_name=vendor.name,
+            branch_id=main_branch.id, ap_date=today, due_date=today,
+            notes='', status=status,
+        )
+    elif vt == 'CR':
+        customer = Customer(code=f'PPC2-{status}', name='PP Customer 2', is_active=True)
+        db.session.add(customer)
+        db.session.commit()
+        rec = CashReceiptVoucher(
+            branch_id=main_branch.id, crv_number=f'CR-PP-{status}',
+            crv_date=date(2026, 1, 15), customer_id=customer.id, customer_name=customer.name,
+            payment_method='cash', cash_account_id=cash_account.id, notes='', status=status,
+        )
+    elif vt == 'CD':
+        vendor = Vendor(code=f'PPV2-{status}', name='PP Vendor 2',
+                         check_payee_name='PP Vendor 2', is_active=True)
+        db.session.add(vendor)
+        db.session.commit()
+        rec = CashDisbursementVoucher(
+            branch_id=main_branch.id, cdv_number=f'CD-PP-{status}',
+            cdv_date=date(2026, 1, 15), vendor_id=vendor.id, vendor_name=vendor.name,
+            payment_method='cash', cash_account_id=cash_account.id, notes='', status=status,
+        )
+    else:
+        raise ValueError(vt)
+    db.session.add(rec)
+    db.session.commit()
+    return rec
+
+
+@pytest.mark.parametrize('vt', ['SI', 'AP', 'CR', 'CD'])
+def test_print_guard_denies_draft_under_posted_only(client, db_session, admin_user, main_branch,
+                                                      cash_account, vt):
+    """Default posted_only + a draft record -> the print route refuses (302,
+    redirect + flash), with the pre-printed module OFF (plain HTML path)."""
+    info = VT_INFO[vt]
+    AppSettings.set_setting(info['setting'], 'posted_only', 'system')
+    rec = _build_record(vt, main_branch, cash_account, status='draft')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(info['print_path'](rec.id))
+    assert resp.status_code == 302
+
+    resp = client.get(info['print_path'](rec.id), follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'Printing is not available' in resp.data
+
+
+@pytest.mark.parametrize('vt', ['SI', 'AP', 'CR', 'CD'])
+def test_print_guard_allows_posted_status(client, db_session, admin_user, main_branch,
+                                           cash_account, vt):
+    """Default posted_only + a posted record -> the print route succeeds (200,
+    HTML fallback since the pre-printed module is OFF here)."""
+    info = VT_INFO[vt]
+    AppSettings.set_setting(info['setting'], 'posted_only', 'system')
+    rec = _build_record(vt, main_branch, cash_account, status='posted')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(info['print_path'](rec.id))
+    assert resp.status_code == 200
+    assert _HTML_PRINT_MARKER in resp.data
+
+
+def test_jv_print_default_allows_any_status_no_setting(client, db_session, admin_user, main_branch,
+                                                        cash_account, revenue_account):
+    """JV has no *_print_access setting -- can_print('JV', ...) always allows,
+    even for a draft entry."""
+    je = _build_je(main_branch, cash_account, revenue_account, number='JV-PP-0001', status='draft')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(f'/journal-entries/{je.id}/print')
+    assert resp.status_code == 200
+    assert _HTML_PRINT_MARKER in resp.data
+
+
+def test_guard_fires_before_pdf_path(client, db_session, admin_user, main_branch, cash_account,
+                                      preprinted_module_enabled):
+    """A draft SI under posted_only is redirected even when the module is
+    enabled AND an active layout with a background image exists -- the guard
+    must run before the pre-printed branch, not after."""
+    AppSettings.set_setting('sv_print_access', 'posted_only', 'system')
+    layout = PrintLayout(voucher_type='SI', active=True, background_image='x.png',
+                          page_width_mm=215.9, page_height_mm=279.4)
+    db.session.add(layout)
+    db.session.commit()
+    rec = _build_record('SI', main_branch, cash_account, status='draft')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(f'/sales-invoices/{rec.id}/print', follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'Printing is not available' in resp.data
+    assert resp.headers['Content-Type'].startswith('text/html')
+
+
+@pytest.mark.parametrize('vt', ['SI', 'AP', 'CR', 'CD'])
+def test_pdf_routing_when_module_enabled_and_layout_active(client, db_session, admin_user, main_branch,
+                                                            cash_account, preprinted_module_enabled, vt):
+    """Module enabled + an active layout with a background_image -> the print
+    route returns a PDF instead of the HTML template."""
+    layout = PrintLayout(voucher_type=vt, active=True, background_image='x.png',
+                          page_width_mm=215.9, page_height_mm=279.4)
+    db.session.add(layout)
+    db.session.commit()
+    rec = _build_record(vt, main_branch, cash_account, status='posted')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(VT_INFO[vt]['print_path'](rec.id))
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'] == 'application/pdf'
+
+
+def test_jv_pdf_routing_when_module_enabled_and_layout_active(client, db_session, admin_user, main_branch,
+                                                               cash_account, revenue_account,
+                                                               preprinted_module_enabled):
+    """New /journal-entries/<id>/print route: module on + active JV layout +
+    background_image -> PDF."""
+    layout = PrintLayout(voucher_type='JV', active=True, background_image='x.png',
+                          page_width_mm=215.9, page_height_mm=279.4)
+    db.session.add(layout)
+    db.session.commit()
+    je = _build_je(main_branch, cash_account, revenue_account, number='JV-PP-0002')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(f'/journal-entries/{je.id}/print')
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'] == 'application/pdf'
+
+
+@pytest.mark.parametrize('vt', ['SI', 'AP', 'CR', 'CD', 'JV'])
+def test_html_fallback_when_layout_inactive(client, db_session, admin_user, main_branch,
+                                             cash_account, revenue_account,
+                                             preprinted_module_enabled, vt):
+    """Module enabled but the layout is inactive (active=False) -> falls back
+    to the existing HTML print template (marker present, HTML content-type)."""
+    layout = PrintLayout(voucher_type=vt, active=False, background_image='x.png',
+                          page_width_mm=215.9, page_height_mm=279.4)
+    db.session.add(layout)
+    db.session.commit()
+
+    if vt == 'JV':
+        rec = _build_je(main_branch, cash_account, revenue_account, number='JV-PP-0003')
+        url = f'/journal-entries/{rec.id}/print'
+    else:
+        rec = _build_record(vt, main_branch, cash_account, status='posted')
+        url = VT_INFO[vt]['print_path'](rec.id)
+
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(url)
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'].startswith('text/html')
+    assert _HTML_PRINT_MARKER in resp.data

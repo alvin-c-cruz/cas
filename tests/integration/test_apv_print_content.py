@@ -5,6 +5,7 @@ from app.accounts.models import Account
 from app.vendors.models import Vendor
 from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.utils import ph_now
+from app.settings import AppSettings
 
 pytestmark = [pytest.mark.accounts_payable, pytest.mark.integration]
 
@@ -83,6 +84,11 @@ class TestApvPrintContent:
         assert 'Accountant User' in html   # posted_by.full_name  -> Approved
 
     def test_draft_approved_box_blank(self, client, db_session, admin_user, _posted_ap):
+        # P-69 Task 7: the print route now enforces apv_print_access server-side
+        # (default 'posted_only' would refuse a draft). This test is about the
+        # Approved-by box rendering blank for a draft, not access control, so
+        # widen the setting to keep exercising a draft GET.
+        AppSettings.set_setting('apv_print_access', 'draft_and_posted', 'system')
         _posted_ap.status = 'draft'
         _posted_ap.posted_by_id = None
         db_session.commit()

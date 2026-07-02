@@ -100,6 +100,11 @@ class TestCdvPrintContent:
         assert 'Accountant User' in html   # posted_by.full_name  -> Approved
 
     def test_draft_approved_box_blank(self, client, db_session, admin_user, _posted_cdv):
+        # P-69 Task 7: the print route now enforces cd_print_access server-side
+        # (default 'posted_only' would refuse a draft). This test is about the
+        # Approved-by box rendering blank for a draft, not access control, so
+        # widen the setting to keep exercising a draft GET.
+        AppSettings.set_setting('cd_print_access', 'draft_and_posted', 'system')
         _posted_cdv.status = 'draft'
         _posted_cdv.posted_by_id = None
         db_session.commit()

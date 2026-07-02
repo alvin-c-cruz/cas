@@ -12,6 +12,7 @@ from app.audit.utils import log_create, log_update, log_delete, model_to_dict, l
 from app.utils import ph_now
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
+from app.settings import AppSettings
 from datetime import datetime, date
 from decimal import Decimal
 import json
@@ -178,6 +179,29 @@ def view(id):
     """View journal entry details."""
     entry = db.get_or_404(JournalEntry, id)
     return render_template('journal_entries/detail.html', entry=entry)
+
+
+@journal_entries_bp.route('/journal-entries/<int:id>/print')
+@login_required
+def print_entry(id):
+    """Standalone print preview for a journal entry (P-69 Task 7)."""
+    entry = db.get_or_404(JournalEntry, id)
+
+    from app.preprinted_forms.pdf import can_print, preprinted_response
+    if not can_print('JV', entry):
+        flash('Printing is not available for this entry in its current status.', 'error')
+        return redirect(url_for('journal_entries.view', id=id))
+    _pp = preprinted_response('JV', entry)
+    if _pp is not None:
+        return _pp
+
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    return render_template('journal_entries/print.html', entry=entry,
+                           company=company, printed_at=ph_now())
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>/post', methods=['POST'])

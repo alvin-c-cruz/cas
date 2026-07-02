@@ -13,6 +13,54 @@ from app.preprinted_forms.field_catalog import resolve_field, resolve_line_value
 _DEFAULT_FIELD_WIDTH_MM = 40
 
 
+def can_print(voucher_type, record):
+    """Server-side mirror of each document detail-template's Print-button
+    condition (P-69 Task 7) -- the print ROUTES had no access/status gate
+    before this; the *_print_access settings were previously read only to
+    decide whether to render the Print button, never enforced server-side.
+    Returns bool."""
+    from app.settings import AppSettings
+    if voucher_type == 'SI':
+        setting = AppSettings.get_setting('sv_print_access', 'posted_only')
+        posted_ok = record.status in ('posted', 'partially_paid', 'paid')
+    elif voucher_type == 'AP':
+        setting = AppSettings.get_setting('apv_print_access', 'posted_only')
+        posted_ok = record.status in ('posted', 'partially_paid', 'paid')
+    elif voucher_type == 'CR':
+        setting = AppSettings.get_setting('cr_print_access', 'posted_only')
+        posted_ok = record.status == 'posted'
+    elif voucher_type == 'CD':
+        setting = AppSettings.get_setting('cd_print_access', 'posted_only')
+        posted_ok = record.status == 'posted'
+    elif voucher_type == 'JV':
+        return True  # no *_print_access setting exists for JV today -- default allow (decided)
+    else:
+        return False
+    if setting == 'posted_only':
+        return posted_ok
+    if setting == 'draft_and_posted':
+        return record.status not in ('voided', 'cancelled')
+    return posted_ok
+
+
+def preprinted_response(voucher_type, record):
+    """Return a PDF Response if pre-printed mode is on for this voucher, else None.
+
+    None means "fall through to the existing HTML print template" -- callers
+    must not treat None as an error."""
+    from flask import Response
+    from app.users.module_access import module_enabled
+    from app.preprinted_forms.models import PrintLayout
+    if not module_enabled('preprinted_forms'):
+        return None
+    layout = PrintLayout.query.filter_by(voucher_type=voucher_type, active=True).first()
+    if not layout or not layout.background_image:
+        return None
+    pdf_bytes = render_preprinted(layout, record)
+    return Response(pdf_bytes, mimetype='application/pdf',
+                     headers={'Content-Disposition': f'inline; filename="{voucher_type.lower()}.pdf"'})
+
+
 def _sanitize(s):
     """Strip any character that can't be represented in latin-1 (core PDF
     fonts are latin-1 only). A stray '₱' (peso sign) is dropped, not

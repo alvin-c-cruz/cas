@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>JV {{ entry.display_number }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
+
+  .screen-only { }
+  @media print {
+    .screen-only { display: none !important; }
+    @page { size: A4 portrait; margin: 15mm; }
+  }
+
+  .page-wrap { max-width: 740px; margin: 0 auto; padding: 24px; }
+
+  .doc-header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 12px; }
+  .doc-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .doc-header .company-sub { font-size: 10px; color: #444; margin-top: 2px; }
+  .doc-header .doc-title { font-size: 14px; font-weight: 700; letter-spacing: 2px; margin-top: 8px; }
+
+  .info-row { display: flex; gap: 16px; margin-bottom: 10px; }
+  .info-row table { border-collapse: collapse; flex: 1; font-size: 10px; }
+  .info-row td { border: 1px solid #aaa; padding: 3px 7px; }
+  .info-row td.label { background: #f0f0f0; font-weight: 600; width: 42%; }
+
+  .je-table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 10px; }
+  .je-table th { background: #222; color: #fff; padding: 4px 7px; text-align: left; border: 1px solid #555; }
+  .je-table th.num { text-align: right; }
+  .je-table td { border: 1px solid #aaa; padding: 3px 7px; }
+  .je-table td.num { text-align: right; font-family: monospace; }
+  .je-table tr.totals { font-weight: 700; background: #f0f0f0; }
+
+  .sig-row { display: flex; margin-top: 8px; }
+  .sig-box { flex: 1; border: 1px solid #aaa; border-right: none; padding: 5px 7px; min-height: 56px; }
+  .sig-box:last-child { border-right: 1px solid #aaa; }
+  .sig-box .sig-title { font-size: 9px; font-weight: 700; color: #555; margin-bottom: 4px; }
+  .sig-box .sig-name { margin-top: 22px; text-align: center; font-size: 11px; min-height: 14px; }
+  .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px; font-size: 9px; color: #555; text-align: center; }
+
+  .audit-footer { margin-top: 6px; font-size: 9px; color: #888; text-align: center; border-top: 1px solid #ddd; padding-top: 4px; }
+
+  .print-bar { margin-bottom: 20px; display: flex; gap: 8px; }
+  .btn-print { padding: 8px 20px; background: #1565c0; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .btn-close { padding: 8px 20px; background: #666; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <div class="print-bar screen-only">
+    <button class="btn-print" onclick="window.print()">Print</button>
+    <a class="btn-close" href="{{ url_for('journal_entries.view', id=entry.id) }}">Close</a>
+  </div>
+
+  <div class="doc-header">
+    <div class="company-name">{{ company.name | upper }}</div>
+    <div class="company-sub">
+      {{ company.address }}{% if company.address and company.tin %} &nbsp;&#183;&nbsp; {% endif %}{% if company.tin %}TIN: {{ company.tin }}{% endif %}
+    </div>
+    <div class="doc-title">JOURNAL VOUCHER</div>
+  </div>
+
+  <div class="info-row">
+    <table>
+      <tr><td class="label">JV No.</td><td><strong>{{ entry.display_number }}</strong></td></tr>
+      <tr><td class="label">Date</td><td>{{ entry.entry_date.strftime('%d %B %Y') }}</td></tr>
+      <tr><td class="label">Entry Type</td><td>{{ entry.entry_type|title }}</td></tr>
+      {% if entry.reference %}
+      <tr><td class="label">Reference</td><td>{{ entry.reference }}</td></tr>
+      {% endif %}
+    </table>
+    <table>
+      <tr><td colspan="2" class="label">PARTICULARS</td></tr>
+      <tr><td colspan="2">{{ entry.description }}</td></tr>
+    </table>
+  </div>
+
+  <table class="je-table">
+    <thead>
+      <tr>
+        <th style="width:14%">Code</th>
+        <th>Account Title</th>
+        <th class="num" style="width:22%">Debit</th>
+        <th class="num" style="width:22%">Credit</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in entry.lines %}
+      <tr>
+        <td>{{ line.account.code if line.account else '' }}</td>
+        <td {{ 'style="padding-left:18px;"' | safe if line.credit_amount and line.credit_amount > 0 }}>{{ line.account.name if line.account else '' }}</td>
+        <td class="num">{% if line.debit_amount %}{{ '{:,.2f}'.format(line.debit_amount) }}{% endif %}</td>
+        <td class="num">{% if line.credit_amount %}{{ '{:,.2f}'.format(line.credit_amount) }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="totals">
+        <td colspan="2">TOTAL</td>
+        <td class="num">{{ '{:,.2f}'.format(entry.total_debit) }}</td>
+        <td class="num">{{ '{:,.2f}'.format(entry.total_credit) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="sig-row">
+    <div class="sig-box">
+      <div class="sig-title">PREPARED BY</div>
+      <div class="sig-name">{{ entry.created_by.full_name if entry.created_by else '' }}</div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-title">CHECKED BY</div>
+      <div class="sig-name"></div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-title">APPROVED BY</div>
+      <div class="sig-name">{{ entry.posted_by.full_name if entry.posted_by else '' }}</div>
+      <div class="sig-line">Signature over Printed Name &amp; Date</div>
+    </div>
+  </div>
+
+  <div class="audit-footer">
+    Status: {{ entry.status|upper }}
+    {% if entry.created_by %}&nbsp;&#183;&nbsp; Created by {{ entry.created_by.username }}{% if entry.created_at %} on {{ entry.created_at.strftime('%d %b %Y') }}{% endif %}{% endif %}
+    {% if entry.posted_by %}&nbsp;&#183;&nbsp; Posted by {{ entry.posted_by.username }}{% if entry.posted_at %} on {{ entry.posted_at.strftime('%d %b %Y') }}{% endif %}{% endif %}
+    &nbsp;|&nbsp; Printed by {{ current_user.username }} &middot; {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+  </div>
+
+</div>
+</body>
+</html>

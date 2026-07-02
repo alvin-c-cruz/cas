@@ -1124,6 +1124,15 @@ def cancel(id):
 @login_required
 def print_cdv(id):
     cdv = _get_cdv_or_404(id)
+
+    from app.preprinted_forms.pdf import can_print, preprinted_response
+    if not can_print('CD', cdv):
+        flash('Printing is not available for this document in its current status.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    _pp = preprinted_response('CD', cdv)
+    if _pp is not None:
+        return _pp
+
     je_entries = _build_cdv_je_preview(cdv)
     company = {
         'name': AppSettings.get_setting('company_name', ''),
