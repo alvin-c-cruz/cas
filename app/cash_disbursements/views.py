@@ -248,6 +248,32 @@ def _cdv_input_vat_buckets(cdv):
     return ordered
 
 
+def _cdv_wht_payable_buckets(cdv, fallback_acct):
+    """Group the voucher's WHT by each expense line's ATC payable_account (fallback_acct when
+    the ATC has none). Returns SIGNED amounts (positive credit, negative debit), ordered by
+    account code. Mirrors _cdv_input_vat_buckets; total equals the summed line WHT.
+
+    Negative Section-B lines never carry WHT (mirrors the existing _post_cdv_je /
+    _build_cdv_je_preview guard: `_parse_and_attach_expense_lines` zeroes `wt_amount`
+    on negative lines at data-entry, but this is a defense-in-depth re-check here too)."""
+    buckets = {}  # account_id -> [Account, Decimal]
+    for el in cdv.expense_lines:
+        if Decimal(str(el.line_total or 0)) <= Decimal('0.00'):
+            continue
+        wt = Decimal(str(el.wt_amount or 0))
+        if wt == 0:
+            continue
+        wtx = el.withholding_tax
+        acct = (wtx.payable_account if wtx and wtx.payable_account else fallback_acct)
+        if acct is None:
+            continue
+        if acct.id not in buckets:
+            buckets[acct.id] = [acct, Decimal('0.00')]
+        buckets[acct.id][1] += wt
+    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
+    return [(a, amt) for a, amt in ordered if amt != Decimal('0.00')]
+
+
 def _post_cdv_je(cdv, user_id):
     """Create a draft or posted disbursement JE for a CDV (sign-aware for negative Section B)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
@@ -261,17 +287,14 @@ def _post_cdv_je(cdv, user_id):
     if not cash_account:
         raise ValueError("Cash/Bank account not found.")
 
-    wt_account = None
     # WHT: sum from positive expense lines only (negative lines have no WHT)
     total_wt = sum(
         Decimal(str(el.wt_amount or 0))
         for el in cdv.expense_lines
         if Decimal(str(el.line_total or 0)) > 0
     )
-    if total_wt != Decimal('0.00'):
-        wt_account = _accts['wt']
-        if not wt_account:
-            raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
+    if total_wt != Decimal('0.00') and not _accts['wt']:
+        raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
 
     je_status = 'posted' if cdv.status == 'posted' else 'draft'
     entry_number = generate_entry_number(cdv.branch_id)
@@ -371,15 +394,15 @@ def _post_cdv_je(cdv, user_id):
         all_lines.append(vat_line)
         line_num += 1
 
-    # WHT Payable — sign-aware
-    if wt_account:
-        if total_wt > Decimal('0.00'):
-            wt_dr, wt_cr = Decimal('0.00'), total_wt
+    # WHT Payable — sign-aware, per ATC payable account
+    for wt_acct, wt_amt in _cdv_wht_payable_buckets(cdv, _accts['wt']):
+        if wt_amt > Decimal('0.00'):
+            wt_dr, wt_cr = Decimal('0.00'), wt_amt
         else:
-            wt_dr, wt_cr = abs(total_wt), Decimal('0.00')
+            wt_dr, wt_cr = abs(wt_amt), Decimal('0.00')
         wt_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
-            account_id=wt_account.id,
+            account_id=wt_acct.id,
             description=f'WHT Payable: {cdv.cdv_number}',
             debit_amount=wt_dr, credit_amount=wt_cr
         )
@@ -545,19 +568,14 @@ def _build_cdv_je_preview(cdv):
                                 'debit': Decimal('0.00'), 'credit': abs(vat_amt)})
     except ValueError:
         pass
-    # WHT — positive lines only
-    total_wt = sum(
-        Decimal(str(el.wt_amount or 0))
-        for el in cdv.expense_lines
-        if Decimal(str(el.line_total or 0)) > 0
-    )
-    if total_wt != Decimal('0.00') and accts['wt']:
-        if total_wt > Decimal('0.00'):
-            entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
-                            'debit': Decimal('0.00'), 'credit': total_wt})
+    # WHT — per ATC payable account, sign-aware
+    for wt_acct, wt_amt in _cdv_wht_payable_buckets(cdv, accts['wt']):
+        if wt_amt > Decimal('0.00'):
+            entries.append({'code': wt_acct.code, 'name': wt_acct.name,
+                            'debit': Decimal('0.00'), 'credit': wt_amt})
         else:
-            entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
-                            'debit': abs(total_wt), 'credit': Decimal('0.00')})
+            entries.append({'code': wt_acct.code, 'name': wt_acct.name,
+                            'debit': abs(wt_amt), 'credit': Decimal('0.00')})
     if cdv.cash_account:
         sum_dr = sum(e['debit'] for e in entries)
         sum_cr = sum(e['credit'] for e in entries)
