@@ -1,7 +1,8 @@
 # RIC COA Reconciliation — Seed Retirement & Redundancy Cleanup (Plan)
 
 **Date:** 2026-07-03
-**Status:** Design — **decisions pending** (nothing executed; `ric.db` untouched at 391 accounts).
+**Status:** **DONE 2026-07-03** — D1–D4 resolved, tool `scripts/ric_coa/reconcile.py` built (31 ric_coa tests pass), executed against `ric.db` (391 → **368**; backup `instance/ric.db.bak-20260703-pre-reconcile`). Verified: every magic code resolves to one RIC legacy account, no dup codes/names, no orphan VAT FKs, CWT `10212`/RE `30201` reparented under `125`/`311`.
+**Resolutions:** D1 WHT `20301`←`22105`; D2 output VAT `20201`←`22103-1`; D3 keep seed CWT/RE (no legacy twin), recode income-summary `33101`→`30301`; D4 drop 9 emptied seed groups (Sales group/leaf overlap left as-is, not a true dup).
 **Depends on:** `2026-07-03-ric-coa-import-design.md` (the import that produced the current state).
 
 ## Why
