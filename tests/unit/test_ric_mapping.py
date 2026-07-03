@@ -11,7 +11,7 @@ ROWS = [
     ("11301", "RAW MATERIALS INVENTORY-TINCAN", "Other Current Assets"),
     ("12201", "OFFICE FCTY - TAGUIG",           "Fixed Assets"),
     ("12301", "ACC. DEP'N-OFFICE FCTY",         "Fixed Assets"),
-    ("12501", "CREDITABLE WITHHOLDING TAX",     "Other Assets"),
+    ("12502", "INCOME TAX OVER PAID",           "Other Assets"),  # 12501 is SKIP_CODES; use a sibling 125 leaf
     ("64101", "INDIRECT LABOR - Tincan/Plastic","Factory Overhead"),
     ("65101", "FO - TELEPHONE & POSTAGE",       "Factory Overhead"),
 ]
@@ -54,8 +54,20 @@ def test_contra_override_to_credit():
 def test_classification_override_125_current():
     specs = build_accounts(ROWS)
     g125 = next(s for s in specs if s.is_group and s.code == "125")
-    l125 = next(s for s in specs if s.code == "12501")
+    l125 = next(s for s in specs if s.code == "12502")
     assert g125.classification == "Current" and l125.classification == "Current"
 
 def test_group_registry_has_28_entries():
     assert len(GROUPS) == 28
+
+def test_skip_codes_excluded_and_groups_renamed():
+    from scripts.ric_coa.mapping import build_accounts, GROUPS
+    rows = [("12501","CREDITABLE WITHHOLDING TAX","Other Assets"),
+            ("12502","INCOME TAX OVER PAID","Other Assets"),
+            ("32101","RETAINED EARNINGS","Stockholder's Equity"),
+            ("31101","PAID UP CAPITAL","Stockholder's Equity")]
+    codes = {s.code for s in build_accounts(rows) if not s.is_group}
+    assert "12501" not in codes and "32101" not in codes      # skipped
+    assert "12502" in codes and "31101" in codes              # kept
+    assert GROUPS['116'][0] == 'Prepaid Expenses & Interest'
+    assert GROUPS['511'][0] == 'Other Income & Gains'

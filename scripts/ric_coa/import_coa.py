@@ -28,6 +28,19 @@ def assert_importable(session):
     return None
 
 
+def assert_no_name_clash(specs, session):
+    from collections import Counter
+    from app.accounts.models import Account
+    names = [s.name for s in specs]
+    dupes = sorted(n for n, c in Counter(names).items() if c > 1)
+    if dupes:
+        raise RuntimeError(f'{len(dupes)} duplicate names among import specs: {dupes[:5]}')
+    existing = {n for (n,) in session.query(Account.name).all()}
+    clash = sorted(set(names) & existing)
+    if clash:
+        raise RuntimeError(f'{len(clash)} import names collide with existing accounts: {clash[:5]}')
+
+
 def write_accounts(specs, session):
     from app.accounts.models import Account
     from app.audit.utils import log_audit
@@ -83,6 +96,7 @@ def main():
         print('TARGET :', app.config['SQLALCHEMY_DATABASE_URI'])
         print('SUMMARY:', summarize(specs))
         assert_importable(db.session)
+        assert_no_name_clash(specs, db.session)
         # per-run leaf-code clash guard
         leaf_codes = [s.code for s in specs if not s.is_group]
         clash = {c for (c,) in db.session.query(Account.code)

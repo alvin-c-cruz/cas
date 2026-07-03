@@ -32,7 +32,7 @@ GROUPS = OrderedDict([
     ('113',  ('Inventory — Tincan',                          'Asset', 'Current')),
     ('114',  ('Inventory — Plastic',                         'Asset', 'Current')),
     ('115',  ('Factory & Maintenance Supplies',              'Asset', 'Current')),
-    ('116',  ('Prepaid Expenses',                            'Asset', 'Current')),
+    ('116',  ('Prepaid Expenses & Interest',                  'Asset', 'Current')),
     ('117',  ('Assets in Transit',                           'Asset', 'Current')),
     ('125',  ('Creditable Withholding Tax & Overpayments',   'Asset', 'Current')),
     ('126',  ('Input VAT & Tax Credits',                     'Asset', 'Current')),
@@ -47,7 +47,7 @@ GROUPS = OrderedDict([
     ('411',  ('Sales — Tincan',                              'Revenue', None)),
     ('412',  ('Sales — Plastic',                             'Revenue', None)),
     ('421',  ('Scrap Sales',                                 'Revenue', None)),
-    ('511',  ('Other Income',                                'Other Income', None)),
+    ('511',  ('Other Income & Gains',                        'Other Income', None)),
     ('611',  ('Direct Materials',                            'Cost of Goods Sold', None)),
     ('621',  ('Direct Labor',                                'Cost of Goods Sold', None)),
     ('641',  ('Indirect Labor & Personnel Cost',             'Cost of Goods Sold', None)),
@@ -55,6 +55,10 @@ GROUPS = OrderedDict([
     ('661',  ('Selling Expenses',                            'Selling Expense', None)),
     ('671',  ('Administrative Expenses',                     'Administrative Expense', None)),
 ])
+
+# Legacy leaves whose proper-cased name duplicates a kept seed account (Account.name is
+# UNIQUE). Owner decision 2026-07-03: SKIP these — seed 10212 / 30200 are canonical.
+SKIP_CODES = {'12501', '32101'}   # Creditable Withholding Tax; Retained Earnings
 
 
 def _prefix(number):
@@ -102,16 +106,17 @@ def _is_contra(group_code, number):
 
 def build_accounts(legacy_rows):
     from app.accounts.account_types import DEFAULT_NORMAL_BALANCE
+    rows = [(n, t, lt) for (n, t, lt) in legacy_rows if str(n) not in SKIP_CODES]
     specs = []
     used = OrderedDict()  # preserve GROUPS order, only used codes
-    for num, title, ltype in legacy_rows:
+    for num, title, ltype in rows:
         used[assign_group(ltype, num)] = True
     for code in GROUPS:
         if code in used:
             title, ct, cls = GROUPS[code]
             specs.append(AccountSpec(code, title, ct, cls,
                                      DEFAULT_NORMAL_BALANCE[ct], None, True))
-    for num, title, ltype in legacy_rows:
+    for num, title, ltype in rows:
         code = assign_group(ltype, num)
         _gt, ct, cls = GROUPS[code]
         nb = 'credit' if _is_contra(code, num) else DEFAULT_NORMAL_BALANCE[ct]
