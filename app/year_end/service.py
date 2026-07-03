@@ -64,9 +64,25 @@ def closing_entry_number(branch_id, year):
 
 
 def latest_closed_year(branch_id):
-    row = (FiscalYearClose.query
-           .filter_by(branch_id=branch_id, status='closed')
-           .order_by(FiscalYearClose.fiscal_year.desc()).first())
+    """Latest fiscal year with a 'closed' FiscalYearClose.
+
+    branch_id=None means 'all branches' (matching the unscoped Balance Sheet
+    balance query, which drops the branch filter when branch_id is falsy) and
+    returns the latest year closed *anywhere* — NOT the null-branch row (closes
+    are always recorded per real branch). Without this, the unscoped Balance
+    Sheet double-counts closed-year net income: RE already holds it via the
+    posted closing entries, and a None here made the generator re-compute and
+    add it on top (BUG-YE-BRANCH-NULL).
+
+    Caveat: with a single cutoff, if active branches ever diverge (one closed
+    2025, another only 2024 — which close_fiscal_year prevents today by closing
+    all active branches in lockstep), the max-across-branches year avoids the
+    double-count but could undercount a lagging branch's open year.
+    """
+    q = FiscalYearClose.query.filter_by(status='closed')
+    if branch_id is not None:
+        q = q.filter_by(branch_id=branch_id)
+    row = q.order_by(FiscalYearClose.fiscal_year.desc()).first()
     return row.fiscal_year if row else None
 
 

@@ -66,3 +66,20 @@ def test_latest_closed_year_ignores_reopened(db_session, admin_user, main_branch
                                    closed_by_id=admin_user.id))
     db.session.commit()
     assert service.latest_closed_year(main_branch.id) is None
+
+
+def test_latest_closed_year_none_branch_aggregates_across_branches(db_session, admin_user, main_branch):
+    """branch_id=None means 'all branches' — matching the Balance Sheet's unscoped
+    balance query — so it returns the latest year closed *anywhere*, not the (never
+    existing) null-branch row. Otherwise the unscoped BS double-counts closed-year
+    net income (RE from the posted closing entries + recomputed NI). BUG-YE-BRANCH-NULL.
+    """
+    from app.year_end import service
+    from app.year_end.models import FiscalYearClose
+    assert service.latest_closed_year(None) is None
+    db.session.add(FiscalYearClose(fiscal_year=2025, branch_id=main_branch.id,
+                                   status='closed', net_income=Decimal('0'),
+                                   closed_by_id=admin_user.id))
+    db.session.commit()
+    assert service.latest_closed_year(None) == 2025
+    assert service.latest_closed_year_end(None) == date(2025, 12, 31)

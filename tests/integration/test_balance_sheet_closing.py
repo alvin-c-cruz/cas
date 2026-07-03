@@ -48,3 +48,26 @@ def test_bs_after_close_uses_posted_re_and_no_double_count(db_session, admin_use
     # equity should be exactly the posted RE (700), not 1400 (double-count)
     assert re_total == 700.0
     assert bs['is_balanced']
+
+
+def test_bs_all_branches_after_close_no_double_count(db_session, admin_user, main_branch):
+    """Unscoped (branch_id=None) Balance Sheet must not double-count closed-year
+    net income. RE already holds it via the posted closing entries; because
+    latest_closed_year_end(None) previously matched only the (nonexistent)
+    null-branch row, the generator re-computed NI inception-to-date and added it
+    on top → Equity overstated by the closed year's net income. BUG-YE-BRANCH-NULL.
+    """
+    from app.year_end import service
+    _world(main_branch.id)
+    _classify_world()
+    db.session.commit()
+    service.close_fiscal_year(2025, admin_user.id)
+    db.session.commit()
+
+    bs = generate_balance_sheet(date(2025, 12, 31), branch_id=None)
+    eq = next(s for s in bs['sections'] if s['key'] == 'equity')
+    names = [line['name'] for div in eq['divisions'] for line in div['lines']]
+    # posted RE only (700); no recomputed 'Net Income (current year)' line on top
+    assert eq['total'] == 700.0
+    assert not any('Net Income (current year)' in n for n in names)
+    assert bs['is_balanced']
