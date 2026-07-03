@@ -93,3 +93,19 @@ def test_build_food_opening_balances(db_session):
     assert je.is_balanced
     from datetime import date
     assert je.entry_date == date(2024, 1, 1)
+
+
+def test_manufacturing_jvs_balance_and_move_inventory(db_session):
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.food_demo import (seed_food_baseline, resolve_food_refs,
+                                      build_food_opening, build_production_jv, build_cogs_jv)
+    r0 = seed_food_baseline(); refs = resolve_food_refs()
+    build_food_opening(refs, r0['admin'].id, r0['branch'].id)
+    p = build_production_jv(date(2024, 2, 29), Decimal('500000.00'), refs, r0['admin'].id, r0['branch'].id)
+    c = build_cogs_jv(date(2024, 2, 29), Decimal('420000.00'), refs, r0['admin'].id, r0['branch'].id)
+    assert p.is_balanced and c.is_balanced
+    # Production debits Finished Goods; COGS credits Finished Goods.
+    assert any(l.account_id == refs['inv']['fg'].id and l.debit_amount > 0 for l in p.lines.all())
+    assert any(l.account_id == refs['inv']['fg'].id and l.credit_amount > 0 for l in c.lines.all())
+    assert any(l.account_id == refs['cogs'].id and l.debit_amount > 0 for l in c.lines.all())

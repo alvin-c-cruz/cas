@@ -327,3 +327,37 @@ def build_food_opening(refs, admin_id, branch_id):
     return build_jv(date(2024, 1, 1), lines, refs, admin_id, branch_id,
                     entry_type='opening_balance', description='Opening balances — company launch',
                     reference='OPENING BALANCES')
+
+
+def build_production_jv(doc_date, amount, refs, admin_id, branch_id):
+    """Capitalize a month's factory costs into Finished Goods: RM + labor + factory depreciation.
+    amount = total finished-goods value produced this period; split into cost components."""
+    from decimal import Decimal
+    from app.seeds.demo_seed import build_jv, _money
+    amt = _money(amount)
+    rm = _money(amount * Decimal('0.55'))          # raw materials consumed
+    labor = _money(amount * Decimal('0.25'))       # factory direct labor (accrued)
+    depr = _money(amount - rm - labor)             # factory machine depreciation (residual balancer)
+    # Capitalize factory costs straight into Finished Goods (simple monthly full-completion model;
+    # WIP is exercised separately by the orchestrator's optional partial-completion entry).
+    lines = [
+        (refs['inv']['fg'], amt, Decimal('0.00')),
+        (refs['inv']['rm'], Decimal('0.00'), rm),
+        (refs['accrued_salaries'], Decimal('0.00'), labor),
+        (refs['ppe']['accum_machinery'], Decimal('0.00'), depr),
+    ]
+    return build_jv(doc_date, lines, refs, admin_id, branch_id,
+                    entry_type='reclassification', description='Production — finished goods completed')
+
+
+def build_cogs_jv(doc_date, amount, refs, admin_id, branch_id):
+    """Recognize cost of goods sold for the period: Finished Goods -> COGS."""
+    from decimal import Decimal
+    from app.seeds.demo_seed import build_jv, _money
+    amt = _money(amount)
+    lines = [
+        (refs['cogs'], amt, Decimal('0.00')),
+        (refs['inv']['fg'], Decimal('0.00'), amt),
+    ]
+    return build_jv(doc_date, lines, refs, admin_id, branch_id,
+                    entry_type='reclassification', description='Cost of goods sold — period')
