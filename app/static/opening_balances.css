@@ -27,7 +27,6 @@
 .page-opening-balances .ob-lines tbody td { padding: 6px 8px; }
 
 /* Inputs fill their cell — the account picker is now wide enough for the full title */
-.page-opening-balances .ob-account,
 .page-opening-balances .ob-debit,
 .page-opening-balances .ob-credit {
     width: 100%;
@@ -44,13 +43,11 @@
     text-align: right;
     font-family: var(--mono);
 }
-.page-opening-balances .ob-account:focus,
 .page-opening-balances .ob-debit:focus,
 .page-opening-balances .ob-credit:focus {
     outline: none;
     border-color: var(--blue);
 }
-.page-opening-balances .ob-account:disabled,
 .page-opening-balances .ob-debit:disabled,
 .page-opening-balances .ob-credit:disabled {
     background: var(--bg);
