@@ -70,3 +70,12 @@ def test_override_diff_applied_to_largest_bucket(db_session):
     ap = _bill_with_lines([(w1, '100.00'), (w2, '200.00')], wt_total='310.00')
     by_code = {a.code: amt for a, amt in _wht_payable_buckets(ap, fallback)}
     assert by_code == {'22105-1': Decimal('100.00'), '22105-2': Decimal('210.00')}
+
+
+def test_override_below_line_totals_raises(db_session):
+    fb = _acct('20301', 'WHT Payable')
+    a1 = _acct('22105-1', 'WHT 1%'); a2 = _acct('22105-2', 'WHT 2%')
+    w1 = _wht('WC158', 1, a1); w2 = _wht('WC160', 2, a2)
+    ap = _bill_with_lines([(w1, '10.00'), (w2, '200.00')], wt_total='1.00')  # override 1 << 210
+    with pytest.raises(ValueError):
+        _wht_payable_buckets(ap, fb)

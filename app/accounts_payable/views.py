@@ -118,6 +118,10 @@ def _wht_payable_buckets(ap, fallback_acct):
     if diff != Decimal('0.00') and ordered:
         largest_id = max(ordered, key=lambda b: b[1])[0].id
         ordered = [(a, amt + diff if a.id == largest_id else amt) for a, amt in ordered]
+    if any(amt < Decimal('0.00') for _, amt in ordered):
+        raise ValueError(
+            'Withholding tax override is too far below the computed WHT to allocate '
+            'across payable accounts. Adjust the override or the line withholding.')
     return [(a, amt) for a, amt in ordered if amt != Decimal('0.00')]
 
 
@@ -1126,6 +1130,10 @@ def _post_ap_je(ap, user_id):
 
     wt_account = None
     if ap.withholding_tax_amount and ap.withholding_tax_amount > 0:
+        # Pre-check only: 20301 must exist as the WHT fallback account before
+        # we build the JE lines. _wht_payable_buckets() below re-reads
+        # _accts['wt'] itself (it needs it as the per-line fallback, not just
+        # for this existence check), so wt_account isn't referenced again.
         wt_account = _accts['wt']
         if not wt_account:
             raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
