@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A new `flask seed-food-demo` command that builds a contract food-manufacturer demo ("SavorPack Food Manufacturing Corp.") into `cas_demo.db` — Jan 2024 → Jun 2026, single MAIN branch, full periodic RM→WIP→FG→COGS inventory accounting at the GL level — so every CAS report shows realistic, balanced numbers.
+**Goal:** A new `flask seed-food-demo` command that builds a contract food-manufacturer demo ("SavorPack Food Manufacturing Corp.") into `cas.db` — Jan 2024 → Jun 2026, single MAIN branch, full periodic RM→WIP→FG→COGS inventory accounting at the GL level — so every CAS report shows realistic, balanced numbers.
 
 **Architecture:** New self-orchestrating module `app/seeds/food_demo.py` that MIRRORS the proven `app/seeds/demo_seed.py` (Zhiyuan) patterns and **imports its company-agnostic builders** (`build_jv`, `build_apv`, `build_crv_collecting`, `build_cdv_paying`, `build_cdv_expense`, `next_doc_number`, `si_number`, `crv_number`, `_money`, `_wht`). Only the food-specific parts are new: the COA (with `classification` set), company/customers/vendors, the finished-goods Sales Invoice builder, and the manufacturing/payroll/depreciation/loan journal vouchers. All money math reuses the real posting helpers so seeded docs are byte-identical to hand-entered ones. Zhiyuan `seed-demo` is untouched.
 
@@ -19,7 +19,7 @@
 - **Accumulated Depreciation accounts** are `account_type='Asset'` with `normal_balance='credit'` and MUST contain the words "Accumulated Depreciation" in the name (the Cash Flow generator excludes them from Investing by name).
 - **Backdated numbering:** never call the built-in `generate_*_number` for document numbers — they key on `datetime.now()`. Use the imported `next_doc_number(prefix, doc_date, counters)` / `si_number(counters)` / `crv_number(counters)` and `build_jv`'s internal `_generate_jv_number(doc_date, branch_id)`, all keyed on the document's own date.
 - **Every hand-built JE goes through `build_jv`**, which asserts `is_balanced` and raises `ValueError` if not.
-- **Transaction seeders are NOT idempotent.** `run_seed_food_demo(reset=False)` must REFUSE (raise `RuntimeError`) if food transactions already exist, with the rebuild instructions. Rebuild = confirm `.env`→`cas_demo.db` → delete `instance/cas_demo.db` → `flask db upgrade` → `flask seed-food-demo`.
+- **Transaction seeders are NOT idempotent.** `run_seed_food_demo(reset=False)` must REFUSE (raise `RuntimeError`) if food transactions already exist, with the rebuild instructions. Rebuild = confirm `.env`→`cas.db` → delete `instance/cas.db` → `flask db upgrade` → `flask seed-food-demo`.
 - **Span reaches 2026** (Jan 2024 → Jun 2026) so the app's current-year default filters/dashboard are not empty.
 - **Deterministic generation** — vary amounts/mix by loop index (e.g. `(idx * 37 % 11)`), never `random`/`Math.random`/wall-clock, so rebuilds reproduce.
 - Admin identity reused: `admin` / `admin123`, branch `MAIN`.
@@ -933,9 +933,9 @@ def run_seed_food_demo(reset=False):
 
 pytest passes on date-agnostic data that no default page shows. Verify the running app under DEFAULT (2026) filters.
 
-- [ ] **Step 1: Build into the dev DB.** Confirm `.env` → `sqlite:///cas_demo.db`, then:
+- [ ] **Step 1: Build into the dev DB.** Confirm `.env` → `sqlite:///cas.db`, then:
 ```bash
-rm -f instance/cas_demo.db
+rm -f instance/cas.db
 venv/Scripts/python -m flask db upgrade
 venv/Scripts/python -m flask seed-food-demo
 ```

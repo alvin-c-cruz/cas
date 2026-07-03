@@ -101,7 +101,7 @@ Production target is PythonAnywhere via `wsgi.py` (set `PYTHONANYWHERE_USERNAME`
 
 **Multi-instance deployment.** The same codebase is deployed to separate servers, one per client/instance. There is no code branching — each server differs only by its `.env` and its data:
 - Each server sets its own `SQLALCHEMY_DATABASE_URI`, keeps its own `instance/uploads` (the logo is a file referenced by the `company_logo` setting, **not** stored in the DB), and sets `company_name` as a DB setting.
-- This project (`erp-workspace/projects/cas`) is the **CAS demo** instance — `.env` → `sqlite:///cas_demo.db`. The RIC client instance lives in its own workspace at `C:\envs\ric-workspace\`.
+- This project (`erp-workspace/projects/cas`) is the **CAS demo** instance — `.env` → `sqlite:///cas.db` (the demo data; formerly named `cas_demo.db`, renamed 2026-07-03). The RIC client instance lives in its own workspace at `C:\envs\ric-workspace\`.
 - `/reset-database` resolves its target from `.env` and confirms the filename before wiping. Mind which DB `.env` points at before reseeding.
 
 ## Gotchas

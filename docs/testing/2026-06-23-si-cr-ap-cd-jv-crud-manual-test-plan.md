@@ -20,7 +20,7 @@ the audit trail. Record **Pass / Fail / N/A** and a note per case.
 ## 1. Prerequisites & setup
 
 1. **Run the app**: `python flask_app.py` (port 5000). Use a DB you can dirty — confirm `.env`
-   `SQLALCHEMY_DATABASE_URI` first (currently `cas_demo.db`); do NOT run destructive cases against
+   `SQLALCHEMY_DATABASE_URI` first (currently `cas.db`); do NOT run destructive cases against
    real `ric.db`.
 2. **Seed data present**: COA (incl. AR `10201`, Creditable WHT `10212`, AP `20101`, WHT-Payable
    `20301`, Output/Input VAT accounts, cash/bank accounts, revenue + expense accounts), at least one

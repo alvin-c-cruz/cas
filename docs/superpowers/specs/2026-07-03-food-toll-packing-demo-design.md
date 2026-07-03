@@ -10,9 +10,9 @@ A believable **contract food manufacturer / toll packer** demo — *SavorPack Fo
 
 ## Readiness (assessed 2026-07-03)
 
-- **Schema ready:** `cas_demo.db` is at migration head `f826f2cca271`.
+- **Schema ready:** `cas.db` is at migration head `f826f2cca271`.
 - The existing `flask seed-demo` builds *Zhiyuan Construction* with its own construction COA — **not** reusable for this. Hence a new generator.
-- Transaction seeders are **not idempotent**; a rebuild is delete-DB → `flask db upgrade` → seed. `.env` already targets `cas_demo.db` (the correct demo DB).
+- Transaction seeders are **not idempotent**; a rebuild is delete-DB → `flask db upgrade` → seed. `.env` already targets `cas.db` (the correct demo DB).
 
 ## Business model (decided)
 
@@ -140,7 +140,7 @@ Per month (≈30 months): 8–15 sales invoices, 10–20 purchases, matching CRV
 - **Date-keyed doc numbering** rolled locally (built-in generators key on *today* → wrong for backdated docs); one `_docnum(prefix, doc_date, branch_id)` helper.
 - **`is_balanced` guard** on every hand-built JE; **refuse-on-rerun** with a clear message (not idempotent).
 - New CLI command `flask seed-food-demo` in `app/__init__.py` (alongside the existing seed commands).
-- **Rebuild procedure:** confirm `.env` → `cas_demo.db` → delete `instance/cas_demo.db` → `flask db upgrade` → `flask seed-food-demo`.
+- **Rebuild procedure:** confirm `.env` → `cas.db` → delete `instance/cas.db` → `flask db upgrade` → `flask seed-food-demo`.
 
 ## Testing
 
