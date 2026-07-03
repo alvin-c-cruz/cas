@@ -271,3 +271,37 @@ def resolve_food_refs():
         'interest_expense': a['70101'], 'admin_salaries': a['60101'],
         'employer_share': a['60102'], 'admin_depr': a['60107'], 'vehicle_depr': a['61104'],
     }
+
+
+def build_food_si(doc_date, customer_obj, gross_amount, refs, admin_id, branch_id, counters):
+    """One posted finished-goods Sales Invoice (12% VAT, 1% goods EWT) + balanced posted JE."""
+    from datetime import date as _date
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    from app.sales_invoices.views import _post_invoice_je
+    from app.utils import ph_now
+    from app.seeds.demo_seed import si_number, _money, _wht
+
+    wt = _wht('WI010')  # 1% EWT on goods (seller records buyer's withholding -> CWT)
+    si = SalesInvoice(
+        branch_id=branch_id, invoice_number=si_number(counters), invoice_date=doc_date,
+        due_date=_date.fromordinal(doc_date.toordinal() + 30),
+        customer_id=customer_obj.id, customer_name=customer_obj.name,
+        customer_tin=customer_obj.tin, customer_address=customer_obj.address,
+        status='posted', amount_paid=Decimal('0.00'),
+        created_by_id=admin_id, posted_by_id=admin_id, posted_at=ph_now(),
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Packed food products — finished goods',
+        amount=_money(gross_amount), vat_category='V12', vat_rate=Decimal('12.00'),
+        account_id=refs['revenue'].id,
+        wt_id=wt.id if wt else None,
+        wt_rate=Decimal(str(wt.rate)) if wt else Decimal('0.00'),
+    )
+    item.calculate_amounts()
+    si.line_items.append(item)
+    si.calculate_totals()
+    db.session.add(si); db.session.flush()
+    je = _post_invoice_je(si, admin_id)
+    si.journal_entry_id = je.id
+    db.session.commit()
+    return si

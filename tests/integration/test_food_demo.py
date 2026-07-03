@@ -62,3 +62,24 @@ def test_food_customers_vendors_and_refs(db_session):
         assert refs[k] is not None
     assert refs['inv']['rm'].code == '10301' and refs['inv']['fg'].code == '10303'
     assert refs['expense']  # non-empty expense map for build_apv/build_cdv_expense
+
+
+def test_build_food_si_posts_balanced(db_session):
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.food_demo import (seed_food_baseline, seed_food_customers,
+                                      resolve_food_refs, build_food_si)
+    from app.customers.models import Customer
+    r0 = seed_food_baseline(); seed_food_customers()
+    refs = resolve_food_refs()
+    cust = Customer.query.filter_by(code='C001').first()
+    counters = {}
+    si = build_food_si(date(2024, 3, 15), cust, Decimal('112000.00'),
+                       refs, r0['admin'].id, r0['branch'].id, counters)
+    assert si.status == 'posted' and si.journal_entry_id is not None
+    je = si.journal_entry
+    tot_d = sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
+    tot_c = sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
+    assert tot_d == tot_c
+    # Revenue line posts to Sales - Goods.
+    assert any(l.account_id == refs['revenue'].id for l in je.lines.all())
