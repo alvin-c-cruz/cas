@@ -23,4 +23,8 @@ if __name__ == '__main__':
     # Get debug mode from config (already set from .env)
     debug_mode = app.config.get('DEBUG', False)
     port = int(os.environ.get('FLASK_PORT', 5050))
-    app.run(debug=debug_mode, port=port)
+    # use_reloader=False: keep the interactive debugger/tracebacks (debug_mode) but
+    # do NOT auto-restart the server when code under app/ is edited. Editing the
+    # codebase no longer bounces the running process — restart manually to pick up
+    # .py changes (templates still reload live per Jinja).
+    app.run(debug=debug_mode, port=port, use_reloader=False)
