@@ -4,6 +4,7 @@
 |---|---|---|
 | 2026-07-03 | [RIC legacy COA import](2026-07-03-ric-coa-import.md) | Done — imported to `ric.db` (391 accts); final review YES; on main, not pushed |
 | 2026-07-03 | [RIC COA reconciliation (seed retirement)](2026-07-03-ric-coa-reconciliation.md) | Done — executed on `ric.db` (391→368); D1–D4 resolved; scripts/ric_coa/reconcile.py |
+| 2026-07-03 | [WHT per-rate posting routing](2026-07-03-wht-per-rate-posting.md) | Planned — not started (AP+CDV bucket WHT payable by ATC account, mirrors input-VAT buckets) |
 | 2026-07-03 | [Opening Balances — SI line-item parity](2026-07-03-opening-balances-si-parity.md) | Done (on main, not pushed) |
 | 2026-07-03 | [Transaction-form line-item component standard](2026-07-03-transaction-line-item-standard.md) | Scoped — not started |
 | 2026-07-03 | [Food Toll Packing demo dataset](2026-07-03-food-toll-packing-demo.md) | Done (on main, not pushed) |
