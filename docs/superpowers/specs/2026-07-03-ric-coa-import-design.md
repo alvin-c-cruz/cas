@@ -131,6 +131,16 @@ guaranteed unique and cannot collide with the 5-digit leaf codes or the 5-digit 
 Group titles are new/descriptive — this is *adding* headers, not changing the verbatim leaf
 titles.
 
+### Group header fields
+
+Group headers are real `Account` rows and must satisfy the `NOT NULL` columns. Each group gets:
+`code` = its group code (above); `name` = its title (above); `account_type` = the group's CAS
+type (from the table); `classification` = the group's classification; `normal_balance` =
+`DEFAULT_NORMAL_BALANCE[account_type]` (cosmetic — groups carry no postings, balance 0, and are
+skipped by the statement generators' non-zero filter); `parent_id` = NULL (top-level → non-postable);
+`description` = NULL; `is_active` = True. The contra override does **not** apply to the group
+header `123` itself — only to its leaf accounts.
+
 ### Classification overrides
 
 `classification` is taken from TYPE_MAP by legacy type, then overridden per group where the
