@@ -94,6 +94,33 @@ def _input_vat_buckets(ap):
     return ordered
 
 
+def _wht_payable_buckets(ap, fallback_acct):
+    """Group the bill's WHT by each line's ATC payable_account (fallback_acct when the ATC
+    has none). Ordered by account code; the bill-level WHT override difference is applied to
+    the largest bucket. Total equals ap.withholding_tax_amount. Mirrors _input_vat_buckets."""
+    total_wt = Decimal(str(ap.withholding_tax_amount))
+    if total_wt <= 0:
+        return []
+    buckets = {}  # account_id -> [Account, Decimal]
+    for item in ap.line_items:
+        wt = Decimal(str(item.wt_amount or 0))
+        if wt <= 0:
+            continue
+        wtx = item.withholding_tax
+        acct = (wtx.payable_account if wtx and wtx.payable_account else fallback_acct)
+        if acct is None:
+            continue
+        if acct.id not in buckets:
+            buckets[acct.id] = [acct, Decimal('0.00')]
+        buckets[acct.id][1] += wt
+    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
+    diff = total_wt - sum((amt for _, amt in ordered), Decimal('0.00'))
+    if diff != Decimal('0.00') and ordered:
+        largest_id = max(ordered, key=lambda b: b[1])[0].id
+        ordered = [(a, amt + diff if a.id == largest_id else amt) for a, amt in ordered]
+    return [(a, amt) for a, amt in ordered if amt != Decimal('0.00')]
+
+
 def _build_je_preview(ap):
     """Return list of {code, name, debit, credit} dicts for the JE section.
 
@@ -149,13 +176,12 @@ def _build_je_preview(ap):
             'credit': Decimal('0.00'),
         })
 
-    wt_amount = Decimal(str(ap.withholding_tax_amount))
-    if wt_amount > 0 and accts['wt']:
+    for wt_acct, wt_amt in _wht_payable_buckets(ap, accts['wt']):
         entries.append({
-            'code': accts['wt'].code,
-            'name': accts['wt'].name,
+            'code': wt_acct.code,
+            'name': wt_acct.name,
             'debit': Decimal('0.00'),
-            'credit': wt_amount,
+            'credit': wt_amt,
         })
 
     if accts['ap']:
@@ -1163,13 +1189,13 @@ def _post_ap_je(ap, user_id):
         all_lines.append(vat_line)
         line_num += 1
 
-    if wt_account:
+    for wt_acct, wt_amt in _wht_payable_buckets(ap, _accts['wt']):
         wt_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
-            account_id=wt_account.id,
+            account_id=wt_acct.id,
             description=f'WHT Payable: {ap.ap_number}',
             debit_amount=Decimal('0.00'),
-            credit_amount=Decimal(str(ap.withholding_tax_amount))
+            credit_amount=wt_amt
         )
         db.session.add(wt_line)
         all_lines.append(wt_line)
