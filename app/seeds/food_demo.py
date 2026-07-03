@@ -436,6 +436,7 @@ def generate_food_transactions(refs, admin_id, branch_id):
 
     build_food_opening(refs, admin_id, branch_id); summary['jv'] += 1
 
+    seed_food_customers()
     customers = Customer.query.order_by(Customer.code).all()
     vendor_specs = seed_food_vendors()  # returns spec list; vendors already exist
     rm_vendors = [s for s in vendor_specs if s['expense_code'] in ('10301', '10304')]
@@ -453,20 +454,22 @@ def generate_food_transactions(refs, admin_id, branch_id):
         for k in range(n_sales):
             cust = customers[(idx + k) % len(customers)]
             gross = _money(Decimal('80000') + Decimal(str(((idx + k) * 6131) % 90000)))
-            si = build_food_si(date(y, m, 1 + (k * 2) % last), cust, gross,
+            si_day = 1 + (k * 2) % last
+            si = build_food_si(date(y, m, si_day), cust, gross,
                                refs, admin_id, branch_id, counters); summary['si'] += 1
             if k % 5 != 0:  # ~80% collected within the period -> aging spread
-                build_crv_collecting(date(y, m, min(last, 20 + k % 8)), si, refs,
+                build_crv_collecting(date(y, m, min(last, si_day + 5 + k % 6)), si, refs,
                                      admin_id, branch_id, counters); summary['crv'] += 1
 
         # Raw-material / packaging purchases + payments
         for k in range(n_purch):
             spec = rm_vendors[(idx + k) % len(rm_vendors)]
             gross = _money(Decimal('40000') + Decimal(str(((idx + k) * 4211) % 60000)))
-            ap = build_apv(date(y, m, 2 + (k * 2) % (last - 1)), spec['vendor'], spec, gross,
+            ap_day = 2 + (k * 2) % (last - 1)
+            ap = build_apv(date(y, m, ap_day), spec['vendor'], spec, gross,
                            refs, admin_id, branch_id, counters); summary['ap'] += 1
             if k % 4 != 0:
-                build_cdv_paying(date(y, m, min(last, 22 + k % 6)), ap, refs,
+                build_cdv_paying(date(y, m, min(last, ap_day + 4 + k % 6)), ap, refs,
                                  admin_id, branch_id, counters); summary['cdv'] += 1
 
         # Monthly opex (rent, utilities, professional, freight) via direct CDV expense
