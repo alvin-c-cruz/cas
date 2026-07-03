@@ -420,3 +420,75 @@ def build_loan_amort_jv(doc_date, principal, interest, refs, admin_id, branch_id
     ]
     return build_jv(doc_date, lines, refs, admin_id, branch_id,
                     entry_type='adjustment', description='Bank loan amortization')
+
+
+def generate_food_transactions(refs, admin_id, branch_id):
+    from datetime import date
+    from decimal import Decimal
+    from calendar import monthrange
+    from app.journal_entries.models import JournalEntry
+    from app.customers.models import Customer
+    from app.seeds.demo_seed import (build_apv, build_crv_collecting, build_cdv_paying,
+                                      build_cdv_expense, _money)
+
+    counters = {}
+    summary = {'si': 0, 'ap': 0, 'crv': 0, 'cdv': 0, 'jv': 0, 'unbalanced': 0}
+
+    build_food_opening(refs, admin_id, branch_id); summary['jv'] += 1
+
+    customers = Customer.query.order_by(Customer.code).all()
+    vendor_specs = seed_food_vendors()  # returns spec list; vendors already exist
+    rm_vendors = [s for s in vendor_specs if s['expense_code'] in ('10301', '10304')]
+    opex_vendors = [s for s in vendor_specs if s['expense_code'] not in ('10301', '10304')]
+
+    y, m = 2024, 1
+    idx = 0
+    while (y, m) <= (2026, 6):
+        last = monthrange(y, m)[1]
+        eom = date(y, m, last)
+        n_sales = 8 + (idx * 37) % 8          # 8..15
+        n_purch = 10 + (idx * 53) % 8         # 10..17
+
+        # Sales + collections
+        for k in range(n_sales):
+            cust = customers[(idx + k) % len(customers)]
+            gross = _money(Decimal('80000') + Decimal(str(((idx + k) * 6131) % 90000)))
+            si = build_food_si(date(y, m, 1 + (k * 2) % last), cust, gross,
+                               refs, admin_id, branch_id, counters); summary['si'] += 1
+            if k % 5 != 0:  # ~80% collected within the period -> aging spread
+                build_crv_collecting(date(y, m, min(last, 20 + k % 8)), si, refs,
+                                     admin_id, branch_id, counters); summary['crv'] += 1
+
+        # Raw-material / packaging purchases + payments
+        for k in range(n_purch):
+            spec = rm_vendors[(idx + k) % len(rm_vendors)]
+            gross = _money(Decimal('40000') + Decimal(str(((idx + k) * 4211) % 60000)))
+            ap = build_apv(date(y, m, 2 + (k * 2) % (last - 1)), spec['vendor'], spec, gross,
+                           refs, admin_id, branch_id, counters); summary['ap'] += 1
+            if k % 4 != 0:
+                build_cdv_paying(date(y, m, min(last, 22 + k % 6)), ap, refs,
+                                 admin_id, branch_id, counters); summary['cdv'] += 1
+
+        # Monthly opex (rent, utilities, professional, freight) via direct CDV expense
+        for spec in opex_vendors:
+            gross = _money(Decimal('15000') + Decimal(str((idx * 977) % 40000)))
+            build_cdv_expense(eom, spec['vendor'], spec, gross, refs,
+                              admin_id, branch_id, counters); summary['cdv'] += 1
+
+        # Manufacturing + payroll + depreciation + loan (month-end JVs)
+        produced = _money(Decimal('600000') + Decimal(str((idx * 8123) % 300000)))
+        sold = _money(produced * Decimal('0.85'))
+        build_production_jv(eom, produced, refs, admin_id, branch_id); summary['jv'] += 1
+        build_cogs_jv(eom, sold, refs, admin_id, branch_id); summary['jv'] += 1
+        build_payroll_jv(eom, _money(Decimal('280000')), refs, admin_id, branch_id); summary['jv'] += 1
+        build_depreciation_jv(eom, refs, admin_id, branch_id); summary['jv'] += 1
+        build_loan_amort_jv(eom, _money(Decimal('100000')), _money(Decimal('40000')),
+                            refs, admin_id, branch_id); summary['jv'] += 1
+
+        idx += 1
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+
+    summary['unbalanced'] = JournalEntry.query.filter_by(status='posted', is_balanced=False).count()
+    return summary

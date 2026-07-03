@@ -121,3 +121,20 @@ def test_payroll_depr_loan_jvs_balance(db_session):
     assert build_payroll_jv(date(2024, 1, 31), Decimal('250000.00'), refs, a, b).is_balanced
     assert build_depreciation_jv(date(2024, 1, 31), refs, a, b).is_balanced
     assert build_loan_amort_jv(date(2024, 1, 31), Decimal('100000.00'), Decimal('50000.00'), refs, a, b).is_balanced
+
+
+def test_generate_food_transactions_counts_and_balance(db_session):
+    from decimal import Decimal
+    from app.seeds.food_demo import (seed_food_baseline, seed_food_customers,
+                                      seed_food_vendors, resolve_food_refs, generate_food_transactions)
+    from app.journal_entries.models import JournalEntry
+    r0 = seed_food_baseline(); seed_food_customers(); seed_food_vendors()
+    refs = resolve_food_refs()
+    summary = generate_food_transactions(refs, r0['admin'].id, r0['branch'].id)
+    assert summary['si'] >= 100 and summary['ap'] >= 100 and summary['jv'] >= 60
+    assert summary['unbalanced'] == 0
+    tot_d = tot_c = Decimal('0')
+    for je in JournalEntry.query.filter_by(status='posted').all():
+        tot_d += sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
+        tot_c += sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
+    assert tot_d == tot_c
