@@ -200,3 +200,74 @@ def seed_food_baseline():
             pm, py = 1, py + 1
 
     return {'admin': admin, 'branch': branch}
+
+
+FOOD_CUSTOMERS = [
+    {'code': 'C001', 'name': 'Golden Harvest Foods Inc.', 'vat': 'V12', 'tin': '111-222-333-000'},
+    {'code': 'C002', 'name': 'Metro Grocers Corporation', 'vat': 'V12', 'tin': '222-333-444-000'},
+    {'code': 'C003', 'name': 'FreshMart Distribution Co.', 'vat': 'V12', 'tin': '333-444-555-000'},
+    {'code': 'C004', 'name': 'Island Pantry Trading', 'vat': 'V12', 'tin': '444-555-666-000'},
+    {'code': 'C005', 'name': 'SunRise Retail Ventures', 'vat': 'V12', 'tin': '555-666-777-000'},
+]
+
+# expense_code = the account each vendor's purchase/expense posts to.
+FOOD_VENDORS = [
+    {'code': 'V001', 'name': 'AgriSource Raw Materials Inc.', 'tin': '611-000-001-000',
+     'vat': 'V12DG', 'wht': None, 'expense_code': '10301'},   # raw materials -> RM inventory
+    {'code': 'V002', 'name': 'PackRight Packaging Supply', 'tin': '611-000-002-000',
+     'vat': 'V12DG', 'wht': None, 'expense_code': '10304'},   # packaging -> Pkg inventory
+    {'code': 'V003', 'name': 'Laguna Power & Water District', 'tin': '611-000-003-000',
+     'vat': 'V12SV', 'wht': None, 'expense_code': '60104'},   # utilities (office)
+    {'code': 'V004', 'name': 'RiverPark Realty (Landlord)', 'tin': '611-000-004-000',
+     'vat': 'V12SV', 'wht': 'WC160', 'expense_code': '60103'},  # rent (5% EWT)
+    {'code': 'V005', 'name': 'Ledesma & Co. CPAs', 'tin': '611-000-005-000',
+     'vat': 'V12SV', 'wht': 'WC010', 'expense_code': '60108'},  # professional (10% EWT)
+    {'code': 'V006', 'name': 'FastLane Logistics Services', 'tin': '611-000-006-000',
+     'vat': 'V12SV', 'wht': 'WI020', 'expense_code': '61101'},  # freight (2% EWT)
+]
+
+
+def seed_food_customers():
+    from app.customers.models import Customer
+    if Customer.query.count() > 0:
+        return 0
+    for c in FOOD_CUSTOMERS:
+        db.session.add(Customer(code=c['code'], name=c['name'], tin=c['tin'],
+                                address='Metro Manila', default_vat_category=c['vat'],
+                                is_active=True))
+    db.session.commit()
+    return len(FOOD_CUSTOMERS)
+
+
+def seed_food_vendors():
+    """Create vendors; return the spec list (with expense_code/vat/wht) for the builders."""
+    from app.vendors.models import Vendor
+    if Vendor.query.count() == 0:
+        for v in FOOD_VENDORS:
+            db.session.add(Vendor(code=v['code'], name=v['name'], tin=v['tin'], is_active=True))
+        db.session.commit()
+    by_code = {v.code: v for v in Vendor.query.all()}
+    return [{'vendor': by_code[v['code']], 'vat': v['vat'], 'wht': v['wht'],
+             'expense_code': v['expense_code']} for v in FOOD_VENDORS]
+
+
+def resolve_food_refs():
+    """Account-object lookups the transaction builders need."""
+    a = {x.code: x for x in Account.query.all()}
+    expense_codes = ['60103', '60104', '60105', '60106', '60108', '60109', '60110',
+                     '60111', '61101', '61102', '61103', '10301', '10304']
+    return {
+        'cash_on_hand': a['10101'], 'cash_bank': a['10110'],
+        'inv': {'rm': a['10301'], 'wip': a['10302'], 'fg': a['10303'], 'pkg': a['10304']},
+        'ppe': {'machinery': a['12010'], 'accum_machinery': a['12011'],
+                'building': a['12020'], 'accum_building': a['12021'],
+                'office': a['12030'], 'accum_office': a['12031'],
+                'vehicles': a['12040'], 'accum_vehicles': a['12041']},
+        'revenue': a['40101'], 'cogs': a['50001'],
+        'expense': {code: a[code] for code in expense_codes},
+        'accrued_salaries': a['20401'], 'sss': a['20402'], 'phic': a['20403'], 'hdmf': a['20404'],
+        'wt_comp': a['20302'], 'income_tax_payable': a['20406'],
+        'loan': a['25001'], 'share_capital': a['30101'],
+        'interest_expense': a['70101'], 'admin_salaries': a['60101'],
+        'employer_share': a['60102'], 'admin_depr': a['60107'], 'vehicle_depr': a['61104'],
+    }

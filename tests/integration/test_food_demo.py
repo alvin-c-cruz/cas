@@ -44,3 +44,21 @@ def test_seed_food_baseline(db_session):
     assert AccountingPeriod.query.count() >= 30
     assert AccountingPeriod.query.filter_by(year=2024, month=1).first() is not None
     assert AccountingPeriod.query.filter_by(year=2026, month=6).first() is not None
+
+
+def test_food_customers_vendors_and_refs(db_session):
+    from app.seeds.food_demo import (seed_food_baseline, seed_food_customers,
+                                      seed_food_vendors, resolve_food_refs)
+    from app.customers.models import Customer
+    from app.vendors.models import Vendor
+    seed_food_baseline()
+    seed_food_customers()
+    specs = seed_food_vendors()
+    assert Customer.query.count() >= 4
+    assert Vendor.query.count() >= 4
+    assert all({'vendor', 'vat', 'wht', 'expense_code'} <= set(s) for s in specs)
+    refs = resolve_food_refs()
+    for k in ('cash_on_hand', 'cash_bank', 'revenue', 'cogs', 'share_capital', 'loan'):
+        assert refs[k] is not None
+    assert refs['inv']['rm'].code == '10301' and refs['inv']['fg'].code == '10303'
+    assert refs['expense']  # non-empty expense map for build_apv/build_cdv_expense
