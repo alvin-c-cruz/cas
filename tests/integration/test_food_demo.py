@@ -109,3 +109,15 @@ def test_manufacturing_jvs_balance_and_move_inventory(db_session):
     assert any(l.account_id == refs['inv']['fg'].id and l.debit_amount > 0 for l in p.lines.all())
     assert any(l.account_id == refs['inv']['fg'].id and l.credit_amount > 0 for l in c.lines.all())
     assert any(l.account_id == refs['cogs'].id and l.debit_amount > 0 for l in c.lines.all())
+
+
+def test_payroll_depr_loan_jvs_balance(db_session):
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.food_demo import (seed_food_baseline, resolve_food_refs,
+                                      build_payroll_jv, build_depreciation_jv, build_loan_amort_jv)
+    r0 = seed_food_baseline(); refs = resolve_food_refs()
+    a = r0['admin'].id; b = r0['branch'].id
+    assert build_payroll_jv(date(2024, 1, 31), Decimal('250000.00'), refs, a, b).is_balanced
+    assert build_depreciation_jv(date(2024, 1, 31), refs, a, b).is_balanced
+    assert build_loan_amort_jv(date(2024, 1, 31), Decimal('100000.00'), Decimal('50000.00'), refs, a, b).is_balanced

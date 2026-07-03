@@ -361,3 +361,62 @@ def build_cogs_jv(doc_date, amount, refs, admin_id, branch_id):
     ]
     return build_jv(doc_date, lines, refs, admin_id, branch_id,
                     entry_type='reclassification', description='Cost of goods sold — period')
+
+
+def build_payroll_jv(doc_date, gross, refs, admin_id, branch_id):
+    """Admin salaries + statutory + WT-compensation accrual (net settled later via CDV)."""
+    from decimal import Decimal
+    from app.seeds.demo_seed import build_jv, _money
+    gross = _money(gross)
+    sss = _money(gross * Decimal('0.045'))
+    phic = _money(gross * Decimal('0.02'))
+    hdmf = _money(Decimal('100.00'))
+    wtx = _money(gross * Decimal('0.08'))
+    employer = _money(gross * Decimal('0.09'))
+    sss_line = _money(sss + employer * Decimal('0.6'))
+    phic_line = _money(phic + employer * Decimal('0.3'))
+    hdmf_line = _money(hdmf + employer * Decimal('0.1'))
+    # accrued_salaries (net pay) is the residual balancer: total debits minus every other
+    # credit line, so the entry balances exactly regardless of per-line rounding.
+    net = _money(gross + employer - sss_line - phic_line - hdmf_line - wtx)
+    lines = [
+        (refs['admin_salaries'], gross, Decimal('0.00')),
+        (refs['employer_share'], employer, Decimal('0.00')),
+        (refs['sss'], Decimal('0.00'), sss_line),
+        (refs['phic'], Decimal('0.00'), phic_line),
+        (refs['hdmf'], Decimal('0.00'), hdmf_line),
+        (refs['wt_comp'], Decimal('0.00'), wtx),
+        (refs['accrued_salaries'], Decimal('0.00'), net),
+    ]
+    return build_jv(doc_date, lines, refs, admin_id, branch_id,
+                    entry_type='adjustment', description='Payroll accrual — administrative')
+
+
+def build_depreciation_jv(doc_date, refs, admin_id, branch_id):
+    """Monthly admin (office) + selling (vehicle) depreciation. Factory depr is in production."""
+    from decimal import Decimal
+    from app.seeds.demo_seed import build_jv, _money
+    office = _money(Decimal('300000.00') / 60)     # 5-yr straight line
+    vehicle = _money(Decimal('1200000.00') / 60)
+    lines = [
+        (refs['admin_depr'], office, Decimal('0.00')),
+        (refs['vehicle_depr'], vehicle, Decimal('0.00')),
+        (refs['ppe']['accum_office'], Decimal('0.00'), office),
+        (refs['ppe']['accum_vehicles'], Decimal('0.00'), vehicle),
+    ]
+    return build_jv(doc_date, lines, refs, admin_id, branch_id,
+                    entry_type='adjustment', description='Depreciation — admin and delivery')
+
+
+def build_loan_amort_jv(doc_date, principal, interest, refs, admin_id, branch_id):
+    """Monthly bank-loan amortization: principal + interest paid from bank."""
+    from decimal import Decimal
+    from app.seeds.demo_seed import build_jv, _money
+    principal = _money(principal); interest = _money(interest)
+    lines = [
+        (refs['loan'], principal, Decimal('0.00')),
+        (refs['interest_expense'], interest, Decimal('0.00')),
+        (refs['cash_bank'], Decimal('0.00'), _money(principal + interest)),
+    ]
+    return build_jv(doc_date, lines, refs, admin_id, branch_id,
+                    entry_type='adjustment', description='Bank loan amortization')
