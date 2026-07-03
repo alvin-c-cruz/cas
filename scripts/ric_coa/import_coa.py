@@ -31,19 +31,21 @@ def assert_importable(session):
 def write_accounts(specs, session):
     from app.accounts.models import Account
     from app.audit.utils import log_audit
-    code_to_id, n_groups, n_leaves = {}, 0, 0
-    for s in [x for x in specs if x.is_group] + [x for x in specs if not x.is_group]:
+    ordered = [s for s in specs if s.is_group] + [s for s in specs if not s.is_group]
+    code_to_id = {}
+    for s in ordered:
         acct = Account(code=s.code, name=s.name, account_type=s.account_type,
                        classification=s.classification, normal_balance=s.normal_balance,
                        parent_id=(code_to_id[s.parent_code] if s.parent_code else None),
                        is_active=True)
         session.add(acct); session.flush()
         code_to_id[s.code] = acct.id
-        log_audit(module='accounts', action='import', record_id=acct.id,
+    session.commit()                                   # accounts land atomically
+    for s in ordered:                                  # audit after (log_audit self-commits)
+        log_audit(module='accounts', action='import', record_id=code_to_id[s.code],
                   record_identifier=f'{s.code} {s.name}', new_values=s.as_dict())
-        if s.is_group: n_groups += 1
-        else:          n_leaves += 1
-    return {'groups': n_groups, 'leaves': n_leaves}
+    n_groups = sum(1 for s in specs if s.is_group)
+    return {'groups': n_groups, 'leaves': len(specs) - n_groups}
 
 
 def summarize(specs):
@@ -59,7 +61,8 @@ def summarize(specs):
 
 def _assert_target_is_ric(app):
     uri = str(app.config.get('SQLALCHEMY_DATABASE_URI', ''))
-    if not uri.endswith('ric.db'):
+    name = uri.rsplit('/', 1)[-1].rsplit('\\', 1)[-1]   # db filename component
+    if name != 'ric.db':
         raise SystemExit(f'SAFETY: target is not ric.db -> {uri}')
 
 
@@ -79,6 +82,7 @@ def main():
         _assert_target_is_ric(app)
         print('TARGET :', app.config['SQLALCHEMY_DATABASE_URI'])
         print('SUMMARY:', summarize(specs))
+        assert_importable(db.session)
         # per-run leaf-code clash guard
         leaf_codes = [s.code for s in specs if not s.is_group]
         clash = {c for (c,) in db.session.query(Account.code)

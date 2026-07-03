@@ -44,3 +44,19 @@ def test_assert_importable_blocks_on_existing_code(db_session):
 def test_summarize_counts(db_session):
     s = summarize(build_accounts(ROWS))
     assert s['leaves'] == 4 and s['contra'] == 2   # 11202 + 12301
+
+def test_read_legacy_reads_rows_from_a_sqlite(tmp_path):
+    import sqlite3
+    from scripts.ric_coa.import_coa import read_legacy
+    db = tmp_path / "legacy.db"
+    con = sqlite3.connect(db)
+    con.executescript(
+        "CREATE TABLE account_type(id INTEGER PRIMARY KEY, account_type TEXT);"
+        "CREATE TABLE accounts(id INTEGER PRIMARY KEY, account_number TEXT,"
+        " account_title TEXT, account_type_id INTEGER);"
+        "INSERT INTO account_type VALUES (1,'Cash and Cash Equivalents');"
+        "INSERT INTO accounts VALUES (1,'11101','CASH ON HAND',1),(2,'11102','CASH - DOLLAR',1);")
+    con.commit(); con.close()
+    rows = read_legacy(str(db))
+    assert rows == [("11101","CASH ON HAND","Cash and Cash Equivalents"),
+                    ("11102","CASH - DOLLAR","Cash and Cash Equivalents")]
