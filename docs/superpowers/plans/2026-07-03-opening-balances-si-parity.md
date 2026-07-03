@@ -27,7 +27,7 @@
 ## File Structure
 
 - `app/opening_balances/templates/opening_balances/form.html` — **modify.** Add Choices/transactions CSS + Choices/search-select/transaction-utils JS; define a Jinja `ob_row` macro; render rows and a `<template id="ob-row-template">` via the macro; add a blank placeholder `<option>`; bump `opening_balances.js` to `?v=3` and `opening_balances.css` to `?v=2`.
-- `app/static/opening_balances.js` — **rewrite.** Upgrade rows on load, build new rows from the `<template>`, focus/blur formatting, sibling auto-clear, totals recalc, finalize modal.
+- `app/static/js/opening_balances.js` — **rewrite.** Upgrade rows on load, build new rows from the `<template>`, focus/blur formatting, sibling auto-clear, totals recalc, finalize modal.
 - `app/static/opening_balances.css` — **modify.** Drop the now-dead native-`<select>` input rule (the account cell hosts a Choices widget styled by `transactions.css`); keep column widths + number-input styling.
 - `tests/e2e/test_opening_balances_smoke.py` — **create.** Playwright smoke for search-select + focus/blur + auto-clear + add/remove + save round-trip.
 - `tests/integration/test_opening_balances_parse.py` — **create.** Server characterization test: `_parse_lines` accepts comma-formatted amounts.
@@ -389,14 +389,14 @@ git commit -m "test(opening-balances): e2e smoke for search-select + focus/blur 
 Implement the behavior so Task 3 passes.
 
 **Files:**
-- Rewrite: `app/static/opening_balances.js`
+- Rewrite: `app/static/js/opening_balances.js`
 - Modify: `app/static/opening_balances.css`
 
 **Interfaces:**
 - Consumes: `initSearchSelect(selectEl)` (global, from `search-select.js`); `amtFmt(n)` (global, from `transaction-utils.js`); the DOM contract from Task 2.
 - Produces: the runtime behavior asserted by Task 3.
 
-- [ ] **Step 1: Replace `app/static/opening_balances.js` entirely**
+- [ ] **Step 1: Replace `app/static/js/opening_balances.js` entirely**
 
 ```javascript
 (function () {
@@ -515,7 +515,7 @@ Reload `http://127.0.0.1:5050/opening-balances`: the Account field is a typeahea
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/static/opening_balances.js app/static/opening_balances.css
+git add app/static/js/opening_balances.js app/static/opening_balances.css
 git commit -m "feat(opening-balances): search-select account + Debit/Credit focus-blur format + auto-clear"
 ```
 
@@ -545,7 +545,7 @@ In `.claude/regression-map.json`, in `"modules"`, add after the `sales_orders` l
 In `"blast_radius"`, add these keys (own files) near the other `app/static/*` entries:
 
 ```json
-    "app/static/opening_balances.js":     ["opening_balances"],
+    "app/static/js/opening_balances.js":     ["opening_balances"],
     "app/opening_balances/views.py":      ["opening_balances"],
 ```
 
