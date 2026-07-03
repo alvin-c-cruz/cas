@@ -110,3 +110,93 @@ def seed_food_coa():
             by_code[code].parent_id = by_code[parent].id
     db.session.commit()
     return len(FOOD_COA)
+
+
+COMPANY_SETTINGS = [
+    {'key': 'company_name', 'value': 'SavorPack Food Manufacturing Corp.'},
+    {'key': 'company_tin', 'value': '009-888-777-000'},
+    {'key': 'company_address', 'value': '12 Riverside Industrial Park, Cabuyao, Laguna'},
+    {'key': 'fiscal_year_start', 'value': '01'},
+    {'key': 'tin_branch_code', 'value': '000'},
+]
+
+# (code, name, rate, sales_name) — sales_name set => usable seller-side; None => purchase-only.
+WHT_CODES = [
+    {'code': 'WI010', 'name': 'Income payments to suppliers of goods (1%)', 'rate': 1.00,
+     'sales_name': 'Sales of goods to top withholding agent (1%)'},
+    {'code': 'WI020', 'name': 'Income payments to suppliers of services (2%)', 'rate': 2.00, 'sales_name': None},
+    {'code': 'WC160', 'name': 'Rentals (5%)', 'rate': 5.00, 'sales_name': None},
+    {'code': 'WC010', 'name': 'Professional fees (10%)', 'rate': 10.00, 'sales_name': None},
+]
+
+
+def seed_food_baseline():
+    """Admin, MAIN branch, company settings, tax tables, periods Jan2024->Jun2026. Idempotent."""
+    from app.users.models import User
+    from app.branches.models import Branch
+    from app.settings import AppSettings
+    from app.vat_categories.models import VATCategory
+    from app.sales_vat_categories.models import SalesVATCategory
+    from app.withholding_tax.models import WithholdingTax
+    from app.periods.models import AccountingPeriod
+
+    seed_food_coa()
+
+    admin = User.query.filter_by(username='admin').first()
+    if admin is None:
+        admin = User(username='admin', email='admin@savorpack.ph',
+                     full_name='System Administrator', role='admin', is_active=True)
+        admin.set_password('admin123')
+        db.session.add(admin); db.session.commit()
+
+    branch = Branch.query.filter_by(code='MAIN').first()
+    if branch is None:
+        branch = Branch(code='MAIN', name='Main Branch', address='Head Office', is_active=True)
+        db.session.add(branch); db.session.commit()
+    if branch not in admin.branches.all():
+        admin.branches.append(branch); db.session.commit()
+
+    if AppSettings.query.count() == 0:
+        for s in COMPANY_SETTINGS:
+            db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
+        db.session.commit()
+
+    if VATCategory.query.count() == 0:
+        vat_acct = {a.code: a.id for a in Account.query.filter(
+            Account.code.in_(['10501', '10502', '10503', '10504'])).all()}
+        for c in [
+            {'code': 'VEX', 'name': 'VAT Exempt', 'rate': 0.00, 'acct': None},
+            {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'acct': '10501'},
+            {'code': 'V12DG', 'name': 'Input Tax Domestic Goods', 'rate': 12.00, 'acct': '10502'},
+            {'code': 'V12SV', 'name': 'Input Tax Services', 'rate': 12.00, 'acct': '10503'},
+        ]:
+            db.session.add(VATCategory(code=c['code'], name=c['name'], rate=c['rate'],
+                                       description='', is_active=True,
+                                       input_vat_account_id=vat_acct.get(c['acct']) if c['acct'] else None))
+        db.session.commit()
+
+    if SalesVATCategory.query.count() == 0:
+        out_id = Account.query.filter_by(code='20201').first().id
+        for c in [
+            {'code': 'V12', 'name': 'VATable Sales (12%)', 'rate': 12.00, 'nature': 'regular', 'acct': out_id},
+            {'code': 'VEX', 'name': 'VAT-Exempt Sales', 'rate': 0.00, 'nature': 'exempt', 'acct': None},
+        ]:
+            db.session.add(SalesVATCategory(code=c['code'], name=c['name'], rate=c['rate'],
+                                            transaction_nature=c['nature'],
+                                            output_vat_account_id=c['acct'], is_active=True))
+        db.session.commit()
+
+    if WithholdingTax.query.count() == 0:
+        for w in WHT_CODES:
+            db.session.add(WithholdingTax(code=w['code'], name=w['name'], description='',
+                                          rate=w['rate'], sales_name=w['sales_name'], is_active=True))
+        db.session.commit()
+
+    py, pm = 2024, 1
+    while (py, pm) <= (2026, 6):
+        AccountingPeriod.get_or_create_period(py, pm)
+        pm += 1
+        if pm > 12:
+            pm, py = 1, py + 1
+
+    return {'admin': admin, 'branch': branch}
