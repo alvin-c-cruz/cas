@@ -185,6 +185,10 @@ def test_run_seed_food_demo_full(db_session):
     # which persists on the 2026 Balance Sheet with a credit balance.
     assert _bal('80101') == 0                     # expense correctly closed to RE
     assert -_bal('20406') > 0                     # income tax payable accrued and unsettled
+    # Both cash accounts stay physically non-negative — Cash on Hand is a static petty-cash
+    # float that nothing drains, Cash in Bank absorbs all operating disbursements.
+    assert _bal('10101') >= 0
+    assert _bal('10110') > 0
 
 
 def test_run_seed_food_demo_refuses_double_run(db_session):

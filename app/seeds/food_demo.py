@@ -315,7 +315,8 @@ def build_food_opening(refs, admin_id, branch_id):
     from decimal import Decimal
     from app.seeds.demo_seed import build_jv
     lines = [
-        (refs['cash_bank'], Decimal('2700000.00'), Decimal('0.00')),
+        (refs['cash_bank'], Decimal('2400000.00'), Decimal('0.00')),
+        (refs['cash_on_hand'], Decimal('300000.00'), Decimal('0.00')),
         (refs['ppe']['machinery'], Decimal('4000000.00'), Decimal('0.00')),
         (refs['ppe']['building'], Decimal('2500000.00'), Decimal('0.00')),
         (refs['ppe']['vehicles'], Decimal('1200000.00'), Decimal('0.00')),
@@ -323,7 +324,10 @@ def build_food_opening(refs, admin_id, branch_id):
         (refs['inv']['rm'], Decimal('800000.00'), Decimal('0.00')),
         (refs['inv']['pkg'], Decimal('200000.00'), Decimal('0.00')),
         (refs['inv']['wip'], Decimal('300000.00'), Decimal('0.00')),
-        # Debits total 12,000,000 (2.7M+4M+2.5M+1.2M+0.3M+0.8M+0.2M+0.3M WIP) = 6M capital + 6M loan.
+        # Debits total 12,000,000 (2.4M bank + 0.3M petty cash + 4M+2.5M+1.2M+0.3M PPE +
+        # 0.8M+0.2M+0.3M inventory) = 6M capital + 6M loan. Petty-cash float (10101) is a
+        # STATIC 300,000 that nothing else drains — operating disbursements route through
+        # Cash in Bank (10110, method='check') so both cash accounts stay non-negative.
         (refs['share_capital'], Decimal('0.00'), Decimal('6000000.00')),
         (refs['loan'], Decimal('0.00'), Decimal('6000000.00')),
     ]
@@ -534,7 +538,7 @@ def generate_food_transactions(refs, admin_id, branch_id):
         for spec in opex_vendors:
             gross = _money(Decimal('15000') + Decimal(str((idx * 977) % 40000)))
             build_cdv_expense(eom, spec['vendor'], spec, gross, refs,
-                              admin_id, branch_id, counters); summary['cdv'] += 1
+                              admin_id, branch_id, counters, method='check'); summary['cdv'] += 1
 
         # Manufacturing + payroll + depreciation + loan (month-end JVs)
         # (produced/rm_need/pkg_need already computed above, ahead of this month's purchases)
