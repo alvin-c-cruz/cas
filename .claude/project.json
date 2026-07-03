@@ -1,0 +1,49 @@
+{
+  "name": "cas",
+  "root": "C:/envs/erp-workspace/projects/cas",
+  "python": "C:/envs/erp-workspace/projects/cas/venv/Scripts/python.exe",
+  "server": {
+    "entry": "flask_app.py",
+    "port": 5050,
+    "base_url": "http://127.0.0.1:5050",
+    "hot_reload": false,
+    "log_prefix": "cas_server"
+  },
+  "test": {
+    "args": ["--cov=app", "--cov-branch", "--cov-report=html", "--cov-report=term-missing", "-n", "auto"],
+    "single_thread_args": ["--cov=app", "--cov-branch", "--cov-report=term-missing"],
+    "default_markers": "not e2e",
+    "baseline": "C:/Users/user/.claude/projects/C--envs-erp-workspace/memory/project-preexisting-test-failures.md"
+  },
+  "db": {
+    "engine": "sqlite",
+    "dir": "instance",
+    "env_var": "SQLALCHEMY_DATABASE_URI",
+    "uri_prefix": "sqlite:///",
+    "default": "demo",
+    "instances": {
+      "demo":  { "file": "cas_demo.db",  "resettable": true,  "live": false },
+      "cas":   { "file": "cas.db",       "resettable": false, "live": false },
+      "ric":   { "file": "ric.db",       "resettable": false, "live": true  },
+      "pitch": { "file": "cas_pitch.db", "resettable": false, "live": false }
+    },
+    "seed_cmd": "flask seed-minimal",
+    "migrate_cmd": "flask db upgrade"
+  },
+  "guard": {
+    "script": ".claude/guard.py",
+    "map": ".claude/regression-map.json"
+  },
+  "skills": {
+    "audit": true,
+    "new_component": true,
+    "search_select": true
+  },
+  "_notes": {
+    "db_selector": "/run cas -> db.default ('demo' = cas_demo.db). /run cas cas -> cas.db. /run cas ric -> ric.db. The db-key is the 2nd positional arg to /run; it maps to db.instances.<key>.file. The dev server picks the DB by /run pre-setting env_var (SQLALCHEMY_DATABASE_URI) before launch -- flask_app.py's load_dotenv(override=False) lets the pre-set env win over .env.",
+    "reset_rule": "reset-database may wipe ONLY an instance with resettable:true AND whose file matches *_demo.db (user rule 2026-07-04: ric.db is LIVE). Today only 'demo' (cas_demo.db) qualifies. cas.db/ric.db/cas_pitch.db are never resettable.",
+    "cas_demo_missing": "cas_demo.db does NOT exist yet. It was renamed cas_demo.db -> cas.db on 2026-07-03. So /run cas (default demo) has no DB to open until we seed cas_demo.db (via seed_cmd) -- decide at the /reset-database + /run wiring step whether to seed a fresh cas_demo.db or copy cas.db to cas_demo.db.",
+    "live_dbs": "ric.db = real RIC client data (WARN + confirm before /run opens it). cas_pitch.db = pitch snapshot.",
+    "python": "CAS has a venv with pytest + pytest-xdist. zhiyuan has none (PATH python)."
+  }
+}
