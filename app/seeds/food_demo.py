@@ -305,3 +305,25 @@ def build_food_si(doc_date, customer_obj, gross_amount, refs, admin_id, branch_i
     si.journal_entry_id = je.id
     db.session.commit()
     return si
+
+
+def build_food_opening(refs, admin_id, branch_id):
+    """2024-01-01 launch: capital + bank loan fund cash, equipment, and opening raw materials."""
+    from datetime import date
+    from decimal import Decimal
+    from app.seeds.demo_seed import build_jv
+    lines = [
+        (refs['cash_bank'], Decimal('3000000.00'), Decimal('0.00')),
+        (refs['ppe']['machinery'], Decimal('4000000.00'), Decimal('0.00')),
+        (refs['ppe']['building'], Decimal('2500000.00'), Decimal('0.00')),
+        (refs['ppe']['vehicles'], Decimal('1200000.00'), Decimal('0.00')),
+        (refs['ppe']['office'], Decimal('300000.00'), Decimal('0.00')),
+        (refs['inv']['rm'], Decimal('800000.00'), Decimal('0.00')),
+        (refs['inv']['pkg'], Decimal('200000.00'), Decimal('0.00')),
+        # Debits total 12,000,000 (3M+4M+2.5M+1.2M+0.3M+0.8M+0.2M) = funded 6M capital + 6M loan.
+        (refs['share_capital'], Decimal('0.00'), Decimal('6000000.00')),
+        (refs['loan'], Decimal('0.00'), Decimal('6000000.00')),
+    ]
+    return build_jv(date(2024, 1, 1), lines, refs, admin_id, branch_id,
+                    entry_type='opening_balance', description='Opening balances — company launch',
+                    reference='OPENING BALANCES')

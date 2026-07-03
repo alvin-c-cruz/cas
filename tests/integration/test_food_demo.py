@@ -83,3 +83,13 @@ def test_build_food_si_posts_balanced(db_session):
     assert tot_d == tot_c
     # Revenue line posts to Sales - Goods.
     assert any(l.account_id == refs['revenue'].id for l in je.lines.all())
+
+
+def test_build_food_opening_balances(db_session):
+    from decimal import Decimal
+    from app.seeds.food_demo import (seed_food_baseline, resolve_food_refs, build_food_opening)
+    r0 = seed_food_baseline(); refs = resolve_food_refs()
+    je = build_food_opening(refs, r0['admin'].id, r0['branch'].id)
+    assert je.is_balanced
+    from datetime import date
+    assert je.entry_date == date(2024, 1, 1)
