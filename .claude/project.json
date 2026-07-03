@@ -32,7 +32,8 @@
   },
   "guard": {
     "script": ".claude/guard.py",
-    "map": ".claude/regression-map.json"
+    "map": ".claude/regression-map.json",
+    "base": "main"
   },
   "skills": {
     "audit": true,
