@@ -3,3 +3,4 @@
 | Date | Plan | Status |
 |---|---|---|
 | 2026-07-03 | [Opening Balances — SI line-item parity](2026-07-03-opening-balances-si-parity.md) | Done (on main, not pushed) |
+| 2026-07-03 | [Transaction-form line-item component standard](2026-07-03-transaction-line-item-standard.md) | Scoped — not started |
