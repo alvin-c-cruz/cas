@@ -255,7 +255,7 @@ def resolve_food_refs():
     """Account-object lookups the transaction builders need."""
     a = {x.code: x for x in Account.query.all()}
     expense_codes = ['60103', '60104', '60105', '60106', '60108', '60109', '60110',
-                     '60111', '61101', '61102', '61103', '10301', '10304']
+                     '60111', '61101', '61102', '61103', '70102', '10301', '10304']
     return {
         'cash_on_hand': a['10101'], 'cash_bank': a['10110'],
         'inv': {'rm': a['10301'], 'wip': a['10302'], 'fg': a['10303'], 'pkg': a['10304']},
@@ -267,6 +267,8 @@ def resolve_food_refs():
         'expense': {code: a[code] for code in expense_codes},
         'accrued_salaries': a['20401'], 'sss': a['20402'], 'phic': a['20403'], 'hdmf': a['20404'],
         'wt_comp': a['20302'], 'income_tax_payable': a['20406'],
+        'income_tax_expense': a['80101'],
+        'scrap_income': a['40201'], 'interest_income': a['40202'],
         'loan': a['25001'], 'share_capital': a['30101'],
         'interest_expense': a['70101'], 'admin_salaries': a['60101'],
         'employer_share': a['60102'], 'admin_depr': a['60107'], 'vehicle_depr': a['61104'],
@@ -313,14 +315,15 @@ def build_food_opening(refs, admin_id, branch_id):
     from decimal import Decimal
     from app.seeds.demo_seed import build_jv
     lines = [
-        (refs['cash_bank'], Decimal('3000000.00'), Decimal('0.00')),
+        (refs['cash_bank'], Decimal('2700000.00'), Decimal('0.00')),
         (refs['ppe']['machinery'], Decimal('4000000.00'), Decimal('0.00')),
         (refs['ppe']['building'], Decimal('2500000.00'), Decimal('0.00')),
         (refs['ppe']['vehicles'], Decimal('1200000.00'), Decimal('0.00')),
         (refs['ppe']['office'], Decimal('300000.00'), Decimal('0.00')),
         (refs['inv']['rm'], Decimal('800000.00'), Decimal('0.00')),
         (refs['inv']['pkg'], Decimal('200000.00'), Decimal('0.00')),
-        # Debits total 12,000,000 (3M+4M+2.5M+1.2M+0.3M+0.8M+0.2M) = funded 6M capital + 6M loan.
+        (refs['inv']['wip'], Decimal('300000.00'), Decimal('0.00')),
+        # Debits total 12,000,000 (2.7M+4M+2.5M+1.2M+0.3M+0.8M+0.2M+0.3M WIP) = 6M capital + 6M loan.
         (refs['share_capital'], Decimal('0.00'), Decimal('6000000.00')),
         (refs['loan'], Decimal('0.00'), Decimal('6000000.00')),
     ]
@@ -329,21 +332,25 @@ def build_food_opening(refs, admin_id, branch_id):
                     reference='OPENING BALANCES')
 
 
-def build_production_jv(doc_date, amount, refs, admin_id, branch_id):
-    """Capitalize a month's factory costs into Finished Goods: RM + labor + factory depreciation.
-    amount = total finished-goods value produced this period; split into cost components."""
+def build_production_jv(doc_date, produced, refs, admin_id, branch_id):
+    """Capitalize a month's factory costs into Finished Goods: RM + labor + packaging +
+    FIXED straight-line machine depreciation. FG debit = sum of components (balances).
+
+    Factory depreciation is a FIXED straight-line charge (4,000,000 / 60-month life), NOT a
+    residual plug — so accumulated machine depreciation can never exceed cost (NBV stays
+    positive). Packaging is now CONSUMED here (0.15 of production) so 10304 does not balloon."""
     from decimal import Decimal
     from app.seeds.demo_seed import build_jv, _money
-    amt = _money(amount)
-    rm = _money(amount * Decimal('0.55'))          # raw materials consumed
-    labor = _money(amount * Decimal('0.25'))       # factory direct labor (accrued)
-    depr = _money(amount - rm - labor)             # factory machine depreciation (residual balancer)
-    # Capitalize factory costs straight into Finished Goods (simple monthly full-completion model;
-    # WIP is exercised separately by the orchestrator's optional partial-completion entry).
+    rm    = _money(produced * Decimal('0.50'))
+    labor = _money(produced * Decimal('0.25'))
+    pkg   = _money(produced * Decimal('0.15'))       # packaging now consumed into finished goods
+    depr  = _money(Decimal('4000000') / 60)          # machinery 4,000,000 / 60-month life = 66,666.67
+    fg_total = _money(rm + labor + pkg + depr)        # exact sum -> balanced by construction
     lines = [
-        (refs['inv']['fg'], amt, Decimal('0.00')),
-        (refs['inv']['rm'], Decimal('0.00'), rm),
+        (refs['inv']['fg'],  fg_total, Decimal('0.00')),
+        (refs['inv']['rm'],  Decimal('0.00'), rm),
         (refs['accrued_salaries'], Decimal('0.00'), labor),
+        (refs['inv']['pkg'], Decimal('0.00'), pkg),          # packaging now consumed
         (refs['ppe']['accum_machinery'], Decimal('0.00'), depr),
     ]
     return build_jv(doc_date, lines, refs, admin_id, branch_id,
@@ -363,33 +370,60 @@ def build_cogs_jv(doc_date, amount, refs, admin_id, branch_id):
                     entry_type='reclassification', description='Cost of goods sold — period')
 
 
-def build_payroll_jv(doc_date, gross, refs, admin_id, branch_id):
-    """Admin salaries + statutory + WT-compensation accrual (net settled later via CDV)."""
+def _payroll_split(gross):
+    """Shared payroll components used by BOTH accrual and settlement (so they cannot drift)."""
     from decimal import Decimal
-    from app.seeds.demo_seed import build_jv, _money
+    from app.seeds.demo_seed import _money
     gross = _money(gross)
-    sss = _money(gross * Decimal('0.045'))
-    phic = _money(gross * Decimal('0.02'))
-    hdmf = _money(Decimal('100.00'))
-    wtx = _money(gross * Decimal('0.08'))
+    sss  = _money(gross * Decimal('0.045')); phic = _money(gross * Decimal('0.02'))
+    hdmf = _money(Decimal('100.00'));        wtx  = _money(gross * Decimal('0.08'))
     employer = _money(gross * Decimal('0.09'))
-    sss_line = _money(sss + employer * Decimal('0.6'))
+    sss_line  = _money(sss  + employer * Decimal('0.6'))
     phic_line = _money(phic + employer * Decimal('0.3'))
     hdmf_line = _money(hdmf + employer * Decimal('0.1'))
-    # accrued_salaries (net pay) is the residual balancer: total debits minus every other
-    # credit line, so the entry balances exactly regardless of per-line rounding.
+    # net pay is the residual balancer: gross + employer minus every other credit line.
     net = _money(gross + employer - sss_line - phic_line - hdmf_line - wtx)
+    return {'gross': gross, 'employer': employer, 'sss_line': sss_line,
+            'phic_line': phic_line, 'hdmf_line': hdmf_line, 'wtx': wtx, 'net': net}
+
+
+def build_payroll_jv(doc_date, gross, refs, admin_id, branch_id):
+    """Admin salaries + statutory + WT-compensation accrual (net settled later via settlement JV)."""
+    from decimal import Decimal
+    from app.seeds.demo_seed import build_jv
+    p = _payroll_split(gross)
     lines = [
-        (refs['admin_salaries'], gross, Decimal('0.00')),
-        (refs['employer_share'], employer, Decimal('0.00')),
-        (refs['sss'], Decimal('0.00'), sss_line),
-        (refs['phic'], Decimal('0.00'), phic_line),
-        (refs['hdmf'], Decimal('0.00'), hdmf_line),
-        (refs['wt_comp'], Decimal('0.00'), wtx),
-        (refs['accrued_salaries'], Decimal('0.00'), net),
+        (refs['admin_salaries'], p['gross'], Decimal('0.00')),
+        (refs['employer_share'], p['employer'], Decimal('0.00')),
+        (refs['sss'], Decimal('0.00'), p['sss_line']),
+        (refs['phic'], Decimal('0.00'), p['phic_line']),
+        (refs['hdmf'], Decimal('0.00'), p['hdmf_line']),
+        (refs['wt_comp'], Decimal('0.00'), p['wtx']),
+        (refs['accrued_salaries'], Decimal('0.00'), p['net']),
     ]
     return build_jv(doc_date, lines, refs, admin_id, branch_id,
                     entry_type='adjustment', description='Payroll accrual — administrative')
+
+
+def build_payroll_settlement_jv(doc_date, gross, factory_labor, refs, admin_id, branch_id):
+    """Settle the month's accrued payroll (admin net + factory labor) and remit statutory/WT to cash.
+    Recomputes via _payroll_split so it clears exactly what the accrual + production JVs credited."""
+    from decimal import Decimal
+    from app.seeds.demo_seed import build_jv, _money
+    p = _payroll_split(gross)
+    factory_labor = _money(factory_labor)
+    accrued = _money(p['net'] + factory_labor)   # net admin pay + factory labor both sit in accrued_salaries
+    total = _money(accrued + p['sss_line'] + p['phic_line'] + p['hdmf_line'] + p['wtx'])
+    lines = [
+        (refs['accrued_salaries'], accrued,        Decimal('0.00')),
+        (refs['sss'],   p['sss_line'],  Decimal('0.00')),
+        (refs['phic'],  p['phic_line'], Decimal('0.00')),
+        (refs['hdmf'],  p['hdmf_line'], Decimal('0.00')),
+        (refs['wt_comp'], p['wtx'],     Decimal('0.00')),
+        (refs['cash_bank'], Decimal('0.00'), total),
+    ]
+    return build_jv(doc_date, lines, refs, admin_id, branch_id,
+                    entry_type='adjustment', description='Payroll & statutory settlement')
 
 
 def build_depreciation_jv(doc_date, refs, admin_id, branch_id):
@@ -398,10 +432,13 @@ def build_depreciation_jv(doc_date, refs, admin_id, branch_id):
     from app.seeds.demo_seed import build_jv, _money
     office = _money(Decimal('300000.00') / 60)     # 5-yr straight line
     vehicle = _money(Decimal('1200000.00') / 60)
+    bldg = _money(Decimal('2500000') / 60)         # building 2.5M / 60-month straight line
     lines = [
         (refs['admin_depr'], office, Decimal('0.00')),
+        (refs['admin_depr'], bldg, Decimal('0.00')),
         (refs['vehicle_depr'], vehicle, Decimal('0.00')),
         (refs['ppe']['accum_office'], Decimal('0.00'), office),
+        (refs['ppe']['accum_building'], Decimal('0.00'), bldg),
         (refs['ppe']['accum_vehicles'], Decimal('0.00'), vehicle),
     ]
     return build_jv(doc_date, lines, refs, admin_id, branch_id,
@@ -429,7 +466,7 @@ def generate_food_transactions(refs, admin_id, branch_id):
     from app.journal_entries.models import JournalEntry
     from app.customers.models import Customer
     from app.seeds.demo_seed import (build_apv, build_crv_collecting, build_cdv_paying,
-                                      build_cdv_expense, _money)
+                                      build_cdv_expense, build_jv, _money)
 
     counters = {}
     summary = {'si': 0, 'ap': 0, 'crv': 0, 'cdv': 0, 'jv': 0, 'unbalanced': 0}
@@ -439,7 +476,8 @@ def generate_food_transactions(refs, admin_id, branch_id):
     seed_food_customers()
     customers = Customer.query.order_by(Customer.code).all()
     vendor_specs = seed_food_vendors()  # returns spec list; vendors already exist
-    rm_vendors = [s for s in vendor_specs if s['expense_code'] in ('10301', '10304')]
+    rm_vendor = next(s for s in vendor_specs if s['expense_code'] == '10301')   # raw materials
+    pkg_vendor = next(s for s in vendor_specs if s['expense_code'] == '10304')  # packaging
     opex_vendors = [s for s in vendor_specs if s['expense_code'] not in ('10301', '10304')]
 
     y, m = 2024, 1
@@ -461,9 +499,10 @@ def generate_food_transactions(refs, admin_id, branch_id):
                 build_crv_collecting(date(y, m, min(last, si_day + 5 + k % 6)), si, refs,
                                      admin_id, branch_id, counters); summary['crv'] += 1
 
-        # Raw-material / packaging purchases + payments
+        # Raw-material / packaging purchases + payments. Packaging (10304) is purchased only
+        # twice a month so — combined with the 0.15 production consumption — 10304 stays bounded.
         for k in range(n_purch):
-            spec = rm_vendors[(idx + k) % len(rm_vendors)]
+            spec = pkg_vendor if k in (0, 5) else rm_vendor
             gross = _money(Decimal('40000') + Decimal(str(((idx + k) * 4211) % 60000)))
             ap_day = 2 + (k * 2) % (last - 1)
             ap = build_apv(date(y, m, ap_day), spec['vendor'], spec, gross,
@@ -484,9 +523,34 @@ def generate_food_transactions(refs, admin_id, branch_id):
         build_production_jv(eom, produced, refs, admin_id, branch_id); summary['jv'] += 1
         build_cogs_jv(eom, sold, refs, admin_id, branch_id); summary['jv'] += 1
         build_payroll_jv(eom, _money(Decimal('280000')), refs, admin_id, branch_id); summary['jv'] += 1
+        # Settle the month's accrued payroll + factory labor (produced * 0.25 matches the labor the
+        # production JV credited) so accrued_salaries / statutory / WT-comp clear back to ~0.
+        build_payroll_settlement_jv(eom, _money(Decimal('280000')), produced * Decimal('0.25'),
+                                    refs, admin_id, branch_id); summary['jv'] += 1
         build_depreciation_jv(eom, refs, admin_id, branch_id); summary['jv'] += 1
         build_loan_amort_jv(eom, _money(Decimal('100000')), _money(Decimal('40000')),
                             refs, admin_id, branch_id); summary['jv'] += 1
+
+        # Sundry opex — rotate a small charge through the otherwise-empty expense accounts + bank
+        # charges, funded from cash; every 3rd month a little scrap/interest other income.
+        sundry_targets = ['60105', '60106', '60109', '60110', '60111', '61102', '61103']
+        opex_code = sundry_targets[idx % len(sundry_targets)]
+        opex_amt = _money(Decimal('8000') + Decimal(str((idx * 311) % 4000)))
+        bank_chg = _money(Decimal('2500'))
+        build_jv(eom, [
+            (refs['expense'][opex_code], opex_amt, Decimal('0.00')),
+            (refs['expense']['70102'], bank_chg, Decimal('0.00')),
+            (refs['cash_bank'], Decimal('0.00'), _money(opex_amt + bank_chg)),
+        ], refs, admin_id, branch_id, entry_type='adjustment',
+            description='Sundry operating expenses'); summary['jv'] += 1
+        if idx % 3 == 0:
+            inc_amt = _money(Decimal('5000') + Decimal(str((idx * 137) % 3000)))
+            inc_tgt = refs['scrap_income'] if idx % 2 == 0 else refs['interest_income']
+            build_jv(eom, [
+                (refs['cash_bank'], inc_amt, Decimal('0.00')),
+                (inc_tgt, Decimal('0.00'), inc_amt),
+            ], refs, admin_id, branch_id, entry_type='adjustment',
+                description='Sundry other income'); summary['jv'] += 1
 
         idx += 1
         m += 1
@@ -512,8 +576,30 @@ def run_seed_food_demo(reset=False):
             "To rebuild: delete the DB file, run `flask db upgrade`, then `flask seed-food-demo`. "
             "(Refusing to add duplicates — invoice/AP numbers are unique.)")
     summary = generate_food_transactions(refs, r0['admin'].id, r0['branch'].id)
-    # Close the two complete fiscal years so Retained Earnings rolls; 2026 stays open.
+    # Year-end income-tax accrual (25% of pretax) posted BEFORE each close so it lands in that
+    # year's Income Statement and net-of-tax income rolls to RE (the close still reconciles).
+    # Dr Income Tax Expense (80101) / Cr Income Tax Payable (20406). Closing then zeros the
+    # nominal expense into RE (correct), but the payable (a liability) persists on the books —
+    # it is never settled here, so the accrued income-tax liability stays visible on the 2026
+    # Balance Sheet. 2026 (Jan-Jun) is a small loss (post-building-depreciation), so no tax is due.
+    from datetime import date
+    from decimal import Decimal
+    from app.reports.financial import generate_income_statement
+    from app.branches.models import Branch
+    from app.seeds.demo_seed import build_jv, _money
     from app.year_end.service import close_fiscal_year
-    close_fiscal_year(2024, r0['admin'].id)
-    close_fiscal_year(2025, r0['admin'].id)
+    bid = Branch.query.filter_by(code='MAIN').first().id
+    for yr in (2024, 2025):
+        ye = date(yr, 12, 31)
+        is_ = generate_income_statement(date(yr, 1, 1), ye, branch_id=bid)
+        pretax = Decimal(str(is_.get('net_income', 0)))       # tax not yet posted -> this is pretax
+        tax = _money(pretax * Decimal('0.25')) if pretax > 0 else _money(Decimal('0'))
+        if tax > 0:
+            build_jv(ye,
+                     [(refs['income_tax_expense'], tax, Decimal('0.00')),
+                      (refs['income_tax_payable'], Decimal('0.00'), tax)],
+                     refs, r0['admin'].id, r0['branch'].id,
+                     entry_type='adjustment', description=f'Income tax accrual {yr}')
+            summary['jv'] += 1
+        close_fiscal_year(yr, r0['admin'].id)
     return summary

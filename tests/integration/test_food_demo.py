@@ -156,6 +156,35 @@ def test_run_seed_food_demo_full(db_session):
     bs = generate_balance_sheet(date(2025, 12, 31), branch_id=bid)
     assert abs(bs['total_assets'] - (bs['total_liabilities'] + bs['total_equity'])) < 0.01
 
+    # ---- 2026 economic-sanity checks (same seeded DB) ----
+    from app import db
+    from app.accounts.models import Account
+    from app.journal_entries.models import JournalEntryLine, JournalEntry
+
+    def _bal(code):
+        acct = Account.query.filter_by(code=code).first()
+        d = db.session.query(db.func.coalesce(db.func.sum(JournalEntryLine.debit_amount), 0)).join(
+            JournalEntry).filter(JournalEntry.status == 'posted',
+                                 JournalEntryLine.account_id == acct.id).scalar()
+        c = db.session.query(db.func.coalesce(db.func.sum(JournalEntryLine.credit_amount), 0)).join(
+            JournalEntry).filter(JournalEntry.status == 'posted',
+                                 JournalEntryLine.account_id == acct.id).scalar()
+        return Decimal(str(d)) - Decimal(str(c))
+
+    # Machinery net book value stays positive (accum depr magnitude < cost).
+    assert -_bal('12011') < _bal('12010')
+    # Accrued salaries + packaging inventory do not balloon.
+    assert abs(_bal('20401')) < Decimal('1000000')
+    assert _bal('10304') < Decimal('2000000')
+    # WIP populated on the Balance Sheet.
+    assert _bal('10302') > 0
+    # Year-end income tax was posted. The nominal expense (80101) correctly CLOSES to Retained
+    # Earnings for the closed years 2024/2025 (a residual there would be an error), so the durable
+    # evidence is the accrued income-tax PAYABLE (20406) — a liability closing does not touch —
+    # which persists on the 2026 Balance Sheet with a credit balance.
+    assert _bal('80101') == 0                     # expense correctly closed to RE
+    assert -_bal('20406') > 0                     # income tax payable accrued and unsettled
+
 
 def test_run_seed_food_demo_refuses_double_run(db_session):
     import pytest
