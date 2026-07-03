@@ -486,7 +486,6 @@ def generate_food_transactions(refs, admin_id, branch_id):
         last = monthrange(y, m)[1]
         eom = date(y, m, last)
         n_sales = 8 + (idx * 37) % 8          # 8..15
-        n_purch = 10 + (idx * 53) % 8         # 10..17
 
         # Sales + collections
         for k in range(n_sales):
@@ -499,17 +498,37 @@ def generate_food_transactions(refs, admin_id, branch_id):
                 build_crv_collecting(date(y, m, min(last, si_day + 5 + k % 6)), si, refs,
                                      admin_id, branch_id, counters); summary['crv'] += 1
 
-        # Raw-material / packaging purchases + payments. Packaging (10304) is purchased only
-        # twice a month so — combined with the 0.15 production consumption — 10304 stays bounded.
-        for k in range(n_purch):
-            spec = pkg_vendor if k in (0, 5) else rm_vendor
-            gross = _money(Decimal('40000') + Decimal(str(((idx + k) * 4211) % 60000)))
-            ap_day = 2 + (k * 2) % (last - 1)
-            ap = build_apv(date(y, m, ap_day), spec['vendor'], spec, gross,
+        # Raw-material / packaging purchases sized to what THIS month's production will
+        # consume, mirroring the rm/pkg factors build_production_jv uses (0.50 / 0.15 of
+        # produced) — so monthly purchases track monthly consumption and both inventories
+        # (10301, 10304) stay flat near their opening balances instead of ballooning. AP
+        # amounts are VAT-inclusive (BIR convention) and build_apv/_post_ap_je posts the
+        # NET-of-VAT amount to the inventory account, so gross the target up by 1.12
+        # (vendors are VAT-DG, 12%) before splitting into bills.
+        produced = _money(Decimal('600000') + Decimal(str((idx * 8123) % 300000)))
+        rm_need = _money(produced * Decimal('0.50'))
+        pkg_need = _money(produced * Decimal('0.15'))
+
+        RM_BILLS = 4
+        rm_share = _money(rm_need * Decimal('1.12') / RM_BILLS)
+        for k in range(RM_BILLS):
+            # deterministic +/-10% wobble per bill so the bills vary but still sum near rm_need
+            wobble = Decimal('90') + Decimal(str((idx * 41 + k * 97) % 21))  # 90..110
+            gross = _money(rm_share * wobble / Decimal('100'))
+            ap_day = 2 + (k * 7 + idx * 3) % (last - 1)
+            ap = build_apv(date(y, m, ap_day), rm_vendor['vendor'], rm_vendor, gross,
                            refs, admin_id, branch_id, counters); summary['ap'] += 1
-            if k % 4 != 0:
+            if k % 4 != 0:  # settle 3 of 4 -> keep an AP aging tail like before
                 build_cdv_paying(date(y, m, min(last, ap_day + 4 + k % 6)), ap, refs,
                                  admin_id, branch_id, counters); summary['cdv'] += 1
+
+        pkg_gross = _money(pkg_need * Decimal('1.12'))
+        pkg_day = 3 + (idx * 5) % (last - 2)
+        pkg_ap = build_apv(date(y, m, pkg_day), pkg_vendor['vendor'], pkg_vendor, pkg_gross,
+                           refs, admin_id, branch_id, counters); summary['ap'] += 1
+        if idx % 4 != 0:
+            build_cdv_paying(date(y, m, min(last, pkg_day + 4 + idx % 6)), pkg_ap, refs,
+                             admin_id, branch_id, counters); summary['cdv'] += 1
 
         # Monthly opex (rent, utilities, professional, freight) via direct CDV expense
         for spec in opex_vendors:
@@ -518,7 +537,7 @@ def generate_food_transactions(refs, admin_id, branch_id):
                               admin_id, branch_id, counters); summary['cdv'] += 1
 
         # Manufacturing + payroll + depreciation + loan (month-end JVs)
-        produced = _money(Decimal('600000') + Decimal(str((idx * 8123) % 300000)))
+        # (produced/rm_need/pkg_need already computed above, ahead of this month's purchases)
         sold = _money(produced * Decimal('0.85'))
         build_production_jv(eom, produced, refs, admin_id, branch_id); summary['jv'] += 1
         build_cogs_jv(eom, sold, refs, admin_id, branch_id); summary['jv'] += 1

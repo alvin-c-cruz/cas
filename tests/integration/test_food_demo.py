@@ -173,8 +173,9 @@ def test_run_seed_food_demo_full(db_session):
 
     # Machinery net book value stays positive (accum depr magnitude < cost).
     assert -_bal('12011') < _bal('12010')
-    # Accrued salaries + packaging inventory do not balloon.
+    # Accrued salaries + raw-material/packaging inventory do not balloon.
     assert abs(_bal('20401')) < Decimal('1000000')
+    assert _bal('10301') < Decimal('2000000')
     assert _bal('10304') < Decimal('2000000')
     # WIP populated on the Balance Sheet.
     assert _bal('10302') > 0
