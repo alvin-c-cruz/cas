@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Import Rowell Industrial Corporation's legacy 340-account Chart of Accounts into the CAS `ric.db`, reshaped into CAS's hierarchical model (28 non-postable group headers + 340 postable leaves), with titles proper-cased.
+**Goal:** Import Rowell Industrial Corporation's legacy 340-account Chart of Accounts into the CAS `ric.db`, reshaped into CAS's hierarchical model (28 non-postable group headers + 338 postable leaves; 2 legacy leaves skipped as seed-name duplicates), with titles proper-cased.
 
 **Architecture:** Three pure modules under `scripts/ric_coa/` — `proper_case` (title caser), `mapping` (type/group/contra rules + `build_accounts`), and `import_coa` (reads the legacy SQLite, writes via the CAS app factory with audit). Pure logic is unit-tested; the DB write is integration-tested against the in-memory test DB. The actual run against `ric.db` is the final operator step (dry-run → review → commit → verify).
 
@@ -14,7 +14,8 @@
 
 - **Titles:** legacy `account_title` stored **Title Case** via `proper_case()`; transform is **case-only** (`proper_case(t).upper() == t.upper()` for all titles). Never `str.title()`.
 - **`code` = legacy `account_number` verbatim**; leaf `name` = proper-cased title; group `name` = descriptive header title.
-- **Result:** 28 group headers (non-postable, `parent_id=NULL`) + 340 leaves (postable, parented to a group). Import adds 368 accounts; the 25 seed accounts are **not** cleared → 393 total.
+- **Result:** 28 group headers (non-postable, `parent_id=NULL`) + 338 leaves (postable, parented to a group). Import adds 366 accounts; the 25 seed accounts are **not** cleared → 391 total.
+- **Name uniqueness (`Account.name` is UNIQUE):** SKIP the two legacy leaves whose proper-cased name duplicates a kept seed account — `12501 Creditable Withholding Tax` (seed `10212`) and `32101 Retained Earnings` (seed `30200`) — via `mapping.SKIP_CODES`. Rename groups `116` → *Prepaid Expenses & Interest* and `511` → *Other Income & Gains* (they collided with their own leaf). The importer runs `assert_no_name_clash` before writing.
 - **`normal_balance`** from `app.accounts.account_types.DEFAULT_NORMAL_BALANCE[account_type]` (lowercase `debit`/`credit`), **overridden to `credit`** for the 13 contra leaves (group `123` Accumulated Depreciation, and code `11202` Allowance for Bad Debts). Contra override applies to **leaves only**, not the `123` header.
 - **Classification overrides:** groups `125` and `126` are `Current` (not the Non-Current their legacy "Other Assets" type implies).
 - **Audit:** every created account (group + leaf) logs `log_audit(module='accounts', action='import', record_id, record_identifier='<code> <name>', new_values=<spec dict>)`.
@@ -149,7 +150,7 @@ git commit -m "feat(ric-coa): acronym-preserving proper_case title caser"
   - `GROUPS: "OrderedDict[str, tuple[str, str, str | None]]"` — group code → (title, CAS type, classification).
   - `assign_group(legacy_type: str, account_number: str) -> str` — returns the group code for a leaf.
   - `AccountSpec` dataclass: `code, name, account_type, classification, normal_balance, parent_code, is_group`; method `as_dict() -> dict`.
-  - `build_accounts(legacy_rows: list[tuple[str, str, str]]) -> list[AccountSpec]` — group specs (only the groups actually used) followed by 340 leaf specs; leaves proper-cased, parented, contra + classification applied.
+  - `build_accounts(legacy_rows: list[tuple[str, str, str]]) -> list[AccountSpec]` — group specs (only the groups actually used) followed by 338 leaf specs (2 skipped); leaves proper-cased, parented, contra + classification applied.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -573,12 +574,12 @@ Run (from `projects/cas`):
 PYTHONPATH='C:\envs\erp-workspace\projects\cas' SQLALCHEMY_DATABASE_URI='sqlite:///ric.db' \
   venv/Scripts/python.exe -m scripts.ric_coa.import_coa --legacy "C:\envs\ric-workspace\legacy ric\accounting\instance\data.db"
 ```
-Expected: `TARGET: sqlite:///ric.db`; `SUMMARY` shows `groups: 28, leaves: 340, contra: 13`; `DRY RUN - nothing written.` **Stop and confirm with the owner before Step 3.**
+Expected: `TARGET: sqlite:///ric.db`; `SUMMARY` shows `groups: 28, leaves: 338, contra: 13`; `DRY RUN - nothing written.` **Stop and confirm with the owner before Step 3.**
 
 - [ ] **Step 3: Commit the import**
 
 Re-run the same command with `--commit` appended.
-Expected: `COMMITTED: {'groups': 28, 'leaves': 340} - total accounts now: 393`
+Expected: `COMMITTED: {'groups': 28, 'leaves': 338} - total accounts now: 391`
 
 - [ ] **Step 4: Verify acceptance criteria**
 
@@ -594,13 +595,13 @@ with app.app_context():
     has_children = {pid for (pid,) in db.session.query(Account.parent_id).filter(Account.parent_id.isnot(None)).distinct()}
     leaves = [a for a in Account.query.all() if a.parent_id is not None and a.id not in has_children]
     contra = Account.query.filter(Account.code.in_(['11202']+[f'123{i:02d}' for i in range(1,13)])).all()
-    print('total accounts:', total, '(expect 393)')
-    print('postable leaves:', len(leaves), '(expect >=340)')
+    print('total accounts:', total, '(expect 391)')
+    print('postable leaves:', len(leaves), '(expect >=338)')
     print('contra all credit:', all(a.normal_balance=='credit' for a in contra), '(expect True)')
     print('125/126 Current:', all(Account.query.filter_by(code=c).one().classification=='Current' for c in ['125','126']))
 PY
 ```
-Expected: total 393; leaves ≥ 340; contra all credit True; 125/126 Current True.
+Expected: total 391; leaves >= 338; contra all credit True; 125/126 Current True.
 
 - [ ] **Step 5: Restart the dev server on `ric.db`**
 

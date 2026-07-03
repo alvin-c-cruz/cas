@@ -38,7 +38,8 @@ self-referential `accounts` table and **derives postability from hierarchy**:
 340 accounts non-postable**. Therefore the import synthesises **group-header accounts** and
 parents the 340 legacy accounts as **postable leaves**.
 
-Result: **28 group headers (non-postable) + 340 leaves (postable) = 368 accounts.**
+Result: **28 group headers (non-postable) + 338 leaves (postable) = 366 accounts** — 2 of the
+340 legacy leaves are skipped as seed-name duplicates (see "Seed-duplicate leaves").
 
 ## Leaf field mapping (the 340 legacy accounts)
 
@@ -116,7 +117,7 @@ splits into PPE-at-Cost vs Accumulated Depreciation (a separate parent).
 | 113 | Inventory — Tincan | Asset | Current | 4 |
 | 114 | Inventory — Plastic | Asset | Current | 4 |
 | 115 | Factory & Maintenance Supplies | Asset | Current | 5 |
-| 116 | Prepaid Expenses | Asset | Current | 2 |
+| 116 | Prepaid Expenses & Interest | Asset | Current | 2 |
 | 117 | Assets in Transit | Asset | Current | 8 |
 | 125 | Creditable Withholding Tax & Overpayments | Asset | **Current** | 2 |
 | 126 | Input VAT & Tax Credits | Asset | **Current** | 6 |
@@ -131,7 +132,7 @@ splits into PPE-at-Cost vs Accumulated Depreciation (a separate parent).
 | 411 | Sales — Tincan | Revenue | — | 7 |
 | 412 | Sales — Plastic | Revenue | — | 7 |
 | 421 | Scrap Sales | Revenue | — | 2 |
-| 511 | Other Income | Other Income | — | 5 |
+| 511 | Other Income & Gains | Other Income | — | 5 |
 | 611 | Direct Materials | Cost of Goods Sold | — | 7 |
 | 621 | Direct Labor | Cost of Goods Sold | — | 4 |
 | 641 | Indirect Labor & Personnel Cost | Cost of Goods Sold | — | 14 |
@@ -139,7 +140,8 @@ splits into PPE-at-Cost vs Accumulated Depreciation (a separate parent).
 | 661 | Selling Expenses | Selling Expense | — | 43 |
 | 671 | Administrative Expenses | Administrative Expense | — | 52 |
 
-Leaves total **340**; groups total **28**.
+Leaves total **340** in the legacy source; **338 imported** (2 skipped as seed-name
+duplicates); groups total **28**.
 
 ### Group codes
 
@@ -179,6 +181,25 @@ accounts** that are debit-typed but credit-natured are forced to **`credit`**:
 - All **12 Accumulated Depreciation** accounts (`12301`–`12312`, group `123`)
 - **`11202` Allowance for Bad Debts** (group `112N`)
 
+### Seed-duplicate leaves (skipped) & name uniqueness
+
+`Account.name` is **UNIQUE**. After proper-casing, two legacy leaves collide by name with kept
+seed accounts, and two group titles collided with their own leaves. Resolution (owner decision
+2026-07-03):
+
+- **Skip** the two legacy leaves whose proper-cased name duplicates a seed account —
+  `12501 Creditable Withholding Tax` (seed `10212`) and `32101 Retained Earnings` (seed `30200`).
+  The seed accounts are canonical; the legacy codes are dropped. `mapping.SKIP_CODES = {'12501',
+  '32101'}`. This makes the import **338 leaves** (groups `125` and `311` keep their other leaves).
+- **Rename** two group headers so they no longer equal their own leaf: `116` → *Prepaid Expenses
+  & Interest*, `511` → *Other Income & Gains*.
+- **Guard:** the importer runs `assert_no_name_clash(specs, session)` before writing — it refuses
+  on any duplicate name among the specs or against an existing account, so a future collision
+  fails fast with a clear message instead of a mid-write `IntegrityError`.
+
+(The full-view Artifact "RIC Proposed Chart of Accounts" predates this change and still shows the
+2 skipped leaves and the old group titles.)
+
 ## Posting-engine magic codes (why the seed is kept)
 
 CAS hardcodes specific account **codes** for automatic posting: AR `10201`, CWT `10212`, input
@@ -197,7 +218,7 @@ code collisions** between the seed codes and the legacy leaf codes, so both coex
    code collisions) — **no writes**. Reviewed before commit.
 3. **Commit (`--commit`):** within one app-context transaction —
    a. Create the 28 group headers (non-postable parents).
-   b. Create the 340 leaves, each parented to its group; apply classification + contra overrides.
+   b. Create the 338 leaves (2 skipped), each parented to its group; apply classification + contra overrides.
    c. `log_audit(action='import')` per account.
    d. Single `db.session.commit()`.
    - The 25-account seed is **not** cleared.
@@ -210,8 +231,9 @@ The importer is idempotent-guarded: it refuses to `--commit` if the imported COA
 
 ## Acceptance criteria
 
-- The import **adds 368 accounts** = 28 non-postable groups + 340 postable leaves. The 25
-  pre-existing seed accounts are untouched, so the target `ric.db` holds **393 accounts total**.
+- The import **adds 366 accounts** = 28 non-postable groups + 338 postable leaves (2 legacy
+  leaves skipped as seed-name duplicates). The 25 pre-existing seed accounts are untouched, so
+  the target `ric.db` holds **391 accounts total**.
 - Every leaf `name` equals `proper_case(legacy account_title)`; the transform is **case-only**
   (`proper_case(t).upper() == t.upper()` for all 340 — no characters added/dropped/reordered).
 - Every leaf is **postable** (`is_group == False`): has a `parent_id` and no children.
