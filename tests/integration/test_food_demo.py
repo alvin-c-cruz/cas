@@ -138,3 +138,28 @@ def test_generate_food_transactions_counts_and_balance(db_session):
         tot_d += sum((l.debit_amount for l in je.lines.all()), Decimal('0'))
         tot_c += sum((l.credit_amount for l in je.lines.all()), Decimal('0'))
     assert tot_d == tot_c
+
+
+def test_run_seed_food_demo_full(db_session):
+    from decimal import Decimal
+    from datetime import date
+    from app.seeds.food_demo import run_seed_food_demo
+    from app.reports.financial import generate_income_statement, generate_balance_sheet
+    s = run_seed_food_demo(reset=False)
+    from app.branches.models import Branch
+    bid = Branch.query.filter_by(code='MAIN').first().id  # live reports always scope to the selected branch
+    assert s['unbalanced'] == 0 and s['si'] >= 100
+    # Income Statement classifies via rich account_types.
+    is_ = generate_income_statement(date(2025, 1, 1), date(2025, 12, 31), branch_id=bid)
+    assert is_['net_income'] is not None
+    # Balance Sheet balances.
+    bs = generate_balance_sheet(date(2025, 12, 31), branch_id=bid)
+    assert abs(bs['total_assets'] - (bs['total_liabilities'] + bs['total_equity'])) < 0.01
+
+
+def test_run_seed_food_demo_refuses_double_run(db_session):
+    import pytest
+    from app.seeds.food_demo import run_seed_food_demo
+    run_seed_food_demo(reset=False)
+    with pytest.raises(RuntimeError):
+        run_seed_food_demo(reset=False)

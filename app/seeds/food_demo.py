@@ -495,3 +495,25 @@ def generate_food_transactions(refs, admin_id, branch_id):
 
     summary['unbalanced'] = JournalEntry.query.filter_by(status='posted', is_balanced=False).count()
     return summary
+
+
+def run_seed_food_demo(reset=False):
+    """Reset (optional), build baseline + masters + 30 months of transactions, close 2024/2025."""
+    if reset:
+        db.drop_all(); db.create_all()
+    r0 = seed_food_baseline()
+    seed_food_customers()
+    seed_food_vendors()
+    refs = resolve_food_refs()
+    from app.sales_invoices.models import SalesInvoice
+    if not reset and SalesInvoice.query.count() > 0:
+        raise RuntimeError(
+            "Food-demo transactions already present in this database. "
+            "To rebuild: delete the DB file, run `flask db upgrade`, then `flask seed-food-demo`. "
+            "(Refusing to add duplicates — invoice/AP numbers are unique.)")
+    summary = generate_food_transactions(refs, r0['admin'].id, r0['branch'].id)
+    # Close the two complete fiscal years so Retained Earnings rolls; 2026 stays open.
+    from app.year_end.service import close_fiscal_year
+    close_fiscal_year(2024, r0['admin'].id)
+    close_fiscal_year(2025, r0['admin'].id)
+    return summary
