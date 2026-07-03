@@ -8,7 +8,8 @@
 
 Import Rowell Industrial Corporation's legacy 340-account Chart of Accounts from the legacy
 accounting database into the CAS demo-workspace `ric.db`, reshaped from the legacy flat model
-into CAS's hierarchical (postable-leaf) model, with account titles preserved **verbatim**.
+into CAS's hierarchical (postable-leaf) model, with account titles converted from the legacy
+ALLCAPS to **proper case** (acronyms and codes preserved).
 
 ## Source & target
 
@@ -44,7 +45,7 @@ Result: **28 group headers (non-postable) + 340 leaves (postable) = 368 accounts
 | CAS `Account` field | Source | Notes |
 |---|---|---|
 | `code` | `accounts.account_number` | verbatim (e.g. `11101`, `11501-P`) |
-| `name` | `accounts.account_title` | **verbatim, ALLCAPS — no `.title()`** |
+| `name` | `accounts.account_title`, proper-cased | **Title Case** via the acronym-preserving caser (see Title casing) |
 | `account_type` | `account_type.account_type` → TYPE_MAP | valid CAS type (`account_types.py`) |
 | `classification` | TYPE_MAP, with per-group overrides | Current / Non-Current / — |
 | `normal_balance` | `DEFAULT_NORMAL_BALANCE[type]`, with contra override | debit / credit |
@@ -76,6 +77,26 @@ Each leaf **and** each group header is written with an audit entry (`log_audit`,
 | Administrative Expenses | Administrative Expense | — |
 
 \* Overridden per group — see classification overrides.
+
+### Title casing
+
+Legacy titles are ALLCAPS (`CASH ON HAND/CASH SALES`); they are stored **Title Case** for
+readability via a deterministic, reusable `proper_case()` helper:
+
+- Each maximal **letter-run** is title-cased; **digits, `%`, `$`, `/`, parentheses, hyphens** and
+  other separators are left exactly as-is (so codes/serials/percentages survive:
+  `BPI-00008-85`, `... - 1/2%`).
+- **True initialisms stay uppercase** via an allow-list — `BPI, SSS, HDMF, NHMFC, VAT, CWT, WHT,
+  PDC, RCC, RLMC, RIC, TIN, FO, SE, AE, HMO, ATM, QC` (dot/paren-insensitive, so `(RCC)` and
+  `Q.C.` are preserved). Special-cased: `PHILHEALTH → PhilHealth`, `X'MAS → X'mas`.
+- **Minor words** (`of, to, the, on, in, for, and, …`) lowercase mid-title; **ordinals**
+  lowercase (`13TH → 13th`). Abbreviations that aren't initialisms title-case normally
+  (`DEP'N → Dep'n`, `EQPT → Eqpt`, `FCTY → Fcty`).
+- **Guarantee:** the transform is **case-only** — `proper_case(t).upper() == t.upper()` holds for
+  all 340 titles (verified), so no characters are added, dropped, or reordered.
+
+The acronym allow-list is data-tuned; new client data may need additions. `proper_case()` is
+authored once and shared by the importer and any preview tooling.
 
 ## Grouping design
 
@@ -128,8 +149,8 @@ collision is `112` (Trade Receivables vs Advances & Non-Trade Receivables, whose
 interleave in the `112xx` range) → Advances takes **`112N`**. Flat multi-prefix groups take a
 representative unused 3-digit code (`219` for Other Current Liabilities). Group codes are
 guaranteed unique and cannot collide with the 5-digit leaf codes or the 5-digit seed codes.
-Group titles are new/descriptive — this is *adding* headers, not changing the verbatim leaf
-titles.
+Group titles are new/descriptive — this is *adding* headers, separate from the (proper-cased)
+leaf accounts.
 
 ### Group header fields
 
@@ -191,7 +212,8 @@ The importer is idempotent-guarded: it refuses to `--commit` if the imported COA
 
 - The import **adds 368 accounts** = 28 non-postable groups + 340 postable leaves. The 25
   pre-existing seed accounts are untouched, so the target `ric.db` holds **393 accounts total**.
-- Every leaf `name` matches its legacy `account_title` **byte-for-byte** (no case change).
+- Every leaf `name` equals `proper_case(legacy account_title)`; the transform is **case-only**
+  (`proper_case(t).upper() == t.upper()` for all 340 — no characters added/dropped/reordered).
 - Every leaf is **postable** (`is_group == False`): has a `parent_id` and no children.
 - All 13 contra accounts have `normal_balance == 'credit'`; groups `125`/`126` are `Current`.
 - Trial Balance / Balance Sheet / Income Statement render without error for `ric.db` (the seed
@@ -204,7 +226,7 @@ The importer is idempotent-guarded: it refuses to `--commit` if the imported COA
   Sales Discount (contra-revenue), plus Bad Debts, VAT Expense, and Income Tax (expense-natured).
   A faithful import keeps them as `Revenue` per the legacy type. Reclassification is deferred.
 - Legacy account numbers carry product-line suffixes (`-TINCAN`/`-PLASTIC`, `-P`/`-T`, `-2`/`-3`)
-  and duplicate concepts across the two product lines; preserved verbatim.
+  and duplicate concepts across the two product lines; preserved (only letter case changes).
 
 ## Future work
 
