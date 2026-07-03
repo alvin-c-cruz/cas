@@ -119,7 +119,7 @@ splits into PPE-at-Cost vs Accumulated Depreciation (a separate parent).
 | 115 | Factory & Maintenance Supplies | Asset | Current | 5 |
 | 116 | Prepaid Expenses & Interest | Asset | Current | 2 |
 | 117 | Assets in Transit | Asset | Current | 8 |
-| 125 | Creditable Withholding Tax & Overpayments | Asset | **Current** | 2 |
+| 125 | Creditable Withholding Tax & Overpayments | Asset | **Current** | 1 * |
 | 126 | Input VAT & Tax Credits | Asset | **Current** | 6 |
 | 122 | Property, Plant & Equipment — at Cost | Asset | Non-Current | 14 |
 | 123 | Accumulated Depreciation (contra) | Asset | Non-Current | 12 |
@@ -128,7 +128,7 @@ splits into PPE-at-Cost vs Accumulated Depreciation (a separate parent).
 | 219 | Other Current Liabilities | Liability | Current | 10 |
 | 221 | Tax & Withholding Payables | Liability | Non-Current | 11 |
 | 222 | Statutory & Loan Payables | Liability | Non-Current | 9 |
-| 311 | Stockholders' Equity | Equity | — | 4 |
+| 311 | Stockholders' Equity | Equity | — | 3 * |
 | 411 | Sales — Tincan | Revenue | — | 7 |
 | 412 | Sales — Plastic | Revenue | — | 7 |
 | 421 | Scrap Sales | Revenue | — | 2 |
@@ -141,7 +141,8 @@ splits into PPE-at-Cost vs Accumulated Depreciation (a separate parent).
 | 671 | Administrative Expenses | Administrative Expense | — | 52 |
 
 Leaves total **340** in the legacy source; **338 imported** (2 skipped as seed-name
-duplicates); groups total **28**.
+duplicates); groups total **28**. \* Groups `125` and `311` each show their **imported** leaf
+count (1 and 3) after skipping `12501` and `32101`.
 
 ### Group codes
 
