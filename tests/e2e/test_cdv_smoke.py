@@ -39,13 +39,21 @@ def _pick_in_choices(page, scope_selector, text):
 
 
 def _add_expense_line(page, amount='1000', account_code='50226'):
-    """Add a Section B direct-expense line and fill it (description sentinel + amount + account)."""
+    """Add a Section B direct-expense line and fill it (description sentinel + amount + account).
+
+    NOTE: P-56 added Qty / UOM / Unit-Price columns to the line, so the amount is the
+    `exp-amt` input — NOT the 2nd text input in the row (that is now Quantity). Target
+    the amount by class; filling Qty alone leaves amount=0 (amount only derives when both
+    qty AND unit_price are set — see updateDerivedAmount), which zeroes the entry total
+    and drops the Cr Cash row from the preview.
+    """
     page.click("button:has-text('Add Expense Line')")
     page.wait_for_selector('#expenseLinesBody tr')
-    inputs = page.locator('#expenseLinesBody tr input.form-control')  # [0]=description, [1]=amount
-    inputs.nth(0).fill(DESC_SENTINEL)
-    inputs.nth(1).click()
-    inputs.nth(1).fill(amount)
+    row = page.locator('#expenseLinesBody tr').first
+    row.locator('input[id^="exp-desc-"]').first.fill(DESC_SENTINEL)
+    amt = row.locator('input.exp-amt').first     # the amount field (qty/unit-price left blank)
+    amt.click()
+    amt.fill(amount)
     page.keyboard.press('Tab')                 # blur -> expAmtBlur stores/formats the amount
     _pick_in_choices(page, ACCT_SCOPE, account_code)
 

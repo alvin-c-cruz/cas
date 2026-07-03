@@ -38,10 +38,15 @@ def _selected_vendor_text(page):
 
 
 def _fill_first_line(page, amount='1000', account_code='50226'):
-    inputs = page.locator('#lineItemsBody tr input.form-control')  # [0]=description, [1]=amount
-    inputs.nth(0).fill(DESC_SENTINEL)
-    inputs.nth(1).click()
-    inputs.nth(1).fill(amount)
+    # P-56 added Qty / UOM / Unit-Price columns, so the amount is the `amt-` input, NOT the
+    # 2nd input in the row (that is now Quantity). Target amount by id; filling Qty alone
+    # leaves amount=0 (amount only derives when both qty AND unit_price are set), which made
+    # this JE-preview assertion pass VACUOUSLY on an all-zero entry.
+    row = page.locator('#lineItemsBody tr').first
+    row.locator('input[id^="desc-"]').first.fill(DESC_SENTINEL)
+    amt = row.locator('input[id^="amt-"]').first   # the amount field (qty/unit-price left blank)
+    amt.click()
+    amt.fill(amount)
     page.keyboard.press('Tab')                 # blur -> amtBlur stores/formats the amount
     _pick_in_choices(page, ACCT_SCOPE, account_code)
 
