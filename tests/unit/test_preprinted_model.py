@@ -18,3 +18,9 @@ def test_json_round_trip(db_session):
 def test_bad_json_is_safe(db_session):
     pl = PrintLayout(voucher_type='SI'); pl.fields_json = 'not json'; pl.line_band_json = '{bad'
     assert pl.get_fields() == [] and pl.get_line_band() == {}
+
+def test_printlayout_account_id_and_composite_unique(db_session):
+    db.session.add_all([PrintLayout(voucher_type='CD_CHECK', account_id=None),
+                        PrintLayout(voucher_type='CD_CHECK', account_id=1)])
+    db.session.commit()
+    assert PrintLayout.query.filter_by(voucher_type='CD_CHECK').count() == 2

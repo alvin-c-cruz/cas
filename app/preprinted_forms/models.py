@@ -16,9 +16,14 @@ VOUCHER_LABELS = {
 
 class PrintLayout(db.Model):
     __tablename__ = 'print_layouts'
+    __table_args__ = (
+        db.UniqueConstraint('voucher_type', 'account_id',
+                            name='uq_print_layouts_voucher_type_account_id'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    voucher_type = db.Column(db.String(8), unique=True, nullable=False, index=True)  # SI/CR/CD/AP/JV
+    voucher_type = db.Column(db.String(16), nullable=False, index=True)  # SI/CR/CD/AP/JV/CD_CHECK
+    account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True, index=True)  # NULL = Default
     active = db.Column(db.Boolean, default=False, nullable=False)  # admin pre-printed toggle
     background_image = db.Column(db.String(200), nullable=True)    # filename under instance/uploads/preprinted
     page_width_mm = db.Column(db.Numeric(6, 2), default=215.90, nullable=False)
