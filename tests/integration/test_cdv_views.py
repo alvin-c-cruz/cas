@@ -6,6 +6,7 @@ from datetime import date
 
 from app.accounts.models import Account
 from app.vendors.models import Vendor
+from app.withholding_tax.models import WithholdingTax
 from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine, CDVExpenseLine
 from app.journal_entries.models import JournalEntry
@@ -417,3 +418,108 @@ class TestCDVLineValidation:
         assert resp.status_code == 200
         assert b'postable account' in resp.data
         assert CashDisbursementVoucher.query.count() == 0
+
+
+class TestCDVWHTOverrideDomainError:
+    """M2: a domain ValueError raised by _cdv_wht_payable_buckets (via the wt_override
+    pre-flight in _post_cdv_je) must surface its own message verbatim in the flash —
+    not the generic 'An unexpected error occurred' string — and must not save the CDV.
+    """
+
+    def _wht_accounts_and_codes(self, db_session):
+        a1 = Account(code='22105-1', name='WHT Payable 1%', account_type='Liability',
+                     normal_balance='credit', is_active=True)
+        a2 = Account(code='22105-2', name='WHT Payable 2%', account_type='Liability',
+                     normal_balance='credit', is_active=True)
+        db_session.add_all([a1, a2])
+        db_session.commit()
+        w1 = WithholdingTax(code='WC158', name='WC158', rate=Decimal('10.00'),
+                            is_active=True, payable_account_id=a1.id)
+        w2 = WithholdingTax(code='WC160', name='WC160', rate=Decimal('5.00'),
+                            is_active=True, payable_account_id=a2.id)
+        db_session.add_all([w1, w2])
+        db_session.commit()
+        return w1, w2
+
+    def test_create_negative_bucket_valueerror_flashed_verbatim(
+            self, client, db_session, admin_user, main_branch):
+        """wt_override total_wt (2.00) is lower than the summed line WHT (100.00 + 5.00 =
+        105.00) by more than the largest bucket -> _cdv_wht_payable_buckets raises
+        ValueError('...too far below the computed WHT...'). That message must appear in
+        the response verbatim, the generic message must NOT appear, and no CDV is saved.
+        """
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        w1, w2 = self._wht_accounts_and_codes(db_session)
+
+        expense_lines = [
+            {'description': 'Line 1', 'amount': 1000.0, 'vat_category': '',
+             'account_id': exp.id, 'wt_id': w1.id},
+            {'description': 'Line 2', 'amount': 100.0, 'vat_category': '',
+             'account_id': exp.id, 'wt_id': w2.id},
+        ]
+        resp = client.post('/cash-disbursements/create', data={
+            'cdv_number': 'CD-TEST-WHTERR-0001',
+            'cdv_date': ph_now().date().isoformat(),
+            'vendor_id': vendor.id,
+            'payment_method': 'cash',
+            'cash_account_id': cash.id,
+            'notes': 'Test WHT override domain error',
+            'ap_lines': json.dumps([]),
+            'expense_lines': json.dumps(expense_lines),
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '1', 'wt_override_value': '2.00',
+        }, follow_redirects=True)
+
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'too far below the computed WHT' in body, (
+            'domain ValueError message must be flashed verbatim')
+        assert 'An unexpected error occurred' not in body, (
+            'the generic handler must not swallow this domain error'
+        )
+        assert CashDisbursementVoucher.query.count() == 0
+
+    def test_edit_negative_bucket_valueerror_flashed_verbatim(
+            self, client, db_session, admin_user, main_branch):
+        """Same domain ValueError, triggered via the edit() view."""
+        login(client)
+        ap, wt, cash, exp = setup_accounts(db_session)
+        vendor = make_vendor(db_session)
+        w1, w2 = self._wht_accounts_and_codes(db_session)
+
+        expense_lines = [{'description': 'Original', 'amount': 500.0,
+                          'vat_category': '', 'account_id': exp.id, 'wt_id': None}]
+        create_draft_cdv(client, vendor, cash, expense_lines=expense_lines)
+        cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
+
+        new_expense_lines = [
+            {'description': 'Line 1', 'amount': 1000.0, 'vat_category': '',
+             'account_id': exp.id, 'wt_id': w1.id},
+            {'description': 'Line 2', 'amount': 100.0, 'vat_category': '',
+             'account_id': exp.id, 'wt_id': w2.id},
+        ]
+        resp = client.post(f'/cash-disbursements/{cdv.id}/edit', data={
+            'cdv_number': cdv.cdv_number,
+            'cdv_date': ph_now().date().isoformat(),
+            'vendor_id': vendor.id,
+            'payment_method': 'cash',
+            'cash_account_id': cash.id,
+            'notes': 'Edited to trigger WHT override domain error',
+            'ap_lines': json.dumps([]),
+            'expense_lines': json.dumps(new_expense_lines),
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '1', 'wt_override_value': '2.00',
+        }, follow_redirects=True)
+
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'too far below the computed WHT' in body, (
+            'domain ValueError message must be flashed verbatim')
+        assert 'An unexpected error occurred' not in body, (
+            'the generic handler must not swallow this domain error'
+        )
+        db_session.refresh(cdv)
+        assert cdv.status == 'draft'
+        assert len(cdv.expense_lines) == 1, 'edit must not have persisted the bad override'

@@ -607,13 +607,16 @@ def _build_cdv_je_preview(cdv):
     except ValueError:
         pass
     # WHT — per ATC payable account, sign-aware
-    for wt_acct, wt_amt in _cdv_wht_payable_buckets(cdv, accts['wt']):
-        if wt_amt > Decimal('0.00'):
-            entries.append({'code': wt_acct.code, 'name': wt_acct.name,
-                            'debit': Decimal('0.00'), 'credit': wt_amt})
-        else:
-            entries.append({'code': wt_acct.code, 'name': wt_acct.name,
-                            'debit': abs(wt_amt), 'credit': Decimal('0.00')})
+    try:
+        for wt_acct, wt_amt in _cdv_wht_payable_buckets(cdv, accts['wt']):
+            if wt_amt > Decimal('0.00'):
+                entries.append({'code': wt_acct.code, 'name': wt_acct.name,
+                                'debit': Decimal('0.00'), 'credit': wt_amt})
+            else:
+                entries.append({'code': wt_acct.code, 'name': wt_acct.name,
+                                'debit': abs(wt_amt), 'credit': Decimal('0.00')})
+    except ValueError:
+        pass
     if cdv.cash_account:
         sum_dr = sum(e['debit'] for e in entries)
         sum_cr = sum(e['credit'] for e in entries)
@@ -875,6 +878,10 @@ def create():
             db.session.rollback()
             flash(str(ce), 'error')
             return _render_form()
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), 'error')
+            return _render_form()
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error creating CDV', exc_info=True)
@@ -989,6 +996,12 @@ def edit(id):
         except CDVLineError as ce:
             db.session.rollback()
             flash(str(ce), 'error')
+            ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
+            return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
+                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), 'error')
             ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
             return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
                                ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
