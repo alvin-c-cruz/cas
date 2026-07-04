@@ -326,3 +326,81 @@ class TestCDVPosting:
         vat_line = next((l for l in je.lines if l.account_id == input_vat_acct.id), None)
         assert vat_line is not None, 'Input VAT JE line must be present for positive expense line'
         assert vat_line.debit_amount == Decimal('120.00')
+
+    def test_post_cdv_je_override_wht_raises_when_no_wht_account(self, db_session, admin_user, main_branch):
+        """FINDING 1 (Critical): wt_override=True with a nonzero cdv.total_wt but NO
+        line-level wt_amount at all (pure override) and no WHT Payable account in the COA
+        (e.g. 20301 missing) -> the pre-flight guard must key off cdv.total_wt under
+        override (not the summed line WHT, which is 0 here) and raise cleanly, rather than
+        silently absorbing the WHT into the cash residual."""
+        from app.cash_disbursements.views import _post_cdv_je
+
+        # Only AP account exists — deliberately no 20301 WHT Payable account in this COA.
+        make_account(db_session, '20101', 'Accounts Payable - Trade',
+                    account_type='Liability', classification='Current Liability',
+                    normal_balance='Credit')
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        expense_acct = make_account(db_session, '5001', 'Expense',
+                                    account_type='Expense', classification='Operating Expense',
+                                    normal_balance='Debit')
+        vendor = make_vendor(db_session, code='V006')
+
+        cdv = build_cdv(db_session, main_branch, vendor, cash,
+                        expense_lines=[{
+                            'description': 'Professional fee',
+                            'amount': 1000, 'line_total': 1000,
+                            'vat_amount': 0, 'wt_amount': 0,  # no line-level WHT at all
+                            'account_id': expense_acct.id,
+                        }], status='draft')
+        cdv.wt_override = True
+        cdv.total_wt = Decimal('50.00')  # pure override: no bucket, no fallback account
+        cdv.total_amount = cdv.total_ap_applied + cdv.total_expense - cdv.total_wt
+        cdv.status = 'posted'
+        db_session.flush()
+
+        with pytest.raises(ValueError, match='WHT Payable'):
+            _post_cdv_je(cdv, admin_user.id)
+
+    def test_post_cdv_je_override_wht_posts_correctly_with_real_account(self, db_session, admin_user, main_branch):
+        """Regression: the normal override case (line wt=50, override total_wt=75, a real
+        WHT account present) must still post WHT=75 / cash reduced accordingly — the two new
+        raise-guards must not affect the well-formed override path."""
+        from app.cash_disbursements.views import _post_cdv_je
+
+        _, wht_acct = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        expense_acct = make_account(db_session, '5001', 'Expense',
+                                    account_type='Expense', classification='Operating Expense',
+                                    normal_balance='Debit')
+        vendor = make_vendor(db_session, code='V007')
+
+        cdv = build_cdv(db_session, main_branch, vendor, cash,
+                        expense_lines=[{
+                            'description': 'Professional fee',
+                            'amount': 1000, 'line_total': 1000,
+                            'vat_amount': 0, 'wt_amount': Decimal('50.00'),
+                            'account_id': expense_acct.id,
+                        }], status='draft')
+        cdv.wt_override = True
+        cdv.total_wt = Decimal('75.00')  # diverges from the summed line WHT (50.00)
+        cdv.total_amount = cdv.total_ap_applied + cdv.total_expense - cdv.total_wt
+        cdv.status = 'posted'
+        db_session.flush()
+
+        je = _post_cdv_je(cdv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced, f"JE not balanced: dr={je.total_debit} cr={je.total_credit}"
+
+        wht_line = next(l for l in je.lines if l.account_id == wht_acct.id)
+        assert wht_line.credit_amount == Decimal('75.00')
+        assert wht_line.debit_amount == Decimal('0.00')
+
+        cash_line = next(l for l in je.lines if l.account_id == cash.id)
+        # 1000 expense - 75 WHT = 925 cash out
+        assert cash_line.credit_amount == Decimal('925.00')
+        assert cash_line.debit_amount == Decimal('0.00')

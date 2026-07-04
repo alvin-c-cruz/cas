@@ -116,3 +116,31 @@ def test_cdv_buckets_reconcile_empty_buckets_uses_fallback(db_session):
     cdv.wt_override = True
     cdv.total_wt = Decimal('30.00')
     assert [(a.code, amt) for a, amt in _cdv_wht_payable_buckets(cdv, fb)] == [('20301', Decimal('30.00'))]
+
+
+def test_cdv_buckets_override_raises_when_no_bucket_and_no_fallback(db_session):
+    """FINDING 1 (Critical): wt_override=True, nonzero total_wt, NO expense line carries any
+    WHT (buckets empty) AND fallback_acct is None (e.g. COA missing 20301) -> the override
+    WHT amount must never be silently dropped. Must raise ValueError, never return []."""
+    cdv = _cdv_with_expense_lines([])
+    cdv.wt_override = True
+    cdv.total_wt = Decimal('30.00')
+    with pytest.raises(ValueError):
+        _cdv_wht_payable_buckets(cdv, None)
+
+
+def test_cdv_buckets_override_raises_when_absorption_would_go_negative(db_session):
+    """FINDING 2 (Important): wt_override total_wt is lower than the summed line WHT by more
+    than the largest bucket -> absorbing the diff into the largest bucket would drive it
+    negative (silently misstating the per-ATC WHT-payable subsidiary ledger). Must raise
+    ValueError, mirroring AP's _wht_payable_buckets guard, never post a negative WHT line."""
+    fb = _acct('20301', 'WHT Payable')
+    a1 = _acct('22105-1', 'WHT 1%'); a2 = _acct('22105-2', 'WHT 2%')
+    w1 = _wht('WC158', 1, a1); w2 = _wht('WC160', 2, a2)
+    cdv = _cdv_with_expense_lines([(w1, '100.00'), (w2, '5.00')])
+    cdv.wt_override = True
+    # summed line WHT = 105.00; override total_wt = 2.00 -> diff = -103.00, which would push
+    # the largest bucket (100.00) to -3.00.
+    cdv.total_wt = Decimal('2.00')
+    with pytest.raises(ValueError):
+        _cdv_wht_payable_buckets(cdv, fb)

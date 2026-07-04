@@ -259,6 +259,11 @@ def _cdv_wht_payable_buckets(cdv, fallback_acct):
     overridden this reconciliation is a no-op (cdv.total_wt already equals the summed line WHT),
     so the non-override path returns byte-identical results to the summed line WHT.
 
+    The override WHT is never silently dropped or misstated: if there is a non-zero amount to
+    place but no bucket and no fallback_acct to place it in, or if absorbing the diff would
+    drive any bucket negative, this raises ValueError rather than returning an incomplete or
+    negative result.
+
     Negative Section-B lines never carry WHT (mirrors the existing _post_cdv_je /
     _build_cdv_je_preview guard: `_parse_and_attach_expense_lines` zeroes `wt_amount`
     on negative lines at data-entry, but this is a defense-in-depth re-check here too)."""
@@ -289,6 +294,15 @@ def _cdv_wht_payable_buckets(cdv, fallback_acct):
                 ]
             elif fallback_acct is not None:
                 ordered = [(fallback_acct, diff)]
+            else:
+                raise ValueError(
+                    "Withholding tax override is non-zero but no expense line carries WHT "
+                    "and no WHT Payable - Expanded (20301) fallback account was found in the "
+                    "COA. Adjust the override or configure the WHT Payable account.")
+    if any(amt < Decimal('0.00') for _, amt in ordered):
+        raise ValueError(
+            'Withholding tax override is too far below the computed WHT to allocate '
+            'across payable accounts. Adjust the override or the line withholding.')
     return [(a, amt) for a, amt in ordered if amt != Decimal('0.00')]
 
 
@@ -305,13 +319,19 @@ def _post_cdv_je(cdv, user_id):
     if not cash_account:
         raise ValueError("Cash/Bank account not found.")
 
-    # WHT: sum from positive expense lines only (negative lines have no WHT)
-    total_wt = sum(
-        Decimal(str(el.wt_amount or 0))
-        for el in cdv.expense_lines
-        if Decimal(str(el.line_total or 0)) > 0
+    # WHT pre-flight: guard on the amount actually being POSTED. Under wt_override that is
+    # cdv.total_wt (a pure override can carry no line-level wt_amount at all, so summing the
+    # lines would see 0 and miss a missing WHT account); otherwise it's the summed line WHT
+    # from positive expense lines only (negative lines have no WHT).
+    posted_wt = (
+        Decimal(str(cdv.total_wt)) if cdv.wt_override else
+        sum(
+            Decimal(str(el.wt_amount or 0))
+            for el in cdv.expense_lines
+            if Decimal(str(el.line_total or 0)) > 0
+        )
     )
-    if total_wt != Decimal('0.00') and not _accts['wt']:
+    if posted_wt != Decimal('0.00') and not _accts['wt']:
         raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
 
     je_status = 'posted' if cdv.status == 'posted' else 'draft'
