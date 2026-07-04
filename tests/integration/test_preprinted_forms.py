@@ -880,14 +880,12 @@ def test_can_print_cd_check_draft_and_posted(db_session):
 # resolve_check_layout (Task 5): account override -> Default resolution
 # ---------------------------------------------------------------------------
 
-from app.preprinted_forms.pdf import resolve_check_layout
-
-
 class _CDV:
     def __init__(self, a): self.cash_account_id = a
 
 
 def test_resolve_default_and_override(db_session):
+    from app.preprinted_forms.pdf import resolve_check_layout
     db.session.add_all([
         PrintLayout(voucher_type='CD_CHECK', account_id=None, active=True, background_image='d.png'),
         PrintLayout(voucher_type='CD_CHECK', account_id=7, active=False, background_image='o.png')])
@@ -897,6 +895,7 @@ def test_resolve_default_and_override(db_session):
 
 
 def test_resolve_master_off(db_session):
+    from app.preprinted_forms.pdf import resolve_check_layout
     PrintLayout.query.delete()
     db.session.add(PrintLayout(voucher_type='CD_CHECK', account_id=None, active=False, background_image='d.png'))
     db.session.commit()
@@ -904,7 +903,21 @@ def test_resolve_master_off(db_session):
 
 
 def test_resolve_default_no_background(db_session):
+    from app.preprinted_forms.pdf import resolve_check_layout
     PrintLayout.query.delete()
     db.session.add(PrintLayout(voucher_type='CD_CHECK', account_id=None, active=True, background_image=None))
     db.session.commit()
     assert resolve_check_layout(_CDV(7)) is None
+
+
+def test_resolve_override_without_background(db_session):
+    """Override row exists but has background_image=None -> fall back to Default.
+
+    Locks: if an override is found, it MUST have a background_image to win;
+    an override without background is not a valid choice and reverts to Default."""
+    from app.preprinted_forms.pdf import resolve_check_layout
+    db.session.add_all([
+        PrintLayout(voucher_type='CD_CHECK', account_id=None, active=True, background_image='d.png'),
+        PrintLayout(voucher_type='CD_CHECK', account_id=7, active=True, background_image=None)])
+    db.session.commit()
+    assert resolve_check_layout(_CDV(7)).background_image == 'd.png'
