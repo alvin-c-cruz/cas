@@ -1,10 +1,16 @@
 """Integration tests for the CD_CHECK print_check route (P-69 check-printing Task 7).
 
-Covers: the route's gate ordering (payment method, module, can_print status,
+Covers: the route's gate ordering (payment method, can_print status/setting,
 missing serial, zero amount, unconfigured layout), audit logging, and — the
 highest-stakes assertions — that the printed check face value (cdv.total_amount)
 actually ties out to the posted journal entry's cash-account credit leg, both
 in the normal case and under a wt_override.
+
+Check printing is governed only by cd_check_print_access + the intrinsic
+requirements above -- NOT by the optional preprinted_forms module toggle (the
+module still gates the 5 voucher-overlay print routes at print time; see
+test_preprinted_forms.py). check_cdv_module_off below proves the route/button
+work with the module off, as long as everything else is ready.
 """
 from decimal import Decimal
 from datetime import date
@@ -249,7 +255,11 @@ def check_cdv_module_off(db_session, main_branch, _vendor, cash_account,
                          cd_check_default_layout):
     """Everything else ready (posted, check_number, amount, layout) but the
     preprinted_forms module is NOT enabled (no preprinted_module_enabled fixture
-    invoked; default_enabled=False for this optional module)."""
+    invoked; default_enabled=False for this optional module). Check printing is
+    module-independent by design, so this CDV must still be print-ready (see
+    test_detail_shows_print_check_when_module_off /
+    test_print_check_works_when_module_off) -- it is NOT part of the
+    test_detail_hides_print_check absence sweep."""
     clear_module_config_cache()
     return _make_cdv(main_branch, _vendor, cash_account, payment_method='check',
                       check_number='00061', status='posted', total_amount=Decimal('500.00'),
@@ -381,13 +391,30 @@ def test_detail_shows_print_check_when_ready(logged_in_branch_client, ready_chec
 
 @pytest.mark.parametrize('fixture_name', [
     'cash_method_cdv', 'draft_check_cdv', 'voided_check_cdv', 'check_cdv_no_number',
-    'check_cdv_zero_amount', 'check_cdv_no_layout', 'check_cdv_module_off',
+    'check_cdv_zero_amount', 'check_cdv_no_layout',
     'check_cdv_inactive_default', 'check_cdv_no_background',
 ])
 def test_detail_hides_print_check(logged_in_branch_client, request, fixture_name):
     cdv = request.getfixturevalue(fixture_name)
     resp = logged_in_branch_client.get(f'/cash-disbursements/{cdv.id}')
     assert b'Print Check' not in resp.data
+
+
+def test_detail_shows_print_check_when_module_off(logged_in_branch_client, check_cdv_module_off):
+    """Check printing is no longer gated by preprinted_forms -- the button must
+    SHOW when the module is off but everything else (status, check_number,
+    amount, active layout) is ready. This replaces the old module-off row that
+    used to live in test_detail_hides_print_check."""
+    resp = logged_in_branch_client.get(f'/cash-disbursements/{check_cdv_module_off.id}')
+    assert b'Print Check' in resp.data
+
+
+def test_print_check_works_when_module_off(logged_in_branch_client, check_cdv_module_off):
+    """The print-check route itself must succeed (return a PDF) with the
+    preprinted_forms module off -- it is governed only by cd_check_print_access
+    + the intrinsic requirements, not the module toggle."""
+    r = logged_in_branch_client.get(f'/cash-disbursements/{check_cdv_module_off.id}/print-check')
+    assert r.status_code == 200 and r.mimetype == 'application/pdf' and len(r.data) > 200
 
 
 def test_detail_shows_print_count_after_printing(logged_in_branch_client, ready_check_cdv):

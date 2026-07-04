@@ -1025,10 +1025,9 @@ def view(id):
     cd_print_access = AppSettings.get_setting('cd_print_access', 'posted_only')
 
     from app.preprinted_forms.pdf import can_print, resolve_check_layout
-    from app.users.module_access import module_enabled
     from app.audit.models import AuditLog
     check_layout_ready = bool(
-        cdv.payment_method == 'check' and module_enabled('preprinted_forms')
+        cdv.payment_method == 'check'
         and cdv.check_number and cdv.total_amount and float(cdv.total_amount) > 0
         and can_print('CD_CHECK', cdv) and resolve_check_layout(cdv) is not None)
     check_print_count = AuditLog.query.filter_by(action='print_check',
@@ -1231,13 +1230,9 @@ def print_cdv(id):
 def print_check(id):
     cdv = _get_cdv_or_404(id)  # unsaved voucher has no id; branch-scoped 404
     from app.preprinted_forms.pdf import can_print, resolve_check_layout, render_preprinted
-    from app.users.module_access import module_enabled
     from flask import Response
     if cdv.payment_method != 'check':
         flash('This voucher is not a check payment.', 'error')
-        return redirect(url_for('cash_disbursements.view', id=id))
-    if not module_enabled('preprinted_forms'):
-        flash('Check printing is not enabled.', 'error')
         return redirect(url_for('cash_disbursements.view', id=id))
     if not can_print('CD_CHECK', cdv):
         flash('Printing this check is not allowed in its current status.', 'error')

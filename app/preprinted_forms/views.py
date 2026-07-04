@@ -59,12 +59,21 @@ _IMAGE_ALLOWED = {
 _IMAGE_MAX_BYTES = 2 * 1024 * 1024  # ~2 MB
 
 
+def _module_check_applies(kwargs):
+    """CD_CHECK printing is governed by cd_check_print_access + layout readiness,
+    NOT the preprinted_forms module toggle — so the CD_CHECK designer (and the
+    admin list, which has no `vt` at all) must stay reachable with the module
+    off. The other 5 voucher types (SI/CR/CD/AP/JV) keep the module gate."""
+    return kwargs.get('vt') not in (None, 'CD_CHECK')
+
+
 def _module_required(f):
     """Instance-level package gate only — for read-only routes that don't need
-    per-user edit rights (e.g. the admin toggle list)."""
+    per-user edit rights (e.g. the admin toggle list). Bypassed for CD_CHECK /
+    the admin list; still enforced for the other 5 voucher types."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not module_enabled('preprinted_forms'):
+        if _module_check_applies(kwargs) and not module_enabled('preprinted_forms'):
             flash('The pre-printed forms module is not enabled.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
@@ -73,10 +82,12 @@ def _module_required(f):
 
 def _edit_required(f):
     """Instance flag AND per-user grant (full access, accountant, or staff via
-    the explicit print_layouts book permission; viewers never)."""
+    the explicit print_layouts book permission; viewers never). The instance
+    flag is bypassed for CD_CHECK / the admin list; still enforced for the
+    other 5 voucher types."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not module_enabled('preprinted_forms'):
+        if _module_check_applies(kwargs) and not module_enabled('preprinted_forms'):
             flash('The pre-printed forms module is not enabled.', 'error')
             return redirect(url_for('dashboard.index'))
         if not (current_user.has_full_access or current_user.role == 'accountant'
@@ -88,10 +99,12 @@ def _edit_required(f):
 
 
 def _admin_required(f):
-    """Instance flag AND admin role — used only for the toggle route."""
+    """Instance flag AND admin role — used only for the toggle route. The
+    instance flag is bypassed for CD_CHECK / the admin list; still enforced
+    for the other 5 voucher types."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not module_enabled('preprinted_forms'):
+        if _module_check_applies(kwargs) and not module_enabled('preprinted_forms'):
             flash('The pre-printed forms module is not enabled.', 'error')
             return redirect(url_for('dashboard.index'))
         if not current_user.is_admin:

@@ -290,6 +290,56 @@ def test_designer_and_save_denied_when_module_explicitly_disabled(client, db_ses
         clear_module_config_cache()
 
 
+def test_si_designer_still_denied_when_module_disabled(client, db_session, accountant_user,
+                                                        main_branch):
+    """Non-CD_CHECK voucher types keep the pre-existing module gate -- only
+    CD_CHECK and the admin list are exempted. SI stands in for the other four
+    (CR/CD/AP/JV, already covered above via JV) as the explicit example named
+    in the decoupling spec."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/preprinted-forms/SI/design', follow_redirects=True)
+    assert b'not enabled' in resp.data.lower()
+
+
+def test_cd_check_designer_reachable_when_module_disabled(client, db_session, accountant_user,
+                                                           main_branch):
+    """CDV check printing is governed only by cd_check_print_access + layout
+    readiness, NOT the preprinted_forms module toggle -- so the CD_CHECK
+    designer must be reachable even with the module off (the default)."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/preprinted-forms/CD_CHECK/design')
+    assert resp.status_code == 200
+    assert b'not enabled' not in resp.data.lower()
+
+
+def test_cd_check_save_and_toggle_work_when_module_disabled(client, db_session, accountant_user,
+                                                             admin_user, main_branch):
+    """An authorized editor can save the CD_CHECK layout, and an admin can
+    toggle it active, with the module off (default) -- the designer/admin
+    workflow for CD_CHECK is module-independent by design."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/preprinted-forms/CD_CHECK/save',
+                        data={'fields_json': '[]', 'line_band_json': '{}',
+                              'page_width_mm': '178.00', 'page_height_mm': '84.00'},
+                        follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'not enabled' not in resp.data.lower()
+    layout = PrintLayout.query.filter_by(voucher_type='CD_CHECK', account_id=None).first()
+    assert layout is not None
+    assert float(layout.page_width_mm) == 178.00
+
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/preprinted-forms/CD_CHECK/toggle', follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'not enabled' not in resp.data.lower()
+    db.session.refresh(layout)
+    assert layout.active is True
+
+
 # ---------------------------------------------------------------------------
 # Designer UI + test-print route (P-69 Task 5)
 # ---------------------------------------------------------------------------
@@ -756,15 +806,21 @@ def test_module_off_default_all_five_print_routes_return_html(client, db_session
         assert _HTML_PRINT_MARKER in resp.data, vt
 
 
-def test_admin_index_denied_when_module_disabled_by_default(client, db_session, admin_user,
-                                                              main_branch):
-    """(a) The admin toggles list (/preprinted-forms) is also gated by
-    _module_required -- denied when the module is off by default."""
+def test_admin_index_reachable_when_module_disabled_by_default(client, db_session, admin_user,
+                                                                 main_branch):
+    """(a) The admin toggles list (/preprinted-forms) has no vt of its own and
+    is intentionally exempt from _module_required (unlike the JV/SI designer
+    and toggle routes, which stay denied -- see
+    test_designer_and_save_denied_when_module_disabled_by_default,
+    test_si_designer_still_denied_when_module_disabled, and
+    test_toggle_denied_when_module_disabled_by_default) so that CD_CHECK
+    remains discoverable even with the module off by default."""
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
-    resp = client.get('/preprinted-forms', follow_redirects=True)
+    resp = client.get('/preprinted-forms')
     assert resp.status_code == 200
-    assert b'not enabled' in resp.data.lower()
+    assert b'not enabled' not in resp.data.lower()
+    assert b'CD_CHECK' in resp.data
 
 
 def test_toggle_denied_when_module_disabled_by_default(client, db_session, admin_user, main_branch):
