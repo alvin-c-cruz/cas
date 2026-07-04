@@ -114,12 +114,21 @@
 
     <div class="card designer-save-card">
         <div class="card-body">
+            <h2 class="designer-section-title">Save Design</h2>
             <form method="post" action="{{ url_for('preprinted_forms.save', vt=vt) }}" id="designer-save-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="fields_json" id="designer-fields-json" value="{{ fields_json }}">
                 <input type="hidden" name="line_band_json" id="designer-line-band-json" value="{{ line_band_json }}">
-                <input type="hidden" name="page_width_mm" id="designer-page-width-mm" value="{{ page_width_mm }}">
-                <input type="hidden" name="page_height_mm" id="designer-page-height-mm" value="{{ page_height_mm }}">
+
+                <div class="designer-page-size-inputs">
+                    <label>Width (mm)
+                        <input type="number" name="page_width_mm" id="designer-page-width-mm" step="0.01" min="1" value="{{ page_width_mm }}">
+                    </label>
+                    <label>Height (mm)
+                        <input type="number" name="page_height_mm" id="designer-page-height-mm" step="0.01" min="1" value="{{ page_height_mm }}">
+                    </label>
+                </div>
+
                 <button type="submit" class="btn btn-primary" id="designer-save-btn">Save</button>
             </form>
 
