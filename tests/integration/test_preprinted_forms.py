@@ -201,6 +201,46 @@ def test_chief_accountant_can_save_layout(client, db_session, chief_accountant_u
     assert layout.get_line_band() == {'y_start': 110, 'row_height': 14}
 
 
+def test_save_persists_page_dimensions(client, db_session, accountant_user, main_branch,
+                                        preprinted_module_enabled):
+    """P-69 Task 6: save() must persist page_width_mm/page_height_mm — a check
+    is not US Letter, so without this the designer can never register a layout
+    onto real check stock."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    resp = client.post('/preprinted-forms/CD_CHECK/save',
+                        data={'fields_json': '[]', 'line_band_json': '{}',
+                              'page_width_mm': '178.00', 'page_height_mm': '84.00'},
+                        follow_redirects=True)
+    assert resp.status_code == 200
+    layout = PrintLayout.query.filter_by(voucher_type='CD_CHECK', account_id=None).first()
+    assert layout is not None
+    assert float(layout.page_width_mm) == 178.00
+    assert float(layout.page_height_mm) == 84.00
+
+
+def test_save_with_malformed_dimension_keeps_existing(client, db_session, accountant_user,
+                                                        main_branch, preprinted_module_enabled):
+    """A bad/malformed page_width_mm must never crash the save nor zero out the
+    dimension — the existing value (or the model default) is kept."""
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    # Establish a known dimension first.
+    client.post('/preprinted-forms/CD_CHECK/save',
+                data={'fields_json': '[]', 'line_band_json': '{}',
+                      'page_width_mm': '178.00', 'page_height_mm': '84.00'},
+                follow_redirects=True)
+    resp = client.post('/preprinted-forms/CD_CHECK/save',
+                        data={'fields_json': '[]', 'line_band_json': '{}',
+                              'page_width_mm': 'abc', 'page_height_mm': '84.00'},
+                        follow_redirects=True)
+    assert resp.status_code == 200
+    layout = PrintLayout.query.filter_by(voucher_type='CD_CHECK', account_id=None).first()
+    assert layout is not None
+    assert float(layout.page_width_mm) == 178.00  # unchanged, not zeroed/crashed
+    assert float(layout.page_height_mm) == 84.00
+
+
 def test_chief_accountant_cannot_toggle(client, db_session, chief_accountant_user,
                                          main_branch, preprinted_module_enabled):
     """Chief Accountant cannot toggle (admin-only)."""

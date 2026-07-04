@@ -16,6 +16,7 @@ listed in MODULE_REGISTRY):
 import json
 import os
 import uuid
+from decimal import Decimal, InvalidOperation
 from functools import wraps
 
 from flask import (
@@ -210,6 +211,15 @@ def save(vt):
 
     layout.fields_json = fields_json
     layout.line_band_json = line_band_json
+
+    for attr in ('page_width_mm', 'page_height_mm'):
+        raw = request.form.get(attr)
+        if raw:
+            try:
+                setattr(layout, attr, Decimal(raw))
+            except (InvalidOperation, TypeError):
+                pass  # keep existing dimension on a bad value
+
     layout.updated_by = current_user.username
     db.session.commit()
 
