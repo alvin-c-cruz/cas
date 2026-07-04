@@ -848,3 +848,29 @@ def test_per_voucher_smoke_pdf_contains_document_number(client, db_session, admi
     else:
         expected_number = rec.cdv_number
     assert expected_number in normalized
+
+
+# ---------------------------------------------------------------------------
+# can_print CD_CHECK arm (Task 4: cd_check_print_access setting)
+# ---------------------------------------------------------------------------
+
+def _cdv(status):
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    c = CashDisbursementVoucher()
+    c.status = status
+    return c
+
+
+def test_can_print_cd_check_posted_only(db_session):
+    from app.preprinted_forms.pdf import can_print
+    AppSettings.set_setting('cd_check_print_access', 'posted_only')
+    assert can_print('CD_CHECK', _cdv('posted')) is True
+    assert can_print('CD_CHECK', _cdv('draft')) is False
+
+
+def test_can_print_cd_check_draft_and_posted(db_session):
+    from app.preprinted_forms.pdf import can_print
+    AppSettings.set_setting('cd_check_print_access', 'draft_and_posted')
+    assert can_print('CD_CHECK', _cdv('draft')) is True
+    for bad in ('voided', 'cancelled'):
+        assert can_print('CD_CHECK', _cdv(bad)) is False

@@ -32,6 +32,9 @@ def can_print(voucher_type, record):
     elif voucher_type == 'CD':
         setting = AppSettings.get_setting('cd_print_access', 'posted_only')
         posted_ok = record.status == 'posted'
+    elif voucher_type == 'CD_CHECK':
+        setting = AppSettings.get_setting('cd_check_print_access', 'posted_only')
+        posted_ok = record.status == 'posted'
     elif voucher_type == 'JV':
         return True  # no *_print_access setting exists for JV today -- default allow (decided)
     else:

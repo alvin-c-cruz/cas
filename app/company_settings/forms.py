@@ -110,6 +110,9 @@ class CompanySettingsForm(FlaskForm):
     cd_print_access = SelectField(
         'CDV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )
+    cd_check_print_access = SelectField(
+        'Check Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
+    )
     cr_print_access = SelectField(
         'CRV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )

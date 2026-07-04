@@ -17,6 +17,7 @@ def _base_form(**overrides):
         'apv_print_access': 'posted_only',
         'sv_print_access': 'posted_only',
         'cd_print_access': 'posted_only',
+        'cd_check_print_access': 'posted_only',
         'cr_print_access': 'posted_only',
     }
     data.update(overrides)

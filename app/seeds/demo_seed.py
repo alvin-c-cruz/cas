@@ -145,6 +145,7 @@ COMPANY_SETTINGS = [
     {'key': 'apv_print_access', 'value': 'draft_and_posted'},
     {'key': 'sv_print_access', 'value': 'draft_and_posted'},
     {'key': 'cd_print_access', 'value': 'draft_and_posted'},
+    {'key': 'cd_check_print_access', 'value': 'draft_and_posted'},
     {'key': 'cr_print_access', 'value': 'draft_and_posted'},
     {'key': 'company_logo', 'value': ''},
     {'key': 'environment', 'value': 'demo'},

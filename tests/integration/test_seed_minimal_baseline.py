@@ -52,8 +52,8 @@ def test_seed_minimal_produces_core_baseline(db_session):
     assert {w.code for w in WithholdingTax.query.all()} == {
         'WC158', 'WI158', 'WC160', 'WI160', 'WC100', 'WI100', 'WC010', 'WI010'}
 
-    # 24 app settings; identity blank-ish, company_name default present
-    assert AppSettings.query.count() == 24
+    # 25 app settings; identity blank-ish, company_name default present
+    assert AppSettings.query.count() == 25
     assert AppSettings.get_setting('company_name') == 'Company Name'
     assert AppSettings.get_setting('company_tin') == ''
 

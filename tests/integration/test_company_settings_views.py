@@ -279,6 +279,7 @@ class TestPrintAccessSettings:
         data['apv_print_access'] = 'posted_only'
         data['sv_print_access'] = 'draft_and_posted'
         data['cd_print_access'] = 'draft_and_posted'
+        data['cd_check_print_access'] = 'draft_and_posted'
         data['cr_print_access'] = 'draft_and_posted'
         resp = client.post('/settings', data=data, follow_redirects=True)
         assert resp.status_code == 200
