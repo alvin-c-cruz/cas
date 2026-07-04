@@ -874,3 +874,37 @@ def test_can_print_cd_check_draft_and_posted(db_session):
     assert can_print('CD_CHECK', _cdv('draft')) is True
     for bad in ('voided', 'cancelled'):
         assert can_print('CD_CHECK', _cdv(bad)) is False
+
+
+# ---------------------------------------------------------------------------
+# resolve_check_layout (Task 5): account override -> Default resolution
+# ---------------------------------------------------------------------------
+
+from app.preprinted_forms.pdf import resolve_check_layout
+
+
+class _CDV:
+    def __init__(self, a): self.cash_account_id = a
+
+
+def test_resolve_default_and_override(db_session):
+    db.session.add_all([
+        PrintLayout(voucher_type='CD_CHECK', account_id=None, active=True, background_image='d.png'),
+        PrintLayout(voucher_type='CD_CHECK', account_id=7, active=False, background_image='o.png')])
+    db.session.commit()
+    assert resolve_check_layout(_CDV(7)).background_image == 'o.png'   # override wins; its active is IGNORED
+    assert resolve_check_layout(_CDV(99)).background_image == 'd.png'  # fallback to Default
+
+
+def test_resolve_master_off(db_session):
+    PrintLayout.query.delete()
+    db.session.add(PrintLayout(voucher_type='CD_CHECK', account_id=None, active=False, background_image='d.png'))
+    db.session.commit()
+    assert resolve_check_layout(_CDV(7)) is None
+
+
+def test_resolve_default_no_background(db_session):
+    PrintLayout.query.delete()
+    db.session.add(PrintLayout(voucher_type='CD_CHECK', account_id=None, active=True, background_image=None))
+    db.session.commit()
+    assert resolve_check_layout(_CDV(7)) is None

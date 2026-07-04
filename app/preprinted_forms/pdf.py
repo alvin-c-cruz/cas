@@ -46,6 +46,19 @@ def can_print(voucher_type, record):
     return posted_ok
 
 
+def resolve_check_layout(cdv):
+    """CD_CHECK layout for a CDV: account override -> Default. Default.active = master switch;
+    per-account rows' own active is ignored (no per-account toggle UI)."""
+    from app.preprinted_forms.models import PrintLayout
+    default = PrintLayout.query.filter_by(voucher_type='CD_CHECK', account_id=None).first()
+    if not default or not default.active:
+        return None
+    override = PrintLayout.query.filter_by(voucher_type='CD_CHECK',
+                                           account_id=cdv.cash_account_id).first()
+    chosen = override if (override and override.background_image) else default
+    return chosen if chosen.background_image else None
+
+
 def preprinted_response(voucher_type, record):
     """Return a PDF Response if pre-printed mode is on for this voucher, else None.
 

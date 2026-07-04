@@ -136,7 +136,7 @@ def _safe_json_string(raw, default):
 @_module_required
 def admin():
     """List the 5 voucher types with their pre-printed active/inactive toggle."""
-    layouts = {l.voucher_type: l for l in PrintLayout.query.all()}
+    layouts = {l.voucher_type: l for l in PrintLayout.query.filter_by(account_id=None).all()}
     return render_template('preprinted_forms/admin_toggles.html',
                             voucher_types=VOUCHER_TYPES, voucher_labels=VOUCHER_LABELS,
                             layouts=layouts)
