@@ -3,7 +3,7 @@ import json
 from app import db
 from app.utils import ph_now
 
-VOUCHER_TYPES = ('SI', 'CR', 'CD', 'AP', 'JV')
+VOUCHER_TYPES = ('SI', 'CR', 'CD', 'AP', 'JV', 'CD_CHECK')
 
 VOUCHER_LABELS = {
     'SI': 'Sales Invoice',
@@ -11,6 +11,7 @@ VOUCHER_LABELS = {
     'CD': 'Cash Disbursement Voucher',
     'AP': 'Accounts Payable Voucher',
     'JV': 'Journal Voucher',
+    'CD_CHECK': 'Cash Disbursement — Check',
 }
 
 

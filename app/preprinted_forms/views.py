@@ -45,6 +45,7 @@ _TEST_PRINT_MODEL_NAMES = {
     'CD': ('app.cash_disbursements.models', 'CashDisbursementVoucher'),
     'AP': ('app.accounts_payable.models', 'AccountsPayable'),
     'JV': ('app.journal_entries.models', 'JournalEntry'),
+    'CD_CHECK': ('app.cash_disbursements.models', 'CashDisbursementVoucher'),
 }
 
 # Server-side allowlist: extension -> canonical MIME type. SVG excluded (executes

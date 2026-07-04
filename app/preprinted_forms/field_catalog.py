@@ -292,6 +292,17 @@ FIELD_CATALOG = {
         ],
         'line_columns': _standard_line_columns(),
     },
+    'CD_CHECK': {
+        'header': [
+            _hf('check_date', 'Check Date', _attr_date('check_date')),
+            _hf('payee', 'Payee (Vendor)', _attr_str('vendor_name')),
+            _hf('total', 'Amount (Figures)', _attr_money('total_amount')),
+            _hf('amount_in_words', 'Amount in Words', _amount_in_words_of('total_amount')),
+            _hf('check_number', 'Check Number', _attr_str('check_number')),
+            _hf('memo', 'Memo', _attr_str('notes')),
+        ],
+        'line_columns': [],
+    },
     'JV': {
         'header': [
             _hf('number', 'JV Number', _display_number),

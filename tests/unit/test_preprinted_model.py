@@ -13,7 +13,7 @@ def test_json_round_trip(db_session):
     got = db.session.get(PrintLayout, pl.id)
     assert got.get_fields()[0]['key'] == 'date'
     assert got.get_line_band()['max_rows'] == 12
-    assert VOUCHER_TYPES == ('SI', 'CR', 'CD', 'AP', 'JV')
+    assert VOUCHER_TYPES == ('SI', 'CR', 'CD', 'AP', 'JV', 'CD_CHECK')
 
 def test_bad_json_is_safe(db_session):
     pl = PrintLayout(voucher_type='SI'); pl.fields_json = 'not json'; pl.line_band_json = '{bad'

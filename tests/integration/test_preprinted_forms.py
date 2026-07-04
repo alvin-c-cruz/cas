@@ -456,14 +456,14 @@ def test_nav_link_hidden_for_accountant_when_module_disabled(client, db_session,
     assert 'Pre-Printed Forms' not in html
 
 
-def test_admin_toggles_page_renders_five_voucher_rows(client, db_session, admin_user, main_branch,
-                                                        preprinted_module_enabled):
+def test_admin_toggles_page_renders_six_voucher_rows(client, db_session, admin_user, main_branch,
+                                                       preprinted_module_enabled):
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/preprinted-forms')
     assert resp.status_code == 200
     body = resp.data
-    for vt in ('SI', 'CR', 'CD', 'AP', 'JV'):
+    for vt in ('SI', 'CR', 'CD', 'AP', 'JV', 'CD_CHECK'):
         assert vt.encode() in body
     # Admin sees the toggle action and the designer link
     assert b'/preprinted-forms/SI/toggle' in body

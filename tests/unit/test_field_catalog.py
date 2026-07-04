@@ -6,11 +6,25 @@ from app.preprinted_forms.field_catalog import (FIELD_CATALOG, resolve_field, am
 pytestmark = [pytest.mark.unit]
 
 def test_all_voucher_types_have_catalog():
-    for vt in ('SI', 'CR', 'CD', 'AP', 'JV'):
+    for vt in ('SI', 'CR', 'CD', 'AP', 'JV', 'CD_CHECK'):
         cat = FIELD_CATALOG[vt]
         assert cat['header'] and 'line_columns' in cat
         for f in cat['header'] + cat['line_columns']:
             assert callable(f['resolve']) and f['key'] and f['label']
+
+def test_cd_check_catalog_shape():
+    cat = FIELD_CATALOG['CD_CHECK']
+    assert 'header' in cat and cat['line_columns'] == []
+    assert {'check_date', 'payee', 'total', 'amount_in_words', 'check_number', 'memo'} <= \
+        {f['key'] for f in cat['header']}
+
+def test_cd_check_resolves_from_cdv():
+    class FakeCDV:
+        vendor_name = 'ACME'
+        total_amount = 1234.50
+        check_number = '00123'
+    assert resolve_field('CD_CHECK', 'payee', FakeCDV()) == 'ACME'
+    assert resolve_field('CD_CHECK', 'amount_in_words', FakeCDV()).startswith('One Thousand Two Hundred')
 
 def test_amount_in_words_peso():
     assert amount_in_words(Decimal('1234.50')).lower().startswith('one thousand two hundred thirty')
