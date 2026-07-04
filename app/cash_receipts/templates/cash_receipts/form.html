@@ -390,6 +390,27 @@ if (pmSel) {
 const notesField = document.querySelector('textarea[name="notes"]');
 if (notesField) notesField.addEventListener('input', validateForm);
 
+// ── Notes autofill ("Collected <invoice numbers>") ───────────────────────────
+// Mirrors CDV. notesUserEdited only trips on a genuine 'input' event (typing);
+// our own programmatic `.value =` autofill does not fire 'input', so this flag
+// exclusively tracks real user edits — autofill stops the moment the user types
+// into Notes, and never overwrites a saved value.
+let notesUserEdited = false;
+if (notesField) {
+    notesField.addEventListener('input', () => { notesUserEdited = true; });
+    // Existing/edited CRV, or a failed-create bounce that restored typed notes,
+    // already has content by the time this runs — don't let autofill clobber it.
+    if (notesField.value.trim()) notesUserEdited = true;
+}
+
+function updateNotesAutofill() {
+    if (notesUserEdited) return;
+    const notes = document.querySelector('textarea[name="notes"]');
+    if (!notes) return;
+    notes.value = arLines.length ? ('Collected ' + arLines.map(l => l.invoice_number).join(', ')) : '';
+    validateForm();
+}
+
 // Customer step card state
 function setCustomerCardState(selected, customerName) {
     const card  = document.getElementById('customerCard');
@@ -557,6 +578,7 @@ function addArLine(inv) {
     tbody.appendChild(tr);
     renderArEmpty();
     recalculate();
+    updateNotesAutofill();
 }
 
 function restoreArLine(line) {
@@ -586,6 +608,7 @@ function restoreArLine(line) {
     tbody.appendChild(tr);
     renderArEmpty();
     recalculate();
+    updateNotesAutofill();
 }
 
 function onArAmountInput(input, invId, maxVal) {
@@ -612,6 +635,7 @@ function removeArLine(invId) {
     refreshInvPicker();
     renderArEmpty();
     recalculate();
+    updateNotesAutofill();
 }
 
 function renderArEmpty() {
@@ -1171,6 +1195,7 @@ addRevenueLine({{ rev_line | tojson }});
 
 renderArEmpty();
 recalculate();
+updateNotesAutofill();   // no-op if notes already had content (notesUserEdited set above)
 
 const savedCustomerId = document.getElementById('customer_id').value;
 if (savedCustomerId) {

@@ -414,6 +414,27 @@ if (pmSel) {
 const notesField = document.querySelector('textarea[name="notes"]');
 if (notesField) notesField.addEventListener('input', validateForm);
 
+// ── Notes autofill ("Paid <bill numbers>") ───────────────────────────────────
+// notesUserEdited only trips on a genuine 'input' event (typing). A programmatic
+// `.value =` assignment (e.g. our own autofill) does NOT fire 'input', so this
+// flag exclusively tracks real user edits — autofill stops touching the field
+// the moment the user types into it, and never overwrites a saved value.
+let notesUserEdited = false;
+if (notesField) {
+    notesField.addEventListener('input', () => { notesUserEdited = true; });
+    // Existing/edited CDV, or a failed-create bounce that restored typed notes,
+    // already has content by the time this runs — don't let autofill clobber it.
+    if (notesField.value.trim()) notesUserEdited = true;
+}
+
+function updateNotesAutofill() {
+    if (notesUserEdited) return;
+    const notes = document.querySelector('textarea[name="notes"]');
+    if (!notes) return;
+    notes.value = apLines.length ? ('Paid ' + apLines.map(l => l.bill_number).join(', ')) : '';
+    validateForm();
+}
+
 // ── Vendor step card state (mirrors APV) ─────────────────────────────────────
 function setVendorCardState(selected, vendorName) {
     const card  = document.getElementById('vendorCard');
@@ -546,6 +567,7 @@ function addApLine(bill) {
     tbody.appendChild(tr);
     renderApEmpty();
     recalculate();
+    updateNotesAutofill();
 }
 
 // Re-create an AP line from a previously-submitted payload (failed-create bounce),
@@ -578,6 +600,7 @@ function restoreApLine(line) {
     tbody.appendChild(tr);
     renderApEmpty();
     recalculate();
+    updateNotesAutofill();
 }
 
 function onApAmountInput(input, billId, maxVal) {
@@ -604,6 +627,7 @@ function removeApLine(billId) {
     refreshBillPicker();
     renderApEmpty();
     recalculate();
+    updateNotesAutofill();
 }
 
 function renderApEmpty() {
@@ -1217,6 +1241,7 @@ addExpenseLine({{ exp_line | tojson }});
 
 renderApEmpty();
 recalculate();
+updateNotesAutofill();   // no-op if notes already had content (notesUserEdited set above)
 
 const savedVendorId = document.getElementById('vendor_id').value;
 if (savedVendorId) {
