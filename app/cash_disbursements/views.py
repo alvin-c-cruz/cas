@@ -1162,6 +1162,40 @@ def print_cdv(id):
                            company=company, printed_at=ph_now())
 
 
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/print-check')
+@login_required
+def print_check(id):
+    cdv = _get_cdv_or_404(id)  # unsaved voucher has no id; branch-scoped 404
+    from app.preprinted_forms.pdf import can_print, resolve_check_layout, render_preprinted
+    from app.users.module_access import module_enabled
+    from flask import Response
+    if cdv.payment_method != 'check':
+        flash('This voucher is not a check payment.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    if not module_enabled('preprinted_forms'):
+        flash('Check printing is not enabled.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    if not can_print('CD_CHECK', cdv):
+        flash('Printing this check is not allowed in its current status.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    if not cdv.check_number:
+        flash('Enter the check number before printing the check.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    if not cdv.total_amount or float(cdv.total_amount) <= 0:
+        flash('Cannot print a check for a zero or negative amount.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    layout = resolve_check_layout(cdv)
+    if layout is None:
+        flash('No check layout is configured for this cash/bank account.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+    pdf_bytes = render_preprinted(layout, cdv)
+    log_audit(module='cash_disbursement', action='print_check', record_id=cdv.id,
+              record_identifier=cdv.cdv_number, old_values=None, new_values=None,
+              notes=f'account_id={cdv.cash_account_id} check_no={cdv.check_number}')
+    return Response(pdf_bytes, mimetype='application/pdf',
+                    headers={'Content-Disposition': f'inline; filename="check-{cdv.cdv_number}.pdf"'})
+
+
 def _cdv_export_data(branch_id):
     """Return (data_dicts, columns, headers) for CDV list export.
 
