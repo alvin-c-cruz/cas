@@ -254,7 +254,7 @@ def test_post_invoice_je_line_order(db_session, customer, revenue_account, branc
 
 
 def test_create_error_preserves_customer_and_line_items(client, db_session, accountant_user, customer, revenue_account, branch):
-    """A failed save (blank line description) must re-render WITH the user's customer and
+    """A failed save (invalid line amount) must re-render WITH the user's customer and
     line items intact — not a blank form forcing full re-entry."""
     import json as _json
     import re
@@ -268,7 +268,9 @@ def test_create_error_preserves_customer_and_line_items(client, db_session, acco
         sess['selected_branch_id'] = branch.id
         sess['_user_id'] = str(accountant_user.id)
 
-    bad_line = {'description': '', 'amount': '1000.00', 'vat_category': '',
+    # Blank description no longer fails validation; use an invalid amount format instead
+    # to trigger the same server-side line-error re-render path.
+    bad_line = {'description': '', 'amount': '1000x', 'vat_category': '',
                 'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
     resp = client.post('/sales-invoices/create', data={
         'invoice_number': 'SI-ERR-01',
@@ -282,7 +284,7 @@ def test_create_error_preserves_customer_and_line_items(client, db_session, acco
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 200                                  # re-render, not redirect
-    assert 'Each line item must have a description.' in body        # user is notified
+    assert 'Line item amounts must be valid numbers.' in body        # user is notified
     # line items survive: the row-seed must carry the submitted line (with its amount)
     assert 'existingItems' in body and '1000' in body
     # customer survives: its option is re-selected (not reset to the placeholder)
@@ -299,8 +301,9 @@ def test_edit_error_preserves_submitted_line_items(client, db_session, accountan
         sess['selected_branch_id'] = branch.id
         sess['_user_id'] = str(accountant_user.id)
 
-    # User changes the amount to a distinctive value but blanks the description -> validation fails.
-    bad_line = {'description': '', 'amount': '777777.00', 'vat_category': '',
+    # User changes the amount to a distinctive value but with an invalid number format
+    # (blank description is now allowed) -> validation fails.
+    bad_line = {'description': '', 'amount': '777777x', 'vat_category': '',
                 'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
     resp = client.post(f'/sales-invoices/{inv.id}/edit', data={
         'invoice_number': inv.invoice_number,
@@ -314,7 +317,7 @@ def test_edit_error_preserves_submitted_line_items(client, db_session, accountan
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    assert 'Each line item must have a description.' in body
+    assert 'Line item amounts must be valid numbers.' in body
     # The submitted edit (777777) survives — not reverted to the saved line.
     assert 'existingItems' in body and '777777' in body
 
@@ -326,7 +329,7 @@ def test_create_error_flash_shown_once(client, db_session, accountant_user, cust
         sess['selected_branch_id'] = branch.id
         sess['_user_id'] = str(accountant_user.id)
 
-    bad_line = {'description': '', 'amount': '1000.00', 'vat_category': '',
+    bad_line = {'description': '', 'amount': '1000x', 'vat_category': '',
                 'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
     resp = client.post('/sales-invoices/create', data={
         'invoice_number': 'SI-ONCE-01', 'invoice_date': '2026-06-14', 'due_date': '2026-07-14',
@@ -334,11 +337,12 @@ def test_create_error_flash_shown_once(client, db_session, accountant_user, cust
         'line_items': _json.dumps([bad_line]),
     })
     body = resp.get_data(as_text=True)
-    assert body.count('Each line item must have a description.') == 1
+    assert body.count('Line item amounts must be valid numbers.') == 1
 
 
-def test_create_invoice_notes_optional(client, db_session, accountant_user, customer, revenue_account, branch):
-    """Notes is optional for SI: a valid invoice saves with notes omitted entirely."""
+def test_create_invoice_notes_required(client, db_session, accountant_user, customer, revenue_account, branch):
+    """Notes (Particulars) is now REQUIRED for SI: an invoice with notes omitted must
+    fail validation and re-render (not save)."""
     import json as _json
     from app.accounts.models import Account
     from app.sales_invoices.models import SalesInvoice
@@ -361,9 +365,44 @@ def test_create_invoice_notes_optional(client, db_session, accountant_user, cust
         'line_items': _json.dumps([line]),
     }, follow_redirects=False)
 
-    assert resp.status_code == 302  # saved (redirect), not re-rendered with a validation error
+    assert resp.status_code == 200  # re-render with validation error, not saved
+    body = resp.get_data(as_text=True)
+    assert 'Notes are required' in body
     inv = SalesInvoice.query.filter_by(invoice_number='SI-NONOTES-01').first()
-    assert inv is not None and inv.notes == ''
+    assert inv is None
+
+
+def test_create_invoice_with_notes_and_blank_line_description_saves(
+        client, db_session, accountant_user, customer, revenue_account, branch):
+    """A line item without a description now SAVES, as long as header Notes are present —
+    Notes becomes the Particulars source, replacing the per-line description."""
+    import json as _json
+    from app.accounts.models import Account
+    from app.sales_invoices.models import SalesInvoice
+    for code, name, typ, nb in [('10201', 'AR - Trade', 'Asset', 'debit'),
+                                ('20201', 'Output VAT', 'Liability', 'credit')]:
+        if not Account.query.filter_by(code=code).first():
+            db_session.add(Account(code=code, name=name, account_type=typ, normal_balance=nb, is_active=True))
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+
+    line = {'description': '', 'amount': '5000.00', 'vat_category': '',
+            'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
+    resp = client.post('/sales-invoices/create', data={
+        'invoice_number': 'SI-BLANKDESC-01', 'invoice_date': '2026-06-14', 'due_date': '2026-07-14',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 30',
+        'notes': 'Consulting services rendered',
+        'line_items': _json.dumps([line]),
+    }, follow_redirects=False)
+
+    assert resp.status_code == 302  # saved (redirect)
+    inv = SalesInvoice.query.filter_by(invoice_number='SI-BLANKDESC-01').first()
+    assert inv is not None
+    assert inv.line_items[0].description == ''
+    assert inv.notes == 'Consulting services rendered'
 
 
 def test_attachment_lifecycle(client, db_session, accountant_user, customer, revenue_account, branch, tmp_path):

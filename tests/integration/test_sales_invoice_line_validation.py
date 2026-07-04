@@ -50,14 +50,14 @@ def _login(client, user, branch):
         sess['_user_id'] = str(user.id)
 
 
-def _post_create(client, customer, line_items):
+def _post_create(client, customer, line_items, notes='Test particulars'):
     return client.post('/sales-invoices/create', data={
         'invoice_number': 'SI-2026-9001',
         'invoice_date': '2026-06-20',
         'due_date': '2026-07-20',
         'customer_id': str(customer.id),
         'payment_terms': 'Net 30',
-        'notes': '',
+        'notes': notes,
         'line_items': _json.dumps(line_items),
     })
 
@@ -92,9 +92,10 @@ def test_create_rejects_zero_amount_line(
     assert SalesInvoice.query.count() == 0
 
 
-def test_create_rejects_blank_description_with_amount(
+def test_create_accepts_blank_description_with_amount(
         client, db_session, accountant_user, customer, revenue_account, branch):
-    """A line carrying an amount but no description must be rejected."""
+    """A line carrying an amount but no description is now ALLOWED — the header Notes
+    (Particulars) replaces the per-line description as the particulars source."""
     _ensure_gl_accounts(db_session)
     _login(client, accountant_user, branch)
 
@@ -103,8 +104,8 @@ def test_create_rejects_blank_description_with_amount(
          'wt_id': '', 'account_id': str(revenue_account.id)},
     ])
 
-    assert resp.status_code == 200
-    assert SalesInvoice.query.count() == 0
+    assert resp.status_code == 302
+    assert SalesInvoice.query.count() == 1
 
 
 def test_create_rejects_no_line_items(

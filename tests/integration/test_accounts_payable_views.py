@@ -537,3 +537,32 @@ class TestDuplicateVendorInvoice:
         assert resp.status_code == 302, "Edit with own invoice number must not be blocked"
         db_session.refresh(ap)
         assert ap.notes == 'Updated particulars B09'
+
+    def test_create_accepts_blank_line_description(self, client, db_session, admin_user, main_branch):
+        """A line item with no description now SAVES — the required header Notes
+        (Particulars) replaces the per-line description as the particulars source."""
+        v1, v2, exp = self._setup(db_session)
+        self._login(client, admin_user, main_branch)
+        resp = client.post('/accounts-payable/create', data={
+            'ap_number': 'AP-B09-BLANKDESC',
+            'ap_date': date.today().isoformat(),
+            'due_date': date.today().isoformat(),
+            'vendor_id': v1.id,
+            'vendor_invoice_number': 'INV-BLANKDESC',
+            'payment_terms': 'Net 30',
+            'notes': 'Office supplies for the month',
+            'line_items': json.dumps([{
+                'description': '', 'amount': 1000.0,
+                'vat_category': None, 'account_id': exp.id,
+                'wt_id': None, 'wt_rate': None,
+            }]),
+            'vat_override': '0', 'vat_override_value': '0',
+            'wt_override': '0', 'wt_override_value': '0',
+        })
+        assert resp.status_code == 302, "Blank line description must not block save"
+        # ap_number is server-generated (immutable, never trusts the client value);
+        # look the bill up by its (client-supplied) vendor invoice number instead.
+        ap = AccountsPayable.query.filter_by(vendor_invoice_number='INV-BLANKDESC').first()
+        assert ap is not None
+        assert ap.line_items[0].description == ''
+        assert ap.notes == 'Office supplies for the month'

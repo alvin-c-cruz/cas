@@ -814,9 +814,6 @@ function validateForm() {
         const n = i + 1;
         if (!item.account_id)                    { block(`Line ${n}: select an account title.`); return; }
         if (!item.amount || item.amount <= 0)     { block(`Line ${n}: enter an amount greater than zero.`); return; }
-        if (lineItems.length > 1 && !(item.description || '').trim()) {
-            block(`Line ${n}: enter a description.`); return;
-        }
     }
 
     allow();

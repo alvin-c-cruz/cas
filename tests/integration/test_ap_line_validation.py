@@ -1,8 +1,9 @@
 """Server-side line-item validation for Accounts Payable create (FINDING-2/3).
 
 AP already rejects non-positive amounts and non-postable accounts, so it is not
-vulnerable to the SI zero-amount junk. These tests pin the two remaining gaps:
-an empty line list, and a line with a blank description.
+vulnerable to the SI zero-amount junk. These tests pin the remaining gap (an empty
+line list) and confirm a blank per-line description is allowed — the required
+header Notes (Particulars) is the particulars source, not the line description.
 """
 import json
 from datetime import date
@@ -64,15 +65,17 @@ def test_ap_create_rejects_empty_line_list(client, db_session, admin_user, main_
     assert AccountsPayable.query.count() == 0
 
 
-def test_ap_create_rejects_blank_description_line(client, db_session, admin_user, main_branch):
+def test_ap_create_accepts_blank_description_line(client, db_session, admin_user, main_branch):
+    """A blank line description is now ALLOWED — the required header Notes (Particulars)
+    replaces the per-line description as the particulars source."""
     vendor, exp = _setup(db_session)
     _login(client, admin_user, main_branch)
     resp = _post(client, vendor, [
         {'description': '   ', 'amount': 2240.0, 'vat_category': 'V12DG',
          'account_id': exp.id, 'wt_id': None, 'wt_rate': None},
     ])
-    assert resp.status_code == 200
-    assert AccountsPayable.query.count() == 0
+    assert resp.status_code == 302
+    assert AccountsPayable.query.count() == 1
 
 
 def test_ap_create_still_rejects_zero_amount_line(client, db_session, admin_user, main_branch):

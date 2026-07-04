@@ -300,8 +300,6 @@ def _build_validated_ap_lines():
 
     built = []
     for idx, item_data in enumerate(line_items, start=1):
-        if not str(item_data.get('description') or '').strip():
-            raise APVLineError('Each line item must have a description.')
         try:
             amount = Decimal(str(item_data.get('amount', 0)))
         except (ValueError, TypeError, InvalidOperation):

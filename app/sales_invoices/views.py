@@ -931,8 +931,9 @@ def _line_items_error(line_items_json):
     message string, or None when the lines are valid.
 
     Mirrors the create/edit form's client-side guard (Save stays disabled until a
-    valid line exists) so the same rules hold when that guard is bypassed — every
-    line needs a description, and the invoice must carry a positive total amount.
+    valid line exists) so the same rules hold when that guard is bypassed — the
+    invoice must carry a positive total amount. Line description is optional; the
+    header Notes (Particulars) field is the required source of particulars.
     """
     try:
         items = json.loads(line_items_json) if line_items_json else []
@@ -944,8 +945,6 @@ def _line_items_error(line_items_json):
 
     total = Decimal('0')
     for item in items:
-        if not str(item.get('description') or '').strip():
-            return 'Each line item must have a description.'
         try:
             total += Decimal(str(item.get('amount') or '0'))
         except (InvalidOperation, ValueError):

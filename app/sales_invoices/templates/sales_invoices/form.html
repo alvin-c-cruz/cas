@@ -981,10 +981,10 @@ function validateForm() {
         const n = i + 1;
         if (!item.account_id)                { block(`Line ${n}: select an account title.`); return; }
         if (!item.amount || item.amount <= 0) { block(`Line ${n}: enter an amount greater than zero.`); return; }
-        if (!productMasterOn && lineItems.length > 1 && !(item.description || '').trim()) {
-            block(`Line ${n}: enter a description.`); return;
-        }
     }
+
+    const notesVal = (document.querySelector('textarea[name="notes"]')?.value || '').trim();
+    if (!notesVal) { block('Enter notes / particulars before saving.'); return; }
 
     allow();
 }
@@ -1082,6 +1082,8 @@ for (const fieldId of ['invoice_date', 'due_date']) {
 }
 // Re-derive Due Date from the (edited) Invoice Date + current terms on blur.
 document.getElementById('invoice_date')?.addEventListener('change', () => recomputeDueDate());
+const _notesInput = document.querySelector('textarea[name="notes"]');
+if (_notesInput) _notesInput.addEventListener('input', validateForm);
 
 // ── Init: load existing items on edit ────────────────────────────────────────
 
