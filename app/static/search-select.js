@@ -43,12 +43,33 @@ function initSearchSelect(selectEl, options) {
     // Pin the add-action as the first <option> before Choices reads the select.
     if (add) _ssInsertAddOption(selectEl, add.value, add.label);
 
+    // Capture DECODED labels (textContent) before `new Choices` consumes the
+    // <select>'s options. Choices.js reads each <option>'s innerHTML as its
+    // label, and Jinja autoescapes option text, so the raw innerHTML carries
+    // entities (&amp; &lt; &gt; &#34; &#39;). With allowHTML:false Choices
+    // renders that escaped string as plain text, so the entity shows
+    // LITERALLY. Feeding Choices the decoded text (and letting it re-escape
+    // once via allowHTML:false) fixes this while staying XSS-safe.
+    const preset = Array.from(selectEl.options).map(o => ({
+        value: o.value,
+        label: o.textContent,          // decoded: raw & < > " '
+        selected: o.selected,
+        disabled: o.disabled,
+        placeholder: o.value === '',
+    }));
+
     const choices = new Choices(selectEl, Object.assign({
         searchEnabled: true,
         itemSelectText: '',
         shouldSort: false,
         allowHTML: false,
     }, choicesOptions));
+
+    // Replace Choices' innerHTML-derived (still-escaped) choices with the
+    // decoded set captured above. `selected`/`placeholder` flags are carried
+    // through so pre-selected values (edit forms) and the empty-value
+    // placeholder (create forms) keep working.
+    choices.setChoices(preset, 'value', 'label', true);
 
     const container = selectEl.closest('.choices');
     if (!container) return choices;

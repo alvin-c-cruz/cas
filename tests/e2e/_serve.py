@@ -25,7 +25,11 @@ with app.app_context():
         existing = {v.code for v in Vendor.query.all()}
         for code, name in [('V001', 'Alpha Trading Inc'),
                            ('V002', 'Beta Supplies Co'),
-                           ('V003', 'Gamma Traders')]:
+                           ('V003', 'Gamma Traders'),
+                           # Entity-decoding regression fixture (search-select.js): name
+                           # carries every char Jinja autoescapes (& < > " '). Choices.js
+                           # must render this DECODED, not as literal HTML entities.
+                           ('V004', 'O\'Brien & <Sons> "Co."')]:
             if code not in existing:
                 db.session.add(Vendor(code=code, name=name, is_active=True))
         db.session.commit()
