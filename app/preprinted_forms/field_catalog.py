@@ -8,7 +8,7 @@ resolves values only through ``resolve_field`` / ``resolve_line_value``.
 Dates format as ``%m/%d/%Y``; money formats as bare numbers via
 ``'{:,.2f}'`` (no currency sign — the paper form carries any peso label).
 """
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 DATE_FORMAT = '%m/%d/%Y'
 
@@ -74,7 +74,7 @@ _ONES = ('', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Ni
 _TEENS = ('Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
           'Seventeen', 'Eighteen', 'Nineteen')
 _TENS = ('', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety')
-_SCALES = ('', 'Thousand', 'Million', 'Billion')
+_SCALES = ('', 'Thousand', 'Million', 'Billion', 'Trillion', 'Quadrillion')
 
 
 def _three_digits_to_words(n):
@@ -122,7 +122,7 @@ def amount_in_words(value):
         amount = Decimal('0')
     if amount < 0:
         amount = -amount
-    amount = amount.quantize(Decimal('0.01'))
+    amount = amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     pesos = int(amount)
     centavos = int((amount - pesos) * 100)
 
