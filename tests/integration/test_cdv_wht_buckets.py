@@ -80,3 +80,39 @@ def test_cdv_buckets_fall_back(db_session):
     w = _wht('WCX', 5, None)
     cdv = _cdv_with_expense_lines([(w, '40.00')])
     assert [(a.code, amt) for a, amt in _cdv_wht_payable_buckets(cdv, fb)] == [('20301', Decimal('40.00'))]
+
+
+def test_cdv_buckets_reconcile_to_total_wt_under_override(db_session):
+    """wt_override=True and total_wt != summed line WHT -> bucket total must equal total_wt
+    (the bug: buckets used to always equal the summed line WHT, ignoring the override)."""
+    fb = _acct('20301', 'WHT Payable')
+    a1 = _acct('22105-1', 'WHT 1%')
+    w1 = _wht('WC158', 1, a1)
+    cdv = _cdv_with_expense_lines([(w1, '50.00')])
+    cdv.wt_override = True
+    cdv.total_wt = Decimal('75.00')  # deliberately diverges from the summed line WHT (50.00)
+    by_code = {a.code: amt for a, amt in _cdv_wht_payable_buckets(cdv, fb)}
+    assert by_code == {'22105-1': Decimal('75.00')}
+    assert sum(by_code.values()) == cdv.total_wt
+
+
+def test_cdv_buckets_no_override_is_noop(db_session):
+    """Without wt_override, the bucket total must still equal the summed line WHT (no-op) —
+    the non-override path must be unaffected by the reconciliation fix."""
+    fb = _acct('20301', 'WHT Payable')
+    a1 = _acct('22105-1', 'WHT 1%'); a2 = _acct('22105-2', 'WHT 2%')
+    w1 = _wht('WC158', 1, a1); w2 = _wht('WC160', 2, a2)
+    cdv = _cdv_with_expense_lines([(w1, '100.00'), (w2, '200.00')])
+    assert cdv.wt_override is False
+    by_code = {a.code: amt for a, amt in _cdv_wht_payable_buckets(cdv, fb)}
+    assert by_code == {'22105-1': Decimal('100.00'), '22105-2': Decimal('200.00')}
+
+
+def test_cdv_buckets_reconcile_empty_buckets_uses_fallback(db_session):
+    """wt_override=True, total_wt non-zero, but no expense line carries any WHT at all
+    (e.g. a pure adjustment override) -> the whole diff goes to fallback_acct."""
+    fb = _acct('20301', 'WHT Payable')
+    cdv = _cdv_with_expense_lines([])
+    cdv.wt_override = True
+    cdv.total_wt = Decimal('30.00')
+    assert [(a.code, amt) for a, amt in _cdv_wht_payable_buckets(cdv, fb)] == [('20301', Decimal('30.00'))]

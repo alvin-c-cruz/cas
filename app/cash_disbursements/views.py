@@ -251,7 +251,13 @@ def _cdv_input_vat_buckets(cdv):
 def _cdv_wht_payable_buckets(cdv, fallback_acct):
     """Group the voucher's WHT by each expense line's ATC payable_account (fallback_acct when
     the ATC has none). Returns SIGNED amounts (positive credit, negative debit), ordered by
-    account code. Mirrors _cdv_input_vat_buckets; total equals the summed line WHT.
+    account code. Mirrors _cdv_input_vat_buckets / AP's _wht_payable_buckets.
+
+    When cdv.wt_override is set, the bucket sum is reconciled to cdv.total_wt: any diff is
+    absorbed into the largest bucket, or — if there are no buckets at all (no expense line
+    carries WHT) but total_wt is non-zero — placed in a single fallback_acct bucket. When NOT
+    overridden this reconciliation is a no-op (cdv.total_wt already equals the summed line WHT),
+    so the non-override path returns byte-identical results to the summed line WHT.
 
     Negative Section-B lines never carry WHT (mirrors the existing _post_cdv_je /
     _build_cdv_je_preview guard: `_parse_and_attach_expense_lines` zeroes `wt_amount`
@@ -271,6 +277,18 @@ def _cdv_wht_payable_buckets(cdv, fallback_acct):
             buckets[acct.id] = [acct, Decimal('0.00')]
         buckets[acct.id][1] += wt
     ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
+    if cdv.wt_override:
+        total = sum((amt for _, amt in ordered), Decimal('0.00'))
+        diff = Decimal(str(cdv.total_wt)) - total
+        if diff != Decimal('0.00'):
+            if ordered:
+                largest_id = max(ordered, key=lambda b: abs(b[1]))[0].id
+                ordered = [
+                    (acct, amt + diff if acct.id == largest_id else amt)
+                    for acct, amt in ordered
+                ]
+            elif fallback_acct is not None:
+                ordered = [(fallback_acct, diff)]
     return [(a, amt) for a, amt in ordered if amt != Decimal('0.00')]
 
 
