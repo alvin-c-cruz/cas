@@ -106,6 +106,35 @@ def cd_check_default_layout(db_session):
     return layout
 
 
+@pytest.fixture
+def cd_check_layout_inactive_default(db_session):
+    """A Default CD_CHECK layout that EXISTS but is not active -- the admin
+    master-off toggle (active=False), distinct from no layout row existing at
+    all (see cd_check_default_layout / check_cdv_no_layout)."""
+    layout = PrintLayout(voucher_type='CD_CHECK', account_id=None, active=False,
+                          background_image='x.png',
+                          page_width_mm=Decimal('178.00'), page_height_mm=Decimal('84.00'))
+    layout.set_fields([])
+    layout.set_line_band({})
+    db.session.add(layout)
+    db.session.commit()
+    return layout
+
+
+@pytest.fixture
+def cd_check_layout_no_background(db_session):
+    """Active Default CD_CHECK layout with no background_image configured --
+    resolve_check_layout must treat this as unusable (returns None)."""
+    layout = PrintLayout(voucher_type='CD_CHECK', account_id=None, active=True,
+                          background_image=None,
+                          page_width_mm=Decimal('178.00'), page_height_mm=Decimal('84.00'))
+    layout.set_fields([])
+    layout.set_line_band({})
+    db.session.add(layout)
+    db.session.commit()
+    return layout
+
+
 def _make_cdv(main_branch, vendor, cash_account, *, payment_method='check',
               check_number='00123', status='draft', total_amount=Decimal('0.00'),
               cdv_number=None):
@@ -206,6 +235,46 @@ def check_cdv_no_layout(db_session, main_branch, _vendor, cash_account, preprint
 
 
 @pytest.fixture
+def voided_check_cdv(db_session, main_branch, _vendor, cash_account,
+                     preprinted_module_enabled, cd_check_default_layout):
+    """A voided check CDV -- everything else ready, but can_print('CD_CHECK', ...)
+    requires status == 'posted' by default."""
+    return _make_cdv(main_branch, _vendor, cash_account, payment_method='check',
+                      check_number='00060', status='voided', total_amount=Decimal('500.00'),
+                      cdv_number='CD-2026-07-9007')
+
+
+@pytest.fixture
+def check_cdv_module_off(db_session, main_branch, _vendor, cash_account,
+                         cd_check_default_layout):
+    """Everything else ready (posted, check_number, amount, layout) but the
+    preprinted_forms module is NOT enabled (no preprinted_module_enabled fixture
+    invoked; default_enabled=False for this optional module)."""
+    clear_module_config_cache()
+    return _make_cdv(main_branch, _vendor, cash_account, payment_method='check',
+                      check_number='00061', status='posted', total_amount=Decimal('500.00'),
+                      cdv_number='CD-2026-07-9008')
+
+
+@pytest.fixture
+def check_cdv_inactive_default(db_session, main_branch, _vendor, cash_account,
+                               preprinted_module_enabled, cd_check_layout_inactive_default):
+    """Default CD_CHECK layout row exists but active=False (master-off)."""
+    return _make_cdv(main_branch, _vendor, cash_account, payment_method='check',
+                      check_number='00062', status='posted', total_amount=Decimal('500.00'),
+                      cdv_number='CD-2026-07-9009')
+
+
+@pytest.fixture
+def check_cdv_no_background(db_session, main_branch, _vendor, cash_account,
+                            preprinted_module_enabled, cd_check_layout_no_background):
+    """Active Default CD_CHECK layout but with no background_image configured."""
+    return _make_cdv(main_branch, _vendor, cash_account, payment_method='check',
+                      check_number='00063', status='posted', total_amount=Decimal('500.00'),
+                      cdv_number='CD-2026-07-9010')
+
+
+@pytest.fixture
 def wt_override_check_cdv(db_session, main_branch, _vendor, cash_account, expense_account,
                            _ap_account, _wt_account, admin_user):
     """A check CDV where total_wt is manually overridden to diverge from the
@@ -299,6 +368,37 @@ def test_print_check_writes_audit(logged_in_branch_client, ready_check_cdv, db_s
     e = AuditLog.query.filter_by(action='print_check',
                                   record_identifier=ready_check_cdv.cdv_number).first()
     assert e is not None and e.module == 'cash_disbursement'
+
+
+# ---------------------------------------------------------------------------
+# Detail-page "Print Check" button gating (P-69 Task 8)
+# ---------------------------------------------------------------------------
+
+def test_detail_shows_print_check_when_ready(logged_in_branch_client, ready_check_cdv):
+    resp = logged_in_branch_client.get(f'/cash-disbursements/{ready_check_cdv.id}')
+    assert b'Print Check' in resp.data
+
+
+@pytest.mark.parametrize('fixture_name', [
+    'cash_method_cdv', 'draft_check_cdv', 'voided_check_cdv', 'check_cdv_no_number',
+    'check_cdv_zero_amount', 'check_cdv_no_layout', 'check_cdv_module_off',
+    'check_cdv_inactive_default', 'check_cdv_no_background',
+])
+def test_detail_hides_print_check(logged_in_branch_client, request, fixture_name):
+    cdv = request.getfixturevalue(fixture_name)
+    resp = logged_in_branch_client.get(f'/cash-disbursements/{cdv.id}')
+    assert b'Print Check' not in resp.data
+
+
+def test_detail_shows_print_count_after_printing(logged_in_branch_client, ready_check_cdv):
+    """Prior-print count only appears once a print_check audit entry exists."""
+    resp_before = logged_in_branch_client.get(f'/cash-disbursements/{ready_check_cdv.id}')
+    assert b'Check printed' not in resp_before.data
+
+    logged_in_branch_client.get(f'/cash-disbursements/{ready_check_cdv.id}/print-check')
+
+    resp_after = logged_in_branch_client.get(f'/cash-disbursements/{ready_check_cdv.id}')
+    assert b'Check printed 1' in resp_after.data
 
 
 # ---------------------------------------------------------------------------

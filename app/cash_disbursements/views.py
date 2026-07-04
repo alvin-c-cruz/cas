@@ -1010,9 +1010,22 @@ def view(id):
     cdv = _get_cdv_or_404(id)
     je_entries = _build_cdv_je_preview(cdv)
     cd_print_access = AppSettings.get_setting('cd_print_access', 'posted_only')
+
+    from app.preprinted_forms.pdf import can_print, resolve_check_layout
+    from app.users.module_access import module_enabled
+    from app.audit.models import AuditLog
+    check_layout_ready = bool(
+        cdv.payment_method == 'check' and module_enabled('preprinted_forms')
+        and cdv.check_number and cdv.total_amount and float(cdv.total_amount) > 0
+        and can_print('CD_CHECK', cdv) and resolve_check_layout(cdv) is not None)
+    check_print_count = AuditLog.query.filter_by(action='print_check',
+                                                 record_identifier=cdv.cdv_number).count()
+
     return render_template('cash_disbursements/detail.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now(),
-                           cd_print_access=cd_print_access)
+                           cd_print_access=cd_print_access,
+                           check_layout_ready=check_layout_ready,
+                           check_print_count=check_print_count)
 
 
 def _apply_ap_payments(cdv):
