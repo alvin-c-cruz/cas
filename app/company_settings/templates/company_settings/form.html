@@ -182,11 +182,22 @@
             <div class="settings-grid-3">
                 {{ render_field(form.apv_print_access) }}
                 {{ render_field(form.sv_print_access) }}
-                {{ render_field(form.sv_print_form) }}
                 {{ render_field(form.cd_print_access) }}
                 {{ render_field(form.cd_check_print_access) }}
                 {{ render_field(form.cr_print_access) }}
             </div>
+        </div>
+    </div>
+
+    <h3 class="settings-section-label">Print Form</h3>
+    <div class="card settings-card">
+        <div class="card-body">
+            <div class="settings-grid-3">
+                {{ render_field(form.sv_print_form) }}
+            </div>
+            <div class="form-hint">Selects the Sales Invoice print layout. <strong>Hidden</strong>
+                turns printing off entirely — the Print button is removed and the print link is
+                disabled.</div>
         </div>
     </div>
 

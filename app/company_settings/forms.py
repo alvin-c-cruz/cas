@@ -36,7 +36,7 @@ PRINT_ACCESS_CHOICES = [
 # the /print route refuses). Room for a 'preprinted' option when that module is
 # rebuilt.
 SV_PRINT_FORM_CHOICES = [
-    ('current', 'Current printable form'),
+    ('current', 'Printable Form'),
     ('hidden',  'Hidden (no print button)'),
 ]
 
