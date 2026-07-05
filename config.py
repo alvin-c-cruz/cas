@@ -64,6 +64,7 @@ class Config:
     BACKUP_ENC_KEY = os.environ.get('BACKUP_ENC_KEY')
     BACKUP_STALE_HOURS = int(os.environ.get('BACKUP_STALE_HOURS', '30'))
     BACKUP_LOCK_TIMEOUT_MIN = int(os.environ.get('BACKUP_LOCK_TIMEOUT_MIN', '15'))
+    BACKUP_RETENTION_DAYS = int(os.environ.get('BACKUP_RETENTION_DAYS', '30'))
     # Slice 2 — Google Drive off-site (BACKUP_STORAGE=gdrive)
     BACKUP_GDRIVE_FOLDER_NAME = os.environ.get('BACKUP_GDRIVE_FOLDER_NAME', 'RIC-CAS-Backups')
     BACKUP_GDRIVE_CREDS = os.environ.get('BACKUP_GDRIVE_CREDS')   # client_secret.json path

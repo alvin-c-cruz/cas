@@ -119,6 +119,60 @@ def test_verify_latest_no_backup(db_session, tmp_path):
     assert res['ok'] is False and res['checks']['has_backup'] is False
 
 
+def _seed_backup(store, stem):
+    for ext in (".db.enc", ".manifest.json"):
+        with open(os.path.join(store.base_dir, f"{stem}{ext}"), "wb") as fh:
+            fh.write(b"x")
+
+
+def test_prune_deletes_older_than_retention(db_session, tmp_path):
+    from datetime import timedelta
+    from app.utils import ph_now
+    from app.backup.service import _prune
+    store = LocalStorage(str(tmp_path / "s"))
+    old = (ph_now() - timedelta(days=40)).strftime("cas-%Y-%m-%dT%H-%M-%S")
+    recent = (ph_now() - timedelta(days=5)).strftime("cas-%Y-%m-%dT%H-%M-%S")
+    newest = ph_now().strftime("cas-%Y-%m-%dT%H-%M-%S")
+    for s in (old, recent, newest):
+        _seed_backup(store, s)
+    deleted = _prune(store, retention_days=30, clock=ph_now)
+    names = {o.name for o in store.list()}
+    assert deleted == 2  # old .db.enc + old .manifest.json
+    assert not any(n.startswith(old) for n in names)
+    assert any(n.startswith(recent) for n in names)
+    assert any(n.startswith(newest) for n in names)
+
+
+def test_prune_never_deletes_last_backup(db_session, tmp_path):
+    from datetime import timedelta
+    from app.utils import ph_now
+    from app.backup.service import _prune
+    store = LocalStorage(str(tmp_path / "s"))
+    ancient = (ph_now() - timedelta(days=100)).strftime("cas-%Y-%m-%dT%H-%M-%S")
+    _seed_backup(store, ancient)  # the only backup, very old
+    deleted = _prune(store, retention_days=30, clock=ph_now)
+    assert deleted == 0
+    assert any(o.name.endswith(".db.enc") for o in store.list())
+
+
+def test_run_backup_prunes_old_on_success(db_session, tmp_path):
+    from datetime import timedelta
+    from app.utils import ph_now
+    store = LocalStorage(str(tmp_path / "s"))
+    old = (ph_now() - timedelta(days=40)).strftime("cas-%Y-%m-%dT%H-%M-%S")
+    _seed_backup(store, old)
+    src = tmp_path / "src.db"
+    _make_db(str(src))
+    cfg = _cfg(tmp_path)
+    cfg["BACKUP_LOCAL_DIR"] = str(tmp_path / "s")
+    cfg["BACKUP_RETENTION_DAYS"] = 30
+    run = run_backup('cli', 'admin', storage=store, source_db_path=str(src),
+                     key_provider=KP, config=cfg)
+    assert run.status == 'success'
+    names = {o.name for o in store.list()}
+    assert not any(n.startswith(old) for n in names)  # old pruned by the successful run
+
+
 def test_no_plaintext_left_on_disk(db_session, tmp_path):
     src = tmp_path / "src.db"
     _make_db(str(src))
