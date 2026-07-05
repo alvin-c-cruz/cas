@@ -57,6 +57,14 @@ class Config:
     RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
     RATELIMIT_HEADERS_ENABLED = True
 
+    # Backup module — fail-closed: disabled unless explicitly enabled per instance.
+    BACKUP_ENABLED = os.environ.get('BACKUP_ENABLED', 'False').lower() == 'true'
+    BACKUP_STORAGE = os.environ.get('BACKUP_STORAGE', 'local')
+    BACKUP_LOCAL_DIR = os.environ.get('BACKUP_LOCAL_DIR')
+    BACKUP_ENC_KEY = os.environ.get('BACKUP_ENC_KEY')
+    BACKUP_STALE_HOURS = int(os.environ.get('BACKUP_STALE_HOURS', '30'))
+    BACKUP_LOCK_TIMEOUT_MIN = int(os.environ.get('BACKUP_LOCK_TIMEOUT_MIN', '15'))
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""
