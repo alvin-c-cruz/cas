@@ -102,7 +102,7 @@
         {%- elif col.key == 'description' -%}{{ item.description or '—' }}
         {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
         {%- elif col.key == 'quantity' -%}{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
-        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}
+        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '—') }}
         {%- elif col.key == 'unit_price' -%}{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
         {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}
         {%- endif -%}
