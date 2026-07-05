@@ -1116,7 +1116,12 @@ for (const fieldId of ['invoice_date', 'due_date']) {
 // Re-derive Due Date from the (edited) Invoice Date + current terms on blur.
 document.getElementById('invoice_date')?.addEventListener('change', () => recomputeDueDate());
 const _notesInput = document.querySelector('textarea[name="notes"]');
-if (_notesInput) _notesInput.addEventListener('input', validateForm);
+if (_notesInput) {
+    _notesInput.addEventListener('input', validateForm);
+    // Notes is required: if the user leaves it empty on blur, re-fill from the current line items.
+    // (refreshNotesAutofill only acts when Notes is empty or still equals the last auto value.)
+    _notesInput.addEventListener('blur', refreshNotesAutofill);
+}
 
 // ── Init: load existing items on edit ────────────────────────────────────────
 
