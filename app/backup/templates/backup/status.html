@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Backups - CAS{% endblock %}
+{% block page_title %}Backups{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Database Backups</h1>
+    {% if config.BACKUP_ENABLED %}
+    <div class="page-actions">
+        <button type="button" class="btn btn-primary" onclick="showBackupModal()">
+            <span class="btn-icon">💾</span> Run backup now
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+{# Health banner — green when a verified backup is recent, red otherwise #}
+<div class="backup-health backup-health-{{ health.state }}">
+    {% if health.state == 'green' %}
+        ✅ Backups healthy — last verified success
+        {% if health.age_hours is not none %}{{ '%.0f'|format(health.age_hours) }}h ago{% endif %}.
+    {% else %}
+        ⚠️ Backup problem: {{ health.reason }}.
+    {% endif %}
+</div>
+
+{% if not config.BACKUP_ENABLED %}
+<p class="form-hint">Backup is not configured on this instance (<code>BACKUP_ENABLED</code> is off).</p>
+{% endif %}
+
+<p class="form-hint" style="margin-top: 16px;">
+    These snapshots are a disaster-recovery / archival copy — <strong>not</strong> the BIR-registered books of account.
+</p>
+
+<table class="data-table" style="margin-top: 16px;">
+    <thead>
+        <tr>
+            <th>When</th><th>Trigger</th><th>Status</th><th>Size</th><th>Verified</th><th>Detail</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for run in runs %}
+        <tr>
+            <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M') if run.created_at }}</td>
+            <td>{{ run.triggered_by }}</td>
+            <td><span class="badge badge-{{ 'active' if run.status == 'success' else 'inactive' }}">{{ run.status }}</span></td>
+            <td>{% if run.db_size %}{{ (run.db_size / 1024)|round(1) }} KB{% endif %}</td>
+            <td>{{ run.verified_at.strftime('%H:%M') if run.verified_at else '—' }}</td>
+            <td>{{ run.error_message or '' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No backups recorded yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{# Confirm modal (custom HTML — never a JS confirm() popup) #}
+<div id="backup-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Run backup now</h3>
+        <p style="margin-bottom: 20px; color: #374151;">
+            Take a fresh encrypted snapshot of the database and verify it. This may take a moment.
+        </p>
+        <form method="POST" action="{{ url_for('backup.run_now') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Run backup</button>
+                <button type="button" class="btn btn-secondary" onclick="closeBackupModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.backup-health { padding: 12px 16px; border-radius: 8px; font-weight: 600; }
+.backup-health-green { background: var(--success-bg, #ecfdf5); color: var(--success-fg, #065f46); }
+.backup-health-red { background: var(--danger-bg, #fef2f2); color: var(--danger-fg, #991b1b); }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showBackupModal() { document.getElementById('backup-modal').style.display = 'flex'; }
+function closeBackupModal() { document.getElementById('backup-modal').style.display = 'none'; }
+</script>
+{% endblock %}

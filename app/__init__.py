@@ -266,6 +266,13 @@ def create_app(config_name=None):
     app.register_blueprint(opening_balances_bp)
     app.register_blueprint(preprinted_forms_bp)
 
+    from app.backup.views import backup_bp
+    app.register_blueprint(backup_bp)
+    from app.backup.cli import backup_run_cmd, backup_verify_cmd, backup_restore_cmd
+    app.cli.add_command(backup_run_cmd)
+    app.cli.add_command(backup_verify_cmd)
+    app.cli.add_command(backup_restore_cmd)
+
     migrate.init_app(app, db)
 
     # Serve favicon at the root so the browser's automatic /favicon.ico
