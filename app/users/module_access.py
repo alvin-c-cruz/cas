@@ -98,21 +98,6 @@ MODULE_REGISTRY = [
      'endpoints': ('reports.bir_index', 'reports.bir_sales', 'reports.bir_sales_export_excel',
                    'reports.bir_purchases', 'reports.bir_purchases_export_excel',
                    'reports.bir_alphalist', 'reports.bir_alphalist_export_excel')},
-    # ── Pre-Printed Voucher Forms (P-69) — deliberately endpoint-less/non-rendering.
-    #    `endpoints: ()` keeps module_key_for_endpoint from ever mapping a designer
-    #    route to either key, so the before_request auto-gate never touches these
-    #    routes — access is enforced entirely by the blueprint's own
-    #    _module_required/_edit_required/_admin_required decorators (Task 4).
-    #    `area: None, group: None` keeps both out of AREA_ORDER/GROUP_ORDER, so
-    #    build_sidebar never renders them; the nav link is added by hand in
-    #    base.html instead. See app/preprinted_forms/views.py module docstring. ──
-    {'key': 'preprinted_forms', 'label': 'Pre-Printed Forms', 'section': 'Maintenance',
-     'area': None, 'group': None,
-     'optional': True, 'depends_on': [], 'default_enabled': False,
-     'endpoints': ()},
-    {'key': 'print_layouts', 'label': 'Print Layouts', 'section': 'Maintenance',
-     'area': None, 'group': None,
-     'endpoints': ()},
 ]
 
 AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Accounting', 'Compliance', 'Payroll', 'Admin']

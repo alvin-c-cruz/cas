@@ -798,14 +798,6 @@ def print_ap(id):
     """Standalone print preview for an APV."""
     ap = _get_ap_or_404(id)
 
-    from app.preprinted_forms.pdf import can_print, preprinted_response
-    if not can_print('AP', ap):
-        flash('Printing is not available for this document in its current status.', 'error')
-        return redirect(url_for('accounts_payable.view', id=id))
-    _pp = preprinted_response('AP', ap)
-    if _pp is not None:
-        return _pp
-
     # Sort JE lines: non-VAT debits → VAT debits → credits, each by account code
     je_lines = []
     if ap.journal_entry:

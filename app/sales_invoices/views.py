@@ -1185,14 +1185,6 @@ def void(id):
 def print_invoice(id):
     invoice = _get_invoice_or_404(id)
 
-    from app.preprinted_forms.pdf import can_print, preprinted_response
-    if not can_print('SI', invoice):
-        flash('Printing is not available for this document in its current status.', 'error')
-        return redirect(url_for('sales_invoices.view', id=id))
-    _pp = preprinted_response('SI', invoice)
-    if _pp is not None:
-        return _pp
-
     # Consolidated JE (each account once), same source as the detail-view Entry
     # table — keeps view/print in sync.
     je_entries = _build_je_preview(invoice)

@@ -184,16 +184,8 @@ def view(id):
 @journal_entries_bp.route('/journal-entries/<int:id>/print')
 @login_required
 def print_entry(id):
-    """Standalone print preview for a journal entry (P-69 Task 7)."""
+    """Standalone print preview for a journal entry."""
     entry = db.get_or_404(JournalEntry, id)
-
-    from app.preprinted_forms.pdf import can_print, preprinted_response
-    if not can_print('JV', entry):
-        flash('Printing is not available for this entry in its current status.', 'error')
-        return redirect(url_for('journal_entries.view', id=id))
-    _pp = preprinted_response('JV', entry)
-    if _pp is not None:
-        return _pp
 
     company = {
         'name': AppSettings.get_setting('company_name', ''),

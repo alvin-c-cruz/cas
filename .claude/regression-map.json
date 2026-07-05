@@ -40,10 +40,7 @@
     "app/utils/admin_approval.py":         ["vat_categories", "withholding_tax", "sales_vat_categories"],
     "app/utils/wt_labels.py":              ["sales_invoices", "cash_receipts", "customers"],
     "app/customers/views.py":              ["customers", "sales_invoices", "cash_receipts"],
-    "app/customers/models.py":             ["customers", "sales_invoices", "cash_receipts"],
-    "app/preprinted_forms/pdf.py":           ["accounts_payable", "cash_disbursements", "sales_invoices", "cash_receipts"],
-    "app/preprinted_forms/field_catalog.py": ["accounts_payable", "cash_disbursements", "sales_invoices", "cash_receipts"],
-    "app/preprinted_forms/models.py":        ["accounts_payable", "cash_disbursements", "sales_invoices", "cash_receipts"]
+    "app/customers/models.py":             ["customers", "sales_invoices", "cash_receipts"]
   },
   "modules": {
     "accounts_payable":  { "marker": "accounts_payable", "e2e": "tests/e2e/test_ap_smoke.py" },

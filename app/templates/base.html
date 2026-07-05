@@ -1277,31 +1277,6 @@
             </div>
             {% endif %}
 
-            {# Pre-Printed Forms — manual nav link (NOT via build_sidebar: the
-               preprinted_forms/print_layouts registry entries are endpoint-less
-               (endpoints=()) and area/group-less (area=None, group=None) on
-               purpose — see app/users/module_access.py — so build_sidebar never
-               renders them and no _nav_ep/_nav_icon entry exists or should be
-               added for either key. Gate = instance flag AND per-user edit rights
-               (full access, accountant, or staff with an explicit print_layouts
-               grant; viewers never see this link, even if granted). #}
-            {% if current_user.is_authenticated and module_enabled('preprinted_forms')
-                  and (current_user.has_full_access or current_user.role == 'accountant'
-                       or (current_user.role == 'staff' and current_user.has_book_access('print_layouts'))) %}
-            <div class="nav-section">
-                <div class="nav-label nav-label-collapsible" data-section="preprinted-forms">
-                    <span>Maintenance</span>
-                    <span class="nav-label-arrow">▼</span>
-                </div>
-                <div class="nav-section-content" id="section-preprinted-forms">
-                    <a href="{{ url_for('preprinted_forms.admin') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('preprinted_forms.') %}active{% endif %}">
-                        <span class="nav-icon">🖨️</span>
-                        <span class="nav-text">Pre-Printed Forms</span>
-                    </a>
-                </div>
-            </div>
-            {% endif %}
-
             {# Accountant: Staff Management + Approved Emails #}
             {% if current_user.is_authenticated and current_user.role == 'accountant' %}
             <div class="nav-section">

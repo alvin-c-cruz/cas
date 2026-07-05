@@ -1024,20 +1024,9 @@ def view(id):
     je_entries = _build_cdv_je_preview(cdv)
     cd_print_access = AppSettings.get_setting('cd_print_access', 'posted_only')
 
-    from app.preprinted_forms.pdf import can_print, resolve_check_layout
-    from app.audit.models import AuditLog
-    check_layout_ready = bool(
-        cdv.payment_method == 'check'
-        and cdv.check_number and cdv.total_amount and float(cdv.total_amount) > 0
-        and can_print('CD_CHECK', cdv) and resolve_check_layout(cdv) is not None)
-    check_print_count = AuditLog.query.filter_by(action='print_check',
-                                                 record_identifier=cdv.cdv_number).count()
-
     return render_template('cash_disbursements/detail.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now(),
-                           cd_print_access=cd_print_access,
-                           check_layout_ready=check_layout_ready,
-                           check_print_count=check_print_count)
+                           cd_print_access=cd_print_access)
 
 
 def _apply_ap_payments(cdv):
@@ -1206,14 +1195,6 @@ def cancel(id):
 def print_cdv(id):
     cdv = _get_cdv_or_404(id)
 
-    from app.preprinted_forms.pdf import can_print, preprinted_response
-    if not can_print('CD', cdv):
-        flash('Printing is not available for this document in its current status.', 'error')
-        return redirect(url_for('cash_disbursements.view', id=id))
-    _pp = preprinted_response('CD', cdv)
-    if _pp is not None:
-        return _pp
-
     je_entries = _build_cdv_je_preview(cdv)
     company = {
         'name': AppSettings.get_setting('company_name', ''),
@@ -1223,36 +1204,6 @@ def print_cdv(id):
     return render_template('cash_disbursements/print.html',
                            cdv=cdv, je_entries=je_entries,
                            company=company, printed_at=ph_now())
-
-
-@cash_disbursements_bp.route('/cash-disbursements/<int:id>/print-check')
-@login_required
-def print_check(id):
-    cdv = _get_cdv_or_404(id)  # unsaved voucher has no id; branch-scoped 404
-    from app.preprinted_forms.pdf import can_print, resolve_check_layout, render_preprinted
-    from flask import Response
-    if cdv.payment_method != 'check':
-        flash('This voucher is not a check payment.', 'error')
-        return redirect(url_for('cash_disbursements.view', id=id))
-    if not can_print('CD_CHECK', cdv):
-        flash('Printing this check is not allowed in its current status.', 'error')
-        return redirect(url_for('cash_disbursements.view', id=id))
-    if not cdv.check_number:
-        flash('Enter the check number before printing the check.', 'error')
-        return redirect(url_for('cash_disbursements.view', id=id))
-    if not cdv.total_amount or float(cdv.total_amount) <= 0:
-        flash('Cannot print a check for a zero or negative amount.', 'error')
-        return redirect(url_for('cash_disbursements.view', id=id))
-    layout = resolve_check_layout(cdv)
-    if layout is None:
-        flash('No check layout is configured for this cash/bank account.', 'error')
-        return redirect(url_for('cash_disbursements.view', id=id))
-    pdf_bytes = render_preprinted(layout, cdv)
-    log_audit(module='cash_disbursement', action='print_check', record_id=cdv.id,
-              record_identifier=cdv.cdv_number, old_values=None, new_values=None,
-              notes=f'account_id={cdv.cash_account_id} check_no={cdv.check_number}')
-    return Response(pdf_bytes, mimetype='application/pdf',
-                    headers={'Content-Disposition': f'inline; filename="check-{cdv.cdv_number}.pdf"'})
 
 
 def _cdv_export_data(branch_id):

@@ -1126,14 +1126,6 @@ def cancel(id):
 def print_crv(id):
     crv = _get_crv_or_404(id)
 
-    from app.preprinted_forms.pdf import can_print, preprinted_response
-    if not can_print('CR', crv):
-        flash('Printing is not available for this document in its current status.', 'error')
-        return redirect(url_for('cash_receipts.view', id=id))
-    _pp = preprinted_response('CR', crv)
-    if _pp is not None:
-        return _pp
-
     je_entries = _build_crv_je_preview(crv)
     company = {
         'name': AppSettings.get_setting('company_name', ''),

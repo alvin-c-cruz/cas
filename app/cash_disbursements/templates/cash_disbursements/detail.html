@@ -78,12 +78,6 @@
       <a href="{{ url_for('cash_disbursements.print_cdv', id=cdv.id) }}" target="_blank"
          rel="noopener noreferrer" class="btn btn-secondary">Print</a>
       {% endif %}
-      {# Gated check-print action (P-69 Task 8) -- Jinja comment only, never <!-- --> here #}
-      {% if check_layout_ready %}
-      <a href="{{ url_for('cash_disbursements.print_check', id=cdv.id) }}" target="_blank"
-         rel="noopener noreferrer" class="btn btn-secondary">Print Check</a>
-      {% if check_print_count %}<span class="text-muted">Check printed {{ check_print_count }}&#215;</span>{% endif %}
-      {% endif %}
       {% if (current_user.has_full_access or current_user.role == 'accountant') and cdv.status == 'draft' %}
       <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post CDV</button>
       {% endif %}

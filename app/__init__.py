@@ -160,7 +160,6 @@ def create_app(config_name=None):
     import os as _os
     _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'accounts_payable'), exist_ok=True)
     _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'company'), exist_ok=True)
-    _os.makedirs(_os.path.join(app.config['UPLOAD_FOLDER'], 'preprinted'), exist_ok=True)
 
     # Initialize caching
     cache.init_app(app, config={
@@ -204,7 +203,6 @@ def create_app(config_name=None):
     from app.units_of_measure.models import UnitOfMeasure
     from app.products.models import Product
     from app.sales_orders.models import SalesOrder, SalesOrderItem
-    from app.preprinted_forms.models import PrintLayout
     from app.backup.models import BackupRun
 
     # Register blueprints
@@ -235,7 +233,6 @@ def create_app(config_name=None):
     from app.products.views import products_bp
     from app.sales_orders.views import sales_orders_bp
     from app.opening_balances.views import opening_balances_bp
-    from app.preprinted_forms.views import preprinted_forms_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -264,7 +261,6 @@ def create_app(config_name=None):
     app.register_blueprint(products_bp)
     app.register_blueprint(sales_orders_bp)
     app.register_blueprint(opening_balances_bp)
-    app.register_blueprint(preprinted_forms_bp)
 
     from app.backup.views import backup_bp
     app.register_blueprint(backup_bp)
