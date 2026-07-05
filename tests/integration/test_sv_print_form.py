@@ -169,6 +169,13 @@ class TestPreprintedLayoutRender:
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         assert 'id="editLayoutBtn"' in html
 
+    def test_bir_summary_fields_present(self, client, db_session, admin_user,
+                                        main_branch, _customer, _invoice):
+        self._prep(client)
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        for key in ('gross_sales', 'output_vat', 'net_of_vat', 'wht_amount'):
+            assert f'data-el="{key}"' in html
+
     def test_font_picker_grouped_with_dotmatrix_fonts(self, client, db_session, admin_user,
                                                       main_branch, _customer, _invoice):
         self._prep(client)

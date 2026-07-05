@@ -48,7 +48,9 @@ ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 FIELD_KEYS = [
     'invoice_no', 'invoice_date', 'due_date', 'terms',
     'customer_name', 'customer_tin', 'customer_address', 'customer_po',
-    'amount_collectible', 'notes',
+    # BIR-standard SI summary
+    'gross_sales', 'output_vat', 'net_of_vat', 'wht_amount', 'amount_collectible',
+    'notes',
 ]
 
 # Friendly names for the per-field show/hide strip.
@@ -61,6 +63,10 @@ FIELD_LABELS = {
     'customer_tin': 'TIN',
     'customer_address': 'Address',
     'customer_po': 'PO No.',
+    'gross_sales': 'Total Sales (VAT-incl.)',
+    'output_vat': 'VAT',
+    'net_of_vat': 'Amount Net of VAT',
+    'wht_amount': 'Withholding Tax',
     'amount_collectible': 'Amount Collectible',
     'notes': 'Notes',
 }
@@ -119,7 +125,11 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
         'customer_tin':       {'x': 40,  'y': 74,  'fontSize': 11, 'bold': False},
         'customer_address':   {'x': 40,  'y': 98,  'fontSize': 11, 'bold': False},
         'customer_po':        {'x': 40,  'y': 122, 'fontSize': 11, 'bold': False},
-        'amount_collectible': {'x': 520, 'y': 560, 'fontSize': 13, 'bold': True},
+        'gross_sales':        {'x': 620, 'y': 470, 'fontSize': 10, 'bold': False},
+        'output_vat':         {'x': 620, 'y': 494, 'fontSize': 10, 'bold': False},
+        'net_of_vat':         {'x': 620, 'y': 518, 'fontSize': 10, 'bold': False},
+        'wht_amount':         {'x': 620, 'y': 542, 'fontSize': 10, 'bold': False},
+        'amount_collectible': {'x': 620, 'y': 570, 'fontSize': 13, 'bold': True},
         'notes':              {'x': 40,  'y': 600, 'fontSize': 10, 'bold': False},
     },
     # Line items: each column is INDEPENDENTLY positioned (its own x) so it can line

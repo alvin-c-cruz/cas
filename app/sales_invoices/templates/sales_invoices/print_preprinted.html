@@ -102,7 +102,12 @@
   {{ field('customer_tin', invoice.customer_tin or '') }}
   {{ field('customer_address', invoice.customer_address or '') }}
   {{ field('customer_po', invoice.customer_po_number or '') }}
-  {{ field('amount_collectible', '{:,.2f}'.format(invoice.total_amount)) }}
+  {# BIR-standard SI summary (VAT / WHT), each positionable + hideable #}
+  {{ field('gross_sales', '{:,.2f}'.format(invoice.subtotal or 0)) }}
+  {{ field('output_vat', '{:,.2f}'.format(invoice.vat_amount or 0)) }}
+  {{ field('net_of_vat', '{:,.2f}'.format((invoice.subtotal or 0) - (invoice.vat_amount or 0))) }}
+  {{ field('wht_amount', '{:,.2f}'.format(invoice.withholding_tax_amount or 0)) }}
+  {{ field('amount_collectible', '{:,.2f}'.format(invoice.total_amount or 0)) }}
   {{ field('notes', invoice.notes or '') }}
 
   {% set li = layout.lineItems %}
