@@ -156,11 +156,12 @@ class TestPreprintedLayoutRender:
         self._prep(client)
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         import re as _re
-        # all columns render; the hidden one is marked pp-col-hidden (present but not printed)
-        uom_th = _re.search(r'<th data-col="uom"[^>]*>', html)
-        amt_th = _re.search(r'<th data-col="amount"[^>]*>', html)
-        assert uom_th and 'pp-col-hidden' in uom_th.group(0)
-        assert amt_th and 'pp-col-hidden' not in amt_th.group(0)
+        # all columns render as positioned .pp-col blocks; the hidden one carries
+        # pp-col-hidden (present but not printed)
+        uom = _re.search(r'<div class="([^"]*)"\s+data-col="uom"', html)
+        amt = _re.search(r'<div class="([^"]*)"\s+data-col="amount"', html)
+        assert uom and 'pp-col-hidden' in uom.group(1)
+        assert amt and 'pp-col-hidden' not in amt.group(1)
 
     def test_edit_button_admin_only(self, client, db_session, admin_user,
                                     main_branch, _customer, _invoice):

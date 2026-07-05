@@ -51,6 +51,18 @@ class TestSanitize:
         assert set(keys) == set(COLUMN_KEYS)                      # missing ones appended
         assert out['lineItems']['columns'][1]['visible'] is False
 
+    def test_columns_have_independent_x_and_band_has_rowheight(self):
+        out = sanitize_layout({'lineItems': {'y': 250, 'rowHeight': 24,
+                                             'columns': [{'key': 'amount', 'x': 777}]}})
+        amount = next(c for c in out['lineItems']['columns'] if c['key'] == 'amount')
+        assert amount['x'] == 777                 # per-column x preserved
+        assert out['lineItems']['y'] == 250
+        assert out['lineItems']['rowHeight'] == 24
+        assert 'x' not in out['lineItems']         # no block-level x/width anymore
+        assert 'width' not in out['lineItems']
+        # every column carries its own x
+        assert all('x' in c for c in out['lineItems']['columns'])
+
 
 class TestFonts:
     def test_new_monospace_fonts_allowed_and_round_trip(self):

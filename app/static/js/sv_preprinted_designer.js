@@ -61,24 +61,25 @@
   });
 
   const li = () => canvas.querySelector('.pp-lineitems');
+  const cols = () => [...canvas.querySelectorAll('.pp-col')];
 
   // --- Column show/hide control strip (built once) ---
   function setColVisible(key, visible) {
-    canvas.querySelectorAll('.pp-lineitems [data-col="' + key + '"]').forEach((c) =>
+    canvas.querySelectorAll('.pp-col[data-col="' + key + '"]').forEach((c) =>
       c.classList.toggle('pp-col-hidden', !visible));
   }
   function buildColControls() {
     if (!colStrip || colStrip.dataset.built) return;
-    li().querySelectorAll('thead th').forEach((th) => {
-      const key = th.dataset.col;
+    cols().forEach((col) => {
+      const key = col.dataset.col;
       const label = document.createElement('label');
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.dataset.coltoggle = key;
-      cb.checked = !th.classList.contains('pp-col-hidden');
+      cb.checked = !col.classList.contains('pp-col-hidden');
       cb.addEventListener('change', () => setColVisible(key, cb.checked));
       label.appendChild(cb);
-      label.appendChild(document.createTextNode(' ' + th.textContent.trim()));
+      label.appendChild(document.createTextNode(' ' + (col.dataset.label || key)));
       colStrip.appendChild(label);
     });
     colStrip.dataset.built = '1';
@@ -96,28 +97,20 @@
   }
   editBtn.addEventListener('click', () => setEditing(!editing));
 
-  // --- Column reorder: drag a header across its neighbours ---
-  function moveColumn(srcKey, refKey) {
-    const rows = [li().querySelector('thead tr'), ...li().querySelectorAll('tbody tr')];
-    rows.forEach((row) => {
-      const src = row.querySelector('[data-col="' + srcKey + '"]');
-      const ref = row.querySelector('[data-col="' + refKey + '"]');
-      if (!src || !ref) return;
-      const cells = [...row.children];
-      if (cells.indexOf(src) < cells.indexOf(ref)) ref.after(src);
-      else ref.before(src);
-    });
-  }
-
-  // --- Element drag + column-reorder drag share the pointer stream ---
+  // --- Drag: fields (.pp-el) move freely; a line-item column (.pp-col) moves
+  //     HORIZONTALLY on its own x, while a VERTICAL drag moves the whole band
+  //     (all columns share the top), so rows always stay aligned. Cells/rows never
+  //     move independently of their column. ---
   let drag = null;      // moving a .pp-el
-  let colDrag = null;   // reordering a column
+  let colDrag = null;   // moving a .pp-col
 
   canvas.addEventListener('pointerdown', (e) => {
     if (!editing) return;
-    const th = e.target.closest('.pp-lineitems thead th');
-    if (th) {
-      colDrag = { key: th.dataset.col };
+    const c = canvas.getBoundingClientRect();
+    const col = e.target.closest('.pp-col');
+    if (col) {
+      const r = col.getBoundingClientRect();
+      colDrag = { col, dx: e.clientX - r.left, dy: e.clientY - r.top, c };
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -126,7 +119,6 @@
     if (!el) return;
     selectEl(el);
     const r = el.getBoundingClientRect();
-    const c = canvas.getBoundingClientRect();
     drag = { el, dx: e.clientX - r.left, dy: e.clientY - r.top, c };
     canvas.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -134,19 +126,15 @@
 
   canvas.addEventListener('pointermove', (e) => {
     if (colDrag) {
-      const target = [...li().querySelectorAll('thead th')].find((h) => {
-        if (h.dataset.col === colDrag.key) return false;
-        const r = h.getBoundingClientRect();
-        return e.clientX >= r.left && e.clientX <= r.right;
-      });
-      if (target) moveColumn(colDrag.key, target.dataset.col);
+      const x = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - colDrag.c.left - colDrag.dx)));
+      const y = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - colDrag.c.top - colDrag.dy)));
+      colDrag.col.style.left = x + 'px';                     // this column's x
+      cols().forEach((c) => { c.style.top = y + 'px'; });    // shared band top -> rows aligned
       return;
     }
     if (!drag) return;
-    let x = e.clientX - drag.c.left - drag.dx;
-    let y = e.clientY - drag.c.top - drag.dy;
-    x = Math.max(0, Math.min(canvas.clientWidth, Math.round(x)));
-    y = Math.max(0, Math.min(canvas.clientHeight, Math.round(y)));
+    const x = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - drag.c.left - drag.dx)));
+    const y = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - drag.c.top - drag.dy)));
     drag.el.style.left = x + 'px';
     drag.el.style.top = y + 'px';
   });
@@ -167,24 +155,25 @@
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
       };
     });
-    const block = li();
-    const columns = [...block.querySelectorAll('thead th')].map((th) => ({
-      key: th.dataset.col,
-      visible: !th.classList.contains('pp-col-hidden'),
-      width: parseInt(th.style.width) || 60,
+    const colEls = cols();
+    const first = colEls[0];
+    const lics = first ? getComputedStyle(first) : null;
+    const columns = colEls.map((c) => ({
+      key: c.dataset.col,
+      x: parseInt(c.style.left) || 0,
+      visible: !c.classList.contains('pp-col-hidden'),
+      width: parseInt(c.style.width) || 60,
     }));
-    const lics = getComputedStyle(block);
     return {
       // read the select (exact ALLOWED_FONTS string) rather than the computed
       // stack, so the value round-trips through the server-side whitelist.
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
       fields,
       lineItems: {
-        x: parseInt(block.style.left) || 0,
-        y: parseInt(block.style.top) || 0,
-        width: parseInt(block.style.width) || 714,
-        fontSize: parseInt(lics.fontSize) || 10,
-        bold: lics.fontWeight === '700' || lics.fontWeight === 'bold',
+        y: first ? (parseInt(first.style.top) || 0) : 300,
+        rowHeight: parseInt(li().dataset.rowheight) || 20,
+        fontSize: lics ? (parseInt(lics.fontSize) || 10) : 10,
+        bold: lics ? (lics.fontWeight === '700' || lics.fontWeight === 'bold') : false,
         columns,
       },
     };

@@ -64,13 +64,33 @@ def test_hide_column_persists(logged_in_page, e2e_server):
     page.click('#saveLayoutBtn')
     page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
     page.goto(url)                               # fresh reload from the server
-    # UOM header still in the DOM but marked hidden; a visible column is not.
-    uom_hidden = page.locator('th[data-col="uom"]').evaluate(
+    # UOM column still in the DOM but marked hidden; a visible column is not.
+    uom_hidden = page.locator('.pp-col[data-col="uom"]').evaluate(
         "e => e.classList.contains('pp-col-hidden')")
-    amount_hidden = page.locator('th[data-col="amount"]').evaluate(
+    amount_hidden = page.locator('.pp-col[data-col="amount"]').evaluate(
         "e => e.classList.contains('pp-col-hidden')")
     assert uom_hidden is True
     assert amount_hidden is False
+
+
+def test_column_horizontal_drag_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    col = page.locator('.pp-col[data-col="amount"]')
+    box = col.bounding_box()
+    before_x = col.evaluate("e => parseInt(e.style.left)")
+    page.mouse.move(box['x'] + 8, box['y'] + 8)
+    page.mouse.down()
+    page.mouse.move(box['x'] - 90, box['y'] + 8, steps=10)   # drag the column left
+    page.mouse.up()
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                            # fresh reload
+    after_x = page.locator('.pp-col[data-col="amount"]').evaluate("e => parseInt(e.style.left)")
+    assert after_x < before_x                                 # column moved left, persisted
 
 
 def test_bold_and_page_font_persist(logged_in_page, e2e_server):

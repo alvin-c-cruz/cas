@@ -19,6 +19,7 @@ CANVAS_W = 912      # 9.5in  @96dpi
 CANVAS_H = 1008     # 10.5in @96dpi
 FONT_MIN, FONT_MAX = 6, 72
 WIDTH_MIN, WIDTH_MAX = 10, 912
+ROW_MIN, ROW_MAX = 8, 80      # line-item row height (px)
 
 # Font picker, grouped for the <select> (optgroups). Monospace faces rasterize
 # cleanest on a dot-matrix printer (browsers print in graphics/raster mode, so the
@@ -80,16 +81,19 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
         'amount_collectible': {'x': 520, 'y': 560, 'fontSize': 13, 'bold': True},
         'notes':              {'x': 40,  'y': 600, 'fontSize': 10, 'bold': False},
     },
+    # Line items: each column is INDEPENDENTLY positioned (its own x) so it can line
+    # up with the pre-printed column boxes; all columns share the band top (y) and
+    # rowHeight so rows stay aligned. No header row.
     'lineItems': {
-        'x': 40, 'y': 190, 'width': 714, 'fontSize': 10, 'bold': False,
+        'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
         'columns': [
-            {'key': 'line_number', 'visible': True,  'width': 30},
-            {'key': 'description', 'visible': True,  'width': 300},
-            {'key': 'product',     'visible': False, 'width': 120},
-            {'key': 'quantity',    'visible': True,  'width': 70},
-            {'key': 'uom',         'visible': True,  'width': 60},
-            {'key': 'unit_price',  'visible': True,  'width': 90},
-            {'key': 'amount',      'visible': True,  'width': 100},
+            {'key': 'line_number', 'x': 56,  'visible': True,  'width': 30},
+            {'key': 'description', 'x': 92,  'visible': True,  'width': 300},
+            {'key': 'product',     'x': 400, 'visible': False, 'width': 120},
+            {'key': 'quantity',    'x': 430, 'visible': True,  'width': 60},
+            {'key': 'uom',         'x': 510, 'visible': True,  'width': 50},
+            {'key': 'unit_price',  'x': 580, 'visible': True,  'width': 90},
+            {'key': 'amount',      'x': 690, 'visible': True,  'width': 100},
         ],
     },
 }
@@ -131,6 +135,7 @@ def _clean_columns(raw):
         d = defaults[k]
         out.append({
             'key': k,
+            'x': _clamp(src.get('x'), 0, CANVAS_W, d['x']),
             'visible': bool(src.get('visible', d['visible'])),
             'width': _clamp(src.get('width'), WIDTH_MIN, WIDTH_MAX, d['width']),
         })
@@ -148,9 +153,8 @@ def sanitize_layout(raw):
     raw_li = raw.get('lineItems') if isinstance(raw.get('lineItems'), dict) else {}
     dli = d['lineItems']
     line_items = {
-        'x': _clamp(raw_li.get('x'), 0, CANVAS_W, dli['x']),
         'y': _clamp(raw_li.get('y'), 0, CANVAS_H, dli['y']),
-        'width': _clamp(raw_li.get('width'), WIDTH_MIN, WIDTH_MAX, dli['width']),
+        'rowHeight': _clamp(raw_li.get('rowHeight'), ROW_MIN, ROW_MAX, dli['rowHeight']),
         'fontSize': _clamp(raw_li.get('fontSize'), FONT_MIN, FONT_MAX, dli['fontSize']),
         'bold': bool(raw_li.get('bold', dli['bold'])),
         'columns': _clean_columns(raw_li.get('columns')),

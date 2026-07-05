@@ -12,18 +12,19 @@
   .pp-canvas { position: relative; width: 912px; height: 1008px; margin: 16px auto; background: #fff; }
   .pp-el { position: absolute; white-space: nowrap; }
   .pp-lineitems { white-space: normal; }
-  .pp-lineitems table { border-collapse: collapse; }
-  .pp-lineitems th, .pp-lineitems td { padding: 3px 6px; text-align: left; }
-  .pp-lineitems th { font-weight: 700; }
-  /* Column headers are labels -> pre-printed on the stock; only surface them in edit
-     mode so the columns can be identified, reordered, and toggled. Never printed. */
-  .pp-lineitems thead { display: none; }
-  .pp-canvas.pp-editing .pp-lineitems thead { display: table-header-group; }
-  .pp-canvas.pp-editing .pp-lineitems th { border-bottom: 1px solid #999; }
+  /* Each line-item column is independently positioned; cells stack vertically. */
+  .pp-col { position: absolute; }
+  .pp-cell { overflow: hidden; white-space: nowrap; }
+  /* Figures follow the page font; only right-align them. */
+  .pp-amount .pp-cell { text-align: right; }
+  /* Columns are draggable in edit mode (horizontal = that column; vertical = the whole
+     band, so rows stay aligned). No header row. */
+  .pp-canvas.pp-editing .pp-col { outline: 1px dashed #2e7d32; cursor: move; }
+  .pp-canvas.pp-editing .pp-col:hover { outline: 2px solid #2e7d32; background: rgba(46, 125, 50, .05); }
   /* Empty value fields are invisible/zero-size; give them a grab target while editing. */
   .pp-canvas.pp-editing .pp-el:empty::before { content: attr(data-el); color: #bbb; font-style: italic; }
-  /* Right-align figures but DON'T pin a font — they follow the page Font Family. */
-  .pp-amount { text-align: right; }
+  /* A column with no rows is empty -> show its label while editing so it stays grabbable. */
+  .pp-canvas.pp-editing .pp-col:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
   .pp-col-hidden { display: none; }
   /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins, left + right. Never printed. */
   .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
@@ -88,39 +89,32 @@
   {{ field('notes', invoice.notes or '') }}
 
   {% set li = layout.lineItems %}
-  <div class="pp-el pp-lineitems" data-el="lineItems"
-       style="left:{{ li.x }}px;top:{{ li.y }}px;width:{{ li.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
-    <table style="width:{{ li.width }}px;">
-      <thead><tr>
-        {% for col in li.columns %}
-        <th data-col="{{ col.key }}" class="{{ 'pp-col-hidden' if not col.visible else '' }}" style="width:{{ col.width }}px;">{{ col_labels[col.key] }}</th>
-        {% endfor %}
-      </tr></thead>
-      <tbody>
-        {% for item in invoice.line_items %}
-        <tr>
-          {% for col in li.columns %}
-          <td data-col="{{ col.key }}" style="width:{{ col.width }}px;"
-              class="{{ 'pp-amount ' if col.key in ('amount', 'unit_price', 'quantity') else '' }}{{ 'pp-col-hidden' if not col.visible else '' }}">
-            {%- if col.key == 'line_number' -%}{{ item.line_number }}
-            {%- elif col.key == 'description' -%}{{ item.description or '—' }}
-            {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
-            {%- elif col.key == 'quantity' -%}{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
-            {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}
-            {%- elif col.key == 'unit_price' -%}{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
-            {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}
-            {%- endif -%}
-          </td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {# Each column is independently positioned (own x); all share the band top (li.y)
+     and rowHeight so rows align. Columns move; cells/rows don't move on their own. #}
+  <div class="pp-lineitems" data-el="lineItems" data-rowheight="{{ li.rowHeight }}">
+    {% for col in li.columns %}
+    <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('amount', 'unit_price', 'quantity') else '' }}"
+         data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
+         style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
+      {%- for item in invoice.line_items %}
+      <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
+        {%- if col.key == 'line_number' -%}{{ item.line_number }}
+        {%- elif col.key == 'description' -%}{{ item.description or '—' }}
+        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
+        {%- elif col.key == 'quantity' -%}{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
+        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}
+        {%- elif col.key == 'unit_price' -%}{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
+        {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}
+        {%- endif -%}
+      </div>
+      {% endfor -%}
+    </div>
+    {% endfor %}
   </div>
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=5"></script>
 {% endif %}
 </body>
 </html>
