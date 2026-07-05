@@ -352,6 +352,7 @@ let autoVat      = 0;
 let autoWt       = 0;
 let vatOverrideActive = false;
 let wtOverrideActive  = false;
+let notesUserTouched  = false;   // once the user types in Notes, stop auto-filling it from line items
 
 // ── Choices.js: customer picker ──────────────────────────────────────────────
 const customerSel = document.getElementById('customer_id');
@@ -771,7 +772,26 @@ function removeLineItem(id) {
     document.getElementById(`line-${id}`).remove();
     lineItems = lineItems.filter(i => i.id !== id);
     refreshLineNumbers();
+    refreshNotesAutofill();
     calculateTotals();
+}
+
+// Auto-fill Notes (Particulars) with the line items' distinct product names, UNLESS the user
+// has typed in Notes (notesUserTouched). Programmatic .value sets don't fire 'input', so this
+// never marks Notes as user-touched. Names only, comma-separated; empty product set -> cleared.
+function refreshNotesAutofill() {
+    if (notesUserTouched) return;
+    const notesEl = document.querySelector('textarea[name="notes"]');
+    if (!notesEl) return;
+    const seen = new Set();
+    const names = [];
+    lineItems.forEach(i => {
+        if (!i.product_id) return;
+        const p = products.find(pp => String(pp.id) === String(i.product_id));
+        if (p && p.name && !seen.has(p.name)) { seen.add(p.name); names.push(p.name); }
+    });
+    notesEl.value = names.join(', ');
+    validateForm();   // programmatic set didn't fire 'input' — refresh the required-field check
 }
 
 function refreshLineNumbers() {
@@ -798,6 +818,7 @@ function onProductPick(id, productId) {
     const item = lineItems.find(i => i.id === id);
     if (!item) return;
     item.product_id = productId || null;
+    refreshNotesAutofill();   // reflect the changed product set in Notes (if user hasn't touched it)
     const p = products.find(pp => String(pp.id) === String(productId));
     if (!p) return;
     if (p.name) {
@@ -1092,7 +1113,10 @@ for (const fieldId of ['invoice_date', 'due_date']) {
 // Re-derive Due Date from the (edited) Invoice Date + current terms on blur.
 document.getElementById('invoice_date')?.addEventListener('change', () => recomputeDueDate());
 const _notesInput = document.querySelector('textarea[name="notes"]');
-if (_notesInput) _notesInput.addEventListener('input', validateForm);
+if (_notesInput) {
+    if (_notesInput.value.trim() !== '') notesUserTouched = true;   // pre-filled (e.g. edit mode / typed before lines) -> don't auto-overwrite
+    _notesInput.addEventListener('input', () => { notesUserTouched = true; validateForm(); });
+}
 
 // ── Init: load existing items on edit ────────────────────────────────────────
 
