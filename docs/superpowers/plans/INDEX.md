@@ -9,3 +9,4 @@
 | 2026-07-03 | [Transaction-form line-item component standard](2026-07-03-transaction-line-item-standard.md) | Scoped — not started |
 | 2026-07-03 | [Food Toll Packing demo dataset](2026-07-03-food-toll-packing-demo.md) | Done (on main, not pushed) |
 | 2026-07-04 | [CDV check printing + per-account layout](2026-07-04-cdv-check-printing.md) | Scoped, boardroom-reviewed (rev.2) — not started; Increment 1 (Default check) then Increment 2 (per-account) |
+| 2026-07-05 | [SI pre-printed layout designer](2026-07-05-si-preprinted-layout-designer.md) | Ready — not started; drag-and-drop editor for the SI pre-printed page (fields/columns/fonts), layout JSON in `app_settings`; server TDD + Playwright e2e; 7 tasks |
