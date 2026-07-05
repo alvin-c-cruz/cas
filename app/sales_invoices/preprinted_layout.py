@@ -38,6 +38,17 @@ COLUMN_KEYS = [
     'uom', 'unit_price', 'amount',
 ]
 
+# Header labels for the line-item columns (presentation; keyed by COLUMN_KEYS).
+COLUMN_LABELS = {
+    'line_number': '#',
+    'description': 'Description / Particulars',
+    'product': 'Product',
+    'quantity': 'Qty',
+    'uom': 'UOM',
+    'unit_price': 'Unit Price',
+    'amount': 'Amount (₱)',
+}
+
 DEFAULT_SV_PREPRINTED_LAYOUT = {
     'page': {'fontFamily': 'Arial, sans-serif'},
     'fields': {

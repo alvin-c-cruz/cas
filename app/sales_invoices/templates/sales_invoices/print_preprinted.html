@@ -2,113 +2,99 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Sales Invoice {{ invoice.invoice_number }} — Pre-printed</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sv_preprinted_designer.css') }}?v=1">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
-
-  .screen-only { }
+  body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
+  .pp-canvas { position: relative; width: 794px; height: 1123px; margin: 16px auto; background: #fff; }
+  .pp-el { position: absolute; white-space: nowrap; }
+  .pp-lineitems { white-space: normal; }
+  .pp-lineitems table { border-collapse: collapse; }
+  .pp-lineitems th, .pp-lineitems td { padding: 3px 6px; text-align: left; border-bottom: 1px solid #ddd; }
+  .pp-lineitems th { border-bottom: 1px solid #999; font-weight: 700; }
+  .pp-amount { text-align: right; font-family: monospace; }
+  .pp-toolbar { max-width: 794px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .btn-print { background: #1565c0; color: #fff; }
+  .btn-close { background: #666; color: #fff; }
+  .btn-edit  { background: #2e7d32; color: #fff; }
   @media print {
+    body { background: #fff; }
     .screen-only { display: none !important; }
-    /* Pre-printed stock supplies the letterhead/boxes; print only the data. */
-    @page { size: A4 portrait; margin: 15mm; }
+    .pp-canvas { margin: 0; }
+    @page { size: A4 portrait; margin: 0; }
   }
-
-  /* .sv-preprinted: data-only layout meant to overlay physical pre-printed forms.
-     Deliberately no letterhead and only light guide borders — first draft, adjust
-     spacing/positions to match the actual pre-printed stock. */
-  .sv-preprinted { max-width: 740px; margin: 0 auto; padding: 24px; }
-
-  .pp-meta { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 14px; font-size: 11px; }
-  .pp-meta .pp-field { margin-bottom: 4px; }
-  .pp-meta .pp-label { color: #555; display: inline-block; min-width: 78px; }
-  .pp-meta .pp-value { font-weight: 600; }
-
-  .particulars { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 12px; }
-  .particulars th { border-bottom: 1px solid #999; padding: 4px 7px; text-align: left; font-weight: 700; }
-  .particulars td { border-bottom: 1px solid #ddd; padding: 4px 7px; }
-  .particulars td.amount { text-align: right; font-family: monospace; }
-  .particulars th.amount { text-align: right; }
-
-  .pp-total-row { display: flex; justify-content: flex-end; margin-top: 6px; }
-  .pp-total-row .pp-total-label { font-weight: 700; font-size: 11px; margin-right: 16px; align-self: center; }
-  .pp-total-row .pp-total-value { font-family: monospace; font-weight: 700; font-size: 13px; min-width: 130px; text-align: right; }
-
-  .pp-notes { margin-top: 12px; font-size: 10px; }
-  .pp-notes .pp-notes-label { font-weight: 700; color: #555; text-transform: uppercase; margin-right: 8px; font-size: 9px; }
-
-  .print-bar { margin-bottom: 20px; display: flex; gap: 8px; }
-  .btn-print { padding: 8px 20px; background: #1565c0; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
-  .btn-close { padding: 8px 20px; background: #666; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; display: inline-block; }
 </style>
 </head>
-<body>
-<div class="sv-preprinted">
+<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}">
 
-  <div class="print-bar screen-only">
-    <button class="btn-print" onclick="window.print()">Print</button>
-    <button type="button" class="btn-close" onclick="window.close()">Close</button>
-  </div>
+{% macro field(key, value) %}
+  {% set f = layout.fields[key] %}
+  <div class="pp-el" data-el="{{ key }}"
+       style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
+{% endmacro %}
 
-  <div class="pp-meta">
-    <div>
-      <div class="pp-field"><span class="pp-label">Invoice No.</span><span class="pp-value">{{ invoice.invoice_number }}</span></div>
-      <div class="pp-field"><span class="pp-label">Date</span><span class="pp-value">{{ invoice.invoice_date.strftime('%d %B %Y') }}</span></div>
-      <div class="pp-field"><span class="pp-label">Due Date</span><span class="pp-value">{{ invoice.due_date.strftime('%d %B %Y') if invoice.due_date else '—' }}</span></div>
-      <div class="pp-field"><span class="pp-label">Terms</span><span class="pp-value">{{ invoice.payment_terms or '—' }}</span></div>
-    </div>
-    <div>
-      <div class="pp-field"><span class="pp-label">Customer</span><span class="pp-value">{{ invoice.customer_name }}</span></div>
-      <div class="pp-field"><span class="pp-label">TIN</span><span class="pp-value">{{ invoice.customer_tin or '—' }}</span></div>
-      {% if invoice.customer_address %}
-      <div class="pp-field"><span class="pp-label">Address</span><span class="pp-value">{{ invoice.customer_address }}</span></div>
-      {% endif %}
-      {% if invoice.customer_po_number %}
-      <div class="pp-field"><span class="pp-label">PO No.</span><span class="pp-value">{{ invoice.customer_po_number }}</span></div>
-      {% endif %}
-    </div>
-  </div>
-
-  <table class="particulars">
-    <thead>
-      <tr>
-        <th style="width:4%">#</th>
-        <th>Description / Particulars</th>
-        {% if module_enabled('products') %}<th style="width:16%">Product</th>{% endif %}
-        <th style="width:8%;text-align:right">Qty</th>
-        <th style="width:8%">UOM</th>
-        <th style="width:12%;text-align:right">Unit Price</th>
-        <th class="amount" style="width:14%">Amount (₱)</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in invoice.line_items %}
-      <tr>
-        <td>{{ item.line_number }}</td>
-        <td>{{ item.description or '—' }}</td>
-        {% if module_enabled('products') %}
-        <td>{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}</td>
-        {% endif %}
-        <td class="amount">{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}</td>
-        <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
-        <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}</td>
-        <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <div class="pp-total-row">
-    <span class="pp-total-label">Amount Collectible:</span>
-    <span class="pp-total-value">₱ {{ '{:,.2f}'.format(invoice.total_amount) }}</span>
-  </div>
-
-  {% if invoice.notes %}
-  <div class="pp-notes">
-    <span class="pp-notes-label">Notes:</span>{{ invoice.notes }}
-  </div>
+<div class="pp-toolbar screen-only">
+  <button type="button" class="btn btn-print" onclick="window.print()">Print</button>
+  <button type="button" class="btn btn-close" onclick="window.close()">Close</button>
+  {% if can_edit_layout %}
+  <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
+  <select id="ppFontFamily" class="screen-only" style="display:none;">
+    {% for font in allowed_fonts %}
+    <option value="{{ font }}" {{ 'selected' if font == layout.page.fontFamily else '' }}>{{ font.split(',')[0].replace('"','') }}</option>
+    {% endfor %}
+  </select>
   {% endif %}
-
 </div>
+
+<div class="pp-canvas" id="ppCanvas">
+  {{ field('invoice_no', 'Invoice No.: ' ~ invoice.invoice_number) }}
+  {{ field('invoice_date', 'Date: ' ~ invoice.invoice_date.strftime('%d %B %Y')) }}
+  {{ field('due_date', 'Due: ' ~ (invoice.due_date.strftime('%d %B %Y') if invoice.due_date else '—')) }}
+  {{ field('terms', 'Terms: ' ~ (invoice.payment_terms or '—')) }}
+  {{ field('customer_name', invoice.customer_name) }}
+  {{ field('customer_tin', 'TIN: ' ~ (invoice.customer_tin or '—')) }}
+  {{ field('customer_address', invoice.customer_address or '') }}
+  {{ field('customer_po', 'PO: ' ~ (invoice.customer_po_number or '—')) }}
+  {{ field('amount_collectible', '₱ ' ~ '{:,.2f}'.format(invoice.total_amount)) }}
+  {{ field('notes', invoice.notes or '') }}
+
+  {% set li = layout.lineItems %}
+  <div class="pp-el pp-lineitems" data-el="lineItems"
+       style="left:{{ li.x }}px;top:{{ li.y }}px;width:{{ li.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
+    <table style="width:{{ li.width }}px;">
+      <thead><tr>
+        {% for col in li.columns if col.visible %}
+        <th data-col="{{ col.key }}" style="width:{{ col.width }}px;">{{ col_labels[col.key] }}</th>
+        {% endfor %}
+      </tr></thead>
+      <tbody>
+        {% for item in invoice.line_items %}
+        <tr>
+          {% for col in li.columns if col.visible %}
+          <td data-col="{{ col.key }}"
+              class="{{ 'pp-amount' if col.key in ('amount', 'unit_price', 'quantity') else '' }}">
+            {%- if col.key == 'line_number' -%}{{ item.line_number }}
+            {%- elif col.key == 'description' -%}{{ item.description or '—' }}
+            {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
+            {%- elif col.key == 'quantity' -%}{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
+            {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}
+            {%- elif col.key == 'unit_price' -%}{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
+            {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}
+            {%- endif -%}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if can_edit_layout %}
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=1"></script>
+{% endif %}
 </body>
 </html>

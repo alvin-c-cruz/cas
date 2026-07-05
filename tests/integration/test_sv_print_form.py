@@ -113,7 +113,7 @@ class TestSvPrintFormPreprinted:
         resp = client.get(f'/sales-invoices/{_invoice.id}/print')
         assert resp.status_code == 200
         html = resp.data.decode()
-        assert 'sv-preprinted' in html   # marker unique to the pre-printed template
+        assert 'pp-canvas' in html   # marker unique to the pre-printed template
         assert 'sv-header' not in html    # letterhead is stripped (paper has it pre-printed)
 
     def test_current_renders_standard_template(
@@ -124,4 +124,42 @@ class TestSvPrintFormPreprinted:
         assert resp.status_code == 200
         html = resp.data.decode()
         assert 'sv-header' in html         # standard form keeps the letterhead
-        assert 'sv-preprinted' not in html
+        assert 'pp-canvas' not in html
+
+
+class TestPreprintedLayoutRender:
+    def _prep(self, client):
+        AppSettings.set_setting('sv_print_form', 'preprinted', 'system')
+        login(client)
+
+    def test_field_positioned_from_layout(self, client, db_session, admin_user,
+                                          main_branch, _customer, _invoice):
+        import json as _json
+        from app.sales_invoices.preprinted_layout import get_layout
+        layout = get_layout()
+        layout['fields']['invoice_no']['x'] = 654
+        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        self._prep(client)
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        assert 'data-el="invoice_no"' in html
+        assert 'left:654px' in html or 'left: 654px' in html
+
+    def test_hidden_column_absent_visible_present(self, client, db_session, admin_user,
+                                                  main_branch, _customer, _invoice):
+        import json as _json
+        from app.sales_invoices.preprinted_layout import get_layout
+        layout = get_layout()
+        for c in layout['lineItems']['columns']:
+            if c['key'] == 'uom':
+                c['visible'] = False
+        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        self._prep(client)
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        assert 'data-col="amount"' in html      # a visible column renders
+        assert 'data-col="uom"' not in html      # a hidden column does not
+
+    def test_edit_button_admin_only(self, client, db_session, admin_user,
+                                    main_branch, _customer, _invoice):
+        self._prep(client)                       # logged in as admin
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        assert 'id="editLayoutBtn"' in html
