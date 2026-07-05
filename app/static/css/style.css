@@ -313,6 +313,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 /* base.html's inline <style> sets .card-body{padding:0} (loads last, wins); restore
    comfortable padding on the transaction-document forms so fields don't hug the edge. */
 .page-sales-invoice .card-body { padding: 24px; }
+/* Same inline-zero hazard on the settings cards — the .settings-card scope beats
+   base.html's bare .card-body{padding:0} so labels/fields don't hug the border. */
+.settings-card .card-body { padding: 24px; }
 
 /* ─── Stat Cards ─────────────────────────────────────────────── */
 .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 20px; }
