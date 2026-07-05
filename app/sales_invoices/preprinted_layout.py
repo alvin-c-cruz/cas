@@ -20,14 +20,29 @@ CANVAS_H = 1008     # 10.5in @96dpi
 FONT_MIN, FONT_MAX = 6, 72
 WIDTH_MIN, WIDTH_MAX = 10, 912
 
-ALLOWED_FONTS = [
-    'Arial, sans-serif',
-    'Helvetica, Arial, sans-serif',
-    '"Times New Roman", Times, serif',
-    'Georgia, serif',
-    '"Courier New", Courier, monospace',
-    'Verdana, Geneva, sans-serif',
+# Font picker, grouped for the <select> (optgroups). Monospace faces rasterize
+# cleanest on a dot-matrix printer (browsers print in graphics/raster mode, so the
+# CSS font DOES reach the output), so they lead. Every entry ends in a generic family
+# to cap silent fallback when a face is not installed on the client PC. Windows-first,
+# since RIC prints from Windows. No @font-face / OCR font files (self-contained app).
+FONT_GROUPS = [
+    ('Dot-matrix friendly', [
+        '"Courier New", Courier, monospace',
+        'Consolas, "Courier New", monospace',
+        '"Lucida Console", Monaco, monospace',
+    ]),
+    ('Standard', [
+        'Arial, sans-serif',
+        'Calibri, Candara, "Segoe UI", sans-serif',
+        'Tahoma, Geneva, sans-serif',
+        '"Trebuchet MS", Tahoma, sans-serif',
+        'Verdana, Geneva, sans-serif',
+        '"Times New Roman", Times, serif',
+        'Georgia, serif',
+    ]),
 ]
+# Flat allow-list — the sanitizer's exact-string guard reads this.
+ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 
 FIELD_KEYS = [
     'invoice_no', 'invoice_date', 'due_date', 'terms',
@@ -52,7 +67,7 @@ COLUMN_LABELS = {
 }
 
 DEFAULT_SV_PREPRINTED_LAYOUT = {
-    'page': {'fontFamily': 'Arial, sans-serif'},
+    'page': {'fontFamily': '"Courier New", Courier, monospace'},
     'fields': {
         'invoice_no':         {'x': 520, 'y': 50,  'fontSize': 12, 'bold': True},
         'invoice_date':       {'x': 520, 'y': 74,  'fontSize': 11, 'bold': False},

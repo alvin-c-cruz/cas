@@ -3,7 +3,7 @@ import pytest
 from app.settings import AppSettings
 from app.sales_invoices.preprinted_layout import (
     DEFAULT_SV_PREPRINTED_LAYOUT, LAYOUT_SETTING_KEY, FIELD_KEYS, COLUMN_KEYS,
-    sanitize_layout, get_layout, save_layout,
+    ALLOWED_FONTS, FONT_GROUPS, sanitize_layout, get_layout, save_layout,
 )
 from app.audit.models import AuditLog
 
@@ -50,6 +50,25 @@ class TestSanitize:
         assert 'bogus' not in keys                                # unknown dropped
         assert set(keys) == set(COLUMN_KEYS)                      # missing ones appended
         assert out['lineItems']['columns'][1]['visible'] is False
+
+
+class TestFonts:
+    def test_new_monospace_fonts_allowed_and_round_trip(self):
+        for f in ['Consolas, "Courier New", monospace', '"Lucida Console", Monaco, monospace']:
+            assert f in ALLOWED_FONTS
+            assert sanitize_layout({'page': {'fontFamily': f}})['page']['fontFamily'] == f
+
+    def test_groups_flatten_to_allowed_no_dupes(self):
+        flat = [f for _label, fonts in FONT_GROUPS for f in fonts]
+        assert flat == ALLOWED_FONTS
+        assert len(ALLOWED_FONTS) == len(set(ALLOWED_FONTS))
+
+    def test_dot_matrix_group_exists(self):
+        labels = [label for label, _fonts in FONT_GROUPS]
+        assert 'Dot-matrix friendly' in labels
+
+    def test_default_font_is_monospace(self):
+        assert 'monospace' in DEFAULT_SV_PREPRINTED_LAYOUT['page']['fontFamily']
 
 
 class TestGetSave:

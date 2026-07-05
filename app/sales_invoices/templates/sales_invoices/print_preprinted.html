@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Sales Invoice {{ invoice.invoice_number }} — Pre-printed</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/sv_preprinted_designer.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sv_preprinted_designer.css') }}?v=4">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
@@ -22,7 +22,8 @@
   .pp-canvas.pp-editing .pp-lineitems th { border-bottom: 1px solid #999; }
   /* Empty value fields are invisible/zero-size; give them a grab target while editing. */
   .pp-canvas.pp-editing .pp-el:empty::before { content: attr(data-el); color: #bbb; font-style: italic; }
-  .pp-amount { text-align: right; font-family: monospace; }
+  /* Right-align figures but DON'T pin a font — they follow the page Font Family. */
+  .pp-amount { text-align: right; }
   .pp-col-hidden { display: none; }
   /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins, left + right. Never printed. */
   .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
@@ -56,8 +57,12 @@
   {% if can_edit_layout %}
   <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
   <select id="ppFontFamily" class="screen-only" style="display:none;">
-    {% for font in allowed_fonts %}
-    <option value="{{ font }}" {{ 'selected' if font == layout.page.fontFamily else '' }}>{{ font.split(',')[0].replace('"','') }}</option>
+    {% for group, fonts in font_groups %}
+    <optgroup label="{{ group }}">
+      {% for font in fonts %}
+      <option value="{{ font }}" {{ 'selected' if font == layout.page.fontFamily else '' }}>{{ font.split(',')[0].replace('"','') }}</option>
+      {% endfor %}
+    </optgroup>
     {% endfor %}
   </select>
   {% endif %}

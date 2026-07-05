@@ -167,3 +167,10 @@ class TestPreprintedLayoutRender:
         self._prep(client)                       # logged in as admin
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         assert 'id="editLayoutBtn"' in html
+
+    def test_font_picker_grouped_with_dotmatrix_fonts(self, client, db_session, admin_user,
+                                                      main_branch, _customer, _invoice):
+        self._prep(client)
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        assert '<optgroup label="Dot-matrix friendly"' in html
+        assert 'Consolas' in html            # a newly added monospace option
