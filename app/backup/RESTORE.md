@@ -17,7 +17,8 @@ Uploads/attachments are not yet in the backup (separate slice).
 - The **encryption key file** (`BACKUP_ENC_KEY`, base64 of 32 bytes). **Without it the
   backup is unrecoverable ciphertext.** A copy must live in the password manager, separate
   from the server.
-- The CAS code at the same (or newer, migration-compatible) revision.
+- The CAS code at the same (or newer, migration-compatible) revision — held by the **developer**
+  in the private repo, deployed only to **dev-controlled** infrastructure, never delivered to the client.
 
 ## Restore commands
 
@@ -45,29 +46,43 @@ mv ~/restored.db ~/cas/instance/ric.db               # never copy onto a hot/run
 # Reload the web app (Web tab or: touch /var/www/<user>_pythonanywhere_com_wsgi.py)
 ```
 
-## Scenario 2 — PA is down; run CAS on localhost while finding a new host
+## Scenario 2 — the host is down: the DEVELOPER redeploys to a dev-controlled host
 
-On your local machine (has the repo + venv + the encrypted backups / Drive access):
+> **Codebase-protection invariant.** The client owns their **data** (the encrypted
+> `.db.enc` in *their* Drive); the developer owns the **code** (private repo) + the AES key.
+> Recovery is performed **by the developer, onto infrastructure the developer controls** —
+> a pre-provisioned warm standby or a fresh host. CAS ships as raw `.py`, so a runnable copy
+> **is** literal source: the code is **never** placed on, or run from, a client machine.
+> `backup-restore --from-storage` needs only the key + the client's Drive artifact, so it
+> restores the DATA without ever handing over the engine.
+
+On the **dev-controlled** standby / replacement host (has the private repo + venv + Drive access):
 
 ```bash
-cd projects/cas
-# get the newest cas-*.db.enc (from Drive RIC-CAS-Backups, or already local), then either
-# use the CLI (BACKUP_STORAGE + BACKUP_ENC_KEY set in .env):
+# 1. Bring up the code on infra WE control (standby already provisioned, or fresh clone):
+git clone <private-repo> cas && cd cas          # private repo — never delivered to the client
+python -m venv venv && venv/bin/pip install -r requirements.txt
+# 2. Pull the client's newest backup from THEIR Drive and restore it (key + .env set):
 python -m flask backup-restore --into instance/_restored.db --from-storage
-# ...or decrypt a specific .db.enc directly (no app/DB needed — only the key):
-python -c "from app.backup.crypto import decrypt, FileKeyProvider as K; \
-open('instance/_restored.db','wb').write(decrypt(open('cas-XXXX.db.enc','rb').read(), K('<key>')))"
-
 sqlite3 instance/_restored.db "PRAGMA integrity_check"   # -> ok
-mv instance/_restored.db instance/ric.db
-# .env: SQLALCHEMY_DATABASE_URI=sqlite:///ric.db
-python -m flask db upgrade                               # schema to head
-python flask_app.py                                     # CAS live at http://localhost:5050
-# When a new cloud host is ready: deploy CAS there and upload this ric.db.
+mv instance/_restored.db instance/ric.db                 # .env: sqlite:///ric.db
+python -m flask db upgrade                                # schema to head
+# 3. Reload the app on the new host, then cut the client's CUSTOM DOMAIN (low-TTL CNAME)
+#    over to it. (A *.pythonanywhere.com subdomain can't be repointed — hence the custom domain.)
+```
+
+**Data-only fallback (developer, key + one `.db.enc`, no app/DB):** decrypting an artifact yields a
+**code-free** SQLite file — this is the client's data and *may* be handed to the client; the CAS
+application is not. Use it to hand off data, or to seed a restore on a dev-controlled host:
+
+```bash
+python -c "from app.backup.crypto import decrypt, FileKeyProvider as K; \
+open('ric.db','wb').write(decrypt(open('cas-XXXX.db.enc','rb').read(), K('<key>')))"
 ```
 
 **In both scenarios the two non-negotiables are:** you have the AES key, and you `integrity_check`
 (and ideally `/audit`-tie-out) the restored DB before trusting it. Never overwrite a hot DB file.
+**A third, for Scenario 2:** the code runs only on dev-controlled infrastructure — never at the client.
 
 ## Key custody
 
@@ -85,6 +100,10 @@ python flask_app.py                                     # CAS live at http://loc
 - `backup-verify`: `ok=True` (integrity + plaintext-sha256 match).
 - `backup-restore` → scratch: restored file `integrity_check = ok`.
 - Data fidelity vs source: accounts 79=79, journal_entries 1220=1220, users 2=2 (exact).
-- **RTO: ~1.8s** (664 KB-class DB; verify + restore each ~1–2s).
+- **DB restore round-trip: ~1.8s** (664 KB-class DB; verify + restore each ~1–2s). This is the
+  decrypt+restore step ONLY — **not** the disaster RTO. Real recovery time is dominated by standing
+  up the host and DNS cutover: **~5–15 min** with a pre-provisioned warm standby, **~30–90 min** for
+  a cold rebuild. Scenario-2 full failover (host provision + `--from-storage` + domain cutover) is
+  **not yet rehearsed** — add a game-day row here once a warm standby exists.
 - Deep `/audit` tie-out: to be run as the interactive manual step per procedure #4 before
   a production go-live cutover.
