@@ -33,8 +33,16 @@
     '<button type="button" id="ppFontInc" title="Larger">A+</button>' +
     '<button type="button" id="ppBoldBtn" title="Bold"><b>B</b></button>' +
     '<button type="button" id="ppDupBtn" title="Duplicate">Dup</button>' +
-    '<button type="button" id="ppDelBtn" title="Delete copy">Del</button>';
+    '<button type="button" id="ppDelBtn" title="Delete copy">Del</button>' +
+    '<input type="text" id="ppTextInput" title="Edit text" style="display:none;width:170px;">';
   document.body.appendChild(elBar);
+  const textInput = elBar.querySelector('#ppTextInput');
+  // Editing a layout text -> live-update its content.
+  textInput.addEventListener('input', () => {
+    if (selected && selected.classList.contains('pp-text')) selected.textContent = textInput.value;
+  });
+  // Don't let a drag start from inside the text input.
+  textInput.addEventListener('pointerdown', (e) => e.stopPropagation());
   let selected = null;
 
   function positionBar() {
@@ -52,6 +60,13 @@
     // Only duplicated copies are deletable; primary fields use the Fields checklist.
     const delBtn = elBar.querySelector('#ppDelBtn');
     if (delBtn) delBtn.style.display = el.dataset.extra ? '' : 'none';
+    // Layout texts and line-item columns are not duplicable.
+    const isText = el.classList.contains('pp-text');
+    const dupBtn = elBar.querySelector('#ppDupBtn');
+    if (dupBtn) dupBtn.style.display = (isText || el.classList.contains('pp-col')) ? 'none' : '';
+    // Layout texts get an editable text box in the toolbar.
+    textInput.style.display = isText ? '' : 'none';
+    if (isText) textInput.value = el.textContent;
     positionBar();
   }
   function duplicateSelected() {
@@ -70,18 +85,24 @@
     selectEl(null);
     el.remove();
   }
+  // A line-item column shares the band font, so font changes apply to every column.
+  function fontTargets() {
+    return (selected && selected.classList.contains('pp-col')) ? cols() : [selected];
+  }
   function changeFont(delta) {
     if (!selected) return;
-    const cur = parseInt(getComputedStyle(selected).fontSize) || 11;
-    selected.style.fontSize = Math.max(6, Math.min(72, cur + delta)) + 'px';
+    fontTargets().forEach((el) => {
+      const cur = parseInt(getComputedStyle(el).fontSize) || 11;
+      el.style.fontSize = Math.max(6, Math.min(72, cur + delta)) + 'px';
+    });
     positionBar();
   }
   elBar.querySelector('#ppFontInc').addEventListener('click', () => changeFont(1));
   elBar.querySelector('#ppFontDec').addEventListener('click', () => changeFont(-1));
   elBar.querySelector('#ppBoldBtn').addEventListener('click', () => {
     if (!selected) return;
-    const w = getComputedStyle(selected).fontWeight;
-    selected.style.fontWeight = (w === '700' || w === 'bold') ? 'normal' : 'bold';
+    const bold = ['700', 'bold'].includes(getComputedStyle(selected).fontWeight);
+    fontTargets().forEach((el) => { el.style.fontWeight = bold ? 'normal' : 'bold'; });
   });
   elBar.querySelector('#ppDupBtn').addEventListener('click', duplicateSelected);
   elBar.querySelector('#ppDelBtn').addEventListener('click', deleteSelected);
@@ -99,14 +120,14 @@
 
   // --- Per-field show/hide control strip (built once) ---
   function setFieldVisible(key, visible) {
-    const el = canvas.querySelector('.pp-el[data-el="' + key + '"]');
+    const el = canvas.querySelector('[data-el="' + key + '"], [data-text="' + key + '"]');
     if (el) el.classList.toggle('pp-field-hidden', !visible);
   }
   function buildFieldControls() {
     if (!fieldStrip || fieldStrip.dataset.built) return;
     fieldStrip.appendChild(stripHeading('Fields:'));
     fieldEls().forEach((el) => {
-      const key = el.dataset.el;
+      const key = el.dataset.el || el.dataset.text;
       const label = document.createElement('label');
       const cb = document.createElement('input');
       cb.type = 'checkbox';
@@ -169,9 +190,11 @@
 
   canvas.addEventListener('pointerdown', (e) => {
     if (!editing) return;
+    if (e.target.isContentEditable) return;    // let inline text editing happen
     const c = canvas.getBoundingClientRect();
     const col = e.target.closest('.pp-col');
     if (col) {
+      selectEl(col);                              // show the font toolbar for the band
       const r = col.getBoundingClientRect();
       if (e.clientX >= r.right - EDGE) {
         // grab the right edge -> resize width
@@ -227,7 +250,7 @@
   // --- Serialize DOM -> layout JSON ---
   function collect() {
     const fields = {};
-    canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra])').forEach((el) => {
+    canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra]):not(.pp-text)').forEach((el) => {
       const cs = getComputedStyle(el);
       fields[el.dataset.el] = {
         x: parseInt(el.style.left) || 0,
@@ -247,6 +270,18 @@
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
       };
     });
+    const texts = {};
+    canvas.querySelectorAll('.pp-text').forEach((el) => {
+      const cs = getComputedStyle(el);
+      texts[el.dataset.text] = {
+        text: el.textContent,
+        x: parseInt(el.style.left) || 0,
+        y: parseInt(el.style.top) || 0,
+        fontSize: parseInt(cs.fontSize) || 10,
+        bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
+        hidden: el.classList.contains('pp-field-hidden'),
+      };
+    });
     const colEls = cols();
     const first = colEls[0];
     const lics = first ? getComputedStyle(first) : null;
@@ -260,6 +295,7 @@
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
       dateFormat: (dateSel && dateSel.value) || 'long',
       extras,
+      texts,
       // read the select (exact ALLOWED_FONTS string) rather than the computed
       // stack, so the value round-trips through the server-side whitelist.
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
@@ -340,7 +376,7 @@
       canvas.style.width = opt.dataset.w + 'px';
       canvas.style.height = opt.dataset.h + 'px';
       const ps = document.getElementById('ppPageStyle');
-      if (ps) ps.textContent = '@media print { @page { size: ' + opt.dataset.css + '; margin: 0; } }';
+      if (ps) ps.textContent = '@page { size: ' + opt.dataset.css + '; margin: 0; }';
     });
   }
 })();

@@ -160,6 +160,42 @@ def test_duplicate_field_persists(logged_in_page, e2e_server):
     assert page.locator('[data-el="invoice_no"][data-extra]').count() == 1
 
 
+def test_signature_text_edit_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    page.click('[data-text="preparer"]')                     # select -> text box appears
+    page.fill('#ppTextInput', 'Prepared by: Juan')           # edit the layout text
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                            # fresh reload
+    assert 'Juan' in page.locator('[data-text="preparer"]').inner_text()
+
+
+def test_line_item_font_applies_to_band_and_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    amount = page.locator('.pp-col[data-col="amount"]')
+    before = amount.evaluate("e => parseInt(getComputedStyle(e).fontSize)")
+    amount.click()                                            # select the column
+    page.click('#ppFontInc')
+    page.click('#ppFontInc')
+    after = amount.evaluate("e => parseInt(getComputedStyle(e).fontSize)")
+    assert after > before
+    qty = page.locator('.pp-col[data-col="quantity"]').evaluate("e => parseInt(getComputedStyle(e).fontSize)")
+    assert qty == after                                       # applied to the whole band
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)
+    persisted = page.locator('.pp-col[data-col="amount"]').evaluate("e => parseInt(getComputedStyle(e).fontSize)")
+    assert persisted == after                                # persisted
+
+
 def test_hide_field_persists(logged_in_page, e2e_server):
     page = logged_in_page
     _enable_preprinted(page, e2e_server)

@@ -76,6 +76,24 @@ class TestPaper:
         assert sanitize_layout({'paper': 'a4-ish'})['paper'] == 'continuous'
 
 
+class TestTexts:
+    def test_default_signature_texts(self):
+        out = sanitize_layout({})
+        assert set(out['texts']) == {'preparer', 'checker', 'approver'}
+        assert out['texts']['preparer']['text'] == 'Prepared by:'
+
+    def test_text_edited_and_position_kept(self):
+        out = sanitize_layout({'texts': {'checker': {'text': 'Checked by JDC', 'x': 200}}})
+        assert out['texts']['checker']['text'] == 'Checked by JDC'
+        assert out['texts']['checker']['x'] == 200
+        # untouched ones keep their default text
+        assert out['texts']['approver']['text'] == 'Approved by:'
+
+    def test_text_length_capped(self):
+        out = sanitize_layout({'texts': {'preparer': {'text': 'x' * 500}}})
+        assert len(out['texts']['preparer']['text']) <= 200
+
+
 class TestExtras:
     def test_default_no_extras(self):
         assert sanitize_layout({})['extras'] == []
