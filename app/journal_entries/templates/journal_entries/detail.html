@@ -26,7 +26,7 @@
             </form>
             {% endif %}
 
-            {# Print: JV has no *_print_access setting -- always allowed (server-side can_print default-allows JV) #}
+            {# Print: JV has no *_print_access setting -- always allowed #}
             <a href="{{ url_for('journal_entries.print_entry', id=entry.id) }}"
                target="_blank"
                rel="noopener noreferrer" class="btn btn-secondary">Print</a>
