@@ -45,7 +45,8 @@ def log_audit(module, action, record_id, record_identifier=None, old_values=None
             action=action,
             record_id=record_id,
             record_identifier=record_identifier,
-            user_id=user_id if user_id is not None else (current_user.id if current_user.is_authenticated else None),
+            user_id=user_id if user_id is not None else (
+                current_user.id if has_request_context() and current_user.is_authenticated else None),
             branch_id=branch_id,
             old_values=json.dumps(old_values) if old_values else None,
             new_values=json.dumps(new_values) if new_values else None,
