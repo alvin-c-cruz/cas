@@ -26,6 +26,9 @@
   /* A column with no rows is empty -> show its label while editing so it stays grabbable. */
   .pp-canvas.pp-editing .pp-col:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
   .pp-col-hidden { display: none; }
+  /* Hidden fields: gone in view/print; shown greyed while editing so they can be restored. */
+  .pp-field-hidden { display: none; }
+  .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
   /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins for CONTINUOUS stock
      (the holes). Dropped for cut sheets (letter). Never printed. */
   .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
@@ -50,7 +53,7 @@
 
 {% macro field(key, value, iso='') %}
   {% set f = layout.fields[key] %}
-  <div class="pp-el" data-el="{{ key }}"{% if iso %} data-date="{{ iso }}"{% endif %}
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}
        style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
 {% endmacro %}
 
@@ -82,6 +85,7 @@
 </div>
 
 {% if can_edit_layout %}
+<div id="ppFieldControls" class="pp-col-controls screen-only"></div>
 <div id="ppColControls" class="pp-col-controls screen-only"></div>
 {% endif %}
 
@@ -127,7 +131,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=8"></script>
 {% endif %}
 </body>
 </html>

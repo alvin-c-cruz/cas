@@ -51,6 +51,20 @@ FIELD_KEYS = [
     'amount_collectible', 'notes',
 ]
 
+# Friendly names for the per-field show/hide strip.
+FIELD_LABELS = {
+    'invoice_no': 'Invoice No.',
+    'invoice_date': 'Date',
+    'due_date': 'Due Date',
+    'terms': 'Terms',
+    'customer_name': 'Customer',
+    'customer_tin': 'TIN',
+    'customer_address': 'Address',
+    'customer_po': 'PO No.',
+    'amount_collectible': 'Amount Collectible',
+    'notes': 'Notes',
+}
+
 COLUMN_KEYS = [
     'line_number', 'description', 'product', 'quantity',
     'uom', 'unit_price', 'amount',
@@ -142,6 +156,7 @@ def _clean_box(raw, default):
         'y': _clamp(raw.get('y'), 0, CANVAS_H, default['y']),
         'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, default['fontSize']),
         'bold': bool(raw.get('bold', default['bold'])),
+        'hidden': bool(raw.get('hidden', default.get('hidden', False))),
     }
 
 

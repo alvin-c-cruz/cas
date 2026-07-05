@@ -212,3 +212,18 @@ class TestPreprintedLayoutRender:
         # _invoice.invoice_date is 2026-06-14 -> renders ISO when dateFormat='iso'
         m = _re.search(r'data-el="invoice_date"[^>]*>([^<]+)</div>', html)
         assert m and m.group(1).strip() == '2026-06-14'
+
+    def test_hidden_field_marked(self, client, db_session, admin_user,
+                                 main_branch, _customer, _invoice):
+        import json as _json, re as _re
+        from app.sales_invoices.preprinted_layout import get_layout
+        layout = get_layout()
+        layout['fields']['terms']['hidden'] = True
+        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        self._prep(client)
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        assert 'id="ppFieldControls"' in html
+        terms = _re.search(r'<div class="([^"]*)" data-el="terms"', html)
+        invno = _re.search(r'<div class="([^"]*)" data-el="invoice_no"', html)
+        assert terms and 'pp-field-hidden' in terms.group(1)
+        assert invno and 'pp-field-hidden' not in invno.group(1)

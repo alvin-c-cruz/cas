@@ -23,8 +23,8 @@ class TestSanitize:
         assert 'evil_key' not in out['fields']
         assert out['fields']['invoice_no']['x'] == 111
         assert out['fields']['invoice_no']['y'] == 222
-        # missing field still present at its default
-        assert out['fields']['terms'] == DEFAULT_SV_PREPRINTED_LAYOUT['fields']['terms']
+        # missing field still present at its (sanitized) default
+        assert out['fields']['terms'] == sanitize_layout({})['fields']['terms']
 
     def test_coords_and_sizes_clamped_and_coerced(self):
         out = sanitize_layout({'fields': {'invoice_no': {'x': -50, 'y': 99999,
@@ -74,6 +74,17 @@ class TestPaper:
 
     def test_unknown_paper_falls_back_to_continuous(self):
         assert sanitize_layout({'paper': 'a4-ish'})['paper'] == 'continuous'
+
+
+class TestFieldHidden:
+    def test_fields_default_visible(self):
+        out = sanitize_layout({})
+        assert all(f['hidden'] is False for f in out['fields'].values())
+
+    def test_field_can_be_hidden_and_round_trips(self):
+        out = sanitize_layout({'fields': {'terms': {'hidden': True}}})
+        assert out['fields']['terms']['hidden'] is True
+        assert out['fields']['invoice_no']['hidden'] is False
 
 
 class TestDateFormat:

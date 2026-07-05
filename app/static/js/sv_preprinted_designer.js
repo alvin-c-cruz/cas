@@ -9,6 +9,7 @@
   const fontSel = document.getElementById('ppFontFamily');
   const paperSel = document.getElementById('ppPaper');
   const dateSel = document.getElementById('ppDateFormat');
+  const fieldStrip = document.getElementById('ppFieldControls');
   const colStrip = document.getElementById('ppColControls');
   const printBtn = document.querySelector('.btn-print');
   let editing = false;
@@ -64,6 +65,37 @@
 
   const li = () => canvas.querySelector('.pp-lineitems');
   const cols = () => [...canvas.querySelectorAll('.pp-col')];
+  const fieldEls = () => [...canvas.querySelectorAll('.pp-el:not(.pp-lineitems)')];
+
+  function stripHeading(text) {
+    const h = document.createElement('span');
+    h.textContent = text;
+    h.style.fontWeight = '700';
+    return h;
+  }
+
+  // --- Per-field show/hide control strip (built once) ---
+  function setFieldVisible(key, visible) {
+    const el = canvas.querySelector('.pp-el[data-el="' + key + '"]');
+    if (el) el.classList.toggle('pp-field-hidden', !visible);
+  }
+  function buildFieldControls() {
+    if (!fieldStrip || fieldStrip.dataset.built) return;
+    fieldStrip.appendChild(stripHeading('Fields:'));
+    fieldEls().forEach((el) => {
+      const key = el.dataset.el;
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.fieldtoggle = key;
+      cb.checked = !el.classList.contains('pp-field-hidden');
+      cb.addEventListener('change', () => setFieldVisible(key, cb.checked));
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + (el.dataset.label || key)));
+      fieldStrip.appendChild(label);
+    });
+    fieldStrip.dataset.built = '1';
+  }
 
   // --- Column show/hide control strip (built once) ---
   function setColVisible(key, visible) {
@@ -72,6 +104,7 @@
   }
   function buildColControls() {
     if (!colStrip || colStrip.dataset.built) return;
+    colStrip.appendChild(stripHeading('Columns:'));
     cols().forEach((col) => {
       const key = col.dataset.col;
       if (key === 'description') return;   // Description is mandatory — no show/hide toggle
@@ -96,6 +129,7 @@
     if (paperSel) paperSel.style.display = editing ? '' : 'none';
     if (dateSel) dateSel.style.display = editing ? '' : 'none';
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
+    if (fieldStrip) { buildFieldControls(); fieldStrip.classList.toggle('pp-show', editing); }
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
     editBtn.textContent = editing ? 'Exit Edit' : 'Edit Layout';
     if (!editing) selectEl(null);
@@ -158,6 +192,7 @@
         y: parseInt(el.style.top) || 0,
         fontSize: parseInt(cs.fontSize) || 11,
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
+        hidden: el.classList.contains('pp-field-hidden'),
       };
     });
     const colEls = cols();
