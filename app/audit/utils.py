@@ -3,7 +3,7 @@ Audit Log Utility Functions
 Helper functions for logging changes to the audit trail
 """
 import json
-from flask import request, session
+from flask import request, session, has_request_context
 from flask_login import current_user
 from app import db
 from app.audit.models import AuditLog
@@ -29,12 +29,15 @@ def log_audit(module, action, record_id, record_identifier=None, old_values=None
         AuditLog: The created audit log entry
     """
     try:
-        # Get request context
-        ip_address = request.remote_addr if request else None
-        user_agent = request.headers.get('User-Agent') if request else None
-
-        # Get current branch from session (if available)
-        branch_id = session.get('selected_branch_id') if session else None
+        # Get request context — safe outside a request (CLI/scheduler callers).
+        # Rely on has_request_context() rather than LocalProxy truthiness, whose
+        # unbound behavior has varied across Werkzeug versions.
+        if has_request_context():
+            ip_address = request.remote_addr
+            user_agent = request.headers.get('User-Agent')
+            branch_id = session.get('selected_branch_id')
+        else:
+            ip_address = user_agent = branch_id = None
 
         # Create audit log entry
         audit_log = AuditLog(
