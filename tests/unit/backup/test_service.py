@@ -125,52 +125,44 @@ def _seed_backup(store, stem):
             fh.write(b"x")
 
 
-def test_prune_deletes_older_than_retention(db_session, tmp_path):
-    from datetime import timedelta
-    from app.utils import ph_now
+def test_prune_keeps_last_n(db_session, tmp_path):
     from app.backup.service import _prune
     store = LocalStorage(str(tmp_path / "s"))
-    old = (ph_now() - timedelta(days=40)).strftime("cas-%Y-%m-%dT%H-%M-%S")
-    recent = (ph_now() - timedelta(days=5)).strftime("cas-%Y-%m-%dT%H-%M-%S")
-    newest = ph_now().strftime("cas-%Y-%m-%dT%H-%M-%S")
-    for s in (old, recent, newest):
+    stems = [f"cas-2026-07-0{i}T10-00-00" for i in range(1, 6)]  # 01..05, oldest..newest
+    for s in stems:
         _seed_backup(store, s)
-    deleted = _prune(store, retention_days=30, clock=ph_now)
+    deleted = _prune(store, keep_count=3)
     names = {o.name for o in store.list()}
-    assert deleted == 2  # old .db.enc + old .manifest.json
-    assert not any(n.startswith(old) for n in names)
-    assert any(n.startswith(recent) for n in names)
-    assert any(n.startswith(newest) for n in names)
+    assert deleted == 4  # 2 oldest backups pruned x2 files each
+    assert not any(n.startswith("cas-2026-07-01") for n in names)  # oldest gone
+    assert not any(n.startswith("cas-2026-07-02") for n in names)
+    assert any(n.startswith("cas-2026-07-05") for n in names)      # newest kept
 
 
-def test_prune_never_deletes_last_backup(db_session, tmp_path):
-    from datetime import timedelta
-    from app.utils import ph_now
+def test_prune_noop_when_at_or_under_cap(db_session, tmp_path):
     from app.backup.service import _prune
     store = LocalStorage(str(tmp_path / "s"))
-    ancient = (ph_now() - timedelta(days=100)).strftime("cas-%Y-%m-%dT%H-%M-%S")
-    _seed_backup(store, ancient)  # the only backup, very old
-    deleted = _prune(store, retention_days=30, clock=ph_now)
-    assert deleted == 0
-    assert any(o.name.endswith(".db.enc") for o in store.list())
+    for s in ("cas-2026-01-01T10-00-00", "cas-2026-07-05T10-00-00"):
+        _seed_backup(store, s)
+    assert _prune(store, keep_count=30) == 0  # only 2, under cap -> nothing pruned
+    assert len([o for o in store.list() if o.name.endswith(".db.enc")]) == 2
 
 
-def test_run_backup_prunes_old_on_success(db_session, tmp_path):
-    from datetime import timedelta
-    from app.utils import ph_now
+def test_run_backup_prunes_to_cap_on_success(db_session, tmp_path):
     store = LocalStorage(str(tmp_path / "s"))
-    old = (ph_now() - timedelta(days=40)).strftime("cas-%Y-%m-%dT%H-%M-%S")
-    _seed_backup(store, old)
+    for s in ("cas-2026-01-01T10-00-00", "cas-2026-01-02T10-00-00", "cas-2026-01-03T10-00-00"):
+        _seed_backup(store, s)  # 3 old backups
     src = tmp_path / "src.db"
     _make_db(str(src))
     cfg = _cfg(tmp_path)
     cfg["BACKUP_LOCAL_DIR"] = str(tmp_path / "s")
-    cfg["BACKUP_RETENTION_DAYS"] = 30
+    cfg["BACKUP_RETENTION_COUNT"] = 2
     run = run_backup('cli', 'admin', storage=store, source_db_path=str(src),
                      key_provider=KP, config=cfg)
     assert run.status == 'success'
-    names = {o.name for o in store.list()}
-    assert not any(n.startswith(old) for n in names)  # old pruned by the successful run
+    db_names = sorted(o.name for o in store.list() if o.name.endswith(".db.enc"))
+    assert len(db_names) == 2  # capped at 2 newest after the new backup landed
+    assert any("2026-07" in n for n in db_names)  # today's new backup is kept
 
 
 def test_no_plaintext_left_on_disk(db_session, tmp_path):

@@ -10,7 +10,7 @@ import os
 import sqlite3
 import tempfile
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from flask import current_app
 
@@ -55,33 +55,19 @@ def _checksum(path: str, algo: str) -> str:
     return h.hexdigest()
 
 
-def _stamp_from_name(name: str):
-    """Parse the PH-time timestamp from an artifact name like
-    'cas-2026-07-05T13-42-11.db.enc' -> naive datetime, or None."""
-    base = name.split(".")[0]
-    if not base.startswith("cas-"):
-        return None
-    try:
-        return datetime.strptime(base[4:], "%Y-%m-%dT%H-%M-%S")
-    except ValueError:
-        return None
-
-
-def _prune(storage, retention_days, clock=ph_now):
-    """Delete backups older than retention_days. Never deletes the most-recent
-    backup (safety floor). Each backup = a stem's .db.enc + .manifest.json pair."""
+def _prune(storage, keep_count):
+    """Keep the newest `keep_count` backups; delete the rest. Each backup = a
+    stem's .db.enc + .manifest.json pair; artifact names carry ISO timestamps so
+    stems sort chronologically. The newest is always in the keep set (safety
+    floor), and if there are <= keep_count backups nothing is pruned."""
     objs = storage.list()
     db_objs = [o for o in objs if o.name.endswith(".db.enc")]
-    if len(db_objs) <= 1:
-        return 0  # never prune the last/only backup
-    newest_stem = max(o.name.split(".")[0] for o in db_objs)  # ISO stems sort chronologically
-    cutoff = (clock() - timedelta(days=retention_days)).replace(tzinfo=None)
+    if len(db_objs) <= keep_count:
+        return 0
+    keep = set(sorted((o.name.split(".")[0] for o in db_objs), reverse=True)[:keep_count])
     deleted = 0
     for o in objs:
-        if o.name.split(".")[0] == newest_stem:
-            continue  # always keep the newest backup pair
-        ts = _stamp_from_name(o.name)
-        if ts is not None and ts < cutoff:
+        if o.name.split(".")[0] not in keep:
             try:
                 storage.delete(o.ref)
                 deleted += 1
@@ -186,7 +172,7 @@ def run_backup(triggered_by, actor, *, storage=None, source_db_path=None,
         run.duration_ms = int((clock() - start).total_seconds() * 1000)
         db.session.commit()
         try:
-            _prune(storage, int(config.get("BACKUP_RETENTION_DAYS", 30)), clock)
+            _prune(storage, int(config.get("BACKUP_RETENTION_COUNT", 30)))
         except Exception:  # noqa: BLE001 — prune runs last + best-effort; never fail a verified backup
             pass
         _audit(run)
