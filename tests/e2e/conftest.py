@@ -31,7 +31,12 @@ def _free_port():
         s.close()
 
 
-@pytest.fixture(scope='session')
+# MODULE scope (not session): the dev server subprocess progressively slows as it
+# handles many requests over a long run (a connection/session leak in dev config —
+# tracked separately), which made the LATER e2e tests in a big batch time out on the
+# post-login sidebar wait. A fresh server per test file keeps each batch small and
+# healthy, fixing the flaky pre-push guard without masking the underlying leak.
+@pytest.fixture(scope='module')
 def e2e_server(tmp_path_factory):
     port = _free_port()
     db_path = tmp_path_factory.mktemp('e2e_db') / 'cas_e2e.db'
