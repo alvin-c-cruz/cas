@@ -317,7 +317,7 @@ function addLineItem(existingItem) {
         ${uomMasterOn ? `
         <td><select class="form-control" id="uom-sel-${id}" onchange="updateLineItem(${id}, 'uom_id', this.value)">
               <option value="">—</option>
-              ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
+              ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
             </select></td>` : `
         <td><input type="text" maxlength="20" id="uom-txt-${id}" class="form-control"
                    value="${escHtml(item.uom_text != null ? item.uom_text : '')}"

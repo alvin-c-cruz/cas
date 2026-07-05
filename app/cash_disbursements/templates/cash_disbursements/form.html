@@ -715,7 +715,7 @@ function addExpenseLine(existingItem) {
         ? `<select class="form-control uom-select" style="min-width:60px">
                <option value="">—</option>
                <option value="__add_uom__">+ Add UOM</option>
-               ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
+               ${units.map(u => `<option value="${u.id}" data-custom-properties="${escHtml(JSON.stringify({name: u.name}))}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
            </select>`
         : `<input type="text" class="form-control uom-text-inp" style="min-width:50px" value="${escHtml(item.uom_text || '')}"
                   onchange="updateExpense(${id}, 'uom_text', this.value)">`;
@@ -830,13 +830,24 @@ function addExpenseLine(existingItem) {
     const uomSel = newRow.querySelector('.uom-select');
     let uomC = null;
     if (uomSel) {
-        uomC = new Choices(uomSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 30, allowHTML: false });
+        uomC = new Choices(uomSel, {
+            searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 30, allowHTML: false,
+            callbackOnCreateTemplates: function(tmpl) {
+                return {
+                    item: function(cfg, data) {
+                        const cn = cfg.classNames;
+                        const name = (data.customProperties && data.customProperties.name) || data.label || data.value;
+                        return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(name))}</div>`);
+                    }
+                };
+            }
+        });
         uomSel.addEventListener('change', () => {
             if (uomSel.value === '__add_uom__') {
                 uomC.setChoiceByValue('');
                 openUomModal(id, function(u) {
                     units.push(u);
-                    uomC.setChoices([{value: String(u.id), label: escHtml(u.code)}], 'value', 'label', false);
+                    uomC.setChoices([{value: String(u.id), label: escHtml(u.code) + ': ' + escHtml(u.name), customProperties: {name: u.name}}], 'value', 'label', false);
                     uomC.setChoiceByValue(String(u.id));
                     updateExpense(id, 'uom_id', u.id);
                 });
