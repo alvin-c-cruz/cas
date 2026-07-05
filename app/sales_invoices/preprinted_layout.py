@@ -66,15 +66,14 @@ FIELD_LABELS = {
 }
 
 COLUMN_KEYS = [
-    'line_number', 'description', 'product', 'quantity',
+    'line_number', 'product', 'quantity',
     'uom', 'unit_price', 'amount',
 ]
 
 # Header labels for the line-item columns (presentation; keyed by COLUMN_KEYS).
 COLUMN_LABELS = {
     'line_number': '#',
-    'description': 'Description / Particulars',
-    'product': 'Product',
+    'product': 'Particulars',
     'quantity': 'Qty',
     'uom': 'UOM',
     'unit_price': 'Unit Price',
@@ -130,8 +129,7 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
         'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
         'columns': [
             {'key': 'line_number', 'x': 56,  'visible': True,  'width': 30},
-            {'key': 'description', 'x': 92,  'visible': True,  'width': 300},
-            {'key': 'product',     'x': 400, 'visible': False, 'width': 120},
+            {'key': 'product',     'x': 92,  'visible': True,  'width': 300},
             {'key': 'quantity',    'x': 430, 'visible': True,  'width': 60},
             {'key': 'uom',         'x': 510, 'visible': True,  'width': 50},
             {'key': 'unit_price',  'x': 580, 'visible': True,  'width': 90},

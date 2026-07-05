@@ -42,11 +42,11 @@ class TestSanitize:
     def test_columns_reorder_and_hide_preserved_unknown_dropped(self):
         out = sanitize_layout({'lineItems': {'columns': [
             {'key': 'amount', 'visible': True, 'width': 100},
-            {'key': 'description', 'visible': False, 'width': 300},
+            {'key': 'quantity', 'visible': False, 'width': 60},
             {'key': 'bogus', 'visible': True, 'width': 50},
         ]}})
         keys = [c['key'] for c in out['lineItems']['columns']]
-        assert keys[0] == 'amount' and keys[1] == 'description'   # order preserved
+        assert keys[0] == 'amount' and keys[1] == 'quantity'     # order preserved
         assert 'bogus' not in keys                                # unknown dropped
         assert set(keys) == set(COLUMN_KEYS)                      # missing ones appended
         assert out['lineItems']['columns'][1]['visible'] is False
