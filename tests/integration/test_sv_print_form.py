@@ -198,3 +198,17 @@ class TestPreprintedLayoutRender:
         assert 'data-paper="letter"' in html
         assert 'width:816px;height:1056px' in html   # letter canvas
         assert '8.5in 11in' in html                   # @page size
+
+    def test_date_format_applied(self, client, db_session, admin_user,
+                                 main_branch, _customer, _invoice):
+        import json as _json, re as _re
+        from app.sales_invoices.preprinted_layout import get_layout
+        layout = get_layout()
+        layout['dateFormat'] = 'iso'
+        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        self._prep(client)
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        assert 'id="ppDateFormat"' in html
+        # _invoice.invoice_date is 2026-06-14 -> renders ISO when dateFormat='iso'
+        m = _re.search(r'data-el="invoice_date"[^>]*>([^<]+)</div>', html)
+        assert m and m.group(1).strip() == '2026-06-14'

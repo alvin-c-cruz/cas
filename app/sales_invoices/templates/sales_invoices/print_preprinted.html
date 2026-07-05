@@ -48,9 +48,9 @@
 </head>
 <body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
 
-{% macro field(key, value) %}
+{% macro field(key, value, iso='') %}
   {% set f = layout.fields[key] %}
-  <div class="pp-el" data-el="{{ key }}"
+  <div class="pp-el" data-el="{{ key }}"{% if iso %} data-date="{{ iso }}"{% endif %}
        style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
 {% endmacro %}
 
@@ -73,6 +73,11 @@
     </optgroup>
     {% endfor %}
   </select>
+  <select id="ppDateFormat" class="screen-only" style="display:none;" title="Date format">
+    {% for key in date_formats %}
+    <option value="{{ key }}" {{ 'selected' if key == layout.dateFormat else '' }}>{{ date_labels[key] }}</option>
+    {% endfor %}
+  </select>
   {% endif %}
 </div>
 
@@ -84,9 +89,10 @@
   <div class="pp-margin-guide screen-only" style="left:48px;"></div>
   <div class="pp-margin-guide screen-only" style="right:48px;"></div>
   {# Values only — the pre-printed stock supplies every label/header. #}
+  {% set date_fmt = date_formats[layout.dateFormat] %}
   {{ field('invoice_no', invoice.invoice_number) }}
-  {{ field('invoice_date', invoice.invoice_date.strftime('%d %B %Y')) }}
-  {{ field('due_date', invoice.due_date.strftime('%d %B %Y') if invoice.due_date else '') }}
+  {{ field('invoice_date', invoice.invoice_date.strftime(date_fmt), invoice.invoice_date.isoformat()) }}
+  {{ field('due_date', invoice.due_date.strftime(date_fmt) if invoice.due_date else '', invoice.due_date.isoformat() if invoice.due_date else '') }}
   {{ field('terms', invoice.payment_terms or '') }}
   {{ field('customer_name', invoice.customer_name) }}
   {{ field('customer_tin', invoice.customer_tin or '') }}
@@ -121,7 +127,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=6"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=7"></script>
 {% endif %}
 </body>
 </html>

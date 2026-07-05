@@ -8,6 +8,7 @@
   const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
   const fontSel = document.getElementById('ppFontFamily');
   const paperSel = document.getElementById('ppPaper');
+  const dateSel = document.getElementById('ppDateFormat');
   const colStrip = document.getElementById('ppColControls');
   const printBtn = document.querySelector('.btn-print');
   let editing = false;
@@ -73,6 +74,7 @@
     if (!colStrip || colStrip.dataset.built) return;
     cols().forEach((col) => {
       const key = col.dataset.col;
+      if (key === 'description') return;   // Description is mandatory — no show/hide toggle
       const label = document.createElement('label');
       const cb = document.createElement('input');
       cb.type = 'checkbox';
@@ -92,6 +94,7 @@
     saveBtn.style.display = editing ? '' : 'none';
     if (fontSel) fontSel.style.display = editing ? '' : 'none';
     if (paperSel) paperSel.style.display = editing ? '' : 'none';
+    if (dateSel) dateSel.style.display = editing ? '' : 'none';
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
     editBtn.textContent = editing ? 'Exit Edit' : 'Edit Layout';
@@ -168,6 +171,7 @@
     }));
     return {
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
+      dateFormat: (dateSel && dateSel.value) || 'long',
       // read the select (exact ALLOWED_FONTS string) rather than the computed
       // stack, so the value round-trips through the server-side whitelist.
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
@@ -211,6 +215,32 @@
   if (fontSel) {
     fontSel.addEventListener('change', () => {
       document.body.style.fontFamily = fontSel.value;
+    });
+  }
+
+  // date format: live-preview the invoice/due dates. Keys + strftime mirror
+  // preprinted_layout.DATE_FORMATS (day/month zero-padded, matching strftime).
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function fmtDate(iso, key) {
+    const p = (iso || '').split('-');
+    if (p.length !== 3) return iso || '';
+    const y = p[0], m = p[1], d = p[2], mi = parseInt(m, 10) - 1;
+    switch (key) {
+      case 'long': return d + ' ' + MONTHS[mi] + ' ' + y;
+      case 'medium': return MON[mi] + ' ' + d + ', ' + y;
+      case 'us': return m + '/' + d + '/' + y;
+      case 'eu': return d + '/' + m + '/' + y;
+      default: return iso;   // iso
+    }
+  }
+  if (dateSel) {
+    dateSel.addEventListener('change', () => {
+      canvas.querySelectorAll('.pp-el[data-date]').forEach((el) => {
+        el.textContent = fmtDate(el.dataset.date, dateSel.value);
+      });
     });
   }
 

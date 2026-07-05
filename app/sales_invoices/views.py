@@ -18,7 +18,8 @@ from app.utils.cache_helpers import get_active_units, get_active_products
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.settings import AppSettings
 from app.sales_invoices.preprinted_layout import (
-    get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS)
+    get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
+    DATE_FORMATS)
 from app.periods.utils import validate_transaction_date_with_flash
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -1212,7 +1213,9 @@ def print_invoice(id):
             je_entries=je_entries, company=company, printed_at=ph_now(),
             layout=get_layout(), can_edit_layout=(current_user.role == 'admin'),
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
-            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS)
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('sales_invoices/print.html', invoice=invoice,
                            je_entries=je_entries, company=company, printed_at=ph_now())
 

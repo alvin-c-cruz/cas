@@ -76,6 +76,18 @@ class TestPaper:
         assert sanitize_layout({'paper': 'a4-ish'})['paper'] == 'continuous'
 
 
+class TestDateFormat:
+    def test_default_is_long(self):
+        assert DEFAULT_SV_PREPRINTED_LAYOUT['dateFormat'] == 'long'
+        assert sanitize_layout({})['dateFormat'] == 'long'
+
+    def test_iso_accepted(self):
+        assert sanitize_layout({'dateFormat': 'iso'})['dateFormat'] == 'iso'
+
+    def test_unknown_falls_back_to_long(self):
+        assert sanitize_layout({'dateFormat': 'bogus'})['dateFormat'] == 'long'
+
+
 class TestFonts:
     def test_new_monospace_fonts_allowed_and_round_trip(self):
         for f in ['Consolas, "Courier New", monospace', '"Lucida Console", Monaco, monospace']:

@@ -109,6 +109,20 @@ def test_paper_change_persists(logged_in_page, e2e_server):
     assert page.locator('#ppCanvas').evaluate("e => e.style.width") == '816px'
 
 
+def test_date_format_change_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    page.select_option('#ppDateFormat', 'iso')                # switch to YYYY-MM-DD
+    assert page.locator('[data-el="invoice_date"]').inner_text().count('-') == 2  # live preview
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                            # fresh reload
+    assert page.locator('[data-el="invoice_date"]').inner_text().count('-') == 2  # persisted
+
+
 def test_bold_and_page_font_persist(logged_in_page, e2e_server):
     page = logged_in_page
     _enable_preprinted(page, e2e_server)

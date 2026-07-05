@@ -81,8 +81,21 @@ PAPER_LABELS = {
     'letter':     'Letter 8.5 x 11',
 }
 
+# Date format for the invoice/due dates. key -> strftime. The dropdown labels are
+# generated from a sample date so they always match. The JS live-preview mirrors these
+# keys (sv_preprinted_designer.js::fmtDate).
+DATE_FORMATS = {
+    'long':   '%d %B %Y',
+    'medium': '%b %d, %Y',
+    'us':     '%m/%d/%Y',
+    'eu':     '%d/%m/%Y',
+    'iso':    '%Y-%m-%d',
+}
+ALLOWED_DATE_FORMATS = tuple(DATE_FORMATS)
+
 DEFAULT_SV_PREPRINTED_LAYOUT = {
     'paper': 'continuous',
+    'dateFormat': 'long',
     'page': {'fontFamily': '"Courier New", Courier, monospace'},
     'fields': {
         'invoice_no':         {'x': 520, 'y': 50,  'fontSize': 12, 'bold': True},
@@ -162,6 +175,7 @@ def sanitize_layout(raw):
     raw = raw if isinstance(raw, dict) else {}
     d = DEFAULT_SV_PREPRINTED_LAYOUT
     paper = raw.get('paper') if raw.get('paper') in ALLOWED_PAPERS else d['paper']
+    date_fmt = raw.get('dateFormat') if raw.get('dateFormat') in ALLOWED_DATE_FORMATS else d['dateFormat']
     font = (raw.get('page') or {}).get('fontFamily')
     page = {'fontFamily': font if font in ALLOWED_FONTS else d['page']['fontFamily']}
     raw_fields = raw.get('fields') if isinstance(raw.get('fields'), dict) else {}
@@ -175,7 +189,8 @@ def sanitize_layout(raw):
         'bold': bool(raw_li.get('bold', dli['bold'])),
         'columns': _clean_columns(raw_li.get('columns')),
     }
-    return {'paper': paper, 'page': page, 'fields': fields, 'lineItems': line_items}
+    return {'paper': paper, 'dateFormat': date_fmt, 'page': page,
+            'fields': fields, 'lineItems': line_items}
 
 
 def get_layout():
