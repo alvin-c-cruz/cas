@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Sales Invoice {{ invoice.invoice_number }} — Pre-printed</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/sv_preprinted_designer.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sv_preprinted_designer.css') }}?v=2">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
@@ -13,9 +13,22 @@
   .pp-el { position: absolute; white-space: nowrap; }
   .pp-lineitems { white-space: normal; }
   .pp-lineitems table { border-collapse: collapse; }
-  .pp-lineitems th, .pp-lineitems td { padding: 3px 6px; text-align: left; border-bottom: 1px solid #ddd; }
-  .pp-lineitems th { border-bottom: 1px solid #999; font-weight: 700; }
+  .pp-lineitems th, .pp-lineitems td { padding: 3px 6px; text-align: left; }
+  .pp-lineitems th { font-weight: 700; }
+  /* Column headers are labels -> pre-printed on the stock; only surface them in edit
+     mode so the columns can be identified, reordered, and toggled. Never printed. */
+  .pp-lineitems thead { display: none; }
+  .pp-canvas.pp-editing .pp-lineitems thead { display: table-header-group; }
+  .pp-canvas.pp-editing .pp-lineitems th { border-bottom: 1px solid #999; }
+  /* Empty value fields are invisible/zero-size; give them a grab target while editing. */
+  .pp-canvas.pp-editing .pp-el:empty::before { content: attr(data-el); color: #bbb; font-style: italic; }
   .pp-amount { text-align: right; font-family: monospace; }
+  .pp-col-hidden { display: none; }
+  /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins, left + right. Never printed. */
+  .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
+  .pp-col-controls { max-width: 912px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+  .pp-col-controls.pp-show { display: flex; }
+  .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
   .pp-toolbar { max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
   .btn-print { background: #1565c0; color: #fff; }
@@ -50,16 +63,23 @@
   {% endif %}
 </div>
 
+{% if can_edit_layout %}
+<div id="ppColControls" class="pp-col-controls screen-only"></div>
+{% endif %}
+
 <div class="pp-canvas" id="ppCanvas">
-  {{ field('invoice_no', 'Invoice No.: ' ~ invoice.invoice_number) }}
-  {{ field('invoice_date', 'Date: ' ~ invoice.invoice_date.strftime('%d %B %Y')) }}
-  {{ field('due_date', 'Due: ' ~ (invoice.due_date.strftime('%d %B %Y') if invoice.due_date else '—')) }}
-  {{ field('terms', 'Terms: ' ~ (invoice.payment_terms or '—')) }}
+  <div class="pp-margin-guide screen-only" style="left:48px;"></div>
+  <div class="pp-margin-guide screen-only" style="right:48px;"></div>
+  {# Values only — the pre-printed stock supplies every label/header. #}
+  {{ field('invoice_no', invoice.invoice_number) }}
+  {{ field('invoice_date', invoice.invoice_date.strftime('%d %B %Y')) }}
+  {{ field('due_date', invoice.due_date.strftime('%d %B %Y') if invoice.due_date else '') }}
+  {{ field('terms', invoice.payment_terms or '') }}
   {{ field('customer_name', invoice.customer_name) }}
-  {{ field('customer_tin', 'TIN: ' ~ (invoice.customer_tin or '—')) }}
+  {{ field('customer_tin', invoice.customer_tin or '') }}
   {{ field('customer_address', invoice.customer_address or '') }}
-  {{ field('customer_po', 'PO: ' ~ (invoice.customer_po_number or '—')) }}
-  {{ field('amount_collectible', '₱ ' ~ '{:,.2f}'.format(invoice.total_amount)) }}
+  {{ field('customer_po', invoice.customer_po_number or '') }}
+  {{ field('amount_collectible', '{:,.2f}'.format(invoice.total_amount)) }}
   {{ field('notes', invoice.notes or '') }}
 
   {% set li = layout.lineItems %}
@@ -67,16 +87,16 @@
        style="left:{{ li.x }}px;top:{{ li.y }}px;width:{{ li.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
     <table style="width:{{ li.width }}px;">
       <thead><tr>
-        {% for col in li.columns if col.visible %}
-        <th data-col="{{ col.key }}" style="width:{{ col.width }}px;">{{ col_labels[col.key] }}</th>
+        {% for col in li.columns %}
+        <th data-col="{{ col.key }}" class="{{ 'pp-col-hidden' if not col.visible else '' }}" style="width:{{ col.width }}px;">{{ col_labels[col.key] }}</th>
         {% endfor %}
       </tr></thead>
       <tbody>
         {% for item in invoice.line_items %}
         <tr>
-          {% for col in li.columns if col.visible %}
-          <td data-col="{{ col.key }}"
-              class="{{ 'pp-amount' if col.key in ('amount', 'unit_price', 'quantity') else '' }}">
+          {% for col in li.columns %}
+          <td data-col="{{ col.key }}" style="width:{{ col.width }}px;"
+              class="{{ 'pp-amount ' if col.key in ('amount', 'unit_price', 'quantity') else '' }}{{ 'pp-col-hidden' if not col.visible else '' }}">
             {%- if col.key == 'line_number' -%}{{ item.line_number }}
             {%- elif col.key == 'description' -%}{{ item.description or '—' }}
             {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
@@ -95,7 +115,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=2"></script>
 {% endif %}
 </body>
 </html>

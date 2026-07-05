@@ -155,8 +155,12 @@ class TestPreprintedLayoutRender:
         AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
         self._prep(client)
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
-        assert 'data-col="amount"' in html      # a visible column renders
-        assert 'data-col="uom"' not in html      # a hidden column does not
+        import re as _re
+        # all columns render; the hidden one is marked pp-col-hidden (present but not printed)
+        uom_th = _re.search(r'<th data-col="uom"[^>]*>', html)
+        amt_th = _re.search(r'<th data-col="amount"[^>]*>', html)
+        assert uom_th and 'pp-col-hidden' in uom_th.group(0)
+        assert amt_th and 'pp-col-hidden' not in amt_th.group(0)
 
     def test_edit_button_admin_only(self, client, db_session, admin_user,
                                     main_branch, _customer, _invoice):

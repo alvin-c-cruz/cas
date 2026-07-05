@@ -1,11 +1,13 @@
 /* SI pre-printed layout designer (SI-P-71) — the thin drag/serialize/save layer.
-   Positioning is drag-only; the only control inputs are fonts (Task 6) and column
-   show/hide (Task 5). Serializes the DOM to the layout JSON and POSTs it. */
+   Positioning is drag-only. Columns: drag a header left/right to reorder; a checkbox
+   strip toggles show/hide. Serializes the DOM to the layout JSON and POSTs it. */
 (function () {
   const canvas = document.getElementById('ppCanvas');
   const editBtn = document.getElementById('editLayoutBtn');
   if (!canvas || !editBtn) return;
   const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  const fontSel = document.getElementById('ppFontFamily');
+  const colStrip = document.getElementById('ppColControls');
   let editing = false;
 
   // --- Save button injected next to Edit ---
@@ -17,31 +19,85 @@
   saveBtn.style.display = 'none';
   editBtn.after(saveBtn);
 
-  const fontSel = document.getElementById('ppFontFamily');
+  const li = () => canvas.querySelector('.pp-lineitems');
+
+  // --- Column show/hide control strip (built once) ---
+  function setColVisible(key, visible) {
+    canvas.querySelectorAll('.pp-lineitems [data-col="' + key + '"]').forEach((c) =>
+      c.classList.toggle('pp-col-hidden', !visible));
+  }
+  function buildColControls() {
+    if (!colStrip || colStrip.dataset.built) return;
+    li().querySelectorAll('thead th').forEach((th) => {
+      const key = th.dataset.col;
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.coltoggle = key;
+      cb.checked = !th.classList.contains('pp-col-hidden');
+      cb.addEventListener('change', () => setColVisible(key, cb.checked));
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(' ' + th.textContent.trim()));
+      colStrip.appendChild(label);
+    });
+    colStrip.dataset.built = '1';
+  }
 
   function setEditing(on) {
     editing = on;
     canvas.classList.toggle('pp-editing', editing);
     saveBtn.style.display = editing ? '' : 'none';
     if (fontSel) fontSel.style.display = editing ? '' : 'none';
+    if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
     editBtn.textContent = editing ? 'Exit Edit' : 'Edit Layout';
-    document.dispatchEvent(new CustomEvent('pp-edit-toggle', { detail: { editing } }));
   }
   editBtn.addEventListener('click', () => setEditing(!editing));
 
-  // --- Drag any .pp-el while editing ---
-  let drag = null;
+  // --- Column reorder: drag a header across its neighbours ---
+  function moveColumn(srcKey, refKey) {
+    const rows = [li().querySelector('thead tr'), ...li().querySelectorAll('tbody tr')];
+    rows.forEach((row) => {
+      const src = row.querySelector('[data-col="' + srcKey + '"]');
+      const ref = row.querySelector('[data-col="' + refKey + '"]');
+      if (!src || !ref) return;
+      const cells = [...row.children];
+      if (cells.indexOf(src) < cells.indexOf(ref)) ref.after(src);
+      else ref.before(src);
+    });
+  }
+
+  // --- Element drag + column-reorder drag share the pointer stream ---
+  let drag = null;      // moving a .pp-el
+  let colDrag = null;   // reordering a column
+
   canvas.addEventListener('pointerdown', (e) => {
     if (!editing) return;
+    const th = e.target.closest('.pp-lineitems thead th');
+    if (th) {
+      colDrag = { key: th.dataset.col };
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
     const el = e.target.closest('.pp-el');
     if (!el) return;
     const r = el.getBoundingClientRect();
     const c = canvas.getBoundingClientRect();
     drag = { el, dx: e.clientX - r.left, dy: e.clientY - r.top, c };
-    el.setPointerCapture(e.pointerId);
+    canvas.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
+
   canvas.addEventListener('pointermove', (e) => {
+    if (colDrag) {
+      const target = [...li().querySelectorAll('thead th')].find((h) => {
+        if (h.dataset.col === colDrag.key) return false;
+        const r = h.getBoundingClientRect();
+        return e.clientX >= r.left && e.clientX <= r.right;
+      });
+      if (target) moveColumn(colDrag.key, target.dataset.col);
+      return;
+    }
     if (!drag) return;
     let x = e.clientX - drag.c.left - drag.dx;
     let y = e.clientY - drag.c.top - drag.dy;
@@ -50,7 +106,8 @@
     drag.el.style.left = x + 'px';
     drag.el.style.top = y + 'px';
   });
-  function endDrag() { drag = null; }
+
+  function endDrag() { drag = null; colDrag = null; }
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
 
@@ -66,20 +123,20 @@
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
       };
     });
-    const li = canvas.querySelector('.pp-lineitems');
-    const columns = [...li.querySelectorAll('thead th')].map((th) => ({
-      key: th.dataset.col, visible: true, width: parseInt(th.style.width) || 60,
+    const block = li();
+    const columns = [...block.querySelectorAll('thead th')].map((th) => ({
+      key: th.dataset.col,
+      visible: !th.classList.contains('pp-col-hidden'),
+      width: parseInt(th.style.width) || 60,
     }));
-    (li.dataset.hidden || '').split(',').filter(Boolean).forEach((k) =>
-      columns.push({ key: k, visible: false, width: 60 }));
-    const lics = getComputedStyle(li);
+    const lics = getComputedStyle(block);
     return {
       page: { fontFamily: getComputedStyle(document.body).fontFamily },
       fields,
       lineItems: {
-        x: parseInt(li.style.left) || 0,
-        y: parseInt(li.style.top) || 0,
-        width: parseInt(li.style.width) || 714,
+        x: parseInt(block.style.left) || 0,
+        y: parseInt(block.style.top) || 0,
+        width: parseInt(block.style.width) || 714,
         fontSize: parseInt(lics.fontSize) || 10,
         bold: lics.fontWeight === '700' || lics.fontWeight === 'bold',
         columns,
@@ -112,7 +169,7 @@
     }
   });
 
-  // page-wide font family (populated server-side from ALLOWED_FONTS)
+  // page-wide font family (options rendered server-side from ALLOWED_FONTS)
   if (fontSel) {
     fontSel.addEventListener('change', () => {
       document.body.style.fontFamily = fontSel.value;

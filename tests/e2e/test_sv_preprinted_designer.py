@@ -52,3 +52,22 @@ def test_drag_persists_after_save_and_reload(logged_in_page, e2e_server):
     page.goto(url)                               # fresh reload from the server
     after_left = page.locator('[data-el="invoice_no"]').evaluate("e => parseInt(e.style.left)")
     assert abs(after_left - before_left) <= 2    # dragged position persisted
+
+
+def test_hide_column_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    page.uncheck('[data-coltoggle="uom"]')       # hide the UOM column
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                               # fresh reload from the server
+    # UOM header still in the DOM but marked hidden; a visible column is not.
+    uom_hidden = page.locator('th[data-col="uom"]').evaluate(
+        "e => e.classList.contains('pp-col-hidden')")
+    amount_hidden = page.locator('th[data-col="amount"]').evaluate(
+        "e => e.classList.contains('pp-col-hidden')")
+    assert uom_hidden is True
+    assert amount_hidden is False
