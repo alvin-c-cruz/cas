@@ -71,3 +71,22 @@ def test_hide_column_persists(logged_in_page, e2e_server):
         "e => e.classList.contains('pp-col-hidden')")
     assert uom_hidden is True
     assert amount_hidden is False
+
+
+def test_bold_and_page_font_persist(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    page.click('[data-el="invoice_date"]')         # select a NON-bold field -> floating toolbar
+    page.click('#ppBoldBtn')                       # toggle bold ON
+    page.select_option('#ppFontFamily', 'Georgia, serif')   # page-wide font
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                 # fresh reload from the server
+    weight = page.locator('[data-el="invoice_date"]').evaluate(
+        "e => getComputedStyle(e).fontWeight")
+    assert weight == '700' or weight == 'bold'     # per-element bold persisted
+    fam = page.locator('body').evaluate("e => getComputedStyle(e).fontFamily")
+    assert 'Georgia' in fam                         # page font-family persisted

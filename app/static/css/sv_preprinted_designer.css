@@ -3,3 +3,8 @@
 .pp-canvas.pp-editing .pp-el { outline: 1px dashed #2e7d32; cursor: move; }
 .pp-canvas.pp-editing .pp-el:hover { outline: 2px solid #2e7d32; background: rgba(46, 125, 50, .05); }
 .pp-canvas.pp-editing .pp-el.pp-selected { outline: 2px solid #1565c0; background: rgba(21, 101, 192, .06); }
+
+/* Floating per-element font toolbar (font size -/+ and bold). */
+.pp-elem-bar { position: absolute; z-index: 1000; display: flex; gap: 2px; background: #1565c0; padding: 3px; border-radius: 4px; }
+.pp-elem-bar button { border: none; background: #fff; color: #111; font-size: 12px; line-height: 1; padding: 3px 7px; cursor: pointer; border-radius: 2px; }
+.pp-elem-bar button:hover { background: #e3f2fd; }
