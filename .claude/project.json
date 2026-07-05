@@ -24,7 +24,6 @@
     "instances": {
       "demo":  { "file": "cas_demo.db",  "resettable": true,  "live": false },
       "cas":   { "file": "cas.db",       "resettable": false, "live": false },
-      "ric":   { "file": "ric.db",       "resettable": false, "live": true  },
       "pitch": { "file": "cas_pitch.db", "resettable": false, "live": false }
     },
     "seed_cmd": "flask seed-minimal",
@@ -41,10 +40,10 @@
     "search_select": true
   },
   "_notes": {
-    "db_selector": "/run cas -> db.default ('demo' = cas_demo.db). /run cas cas -> cas.db. /run cas ric -> ric.db. The db-key is the 2nd positional arg to /run; it maps to db.instances.<key>.file. The dev server picks the DB by /run pre-setting env_var (SQLALCHEMY_DATABASE_URI) before launch -- flask_app.py's load_dotenv(override=False) lets the pre-set env win over .env.",
-    "reset_rule": "reset-database may wipe ONLY an instance with resettable:true AND whose file matches *_demo.db (user rule 2026-07-04: ric.db is LIVE). Today only 'demo' (cas_demo.db) qualifies. cas.db/ric.db/cas_pitch.db are never resettable.",
-    "cas_demo_missing": "cas_demo.db does NOT exist yet. It was renamed cas_demo.db -> cas.db on 2026-07-03. So /run cas (default demo) has no DB to open until we seed cas_demo.db (via seed_cmd) -- decide at the /reset-database + /run wiring step whether to seed a fresh cas_demo.db or copy cas.db to cas_demo.db.",
-    "live_dbs": "ric.db = real RIC client data (WARN + confirm before /run opens it). cas_pitch.db = pitch snapshot.",
+    "db_selector": "/run cas -> db.default ('demo' = cas_demo.db). /run cas cas -> cas.db. /run cas pitch -> cas_pitch.db. The db-key is the 2nd positional arg to /run; it maps to db.instances.<key>.file. The dev server picks the DB by /run pre-setting env_var (SQLALCHEMY_DATABASE_URI) before launch -- flask_app.py's load_dotenv(override=False) lets the pre-set env win over .env.",
+    "reset_rule": "reset-database may wipe ONLY an instance with resettable:true AND whose file matches *_demo.db. Today only 'demo' (cas_demo.db) qualifies. cas.db/cas_pitch.db are never resettable. NOTE (2026-07-05): cas_demo.db now holds a LOCAL COPY of RIC's migrated COA (renamed from ric.db at user request); the user treats it as a DISPOSABLE local/test DB -- the authoritative RIC data lives on PythonAnywhere, so a /reset-database wipe of cas_demo.db is recoverable by re-pulling from PA.",
+    "cas_demo_db": "cas_demo.db EXISTS. On 2026-07-05 the local ric.db was RENAMED to cas_demo.db at user request; it holds RIC's migrated COA (~367 accounts, no transactions) as a disposable LOCAL copy (PythonAnywhere is authoritative). The prior SavorPack demo was preserved as cas_demo.savorpack-bak-20260705-170811.db in instance/.",
+    "live_dbs": "cas_pitch.db = pitch snapshot. The 'ric' instance was REMOVED 2026-07-05 (local ric.db renamed to cas_demo.db); the real, authoritative RIC client data now lives only on PythonAnywhere and is not a local /run instance.",
     "python": "CAS has a venv with pytest + pytest-xdist. zhiyuan has none (PATH python)."
   }
 }
