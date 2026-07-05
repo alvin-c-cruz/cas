@@ -6,9 +6,11 @@
 ## What a backup contains
 
 One AES-256-GCM–encrypted snapshot of the instance database (`VACUUM INTO` copy,
-integrity-checked before upload) plus a plaintext JSON manifest (hashes/sizes only).
-Slice 1 stores these on-server via `LocalStorage` (`BACKUP_LOCAL_DIR`). Uploads/attachments
-and off-site (Google Drive) are later slices.
+integrity-checked before upload) named `cas-<PH-timestamp>.db.enc`, plus a plaintext
+JSON manifest (hashes/sizes only). Stored on-server via `LocalStorage`
+(`BACKUP_LOCAL_DIR`) and/or off-site in Google Drive (`BACKUP_STORAGE=gdrive`). Retention
+keeps the newest `BACKUP_RETENTION_COUNT` (default 30) backups; older ones are pruned.
+Uploads/attachments are not yet in the backup (separate slice).
 
 ## Prerequisites to restore
 
@@ -17,33 +19,55 @@ and off-site (Google Drive) are later slices.
   from the server.
 - The CAS code at the same (or newer, migration-compatible) revision.
 
-## Restore procedure
+## Restore commands
 
-Run from the app root (`projects/cas/`) with the instance's env (`.env` +
-`BACKUP_*`). **Never restore over the live DB** — the CLI refuses if `--into` equals
-the live database path.
+Run from the app root (`projects/cas/`) with the instance's env (`.env` + `BACKUP_*`).
+**Never restore over the live DB** — `backup-restore` refuses if `--into` equals the live path.
+
+- `flask backup-verify` — latest backup is decryptable + intact (non-destructive).
+- `flask backup-restore --into <scratch>` — restore the latest good backup. Finds it via the
+  `BackupRun` table, so it needs a **working app DB** (use it to roll back to an older copy).
+  `--run-id N` picks a specific run.
+- **`flask backup-restore --into <scratch> --from-storage`** — DISASTER RECOVERY. Finds the newest
+  artifact by **listing Drive/local directly**, so it works even when **`ric.db` is gone/corrupt**
+  (the `BackupRun` table lives inside `ric.db`, so the default lookup can't help then).
+
+## Scenario 1 — PA is up, but `ric.db` is deleted/corrupted
+
+On PA (Bash console), from `~/cas`, with the venv active:
 
 ```bash
-# 1. Verify the latest backup is decryptable + intact (cheap, non-destructive)
-python -m flask backup-verify
-#    -> verify ok=True {'integrity': True, 'sha256_match': True}
-
-# 2. Restore the latest good backup into a SCRATCH file
-python -m flask backup-restore --into instance/_restored.db
-#    (add --run-id N to restore a specific run)
-
-# 3. Confirm the restored file is intact
-python -c "import sqlite3; print(sqlite3.connect('instance/_restored.db').execute('PRAGMA integrity_check').fetchone()[0])"
-#    -> ok
-
-# 4. DEEP proof (do this before trusting a restore for go-live):
-#    point a scratch server at the restored DB and run the /audit workspace skill,
-#    confirming the three-way tie-out AND trial-balance = 0. /audit is interactive
-#    (no headless callable yet — that automation is a deferred slice).
-
-# 5. To cut over: stop the web app, move the restored file into place as the live DB,
-#    restart. Do NOT copy over a hot/running DB file.
+python -m flask backup-restore --into ~/restored.db --from-storage
+sqlite3 ~/restored.db "PRAGMA integrity_check"       # -> ok
+# (ideally boot a scratch server on it and run /audit: 3-way tie-out + trial-balance = 0)
+# cut over: stop the web app, then:
+mv ~/restored.db ~/cas/instance/ric.db               # never copy onto a hot/running DB
+# Reload the web app (Web tab or: touch /var/www/<user>_pythonanywhere_com_wsgi.py)
 ```
+
+## Scenario 2 — PA is down; run CAS on localhost while finding a new host
+
+On your local machine (has the repo + venv + the encrypted backups / Drive access):
+
+```bash
+cd projects/cas
+# get the newest cas-*.db.enc (from Drive RIC-CAS-Backups, or already local), then either
+# use the CLI (BACKUP_STORAGE + BACKUP_ENC_KEY set in .env):
+python -m flask backup-restore --into instance/_restored.db --from-storage
+# ...or decrypt a specific .db.enc directly (no app/DB needed — only the key):
+python -c "from app.backup.crypto import decrypt, FileKeyProvider as K; \
+open('instance/_restored.db','wb').write(decrypt(open('cas-XXXX.db.enc','rb').read(), K('<key>')))"
+
+sqlite3 instance/_restored.db "PRAGMA integrity_check"   # -> ok
+mv instance/_restored.db instance/ric.db
+# .env: SQLALCHEMY_DATABASE_URI=sqlite:///ric.db
+python -m flask db upgrade                               # schema to head
+python flask_app.py                                     # CAS live at http://localhost:5050
+# When a new cloud host is ready: deploy CAS there and upload this ric.db.
+```
+
+**In both scenarios the two non-negotiables are:** you have the AES key, and you `integrity_check`
+(and ideally `/audit`-tie-out) the restored DB before trusting it. Never overwrite a hot DB file.
 
 ## Key custody
 

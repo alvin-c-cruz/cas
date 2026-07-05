@@ -50,33 +50,50 @@ def backup_mint_token_cmd(creds, out, port, open_browser):
 
 @click.command('backup-restore')
 @click.option('--into', required=True, help='scratch path to restore into (never the live DB)')
-@click.option('--run-id', type=int, default=None, help='specific BackupRun id (default: latest success)')
+@click.option('--run-id', type=int, default=None, help='specific BackupRun id (needs the app DB)')
+@click.option('--from-storage', is_flag=True, default=False,
+              help='DISASTER RECOVERY: find the newest backup by listing storage directly, '
+                   'so it works even when the app database is gone.')
 @with_appcontext
-def backup_restore_cmd(into, run_id):
-    from app.backup.models import BackupRun
+def backup_restore_cmd(into, run_id, from_storage):
+    """Restore a backup to a scratch path, then swap it into place manually.
+
+    Default finds the latest via the BackupRun table (needs a working DB).
+    --from-storage instead lists Drive/local for the newest artifact — use this
+    when ric.db itself is lost/corrupt (see RESTORE.md)."""
     from app.backup.storage import get_storage
     from app.backup.crypto import FileKeyProvider, decrypt
 
+    cfg = current_app.config
     live = os.path.abspath(db.engine.url.database)
     if os.path.abspath(into) == live:
         raise click.ClickException('refusing to restore over the live DB; choose a scratch --into')
 
-    if run_id:
-        run = db.session.get(BackupRun, run_id)
-    else:
-        run = (BackupRun.query.filter_by(status='success')
-               .order_by(BackupRun.id.desc()).first())
-    if run is None or run.status != 'success':
-        raise click.ClickException('no successful backup to restore')
+    storage = get_storage(cfg)
+    kp = FileKeyProvider(cfg['BACKUP_ENC_KEY'])
 
-    storage = get_storage(current_app.config)
-    kp = FileKeyProvider(current_app.config['BACKUP_ENC_KEY'])
-    arts = json.loads(run.artifacts)
-    db_entry = next(v for k, v in arts.items() if k.endswith('.db.enc'))
+    if from_storage:
+        # no dependency on the app DB — find the newest artifact by name (ISO stamps sort)
+        db_objs = [o for o in storage.list() if o.name.endswith('.db.enc')]
+        if not db_objs:
+            raise click.ClickException('no .db.enc artifacts found in storage')
+        newest = max(db_objs, key=lambda o: o.name)
+        ref, label = newest.ref, newest.name
+    else:
+        from app.backup.models import BackupRun
+        if run_id:
+            run = db.session.get(BackupRun, run_id)
+        else:
+            run = (BackupRun.query.filter_by(status='success')
+                   .order_by(BackupRun.id.desc()).first())
+        if run is None or run.status != 'success':
+            raise click.ClickException('no successful backup in the DB — try --from-storage')
+        db_entry = next(v for k, v in json.loads(run.artifacts).items() if k.endswith('.db.enc'))
+        ref, label = db_entry['ref'], f"run {run.id}"
 
     tmp = os.path.join(tempfile.mkdtemp(prefix='casrst-'), 'a.enc')
     try:
-        storage.get(db_entry['ref'], tmp)
+        storage.get(ref, tmp)
         with open(tmp, 'rb') as fh:
             plain = decrypt(fh.read(), kp)
         with open(into, 'wb') as fh:
@@ -85,4 +102,4 @@ def backup_restore_cmd(into, run_id):
         if os.path.exists(tmp):
             os.remove(tmp)
         os.rmdir(os.path.dirname(tmp))
-    click.echo(f"restored run {run.id} -> {into}")
+    click.echo(f"restored {label} -> {into}")
