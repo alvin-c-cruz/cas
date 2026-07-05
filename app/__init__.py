@@ -268,10 +268,12 @@ def create_app(config_name=None):
 
     from app.backup.views import backup_bp
     app.register_blueprint(backup_bp)
-    from app.backup.cli import backup_run_cmd, backup_verify_cmd, backup_restore_cmd
+    from app.backup.cli import (backup_run_cmd, backup_verify_cmd, backup_restore_cmd,
+                                backup_mint_token_cmd)
     app.cli.add_command(backup_run_cmd)
     app.cli.add_command(backup_verify_cmd)
     app.cli.add_command(backup_restore_cmd)
+    app.cli.add_command(backup_mint_token_cmd)
 
     migrate.init_app(app, db)
 

@@ -44,7 +44,11 @@ def _vacuum_into(source_db_path: str, dest_path: str):
 
 
 def _sha256(path: str) -> str:
-    h = hashlib.sha256()
+    return _checksum(path, "sha256")
+
+
+def _checksum(path: str, algo: str) -> str:
+    h = hashlib.new(algo)
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
@@ -117,9 +121,10 @@ def run_backup(triggered_by, actor, *, storage=None, source_db_path=None,
         db_name = f"cas-{stamp}.db.enc"
         db_ref = storage.put(enc_path, db_name)
 
-        # verified-landed: read back size + checksum and require a match
+        # verified-landed: read back size + checksum (algo per adapter — Drive=md5,
+        # local=sha256) and require a match
         meta = storage.stat(db_ref)
-        if meta.size != os.path.getsize(enc_path) or meta.checksum != _sha256(enc_path):
+        if meta.size != os.path.getsize(enc_path) or meta.checksum != _checksum(enc_path, meta.checksum_algo):
             run.status = 'partial'
             run.error_message = 'read-back mismatch after upload'
             run.finished_at = clock()
