@@ -175,3 +175,26 @@ class TestPreprintedLayoutRender:
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         assert '<optgroup label="Dot-matrix friendly"' in html
         assert 'Consolas' in html            # a newly added monospace option
+
+    def test_paper_dropdown_default_continuous(self, client, db_session, admin_user,
+                                               main_branch, _customer, _invoice):
+        self._prep(client)                   # no layout saved -> default continuous
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        assert 'id="ppPaper"' in html
+        assert '9.5 x 10.5 continuous paper' in html
+        assert 'Letter 8.5 x 11' in html
+        assert 'data-paper="continuous"' in html
+        assert 'width:912px;height:1008px' in html   # continuous canvas
+
+    def test_letter_paper_resizes_canvas_and_page(self, client, db_session, admin_user,
+                                                  main_branch, _customer, _invoice):
+        import json as _json
+        from app.sales_invoices.preprinted_layout import get_layout
+        layout = get_layout()
+        layout['paper'] = 'letter'
+        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        self._prep(client)
+        html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
+        assert 'data-paper="letter"' in html
+        assert 'width:816px;height:1056px' in html   # letter canvas
+        assert '8.5in 11in' in html                   # @page size

@@ -93,6 +93,22 @@ def test_column_horizontal_drag_persists(logged_in_page, e2e_server):
     assert after_x < before_x                                 # column moved left, persisted
 
 
+def test_paper_change_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    page.select_option('#ppPaper', 'letter')                 # switch to Letter 8.5x11
+    # canvas resized live
+    assert page.locator('#ppCanvas').evaluate("e => e.style.width") == '816px'
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                            # fresh reload
+    assert page.locator('body').evaluate("e => e.dataset.paper") == 'letter'
+    assert page.locator('#ppCanvas').evaluate("e => e.style.width") == '816px'
+
+
 def test_bold_and_page_font_persist(logged_in_page, e2e_server):
     page = logged_in_page
     _enable_preprinted(page, e2e_server)

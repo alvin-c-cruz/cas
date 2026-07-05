@@ -64,6 +64,18 @@ class TestSanitize:
         assert all('x' in c for c in out['lineItems']['columns'])
 
 
+class TestPaper:
+    def test_default_paper_is_continuous(self):
+        assert DEFAULT_SV_PREPRINTED_LAYOUT['paper'] == 'continuous'
+        assert sanitize_layout({})['paper'] == 'continuous'
+
+    def test_letter_paper_accepted(self):
+        assert sanitize_layout({'paper': 'letter'})['paper'] == 'letter'
+
+    def test_unknown_paper_falls_back_to_continuous(self):
+        assert sanitize_layout({'paper': 'a4-ish'})['paper'] == 'continuous'
+
+
 class TestFonts:
     def test_new_monospace_fonts_allowed_and_round_trip(self):
         for f in ['Consolas, "Courier New", monospace', '"Lucida Console", Monaco, monospace']:

@@ -8,8 +8,8 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
-  /* Dot-matrix continuous form 9.5in x 10.5in = 912 x 1008px @96dpi (screen == print). */
-  .pp-canvas { position: relative; width: 912px; height: 1008px; margin: 16px auto; background: #fff; }
+  /* Canvas size is paper-driven (set inline; JS updates it live on paper change). */
+  .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
   .pp-el { position: absolute; white-space: nowrap; }
   .pp-lineitems { white-space: normal; }
   /* Each line-item column is independently positioned; cells stack vertically. */
@@ -26,8 +26,10 @@
   /* A column with no rows is empty -> show its label while editing so it stays grabbable. */
   .pp-canvas.pp-editing .pp-col:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
   .pp-col-hidden { display: none; }
-  /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins, left + right. Never printed. */
+  /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins for CONTINUOUS stock
+     (the holes). Dropped for cut sheets (letter). Never printed. */
   .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
+  body:not([data-paper="continuous"]) .pp-margin-guide { display: none; }
   .pp-col-controls { max-width: 912px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
   .pp-col-controls.pp-show { display: flex; }
   .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
@@ -40,11 +42,11 @@
     body { background: #fff; }
     .screen-only { display: none !important; }
     .pp-canvas { margin: 0; }
-    @page { size: 9.5in 10.5in; margin: 0; }
   }
 </style>
+<style id="ppPageStyle">@media print { @page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; } }</style>
 </head>
-<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}">
+<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
 
 {% macro field(key, value) %}
   {% set f = layout.fields[key] %}
@@ -57,6 +59,11 @@
   <button type="button" class="btn btn-close" onclick="window.close()">Close</button>
   {% if can_edit_layout %}
   <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
+  <select id="ppPaper" class="screen-only" style="display:none;">
+    {% for key, sz in paper_sizes.items() %}
+    <option value="{{ key }}" data-w="{{ sz.w }}" data-h="{{ sz.h }}" data-css="{{ sz.css }}" {{ 'selected' if key == layout.paper else '' }}>{{ paper_labels[key] }}</option>
+    {% endfor %}
+  </select>
   <select id="ppFontFamily" class="screen-only" style="display:none;">
     {% for group, fonts in font_groups %}
     <optgroup label="{{ group }}">
@@ -73,7 +80,7 @@
 <div id="ppColControls" class="pp-col-controls screen-only"></div>
 {% endif %}
 
-<div class="pp-canvas" id="ppCanvas">
+<div class="pp-canvas" id="ppCanvas" style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
   <div class="pp-margin-guide screen-only" style="left:48px;"></div>
   <div class="pp-margin-guide screen-only" style="right:48px;"></div>
   {# Values only — the pre-printed stock supplies every label/header. #}
@@ -114,7 +121,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=6"></script>
 {% endif %}
 </body>
 </html>

@@ -7,6 +7,7 @@
   if (!canvas || !editBtn) return;
   const csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
   const fontSel = document.getElementById('ppFontFamily');
+  const paperSel = document.getElementById('ppPaper');
   const colStrip = document.getElementById('ppColControls');
   const printBtn = document.querySelector('.btn-print');
   let editing = false;
@@ -90,6 +91,7 @@
     canvas.classList.toggle('pp-editing', editing);
     saveBtn.style.display = editing ? '' : 'none';
     if (fontSel) fontSel.style.display = editing ? '' : 'none';
+    if (paperSel) paperSel.style.display = editing ? '' : 'none';
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
     editBtn.textContent = editing ? 'Exit Edit' : 'Edit Layout';
@@ -165,6 +167,7 @@
       width: parseInt(c.style.width) || 60,
     }));
     return {
+      paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
       // read the select (exact ALLOWED_FONTS string) rather than the computed
       // stack, so the value round-trips through the server-side whitelist.
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
@@ -208,6 +211,18 @@
   if (fontSel) {
     fontSel.addEventListener('change', () => {
       document.body.style.fontFamily = fontSel.value;
+    });
+  }
+
+  // paper size: resize the canvas + rewrite the @page rule live; guides hide for non-continuous.
+  if (paperSel) {
+    paperSel.addEventListener('change', () => {
+      const opt = paperSel.selectedOptions[0];
+      document.body.dataset.paper = paperSel.value;
+      canvas.style.width = opt.dataset.w + 'px';
+      canvas.style.height = opt.dataset.h + 'px';
+      const ps = document.getElementById('ppPageStyle');
+      if (ps) ps.textContent = '@media print { @page { size: ' + opt.dataset.css + '; margin: 0; } }';
     });
   }
 })();

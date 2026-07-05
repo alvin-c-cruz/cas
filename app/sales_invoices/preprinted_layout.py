@@ -67,7 +67,22 @@ COLUMN_LABELS = {
     'amount': 'Amount (₱)',
 }
 
+ALLOWED_PAPERS = ('continuous', 'letter')
+
+# Canvas + @page size per paper (px @96dpi / CSS inches). Continuous = the dot-matrix
+# 9.5x10.5in fan-fold stock (shows tractor-hole margin guides); letter = 8.5x11in cut
+# sheet (no guides).
+PAPER_SIZES = {
+    'continuous': {'w': 912, 'h': 1008, 'css': '9.5in 10.5in'},
+    'letter':     {'w': 816, 'h': 1056, 'css': '8.5in 11in'},
+}
+PAPER_LABELS = {
+    'continuous': '9.5 x 10.5 continuous paper',
+    'letter':     'Letter 8.5 x 11',
+}
+
 DEFAULT_SV_PREPRINTED_LAYOUT = {
+    'paper': 'continuous',
     'page': {'fontFamily': '"Courier New", Courier, monospace'},
     'fields': {
         'invoice_no':         {'x': 520, 'y': 50,  'fontSize': 12, 'bold': True},
@@ -146,6 +161,7 @@ def sanitize_layout(raw):
     """Return a fully-populated, validated layout built from `raw` over the defaults."""
     raw = raw if isinstance(raw, dict) else {}
     d = DEFAULT_SV_PREPRINTED_LAYOUT
+    paper = raw.get('paper') if raw.get('paper') in ALLOWED_PAPERS else d['paper']
     font = (raw.get('page') or {}).get('fontFamily')
     page = {'fontFamily': font if font in ALLOWED_FONTS else d['page']['fontFamily']}
     raw_fields = raw.get('fields') if isinstance(raw.get('fields'), dict) else {}
@@ -159,7 +175,7 @@ def sanitize_layout(raw):
         'bold': bool(raw_li.get('bold', dli['bold'])),
         'columns': _clean_columns(raw_li.get('columns')),
     }
-    return {'page': page, 'fields': fields, 'lineItems': line_items}
+    return {'paper': paper, 'page': page, 'fields': fields, 'lineItems': line_items}
 
 
 def get_layout():
