@@ -103,3 +103,25 @@ class TestSvPrintFormRoute:
         login(client)
         resp = client.get(f'/sales-invoices/{_invoice.id}/print')
         assert resp.status_code == 200
+
+
+class TestSvPrintFormPreprinted:
+    def test_preprinted_renders_preprinted_template(
+            self, client, db_session, admin_user, main_branch, _customer, _invoice):
+        AppSettings.set_setting('sv_print_form', 'preprinted', 'system')
+        login(client)
+        resp = client.get(f'/sales-invoices/{_invoice.id}/print')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'sv-preprinted' in html   # marker unique to the pre-printed template
+        assert 'sv-header' not in html    # letterhead is stripped (paper has it pre-printed)
+
+    def test_current_renders_standard_template(
+            self, client, db_session, admin_user, main_branch, _customer, _invoice):
+        AppSettings.set_setting('sv_print_form', 'current', 'system')
+        login(client)
+        resp = client.get(f'/sales-invoices/{_invoice.id}/print')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'sv-header' in html         # standard form keeps the letterhead
+        assert 'sv-preprinted' not in html

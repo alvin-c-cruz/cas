@@ -1187,8 +1187,9 @@ def void(id):
 def print_invoice(id):
     invoice = _get_invoice_or_404(id)
 
+    sv_print_form = AppSettings.get_setting('sv_print_form', 'current')
     # 'hidden' turns SI printing off entirely: refuse the route, not just the button.
-    if AppSettings.get_setting('sv_print_form', 'current') == 'hidden':
+    if sv_print_form == 'hidden':
         flash('Sales Invoice printing is not enabled.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
 
@@ -1201,7 +1202,12 @@ def print_invoice(id):
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
-    return render_template('sales_invoices/print.html', invoice=invoice,
+    # 'preprinted' -> data-only layout for physical pre-printed stock; else the
+    # standard self-contained printable form.
+    template = ('sales_invoices/print_preprinted.html'
+                if sv_print_form == 'preprinted'
+                else 'sales_invoices/print.html')
+    return render_template(template, invoice=invoice,
                            je_entries=je_entries, company=company, printed_at=ph_now())
 
 
