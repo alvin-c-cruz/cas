@@ -107,7 +107,6 @@
     colStrip.appendChild(stripHeading('Columns:'));
     cols().forEach((col) => {
       const key = col.dataset.col;
-      if (key === 'product') return;   // Particulars is mandatory — no show/hide toggle
       const label = document.createElement('label');
       const cb = document.createElement('input');
       cb.type = 'checkbox';

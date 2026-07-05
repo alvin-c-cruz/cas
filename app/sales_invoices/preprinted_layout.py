@@ -73,7 +73,7 @@ COLUMN_KEYS = [
 # Header labels for the line-item columns (presentation; keyed by COLUMN_KEYS).
 COLUMN_LABELS = {
     'line_number': '#',
-    'product': 'Particulars',
+    'product': 'Product',
     'quantity': 'Qty',
     'uom': 'UOM',
     'unit_price': 'Unit Price',
