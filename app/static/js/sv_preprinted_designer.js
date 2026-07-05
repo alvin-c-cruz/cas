@@ -139,8 +139,10 @@
   //     HORIZONTALLY on its own x, while a VERTICAL drag moves the whole band
   //     (all columns share the top), so rows always stay aligned. Cells/rows never
   //     move independently of their column. ---
-  let drag = null;      // moving a .pp-el
-  let colDrag = null;   // moving a .pp-col
+  let drag = null;       // moving a .pp-el
+  let colDrag = null;    // moving a .pp-col
+  let colResize = null;  // resizing a .pp-col width
+  const EDGE = 8;        // px hot-zone at a column's right edge = resize handle
 
   canvas.addEventListener('pointerdown', (e) => {
     if (!editing) return;
@@ -148,7 +150,12 @@
     const col = e.target.closest('.pp-col');
     if (col) {
       const r = col.getBoundingClientRect();
-      colDrag = { col, dx: e.clientX - r.left, dy: e.clientY - r.top, c };
+      if (e.clientX >= r.right - EDGE) {
+        // grab the right edge -> resize width
+        colResize = { col, startW: parseInt(col.style.width) || Math.round(r.width), startX: e.clientX };
+      } else {
+        colDrag = { col, dx: e.clientX - r.left, dy: e.clientY - r.top, c };
+      }
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -163,6 +170,11 @@
   });
 
   canvas.addEventListener('pointermove', (e) => {
+    if (colResize) {
+      const w = Math.max(20, Math.min(canvas.clientWidth, colResize.startW + (e.clientX - colResize.startX)));
+      colResize.col.style.width = Math.round(w) + 'px';      // cells follow the column width
+      return;
+    }
     if (colDrag) {
       const x = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - colDrag.c.left - colDrag.dx)));
       const y = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - colDrag.c.top - colDrag.dy)));
@@ -170,14 +182,22 @@
       cols().forEach((c) => { c.style.top = y + 'px'; });    // shared band top -> rows aligned
       return;
     }
-    if (!drag) return;
+    if (!drag) {
+      // hover cursor hint: resize near the right edge, move elsewhere
+      const hov = e.target.closest && e.target.closest('.pp-col');
+      if (hov) {
+        const r = hov.getBoundingClientRect();
+        hov.style.cursor = (e.clientX >= r.right - EDGE) ? 'ew-resize' : 'move';
+      }
+      return;
+    }
     const x = Math.max(0, Math.min(canvas.clientWidth, Math.round(e.clientX - drag.c.left - drag.dx)));
     const y = Math.max(0, Math.min(canvas.clientHeight, Math.round(e.clientY - drag.c.top - drag.dy)));
     drag.el.style.left = x + 'px';
     drag.el.style.top = y + 'px';
   });
 
-  function endDrag() { drag = null; colDrag = null; positionBar(); }
+  function endDrag() { drag = null; colDrag = null; colResize = null; positionBar(); }
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
 

@@ -93,6 +93,27 @@ def test_column_horizontal_drag_persists(logged_in_page, e2e_server):
     assert after_x < before_x                                 # column moved left, persisted
 
 
+def test_column_width_resize_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    col = page.locator('.pp-col[data-col="product"]')
+    box = col.bounding_box()
+    before_w = col.evaluate("e => parseInt(e.style.width)")
+    # grab the right edge and drag left to shrink the column
+    page.mouse.move(box['x'] + box['width'] - 2, box['y'] + 6)
+    page.mouse.down()
+    page.mouse.move(box['x'] + box['width'] - 90, box['y'] + 6, steps=10)
+    page.mouse.up()
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                            # fresh reload
+    after_w = page.locator('.pp-col[data-col="product"]').evaluate("e => parseInt(e.style.width)")
+    assert after_w < before_w                                 # narrower width persisted
+
+
 def test_paper_change_persists(logged_in_page, e2e_server):
     page = logged_in_page
     _enable_preprinted(page, e2e_server)
