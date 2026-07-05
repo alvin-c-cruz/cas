@@ -13,10 +13,12 @@ from app.audit.utils import log_audit
 
 LAYOUT_SETTING_KEY = 'sv_preprinted_layout'
 
-CANVAS_W = 794      # A4 @96dpi
-CANVAS_H = 1123
+# Dot-matrix continuous-form stock: 9.5in x 10.5in. At 96dpi (CSS px) that is the
+# canvas size, so what is dragged on screen maps 1:1 to the printed form.
+CANVAS_W = 912      # 9.5in  @96dpi
+CANVAS_H = 1008     # 10.5in @96dpi
 FONT_MIN, FONT_MAX = 6, 72
-WIDTH_MIN, WIDTH_MAX = 10, 794
+WIDTH_MIN, WIDTH_MAX = 10, 912
 
 ALLOWED_FONTS = [
     'Arial, sans-serif',

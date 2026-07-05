@@ -8,14 +8,15 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
-  .pp-canvas { position: relative; width: 794px; height: 1123px; margin: 16px auto; background: #fff; }
+  /* Dot-matrix continuous form 9.5in x 10.5in = 912 x 1008px @96dpi (screen == print). */
+  .pp-canvas { position: relative; width: 912px; height: 1008px; margin: 16px auto; background: #fff; }
   .pp-el { position: absolute; white-space: nowrap; }
   .pp-lineitems { white-space: normal; }
   .pp-lineitems table { border-collapse: collapse; }
   .pp-lineitems th, .pp-lineitems td { padding: 3px 6px; text-align: left; border-bottom: 1px solid #ddd; }
   .pp-lineitems th { border-bottom: 1px solid #999; font-weight: 700; }
   .pp-amount { text-align: right; font-family: monospace; }
-  .pp-toolbar { max-width: 794px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pp-toolbar { max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
   .btn-print { background: #1565c0; color: #fff; }
   .btn-close { background: #666; color: #fff; }
@@ -24,7 +25,7 @@
     body { background: #fff; }
     .screen-only { display: none !important; }
     .pp-canvas { margin: 0; }
-    @page { size: A4 portrait; margin: 0; }
+    @page { size: 9.5in 10.5in; margin: 0; }
   }
 </style>
 </head>

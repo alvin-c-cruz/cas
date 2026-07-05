@@ -31,7 +31,7 @@ class TestSanitize:
                                                          'fontSize': 999, 'bold': 'yes'}}})
         f = out['fields']['invoice_no']
         assert f['x'] == 0            # clamped to >= 0
-        assert f['y'] == 1123         # clamped to canvas height
+        assert f['y'] == 1008         # clamped to canvas height (10.5in @96dpi)
         assert f['fontSize'] == 72    # clamped to <= 72
         assert f['bold'] is True      # truthy coerced to bool
 
