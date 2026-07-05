@@ -296,3 +296,18 @@ class TestPrintAccessSettings:
         assert 'sv_print_access' in html
         assert 'cd_print_access' in html
         assert 'cr_print_access' in html
+
+    def test_sv_print_form_saved(self, client, db_session, admin_user, main_branch):
+        login(client)
+        data = dict(VALID_FORM_DATA)
+        data['sv_print_form'] = 'hidden'
+        resp = client.post('/settings', data=data, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'saved successfully' in resp.data
+        assert AppSettings.get_setting('sv_print_form') == 'hidden'
+
+    def test_sv_print_form_field_rendered_on_settings_page(
+            self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/settings')
+        assert 'sv_print_form' in resp.data.decode()

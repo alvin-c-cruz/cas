@@ -1041,8 +1041,10 @@ def view(id):
     invoice = _get_invoice_or_404(id)
     je_entries = _build_je_preview(invoice)
     sv_print_access = AppSettings.get_setting('sv_print_access', 'posted_only')
+    sv_print_form = AppSettings.get_setting('sv_print_form', 'current')
     return render_template('sales_invoices/detail.html', invoice=invoice,
-                           je_entries=je_entries, sv_print_access=sv_print_access)
+                           je_entries=je_entries, sv_print_access=sv_print_access,
+                           sv_print_form=sv_print_form)
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
@@ -1184,6 +1186,11 @@ def void(id):
 @login_required
 def print_invoice(id):
     invoice = _get_invoice_or_404(id)
+
+    # 'hidden' turns SI printing off entirely: refuse the route, not just the button.
+    if AppSettings.get_setting('sv_print_form', 'current') == 'hidden':
+        flash('Sales Invoice printing is not enabled.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
 
     # Consolidated JE (each account once), same source as the detail-view Entry
     # table — keeps view/print in sync.

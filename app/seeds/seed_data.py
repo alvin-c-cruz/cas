@@ -730,6 +730,7 @@ def seed_minimal():
                 {'key': 'officer_secretary',    'value': ''},
                 {'key': 'apv_print_access',     'value': 'posted_only'},
                 {'key': 'sv_print_access',      'value': 'posted_only'},
+                {'key': 'sv_print_form',        'value': 'current'},
                 {'key': 'cd_print_access',      'value': 'posted_only'},
                 {'key': 'cd_check_print_access','value': 'posted_only'},
                 {'key': 'cr_print_access',      'value': 'posted_only'},

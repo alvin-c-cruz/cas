@@ -144,6 +144,7 @@ COMPANY_SETTINGS = [
     {'key': 'officer_secretary', 'value': 'Mei Lin'},
     {'key': 'apv_print_access', 'value': 'draft_and_posted'},
     {'key': 'sv_print_access', 'value': 'draft_and_posted'},
+    {'key': 'sv_print_form', 'value': 'current'},
     {'key': 'cd_print_access', 'value': 'draft_and_posted'},
     {'key': 'cd_check_print_access', 'value': 'draft_and_posted'},
     {'key': 'cr_print_access', 'value': 'draft_and_posted'},

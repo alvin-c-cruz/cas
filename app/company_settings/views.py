@@ -53,6 +53,7 @@ SETTINGS_KEYS = [
     'officer_secretary',
     'apv_print_access',
     'sv_print_access',
+    'sv_print_form',
     'cd_print_access',
     'cd_check_print_access',
     'cr_print_access',

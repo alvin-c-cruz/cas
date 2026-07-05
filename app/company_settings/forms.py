@@ -31,6 +31,15 @@ PRINT_ACCESS_CHOICES = [
     ('draft_and_posted', 'Draft and posted'),
 ]
 
+# Which print form a Sales Invoice uses (separate axis from print ACCESS, which
+# gates by status). 'hidden' turns SI printing off entirely (button hidden AND
+# the /print route refuses). Room for a 'preprinted' option when that module is
+# rebuilt.
+SV_PRINT_FORM_CHOICES = [
+    ('current', 'Current printable form'),
+    ('hidden',  'Hidden (no print button)'),
+]
+
 
 class CompanySettingsForm(FlaskForm):
     """Form for editing company-wide settings (stored as app_settings rows)."""
@@ -106,6 +115,9 @@ class CompanySettingsForm(FlaskForm):
     )
     sv_print_access = SelectField(
         'Sales Invoice Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
+    )
+    sv_print_form = SelectField(
+        'Sales Invoice Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
     )
     cd_print_access = SelectField(
         'CDV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
