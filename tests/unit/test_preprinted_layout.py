@@ -76,6 +76,24 @@ class TestPaper:
         assert sanitize_layout({'paper': 'a4-ish'})['paper'] == 'continuous'
 
 
+class TestExtras:
+    def test_default_no_extras(self):
+        assert sanitize_layout({})['extras'] == []
+
+    def test_valid_extra_kept_unknown_dropped(self):
+        out = sanitize_layout({'extras': [
+            {'key': 'invoice_no', 'x': 100, 'y': 200, 'fontSize': 12, 'bold': True},
+            {'key': 'bogus', 'x': 1, 'y': 1},
+        ]})
+        assert len(out['extras']) == 1
+        assert out['extras'][0]['key'] == 'invoice_no'
+        assert out['extras'][0]['x'] == 100 and out['extras'][0]['bold'] is True
+
+    def test_extras_capped(self):
+        many = [{'key': 'notes', 'x': 0, 'y': 0} for _ in range(200)]
+        assert len(sanitize_layout({'extras': many})['extras']) <= 50
+
+
 class TestFieldHidden:
     def test_fields_default_visible(self):
         out = sanitize_layout({})

@@ -31,7 +31,9 @@
   elBar.innerHTML =
     '<button type="button" id="ppFontDec" title="Smaller">A-</button>' +
     '<button type="button" id="ppFontInc" title="Larger">A+</button>' +
-    '<button type="button" id="ppBoldBtn" title="Bold"><b>B</b></button>';
+    '<button type="button" id="ppBoldBtn" title="Bold"><b>B</b></button>' +
+    '<button type="button" id="ppDupBtn" title="Duplicate">Dup</button>' +
+    '<button type="button" id="ppDelBtn" title="Delete copy">Del</button>';
   document.body.appendChild(elBar);
   let selected = null;
 
@@ -47,7 +49,26 @@
     if (!el) { elBar.style.display = 'none'; return; }
     el.classList.add('pp-selected');
     elBar.style.display = 'flex';
+    // Only duplicated copies are deletable; primary fields use the Fields checklist.
+    const delBtn = elBar.querySelector('#ppDelBtn');
+    if (delBtn) delBtn.style.display = el.dataset.extra ? '' : 'none';
     positionBar();
+  }
+  function duplicateSelected() {
+    if (!selected) return;
+    const clone = selected.cloneNode(true);
+    clone.classList.remove('pp-selected', 'pp-field-hidden');
+    clone.dataset.extra = '1';
+    clone.style.left = ((parseInt(selected.style.left) || 0) + 16) + 'px';
+    clone.style.top = ((parseInt(selected.style.top) || 0) + 16) + 'px';
+    canvas.appendChild(clone);
+    selectEl(clone);
+  }
+  function deleteSelected() {
+    if (!selected || !selected.dataset.extra) return;   // only copies
+    const el = selected;
+    selectEl(null);
+    el.remove();
   }
   function changeFont(delta) {
     if (!selected) return;
@@ -62,10 +83,12 @@
     const w = getComputedStyle(selected).fontWeight;
     selected.style.fontWeight = (w === '700' || w === 'bold') ? 'normal' : 'bold';
   });
+  elBar.querySelector('#ppDupBtn').addEventListener('click', duplicateSelected);
+  elBar.querySelector('#ppDelBtn').addEventListener('click', deleteSelected);
 
   const li = () => canvas.querySelector('.pp-lineitems');
   const cols = () => [...canvas.querySelectorAll('.pp-col')];
-  const fieldEls = () => [...canvas.querySelectorAll('.pp-el:not(.pp-lineitems)')];
+  const fieldEls = () => [...canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra])')];
 
   function stripHeading(text) {
     const h = document.createElement('span');
@@ -204,7 +227,7 @@
   // --- Serialize DOM -> layout JSON ---
   function collect() {
     const fields = {};
-    canvas.querySelectorAll('.pp-el:not(.pp-lineitems)').forEach((el) => {
+    canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra])').forEach((el) => {
       const cs = getComputedStyle(el);
       fields[el.dataset.el] = {
         x: parseInt(el.style.left) || 0,
@@ -212,6 +235,16 @@
         fontSize: parseInt(cs.fontSize) || 11,
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
         hidden: el.classList.contains('pp-field-hidden'),
+      };
+    });
+    const extras = [...canvas.querySelectorAll('.pp-el[data-extra]')].map((el) => {
+      const cs = getComputedStyle(el);
+      return {
+        key: el.dataset.el,
+        x: parseInt(el.style.left) || 0,
+        y: parseInt(el.style.top) || 0,
+        fontSize: parseInt(cs.fontSize) || 11,
+        bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
       };
     });
     const colEls = cols();
@@ -226,6 +259,7 @@
     return {
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
       dateFormat: (dateSel && dateSel.value) || 'long',
+      extras,
       // read the select (exact ALLOWED_FONTS string) rather than the computed
       // stack, so the value round-trips through the server-side whitelist.
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },

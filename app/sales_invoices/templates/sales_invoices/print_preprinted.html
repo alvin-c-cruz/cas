@@ -57,6 +57,11 @@
        style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
 {% endmacro %}
 
+{% macro field_extra(ex, value, iso='') %}
+  <div class="pp-el" data-el="{{ ex.key }}" data-label="{{ field_labels[ex.key] }}" data-extra="1"{% if iso %} data-date="{{ iso }}"{% endif %}
+       style="left:{{ ex.x }}px;top:{{ ex.y }}px;font-size:{{ ex.fontSize }}px;font-weight:{{ 'bold' if ex.bold else 'normal' }};">{{ value }}</div>
+{% endmacro %}
+
 <div class="pp-toolbar screen-only">
   <button type="button" class="btn btn-print" onclick="window.print()">Print</button>
   <button type="button" class="btn btn-close" onclick="window.close()">Close</button>
@@ -94,21 +99,29 @@
   <div class="pp-margin-guide screen-only" style="right:48px;"></div>
   {# Values only — the pre-printed stock supplies every label/header. #}
   {% set date_fmt = date_formats[layout.dateFormat] %}
-  {{ field('invoice_no', invoice.invoice_number) }}
-  {{ field('invoice_date', invoice.invoice_date.strftime(date_fmt), invoice.invoice_date.isoformat()) }}
-  {{ field('due_date', invoice.due_date.strftime(date_fmt) if invoice.due_date else '', invoice.due_date.isoformat() if invoice.due_date else '') }}
-  {{ field('terms', invoice.payment_terms or '') }}
-  {{ field('customer_name', invoice.customer_name) }}
-  {{ field('customer_tin', invoice.customer_tin or '') }}
-  {{ field('customer_address', invoice.customer_address or '') }}
-  {{ field('customer_po', invoice.customer_po_number or '') }}
-  {# BIR-standard SI summary (VAT / WHT), each positionable + hideable #}
-  {{ field('gross_sales', '{:,.2f}'.format(invoice.subtotal or 0)) }}
-  {{ field('output_vat', '{:,.2f}'.format(invoice.vat_amount or 0)) }}
-  {{ field('net_of_vat', '{:,.2f}'.format((invoice.subtotal or 0) - (invoice.vat_amount or 0))) }}
-  {{ field('wht_amount', '{:,.2f}'.format(invoice.withholding_tax_amount or 0)) }}
-  {{ field('amount_collectible', '{:,.2f}'.format(invoice.total_amount or 0)) }}
-  {{ field('notes', invoice.notes or '') }}
+  {% set field_values = {
+    'invoice_no': invoice.invoice_number,
+    'invoice_date': invoice.invoice_date.strftime(date_fmt),
+    'due_date': invoice.due_date.strftime(date_fmt) if invoice.due_date else '',
+    'terms': invoice.payment_terms or '',
+    'customer_name': invoice.customer_name,
+    'customer_tin': invoice.customer_tin or '',
+    'customer_address': invoice.customer_address or '',
+    'customer_po': invoice.customer_po_number or '',
+    'gross_sales': '{:,.2f}'.format(invoice.subtotal or 0),
+    'output_vat': '{:,.2f}'.format(invoice.vat_amount or 0),
+    'net_of_vat': '{:,.2f}'.format((invoice.subtotal or 0) - (invoice.vat_amount or 0)),
+    'wht_amount': '{:,.2f}'.format(invoice.withholding_tax_amount or 0),
+    'amount_collectible': '{:,.2f}'.format(invoice.total_amount or 0),
+    'notes': invoice.notes or '',
+  } %}
+  {% set field_isos = {
+    'invoice_date': invoice.invoice_date.isoformat(),
+    'due_date': invoice.due_date.isoformat() if invoice.due_date else '',
+  } %}
+  {% for key in field_values %}{{ field(key, field_values[key], field_isos.get(key, '')) }}{% endfor %}
+  {# Duplicated copies (elements outside the line-item group) #}
+  {% for ex in layout.extras %}{{ field_extra(ex, field_values[ex.key], field_isos.get(ex.key, '')) }}{% endfor %}
 
   {% set li = layout.lineItems %}
   {# Each column is independently positioned (own x); all share the band top (li.y)
@@ -140,7 +153,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=12"></script>
 {% endif %}
 </body>
 </html>

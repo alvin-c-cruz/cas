@@ -144,6 +144,22 @@ def test_date_format_change_persists(logged_in_page, e2e_server):
     assert page.locator('[data-el="invoice_date"]').inner_text().count('-') == 2  # persisted
 
 
+def test_duplicate_field_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    page.click('[data-el="invoice_no"]')                     # select a field
+    page.click('#ppDupBtn')                                   # duplicate it
+    assert page.locator('[data-el="invoice_no"]').count() == 2
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                            # fresh reload
+    assert page.locator('[data-el="invoice_no"]').count() == 2
+    assert page.locator('[data-el="invoice_no"][data-extra]').count() == 1
+
+
 def test_hide_field_persists(logged_in_page, e2e_server):
     page = logged_in_page
     _enable_preprinted(page, e2e_server)

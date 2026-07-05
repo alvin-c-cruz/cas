@@ -112,9 +112,12 @@ DATE_FORMATS = {
 }
 ALLOWED_DATE_FORMATS = tuple(DATE_FORMATS)
 
+MAX_EXTRAS = 50   # duplicated field copies cap
+
 DEFAULT_SV_PREPRINTED_LAYOUT = {
     'paper': 'continuous',
     'dateFormat': 'long',
+    'extras': [],
     'page': {'fontFamily': '"Courier New", Courier, monospace'},
     'fields': {
         'invoice_no':         {'x': 520, 'y': 50,  'fontSize': 12, 'bold': True},
@@ -193,6 +196,23 @@ def _clean_columns(raw):
     return out
 
 
+def _clean_extras(raw):
+    """Duplicated field copies: each references a FIELD_KEYS key + its own position/style."""
+    raw = raw if isinstance(raw, list) else []
+    out = []
+    for e in raw[:MAX_EXTRAS]:
+        if not isinstance(e, dict) or e.get('key') not in FIELD_KEYS:
+            continue
+        out.append({
+            'key': e['key'],
+            'x': _clamp(e.get('x'), 0, CANVAS_W, 0),
+            'y': _clamp(e.get('y'), 0, CANVAS_H, 0),
+            'fontSize': _clamp(e.get('fontSize'), FONT_MIN, FONT_MAX, 11),
+            'bold': bool(e.get('bold', False)),
+        })
+    return out
+
+
 def sanitize_layout(raw):
     """Return a fully-populated, validated layout built from `raw` over the defaults."""
     raw = raw if isinstance(raw, dict) else {}
@@ -212,8 +232,8 @@ def sanitize_layout(raw):
         'bold': bool(raw_li.get('bold', dli['bold'])),
         'columns': _clean_columns(raw_li.get('columns')),
     }
-    return {'paper': paper, 'dateFormat': date_fmt, 'page': page,
-            'fields': fields, 'lineItems': line_items}
+    return {'paper': paper, 'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
+            'page': page, 'fields': fields, 'lineItems': line_items}
 
 
 def get_layout():
