@@ -119,6 +119,45 @@ class TestGeneralLedgerNavLink:
         assert 'feature=General%20Ledger' not in html
 
 
+class TestChiefAccountantApprovedEmails:
+    """A Chief Accountant manages staff registrations but is NOT a sysadmin, so the
+    'Approved Emails' page must be reachable from her sidebar (previously the link was
+    shown only to admins and to plain accountants, leaving a CA with no menu path)."""
+
+    def test_ca_sees_approved_emails_link(self, client, db_session,
+                                          chief_accountant_user, main_branch):
+        db_session.commit()
+        login(client, 'chief', 'chief123')
+        resp = client.get('/under-development')
+        assert b'/approved-emails' in resp.data
+        assert b'Approved Emails' in resp.data
+
+    def test_ca_does_not_see_staff_management_link(self, client, db_session,
+                                                   chief_accountant_user, main_branch):
+        # staff_management is accountant-only; a CA must not get a dead link to it.
+        db_session.commit()
+        login(client, 'chief', 'chief123')
+        resp = client.get('/under-development')
+        assert b'Staff Management' not in resp.data
+
+    def test_accountant_still_sees_approved_emails_link(self, client, db_session,
+                                                        admin_user, accountant_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'accountant', 'accountant123')
+        resp = client.get('/under-development')
+        assert b'/approved-emails' in resp.data
+
+    def test_staff_does_not_see_approved_emails_link(self, client, db_session,
+                                                     admin_user, staff_user, main_branch):
+        admin_user.add_branch(main_branch)
+        staff_user.add_branch(main_branch)
+        db_session.commit()
+        login(client, 'staff', 'staff123')
+        resp = client.get('/under-development')
+        assert b'/approved-emails' not in resp.data
+
+
 class TestReceiptLinks:
     def test_collections_link_present(self, client, db_session, admin_user, main_branch):
         admin_user.add_branch(main_branch)

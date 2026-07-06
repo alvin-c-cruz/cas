@@ -1197,6 +1197,15 @@
                         <span class="nav-icon">📜</span>
                         <span class="nav-text">Audit Log</span>
                     </a>
+                    {# Approved Emails: Chief Accountants manage staff registrations but are
+                       not sysadmins. Admins already have this under the Admin section, so show
+                       it here only to non-admin full-access users (i.e. Chief Accountants). #}
+                    {% if not current_user.is_admin %}
+                    <a href="{{ url_for('users.list_approved_emails') }}" class="nav-item {% if request.endpoint == 'users.list_approved_emails' or request.endpoint == 'users.add_approved_email' %}active{% endif %}">
+                        <span class="nav-icon">📧</span>
+                        <span class="nav-text">Approved Emails</span>
+                    </a>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
