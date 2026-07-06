@@ -1126,15 +1126,48 @@ def cancel(id):
 def print_crv(id):
     crv = _get_crv_or_404(id)
 
+    cr_print_form = AppSettings.get_setting('cr_print_form', 'current')
+    # 'hidden' turns CRV printing off entirely: refuse the route, not just the button.
+    if cr_print_form == 'hidden':
+        flash('Cash Receipt printing is not enabled.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+
     je_entries = _build_crv_je_preview(crv)
     company = {
         'name': AppSettings.get_setting('company_name', ''),
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
+    # 'preprinted' -> drag-positioned data-only layout for physical pre-printed
+    # stock; else the standard self-contained printable form.
+    if cr_print_form == 'preprinted':
+        from app.cash_receipts.preprinted_layout import (
+            get_layout, COLUMN_LABELS, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES,
+            PAPER_LABELS, DATE_FORMATS, TEXT_KEYS, TEXT_LABELS)
+        return render_template(
+            'cash_receipts/print_preprinted.html', crv=crv,
+            je_entries=je_entries, company=company, printed_at=ph_now(),
+            layout=get_layout(), can_edit_layout=current_user.has_full_access,
+            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+            text_keys=TEXT_KEYS, text_labels=TEXT_LABELS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('cash_receipts/print.html',
                            crv=crv, je_entries=je_entries,
                            company=company, printed_at=ph_now())
+
+
+@cash_receipts_bp.route('/cash-receipts/print-layout', methods=['POST'])
+@login_required
+def save_crv_print_layout():
+    """Persist the CRV pre-printed layout JSON (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
+        abort(403)
+    from app.cash_receipts.preprinted_layout import save_layout
+    data = request.get_json(silent=True) or {}
+    clean = save_layout(data, current_user.username)
+    return jsonify(ok=True, layout=clean)
 
 
 # ---------------------------------------------------------------------------
