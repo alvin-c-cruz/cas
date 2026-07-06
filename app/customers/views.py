@@ -145,6 +145,32 @@ def populate_dropdown_choices(form):
     form.default_wt_code.choices = wt_choices
 
 
+def _collections_by_invoice(invoice_ids):
+    """Map each invoice id -> the posted CRVs that settled it, for the
+    Collected-column popup. Returns {invoice_id: [{'number','date','amount'}, ...]}.
+    Only posted CRVs count toward amount_paid; draft/voided are excluded.
+    """
+    if not invoice_ids:
+        return {}
+    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+    rows = (
+        CRVArLine.query
+        .join(CashReceiptVoucher, CRVArLine.crv_id == CashReceiptVoucher.id)
+        .filter(CRVArLine.invoice_id.in_(invoice_ids),
+                CashReceiptVoucher.status == 'posted')
+        .order_by(CashReceiptVoucher.crv_date, CashReceiptVoucher.crv_number)
+        .all()
+    )
+    result = {}
+    for line in rows:
+        result.setdefault(line.invoice_id, []).append({
+            'number': line.crv.crv_number,
+            'date': line.crv.crv_date.strftime('%d %b %Y'),
+            'amount': float(line.amount_applied),
+        })
+    return result
+
+
 @customers_bp.route('/customers/<int:id>')
 @login_required
 def detail(id):
@@ -178,12 +204,14 @@ def detail(id):
         pagination = query.order_by(SalesInvoice.invoice_date.desc()).paginate(
             page=page, per_page=20, error_out=False
         )
+        collections = _collections_by_invoice([inv.id for inv in pagination.items])
         return render_template(
             'customers/detail.html',
             customer=customer,
             tab='invoices',
             total_invoices=total_invoices,
             pagination=pagination,
+            collections=collections,
             date_from=date_from_str,
             date_to=date_to_str,
             status_filter=status_filter,

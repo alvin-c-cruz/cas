@@ -89,6 +89,67 @@ def test_detail_invoices_status_filter(client, db_session, accountant_user, main
     assert 'SI-POSTED' not in body
 
 
+def _posted_crv(db_session, customer, branch, cash_account, invoice,
+                crv_number, crv_date, amount, status='posted'):
+    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+    crv = CashReceiptVoucher(
+        branch_id=branch.id, crv_number=crv_number, crv_date=crv_date,
+        customer_id=customer.id, customer_name=customer.name,
+        cash_account_id=cash_account.id, status=status,
+        total_ar_applied=Decimal(str(amount)), total_amount=Decimal(str(amount)),
+    )
+    crv.ar_lines.append(CRVArLine(
+        line_number=1, invoice_id=invoice.id, invoice_number=invoice.invoice_number,
+        original_balance=Decimal(str(invoice.total_amount)), amount_applied=Decimal(str(amount)),
+    ))
+    db_session.add(crv)
+    db_session.commit()
+    return crv
+
+
+@pytest.mark.integration
+def test_invoices_tab_shows_collectible_collected_balance_columns(
+        client, db_session, accountant_user, main_branch, cash_account, login_user):
+    from datetime import date
+    c = _customer(db_session)
+    inv = _invoice(db_session, c, 'SI-COLL-01', balance='800.00')
+    inv.amount_paid = Decimal('300.00')
+    db_session.commit()
+    _posted_crv(db_session, c, main_branch, cash_account, inv,
+                'CRV-2026-07-0005', date(2026, 7, 15), '300.00')
+    login_user(client, 'accountant', 'accountant123')
+
+    resp = client.get(f'/customers/{c.id}?tab=invoices')
+
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    # new columns replace the old subtotal/vat/wht/net breakdown
+    assert 'AMOUNT COLLECTIBLE' in body
+    assert 'COLLECTED' in body
+    assert 'BALANCE' in body
+    assert 'OUTPUT VAT' not in body
+    assert 'NET AMOUNT' not in body
+    # the settling CRV is available to the collected-cell popup
+    assert 'CRV-2026-07-0005' in body
+    assert '15 Jul 2026' in body
+
+
+@pytest.mark.integration
+def test_invoices_tab_draft_crv_not_in_collections(
+        client, db_session, accountant_user, main_branch, cash_account, login_user):
+    from datetime import date
+    c = _customer(db_session)
+    inv = _invoice(db_session, c, 'SI-COLL-02', balance='1100.00')
+    _posted_crv(db_session, c, main_branch, cash_account, inv,
+                'CRV-DRAFT-9', date(2026, 7, 16), '250.00', status='draft')
+    login_user(client, 'accountant', 'accountant123')
+
+    resp = client.get(f'/customers/{c.id}?tab=invoices')
+
+    assert resp.status_code == 200
+    assert 'CRV-DRAFT-9' not in resp.data.decode()
+
+
 @pytest.mark.integration
 def test_detail_404_for_unknown_customer(client, db_session, accountant_user, main_branch, login_user):
     login_user(client, 'accountant', 'accountant123')

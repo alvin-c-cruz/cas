@@ -145,10 +145,9 @@
                         <th>INVOICE #</th>
                         <th>INVOICE DATE</th>
                         <th>DUE DATE</th>
-                        <th style="text-align:right;">SUBTOTAL</th>
-                        <th style="text-align:right;">OUTPUT VAT</th>
-                        <th style="text-align:right;">WHT</th>
-                        <th style="text-align:right;">NET AMOUNT</th>
+                        <th style="text-align:right;">AMOUNT COLLECTIBLE</th>
+                        <th style="text-align:right;">COLLECTED</th>
+                        <th style="text-align:right;">BALANCE</th>
                         <th>STATUS</th>
                     </tr>
                 </thead>
@@ -163,14 +162,14 @@
                         </td>
                         <td>{{ inv.invoice_date.strftime('%b %d, %Y') }}</td>
                         <td>{{ inv.due_date.strftime('%b %d, %Y') }}</td>
-                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(inv.subtotal) }}</td>
-                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(inv.vat_amount) }}</td>
-                        <td style="text-align:right; color:var(--red);">
-                            {% if inv.withholding_tax_amount > 0 %}
-                            -₱{{ '{:,.2f}'.format(inv.withholding_tax_amount) }}
-                            {% else %}—{% endif %}
+                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(inv.total_amount) }}</td>
+                        <td style="text-align:right;">
+                            {% if inv.amount_paid and inv.amount_paid > 0 %}
+                            <button type="button" class="collected-link" data-invoice-id="{{ inv.id }}"
+                                    data-invoice-number="{{ inv.invoice_number }}">₱{{ '{:,.2f}'.format(inv.amount_paid) }}</button>
+                            {% else %}₱0.00{% endif %}
                         </td>
-                        <td style="text-align:right; font-weight:600;">₱{{ '{:,.2f}'.format(inv.total_amount) }}</td>
+                        <td style="text-align:right; font-weight:600; color:{{ 'var(--red)' if inv.balance and inv.balance > 0 else 'var(--green)' }};">₱{{ '{:,.2f}'.format(inv.balance or 0) }}</td>
                         <td>
                             {% set inv_badge = {'partially_paid': 'partial', 'voided': 'void'} %}
                             <span class="badge badge-{{ inv_badge.get(inv.status, inv.status) }}">{{ inv.status | replace('_', ' ') | title }}</span>
@@ -178,7 +177,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8" style="text-align:center; color:var(--text-2); padding:32px; font-style:italic;">
+                        <td colspan="7" style="text-align:center; color:var(--text-2); padding:32px; font-style:italic;">
                             No invoices found.
                         </td>
                     </tr>
@@ -205,6 +204,68 @@
         {% endif %}
     </div>
     {% endif %}
+
+    {# Collections popup — CRV #/date/amount for a clicked Collected cell; filled from embedded JSON #}
+    <div id="collectionsModal" class="collections-modal-overlay" hidden>
+        <div class="collections-modal">
+            <div class="collections-modal-head">
+                <strong id="collectionsTitle">Collections</strong>
+                <button type="button" class="collections-close" aria-label="Close">&times;</button>
+            </div>
+            <table class="collections-table">
+                <thead>
+                    <tr><th>CRV #</th><th>DATE</th><th style="text-align:right;">AMOUNT</th></tr>
+                </thead>
+                <tbody id="collectionsBody"></tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="2" style="text-align:right; font-weight:600;">Total Collected</td>
+                        <td id="collectionsTotal" style="text-align:right; font-weight:600;"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    <script id="collectionsData" type="application/json">{{ collections | tojson }}</script>
+    <script>
+    (function () {
+        var data = {};
+        try { data = JSON.parse(document.getElementById('collectionsData').textContent || '{}'); } catch (e) {}
+        var overlay = document.getElementById('collectionsModal');
+        var body = document.getElementById('collectionsBody');
+        var title = document.getElementById('collectionsTitle');
+        var totalCell = document.getElementById('collectionsTotal');
+        function peso(n) {
+            return '₱' + Number(n).toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+        function open(invId, invNo) {
+            var rows = data[invId] || [];
+            body.innerHTML = '';
+            var total = 0;
+            rows.forEach(function (r) {
+                total += Number(r.amount);
+                var tr = document.createElement('tr');
+                var c1 = document.createElement('td'); c1.textContent = 'CRV ' + r.number;
+                var c2 = document.createElement('td'); c2.textContent = r.date;
+                var c3 = document.createElement('td'); c3.style.textAlign = 'right'; c3.textContent = peso(r.amount);
+                tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3);
+                body.appendChild(tr);
+            });
+            title.textContent = 'Collections — ' + invNo;
+            totalCell.textContent = peso(total);
+            overlay.hidden = false;
+        }
+        function close() { overlay.hidden = true; }
+        document.querySelectorAll('.collected-link').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                open(this.getAttribute('data-invoice-id'), this.getAttribute('data-invoice-number'));
+            });
+        });
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+        overlay.querySelector('.collections-close').addEventListener('click', close);
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    })();
+    </script>
 </div>
 {% endif %}
 
@@ -245,6 +306,37 @@
 .customer-info-table tr + tr td { border-top: 1px solid var(--border); }
 .amount-cell { text-align: right; font-variant-numeric: tabular-nums; }
 .aging-total-row td { border-top: 2px solid var(--border) !important; padding-top: 10px !important; }
+/* Collected-cell link + collections popup */
+.collected-link {
+    background: none; border: none; padding: 0; cursor: pointer;
+    color: var(--blue); font: inherit; text-decoration: underline;
+    text-decoration-style: dotted; text-underline-offset: 2px;
+}
+.collected-link:hover { text-decoration-style: solid; }
+.collections-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45);
+    display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+}
+.collections-modal-overlay[hidden] { display: none; }
+.collections-modal {
+    background: var(--bg-1, #fff); border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+    width: 100%; max-width: 460px; max-height: 80vh; overflow: auto;
+}
+.collections-modal-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.collections-close {
+    background: none; border: none; font-size: 22px; line-height: 1;
+    cursor: pointer; color: var(--text-2);
+}
+.collections-table { width: 100%; border-collapse: collapse; }
+.collections-table th, .collections-table td {
+    padding: 8px 18px; border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums; font-size: 14px;
+}
+.collections-table th { text-align: left; color: var(--text-2); font-size: 12px; }
+.collections-table tfoot td { border-bottom: none; border-top: 2px solid var(--border); }
 @media (max-width: 768px) {
     .customer-overview-grid { grid-template-columns: 1fr; }
 }
