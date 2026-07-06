@@ -146,6 +146,60 @@ class TestVendorDetail:
         assert b'PB-TODAY' in resp.data
         assert b'PB-OLD' not in resp.data
 
+    def _posted_cdv(self, db_session, vendor, branch, cash_account, ap,
+                    cdv_number, cdv_date, amount, status='posted'):
+        from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
+        cdv = CashDisbursementVoucher(
+            branch_id=branch.id, cdv_number=cdv_number, cdv_date=cdv_date,
+            vendor_id=vendor.id, vendor_name=vendor.name,
+            cash_account_id=cash_account.id, status=status,
+            total_ap_applied=Decimal(str(amount)), total_amount=Decimal(str(amount)),
+        )
+        cdv.ap_lines.append(CDVApLine(
+            line_number=1, ap_id=ap.id, ap_number=ap.ap_number,
+            original_balance=Decimal(str(ap.total_amount)), amount_applied=Decimal(str(amount)),
+        ))
+        db_session.add(cdv)
+        db_session.commit()
+        return cdv
+
+    def test_bills_tab_shows_payable_paid_balance_columns(
+            self, client, db_session, admin_user, main_branch, cash_account):
+        login(client)
+        vendor = make_vendor(db_session, code='DV007', name='Paid Cols Vendor')
+        ap = make_ap(db_session, vendor, main_branch, 'PB-PAID-01')
+        ap.amount_paid = Decimal('300.00')
+        ap.balance = Decimal('700.00')
+        db_session.commit()
+        self._posted_cdv(db_session, vendor, main_branch, cash_account, ap,
+                         'CDV-2026-07-0008', date(2026, 7, 15), '300.00')
+
+        resp = client.get(f'/vendors/{vendor.id}?tab=bills')
+
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'AMOUNT PAYABLE' in body
+        assert 'PAID' in body
+        assert 'BALANCE' in body
+        assert 'INPUT VAT' not in body
+        assert 'NET AMOUNT' not in body
+        # the settling CDV is available to the paid-cell popup
+        assert 'CDV-2026-07-0008' in body
+        assert '15 Jul 2026' in body
+
+    def test_bills_tab_draft_cdv_not_in_payments(
+            self, client, db_session, admin_user, main_branch, cash_account):
+        login(client)
+        vendor = make_vendor(db_session, code='DV008', name='Draft CDV Vendor')
+        ap = make_ap(db_session, vendor, main_branch, 'PB-PAID-02')
+        self._posted_cdv(db_session, vendor, main_branch, cash_account, ap,
+                         'CDV-DRAFT-9', date(2026, 7, 16), '250.00', status='draft')
+
+        resp = client.get(f'/vendors/{vendor.id}?tab=bills')
+
+        assert resp.status_code == 200
+        assert 'CDV-DRAFT-9' not in resp.data.decode()
+
     def test_staff_can_view_detail(self, client, db_session, staff_user, main_branch):
         staff_user.set_branches([main_branch])
         db_session.commit()

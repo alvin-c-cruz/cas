@@ -74,6 +74,32 @@ def list_vendors():
                            pagination=pagination, search_query=q)
 
 
+def _payments_by_bill(ap_ids):
+    """Map each bill (AP) id -> the posted CDVs that settled it, for the
+    Paid-column popup. Returns {ap_id: [{'number','date','amount'}, ...]}.
+    Only posted CDVs count toward amount_paid; draft/voided are excluded.
+    """
+    if not ap_ids:
+        return {}
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
+    rows = (
+        CDVApLine.query
+        .join(CashDisbursementVoucher, CDVApLine.cdv_id == CashDisbursementVoucher.id)
+        .filter(CDVApLine.ap_id.in_(ap_ids),
+                CashDisbursementVoucher.status == 'posted')
+        .order_by(CashDisbursementVoucher.cdv_date, CashDisbursementVoucher.cdv_number)
+        .all()
+    )
+    result = {}
+    for line in rows:
+        result.setdefault(line.ap_id, []).append({
+            'number': line.cdv.cdv_number,
+            'date': line.cdv.cdv_date.strftime('%d %b %Y'),
+            'amount': float(line.amount_applied),
+        })
+    return result
+
+
 @vendors_bp.route('/vendors/<int:id>')
 @login_required
 def detail(id):
@@ -105,12 +131,14 @@ def detail(id):
         pagination = query.order_by(AccountsPayable.ap_date.desc()).paginate(
             page=page, per_page=20, error_out=False
         )
+        payments = _payments_by_bill([ap.id for ap in pagination.items])
         return render_template(
             'vendors/detail.html',
             vendor=vendor,
             tab='bills',
             total_bills=total_bills,
             pagination=pagination,
+            payments=payments,
             date_from=date_from_str,
             date_to=date_to_str,
             status_filter=status_filter,

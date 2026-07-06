@@ -146,10 +146,9 @@
                         <th>BILL #</th>
                         <th>BILL DATE</th>
                         <th>DUE DATE</th>
-                        <th style="text-align:right;">SUBTOTAL</th>
-                        <th style="text-align:right;">INPUT VAT</th>
-                        <th style="text-align:right;">WHT</th>
-                        <th style="text-align:right;">NET AMOUNT</th>
+                        <th style="text-align:right;">AMOUNT PAYABLE</th>
+                        <th style="text-align:right;">PAID</th>
+                        <th style="text-align:right;">BALANCE</th>
                         <th>STATUS</th>
                     </tr>
                 </thead>
@@ -164,14 +163,14 @@
                         </td>
                         <td>{{ bill.ap_date.strftime('%b %d, %Y') }}</td>
                         <td>{{ bill.due_date.strftime('%b %d, %Y') }}</td>
-                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.subtotal) }}</td>
-                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.vat_amount) }}</td>
-                        <td style="text-align:right; color:var(--red);">
-                            {% if bill.withholding_tax_amount > 0 %}
-                            -₱{{ '{:,.2f}'.format(bill.withholding_tax_amount) }}
-                            {% else %}—{% endif %}
+                        <td style="text-align:right;">₱{{ '{:,.2f}'.format(bill.total_amount) }}</td>
+                        <td style="text-align:right;">
+                            {% if bill.amount_paid and bill.amount_paid > 0 %}
+                            <button type="button" class="paid-link" data-bill-id="{{ bill.id }}"
+                                    data-bill-number="{{ bill.ap_number }}">₱{{ '{:,.2f}'.format(bill.amount_paid) }}</button>
+                            {% else %}₱0.00{% endif %}
                         </td>
-                        <td style="text-align:right; font-weight:600;">₱{{ '{:,.2f}'.format(bill.total_amount) }}</td>
+                        <td style="text-align:right; font-weight:600; color:{{ 'var(--red)' if bill.balance and bill.balance > 0 else 'var(--green)' }};">₱{{ '{:,.2f}'.format(bill.balance or 0) }}</td>
                         <td>
                             {% set bill_badge = {'partially_paid': 'partial', 'voided': 'void'} %}
                             <span class="badge badge-{{ bill_badge.get(bill.status, bill.status) }}">{{ bill.status | replace('_', ' ') | title }}</span>
@@ -179,7 +178,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8" style="text-align:center; color:var(--text-2); padding:32px; font-style:italic;">
+                        <td colspan="7" style="text-align:center; color:var(--text-2); padding:32px; font-style:italic;">
                             No bills found.
                         </td>
                     </tr>
@@ -206,6 +205,68 @@
         {% endif %}
     </div>
     {% endif %}
+
+    {# Payments popup — CDV #/date/amount for a clicked Paid cell; filled from embedded JSON #}
+    <div id="paymentsModal" class="payments-modal-overlay" hidden>
+        <div class="payments-modal">
+            <div class="payments-modal-head">
+                <strong id="paymentsTitle">Payments</strong>
+                <button type="button" class="payments-close" aria-label="Close">&times;</button>
+            </div>
+            <table class="payments-table">
+                <thead>
+                    <tr><th>CDV #</th><th>DATE</th><th style="text-align:right;">AMOUNT</th></tr>
+                </thead>
+                <tbody id="paymentsBody"></tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="2" style="text-align:right; font-weight:600;">Total Paid</td>
+                        <td id="paymentsTotal" style="text-align:right; font-weight:600;"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    <script id="paymentsData" type="application/json">{{ payments | tojson }}</script>
+    <script>
+    (function () {
+        var data = {};
+        try { data = JSON.parse(document.getElementById('paymentsData').textContent || '{}'); } catch (e) {}
+        var overlay = document.getElementById('paymentsModal');
+        var body = document.getElementById('paymentsBody');
+        var title = document.getElementById('paymentsTitle');
+        var totalCell = document.getElementById('paymentsTotal');
+        function peso(n) {
+            return '₱' + Number(n).toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+        function open(billId, billNo) {
+            var rows = data[billId] || [];
+            body.innerHTML = '';
+            var total = 0;
+            rows.forEach(function (r) {
+                total += Number(r.amount);
+                var tr = document.createElement('tr');
+                var c1 = document.createElement('td'); c1.textContent = 'CDV ' + r.number;
+                var c2 = document.createElement('td'); c2.textContent = r.date;
+                var c3 = document.createElement('td'); c3.style.textAlign = 'right'; c3.textContent = peso(r.amount);
+                tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3);
+                body.appendChild(tr);
+            });
+            title.textContent = 'Payments — ' + billNo;
+            totalCell.textContent = peso(total);
+            overlay.hidden = false;
+        }
+        function close() { overlay.hidden = true; }
+        document.querySelectorAll('.paid-link').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                open(this.getAttribute('data-bill-id'), this.getAttribute('data-bill-number'));
+            });
+        });
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+        overlay.querySelector('.payments-close').addEventListener('click', close);
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    })();
+    </script>
 </div>
 {% endif %}
 
@@ -246,6 +307,37 @@
 .vendor-info-table tr + tr td { border-top: 1px solid var(--border); }
 .amount-cell { text-align: right; font-variant-numeric: tabular-nums; }
 .aging-total-row td { border-top: 2px solid var(--border) !important; padding-top: 10px !important; }
+/* Paid-cell link + payments popup */
+.paid-link {
+    background: none; border: none; padding: 0; cursor: pointer;
+    color: var(--blue); font: inherit; text-decoration: underline;
+    text-decoration-style: dotted; text-underline-offset: 2px;
+}
+.paid-link:hover { text-decoration-style: solid; }
+.payments-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45);
+    display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+}
+.payments-modal-overlay[hidden] { display: none; }
+.payments-modal {
+    background: var(--bg-1, #fff); border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+    width: 100%; max-width: 460px; max-height: 80vh; overflow: auto;
+}
+.payments-modal-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+}
+.payments-close {
+    background: none; border: none; font-size: 22px; line-height: 1;
+    cursor: pointer; color: var(--text-2);
+}
+.payments-table { width: 100%; border-collapse: collapse; }
+.payments-table th, .payments-table td {
+    padding: 8px 18px; border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums; font-size: 14px;
+}
+.payments-table th { text-align: left; color: var(--text-2); font-size: 12px; }
+.payments-table tfoot td { border-bottom: none; border-top: 2px solid var(--border); }
 @media (max-width: 768px) {
     .vendor-overview-grid { grid-template-columns: 1fr; }
 }
