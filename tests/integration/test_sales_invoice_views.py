@@ -156,6 +156,75 @@ class TestExportRoleGate:
         # role gate redirects to the dashboard root; NOT /login or /select-branch
         assert resp.headers.get('Location') == '/'
 
+class TestAmountPaidCRVDisplay:
+    """The SI detail page breaks down Amount Paid by the posted CRV(s) that settled it."""
+
+    def _make_crv(self, db_session, customer, branch, cash_account, invoice,
+                  crv_number, crv_date, amount, status='posted'):
+        from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+        crv = CashReceiptVoucher(
+            branch_id=branch.id,
+            crv_number=crv_number,
+            crv_date=crv_date,
+            customer_id=customer.id,
+            customer_name=customer.name,
+            cash_account_id=cash_account.id,
+            status=status,
+            total_ar_applied=Decimal(str(amount)),
+            total_amount=Decimal(str(amount)),
+        )
+        crv.ar_lines.append(CRVArLine(
+            line_number=1,
+            invoice_id=invoice.id,
+            invoice_number=invoice.invoice_number,
+            original_balance=Decimal('1000.00'),
+            amount_applied=Decimal(str(amount)),
+        ))
+        db_session.add(crv)
+        db_session.commit()
+        return crv
+
+    def test_posted_crv_shows_number_date_and_link(self, client, db_session, admin_user,
+                                                   main_branch, cash_account):
+        from datetime import date
+        customer = make_customer(db_session)
+        inv = make_invoice(db_session, customer, main_branch, 'SI-PAY-01', status='posted')
+        inv.amount_paid = Decimal('300.00')
+        inv.balance = Decimal('700.00')
+        db_session.commit()
+        crv = self._make_crv(db_session, customer, main_branch, cash_account, inv,
+                             'CRV-2026-07-0042', date(2026, 7, 15), '300.00')
+
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/sales-invoices/{inv.id}')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'CRV-2026-07-0042' in body
+        assert '15 Jul 2026' in body
+        assert f'/cash-receipts/{crv.id}' in body
+
+    def test_draft_crv_not_shown(self, client, db_session, admin_user,
+                                 main_branch, cash_account):
+        from datetime import date
+        customer = make_customer(db_session)
+        inv = make_invoice(db_session, customer, main_branch, 'SI-PAY-02', status='posted')
+        inv.amount_paid = Decimal('0.00')
+        inv.balance = Decimal('1000.00')
+        db_session.commit()
+        self._make_crv(db_session, customer, main_branch, cash_account, inv,
+                       'CRV-DRAFT-0001', date(2026, 7, 16), '250.00', status='draft')
+
+        login(client)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get(f'/sales-invoices/{inv.id}')
+        assert resp.status_code == 200
+        assert 'CRV-DRAFT-0001' not in resp.data.decode()
+
+
+class TestStaffCsvExport:
     def test_staff_can_export_csv(self, client, db_session, staff_user, main_branch):
         staff_user.set_branches([main_branch])
         db_session.commit()

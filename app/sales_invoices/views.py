@@ -1038,6 +1038,24 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
 # View / Post / Cancel / Void routes (Task 12)
 # ---------------------------------------------------------------------------
 
+def _crv_settlements(invoice):
+    """Posted Cash Receipt Vouchers that make up this invoice's Amount Paid.
+
+    Returns the CRV AR-lines (each with its parent CRV via the ``crv`` backref)
+    that applied against this invoice, oldest first. Only posted CRVs count
+    toward ``amount_paid``; draft/voided CRVs are excluded.
+    """
+    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+    return (
+        CRVArLine.query
+        .join(CashReceiptVoucher, CRVArLine.crv_id == CashReceiptVoucher.id)
+        .filter(CRVArLine.invoice_id == invoice.id,
+                CashReceiptVoucher.status == 'posted')
+        .order_by(CashReceiptVoucher.crv_date, CashReceiptVoucher.crv_number)
+        .all()
+    )
+
+
 @sales_invoices_bp.route('/sales-invoices/<int:id>')
 @login_required
 def view(id):
@@ -1045,9 +1063,10 @@ def view(id):
     je_entries = _build_je_preview(invoice)
     sv_print_access = AppSettings.get_setting('sv_print_access', 'posted_only')
     sv_print_form = AppSettings.get_setting('sv_print_form', 'current')
+    payments = _crv_settlements(invoice)
     return render_template('sales_invoices/detail.html', invoice=invoice,
                            je_entries=je_entries, sv_print_access=sv_print_access,
-                           sv_print_form=sv_print_form)
+                           sv_print_form=sv_print_form, payments=payments)
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
