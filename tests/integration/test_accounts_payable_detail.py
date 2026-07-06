@@ -162,3 +162,66 @@ class TestDetailPageLayout:
         html = resp.data.decode('utf-8')
         assert 'Account Title' in html
         assert 'WHT Amt' not in html
+
+
+def _posted_cdv(db_session, vendor, branch, cash_account, bill,
+                cdv_number, cdv_date, amount, status='posted'):
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
+    cdv = CashDisbursementVoucher(
+        branch_id=branch.id, cdv_number=cdv_number, cdv_date=cdv_date,
+        vendor_id=vendor.id, vendor_name=vendor.name,
+        cash_account_id=cash_account.id, status=status,
+        total_ap_applied=Decimal(str(amount)), total_amount=Decimal(str(amount)),
+    )
+    cdv.ap_lines.append(CDVApLine(
+        line_number=1, ap_id=bill.id, ap_number=bill.ap_number,
+        original_balance=Decimal(str(bill.total_amount)), amount_applied=Decimal(str(amount)),
+    ))
+    db_session.add(cdv)
+    db_session.commit()
+    return cdv
+
+
+class TestDetailPayments:
+    def test_amount_paid_lists_settling_cdvs(
+            self, client, db_session, admin_user, main_branch):
+        from datetime import date
+        expense = setup_gl_accounts(db_session)
+        cash = get_or_create_account(db_session, '10101', 'Cash on Hand', 'Asset', 'Debit')
+        vendor = make_vendor(db_session)
+        bill = make_ap_with_line(db_session, vendor, main_branch, expense)
+        bill.status = 'partially_paid'
+        bill.amount_paid = Decimal('3000.00')
+        bill.balance = Decimal('8200.00')
+        db_session.commit()
+        _posted_cdv(db_session, vendor, main_branch, cash, bill,
+                    'CDV-2026-07-0009', date(2026, 7, 15), '3000.00')
+        login(client)
+
+        resp = client.get(f'/accounts-payable/{bill.id}')
+
+        assert resp.status_code == 200
+        html = resp.data.decode('utf-8')
+        assert 'Payments' in html
+        assert 'CDV-2026-07-0009' in html
+        assert '15 Jul 2026' in html
+
+    def test_draft_cdv_not_listed(
+            self, client, db_session, admin_user, main_branch):
+        from datetime import date
+        expense = setup_gl_accounts(db_session)
+        cash = get_or_create_account(db_session, '10101', 'Cash on Hand', 'Asset', 'Debit')
+        vendor = make_vendor(db_session)
+        bill = make_ap_with_line(db_session, vendor, main_branch, expense)
+        bill.status = 'partially_paid'
+        bill.amount_paid = Decimal('3000.00')
+        bill.balance = Decimal('8200.00')
+        db_session.commit()
+        _posted_cdv(db_session, vendor, main_branch, cash, bill,
+                    'CDV-DRAFT-9', date(2026, 7, 16), '3000.00', status='draft')
+        login(client)
+
+        resp = client.get(f'/accounts-payable/{bill.id}')
+
+        assert resp.status_code == 200
+        assert 'CDV-DRAFT-9' not in resp.data.decode('utf-8')

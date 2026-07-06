@@ -327,10 +327,19 @@
                 </div>
                 {% if ap.amount_paid and ap.amount_paid > 0 %}
                 <div style="display:flex; justify-content:space-between; margin-top:10px;">
-                    <span style="color:var(--text-2);">Amount Paid:</span>
-                    <span style="font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap.amount_paid) }}</span>
+                    <span style="color:var(--text-2);">Payments:</span>
+                    {% if not payments %}<span style="font-family:var(--mono);">₱{{ '{:,.2f}'.format(ap.amount_paid) }}</span>{% endif %}
                 </div>
-                <div style="display:flex; justify-content:space-between; padding-top:8px; border-top:1px solid var(--border);">
+                {% for p in payments %}
+                <div style="display:flex; justify-content:space-between; padding-left:16px; margin-top:2px;">
+                    <span style="font-size:13px; color:var(--text-3);">
+                        <a href="{{ url_for('cash_disbursements.view', id=p.cdv_id) }}" style="color:var(--text-2); text-decoration:none;">CDV {{ p.cdv.cdv_number }}</a>
+                        <span style="color:var(--text-3);">· {{ p.cdv.cdv_date.strftime('%d %b %Y') }}</span>
+                    </span>
+                    <span style="font-family:var(--mono); font-size:13px;">₱{{ '{:,.2f}'.format(p.amount_applied) }}</span>
+                </div>
+                {% endfor %}
+                <div style="display:flex; justify-content:space-between; padding-top:8px; border-top:1px solid var(--border); margin-top:6px;">
                     <span style="font-weight:600;">Balance:</span>
                     <span style="font-family:var(--mono); font-weight:600; color:{{ 'var(--red)' if ap.balance > 0 else 'var(--green)' }};">₱{{ '{:,.2f}'.format(ap.balance) }}</span>
                 </div>

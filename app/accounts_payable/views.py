@@ -780,6 +780,24 @@ def create():
     return _render_form(restore_lines)
 
 
+def _cdv_settlements(ap):
+    """Posted Cash Disbursement Vouchers that make up this bill's Amount Paid.
+
+    Returns the CDV AP-lines (each with its parent CDV via the ``cdv`` backref)
+    that applied against this bill, oldest first. Only posted CDVs count toward
+    ``amount_paid``; draft/voided are excluded.
+    """
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
+    return (
+        CDVApLine.query
+        .join(CashDisbursementVoucher, CDVApLine.cdv_id == CashDisbursementVoucher.id)
+        .filter(CDVApLine.ap_id == ap.id,
+                CashDisbursementVoucher.status == 'posted')
+        .order_by(CashDisbursementVoucher.cdv_date, CashDisbursementVoucher.cdv_number)
+        .all()
+    )
+
+
 @accounts_payable_bp.route('/accounts-payable/<int:id>')
 @login_required
 def view(id):
@@ -787,9 +805,11 @@ def view(id):
     ap = _get_ap_or_404(id)
     je_entries = _build_je_preview(ap)
     apv_print_access = AppSettings.get_setting('apv_print_access', 'posted_only')
+    payments = _cdv_settlements(ap)
     return render_template('accounts_payable/detail.html', ap=ap,
                            je_entries=je_entries,
-                           apv_print_access=apv_print_access)
+                           apv_print_access=apv_print_access,
+                           payments=payments)
 
 
 @accounts_payable_bp.route('/accounts-payable/<int:id>/print')
