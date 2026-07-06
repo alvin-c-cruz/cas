@@ -306,16 +306,16 @@
                     </div>
                     {% if invoice.amount_paid and invoice.amount_paid > 0 %}
                     <div class="bsr">
-                        <span class="bsr-label">Amount Paid</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(invoice.amount_paid) }}</span>
+                        <span class="bsr-label">Collections</span>
+                        {% if not payments %}<span class="bsr-amt">₱{{ '{:,.2f}'.format(invoice.amount_paid) }}</span>{% endif %}
                     </div>
                     {% for p in payments %}
                     <div class="bsr" style="padding-left:16px;">
                         <span class="bsr-label" style="font-size:12px; color:var(--text-3);">
-                            <a href="{{ url_for('cash_receipts.view', id=p.crv_id) }}" style="color:var(--text-2); text-decoration:none;">{{ p.crv.crv_number }}</a>
+                            <a href="{{ url_for('cash_receipts.view', id=p.crv_id) }}" style="color:var(--text-2); text-decoration:none;">CRV {{ p.crv.crv_number }}</a>
                             <span style="color:var(--text-3);">· {{ p.crv.crv_date.strftime('%d %b %Y') }}</span>
                         </span>
-                        <span class="bsr-amt" style="font-size:12px; color:var(--text-3);">₱{{ '{:,.2f}'.format(p.amount_applied) }}</span>
+                        <span class="bsr-amt" style="font-size:12px; color:var(--text-2);">₱{{ '{:,.2f}'.format(p.amount_applied) }}</span>
                     </div>
                     {% endfor %}
                     <div class="bsr bsr--sep">
