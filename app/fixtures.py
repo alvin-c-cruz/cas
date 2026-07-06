@@ -156,11 +156,6 @@ def load_default_settings():
     """Initialize default application settings."""
     settings_created = []
 
-    # Environment setting
-    if not AppSettings.query.filter_by(key='environment').first():
-        AppSettings.set_setting('environment', 'dev', 'system')
-        settings_created.append('environment')
-
     # Add more default settings here as needed
     # Example:
     # if not AppSettings.query.filter_by(key='company_name').first():

@@ -735,7 +735,6 @@ def seed_minimal():
                 {'key': 'cd_check_print_access','value': 'posted_only'},
                 {'key': 'cr_print_access',      'value': 'posted_only'},
                 {'key': 'company_logo',         'value': ''},
-                {'key': 'environment',          'value': 'dev'},
                 {'key': 'accountant_email_self_approval', 'value': '0'},
                 # Module package gate: CORE-only baseline — every optional module OFF.
                 {'key': 'module_enabled:bir_reports',      'value': '0'},

@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=14">
     <style>
         /* Minimal scrollbar styling for better accessibility */
         * {
@@ -936,82 +936,6 @@
             align-items: center;
         }
 
-        /* Topbar Environment Badge */
-        .topbar-env-badge {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            border: 1px solid;
-            transition: all 0.3s;
-        }
-
-        .topbar-env-badge[data-is-admin="true"] {
-            cursor: pointer;
-        }
-
-        .topbar-env-badge[data-is-admin="false"] {
-            cursor: default;
-        }
-
-        .topbar-env-badge[data-env="dev"] {
-            background: #eff6ff;
-            color: #1e40af;
-            border-color: #bfdbfe;
-        }
-
-        .topbar-env-badge[data-env="testing"] {
-            background: #fffbeb;
-            color: #92400e;
-            border-color: #fde047;
-        }
-
-        .topbar-env-badge[data-env="live"] {
-            background: #f0fdf4;
-            color: #166534;
-            border-color: #bbf7d0;
-        }
-
-        .topbar-env-badge[data-is-admin="true"]:hover {
-            opacity: 0.8;
-            transform: scale(1.05);
-        }
-
-        .env-light {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        .topbar-env-badge[data-env="dev"] .env-light {
-            background: #3b82f6;
-            box-shadow: 0 0 8px #3b82f6;
-        }
-
-        .topbar-env-badge[data-env="testing"] .env-light {
-            background: #f59e0b;
-            box-shadow: 0 0 8px #f59e0b;
-        }
-
-        .topbar-env-badge[data-env="live"] .env-light {
-            background: #22c55e;
-            box-shadow: 0 0 8px #22c55e;
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                opacity: 1;
-                transform: scale(1);
-            }
-            50% {
-                opacity: 0.6;
-                transform: scale(1.1);
-            }
-        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -1375,11 +1299,6 @@
                     {{ now.strftime('%b %d, %Y') if now else '' }}
                 </div>
 
-                <!-- Environment Badge -->
-                <button class="topbar-env-badge" id="envBadge" data-env="dev" data-is-admin="{{ 'true' if current_user.role == 'admin' else 'false' }}">
-                    <span class="env-light"></span>
-                    <span class="env-text">Dev</span>
-                </button>
 
                 <!-- User Menu (Hidden) -->
                 <div class="user-menu" style="display: none;">
@@ -1458,64 +1377,6 @@
                         userMenuBtn.classList.remove('active');
                     }
                 });
-            }
-
-            // Environment Badge - Fetch current environment and sync with server
-            const envBadge = document.getElementById('envBadge');
-            if (envBadge) {
-                const isAdmin = envBadge.getAttribute('data-is-admin') === 'true';
-                const environments = ['dev', 'testing', 'live'];
-                const envLabels = {
-                    'dev': 'Dev',
-                    'testing': 'Testing',
-                    'live': 'Live'
-                };
-
-                // Function to update badge display
-                function updateBadgeDisplay(env) {
-                    envBadge.setAttribute('data-env', env);
-                    envBadge.querySelector('.env-text').textContent = envLabels[env];
-                }
-
-                // Fetch current environment from server on page load
-                fetch('/api/environment')
-                    .then(response => response.json())
-                    .then(data => {
-                        updateBadgeDisplay(data.environment);
-                    })
-                    .catch(error => console.error('Error fetching environment:', error));
-
-                // Admin can click to cycle through environments
-                if (isAdmin) {
-                    envBadge.addEventListener('click', function() {
-                        const currentEnv = this.getAttribute('data-env');
-                        const currentIndex = environments.indexOf(currentEnv);
-                        const nextIndex = (currentIndex + 1) % environments.length;
-                        const nextEnv = environments[nextIndex];
-
-                        // Update server
-                        fetch('/api/environment', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                            },
-                            body: JSON.stringify({ environment: nextEnv })
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                updateBadgeDisplay(nextEnv);
-                            } else {
-                                window.showFlashMessage(data.error || 'Failed to update environment', 'error');
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error updating environment:', error);
-                            window.showFlashMessage('Failed to update environment', 'error');
-                        });
-                    });
-                }
             }
 
             // Sidebar section collapse/expand functionality

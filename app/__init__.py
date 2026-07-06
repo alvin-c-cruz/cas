@@ -209,7 +209,6 @@ def create_app(config_name=None):
     from app.dashboard.views import dashboard_bp
     from app.accounts.views import accounts_bp
     from app.users.views import users_bp
-    from app.api.views import api_bp
     from app.branches.views import branches_bp
     from app.vendors.views import vendors_bp
     from app.vat_categories.views import vat_categories_bp
@@ -237,7 +236,6 @@ def create_app(config_name=None):
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
     app.register_blueprint(users_bp)
-    app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(branches_bp)
     app.register_blueprint(vendors_bp)
     app.register_blueprint(vat_categories_bp, url_prefix='/vat-categories')

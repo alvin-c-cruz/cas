@@ -149,7 +149,6 @@ COMPANY_SETTINGS = [
     {'key': 'cd_check_print_access', 'value': 'draft_and_posted'},
     {'key': 'cr_print_access', 'value': 'draft_and_posted'},
     {'key': 'company_logo', 'value': ''},
-    {'key': 'environment', 'value': 'demo'},
 ]
 
 # code, name, rate, sales_name (None = purchase-only)
