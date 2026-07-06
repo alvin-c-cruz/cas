@@ -20,11 +20,9 @@
     "dir": "instance",
     "env_var": "SQLALCHEMY_DATABASE_URI",
     "uri_prefix": "sqlite:///",
-    "default": "demo",
+    "default": "cas",
     "instances": {
-      "demo":  { "file": "cas_demo.db",  "resettable": true,  "live": false },
-      "cas":   { "file": "cas.db",       "resettable": false, "live": false },
-      "pitch": { "file": "cas_pitch.db", "resettable": false, "live": false }
+      "cas": { "file": "cas.db", "resettable": true, "reset_allow": true, "live": false }
     },
     "seed_cmd": "flask seed-minimal",
     "migrate_cmd": "flask db upgrade"
@@ -40,10 +38,9 @@
     "search_select": true
   },
   "_notes": {
-    "db_selector": "/run cas -> db.default ('demo' = cas_demo.db). /run cas cas -> cas.db. /run cas pitch -> cas_pitch.db. The db-key is the 2nd positional arg to /run; it maps to db.instances.<key>.file. The dev server picks the DB by /run pre-setting env_var (SQLALCHEMY_DATABASE_URI) before launch -- flask_app.py's load_dotenv(override=False) lets the pre-set env win over .env.",
-    "reset_rule": "reset-database may wipe ONLY an instance with resettable:true AND whose file matches *_demo.db. Today only 'demo' (cas_demo.db) qualifies. cas.db/cas_pitch.db are never resettable. NOTE (2026-07-05): cas_demo.db now holds a LOCAL COPY of RIC's migrated COA (renamed from ric.db at user request); the user treats it as a DISPOSABLE local/test DB -- the authoritative RIC data lives on PythonAnywhere, so a /reset-database wipe of cas_demo.db is recoverable by re-pulling from PA.",
-    "cas_demo_db": "cas_demo.db EXISTS. On 2026-07-05 the local ric.db was RENAMED to cas_demo.db at user request; it holds RIC's migrated COA (~367 accounts, no transactions) as a disposable LOCAL copy (PythonAnywhere is authoritative). The prior SavorPack demo was preserved as cas_demo.savorpack-bak-20260705-170811.db in instance/.",
-    "live_dbs": "cas_pitch.db = pitch snapshot. The 'ric' instance was REMOVED 2026-07-05 (local ric.db renamed to cas_demo.db); the real, authoritative RIC client data now lives only on PythonAnywhere and is not a local /run instance.",
+    "db_selector": "/run cas -> db.default ('cas' = cas.db). Single local DB. The db-key is the 2nd positional arg to /run; it maps to db.instances.<key>.file. The dev server picks the DB by /run pre-setting env_var (SQLALCHEMY_DATABASE_URI) before launch -- flask_app.py's load_dotenv(override=False) lets the pre-set env win over .env (.env default is also cas.db).",
+    "reset_rule": "reset-database may wipe an instance with resettable:true AND (file matches *_demo.db OR reset_allow:true) AND live!=true. As of 2026-07-06 the ONLY instance is 'cas' (cas.db), explicitly reset_allow:true -- the user consolidated to a single disposable local TESTING DB named cas.db (holds SavorPack demo data). reset_allow opts a non-*_demo.db name past the filename guard; the live!=true guard is ALWAYS hard and reset_allow can never override it. There is no live client DB in this manifest (RIC is authoritative on PythonAnywhere only).",
+    "db_cleanup_20260706": "Consolidated to a single cas.db. cas_demo.db (RIC's ~367-account migrated COA, disposable local copy) was ARCHIVED to C:/envs/_db-archive/cas_demo_RIC-COA_archived-20260706.db (outside all repos; authoritative RIC data lives on PythonAnywhere). cas_demo.savorpack-bak-20260705-170811.db and cas_pitch.db were removed by the user. The 'demo' and 'pitch' instances were dropped from this manifest.",
     "python": "CAS has a venv with pytest + pytest-xdist. zhiyuan has none (PATH python)."
   }
 }
