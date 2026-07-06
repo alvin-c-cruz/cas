@@ -47,6 +47,7 @@ SETTINGS_KEYS = [
     'cd_print_access',
     'cd_check_print_access',
     'cr_print_access',
+    'cr_print_form',
 ]
 
 LOGO_SETTING_KEY = 'company_logo'

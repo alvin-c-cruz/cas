@@ -129,6 +129,9 @@ class CompanySettingsForm(FlaskForm):
     cr_print_access = SelectField(
         'CRV Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )
+    cr_print_form = SelectField(
+        'Cash Receipt Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
+    )
 
     # Administration / policy
     accountant_email_self_approval = BooleanField(
