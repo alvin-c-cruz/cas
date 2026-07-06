@@ -14,6 +14,7 @@ from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswor
 from app.utils import ph_now
 from app.audit.utils import log_audit, log_create, log_update, log_delete, model_to_dict
 from app.notifications.utils import create_notification
+from app.utils.authz import admin_panel_required, assignable_positions, role_level
 
 
 users_bp = Blueprint('users', __name__, template_folder='templates')
@@ -22,17 +23,6 @@ users_bp = Blueprint('users', __name__, template_folder='templates')
 # so the unknown-user path spends the same time hashing as the wrong-password
 # path and cannot be distinguished by response timing (BUG-SEC-06).
 _DUMMY_PASSWORD_HASH = generate_password_hash('cas-login-timing-equalizer')
-
-
-def admin_required(f):
-    """Decorator to require admin role for user management."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_admin:
-            flash('You need administrator privileges to access User Management.', 'error')
-            return redirect(url_for('dashboard.index'))
-        return f(*args, **kwargs)
-    return decorated_function
 
 
 def _is_safe_url(target):
@@ -331,7 +321,7 @@ def register():
 
 @users_bp.route('/users')
 @login_required
-@admin_required
+@admin_panel_required
 def list_users():
     """List all users (admin only)."""
     users = User.query.order_by(User.created_at.desc()).all()
@@ -346,7 +336,7 @@ def list_users():
 
 @users_bp.route('/users/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@admin_panel_required
 def edit_user(id):
     """Edit existing user (admin only)."""
 
@@ -515,7 +505,7 @@ def edit_user(id):
 
 @users_bp.route('/users/<int:id>/delete', methods=['POST'])
 @login_required
-@admin_required
+@admin_panel_required
 def delete_user(id):
     """Delete user (admin only)."""
     # Only administrators can delete users
@@ -609,8 +599,8 @@ def change_password():
 @users_bp.route('/approved-emails')
 @login_required
 def list_approved_emails():
-    """List all approved emails for registration (admin full access; accountant read-only)."""
-    if current_user.role not in ('admin', 'accountant'):
+    """List all approved emails for registration (full-access manage; accountant read-only)."""
+    if current_user.role not in ('admin', 'accountant', 'chief_accountant'):
         flash('You do not have permission to view this page.', 'error')
         return redirect(url_for('dashboard.index'))
     from app.users.approved_emails import ApprovedEmail
@@ -633,12 +623,13 @@ def list_approved_emails():
 def add_approved_email():
     """Add a new approved email for registration.
 
-    Admin → immediately approved (carries role + branches + permissions).
+    Full-access approver (admin or Chief Accountant) → immediately approved
+    (carries role + branches + permissions).
     Accountant → creates a pending request for admin approval; but when the company
     setting ``accountant_email_self_approval`` is ON, a staff/viewer request is
     approved immediately (an accountant-position request still goes pending).
     """
-    if current_user.role not in ('admin', 'accountant'):
+    if current_user.role not in ('admin', 'accountant', 'chief_accountant'):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard.index'))
     from app.users.forms import ApprovedEmailForm
@@ -647,17 +638,27 @@ def add_approved_email():
 
     form = ApprovedEmailForm()
 
-    # Scope the branch pool to the approver: admin → all active; accountant → their
+    # Level ceiling on the assignable position: an approver may never grant a role
+    # above their own (admin/CA up to chief_accountant; accountant up to accountant),
+    # and 'admin' is never assignable. Scoping the SelectField choices HERE — before
+    # validate_on_submit() — is the server-side enforcement: WTForms rejects any
+    # submitted position not in choices (an injected chief_accountant/admin is dropped).
+    _allowed_positions = set(assignable_positions(current_user))
+    form.position.choices = [(v, label) for (v, label) in form.position.choices
+                             if v in _allowed_positions]
+
+    # Scope the branch pool to the approver: admin/CA → all active; accountant → their
     # assigned branches. Setting choices here is the in-scope enforcement — WTForms
     # rejects any submitted branch id that is not an allowed choice.
     allowed_branches = get_accessible_branches(current_user)
     form.branch_ids.choices = [(b.id, b.name) for b in allowed_branches]
     single_branch = allowed_branches[0] if len(allowed_branches) == 1 else None
 
-    # Permission-grid scope: admin may grant any module; an accountant may grant only
-    # the modules they themselves hold (subset delegation, same rule as Staff Management).
+    # Permission-grid scope: a full-access approver (admin/CA) may grant any module;
+    # an accountant may grant only the modules they themselves hold (subset delegation,
+    # same rule as Staff Management).
     from app.users.module_access import all_permission_keys, MODULE_REGISTRY
-    if current_user.role == 'admin':
+    if current_user.has_full_access:
         editable_keys = set(all_permission_keys())
     else:
         from app.staff_management.scope import accountant_permission_keys
@@ -686,8 +687,8 @@ def add_approved_email():
         book_perms = {k: request.form.get('book_' + k) == '1' for k in editable_keys}
 
         try:
-            if current_user.role == 'admin':
-                # Admin direct-add → immediately approved
+            if current_user.has_full_access:
+                # Full-access approver (admin/CA) direct-add → immediately approved
                 approved_email = ApprovedEmail(
                     email=form.email.data.lower(),
                     status='approved',
@@ -813,8 +814,8 @@ def add_approved_email():
 @users_bp.route('/approved-emails/<int:id>/approve', methods=['POST'])
 @login_required
 def approve_approved_email(id):
-    """Approve a pending approved-email request (admin only)."""
-    if current_user.role != 'admin':
+    """Approve a pending approved-email request (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
         flash('Only administrators can approve email requests.', 'error')
         return redirect(url_for('users.list_approved_emails'))
 
@@ -823,6 +824,13 @@ def approve_approved_email(id):
 
     if ae.status != 'pending':
         flash('This request is not pending and cannot be approved.', 'error')
+        return redirect(url_for('users.list_approved_emails'))
+
+    # Defensive level ceiling: an approver may only approve a request whose role is
+    # at or below the approver's own level (a CA can approve accountant/staff/viewer
+    # but never an 'admin' request — admin is never a self-registration position).
+    if role_level(ae.role) > role_level(current_user.role):
+        flash('You cannot approve a request for a role above your own level.', 'error')
         return redirect(url_for('users.list_approved_emails'))
 
     ae.approve(current_user.id)
@@ -853,8 +861,8 @@ def approve_approved_email(id):
 @users_bp.route('/approved-emails/<int:id>/reject', methods=['POST'])
 @login_required
 def reject_approved_email(id):
-    """Reject a pending approved-email request (admin only)."""
-    if current_user.role != 'admin':
+    """Reject a pending approved-email request (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
         flash('Only administrators can reject email requests.', 'error')
         return redirect(url_for('users.list_approved_emails'))
 
@@ -896,8 +904,8 @@ def reject_approved_email(id):
 @users_bp.route('/approved-emails/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_approved_email(id):
-    """Delete an approved email (admin only)."""
-    if current_user.role != 'admin':
+    """Delete an approved email (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
         flash('Only administrators can manage approved emails.', 'error')
         return redirect(url_for('dashboard.index'))
     from app.users.approved_emails import ApprovedEmail

@@ -19,19 +19,9 @@ from app import db
 from app.settings import AppSettings
 from app.company_settings.forms import CompanySettingsForm
 from app.audit.utils import log_audit
+from app.utils.authz import admin_panel_required
 
 company_settings_bp = Blueprint('company_settings', __name__, template_folder='templates')
-
-
-def admin_only(f):
-    """Decorator to require admin role for company settings."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_admin:
-            flash('Only administrators can access Company Settings.', 'error')
-            return redirect(url_for('dashboard.index'))
-        return f(*args, **kwargs)
-    return decorated_function
 
 
 # Settings keys managed by the form, in display order.
@@ -100,7 +90,7 @@ def _delete_logo_file(stored_filename):
 
 @company_settings_bp.route('', methods=['GET', 'POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def edit_settings():
     """View and update company-wide settings."""
     form = CompanySettingsForm()
@@ -168,7 +158,7 @@ def edit_settings():
 
 @company_settings_bp.route('/modules')
 @login_required
-@admin_only
+@admin_panel_required
 def modules():
     from app.users.module_access import MODULE_REGISTRY, module_enabled
     optional = [dict(m, enabled=module_enabled(m['key']))
@@ -178,7 +168,7 @@ def modules():
 
 @company_settings_bp.route('/modules/toggle', methods=['POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def modules_toggle():
     from app.users.module_access import MODULE_REGISTRY, module_enabled, can_toggle
     from app.utils.cache_helpers import clear_module_config_cache
@@ -202,7 +192,7 @@ def modules_toggle():
 
 @company_settings_bp.route('/logo/upload', methods=['POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def upload_logo():
     """Upload (or replace) the company logo."""
     uploaded_file = request.files.get('logo')
@@ -302,7 +292,7 @@ def upload_logo():
 
 @company_settings_bp.route('/logo/remove', methods=['POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def remove_logo():
     """Remove the company logo (file + setting row)."""
     old_logo = _current_logo_filename()

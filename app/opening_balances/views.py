@@ -17,6 +17,7 @@ from app.opening_balances.utils import (
     get_opening_entry, is_opening_locked, opening_account_choices,
     opening_leaf_account_ids, LOCK_KEY,
 )
+from app.utils.authz import full_access_required
 
 opening_balances_bp = Blueprint('opening_balances', __name__, template_folder='templates')
 
@@ -29,16 +30,6 @@ def accountant_or_admin_required(f):
     def wrapper(*args, **kwargs):
         if not (current_user.role == 'accountant' or current_user.has_full_access):
             flash('You do not have permission to manage opening balances.', 'error')
-            return redirect(url_for('opening_balances.index'))
-        return f(*args, **kwargs)
-    return wrapper
-
-
-def admin_required(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        if not current_user.has_full_access:
-            flash('Only an administrator or Chief Accountant can finalize opening balances.', 'error')
             return redirect(url_for('opening_balances.index'))
         return f(*args, **kwargs)
     return wrapper
@@ -234,7 +225,7 @@ def reopen():
 
 @opening_balances_bp.route('/opening-balances/finalize', methods=['POST'])
 @login_required
-@admin_required
+@full_access_required
 def finalize():
     branch_id = _branch_id()
     entry = get_opening_entry(branch_id)

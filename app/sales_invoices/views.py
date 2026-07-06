@@ -1211,7 +1211,7 @@ def print_invoice(id):
         return render_template(
             'sales_invoices/print_preprinted.html', invoice=invoice,
             je_entries=je_entries, company=company, printed_at=ph_now(),
-            layout=get_layout(), can_edit_layout=(current_user.role == 'admin'),
+            layout=get_layout(), can_edit_layout=current_user.has_full_access,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
@@ -1224,8 +1224,8 @@ def print_invoice(id):
 @sales_invoices_bp.route('/sales-invoices/print-layout', methods=['POST'])
 @login_required
 def save_print_layout():
-    """Persist the pre-printed layout JSON (admin-only)."""
-    if current_user.role != 'admin':
+    """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
         abort(403)
     data = request.get_json(silent=True) or {}
     clean = save_layout(data, current_user.username)

@@ -121,10 +121,15 @@ class ApprovedEmailForm(FlaskForm):
         DataRequired(),
         Email(message='Please enter a valid email address.', check_deliverability=False)
     ])
+    # Base choices include chief_accountant so a full-access approver (admin/CA)
+    # can pick it; the per-approver level ceiling in the view narrows these before
+    # validate_on_submit(), and WTForms rejects any out-of-choice value. 'admin' is
+    # intentionally absent — self-registration never mints an admin.
     position = SelectField('Position', choices=[
         ('viewer', 'Viewer'),
         ('staff', 'Staff'),
         ('accountant', 'Accountant'),
+        ('chief_accountant', 'Chief Accountant'),
     ], validators=[DataRequired(message='Select the position for this registrant.')])
     # Branch pool is scoped per-approver in the view; the >=1 / in-scope rule and
     # the single-branch auto-assign also live in the view (they need the approver's

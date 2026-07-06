@@ -134,6 +134,6 @@ def count_action_items(user, branch_id):
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()
         n += WithholdingTaxChangeRequest.query.filter_by(status='pending').count()
-    if user.role == 'admin':
+    if user.has_full_access:
         n += ApprovedEmail.query.filter_by(status='pending').count()
     return n

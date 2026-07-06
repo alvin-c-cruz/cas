@@ -8,25 +8,14 @@ from app.branches.models import Branch
 from app.branches.forms import BranchForm
 from app.users.models import User
 from app.audit.utils import log_create, log_update, log_delete, log_audit, model_to_dict
-from functools import wraps
+from app.utils.authz import admin_panel_required
 
 branches_bp = Blueprint('branches', __name__, template_folder='templates')
 
 
-def admin_only(f):
-    """Decorator to require admin role for branch management."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_admin:
-            flash('Only administrators can access Branch Management.', 'error')
-            return redirect(url_for('dashboard.index'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
 @branches_bp.route('/branches')
 @login_required
-@admin_only
+@admin_panel_required
 def list_branches():
     """List all branches."""
     branches = Branch.query.order_by(Branch.code).all()
@@ -35,7 +24,7 @@ def list_branches():
 
 @branches_bp.route('/branches/create', methods=['GET', 'POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def create():
     """Create new branch."""
     form = BranchForm()
@@ -86,7 +75,7 @@ def create():
 
 @branches_bp.route('/branches/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def edit(id):
     """Edit branch."""
     branch = db.get_or_404(Branch, id)
@@ -137,7 +126,7 @@ def edit(id):
 
 @branches_bp.route('/branches/<int:id>/delete', methods=['POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def delete(id):
     """Delete branch."""
     branch = db.get_or_404(Branch, id)
@@ -186,7 +175,7 @@ def delete(id):
 
 @branches_bp.route('/branches/<int:id>/users')
 @login_required
-@admin_only
+@admin_panel_required
 def branch_users(id):
     """View and manage users assigned to a branch."""
     branch = db.get_or_404(Branch, id)
@@ -209,7 +198,7 @@ def branch_users(id):
 
 @branches_bp.route('/branches/<int:id>/assign-user/<int:user_id>', methods=['POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def assign_user(id, user_id):
     """Assign a user to a branch."""
     branch = db.get_or_404(Branch, id)
@@ -251,7 +240,7 @@ def assign_user(id, user_id):
 
 @branches_bp.route('/branches/<int:id>/unassign-user/<int:user_id>', methods=['POST'])
 @login_required
-@admin_only
+@admin_panel_required
 def unassign_user(id, user_id):
     """Unassign a user from a branch."""
     branch = db.get_or_404(Branch, id)

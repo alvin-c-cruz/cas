@@ -14,27 +14,15 @@ from app.periods.models import AccountingPeriod
 from app.journal_entries.models import JournalEntry
 from app.reports.financial import generate_trial_balance
 from app.audit.utils import log_create, log_update
+from app.utils.authz import full_access_required
 
 
 periods_bp = Blueprint('periods', __name__, template_folder='templates')
 
 
-def admin_required(f):
-    """Decorator to require admin role (or Chief Accountant) for period management."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated:
-            return redirect(url_for('users.login'))
-        if not current_user.has_full_access:
-            flash('Only Administrators or Chief Accountants can manage accounting periods.', 'error')
-            return redirect(url_for('dashboard.index'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
 @periods_bp.route('/periods')
 @login_required
-@admin_required
+@full_access_required
 def list_periods():
     """List all accounting periods with their status"""
     # Get all periods ordered by year, month descending
@@ -55,7 +43,7 @@ def list_periods():
 
 @periods_bp.route('/periods/<int:year>/<int:month>')
 @login_required
-@admin_required
+@full_access_required
 def view_period(year, month):
     """View details of a specific accounting period"""
     period = AccountingPeriod.get_or_create_period(year, month)
@@ -103,7 +91,7 @@ def view_period(year, month):
 
 @periods_bp.route('/periods/<int:year>/<int:month>/close', methods=['GET', 'POST'])
 @login_required
-@admin_required
+@full_access_required
 def close_period(year, month):
     """Close an accounting period after validation"""
     period = AccountingPeriod.get_or_create_period(year, month)
@@ -172,7 +160,7 @@ def close_period(year, month):
 
 @periods_bp.route('/periods/<int:year>/<int:month>/reopen', methods=['POST'])
 @login_required
-@admin_required
+@full_access_required
 def reopen_period(year, month):
     """Reopen a closed accounting period"""
     period = AccountingPeriod.get_or_create_period(year, month)

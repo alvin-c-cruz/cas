@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}{% if current_user.role == 'admin' %}Add Approved Email{% else %}Request Email Approval{% endif %}{% endblock %}
-{% block page_title %}{% if current_user.role == 'admin' %}Add Approved Email for Registration{% else %}Request Email Approval{% endif %}{% endblock %}
+{% block title %}{% if current_user.has_full_access %}Add Approved Email{% else %}Request Email Approval{% endif %}{% endblock %}
+{% block page_title %}{% if current_user.has_full_access %}Add Approved Email for Registration{% else %}Request Email Approval{% endif %}{% endblock %}
 
 {% block content %}
 
 <div class="alert alert-info">
-    {% if current_user.role == 'admin' %}
+    {% if current_user.has_full_access %}
         <strong>About Email Pre-Approval:</strong>
         Add an email address to allow someone to register for an account. After they register, the email will be marked as "used" and cannot be reused.
     {% else %}
@@ -103,7 +103,7 @@
 
             <div class="form-actions">
                 <button type="submit" class="btn btn-primary">
-                    {% if current_user.role == 'admin' %}
+                    {% if current_user.has_full_access %}
                         <span class="btn-icon">✓</span> Approve Email
                     {% else %}
                         <span class="btn-icon">↑</span> Submit for Approval

@@ -7,9 +7,9 @@
 
 <div class="content-header">
     <div class="page-actions">
-        {% if current_user.role in ('admin', 'accountant') %}
+        {% if current_user.has_full_access or current_user.role == 'accountant' %}
         <a href="{{ url_for('users.add_approved_email') }}" class="btn btn-primary">
-            {% if current_user.role == 'admin' %}
+            {% if current_user.has_full_access %}
                 <span class="btn-icon">+</span> Add Approved Email
             {% else %}
                 <span class="btn-icon">+</span> Request Approval
@@ -43,7 +43,7 @@
                     <th>Position</th>
                     <th>Requested By</th>
                     <th>Notes</th>
-                    {% if current_user.role == 'admin' %}
+                    {% if current_user.has_full_access %}
                     <th>Actions</th>
                     {% endif %}
                 </tr>
@@ -61,7 +61,7 @@
                             <span class="text-muted">—</span>
                         {% endif %}
                     </td>
-                    {% if current_user.role == 'admin' %}
+                    {% if current_user.has_full_access %}
                     <td>
                         <div class="action-buttons">
                             {# Approve form #}
@@ -132,7 +132,7 @@
                     <th>Date</th>
                     <th>Used By</th>
                     <th>Notes</th>
-                    {% if current_user.role == 'admin' %}
+                    {% if current_user.has_full_access %}
                     <th>Actions</th>
                     {% endif %}
                 </tr>
@@ -178,7 +178,7 @@
                             <span class="text-muted">—</span>
                         {% endif %}
                     </td>
-                    {% if current_user.role == 'admin' %}
+                    {% if current_user.has_full_access %}
                     <td>
                         <div class="action-buttons">
                             {% if not email.is_used and email.status != 'rejected' %}

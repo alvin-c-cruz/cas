@@ -7,26 +7,15 @@ from flask_login import login_required, current_user
 from app import db
 from app.errors.models import ErrorLog
 from app.errors.utils import get_error_summary
+from app.utils.authz import admin_panel_required
 from datetime import datetime, timedelta
 
 errors_bp = Blueprint('errors', __name__, template_folder='templates')
 
 
-def admin_required(f):
-    """Decorator to require admin role"""
-    from functools import wraps
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_admin:
-            flash('Access denied. Admin privileges required.', 'error')
-            return redirect(url_for('dashboard.index'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-
 @errors_bp.route('/admin/errors')
 @login_required
-@admin_required
+@admin_panel_required
 def list_errors():
     """
     List all errors with filtering and pagination.
@@ -92,7 +81,7 @@ def list_errors():
 
 @errors_bp.route('/admin/errors/<int:id>')
 @login_required
-@admin_required
+@admin_panel_required
 def view_error(id):
     """View detailed information about a specific error."""
     error = db.get_or_404(ErrorLog, id)
@@ -101,7 +90,7 @@ def view_error(id):
 
 @errors_bp.route('/admin/errors/<int:id>/resolve', methods=['POST'])
 @login_required
-@admin_required
+@admin_panel_required
 def resolve_error(id):
     """Mark an error as resolved."""
     error = db.get_or_404(ErrorLog, id)
@@ -119,7 +108,7 @@ def resolve_error(id):
 
 @errors_bp.route('/admin/errors/<int:id>/unresolve', methods=['POST'])
 @login_required
-@admin_required
+@admin_panel_required
 def unresolve_error(id):
     """Mark a resolved error as unresolved (reopen)."""
     error = db.get_or_404(ErrorLog, id)
@@ -139,7 +128,7 @@ def unresolve_error(id):
 
 @errors_bp.route('/admin/errors/dashboard')
 @login_required
-@admin_required
+@admin_panel_required
 def dashboard():
     """Error statistics dashboard."""
     summary = get_error_summary()
