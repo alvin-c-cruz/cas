@@ -2,6 +2,7 @@
 
 | Date | Plan | Status |
 |---|---|---|
+| 2026-07-08 | [Employee master + combined payee dropdown](2026-07-08-employee-master-combined-payee.md) | **Ready — not started.** Payroll arc slice 1. Opt-in branch-scoped Employee master (`app/employees/`, Payroll area) + polymorphic payee on `AccountsPayable` (`payee_type`/`payee_id`, `vendor_id` nullable) so one AP form dropdown lists vendors+employees, with employee-payee vouchers segregated from AP aging/BIR purchases/supplier Alphalist. 12 tasks / 4 phases. Spec: `specs/2026-07-08-employee-master-design.md`. Party model (one person, many roles) deferred. |
 | 2026-07-07 | [Clean copy — firm+software COA + seed-firm](2026-07-07-firm-software-coa-clean-copy.md) | **DONE + DEPLOYED** — `flask seed-firm` + `FIRM_COA` (116 accts), 17 tests; pushed; LIVE at alvinccruz.pythonanywhere.com on fresh cas.db (SavorPack demo archived) |
 | 2026-07-03 | [RIC legacy COA import](2026-07-03-ric-coa-import.md) | Done — imported to `ric.db` (391 accts); final review YES; on main, not pushed |
 | 2026-07-03 | [RIC COA reconciliation (seed retirement)](2026-07-03-ric-coa-reconciliation.md) | Done — executed on `ric.db` (391→368); D1–D4 resolved; scripts/ric_coa/reconcile.py |
