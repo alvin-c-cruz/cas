@@ -1,8 +1,8 @@
 """Integration tests for the CDV check-layout SAVE route (`save_cd_check_layout`).
 
 The check overlay is keyed per cash/bank account (?account_id=<id>), omitting it edits
-the Default. Print/designer surfaces come later (PDF print is Phase-0-gated); this covers
-the persistence route only.
+the Default. The in-page print/designer surface is covered by test_cd_check_print.py;
+this covers the persistence route only.
 """
 import json
 import pytest
@@ -53,22 +53,6 @@ def test_admin_saves_per_account_layout(client, db_session, admin_user, main_bra
     # persisted under the account-scoped key, not the Default
     assert json.loads(AppSettings.get_setting(f'{LAYOUT_SETTING_KEY}:7'))['fields']['payee']['x'] == 210
     assert AppSettings.get_setting(LAYOUT_SETTING_KEY) is None
-
-
-def test_designer_page_renders(client, db_session, admin_user, main_branch):
-    login(client)
-    resp = client.get('/cash-disbursements/check-designer')
-    assert resp.status_code == 200
-    body = resp.data.decode()
-    assert 'ppCanvas' in body
-    assert 'data-el="amount_in_words"' in body   # the legally-operative field is placeable
-    assert 'id="ppAccount"' in body              # per-account selector
-
-
-def test_designer_requires_full_access(client, db_session, staff_user, main_branch):
-    staff_user.set_branches([main_branch]); db_session.commit()
-    login(client, 'staff', 'staff123')
-    assert client.get('/cash-disbursements/check-designer').status_code == 403
 
 
 def test_field_width_roundtrips(client, db_session, admin_user, main_branch):

@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>Check Layout Designer</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/cd_check_designer.css') }}?v=1">
+<title>Check — CDV {{ cdv.cdv_number }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/cd_check_designer.css') }}?v=2">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
   .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
-  /* Optional scanned-check background: screen-only positioning aid, NEVER printed (the
-     PDF overprints the physical stock). */
+  /* Optional scanned-check background: screen-only positioning aid, NEVER printed (we
+     overprint the physical stock). */
   .pp-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill;
            opacity: .55; pointer-events: none; }
   .pp-el { position: absolute; white-space: nowrap; }
@@ -20,28 +20,32 @@
   .pp-field-hidden { display: none; }
   .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
   .pp-canvas.pp-editing .pp-text { outline: 1px dotted #1565c0; }
+  .pp-canvas.pp-editing .pp-text[contenteditable="true"] { outline: 2px solid #1565c0; cursor: text; background: #fff; }
+  /* Screen-only tractor-feed margin guides for CONTINUOUS stock; never printed. */
   .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
   body:not([data-paper="continuous"]) .pp-margin-guide { display: none; }
+  .pp-col-controls { max-width: 912px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+  .pp-col-controls.pp-show { display: flex; }
+  .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
   .pp-toolbar { max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .pp-toolbar .grow { flex: 1; }
-  .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; color: #fff; display: inline-block; }
-  .btn-edit { background: #2e7d32; } .btn-close { background: #666; }
-  label.acct { font-size: 13px; }
+  .pp-toolbar .hint { font-size: 12px; color: #555; margin-left: auto; }
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; color: #fff; text-decoration: none; display: inline-block; }
+  .btn-print { background: #1565c0; } .btn-close { background: #666; } .btn-edit { background: #2e7d32; }
+  @media print {
+    body { background: #fff; }
+    .screen-only { display: none !important; }
+    .pp-canvas { margin: 0; }
+    .pp-bg { display: none !important; }
+  }
 </style>
 <style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
 </head>
-<body data-can-edit="true" data-paper="{{ layout.paper }}">
+<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
 
 <div class="pp-toolbar screen-only">
-  <label class="acct">Account:
-    <select id="ppAccount">
-      <option value="" {{ 'selected' if account_id is none else '' }}>Default layout</option>
-      {% for a in cash_accounts %}
-      <option value="{{ a.id }}" {{ 'selected' if account_id == a.id else '' }}>{{ a.code }} : {{ a.name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <span class="grow"></span>
+  <button type="button" class="btn btn-print" onclick="window.print()">Print</button>
+  <button type="button" class="btn btn-close" onclick="window.close()">Close</button>
+  {% if can_edit_layout %}
   <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
   <select id="ppPaper" class="screen-only" style="display:none;">
     {% for key, sz in paper_sizes.items() %}
@@ -62,28 +66,25 @@
     <option value="{{ key }}" {{ 'selected' if key == layout.dateFormat else '' }}>{{ date_labels[key] }}</option>
     {% endfor %}
   </select>
-  <a class="btn btn-close" href="{{ url_for('cash_disbursements.list_cdvs') }}">Close</a>
+  {% endif %}
+  <span class="hint">Layout for {{ cdv.cash_account.code ~ ' : ' ~ cdv.cash_account.name if cdv.cash_account else 'this account' }}</span>
 </div>
 
+{% if can_edit_layout %}
 <div id="ppFieldControls" class="pp-col-controls screen-only"></div>
+{% endif %}
 
-<div class="pp-canvas" id="ppCanvas" data-save-url="/cash-disbursements/check-layout{{ '?account_id=' ~ account_id if account_id is not none else '' }}"
+<div class="pp-canvas" id="ppCanvas"
+     data-save-url="/cash-disbursements/check-layout?account_id={{ account_id }}"
      style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
   {% if bg_image %}<img class="pp-bg screen-only" src="{{ url_for('static', filename='uploads/' ~ bg_image) }}" alt="check background">{% endif %}
   <div class="pp-margin-guide screen-only" style="left:48px;"></div>
   <div class="pp-margin-guide screen-only" style="right:48px;"></div>
 
-  {# Sample content so the designer can see sizing/placement (the real values come from the CDV at print). #}
-  {% set samples = {
-    'payee': 'PAYEE NAME',
-    'check_date': date_labels[layout.dateFormat],
-    'amount_figures': '5,550.00',
-    'amount_in_words': 'FIVE THOUSAND FIVE HUNDRED FIFTY PESOS AND 00/100 ONLY',
-    'memo': 'Memo',
-  } %}
+  {# Real check values overprinted onto the bank stock -- values only, no labels. #}
   {% for key, f in layout.fields.items() %}
   <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"
-       style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ samples[key] }}</div>
+       style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ values[key] }}</div>
   {% endfor %}
 
   {% for t in layout.texts %}
@@ -92,6 +93,8 @@
   {% endfor %}
 </div>
 
-<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=1"></script>
+{% if can_edit_layout %}
+<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=2"></script>
+{% endif %}
 </body>
 </html>

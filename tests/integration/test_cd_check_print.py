@@ -1,8 +1,12 @@
-"""Integration tests for the CDV check-writer PDF print route (`print_check`).
+"""Integration tests for the CDV check-writer print/design page (`print_check`).
 
-Placeholder geometry (default layout); exact registration is a Phase-0 physical step.
-Covers the gate truth-table, PDF output, the three-way money tie-out, and the
-amount/words presence + fit guards. No facsimile signature is ever drawn.
+Same mechanics as the pre-printed forms: ONE HTML page that renders the real check
+values at the layout positions, prints via the browser (@page margin:0), and doubles as
+the layout designer for full-access users. The layout is resolved by -- and Edit-Layout
+saves to -- the voucher's cash/bank account. Placeholder geometry (default layout); exact
+registration is a Phase-0 physical step. Covers the gate truth-table, the rendered page,
+the three-way money tie-out, per-account keying, edit-chrome gating, and the amount/words
+presence guard. No facsimile signature is ever drawn.
 """
 from decimal import Decimal
 from datetime import date
@@ -60,20 +64,23 @@ def _check_cdv(db_session, main_branch, status='posted', method='check',
     return cdv
 
 
-def _open(client, main_branch):
-    login(client)
+def _open(client, main_branch, u='admin', p='admin123'):
+    login(client, u, p)
     with client.session_transaction() as s:
         s['selected_branch_id'] = main_branch.id
 
 
 class TestGate:
-    def test_posted_check_returns_pdf(self, client, db_session, admin_user, main_branch):
+    def test_posted_check_returns_html_page(self, client, db_session, admin_user, main_branch):
         cdv = _check_cdv(db_session, main_branch)
         _open(client, main_branch)
         resp = client.get(f'/cash-disbursements/{cdv.id}/print-check')
         assert resp.status_code == 200
-        assert resp.mimetype == 'application/pdf'
-        assert resp.data[:4] == b'%PDF' and len(resp.data) > 500
+        assert resp.mimetype == 'text/html'
+        body = resp.data.decode()
+        # It is the check overlay page, not a fall-through to another document.
+        assert 'ppCanvas' in body
+        assert 'window.print()' in body
 
     def test_cash_cdv_blocked(self, client, db_session, admin_user, main_branch):
         cdv = _check_cdv(db_session, main_branch, method='cash', check_number=None)
@@ -108,19 +115,54 @@ class TestGate:
         _open(client, main_branch)
         assert client.get(f'/cash-disbursements/{cdv.id}/print-check').status_code == 302
 
+    def test_print_hidden_blocked(self, client, db_session, admin_user, main_branch):
+        AppSettings.set_setting('cd_check_print_access', 'hidden', 'admin')
+        cdv = _check_cdv(db_session, main_branch)
+        _open(client, main_branch)
+        assert client.get(f'/cash-disbursements/{cdv.id}/print-check').status_code == 302
+
+
+class TestRenderedValues:
+    def test_real_values_rendered_on_page(self, client, db_session, admin_user, main_branch):
+        from app.common.amount_to_words import amount_to_words
+        cdv = _check_cdv(db_session, main_branch)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        assert 'Meralco' in body                                # payee
+        assert '5,550.00' in body                               # figures (bare, no symbol)
+        assert amount_to_words(Decimal('5550.00')) in body      # legally-operative words
+        assert '07-08-2026' in body                             # check date MM-DD-YYYY
+
+    def test_layout_keyed_to_cash_account(self, client, db_session, admin_user, main_branch):
+        """The overlay layout is resolved by -- and Edit-Layout saves to -- the voucher's
+        cash/bank account (the user's rule)."""
+        cdv = _check_cdv(db_session, main_branch)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        assert f'account_id={cdv._cash_acct_id}' in body        # save-url is account-scoped
+
+
+class TestEditChrome:
+    def test_edit_chrome_for_full_access(self, client, db_session, admin_user, main_branch):
+        cdv = _check_cdv(db_session, main_branch)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        assert 'editLayoutBtn' in body                          # designer available in-page
+
+    def test_no_edit_chrome_for_non_full_access(self, client, db_session, staff_user, main_branch):
+        staff_user.set_branches([main_branch]); db_session.commit()
+        cdv = _check_cdv(db_session, main_branch)
+        _open(client, main_branch, 'staff', 'staff123')
+        resp = client.get(f'/cash-disbursements/{cdv.id}/print-check')
+        assert resp.status_code == 200                          # can still print
+        assert 'editLayoutBtn' not in resp.data.decode()        # but cannot redesign
+
 
 class TestAmountGuards:
     def test_hidden_words_field_refused(self, client, db_session, admin_user, main_branch):
         cdv = _check_cdv(db_session, main_branch)
         from app.cash_disbursements.check_layout import save_layout
         save_layout({'fields': {'amount_in_words': {'hidden': True}}}, 'admin', account_id=cdv._cash_acct_id)
-        _open(client, main_branch)
-        assert client.get(f'/cash-disbursements/{cdv.id}/print-check').status_code == 302
-
-    def test_overflowing_words_refused(self, client, db_session, admin_user, main_branch):
-        cdv = _check_cdv(db_session, main_branch)
-        from app.cash_disbursements.check_layout import save_layout
-        save_layout({'fields': {'amount_in_words': {'width': 10}}}, 'admin', account_id=cdv._cash_acct_id)
         _open(client, main_branch)
         assert client.get(f'/cash-disbursements/{cdv.id}/print-check').status_code == 302
 

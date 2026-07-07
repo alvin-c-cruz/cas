@@ -7,11 +7,22 @@
   `cd_check_print_access` setting already exists. **Task 3 DONE** (`87c0f2a`): partial
   unique index `uq_cdv_cash_account_check_number` (void=free, user-approved) + hand-written migration
   `c9e1f2a3b4d5` verified on a cas.db copy + applied to dev cas.db + `_check_serial_error` app guard in
-  create/edit; 8 tests, cash_disbursements marker 64 pass. **Task 4 route DONE** (`4df9413`): fpdf2
-  renderer `check_pdf.py` + `print_check` route (gate truth-table, tie-out, presence/fit guards, audit, no
-  signature); 11 tests; fpdf2 2.8.7 confirmed installed+pinned. Placeholder CTS-2010 geometry (validated vs the
-  PCHC standard + a Chinabank-check web check 2026-07-07). **Print Check button DONE** (`7523821`); **Task 2 designer UI DONE** (`3cd7ec1`: `check_designer` route + template + `cd_check_designer.js/css`, per-account, field-width round-trip, screen-only bg display). **Remaining:** the bg-image UPLOAD route (small; needs a real scan); Task 5 regression-map edges; **Phase 0 physical calibration + sign-off** (real Chinabank check). **DEPLOY:** check live
-  `ric.db` for pre-existing duplicate serials before its upgrade.
+  create/edit; 8 tests, cash_disbursements marker 64 pass.
+  **ARCHITECTURE PIVOT (2026-07-07, user directive):** Fork #1 reversed — the check now prints via **HTML
+  `@page` + `window.print()` on a single per-CDV page** (`print_check.html`), exactly like the pre-printed
+  vouchers, instead of a server-side PDF. **"Same mechanics as the pre-printed form — printing AND design on
+  the same page."** The old separate `check_designer` page + fpdf2 `check_pdf.py` PDF route were **removed**;
+  `print_check` now renders the real check values at the layout positions AND (full-access) doubles as the
+  in-page designer (Edit Layout + Save), with the layout resolved by — and Edit-Layout saving to — the
+  voucher's `cash_account_id`. **Task 4 route DONE** (HTML): gate truth-table, tie-out, per-account keying,
+  edit-chrome gating, amount/words presence guard, audit, no signature; 15 tests
+  (`test_cd_check_print.py` rewritten for the HTML page; `test_cd_check_layout_route` designer-route tests
+  dropped). cash_disbursements marker 82 pass. Placeholder CTS-2010 geometry (validated vs the PCHC standard +
+  a Chinabank-check web check). **Print Check button DONE** (`7523821`). **Remaining:** the bg-image UPLOAD
+  route (small; needs a real scan); Task 5 regression-map edges; **Phase 0 physical calibration + sign-off**
+  (real Chinabank check — HTML print now depends on the user setting margins-none/scale-100%, so the physical
+  test print is the load-bearing registration gate). **DEPLOY:** check live `ric.db` for pre-existing
+  duplicate serials before its upgrade.
 - **Supersedes:** `specs/2026-07-04-cdv-check-printing-design.md` + `plans/2026-07-04-cdv-check-printing.md`
   (their engine premise — an `app/preprinted_forms/` `PrintLayout`+FPDF stack — **does not exist in the
   codebase**; only their money-correctness + gating + test requirements survive, carried in below).
@@ -44,12 +55,14 @@ face value. Layout **fields have no `width`** (only line columns / JE bands do) 
 
 ## Resolved architecture decisions (the three forks)
 
-1. **Print output = server-side PDF (fpdf2), not HTML `@page`.** A check must register inside pre-printed
-   boxes on bank stock; browser print applies its own scaling and silently depends on the user setting
-   margins-none/scale-100%. Render the **same sanitized JSON** to PDF with `pt = px * 0.75`
-   (`mm = px * 25.4/96`). The HTML `.pp-el` canvas stays for **design/positioning only**, plus a screen-only
-   **scanned-check background image** (never emitted to the PDF). Confirm **fpdf2** is installed on
-   PythonAnywhere before committing.
+1. ~~**Print output = server-side PDF (fpdf2), not HTML `@page`.**~~ **REVERSED 2026-07-07 by user
+   directive.** Print output is now **HTML `@page` + `window.print()`**, identical to the pre-printed
+   vouchers, so printing and design live on **one per-CDV page** (`print_check.html`). This trades the PDF's
+   exact registration for full consistency with the rest of the app; the mandatory **Phase-0 physical test
+   print** (with the browser set to margins-none / scale-100%, same as the vouchers) is the load-bearing
+   registration check. `check_pdf.py` (fpdf2) and the standalone `check_designer` page were deleted. The
+   screen-only **scanned-check background image** (`cd_check_bg[:account_id]`) still shows on the page as a
+   positioning aid and is hidden in print.
 2. **Layout keyed per `cash_account_id`** (`cd_check_layout:<cash_account_id>`), with a `cd_check_layout:default`
    fallback (resolve account-specific, else Default). Each bank's check geometry differs; `cash_account_id`
    is a real FK now — **no dependency on the un-built BankAccount module**. Re-key to `bank_account_id`

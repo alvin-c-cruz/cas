@@ -1322,28 +1322,6 @@ def save_cd_check_layout():
     return jsonify(ok=True, layout=clean)
 
 
-@cash_disbursements_bp.route('/cash-disbursements/check-designer')
-@login_required
-def check_designer():
-    """Drag-position the check overlay fields per cash/bank account (design only — the
-    check itself prints as a PDF from the CDV). Full-access; picks the account context via
-    `?account_id=<id>` (else the Default). Positions against an optional scanned-check
-    background (`cd_check_bg:<account_id>` setting) — screen-only, never in the PDF."""
-    if not current_user.has_full_access:
-        abort(403)
-    from app.cash_disbursements.check_layout import (
-        get_layout, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES, PAPER_LABELS, DATE_FORMATS)
-    account_id = request.args.get('account_id', type=int)
-    cash_accounts = [a for a in _get_all_accounts_for_select() if not a['is_group']]
-    bg = AppSettings.get_setting(f'cd_check_bg:{account_id}' if account_id is not None else 'cd_check_bg')
-    return render_template(
-        'cash_disbursements/check_designer.html',
-        layout=get_layout(account_id), account_id=account_id, cash_accounts=cash_accounts,
-        bg_image=bg, field_labels=FIELD_LABELS, font_groups=FONT_GROUPS,
-        paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS, date_formats=DATE_FORMATS,
-        date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
-
-
 def _build_check_values(cdv, layout):
     """Return (values, error). `amount_in_words` is the legally-operative amount
     (NIL Sec.17(b)); compute it here (never in Jinja/the renderer — it raises) and
@@ -1370,16 +1348,21 @@ def _build_check_values(cdv, layout):
 @cash_disbursements_bp.route('/cash-disbursements/<int:id>/print-check')
 @login_required
 def print_check(id):
-    """Render the check overlay PDF for a check-payment CDV (overprint bank stock).
+    """The check overlay page for a check-payment CDV.
+
+    Same mechanics as the pre-printed forms: ONE page that renders the real values at the
+    layout positions, prints via the browser (@page margin:0) onto the physical check, and
+    (for full-access users) doubles as the layout designer -- Edit Layout + Save right here.
+    The layout is resolved by -- and Edit-Layout saves to -- the voucher's cash/bank account
+    (cd_check_layout:<cash_account_id>), so each bank's stock keeps its own geometry.
 
     Gated: check payment only, cd_check_print_access (posted/draft/hidden), a non-blank
-    serial, a positive amount, and a layout whose amount/words fields are visible + fit.
-    Never falls through to any other document. No facsimile signature is drawn.
+    serial, a positive amount, and a layout whose amount/words fields are visible. Never
+    falls through to any other document. No facsimile signature is drawn.
     """
-    from flask import Response
     from app.audit.utils import log_audit
-    from app.cash_disbursements.check_layout import get_layout
-    from app.cash_disbursements.check_pdf import render_check_pdf, overflowing_field
+    from app.cash_disbursements.check_layout import (
+        get_layout, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES, PAPER_LABELS, DATE_FORMATS)
 
     cdv = _get_cdv_or_404(id)
     fail = lambda msg: (flash(msg, 'error'),
@@ -1403,19 +1386,24 @@ def print_check(id):
     values, err = _build_check_values(cdv, layout)
     if err:
         return fail(err)
-    # The legally-operative fields must be visible AND fit their box (a clipped/hidden
-    # amount or words line is a defective instrument).
+    # The legally-operative amount lines must be visible (a hidden amount/words is a
+    # defective instrument). Fit is a design concern handled in the in-page designer + the
+    # mandatory physical test print, not a hard gate under HTML @page.
     if layout['fields']['amount_figures'].get('hidden') or layout['fields']['amount_in_words'].get('hidden'):
-        return fail('The check layout hides the amount — fix the layout before printing.')
-    if overflowing_field(layout, values, ('amount_figures', 'amount_in_words')):
-        return fail('The amount does not fit its box in the check layout — widen it before printing.')
+        return fail('The check layout hides the amount - fix the layout before printing.')
 
-    pdf = render_check_pdf(layout, values)
     log_audit(module='cash_disbursements', action='print_check', record_id=cdv.id,
               record_identifier=cdv.cdv_number,
               notes=f'check {cdv.check_number} / account {cdv.cash_account_id}')
-    return Response(pdf, mimetype='application/pdf',
-                    headers={'Content-Disposition': f'inline; filename=check-{cdv.cdv_number}.pdf'})
+    bg = AppSettings.get_setting(f'cd_check_bg:{cdv.cash_account_id}') or \
+        AppSettings.get_setting('cd_check_bg')
+    return render_template(
+        'cash_disbursements/print_check.html',
+        cdv=cdv, layout=layout, values=values, bg_image=bg,
+        can_edit_layout=current_user.has_full_access, account_id=cdv.cash_account_id,
+        field_labels=FIELD_LABELS, font_groups=FONT_GROUPS,
+        paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS, date_formats=DATE_FORMATS,
+        date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
 
 
 def _cdv_export_data(branch_id):
