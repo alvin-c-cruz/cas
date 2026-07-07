@@ -10,7 +10,9 @@ from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
-from app.utils.admin_approval import admin_required, sole_full_access_user_can_auto_approve, another_active_reviewer_exists
+from app.utils.admin_approval import (
+    admin_required, sole_full_access_user_can_auto_approve,
+    another_active_reviewer_exists, tax_edit_may_auto_approve)
 from app.utils.cache_helpers import clear_withholding_tax_cache
 import json
 
@@ -197,8 +199,9 @@ def edit(id):
                 'receivable_account_id': form.receivable_account_id.data or None,
             }
 
-            # Check if auto-approval is allowed
-            if sole_full_access_user_can_auto_approve():
+            # Check if auto-approval is allowed. A rate change must never auto-apply,
+            # even for a lone reviewer — it always routes to a second reviewer.
+            if tax_edit_may_auto_approve(withholding_tax.rate, change_data['rate']):
                 # Capture old values before update
                 old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
 

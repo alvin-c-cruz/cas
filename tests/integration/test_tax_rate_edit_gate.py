@@ -6,6 +6,8 @@ from app.accounts.models import Account
 from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
 from app.sales_vat_categories.models import (
     SalesVATCategory, SalesVATCategoryChangeRequest)
+from app.withholding_tax.models import (
+    WithholdingTax, WithholdingTaxChangeRequest)
 
 pytestmark = [pytest.mark.integration]
 
@@ -99,3 +101,28 @@ class TestSalesVatRateEditForcesReview:
         assert sc.rate == Decimal("12.00")
         assert SalesVATCategoryChangeRequest.query.filter_by(
             sales_vat_category_id=sc.id, status="pending").count() == 1
+
+
+def _make_wht(db_session):
+    wt = WithholdingTax(code="WC158", name="EWT 10%", sales_name="EWT 10%",
+                        description="std", rate=Decimal("10.00"), is_active=True)
+    db_session.add(wt)
+    db_session.commit()
+    return wt
+
+
+class TestWhtRateEditForcesReview:
+    def test_rate_change_by_lone_reviewer_goes_pending(self, client, db_session,
+                                                       chief_accountant_user, main_branch):
+        wt = _make_wht(db_session)
+        login(client, "chief", "chief123")
+        client.post(url_for("withholding_tax.edit", id=wt.id), data={
+            "code": "WC158", "name": "EWT 10%", "sales_name": "EWT 10%",
+            "description": "std", "rate": "2.00", "is_active": "1",
+            "payable_account_id": "0", "receivable_account_id": "0",
+            "request_reason": "fix rate",
+        }, follow_redirects=True)
+        db_session.refresh(wt)
+        assert wt.rate == Decimal("10.00")
+        assert WithholdingTaxChangeRequest.query.filter_by(
+            withholding_tax_id=wt.id, status="pending").count() == 1
