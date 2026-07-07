@@ -4,6 +4,8 @@ from decimal import Decimal
 from flask import url_for
 from app import db
 from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
+from app.sales_vat_categories.models import (
+    SalesVATCategory, SalesVATCategoryChangeRequest)
 
 pytestmark = [pytest.mark.integration]
 
@@ -66,5 +68,63 @@ class TestVatReviewGate:
         vc, cr = _vat_with_pending_rate_change(db_session, accountant_user.id)
         login(client, "admin", "admin123")
         resp = client.get(url_for("vat_categories.review_change_request", id=cr.id))
+        body = resp.data.decode()
+        assert "12.00" in body and "2.00" in body
+
+
+def _svat_with_pending_rate_change(db_session, requester_id):
+    sc = SalesVATCategory(code="SV12", name="Sales Vatable 12%", description="std",
+                          rate=Decimal("12.00"), transaction_nature="regular",
+                          is_active=True)
+    db_session.add(sc)
+    db_session.commit()
+    cr = SalesVATCategoryChangeRequest(
+        action="update", status="pending", sales_vat_category_id=sc.id,
+        proposed_data=json.dumps({"code": "SV12", "name": "Sales Vatable 12%",
+                                  "description": "std", "rate": 2.00,
+                                  "transaction_nature": "regular",
+                                  "is_active": True, "output_vat_account_id": None}),
+        requested_by_id=requester_id,
+    )
+    db_session.add(cr)
+    db_session.commit()
+    return sc, cr
+
+
+class TestSalesVatReviewGate:
+    def test_approve_rate_change_without_note_is_rejected(self, client, db_session,
+                                                          admin_user, accountant_user,
+                                                          main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        sc, cr = _svat_with_pending_rate_change(db_session, accountant_user.id)
+        login(client, "admin", "admin123")
+        client.post(url_for("sales_vat_categories.review_change_request", id=cr.id),
+                    data={"action": "approve", "review_notes": ""},
+                    follow_redirects=True)
+        db_session.refresh(sc)
+        db_session.refresh(cr)
+        assert sc.rate == Decimal("12.00")
+        assert cr.status == "pending"
+
+    def test_approve_rate_change_with_note_applies(self, client, db_session,
+                                                   admin_user, accountant_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        sc, cr = _svat_with_pending_rate_change(db_session, accountant_user.id)
+        login(client, "admin", "admin123")
+        client.post(url_for("sales_vat_categories.review_change_request", id=cr.id),
+                    data={"action": "approve", "review_notes": "verified"},
+                    follow_redirects=True)
+        db_session.refresh(sc)
+        assert sc.rate == Decimal("2.00")
+
+    def test_review_page_shows_rate_diff(self, client, db_session,
+                                         admin_user, accountant_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        sc, cr = _svat_with_pending_rate_change(db_session, accountant_user.id)
+        login(client, "admin", "admin123")
+        resp = client.get(url_for("sales_vat_categories.review_change_request", id=cr.id))
         body = resp.data.decode()
         assert "12.00" in body and "2.00" in body

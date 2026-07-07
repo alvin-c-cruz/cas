@@ -13,7 +13,7 @@ from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
 from app.utils.admin_approval import (
     admin_required, sole_full_access_user_can_auto_approve,
-    another_active_reviewer_exists, tax_edit_may_auto_approve)
+    another_active_reviewer_exists, tax_edit_may_auto_approve, tax_rate_changed)
 from app.utils.cache_helpers import clear_sales_vat_cache
 import json
 
@@ -415,9 +415,19 @@ def review_change_request(id):
     proposed_output_account = (db.session.get(Account, proposed_output_account_id)
                                if proposed_output_account_id else None)
 
+    # Rate-change gate: approving a tax-RATE change requires a review note; the
+    # review screen shows the old -> new rate.
+    old_rate = change_request.sales_vat_category.rate if change_request.sales_vat_category else None
+    new_rate = proposed_data.get('rate')
+    rate_changed = (change_request.action == 'update'
+                    and tax_rate_changed(old_rate, new_rate))
+
     if form.validate_on_submit():
         try:
             action = form.action.data
+            if action == 'approve' and rate_changed and not (form.review_notes.data or '').strip():
+                flash('A review note is required to approve a change to a tax rate.', 'error')
+                return redirect(url_for('sales_vat_categories.review_change_request', id=change_request.id))
             change_request.status = 'approved' if action == 'approve' else 'rejected'
             change_request.reviewed_by_id = current_user.id
             change_request.reviewed_at = ph_now()
@@ -583,4 +593,6 @@ def review_change_request(id):
                            change_request=change_request,
                            proposed_data=proposed_data,
                            proposed_output_account=proposed_output_account,
+                           old_rate=old_rate, new_rate=new_rate,
+                           rate_changed=rate_changed,
                            form=form)
