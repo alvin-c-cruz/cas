@@ -1311,6 +1311,80 @@ def save_cd_check_layout():
     return jsonify(ok=True, layout=clean)
 
 
+def _build_check_values(cdv, layout):
+    """Return (values, error). `amount_in_words` is the legally-operative amount
+    (NIL Sec.17(b)); compute it here (never in Jinja/the renderer — it raises) and
+    derive figures from the SAME total_amount so the two can never drift."""
+    from decimal import Decimal, InvalidOperation
+    from app.cash_disbursements.check_layout import DATE_FORMATS
+    from app.common.amount_to_words import amount_to_words
+    try:
+        amt = Decimal(str(cdv.total_amount))
+        words = amount_to_words(amt)
+    except (ValueError, TypeError, InvalidOperation):
+        return None, 'The disbursement amount cannot be spelled onto a check.'
+    date_fmt = DATE_FORMATS[layout['dateFormat']]
+    values = {
+        'payee': (cdv.vendor.name if cdv.vendor else cdv.vendor_name) or '',
+        'check_date': cdv.check_date.strftime(date_fmt) if cdv.check_date else '',
+        'amount_figures': '{:,.2f}'.format(amt),
+        'amount_in_words': words,
+        'memo': cdv.notes or '',
+    }
+    return values, None
+
+
+@cash_disbursements_bp.route('/cash-disbursements/<int:id>/print-check')
+@login_required
+def print_check(id):
+    """Render the check overlay PDF for a check-payment CDV (overprint bank stock).
+
+    Gated: check payment only, cd_check_print_access (posted/draft/hidden), a non-blank
+    serial, a positive amount, and a layout whose amount/words fields are visible + fit.
+    Never falls through to any other document. No facsimile signature is drawn.
+    """
+    from flask import Response
+    from app.audit.utils import log_audit
+    from app.cash_disbursements.check_layout import get_layout
+    from app.cash_disbursements.check_pdf import render_check_pdf, overflowing_field
+
+    cdv = _get_cdv_or_404(id)
+    fail = lambda msg: (flash(msg, 'error'),
+                        redirect(url_for('cash_disbursements.view', id=id)))[1]
+
+    if cdv.payment_method != 'check':
+        return fail('This voucher is not paid by check.')
+    access = AppSettings.get_setting('cd_check_print_access', 'posted_only')
+    if access == 'hidden':
+        return fail('Check printing is not enabled.')
+    status_ok = (cdv.status == 'posted') if access != 'draft_and_posted' \
+        else (cdv.status not in ('voided', 'cancelled'))
+    if not status_ok:
+        return fail('This voucher is not eligible for check printing.')
+    if not (cdv.check_number or '').strip():
+        return fail('A check number is required to print the check.')
+    if (cdv.total_amount or 0) <= 0:
+        return fail('Cannot print a check for a zero or negative amount.')
+
+    layout = get_layout(cdv.cash_account_id)
+    values, err = _build_check_values(cdv, layout)
+    if err:
+        return fail(err)
+    # The legally-operative fields must be visible AND fit their box (a clipped/hidden
+    # amount or words line is a defective instrument).
+    if layout['fields']['amount_figures'].get('hidden') or layout['fields']['amount_in_words'].get('hidden'):
+        return fail('The check layout hides the amount — fix the layout before printing.')
+    if overflowing_field(layout, values, ('amount_figures', 'amount_in_words')):
+        return fail('The amount does not fit its box in the check layout — widen it before printing.')
+
+    pdf = render_check_pdf(layout, values)
+    log_audit(module='cash_disbursements', action='print_check', record_id=cdv.id,
+              record_identifier=cdv.cdv_number,
+              notes=f'check {cdv.check_number} / account {cdv.cash_account_id}')
+    return Response(pdf, mimetype='application/pdf',
+                    headers={'Content-Disposition': f'inline; filename=check-{cdv.cdv_number}.pdf'})
+
+
 def _cdv_export_data(branch_id):
     """Return (data_dicts, columns, headers) for CDV list export.
 
