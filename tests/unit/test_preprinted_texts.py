@@ -109,7 +109,7 @@ class TestListShape:
 
     def test_coords_clamped_and_coerced(self):
         out = clean_texts([{'id': 'n', 'text': 't', 'x': -5, 'y': 99999, 'fontSize': 999}], DEFAULTS)
-        assert out[0]['x'] == 0 and out[0]['y'] == 1008 and out[0]['fontSize'] == 72
+        assert out[0]['x'] == 48 and out[0]['y'] == 1008 and out[0]['fontSize'] == 72   # x floors at SAFE_MARGIN
 
     def test_non_dict_entries_dropped(self):
         out = clean_texts(['junk', 42, {'id': 'ok', 'text': 't', 'x': 0, 'y': 0}], DEFAULTS)

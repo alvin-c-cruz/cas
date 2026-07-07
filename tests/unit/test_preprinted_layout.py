@@ -30,7 +30,7 @@ class TestSanitize:
         out = sanitize_layout({'fields': {'invoice_no': {'x': -50, 'y': 99999,
                                                          'fontSize': 999, 'bold': 'yes'}}})
         f = out['fields']['invoice_no']
-        assert f['x'] == 0            # clamped to >= 0
+        assert f['x'] == 48           # clamped to >= SAFE_MARGIN (48)
         assert f['y'] == 1008         # clamped to canvas height (10.5in @96dpi)
         assert f['fontSize'] == 72    # clamped to <= 72
         assert f['bold'] is True      # truthy coerced to bool

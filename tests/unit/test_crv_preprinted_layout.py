@@ -38,7 +38,7 @@ class TestSanitize:
         out = sanitize_layout({'fields': {'crv_no': {'x': -50, 'y': 99999,
                                                      'fontSize': 999, 'bold': 'yes'}}})
         f = out['fields']['crv_no']
-        assert f['x'] == 0
+        assert f['x'] == 48   # SAFE_MARGIN floor
         assert f['y'] == 1008
         assert f['fontSize'] == 72
         assert f['bold'] is True

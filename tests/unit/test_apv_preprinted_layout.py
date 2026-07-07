@@ -46,10 +46,20 @@ class TestSanitize:
         out = sanitize_layout({'fields': {'apv_no': {'x': -50, 'y': 99999,
                                                      'fontSize': 999, 'bold': 'yes'}}})
         f = out['fields']['apv_no']
-        assert f['x'] == 0
+        assert f['x'] == 48   # SAFE_MARGIN floor
         assert f['y'] == 1008
         assert f['fontSize'] == 72
         assert f['bold'] is True
+
+    def test_left_margin_rule(self):
+        # Layout rule (user 2026-07-07): no field/JE-band origin may sit inside the
+        # SAFE_MARGIN border. Stored positions clamp in, and no default starts there.
+        from app.accounts_payable.preprinted_layout import SAFE_MARGIN, DEFAULT_APV_PREPRINTED_LAYOUT as D
+        assert sanitize_layout({'fields': {'apv_no': {'x': 5}}})['fields']['apv_no']['x'] == SAFE_MARGIN
+        assert sanitize_layout({'fields': {'apv_no': {'x': 9999}}})['fields']['apv_no']['x'] == 912 - SAFE_MARGIN
+        assert all(f['x'] >= SAFE_MARGIN for f in D['fields'].values())
+        for band in ('combined', 'debit', 'credit'):
+            assert D['journalEntry'][band]['x'] >= SAFE_MARGIN
 
     def test_disallowed_font_falls_back_to_default(self):
         out = sanitize_layout({'page': {'fontFamily': 'Comic Sans MS'}})
@@ -118,7 +128,7 @@ class TestJournalEntryBlock:
 
     def test_band_positions_clamped(self):
         je = sanitize_layout({'journalEntry': {'combined': {'x': -5, 'y': 99999, 'width': 5}}})['journalEntry']
-        assert je['combined']['x'] == 0
+        assert je['combined']['x'] == 48
         assert je['combined']['y'] == 1008
         assert je['combined']['width'] >= 10          # clamped up to WIDTH_MIN
 

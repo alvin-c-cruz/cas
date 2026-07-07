@@ -44,7 +44,7 @@ class TestSanitize:
         out = sanitize_layout({'fields': {'cdv_no': {'x': -50, 'y': 99999,
                                                      'fontSize': 999, 'bold': 'yes'}}})
         f = out['fields']['cdv_no']
-        assert f['x'] == 0 and f['y'] == 1008 and f['fontSize'] == 72 and f['bold'] is True
+        assert f['x'] == 48 and f['y'] == 1008 and f['fontSize'] == 72 and f['bold'] is True
 
     def test_disallowed_font_falls_back_to_default(self):
         out = sanitize_layout({'page': {'fontFamily': 'Comic Sans MS'}})
@@ -78,7 +78,7 @@ class TestJournalEntryBlock:
 
     def test_band_positions_clamped(self):
         je = sanitize_layout({'journalEntry': {'combined': {'x': -5, 'y': 99999, 'width': 5}}})['journalEntry']
-        assert je['combined']['x'] == 0 and je['combined']['y'] == 1008 and je['combined']['width'] >= 10
+        assert je['combined']['x'] == 48 and je['combined']['y'] == 1008 and je['combined']['width'] >= 10
 
     def test_debit_and_credit_bands_independent(self):
         je = sanitize_layout({'journalEntry': {'debit': {'x': 111}, 'credit': {'x': 777}}})['journalEntry']

@@ -18,6 +18,7 @@ import re
 
 CANVAS_W = 912       # 9.5in @96dpi (widest supported paper)
 CANVAS_H = 1008      # 10.5in @96dpi
+SAFE_MARGIN = 48
 FONT_MIN, FONT_MAX = 6, 72
 TEXT_MAXLEN = 200
 MAX_TEXTS = 50
@@ -47,7 +48,7 @@ def _merge_text(src, base):
     return {
         'id': base['id'],
         'text': text,
-        'x': _clamp(src.get('x'), 0, CANVAS_W, base['x']),
+        'x': _clamp(src.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, base['x']),
         'y': _clamp(src.get('y'), 0, CANVAS_H, base['y']),
         'fontSize': _clamp(src.get('fontSize'), FONT_MIN, FONT_MAX, base['fontSize']),
         'bold': bool(src.get('bold', base['bold'])),

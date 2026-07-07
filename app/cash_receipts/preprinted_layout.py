@@ -22,6 +22,7 @@ LAYOUT_SETTING_KEY = 'crv_preprinted_layout'
 # drags map 1:1 to the printed form.
 CANVAS_W = 912      # 9.5in  @96dpi
 CANVAS_H = 1008     # 10.5in @96dpi
+SAFE_MARGIN = 48   # printable inset (tractor-feed margin); element x is clamped inside it
 FONT_MIN, FONT_MAX = 6, 72
 WIDTH_MIN, WIDTH_MAX = 10, 912
 ROW_MIN, ROW_MAX = 8, 80
@@ -133,15 +134,15 @@ DEFAULT_CRV_PREPRINTED_LAYOUT = {
         'check_no':          {'x': 520, 'y': 122, 'fontSize': 11, 'bold': False},
         'check_date':        {'x': 520, 'y': 146, 'fontSize': 11, 'bold': False},
         'check_bank':        {'x': 520, 'y': 170, 'fontSize': 11, 'bold': False},
-        'customer_name':     {'x': 40,  'y': 50,  'fontSize': 12, 'bold': True},
-        'customer_tin':      {'x': 40,  'y': 74,  'fontSize': 11, 'bold': False},
-        'customer_address':  {'x': 40,  'y': 98,  'fontSize': 11, 'bold': False},
+        'customer_name':     {'x': 60,  'y': 50,  'fontSize': 12, 'bold': True},
+        'customer_tin':      {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
+        'customer_address':  {'x': 60,  'y': 98,  'fontSize': 11, 'bold': False},
         'ar_applied':        {'x': 620, 'y': 470, 'fontSize': 10, 'bold': False},
         'direct_revenue':    {'x': 620, 'y': 494, 'fontSize': 10, 'bold': False},
         'output_vat':        {'x': 620, 'y': 518, 'fontSize': 10, 'bold': False},
         'wht_amount':        {'x': 620, 'y': 542, 'fontSize': 10, 'bold': False},
         'net_cash_received': {'x': 620, 'y': 570, 'fontSize': 13, 'bold': True},
-        'notes':             {'x': 40,  'y': 600, 'fontSize': 10, 'bold': False},
+        'notes':             {'x': 60,  'y': 600, 'fontSize': 10, 'bold': False},
     },
     # AR-collection lines: each column INDEPENDENTLY positioned (own x); all share
     # the band top (y) + rowHeight. No header row.
@@ -169,7 +170,7 @@ def _clamp(value, lo, hi, fallback):
 def _clean_box(raw, default):
     raw = raw if isinstance(raw, dict) else {}
     return {
-        'x': _clamp(raw.get('x'), 0, CANVAS_W, default['x']),
+        'x': _clamp(raw.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, default['x']),
         'y': _clamp(raw.get('y'), 0, CANVAS_H, default['y']),
         'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, default['fontSize']),
         'bold': bool(raw.get('bold', default['bold'])),
@@ -210,7 +211,7 @@ def _clean_extras(raw):
             continue
         out.append({
             'key': e['key'],
-            'x': _clamp(e.get('x'), 0, CANVAS_W, 0),
+            'x': _clamp(e.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, 0),
             'y': _clamp(e.get('y'), 0, CANVAS_H, 0),
             'fontSize': _clamp(e.get('fontSize'), FONT_MIN, FONT_MAX, 11),
             'bold': bool(e.get('bold', False)),

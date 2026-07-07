@@ -24,6 +24,7 @@ LAYOUT_SETTING_KEY = 'cd_preprinted_layout'
 # Dot-matrix continuous-form stock: 9.5in x 10.5in @96dpi (CSS px).
 CANVAS_W = 912
 CANVAS_H = 1008
+SAFE_MARGIN = 48   # printable inset (tractor-feed margin); element x is clamped inside it
 FONT_MIN, FONT_MAX = 6, 72
 WIDTH_MIN, WIDTH_MAX = 10, 912
 ROW_MIN, ROW_MAX = 8, 80
@@ -126,10 +127,10 @@ DEFAULT_CDV_PREPRINTED_LAYOUT = {
         'check_no':       {'x': 520, 'y': 122, 'fontSize': 11, 'bold': False},
         'check_date':     {'x': 520, 'y': 146, 'fontSize': 11, 'bold': False},
         'check_bank':     {'x': 520, 'y': 170, 'fontSize': 11, 'bold': False},
-        'vendor_name':    {'x': 40,  'y': 50,  'fontSize': 12, 'bold': True},
-        'vendor_tin':     {'x': 40,  'y': 74,  'fontSize': 11, 'bold': False},
-        'cash_account':   {'x': 40,  'y': 98,  'fontSize': 11, 'bold': False},
-        'notes':          {'x': 40,  'y': 600, 'fontSize': 10, 'bold': False},
+        'vendor_name':    {'x': 60,  'y': 50,  'fontSize': 12, 'bold': True},
+        'vendor_tin':     {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
+        'cash_account':   {'x': 60,  'y': 98,  'fontSize': 11, 'bold': False},
+        'notes':          {'x': 60,  'y': 600, 'fontSize': 10, 'bold': False},
     },
     # Journal-entry face: mode combined (one grid) or separated (a debit band + a
     # credit band). All three bands carry a position so switching mode never loses
@@ -138,8 +139,8 @@ DEFAULT_CDV_PREPRINTED_LAYOUT = {
         'mode': 'combined',
         'fontSize': 9,
         'rowHeight': 16,
-        'combined': {'x': 40,  'y': 360, 'width': 460},
-        'debit':    {'x': 40,  'y': 360, 'width': 300},
+        'combined': {'x': 60,  'y': 360, 'width': 460},
+        'debit':    {'x': 60,  'y': 360, 'width': 300},
         'credit':   {'x': 470, 'y': 360, 'width': 300},
     },
     # Section B (Direct Expenses) lines: each column INDEPENDENTLY positioned (own x);
@@ -171,7 +172,7 @@ def _clamp(value, lo, hi, fallback):
 def _clean_box(raw, default):
     raw = raw if isinstance(raw, dict) else {}
     return {
-        'x': _clamp(raw.get('x'), 0, CANVAS_W, default['x']),
+        'x': _clamp(raw.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, default['x']),
         'y': _clamp(raw.get('y'), 0, CANVAS_H, default['y']),
         'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, default['fontSize']),
         'bold': bool(raw.get('bold', default['bold'])),
@@ -211,7 +212,7 @@ def _clean_extras(raw):
             continue
         out.append({
             'key': e['key'],
-            'x': _clamp(e.get('x'), 0, CANVAS_W, 0),
+            'x': _clamp(e.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, 0),
             'y': _clamp(e.get('y'), 0, CANVAS_H, 0),
             'fontSize': _clamp(e.get('fontSize'), FONT_MIN, FONT_MAX, 11),
             'bold': bool(e.get('bold', False)),
@@ -229,7 +230,7 @@ def _clean_je(raw):
         b = raw.get(key) if isinstance(raw.get(key), dict) else {}
         db_ = d[key]
         return {
-            'x': _clamp(b.get('x'), 0, CANVAS_W, db_['x']),
+            'x': _clamp(b.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, db_['x']),
             'y': _clamp(b.get('y'), 0, CANVAS_H, db_['y']),
             'width': _clamp(b.get('width'), WIDTH_MIN, WIDTH_MAX, db_['width']),
         }
