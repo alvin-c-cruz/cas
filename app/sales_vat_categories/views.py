@@ -11,7 +11,9 @@ from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
 from app.notifications.utils import create_notification
 from app.utils.change_requests import process_create_change_request
-from app.utils.admin_approval import admin_required, sole_full_access_user_can_auto_approve, another_active_reviewer_exists
+from app.utils.admin_approval import (
+    admin_required, sole_full_access_user_can_auto_approve,
+    another_active_reviewer_exists, tax_edit_may_auto_approve)
 from app.utils.cache_helpers import clear_sales_vat_cache
 import json
 
@@ -174,7 +176,8 @@ def edit(id):
                 'output_vat_account_id': form.output_vat_account_id.data or None,
             }
 
-            if sole_full_access_user_can_auto_approve():
+            # A rate change must never auto-apply, even for a lone reviewer.
+            if tax_edit_may_auto_approve(sales_vat_category.rate, change_data['rate']):
                 old_values = model_to_dict(sales_vat_category, [
                     'code', 'name', 'description', 'rate', 'transaction_nature',
                     'is_active', 'output_vat_account_id'
