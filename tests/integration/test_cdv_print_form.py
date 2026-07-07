@@ -117,8 +117,10 @@ class TestCdPrintRoutes:
         assert 'pp-canvas' in body
         assert 'CDV-PP-1' in body                    # cdv number
         assert 'Meralco Payee Inc.' in body          # pay-to
-        assert 'Electricity - July' in body          # Section B expense line
-        assert '<div class="pp-lineitems"' in body   # Section B band present
+        # Section B (Direct Expenses) band removed from the CDV pre-printed voucher
+        # (user 2026-07-07) — match the ELEMENT, not the .pp-lineitems CSS selector.
+        assert 'Electricity - July' not in body
+        assert '<div class="pp-lineitems"' not in body
 
     def test_hidden_refuses_print_route(
             self, client, db_session, admin_user, main_branch):

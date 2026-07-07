@@ -139,30 +139,9 @@
   {# Layout-only editable signature texts (prepared / checked / approved) — not record data #}
   {% for t in layout.texts %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"{{ ' data-signatory="1"' if t.id in signatory_ids else '' }} style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>{% endfor %}
 
-  {% set li = layout.lineItems %}
-  {# Section B (Direct Expenses). Each column independently positioned (own x); all share
-     the band top (li.y) + rowHeight so rows align. Section A (AP Bills Paid) is NOT shown. #}
-  <div class="pp-lineitems" data-el="lineItems" data-rowheight="{{ li.rowHeight }}">
-    {% for col in li.columns %}
-    <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('qty', 'unit_price', 'amount') else '' }}"
-         data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
-         style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
-      {%- for item in cdv.expense_lines %}
-      <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
-        {%- if col.key == 'line_number' -%}{{ item.line_number }}
-        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code }}{% endif %}
-        {%- elif col.key == 'description' -%}{{ item.description or '' }}
-        {%- elif col.key == 'qty' -%}{% if item.quantity is not none %}{{ '{:,.2f}'.format(item.quantity) }}{% endif %}
-        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '') }}
-        {%- elif col.key == 'unit_price' -%}{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% endif %}
-        {%- elif col.key == 'account_title' -%}{% if item.account %}{{ item.account.code }}{% endif %}
-        {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.line_total or 0) }}
-        {%- endif -%}
-      </div>
-      {% endfor -%}
-    </div>
-    {% endfor %}
-  </div>
+  {# Section B (Direct Expenses) line band intentionally NOT rendered on the CDV pre-printed
+     voucher (user 2026-07-07): the JE face below carries the accounting detail. The lineItems
+     layout schema is kept (get/save) but no band is drawn (designer collect() guards li()). #}
 
   {# --- Journal-entry face (CDV): JE-BOUND, debits-first, refuse an untied face. --- #}
   {% set je = layout.journalEntry %}
