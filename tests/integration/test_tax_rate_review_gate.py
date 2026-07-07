@@ -6,6 +6,8 @@ from app import db
 from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
 from app.sales_vat_categories.models import (
     SalesVATCategory, SalesVATCategoryChangeRequest)
+from app.withholding_tax.models import (
+    WithholdingTax, WithholdingTaxChangeRequest)
 
 pytestmark = [pytest.mark.integration]
 
@@ -128,3 +130,61 @@ class TestSalesVatReviewGate:
         resp = client.get(url_for("sales_vat_categories.review_change_request", id=cr.id))
         body = resp.data.decode()
         assert "12.00" in body and "2.00" in body
+
+
+def _wht_with_pending_rate_change(db_session, requester_id):
+    wt = WithholdingTax(code="WC158", name="EWT 10%", sales_name="EWT 10%",
+                        description="std", rate=Decimal("10.00"), is_active=True)
+    db_session.add(wt)
+    db_session.commit()
+    cr = WithholdingTaxChangeRequest(
+        action="update", status="pending", withholding_tax_id=wt.id,
+        proposed_data=json.dumps({"code": "WC158", "name": "EWT 10%",
+                                  "sales_name": "EWT 10%", "description": "std",
+                                  "rate": 2.00, "is_active": True,
+                                  "payable_account_id": None,
+                                  "receivable_account_id": None}),
+        requested_by_id=requester_id,
+    )
+    db_session.add(cr)
+    db_session.commit()
+    return wt, cr
+
+
+class TestWhtReviewGate:
+    def test_approve_rate_change_without_note_is_rejected(self, client, db_session,
+                                                          admin_user, accountant_user,
+                                                          main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        wt, cr = _wht_with_pending_rate_change(db_session, accountant_user.id)
+        login(client, "admin", "admin123")
+        client.post(url_for("withholding_tax.review_change_request", id=cr.id),
+                    data={"action": "approve", "review_notes": ""},
+                    follow_redirects=True)
+        db_session.refresh(wt)
+        db_session.refresh(cr)
+        assert wt.rate == Decimal("10.00")
+        assert cr.status == "pending"
+
+    def test_approve_rate_change_with_note_applies(self, client, db_session,
+                                                   admin_user, accountant_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        wt, cr = _wht_with_pending_rate_change(db_session, accountant_user.id)
+        login(client, "admin", "admin123")
+        client.post(url_for("withholding_tax.review_change_request", id=cr.id),
+                    data={"action": "approve", "review_notes": "verified"},
+                    follow_redirects=True)
+        db_session.refresh(wt)
+        assert wt.rate == Decimal("2.00")
+
+    def test_review_page_shows_rate_diff(self, client, db_session,
+                                         admin_user, accountant_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        wt, cr = _wht_with_pending_rate_change(db_session, accountant_user.id)
+        login(client, "admin", "admin123")
+        resp = client.get(url_for("withholding_tax.review_change_request", id=cr.id))
+        body = resp.data.decode()
+        assert "10.00" in body and "2.00" in body

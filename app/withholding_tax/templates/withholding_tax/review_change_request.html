@@ -17,6 +17,14 @@
         </div>
     </div>
 </div>
+{% if rate_changed %}
+<div class="alert alert-warning" role="alert" style="margin: 12px 0;">
+    <strong>Tax rate change &mdash; second-reviewer approval required.</strong>
+    Rate: <strong>{{ '%.2f'|format(old_rate) }}%</strong> &rarr;
+          <strong>{{ '%.2f'|format(new_rate) }}%</strong>.
+    A review note is required to approve.
+</div>
+{% endif %}
 
 <div class="card">
     <div class="card-body" style="padding: 24px;">
