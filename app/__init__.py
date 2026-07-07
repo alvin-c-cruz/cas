@@ -268,6 +268,8 @@ def create_app(config_name=None):
     app.cli.add_command(backup_verify_cmd)
     app.cli.add_command(backup_restore_cmd)
     app.cli.add_command(backup_mint_token_cmd)
+    from app.integrity.cli import integrity_check_cmd
+    app.cli.add_command(integrity_check_cmd)
 
     migrate.init_app(app, db)
 
