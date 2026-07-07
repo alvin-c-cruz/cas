@@ -818,6 +818,12 @@ def print_ap(id):
     """Standalone print preview for an APV."""
     ap = _get_ap_or_404(id)
 
+    ap_print_form = AppSettings.get_setting('ap_print_form', 'current')
+    # 'hidden' turns APV printing off entirely: refuse the route, not just the button.
+    if ap_print_form == 'hidden':
+        flash('APV printing is not enabled.', 'error')
+        return redirect(url_for('accounts_payable.view', id=id))
+
     # Sort JE lines: non-VAT debits → VAT debits → credits, each by account code
     je_lines = []
     if ap.journal_entry:
@@ -844,6 +850,22 @@ def print_ap(id):
         'tin': AppSettings.get_setting('company_tin', ''),
     }
 
+    # 'preprinted' -> drag-positioned data-only layout for physical pre-printed
+    # stock; else the standard self-contained printable form.
+    if ap_print_form == 'preprinted':
+        from app.accounts_payable.preprinted_layout import (
+            get_layout, COLUMN_LABELS, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES,
+            PAPER_LABELS, DATE_FORMATS, TEXT_KEYS, TEXT_LABELS)
+        return render_template(
+            'accounts_payable/print_preprinted.html', ap=ap,
+            je_lines=je_lines, company=company, printed_at=ph_now(),
+            layout=get_layout(ap.branch_id), can_edit_layout=current_user.has_full_access,
+            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+            text_keys=TEXT_KEYS, text_labels=TEXT_LABELS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
+
     return render_template(
         'accounts_payable/print.html',
         ap=ap,
@@ -851,6 +873,20 @@ def print_ap(id):
         company=company,
         printed_at=ph_now(),
     )
+
+
+@accounts_payable_bp.route('/accounts-payable/print-layout', methods=['POST'])
+@login_required
+def save_apv_print_layout():
+    """Persist the APV pre-printed layout JSON (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
+        abort(403)
+    from app.accounts_payable.preprinted_layout import save_layout
+    data = request.get_json(silent=True) or {}
+    # Per-branch layout; the session branch equals the document's branch (see
+    # _get_ap_or_404 / print page gating).
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    return jsonify(ok=True, layout=clean)
 
 
 @accounts_payable_bp.route('/accounts-payable/<int:id>/edit', methods=['GET', 'POST'])

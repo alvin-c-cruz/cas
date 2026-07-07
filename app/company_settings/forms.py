@@ -132,6 +132,9 @@ class CompanySettingsForm(FlaskForm):
     cr_print_form = SelectField(
         'Cash Receipt Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
     )
+    ap_print_form = SelectField(
+        'APV Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
+    )
 
     # Administration / policy
     accountant_email_self_approval = BooleanField(
