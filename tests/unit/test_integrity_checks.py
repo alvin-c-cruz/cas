@@ -9,7 +9,7 @@ import itertools
 
 import pytest
 
-from app.integrity.checks import run_checks
+from app.integrity.checks import run_checks, compute_aggregates, compare_aggregates
 
 pytestmark = pytest.mark.unit
 
@@ -63,3 +63,27 @@ def test_orphan_je_line_flagged(db_session, main_branch):
                                     debit_amount=Decimal('0'), credit_amount=Decimal('0')))
     db_session.commit()
     assert _find(run_checks(db_session), 'je_line_orphans')['ok'] is False
+
+
+def test_aggregates_capture_counts_and_tb(db_session, main_branch):
+    _je(db_session, main_branch, '100', '100')
+    agg = compute_aggregates(db_session)
+    assert agg['tb_debit'] == '100.00' and agg['tb_credit'] == '100.00'
+    assert agg['table_counts']['journal_entries'] == 1
+    assert agg['table_counts']['journal_entry_lines'] == 2
+
+
+def test_compare_aggregates_flags_delta(db_session, main_branch):
+    _je(db_session, main_branch, '100', '100')
+    before = compute_aggregates(db_session)
+    _je(db_session, main_branch, '50', '50')          # a migration that changed data
+    after = compute_aggregates(db_session)
+    findings = compare_aggregates(before, after)
+    assert any(f['ok'] is False for f in findings)
+
+
+def test_compare_aggregates_identical_ok(db_session, main_branch):
+    _je(db_session, main_branch, '100', '100')
+    a = compute_aggregates(db_session)
+    findings = compare_aggregates(a, dict(a))
+    assert all(f['ok'] for f in findings)
