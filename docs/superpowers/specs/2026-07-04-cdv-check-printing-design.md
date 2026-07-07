@@ -1,7 +1,10 @@
 # CDV Check Printing + Per-Account Editable Layout — Design
 
 - **Date:** 2026-07-04
-- **Status:** Approved (design) — pending implementation plan
+- **Status:** SUPERSEDED (2026-07-07) by `plans/2026-07-07-cdv-check-writer.md`. This design's engine
+  premise — an `app/preprinted_forms/` `PrintLayout`+FPDF stack — **does not exist in the codebase** (never
+  built). The real engine is the 2026-07 HTML-canvas pre-printed system. Only the money-correctness, gating,
+  audit, and test requirements below survive (carried into the new plan). Do NOT implement from this doc.
 - **Module:** `app/preprinted_forms/` + `app/cash_disbursements/`
 - **Origin:** User request — "CDV should be able to print over checks; user should be able to edit the print layout." Refined via boardroom (CEO/CTO/PM/Engineer/QA) + user decisions.
 

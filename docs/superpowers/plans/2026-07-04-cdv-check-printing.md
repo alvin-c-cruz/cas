@@ -1,5 +1,11 @@
 # CDV Check Printing + Per-Account Editable Layout — Implementation Plan (rev. 2, boardroom-reviewed)
 
+> **⛔ SUPERSEDED (2026-07-07) by [`2026-07-07-cdv-check-writer.md`](2026-07-07-cdv-check-writer.md).** This
+> plan targets the `app/preprinted_forms/` `PrintLayout`+FPDF engine, which **does not exist in the codebase**
+> (never built). Do NOT implement from this doc. The new plan rebuilds on the real HTML-canvas pre-printed
+> engine and re-resolves the architecture (PDF via fpdf2 for the print, per-`cash_account_id` keying, a DB
+> partial-unique serial index in v1). The money-correctness + gating + test requirements here were carried over.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let a check-paid CDV print a data overlay onto physical pre-printed check stock, using an editable layout that is per cash/bank account (a Default layout plus per-account overrides), reusing the existing P-69 pre-printed-forms engine.
