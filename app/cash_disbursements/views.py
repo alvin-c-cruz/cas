@@ -797,6 +797,26 @@ def _form_context(all_accounts=None, selected_vendor_id=None):
                 products=_products_for_form())
 
 
+def _check_serial_error(cdv):
+    """Friendly message if this check CDV's serial duplicates another NON-voided CDV on the
+    same cash/bank account, else None. Fires only for a non-blank check_number. The DB
+    partial-unique index `uq_cdv_cash_account_check_number` is the hard guard (wins the
+    TOCTOU race); this is a clean flash before it fires. (A voided serial is free to reuse.)"""
+    num = (cdv.check_number or '').strip()
+    if cdv.payment_method != 'check' or not num:
+        return None
+    q = CashDisbursementVoucher.query.filter(
+        CashDisbursementVoucher.cash_account_id == cdv.cash_account_id,
+        db.func.trim(CashDisbursementVoucher.check_number) == num,
+        CashDisbursementVoucher.status.notin_(['voided', 'cancelled']),
+    )
+    if cdv.id:
+        q = q.filter(CashDisbursementVoucher.id != cdv.id)
+    conflict = q.first()
+    return (f'Check number "{num}" is already used on {conflict.cdv_number} for this '
+            f'cash/bank account.') if conflict else None
+
+
 @cash_disbursements_bp.route('/cash-disbursements/create', methods=['GET', 'POST'])
 @login_required
 @staff_or_above_required
@@ -851,6 +871,11 @@ def create():
                 status='draft',
                 created_by_id=current_user.id
             )
+            cdv.check_number = (cdv.check_number or '').strip() or None
+            serial_err = _check_serial_error(cdv)
+            if serial_err:
+                flash(serial_err, 'error')
+                return _render_form()
             _parse_line_items(cdv)
             cdv.calculate_totals()
             err = _apply_cdv_overrides(cdv)
@@ -948,11 +973,16 @@ def edit(id):
             cdv.vendor_name = vendor.name
             cdv.vendor_tin = vendor.tin
             cdv.payment_method = form.payment_method.data
-            cdv.check_number = form.check_number.data or None
+            cdv.check_number = (form.check_number.data or '').strip() or None
             cdv.check_date = form.check_date.data or None
             cdv.check_bank = form.check_bank.data or None
             cdv.cash_account_id = form.cash_account_id.data
             cdv.notes = form.notes.data
+
+            serial_err = _check_serial_error(cdv)
+            if serial_err:
+                flash(serial_err, 'error')
+                return _render_form()
 
             # Delete old line items and rebuild
             for ap in list(cdv.ap_lines):

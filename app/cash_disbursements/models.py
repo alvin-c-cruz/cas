@@ -5,6 +5,16 @@ from decimal import Decimal
 
 class CashDisbursementVoucher(db.Model):
     __tablename__ = 'cash_disbursement_vouchers'
+    __table_args__ = (
+        # Check-serial integrity: a non-null check_number is unique per cash/bank
+        # account, among NON-voided CDVs (a voided serial is freed for reuse — user
+        # decision 2026-07-07). Different bank accounts may reuse a serial. Cash-method
+        # CDVs (null check_number) are excluded. Migration: c9e1f2a3b4d5 (create_index).
+        db.Index('uq_cdv_cash_account_check_number', 'cash_account_id', 'check_number',
+                 unique=True,
+                 sqlite_where=db.text("check_number IS NOT NULL "
+                                      "AND status NOT IN ('voided', 'cancelled')")),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
