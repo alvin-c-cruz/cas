@@ -7,10 +7,13 @@
   `cd_check_print_access` setting already exists. **Task 3 DONE** (`87c0f2a`): partial
   unique index `uq_cdv_cash_account_check_number` (void=free, user-approved) + hand-written migration
   `c9e1f2a3b4d5` verified on a cas.db copy + applied to dev cas.db + `_check_serial_error` app guard in
-  create/edit; 8 tests, cash_disbursements marker 64 pass. **Remaining:** Task 2 designer UI (template +
-  `cd_check_designer.js/css` + scanned-check background upload) — pairs with Task 4; **Task 4** PDF `print_check`
-  route (Phase-0-gated + confirm fpdf2); Task 5 regression. **DEPLOY:** check live `ric.db` for pre-existing
-  duplicate serials before its upgrade.
+  create/edit; 8 tests, cash_disbursements marker 64 pass. **Task 4 route DONE** (`4df9413`): fpdf2
+  renderer `check_pdf.py` + `print_check` route (gate truth-table, tie-out, presence/fit guards, audit, no
+  signature); 11 tests; fpdf2 2.8.7 confirmed installed+pinned. Placeholder CTS-2010 geometry (validated vs the
+  PCHC standard + a Chinabank-check web check 2026-07-07). **Remaining:** the "Print Check" button on the CDV
+  detail; Task 2 designer UI (template + `cd_check_designer.js/css` + scanned-check background upload); Task 5
+  regression-map edges; **Phase 0 physical calibration + sign-off** (real check sample). **DEPLOY:** check live
+  `ric.db` for pre-existing duplicate serials before its upgrade.
 - **Supersedes:** `specs/2026-07-04-cdv-check-printing-design.md` + `plans/2026-07-04-cdv-check-printing.md`
   (their engine premise — an `app/preprinted_forms/` `PrintLayout`+FPDF stack — **does not exist in the
   codebase**; only their money-correctness + gating + test requirements survive, carried in below).
