@@ -1195,15 +1195,74 @@ def cancel(id):
 def print_cdv(id):
     cdv = _get_cdv_or_404(id)
 
+    cd_print_form = AppSettings.get_setting('cd_print_form', 'current')
+    # 'hidden' turns CDV printing off entirely: refuse the route, not just the button.
+    if cd_print_form == 'hidden':
+        flash('Cash Disbursement printing is not enabled.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+
     je_entries = _build_cdv_je_preview(cdv)
     company = {
         'name': AppSettings.get_setting('company_name', ''),
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
+
+    # 'preprinted' -> drag-positioned data-only layout for physical pre-printed stock;
+    # else the standard self-contained printable form.
+    if cd_print_form == 'preprinted':
+        from app.cash_disbursements.preprinted_layout import (
+            get_layout, COLUMN_LABELS, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES,
+            PAPER_LABELS, DATE_FORMATS, TEXT_KEYS)
+        # JE face is JE-BOUND: sort the stored legs debits-first (non-VAT debits ->
+        # VAT debits -> credits, by code — CDV stores credit-first), split by sign,
+        # tally, and tie out. An untied face is refused at the template.
+        je_lines = []
+        if cdv.journal_entry:
+            vat_account_ids = {c.input_vat_account_id for c in VATCategory.query.all()
+                               if c.input_vat_account_id}
+            lines = cdv.journal_entry.lines.all()
+            debit_non_vat = sorted(
+                [l for l in lines if (l.debit_amount or 0) > 0 and l.account_id not in vat_account_ids],
+                key=lambda l: l.account.code)
+            debit_vat = sorted(
+                [l for l in lines if (l.debit_amount or 0) > 0 and l.account_id in vat_account_ids],
+                key=lambda l: l.account.code)
+            credits = [l for l in lines if (l.credit_amount or 0) > 0]
+            je_lines = debit_non_vat + debit_vat + credits
+        je_debits = [l for l in je_lines if (l.debit_amount or 0) > 0]
+        je_credits = [l for l in je_lines if (l.credit_amount or 0) > 0]
+        je_total_debit = sum((l.debit_amount or 0) for l in je_lines)
+        je_total_credit = sum((l.credit_amount or 0) for l in je_lines)
+        je_tied = abs(Decimal(je_total_debit) - Decimal(je_total_credit)) < Decimal('0.005')
+        return render_template(
+            'cash_disbursements/print_preprinted.html', cdv=cdv,
+            je_lines=je_lines, je_debits=je_debits, je_credits=je_credits,
+            je_total_debit=je_total_debit, je_total_credit=je_total_credit, je_tied=je_tied,
+            company=company, printed_at=ph_now(),
+            layout=get_layout(cdv.branch_id), can_edit_layout=current_user.has_full_access,
+            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+            signatory_ids=TEXT_KEYS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
+
     return render_template('cash_disbursements/print.html',
                            cdv=cdv, je_entries=je_entries,
                            company=company, printed_at=ph_now())
+
+
+@cash_disbursements_bp.route('/cash-disbursements/print-layout', methods=['POST'])
+@login_required
+def save_cdv_print_layout():
+    """Persist the CDV pre-printed layout JSON (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
+        abort(403)
+    from app.cash_disbursements.preprinted_layout import save_layout
+    data = request.get_json(silent=True) or {}
+    # Per-branch layout; the session branch equals the document's branch.
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    return jsonify(ok=True, layout=clean)
 
 
 def _cdv_export_data(branch_id):
