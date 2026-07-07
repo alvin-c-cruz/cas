@@ -19,12 +19,18 @@ class TestSanitize:
         assert out['page']['fontFamily'] == DEFAULT_APV_PREPRINTED_LAYOUT['page']['fontFamily']
 
     def test_apv_specific_field_keys(self):
-        # APV header + vendor + BIR payable summary fields (NOT the SI/CRV fields)
+        # APV header + vendor fields (NOT the SI/CRV fields)
         for k in ('apv_no', 'apv_date', 'due_date', 'terms',
-                  'vendor_name', 'vendor_invoice_no', 'net_payable'):
+                  'vendor_name', 'vendor_invoice_no'):
             assert k in FIELD_KEYS
         assert 'crv_no' not in FIELD_KEYS       # that's the CRV form's field
         assert 'invoice_no' not in FIELD_KEYS   # that's the SI form's field
+
+    def test_summary_fields_removed(self):
+        # The APV Summary block (gross/input_vat/net_of_vat/wht/net_payable) is NOT on
+        # the pre-printed voucher (user 2026-07-07) — dropped from the field schema.
+        for k in ('gross', 'input_vat', 'net_of_vat', 'wht_amount', 'net_payable'):
+            assert k not in FIELD_KEYS
 
     def test_unknown_field_dropped_known_field_kept(self):
         out = sanitize_layout({'fields': {'apv_no': {'x': 111, 'y': 222},
@@ -33,8 +39,8 @@ class TestSanitize:
         assert out['fields']['apv_no']['x'] == 111
         assert out['fields']['apv_no']['y'] == 222
         # a field the input omitted still renders at its default
-        assert out['fields']['net_payable'] == \
-            sanitize_layout({})['fields']['net_payable']
+        assert out['fields']['terms'] == \
+            sanitize_layout({})['fields']['terms']
 
     def test_coords_and_sizes_clamped_and_coerced(self):
         out = sanitize_layout({'fields': {'apv_no': {'x': -50, 'y': 99999,

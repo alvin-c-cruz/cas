@@ -126,11 +126,6 @@
     'vendor_tin': ap.vendor_tin or '',
     'vendor_invoice_no': ap.vendor_invoice_number or '',
     'vendor_invoice_date': ap.vendor_invoice_date.strftime(date_fmt) if ap.vendor_invoice_date else '',
-    'gross': '{:,.2f}'.format(ap.subtotal or 0),
-    'input_vat': '{:,.2f}'.format(ap.vat_amount or 0),
-    'net_of_vat': '{:,.2f}'.format((ap.subtotal or 0) - (ap.vat_amount or 0)),
-    'wht_amount': '{:,.2f}'.format(ap.withholding_tax_amount or 0),
-    'net_payable': '{:,.2f}'.format(ap.total_amount or 0),
     'notes': ap.notes or '',
   } %}
   {% set field_isos = {

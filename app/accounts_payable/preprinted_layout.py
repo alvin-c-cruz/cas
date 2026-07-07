@@ -51,8 +51,8 @@ ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 FIELD_KEYS = [
     'apv_no', 'apv_date', 'due_date', 'terms',
     'vendor_name', 'vendor_tin', 'vendor_invoice_no', 'vendor_invoice_date',
-    # BIR-standard APV payable summary
-    'gross', 'input_vat', 'net_of_vat', 'wht_amount', 'net_payable',
+    # Summary block (gross/input_vat/net_of_vat/wht/net_payable) intentionally dropped
+    # from the pre-printed voucher (user 2026-07-07) — the JE face carries the figures.
     'notes',
 ]
 
@@ -65,11 +65,6 @@ FIELD_LABELS = {
     'vendor_tin': 'TIN',
     'vendor_invoice_no': 'Invoice No.',
     'vendor_invoice_date': 'Invoice Date',
-    'gross': 'Gross Amount',
-    'input_vat': 'Input VAT',
-    'net_of_vat': 'Net of VAT',
-    'wht_amount': 'Withholding Tax',
-    'net_payable': 'Net Amount Payable',
     'notes': 'Notes',
 }
 
@@ -137,11 +132,6 @@ DEFAULT_APV_PREPRINTED_LAYOUT = {
         'vendor_tin':         {'x': 40,  'y': 74,  'fontSize': 11, 'bold': False},
         'vendor_invoice_no':  {'x': 40,  'y': 98,  'fontSize': 11, 'bold': False},
         'vendor_invoice_date':{'x': 40,  'y': 122, 'fontSize': 11, 'bold': False},
-        'gross':              {'x': 620, 'y': 470, 'fontSize': 10, 'bold': False},
-        'input_vat':          {'x': 620, 'y': 494, 'fontSize': 10, 'bold': False},
-        'net_of_vat':         {'x': 620, 'y': 518, 'fontSize': 10, 'bold': False},
-        'wht_amount':         {'x': 620, 'y': 542, 'fontSize': 10, 'bold': False},
-        'net_payable':        {'x': 620, 'y': 570, 'fontSize': 13, 'bold': True},
         'notes':              {'x': 40,  'y': 600, 'fontSize': 10, 'bold': False},
     },
     # Journal-entry face (APV-only). `mode` = combined (one code/account/debit/credit

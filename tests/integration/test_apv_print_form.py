@@ -218,7 +218,9 @@ class TestApPrintRoutes:
         assert 'Preprint Supplier Inc.' in body    # vendor
         assert 'Bond paper' not in body            # Particulars band removed (user 2026-07-07)
         assert '<div class="pp-lineitems"' not in body   # no line-items band (match element, not CSS)
-        assert '11,000.00' in body                 # net payable (Summary block kept)
+        # Summary block removed too (user 2026-07-07): no gross / net-payable value fields
+        assert 'data-el="net_payable"' not in body
+        assert 'data-el="gross"' not in body
 
     def test_current_renders_standard_form(
             self, client, db_session, admin_user, main_branch):
