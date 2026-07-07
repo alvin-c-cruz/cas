@@ -4,10 +4,13 @@
 - **Status:** In progress — Phase 0 gate open. **Task 1 DONE** (`amount_to_words`, `efa8057`, 30 tests +
   3000-sample round-trip). **Task 2 partial:** layout module DONE (`4c01866`, 14 tests, per-account keyed,
   width-on-fields, MM-DD-YYYY) + `save_cd_check_layout` route DONE (`778e858`, 4 tests); the
-  `cd_check_print_access` setting already exists. **Remaining:** Task 2 designer UI (template +
-  `cd_check_designer.js/css` + scanned-check background upload) — pairs with Task 4; **Task 3** serial-uniqueness
-  migration (needs model-change approval); **Task 4** PDF `print_check` route (Phase-0-gated + confirm fpdf2);
-  Task 5 regression.
+  `cd_check_print_access` setting already exists. **Task 3 DONE** (`87c0f2a`): partial
+  unique index `uq_cdv_cash_account_check_number` (void=free, user-approved) + hand-written migration
+  `c9e1f2a3b4d5` verified on a cas.db copy + applied to dev cas.db + `_check_serial_error` app guard in
+  create/edit; 8 tests, cash_disbursements marker 64 pass. **Remaining:** Task 2 designer UI (template +
+  `cd_check_designer.js/css` + scanned-check background upload) — pairs with Task 4; **Task 4** PDF `print_check`
+  route (Phase-0-gated + confirm fpdf2); Task 5 regression. **DEPLOY:** check live `ric.db` for pre-existing
+  duplicate serials before its upgrade.
 - **Supersedes:** `specs/2026-07-04-cdv-check-printing-design.md` + `plans/2026-07-04-cdv-check-printing.md`
   (their engine premise — an `app/preprinted_forms/` `PrintLayout`+FPDF stack — **does not exist in the
   codebase**; only their money-correctness + gating + test requirements survive, carried in below).
