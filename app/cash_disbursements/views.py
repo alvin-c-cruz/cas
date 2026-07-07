@@ -1322,6 +1322,28 @@ def save_cd_check_layout():
     return jsonify(ok=True, layout=clean)
 
 
+@cash_disbursements_bp.route('/cash-disbursements/check-designer')
+@login_required
+def check_designer():
+    """Drag-position the check overlay fields per cash/bank account (design only — the
+    check itself prints as a PDF from the CDV). Full-access; picks the account context via
+    `?account_id=<id>` (else the Default). Positions against an optional scanned-check
+    background (`cd_check_bg:<account_id>` setting) — screen-only, never in the PDF."""
+    if not current_user.has_full_access:
+        abort(403)
+    from app.cash_disbursements.check_layout import (
+        get_layout, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES, PAPER_LABELS, DATE_FORMATS)
+    account_id = request.args.get('account_id', type=int)
+    cash_accounts = [a for a in _get_all_accounts_for_select() if not a['is_group']]
+    bg = AppSettings.get_setting(f'cd_check_bg:{account_id}' if account_id is not None else 'cd_check_bg')
+    return render_template(
+        'cash_disbursements/check_designer.html',
+        layout=get_layout(account_id), account_id=account_id, cash_accounts=cash_accounts,
+        bg_image=bg, field_labels=FIELD_LABELS, font_groups=FONT_GROUPS,
+        paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS, date_formats=DATE_FORMATS,
+        date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
+
+
 def _build_check_values(cdv, layout):
     """Return (values, error). `amount_in_words` is the legally-operative amount
     (NIL Sec.17(b)); compute it here (never in Jinja/the renderer — it raises) and

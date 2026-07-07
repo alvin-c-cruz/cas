@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Check Layout Designer</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/cd_check_designer.css') }}?v=1">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
+  .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
+  /* Optional scanned-check background: screen-only positioning aid, NEVER printed (the
+     PDF overprints the physical stock). */
+  .pp-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill;
+           opacity: .55; pointer-events: none; }
+  .pp-el { position: absolute; white-space: nowrap; }
+  .pp-canvas.pp-editing .pp-el { outline: 1px dashed #2e7d32; cursor: move; }
+  .pp-canvas.pp-editing .pp-el:hover { outline: 2px solid #2e7d32; background: rgba(46,125,50,.06); }
+  .pp-canvas.pp-editing .pp-el:empty::before { content: attr(data-el); color: #bbb; font-style: italic; }
+  .pp-field-hidden { display: none; }
+  .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
+  .pp-canvas.pp-editing .pp-text { outline: 1px dotted #1565c0; }
+  .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
+  body:not([data-paper="continuous"]) .pp-margin-guide { display: none; }
+  .pp-toolbar { max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pp-toolbar .grow { flex: 1; }
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; text-decoration: none; color: #fff; display: inline-block; }
+  .btn-edit { background: #2e7d32; } .btn-close { background: #666; }
+  label.acct { font-size: 13px; }
+</style>
+<style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
+</head>
+<body data-can-edit="true" data-paper="{{ layout.paper }}">
+
+<div class="pp-toolbar screen-only">
+  <label class="acct">Account:
+    <select id="ppAccount">
+      <option value="" {{ 'selected' if account_id is none else '' }}>Default layout</option>
+      {% for a in cash_accounts %}
+      <option value="{{ a.id }}" {{ 'selected' if account_id == a.id else '' }}>{{ a.code }} : {{ a.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <span class="grow"></span>
+  <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
+  <select id="ppPaper" class="screen-only" style="display:none;">
+    {% for key, sz in paper_sizes.items() %}
+    <option value="{{ key }}" data-w="{{ sz.w }}" data-h="{{ sz.h }}" data-css="{{ sz.css }}" {{ 'selected' if key == layout.paper else '' }}>{{ paper_labels[key] }}</option>
+    {% endfor %}
+  </select>
+  <select id="ppFontFamily" class="screen-only" style="display:none;">
+    {% for group, fonts in font_groups %}
+    <optgroup label="{{ group }}">
+      {% for font in fonts %}
+      <option value="{{ font }}" {{ 'selected' if font == layout.page.fontFamily else '' }}>{{ font.split(',')[0].replace('"','') }}</option>
+      {% endfor %}
+    </optgroup>
+    {% endfor %}
+  </select>
+  <select id="ppDateFormat" class="screen-only" style="display:none;" title="Date format">
+    {% for key in date_formats %}
+    <option value="{{ key }}" {{ 'selected' if key == layout.dateFormat else '' }}>{{ date_labels[key] }}</option>
+    {% endfor %}
+  </select>
+  <a class="btn btn-close" href="{{ url_for('cash_disbursements.list_cdvs') }}">Close</a>
+</div>
+
+<div id="ppFieldControls" class="pp-col-controls screen-only"></div>
+
+<div class="pp-canvas" id="ppCanvas" data-save-url="/cash-disbursements/check-layout{{ '?account_id=' ~ account_id if account_id is not none else '' }}"
+     style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
+  {% if bg_image %}<img class="pp-bg screen-only" src="{{ url_for('static', filename='uploads/' ~ bg_image) }}" alt="check background">{% endif %}
+  <div class="pp-margin-guide screen-only" style="left:48px;"></div>
+  <div class="pp-margin-guide screen-only" style="right:48px;"></div>
+
+  {# Sample content so the designer can see sizing/placement (the real values come from the CDV at print). #}
+  {% set samples = {
+    'payee': 'PAYEE NAME',
+    'check_date': date_labels[layout.dateFormat],
+    'amount_figures': '5,550.00',
+    'amount_in_words': 'FIVE THOUSAND FIVE HUNDRED FIFTY PESOS AND 00/100 ONLY',
+    'memo': 'Memo',
+  } %}
+  {% for key, f in layout.fields.items() %}
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"
+       style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ samples[key] }}</div>
+  {% endfor %}
+
+  {% for t in layout.texts %}
+  <div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"
+       style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>
+  {% endfor %}
+</div>
+
+<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=1"></script>
+</body>
+</html>

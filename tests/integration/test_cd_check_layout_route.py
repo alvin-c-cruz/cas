@@ -53,3 +53,26 @@ def test_admin_saves_per_account_layout(client, db_session, admin_user, main_bra
     # persisted under the account-scoped key, not the Default
     assert json.loads(AppSettings.get_setting(f'{LAYOUT_SETTING_KEY}:7'))['fields']['payee']['x'] == 210
     assert AppSettings.get_setting(LAYOUT_SETTING_KEY) is None
+
+
+def test_designer_page_renders(client, db_session, admin_user, main_branch):
+    login(client)
+    resp = client.get('/cash-disbursements/check-designer')
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert 'ppCanvas' in body
+    assert 'data-el="amount_in_words"' in body   # the legally-operative field is placeable
+    assert 'id="ppAccount"' in body              # per-account selector
+
+
+def test_designer_requires_full_access(client, db_session, staff_user, main_branch):
+    staff_user.set_branches([main_branch]); db_session.commit()
+    login(client, 'staff', 'staff123')
+    assert client.get('/cash-disbursements/check-designer').status_code == 403
+
+
+def test_field_width_roundtrips(client, db_session, admin_user, main_branch):
+    login(client)
+    resp = client.post(URL, json={'fields': {'amount_in_words': {'x': 80, 'y': 232, 'width': 620}}})
+    assert resp.status_code == 200
+    assert resp.get_json()['layout']['fields']['amount_in_words']['width'] == 620
