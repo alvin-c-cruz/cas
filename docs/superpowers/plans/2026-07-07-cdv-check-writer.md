@@ -1,7 +1,8 @@
 # CDV Check Writer — Implementation Plan
 
 - **Date:** 2026-07-07
-- **Status:** Ready — Phase 0 gate open; Phase 1 not started
+- **Status:** In progress — Phase 0 gate open; **Phase 1 Task 1 DONE** (`amount_to_words`, commit `efa8057`,
+  30 tests incl. a 3000-sample independent round-trip); Tasks 2–5 not started.
 - **Supersedes:** `specs/2026-07-04-cdv-check-printing-design.md` + `plans/2026-07-04-cdv-check-printing.md`
   (their engine premise — an `app/preprinted_forms/` `PrintLayout`+FPDF stack — **does not exist in the
   codebase**; only their money-correctness + gating + test requirements survive, carried in below).
@@ -89,8 +90,11 @@ the figures — the number-to-words engine is the legally operative amount.
 
 ### Phase 1 — MVP (release-gated; ~4.5–5.0 dev-days). Order matters — amount-to-words FIRST.
 
-**Task 1 — `app/common/amount_to_words.py` (TDD-first, the load-bearing piece).**
-- [ ] **RED:** `tests/unit/test_amount_to_words.py` — ~28-case matrix BEFORE any code:
+**Task 1 — `app/common/amount_to_words.py` (TDD-first, the load-bearing piece). ✅ DONE (`efa8057`).**
+Format locked: `<WORDS> PESO(S) AND nn/100 ONLY`, ALL-CAPS, no interior "and", singular PESO iff 1.
+Supports up to **trillions** (Numeric(15,2) max 9,999,999,999,999.99 — QA's DB-max reasoning; supersedes
+this plan's provisional 1e12 cap). 30 tests incl. a 3000-sample independent spell↔parse round-trip.
+- [x] **RED:** `tests/unit/test_amount_to_words.py` — ~28-case matrix BEFORE any code:
   `Decimal('0.00')`→raise; negative→raise; non-Decimal→TypeError; `>2dp`→raise (or HALF_UP, lock it);
   `>= Decimal('1e12')`→overflow raise; `1.00`→`ONE PESO … 00/100 ONLY` (lock singular/plural); exact pesos
   `… AND 00/100 ONLY`; centavo zero-pad (`5.05`→`… AND 05/100 ONLY`); Decimal-not-float split
@@ -98,11 +102,11 @@ the figures — the number-to-words engine is the legally operative amount.
   no interior "AND" except before centavos; `105.00` (no "and" after hundred); thousand/million/billion
   scale words; `9,999,999,999,999.99` (Numeric(15,2) max) renders fully; `10.10` vs `10.01` distinct;
   ALL-CAPS invariant; always ends `" ONLY"` and contains `"/100"`.
-- [ ] **The oracle (non-tautological):** write an **INDEPENDENT** `parse_words(str)->Decimal` in the test
+- [x] **The oracle (non-tautological):** write an **INDEPENDENT** `parse_words(str)->Decimal` in the test
   module (different code path from the speller); property test (`hypothesis`, 2dp, `[0.01, 9_999_999_999_999.99]`,
   ≥1000 samples): `parse_words(amount_to_words(x)) == x`. Negative property: a corrupted string (missing
   "ONLY"/scale word) fails `parse` → feeds the Task-4 presence/terminator guard.
-- [ ] **GREEN:** ~40-line hand-rolled integer→words core (ones/teens/tens + thousand/million/billion/trillion
+- [x] **GREEN:** ~40-line hand-rolled integer→words core (ones/teens/tens + thousand/million/billion/trillion
   group recursion) + a Decimal peso/centavo wrapper. **Do NOT** vendor `num2words` (extra deploy dep + PH
   post-processing anyway). Signature `amount_to_words(value: Decimal) -> str`.
 
