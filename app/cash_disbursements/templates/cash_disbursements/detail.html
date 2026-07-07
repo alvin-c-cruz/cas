@@ -78,6 +78,10 @@
       <a href="{{ url_for('cash_disbursements.print_cdv', id=cdv.id) }}" target="_blank"
          rel="noopener noreferrer" class="btn btn-secondary">Print</a>
       {% endif %}
+      {% if check_printable %}
+      <a href="{{ url_for('cash_disbursements.print_check', id=cdv.id) }}" target="_blank"
+         rel="noopener noreferrer" class="btn btn-secondary">Print Check</a>
+      {% endif %}
       {% if (current_user.has_full_access or current_user.role == 'accountant') and cdv.status == 'draft' %}
       <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post CDV</button>
       {% endif %}

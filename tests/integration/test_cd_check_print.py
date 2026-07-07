@@ -141,3 +141,17 @@ class TestTieOutAndSignature:
     def test_no_facsimile_signature_field(self):
         from app.cash_disbursements.check_layout import FIELD_KEYS
         assert not any('sign' in k for k in FIELD_KEYS)   # the overlay never draws a signature
+
+
+class TestButton:
+    def test_button_shown_for_printable_check_cdv(self, client, db_session, admin_user, main_branch):
+        cdv = _check_cdv(db_session, main_branch)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}').data.decode()
+        assert f'/cash-disbursements/{cdv.id}/print-check' in body
+
+    def test_button_hidden_for_cash_cdv(self, client, db_session, admin_user, main_branch):
+        cdv = _check_cdv(db_session, main_branch, method='cash', check_number=None)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}').data.decode()
+        assert '/print-check' not in body

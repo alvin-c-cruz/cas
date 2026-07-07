@@ -1054,9 +1054,20 @@ def view(id):
     je_entries = _build_cdv_je_preview(cdv)
     cd_print_access = AppSettings.get_setting('cd_print_access', 'posted_only')
 
+    # "Print Check" gate (mirrors the print_check route so the button never dead-ends).
+    cd_check_access = AppSettings.get_setting('cd_check_print_access', 'posted_only')
+    check_printable = (
+        cdv.payment_method == 'check'
+        and cd_check_access != 'hidden'
+        and ((cdv.status == 'posted') if cd_check_access != 'draft_and_posted'
+             else (cdv.status not in ('voided', 'cancelled')))
+        and bool((cdv.check_number or '').strip())
+        and (cdv.total_amount or 0) > 0
+    )
+
     return render_template('cash_disbursements/detail.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now(),
-                           cd_print_access=cd_print_access)
+                           cd_print_access=cd_print_access, check_printable=check_printable)
 
 
 def _apply_ap_payments(cdv):
