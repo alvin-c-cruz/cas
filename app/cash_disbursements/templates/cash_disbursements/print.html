@@ -47,6 +47,7 @@
   .summary-row .slabel { color: #555; }
   .summary-row .sval { font-family: monospace; font-weight: 600; }
   .summary-row .sval.red { color: #c00; }
+  .summary-divider { height: 1px; background: #bbb; margin: 6px 0; }
   .summary-divider-double { height: 2px; background: #888; margin: 8px 0; }
   .summary-net { display: flex; justify-content: space-between; }
   .summary-net .netlabel { font-weight: 700; font-size: 11px; }
@@ -219,7 +220,16 @@
           <span class="sval">{{ '{:,.2f}'.format(cdv.total_expense) }}</span>
         </div>
         <div class="summary-row">
-          <span class="slabel">Input VAT{{ ' ⚙' if cdv.vat_override }}:</span>
+          <span class="slabel">Less: Input VAT{{ ' ⚙' if cdv.vat_override }}:</span>
+          <span class="sval">{{ '{:,.2f}'.format(cdv.total_vat) }}</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-row">
+          <span class="slabel">Net of VAT:</span>
+          <span class="sval">{{ '{:,.2f}'.format(cdv.total_expense - cdv.total_vat) }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="slabel">Add: Input VAT:</span>
           <span class="sval">{{ '{:,.2f}'.format(cdv.total_vat) }}</span>
         </div>
         <div class="summary-row">

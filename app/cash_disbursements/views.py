@@ -551,10 +551,20 @@ def _apply_cdv_overrides(cdv):
     return None
 
 
+def _debits_first(rows):
+    """Presentation rule: DEBIT legs before CREDIT legs (a posted voucher stores its JE
+    credit-first, so stored order would show credits above debits). Intra-group order is
+    preserved. See [[crv-cdv-je-debit-order]]."""
+    debits = [r for r in rows if (r['debit'] or 0) > 0]
+    credits = [r for r in rows if not ((r['debit'] or 0) > 0)]
+    return debits + credits
+
+
 def _build_cdv_je_preview(cdv):
-    """Return [{code, name, debit, credit}] for the JE section on the detail page."""
+    """Return [{code, name, debit, credit}] for the JE section on the detail page,
+    always debits-first."""
     if cdv.journal_entry:
-        return [
+        return _debits_first([
             {
                 'code': line.account.code if line.account else '—',
                 'name': line.account.name if line.account else '—',
@@ -562,7 +572,7 @@ def _build_cdv_je_preview(cdv):
                 'credit': line.credit_amount,
             }
             for line in cdv.journal_entry.lines.all()
-        ]
+        ])
     accts = _get_gl_accounts()
     entries = []
     for ap_line in cdv.ap_lines:
@@ -627,7 +637,7 @@ def _build_cdv_je_preview(cdv):
         else:
             entries.append({'code': cdv.cash_account.code, 'name': cdv.cash_account.name,
                             'debit': abs(cash_net), 'credit': Decimal('0.00')})
-    return entries
+    return _debits_first(entries)
 
 
 def _parse_and_attach_expense_lines(cdv, exp_lines_json):

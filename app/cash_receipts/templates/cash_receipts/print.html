@@ -47,6 +47,7 @@
   .summary-row .slabel { color: #555; }
   .summary-row .sval { font-family: monospace; font-weight: 600; }
   .summary-row .sval.red { color: #c00; }
+  .summary-divider { height: 1px; background: #bbb; margin: 6px 0; }
   .summary-divider-double { height: 2px; background: #888; margin: 8px 0; }
   .summary-net { display: flex; justify-content: space-between; }
   .summary-net .netlabel { font-weight: 700; font-size: 11px; }
@@ -218,7 +219,16 @@
           <span class="sval">{{ '{:,.2f}'.format(crv.total_revenue) }}</span>
         </div>
         <div class="summary-row">
-          <span class="slabel">Output VAT{{ ' ⚙' if crv.vat_override }}:</span>
+          <span class="slabel">Less: Output VAT{{ ' ⚙' if crv.vat_override }}:</span>
+          <span class="sval">{{ '{:,.2f}'.format(crv.total_vat) }}</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-row">
+          <span class="slabel">Net of VAT:</span>
+          <span class="sval">{{ '{:,.2f}'.format(crv.total_revenue - crv.total_vat) }}</span>
+        </div>
+        <div class="summary-row">
+          <span class="slabel">Add: Output VAT:</span>
           <span class="sval">{{ '{:,.2f}'.format(crv.total_vat) }}</span>
         </div>
         <div class="summary-row">

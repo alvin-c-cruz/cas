@@ -249,10 +249,14 @@
             <span style="font-family:var(--mono);font-weight:{{ '700' if bold else '600' }};{{ 'color:var(--red);' if red }}">{{ val }}</span>
           </div>
           {% endmacro %}
+          {# AP-parity VAT ladder: Direct Expenses is VAT-inclusive, so strip the VAT out
+             (Net of VAT) then add it back before WHT -- the total never re-adds VAT. #}
           {{ sumrow('AP Applied:', '₱' ~ '{:,.2f}'.format(cdv.total_ap_applied)) }}
           {{ sumrow('Direct Expenses:', '₱' ~ '{:,.2f}'.format(cdv.total_expense)) }}
-          {{ sumrow('Input VAT:' ~ (' ⚙' if cdv.vat_override else ''), '₱' ~ '{:,.2f}'.format(cdv.total_vat)) }}
-          <div style="height:1px;background:var(--border);margin:8px 0;"></div>
+          {{ sumrow('Less: Input VAT:' ~ (' ⚙' if cdv.vat_override else ''), '₱' ~ '{:,.2f}'.format(cdv.total_vat)) }}
+          <div style="height:2px;background:var(--text-3);margin:8px 0;"></div>
+          {{ sumrow('Net of VAT:', '₱' ~ '{:,.2f}'.format(cdv.total_expense - cdv.total_vat)) }}
+          {{ sumrow('Add: Input VAT:', '₱' ~ '{:,.2f}'.format(cdv.total_vat)) }}
           {{ sumrow('Less: WHT:' ~ (' ⚙' if cdv.wt_override else ''), '-₱' ~ '{:,.2f}'.format(cdv.total_wt), red=true) }}
           <div style="height:2px;background:var(--border);margin:10px 0;"></div>
           <div style="display:flex;justify-content:space-between;">

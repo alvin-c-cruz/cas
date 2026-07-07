@@ -343,14 +343,24 @@ def _create_crv_reversal_je(crv, reversal_date, user_id):
     return je
 
 
+def _debits_first(rows):
+    """Presentation rule: DEBIT legs before CREDIT legs (a posted voucher stores its JE
+    credit-first, so stored order would show credits above debits). Intra-group order is
+    preserved. See [[crv-cdv-je-debit-order]]."""
+    debits = [r for r in rows if (r['debit'] or 0) > 0]
+    credits = [r for r in rows if not ((r['debit'] or 0) > 0)]
+    return debits + credits
+
+
 def _build_crv_je_preview(crv):
-    """Return [{code, name, debit, credit}] for the JE section on the detail page.
+    """Return [{code, name, debit, credit}] for the JE section on the detail page,
+    always debits-first.
 
     If the CRV has a stored JE, read from it.
     If draft (no stored JE), compute what _post_crv_je would produce.
     """
     if crv.journal_entry:
-        return [
+        return _debits_first([
             {
                 'code': line.account.code if line.account else '—',
                 'name': line.account.name if line.account else '—',
@@ -358,7 +368,7 @@ def _build_crv_je_preview(crv):
                 'credit': line.credit_amount,
             }
             for line in crv.journal_entry.lines.all()
-        ]
+        ])
 
     # Draft preview: compute inline (mirrors _post_crv_je structure)
     accts = _get_gl_accounts()
@@ -443,7 +453,7 @@ def _build_crv_je_preview(crv):
             entries.append({'code': crv.cash_account.code, 'name': crv.cash_account.name,
                             'debit': Decimal('0.00'), 'credit': abs(cash_net)})
 
-    return entries
+    return _debits_first(entries)
 
 
 # ---------------------------------------------------------------------------

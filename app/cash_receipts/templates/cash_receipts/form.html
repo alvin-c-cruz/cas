@@ -95,6 +95,8 @@
 .bsr-amt--total { font-weight: 700; font-size: 15px; color: var(--blue); }
 .bsr-amt--red { color: var(--red); }
 .bsr--total { padding-top: 10px; }
+/* Subtotal rule above "Net of VAT" — a stronger line than the row hairlines. */
+.bsr--sep { border-top: 2px solid var(--text-3); }
 .bsr-input {
     width: 120px; text-align: right; font-family: var(--mono);
     border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 13px;
@@ -257,15 +259,24 @@
                   </div>
 
                   <div id="vatDisplayMode" class="bsr">
-                    <span class="bsr-label">Output VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override VAT">✏️</button></span>
+                    <span class="bsr-label">Less: Output VAT <button type="button" class="totals-pencil" onclick="startVatOverride()" title="Override VAT">✏️</button></span>
                     <span id="vatDisplay" class="bsr-amt">0.00</span>
                   </div>
                   <div id="vatEditMode" class="bsr" style="display:none">
-                    <span class="bsr-label">Output VAT <button type="button" class="totals-revert" onclick="revertVatOverride()">&#8634;</button></span>
+                    <span class="bsr-label">Less: Output VAT <button type="button" class="totals-revert" onclick="revertVatOverride()">&#8634;</button></span>
                     <input type="text" id="vatOverrideInput" class="bsr-input"
                            onfocus="amtFocus(this)"
                            oninput="onVatOverrideInput(this.value)"
                            onblur="const n=parseFloat(this.value.replace(/,/g,''))||0; this.value=amtFmt(n);">
+                  </div>
+
+                  <div class="bsr bsr--sep">
+                    <span class="bsr-label">Net of VAT</span>
+                    <span id="netOfVatDisplay" class="bsr-amt">0.00</span>
+                  </div>
+                  <div class="bsr">
+                    <span class="bsr-label">Add: Output VAT</span>
+                    <span id="vatAddBackDisplay" class="bsr-amt">0.00</span>
                   </div>
 
                   <div id="wtDisplayMode" class="bsr">
@@ -950,10 +961,15 @@ function recalculate() {
         : autoWt;
 
     const total = arApplied + revenue - wtUsed;
+    // AP-parity ladder: Direct Revenue is VAT-inclusive, so strip the VAT out (Net of
+    // VAT) then add it back before WHT -- the total never re-adds VAT.
+    const netOfVat = revenue - vatUsed;
 
     document.getElementById('arAppliedDisplay').textContent = fmt(arApplied);
     document.getElementById('revenueDisplay').textContent   = fmt(revenue);
     if (!vatOverrideActive) document.getElementById('vatDisplay').textContent = fmt(vatUsed);
+    document.getElementById('netOfVatDisplay').textContent    = fmt(netOfVat);
+    document.getElementById('vatAddBackDisplay').textContent  = fmt(vatUsed);
     if (!wtOverrideActive)  document.getElementById('wtDisplay').textContent  = '-' + fmt(wtUsed);
     document.getElementById('totalDisplay').textContent = fmt(total);
 
@@ -1035,7 +1051,9 @@ function renderCrvJEPreview(arApplied, vatUsed, wtUsed, total) {
         byKey[key].debit  += r.debit;
         byKey[key].credit += r.credit;
     });
-    const finalRows = order.map(k => byKey[k]);
+    // Presentation rule: DEBIT legs before CREDIT legs (stable within each group).
+    const grouped = order.map(k => byKey[k]);
+    const finalRows = grouped.filter(r => r.debit > 0).concat(grouped.filter(r => !(r.debit > 0)));
 
     const totalDebit  = finalRows.reduce((s, r) => s + r.debit, 0);
     const totalCredit = finalRows.reduce((s, r) => s + r.credit, 0);
