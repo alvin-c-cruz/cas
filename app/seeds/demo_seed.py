@@ -21,6 +21,11 @@ def _money(x):
 
 
 # code, name, type, parent, normal_balance
+#
+# NOTE: This is the DEMO-ONLY construction chart. It uses the flat legacy types and its
+# codes are keyed to the demo transactions built below (seed-demo). The CANONICAL
+# production construction COA is app/seeds/construction_coa.py (rich FS taxonomy, seeded
+# via `flask seed-construction`). New construction *clients* get that one, not this demo chart.
 CONSTRUCTION_COA = [
     # ---- ASSETS ----
     {'code': '10000', 'name': 'CURRENT ASSETS', 'type': 'Asset', 'parent': None, 'nb': 'debit'},
