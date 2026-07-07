@@ -2,6 +2,7 @@
 
 | Date | Plan | Status |
 |---|---|---|
+| 2026-07-07 | [Clean copy — firm+software COA + seed-firm](2026-07-07-firm-software-coa-clean-copy.md) | Scoped (spec approved) — not started; adds `flask seed-firm` + `FIRM_COA`, deploys to PA `alvinccruz` |
 | 2026-07-03 | [RIC legacy COA import](2026-07-03-ric-coa-import.md) | Done — imported to `ric.db` (391 accts); final review YES; on main, not pushed |
 | 2026-07-03 | [RIC COA reconciliation (seed retirement)](2026-07-03-ric-coa-reconciliation.md) | Done — executed on `ric.db` (391→368); D1–D4 resolved; scripts/ric_coa/reconcile.py |
 | 2026-07-03 | [WHT per-rate posting routing](2026-07-03-wht-per-rate-posting.md) | Done — final review YES; AP+CDV bucket WHT payable by ATC (20301 fallback); on main, not pushed |
