@@ -637,6 +637,148 @@ BASELINE_COA = [
 ]
 
 
+def _seed_admin_and_branch():
+    """Create admin/admin123 + MAIN branch (idempotent); assign admin to the branch."""
+    admin = User.query.filter_by(username='admin').first()
+    if not admin:
+        admin = User(username='admin', email='admin@cascorp.ph',
+                     full_name='System Administrator', role='admin', is_active=True)
+        admin.set_password('admin123')
+        db.session.add(admin)
+        db.session.commit()
+    main_branch = Branch.query.filter_by(code='MAIN').first()
+    if not main_branch:
+        main_branch = Branch(code='MAIN', name='Main Branch', address='Head Office', is_active=True)
+        db.session.add(main_branch)
+        db.session.commit()
+    if main_branch not in admin.branches.all():
+        admin.branches.append(main_branch)
+        db.session.commit()
+    return admin, main_branch
+
+
+def _seed_app_settings(company_name='Company Name'):
+    """Seed the 24-row settings block (idempotent). company_name is parameterized."""
+    if AppSettings.query.count() > 0:
+        return
+    settings = [
+        {'key': 'company_name',         'value': company_name},
+        {'key': 'trade_name',           'value': ''},
+        {'key': 'company_tin',          'value': ''},
+        {'key': 'tin_branch_code',      'value': '000'},
+        {'key': 'rdo_code',             'value': ''},
+        {'key': 'vat_registration_type','value': 'VAT'},
+        {'key': 'company_address',      'value': ''},
+        {'key': 'postal_code',          'value': ''},
+        {'key': 'phone',                'value': ''},
+        {'key': 'email',                'value': ''},
+        {'key': 'fiscal_year_start',    'value': '01'},
+        {'key': 'officer_president',    'value': ''},
+        {'key': 'officer_treasurer',    'value': ''},
+        {'key': 'officer_secretary',    'value': ''},
+        {'key': 'apv_print_access',     'value': 'posted_only'},
+        {'key': 'sv_print_access',      'value': 'posted_only'},
+        {'key': 'sv_print_form',        'value': 'current'},
+        {'key': 'cd_print_access',      'value': 'posted_only'},
+        {'key': 'cd_check_print_access','value': 'posted_only'},
+        {'key': 'cr_print_access',      'value': 'posted_only'},
+        {'key': 'company_logo',         'value': ''},
+        {'key': 'accountant_email_self_approval', 'value': '0'},
+        {'key': 'module_enabled:bir_reports',      'value': '0'},
+        {'key': 'module_enabled:units_of_measure', 'value': '0'},
+        {'key': 'module_enabled:products',         'value': '0'},
+    ]
+    for s in settings:
+        db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
+    db.session.commit()
+
+
+def _seed_accounts(coa_list):
+    """Create every account (pass 1) then wire parents by code (pass 2). Idempotent."""
+    if Account.query.count() > 0:
+        return
+    code_to_account = {}
+    for code, name, atype, classification, nb, _parent in coa_list:
+        acct = Account(code=code, name=name, account_type=atype,
+                       classification=classification, normal_balance=nb, is_active=True)
+        db.session.add(acct)
+        code_to_account[code] = acct
+    db.session.flush()
+    for code, _n, _t, _c, _nb, parent in coa_list:
+        if parent:
+            code_to_account[code].parent_id = code_to_account[parent].id
+    db.session.commit()
+
+
+def _seed_vat_categories():
+    """7 input VAT categories (idempotent); V12* point at input VAT accounts 10501-04."""
+    if VATCategory.query.count() > 0:
+        return
+    vat_accounts = {a.code: a.id for a in Account.query.filter(
+        Account.code.in_(['10501', '10502', '10503', '10504'])).all()}
+    vat_categories = [
+        {'code': 'VEX',   'name': 'VAT Exempt',              'rate':  0.00, 'input_vat_account_id': None},
+        {'code': 'V0',    'name': 'VAT Zero-Rated',          'rate':  0.00, 'input_vat_account_id': None},
+        {'code': 'INV',   'name': 'Invalid',                 'rate':  0.00, 'input_vat_account_id': None},
+        {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10501')},
+        {'code': 'V12DG', 'name': 'Input Tax Domestic Goods','rate': 12.00, 'input_vat_account_id': vat_accounts.get('10502')},
+        {'code': 'V12SV', 'name': 'Input Tax Services',      'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10503')},
+        {'code': 'V12IM', 'name': 'Input Tax Importation',   'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10504')},
+    ]
+    for cat in vat_categories:
+        db.session.add(VATCategory(code=cat['code'], name=cat['name'], rate=cat['rate'],
+                                   description='', input_vat_account_id=cat['input_vat_account_id'],
+                                   is_active=True))
+    db.session.commit()
+
+
+def _seed_sales_vat_categories():
+    """3 sales VAT categories (idempotent); V12 points at output VAT account 20201."""
+    from app.sales_vat_categories.models import SalesVATCategory
+    if SalesVATCategory.query.count() > 0:
+        return
+    _out = Account.query.filter_by(code='20201').first()
+    _out_id = _out.id if _out else None
+    svat = [
+        {'code': 'V12', 'name': 'VATable Sales (12%)',  'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': _out_id},
+        {'code': 'V0',  'name': 'VAT Zero-Rated Sales', 'rate':  0.00, 'transaction_nature': 'zero_export', 'output_vat_account_id': None},
+        {'code': 'VEX', 'name': 'VAT-Exempt Sales',     'rate':  0.00, 'transaction_nature': 'exempt',      'output_vat_account_id': None},
+    ]
+    for cat in svat:
+        db.session.add(SalesVATCategory(code=cat['code'], name=cat['name'], rate=cat['rate'],
+                                        transaction_nature=cat['transaction_nature'],
+                                        output_vat_account_id=cat['output_vat_account_id'], is_active=True))
+    db.session.commit()
+
+
+def _seed_withholding_taxes():
+    """8 EWT codes (idempotent); backfill sales_name if codes already exist."""
+    existing = {w.code: w for w in WithholdingTax.query.all()}
+    if existing:
+        backfilled = 0
+        for code, sname in _WT_SALES_NAMES.items():
+            if code in existing and not existing[code].sales_name:
+                existing[code].sales_name = sname
+                backfilled += 1
+        if backfilled:
+            db.session.commit()
+        return
+    wht_codes = [
+        {'code': 'WC158', 'name': 'Withholding Tax - Goods (Corporation)',    'rate':  1.00},
+        {'code': 'WI158', 'name': 'Withholding Tax - Goods (Individual)',     'rate':  1.00},
+        {'code': 'WC160', 'name': 'Withholding Tax - Services (Corporation)', 'rate':  2.00},
+        {'code': 'WI160', 'name': 'Withholding Tax - Services (Individual)',  'rate':  2.00},
+        {'code': 'WC100', 'name': 'Withholding Tax - Rentals (Corporation)',  'rate':  5.00},
+        {'code': 'WI100', 'name': 'Withholding Tax - Rentals (Individual)',   'rate':  5.00},
+        {'code': 'WC010', 'name': 'Professional Fees (Corporation)',          'rate': 10.00},
+        {'code': 'WI010', 'name': 'Professional Fees (Individual)',           'rate':  5.00},
+    ]
+    for wt in wht_codes:
+        db.session.add(WithholdingTax(code=wt['code'], name=wt['name'], description='',
+                                      rate=wt['rate'], sales_name=None, is_active=True))
+    db.session.commit()
+
+
 def seed_minimal():
     """
     Seed the bare-minimum, general-purpose CORE baseline used by /reset-database.
@@ -660,233 +802,12 @@ def seed_minimal():
     print("="*60 + "\n")
 
     try:
-        # ------------------------------------------------------------------
-        # 1. Admin user
-        # ------------------------------------------------------------------
-        print("1. Seeding admin user...")
-        admin = User.query.filter_by(username='admin').first()
-        if admin:
-            print("  [SKIP] Admin user already exists")
-        else:
-            admin = User(
-                username='admin',
-                email='admin@cascorp.ph',
-                full_name='System Administrator',
-                role='admin',
-                is_active=True
-            )
-            admin.set_password('admin123')
-            db.session.add(admin)
-            db.session.commit()
-            print("  [OK] Admin user created (username: admin, password: admin123)")
-
-        # ------------------------------------------------------------------
-        # 2. Main Branch + assign admin
-        # ------------------------------------------------------------------
-        print("\n2. Seeding Main Branch...")
-        main_branch = Branch.query.filter_by(code='MAIN').first()
-        if main_branch:
-            print("  [SKIP] Main Branch already exists")
-        else:
-            main_branch = Branch(
-                code='MAIN',
-                name='Main Branch',
-                address='Head Office',
-                is_active=True
-            )
-            db.session.add(main_branch)
-            db.session.commit()
-            print("  [OK] Main Branch created (code: MAIN)")
-
-        # Assign admin to branch if not already assigned
-        if main_branch not in admin.branches.all():
-            admin.branches.append(main_branch)
-            db.session.commit()
-            print("  [OK] Admin assigned to Main Branch")
-
-        # ------------------------------------------------------------------
-        # 3. App settings
-        # ------------------------------------------------------------------
-        print("\n3. Seeding app settings...")
-        existing_settings = AppSettings.query.count()
-        if existing_settings > 0:
-            print(f"  [SKIP] {existing_settings} app settings already exist")
-        else:
-            settings = [
-                # Company identity — left blank for the company to fill via Company Settings.
-                {'key': 'company_name',         'value': 'Company Name'},
-                {'key': 'trade_name',           'value': ''},
-                {'key': 'company_tin',          'value': ''},
-                {'key': 'tin_branch_code',      'value': '000'},
-                {'key': 'rdo_code',             'value': ''},
-                {'key': 'vat_registration_type','value': 'VAT'},
-                {'key': 'company_address',      'value': ''},
-                {'key': 'postal_code',          'value': ''},
-                {'key': 'phone',                'value': ''},
-                {'key': 'email',                'value': ''},
-                {'key': 'fiscal_year_start',    'value': '01'},
-                {'key': 'officer_president',    'value': ''},
-                {'key': 'officer_treasurer',    'value': ''},
-                {'key': 'officer_secretary',    'value': ''},
-                {'key': 'apv_print_access',     'value': 'posted_only'},
-                {'key': 'sv_print_access',      'value': 'posted_only'},
-                {'key': 'sv_print_form',        'value': 'current'},
-                {'key': 'cd_print_access',      'value': 'posted_only'},
-                {'key': 'cd_check_print_access','value': 'posted_only'},
-                {'key': 'cr_print_access',      'value': 'posted_only'},
-                {'key': 'company_logo',         'value': ''},
-                {'key': 'accountant_email_self_approval', 'value': '0'},
-                # Module package gate: CORE-only baseline — every optional module OFF.
-                {'key': 'module_enabled:bir_reports',      'value': '0'},
-                {'key': 'module_enabled:units_of_measure', 'value': '0'},
-                {'key': 'module_enabled:products',         'value': '0'},
-            ]
-            for s in settings:
-                db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
-            db.session.commit()
-            print(f"  [OK] {len(settings)} app settings created")
-
-        # ------------------------------------------------------------------
-        # 4. Chart of Accounts (lean general-purpose BASELINE_COA)
-        # ------------------------------------------------------------------
-        print("\n4. Seeding Chart of Accounts...")
-        existing_accounts = Account.query.count()
-        if existing_accounts > 0:
-            print(f"  [SKIP] {existing_accounts} accounts already exist")
-        else:
-            # Pass 1: create every account (parent wired in pass 2). account_type
-            # carries the FS taxonomy; hierarchy is derived from parent_id.
-            code_to_account = {}
-            for code, name, atype, classification, nb, _parent in BASELINE_COA:
-                acct = Account(
-                    code=code,
-                    name=name,
-                    account_type=atype,
-                    classification=classification,
-                    normal_balance=nb,
-                    is_active=True,
-                )
-                db.session.add(acct)
-                code_to_account[code] = acct
-            db.session.flush()  # assign IDs
-
-            # Pass 2: wire parent relationships by code
-            for code, _n, _t, _c, _nb, parent in BASELINE_COA:
-                if parent:
-                    code_to_account[code].parent_id = code_to_account[parent].id
-            db.session.commit()
-            print(f"  [OK] {len(BASELINE_COA)} accounts created in Chart of Accounts")
-
-        # ------------------------------------------------------------------
-        # 5. VAT Categories
-        # ------------------------------------------------------------------
-        print("\n5. Seeding VAT categories...")
-        existing_vat = VATCategory.query.count()
-        if existing_vat > 0:
-            print(f"  [SKIP] {existing_vat} VAT categories already exist")
-        else:
-            # Look up input VAT accounts and output VAT account (seeded above)
-            vat_accounts = {
-                a.code: a.id
-                for a in Account.query.filter(Account.code.in_(
-                    ['10501', '10502', '10503', '10504']
-                )).all()
-            }
-            # VATCategory is purchase-only (input VAT). Output/sales VAT lives in
-            # SalesVATCategory, seeded in the Sales VAT Categories section below.
-            vat_categories = [
-                {'code': 'VEX',   'name': 'VAT Exempt',               'rate':  0.00, 'input_vat_account_id': None},
-                {'code': 'V0',    'name': 'VAT Zero-Rated',            'rate':  0.00, 'input_vat_account_id': None},
-                {'code': 'INV',   'name': 'Invalid',                   'rate':  0.00, 'input_vat_account_id': None},
-                {'code': 'V12CG', 'name': 'Input Tax Capital Goods',   'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10501')},
-                {'code': 'V12DG', 'name': 'Input Tax Domestic Goods',  'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10502')},
-                {'code': 'V12SV', 'name': 'Input Tax Services',        'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10503')},
-                {'code': 'V12IM', 'name': 'Input Tax Importation',     'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10504')},
-            ]
-            for cat in vat_categories:
-                db.session.add(VATCategory(
-                    code=cat['code'],
-                    name=cat['name'],
-                    rate=cat['rate'],
-                    description='',
-                    input_vat_account_id=cat['input_vat_account_id'],
-                    is_active=True
-                ))
-            db.session.commit()
-            print(f"  [OK] {len(vat_categories)} VAT categories created")
-
-        # ------------------------------------------------------------------
-        # 6. Sales VAT Categories
-        # ------------------------------------------------------------------
-        print("\n6. Seeding Sales VAT categories...")
-        from app.sales_vat_categories.models import SalesVATCategory
-        existing_svat = SalesVATCategory.query.count()
-        if existing_svat > 0:
-            print(f"  [SKIP] {existing_svat} Sales VAT categories already exist")
-        else:
-            _output_svat_acct = Account.query.filter_by(code='20201').first()
-            _output_svat_id = _output_svat_acct.id if _output_svat_acct else None
-            svat_categories = [
-                {'code': 'V12', 'name': 'VATable Sales (12%)',   'rate': 12.00, 'transaction_nature': 'regular',     'output_vat_account_id': _output_svat_id},
-                {'code': 'V0',  'name': 'VAT Zero-Rated Sales',  'rate':  0.00, 'transaction_nature': 'zero_export', 'output_vat_account_id': None},
-                {'code': 'VEX', 'name': 'VAT-Exempt Sales',      'rate':  0.00, 'transaction_nature': 'exempt',      'output_vat_account_id': None},
-            ]
-            for cat in svat_categories:
-                db.session.add(SalesVATCategory(
-                    code=cat['code'],
-                    name=cat['name'],
-                    rate=cat['rate'],
-                    transaction_nature=cat['transaction_nature'],
-                    output_vat_account_id=cat['output_vat_account_id'],
-                    is_active=True,
-                ))
-            db.session.commit()
-            print(f"  [OK] {len(svat_categories)} Sales VAT categories created")
-
-        # ------------------------------------------------------------------
-        # 7. Withholding Tax Codes
-        # ------------------------------------------------------------------
-        print("\n7. Seeding withholding tax codes...")
-        existing_wht = {w.code: w for w in WithholdingTax.query.all()}
-        if existing_wht:
-            backfilled = 0
-            for code, sname in _WT_SALES_NAMES.items():
-                if code in existing_wht and not existing_wht[code].sales_name:
-                    existing_wht[code].sales_name = sname
-                    backfilled += 1
-            if backfilled:
-                db.session.commit()
-                print(f"  [OK] backfilled sales_name on {backfilled} WT codes")
-            else:
-                print(f"  [SKIP] {len(existing_wht)} withholding tax codes already exist")
-        else:
-            # WC = payments to corporations/non-individuals, WI = to individuals.
-            # Rate follows the income type, so each pair shares a rate. Professional
-            # fees are dual-rate ATCs (threshold-based); we default to the lower tier.
-            wht_codes = [
-                {'code': 'WC158', 'name': 'Withholding Tax - Goods (Corporation)',    'rate':  1.00},
-                {'code': 'WI158', 'name': 'Withholding Tax - Goods (Individual)',     'rate':  1.00},
-                {'code': 'WC160', 'name': 'Withholding Tax - Services (Corporation)', 'rate':  2.00},
-                {'code': 'WI160', 'name': 'Withholding Tax - Services (Individual)',  'rate':  2.00},
-                {'code': 'WC100', 'name': 'Withholding Tax - Rentals (Corporation)',  'rate':  5.00},
-                {'code': 'WI100', 'name': 'Withholding Tax - Rentals (Individual)',   'rate':  5.00},
-                {'code': 'WC010', 'name': 'Professional Fees (Corporation)',          'rate': 10.00},
-                {'code': 'WI010', 'name': 'Professional Fees (Individual)',           'rate':  5.00},
-            ]
-            for wt in wht_codes:
-                db.session.add(WithholdingTax(
-                    code=wt['code'],
-                    name=wt['name'],
-                    description='',
-                    rate=wt['rate'],
-                    sales_name=None,
-                    is_active=True
-                ))
-            db.session.commit()
-            print(f"  [OK] {len(wht_codes)} withholding tax codes created")
-
-        # Units of Measure / Products are OPTIONAL modules, disabled in this core-only
-        # baseline (module flags above) — so their master data is intentionally NOT seeded.
+        _seed_admin_and_branch()
+        _seed_app_settings('Company Name')
+        _seed_accounts(BASELINE_COA)
+        _seed_vat_categories()
+        _seed_sales_vat_categories()
+        _seed_withholding_taxes()
 
         print("\n" + "="*60)
         print("MINIMAL SEEDING COMPLETE!")
