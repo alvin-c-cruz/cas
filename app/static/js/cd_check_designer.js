@@ -156,6 +156,15 @@
     const el = canvas.querySelector('[data-el="' + key + '"], [data-text="' + key + '"]');
     if (el) el.classList.toggle('pp-field-hidden', !visible);
   }
+  const STAR_RUN = '***';
+  // Live-preview protective asterisks by re-wrapping the field's base text.
+  function applyStarsPreview(el) {
+    if (el.dataset.base === undefined) el.dataset.base = el.textContent;
+    const m = el.dataset.stars || 'none';
+    const lead = (m === 'left' || m === 'both') ? STAR_RUN : '';
+    const trail = (m === 'right' || m === 'both') ? STAR_RUN : '';
+    el.textContent = lead + el.dataset.base + trail;
+  }
   function buildFieldControls() {
     if (!fieldStrip || fieldStrip.dataset.built) return;
     fieldStrip.appendChild(stripHeading('Fields:'));
@@ -169,6 +178,38 @@
       cb.addEventListener('change', () => setFieldVisible(key, cb.checked));
       label.appendChild(cb);
       label.appendChild(document.createTextNode(' ' + (el.dataset.label || key)));
+
+      // Protective asterisks on the amounts (none/left/right/both).
+      if (key === 'amount_figures' || key === 'amount_in_words') {
+        const sel = document.createElement('select');
+        sel.title = 'Protective asterisks';
+        ['none', 'left', 'right', 'both'].forEach((m) => {
+          const o = document.createElement('option');
+          o.value = m; o.textContent = '* ' + m;
+          if ((el.dataset.stars || 'none') === m) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', () => { el.dataset.stars = sel.value; applyStarsPreview(el); });
+        label.appendChild(document.createTextNode(' '));
+        label.appendChild(sel);
+      }
+
+      // Boxed date: one digit per cell + pitch (px).
+      if (key === 'check_date') {
+        const bx = document.createElement('input');
+        bx.type = 'checkbox'; bx.title = 'Boxed digits';
+        bx.checked = el.dataset.boxed === '1';
+        const pitch = document.createElement('input');
+        pitch.type = 'number'; pitch.min = '6'; pitch.max = '120'; pitch.title = 'Digit pitch (px)';
+        pitch.style.width = '52px';
+        pitch.value = parseInt(el.dataset.pitch) || 24;
+        pitch.disabled = !bx.checked;
+        bx.addEventListener('change', () => { el.dataset.boxed = bx.checked ? '1' : ''; pitch.disabled = !bx.checked; });
+        pitch.addEventListener('input', () => { el.dataset.pitch = String(parseInt(pitch.value) || 24); });
+        label.appendChild(document.createTextNode(' boxed'));
+        label.appendChild(bx);
+        label.appendChild(pitch);
+      }
       fieldStrip.appendChild(label);
     });
     fieldStrip.dataset.built = '1';
@@ -294,6 +335,10 @@
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
         hidden: el.classList.contains('pp-field-hidden'),
         width: parseInt(el.style.width) || 200,
+        // Per-field print options (data-* set by the field controls below).
+        stars: el.dataset.stars || 'none',
+        boxed: el.dataset.boxed === '1',
+        pitch: parseInt(el.dataset.pitch) || 24,
       };
     });
     const extras = [...canvas.querySelectorAll('.pp-el[data-extra]')].map((el) => {

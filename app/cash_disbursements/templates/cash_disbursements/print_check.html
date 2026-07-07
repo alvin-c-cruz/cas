@@ -81,10 +81,21 @@
   <div class="pp-margin-guide screen-only" style="left:48px;"></div>
   <div class="pp-margin-guide screen-only" style="right:48px;"></div>
 
-  {# Real check values overprinted onto the bank stock -- values only, no labels. #}
+  {# Real check values overprinted onto the bank stock -- values only, no labels.
+     Two per-field options: boxed date digits (one cell per digit) and protective
+     asterisks bracketing an amount (none/left/right/both). #}
   {% for key, f in layout.fields.items() %}
-  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"
-       style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ values[key] }}</div>
+  {%- set opt = 'data-stars="' ~ f.stars ~ '" data-boxed="' ~ ('1' if f.boxed else '') ~ '" data-pitch="' ~ f.pitch ~ '"' -%}
+  {% if key == 'check_date' and f.boxed %}
+  <div class="pp-el pp-boxed{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" {{ opt }}
+       style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{% for ch in date_digits %}<span class="pp-digit" style="display:inline-block;width:{{ f.pitch }}px;text-align:center;">{{ ch }}</span>{% endfor %}</div>
+  {% else %}
+  {%- set raw = values[key] -%}
+  {%- set lead = star_run if f.stars in ('left', 'both') else '' -%}
+  {%- set trail = star_run if f.stars in ('right', 'both') else '' -%}
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}" {{ opt }}
+       style="left:{{ f.x }}px;top:{{ f.y }}px;width:{{ f.width }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ lead ~ raw ~ trail }}</div>
+  {% endif %}
   {% endfor %}
 
   {% for t in layout.texts %}
@@ -94,7 +105,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/cd_check_designer.js') }}?v=3"></script>
 {% endif %}
 </body>
 </html>

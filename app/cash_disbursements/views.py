@@ -1372,7 +1372,7 @@ def print_check(id):
     """
     from app.audit.utils import log_audit
     from app.cash_disbursements.check_layout import (
-        get_layout, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES, PAPER_LABELS, DATE_FORMATS)
+        get_layout, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES, PAPER_LABELS, DATE_FORMATS, STAR_RUN)
 
     cdv = _get_cdv_or_404(id)
     fail = lambda msg: (flash(msg, 'error'),
@@ -1407,9 +1407,11 @@ def print_check(id):
               notes=f'check {cdv.check_number} / account {cdv.cash_account_id}')
     bg = AppSettings.get_setting(f'cd_check_bg:{cdv.cash_account_id}') or \
         AppSettings.get_setting('cd_check_bg')
+    date_digits = ''.join(c for c in (values['check_date'] or '') if c.isdigit())
     return render_template(
         'cash_disbursements/print_check.html',
-        cdv=cdv, layout=layout, values=values, bg_image=bg,
+        cdv=cdv, layout=layout, values=values, bg_image=bg, star_run=STAR_RUN,
+        date_digits=date_digits,
         can_edit_layout=current_user.has_full_access, account_id=cdv.cash_account_id,
         field_labels=FIELD_LABELS, font_groups=FONT_GROUPS,
         paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS, date_formats=DATE_FORMATS,

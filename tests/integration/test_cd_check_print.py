@@ -167,6 +167,54 @@ class TestAmountGuards:
         assert client.get(f'/cash-disbursements/{cdv.id}/print-check').status_code == 302
 
 
+class TestCheckOptions:
+    """Two per-field layout options (both default OFF): protective asterisks on the
+    amounts (none/left/right/both) and boxed/spaced date digits."""
+
+    def test_stars_sanitize(self):
+        from app.cash_disbursements.check_layout import sanitize_layout, STARS_MODES, PITCH_MIN, PITCH_MAX
+        lay = sanitize_layout({'fields': {'amount_figures': {'stars': 'both'},
+                                          'amount_in_words': {'stars': 'nope'}}})
+        assert lay['fields']['amount_figures']['stars'] == 'both'
+        assert lay['fields']['amount_in_words']['stars'] == 'none'   # invalid -> off
+        assert 'none' in STARS_MODES and PITCH_MIN < PITCH_MAX
+
+    def test_boxed_pitch_sanitize_and_clamp(self):
+        from app.cash_disbursements.check_layout import sanitize_layout, PITCH_MIN, PITCH_MAX
+        lay = sanitize_layout({'fields': {'check_date': {'boxed': True, 'pitch': 28}}})
+        assert lay['fields']['check_date']['boxed'] is True
+        assert lay['fields']['check_date']['pitch'] == 28
+        lo = sanitize_layout({'fields': {'check_date': {'pitch': 1}}})['fields']['check_date']['pitch']
+        hi = sanitize_layout({'fields': {'check_date': {'pitch': 9999}}})['fields']['check_date']['pitch']
+        assert lo == PITCH_MIN and hi == PITCH_MAX
+
+    def test_defaults_off(self):
+        from app.cash_disbursements.check_layout import DEFAULT_CHECK_LAYOUT as D
+        assert D['fields']['amount_figures'].get('stars', 'none') == 'none'
+        assert D['fields']['check_date'].get('boxed', False) is False
+
+    def test_stars_rendered_around_amounts(self, client, db_session, admin_user, main_branch):
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        save_layout({'fields': {'amount_figures': {'stars': 'both'},
+                                'amount_in_words': {'stars': 'left'}}},
+                    'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        assert '***5,550.00***' in body                              # both sides
+        assert '***FIVE THOUSAND' in body                            # left only
+
+    def test_boxed_date_renders_digit_cells(self, client, db_session, admin_user, main_branch):
+        from app.cash_disbursements.check_layout import save_layout
+        cdv = _check_cdv(db_session, main_branch)
+        save_layout({'fields': {'check_date': {'boxed': True, 'pitch': 26}}},
+                    'admin', account_id=cdv._cash_acct_id)
+        _open(client, main_branch)
+        body = client.get(f'/cash-disbursements/{cdv.id}/print-check').data.decode()
+        # 07-08-2026 -> 8 digit cells, separators dropped
+        assert body.count('pp-digit') >= 8
+
+
 class TestTieOutAndSignature:
     def test_three_way_tie_out(self, db_session, main_branch, app):
         from app.cash_disbursements.views import _build_check_values

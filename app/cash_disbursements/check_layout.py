@@ -9,11 +9,14 @@ Two things diverge from the voucher clones (see plans/2026-07-07-cdv-check-write
   different field geometry. `cd_check_layout:<cash_account_id>` overrides the Default
   (`cd_check_layout`); resolution is account -> Default -> hardcoded default.
 - **Every field carries a `width`.** The amount-in-words line is the legally-operative
-  amount (NIL Sec.17(b)); the print route uses `width` to refuse a clipped/overflowing
-  legal line. (The voucher clones' fields have no width.)
+  amount (NIL Sec.17(b)); the print route uses `width` to refuse a hidden legal line.
+  (The voucher clones' fields have no width.)
+- **Per-field print options.** `stars` (none/left/right/both) brackets an amount field with
+  protective asterisks (anti-alteration); `boxed`+`pitch` lay the date out one digit per
+  cell so each lands in a pre-printed date box. Both default OFF.
 
-The check is rendered to PDF (not HTML @page) for reliable registration; this module is
-only the layout schema/persistence — the PDF renderer + print route live elsewhere.
+The check prints via HTML @page + window.print() on the per-CDV page (same mechanics as the
+pre-printed vouchers); this module is only the layout schema/persistence.
 """
 import copy
 import json
@@ -29,6 +32,9 @@ CANVAS_H = 1008
 SAFE_MARGIN = 48   # printable inset; element x is clamped inside it
 FONT_MIN, FONT_MAX = 6, 72
 WIDTH_MIN, WIDTH_MAX = 10, 912
+PITCH_MIN, PITCH_MAX = 6, 120          # per-digit cell pitch (px) for a boxed date
+STARS_MODES = ('none', 'left', 'right', 'both')
+STAR_RUN = '***'                        # protective asterisk run bracketing an amount
 
 FONT_GROUPS = [
     ('Dot-matrix friendly', [
@@ -90,9 +96,12 @@ DEFAULT_CHECK_LAYOUT = {
     # sample (Phase 0). All x >= SAFE_MARGIN. Each field has a width.
     'fields': {
         'payee':           {'x': 120, 'y': 180, 'fontSize': 11, 'bold': False, 'width': 380},
-        'check_date':      {'x': 640, 'y': 90,  'fontSize': 11, 'bold': False, 'width': 160},
-        'amount_figures':  {'x': 680, 'y': 180, 'fontSize': 12, 'bold': True,  'width': 160},
-        'amount_in_words': {'x': 80,  'y': 232, 'fontSize': 11, 'bold': False, 'width': 740},
+        'check_date':      {'x': 640, 'y': 90,  'fontSize': 11, 'bold': False, 'width': 160,
+                            'boxed': False, 'pitch': 24},
+        'amount_figures':  {'x': 680, 'y': 180, 'fontSize': 12, 'bold': True,  'width': 160,
+                            'stars': 'none'},
+        'amount_in_words': {'x': 80,  'y': 232, 'fontSize': 11, 'bold': False, 'width': 740,
+                            'stars': 'none'},
         'memo':            {'x': 120, 'y': 320, 'fontSize': 9,  'bold': False, 'width': 300},
     },
 }
@@ -108,6 +117,7 @@ def _clamp(value, lo, hi, fallback):
 
 def _clean_box(raw, default):
     raw = raw if isinstance(raw, dict) else {}
+    stars = raw.get('stars', default.get('stars', 'none'))
     return {
         'x': _clamp(raw.get('x'), SAFE_MARGIN, CANVAS_W - SAFE_MARGIN, default['x']),
         'y': _clamp(raw.get('y'), 0, CANVAS_H, default['y']),
@@ -115,6 +125,11 @@ def _clean_box(raw, default):
         'bold': bool(raw.get('bold', default['bold'])),
         'hidden': bool(raw.get('hidden', default.get('hidden', False))),
         'width': _clamp(raw.get('width'), WIDTH_MIN, WIDTH_MAX, default['width']),
+        # Protective asterisks on an amount (none/left/right/both).
+        'stars': stars if stars in STARS_MODES else 'none',
+        # Boxed date: one digit per cell at `pitch` px (only honored for check_date).
+        'boxed': bool(raw.get('boxed', default.get('boxed', False))),
+        'pitch': _clamp(raw.get('pitch'), PITCH_MIN, PITCH_MAX, default.get('pitch', 24)),
     }
 
 
