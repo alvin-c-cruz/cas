@@ -455,9 +455,9 @@ class TestDuplicateVendorInvoice:
         with client.session_transaction() as sess:
             sess['selected_branch_id'] = branch.id
 
-    def _post_create(self, client, vendor, exp, invoice_number='INV-001'):
+    def _post_create(self, client, vendor, exp, invoice_number='INV-001', ap_number='AP-B09-0001'):
         return client.post('/accounts-payable/create', data={
-            'ap_number': 'AP-B09-0001',
+            'ap_number': ap_number,
             'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(),
             'vendor_id': vendor.id,
@@ -493,7 +493,7 @@ class TestDuplicateVendorInvoice:
         resp = self._post_create(client, v1, exp, invoice_number='INV-CROSS')
         assert resp.status_code == 302
         assert AccountsPayable.query.count() == 1
-        resp = self._post_create(client, v2, exp, invoice_number='INV-CROSS')
+        resp = self._post_create(client, v2, exp, invoice_number='INV-CROSS', ap_number='AP-B09-0002')
         assert resp.status_code == 302, "Different vendor must be allowed"
         assert AccountsPayable.query.count() == 2
 
@@ -506,7 +506,7 @@ class TestDuplicateVendorInvoice:
         ap = AccountsPayable.query.first()
         ap.status = 'voided'
         db_session.commit()
-        resp = self._post_create(client, v1, exp, invoice_number='INV-VOID')
+        resp = self._post_create(client, v1, exp, invoice_number='INV-VOID', ap_number='AP-B09-0002')
         assert resp.status_code == 302, "Reuse after void must be allowed"
         assert AccountsPayable.query.count() == 2
 
@@ -538,6 +538,40 @@ class TestDuplicateVendorInvoice:
         db_session.refresh(ap)
         assert ap.notes == 'Updated particulars B09'
 
+    def test_ap_number_user_typed_respected(self, client, db_session, admin_user, main_branch):
+        """The typed AP number is honored (no longer auto-regenerated on POST)."""
+        v1, v2, exp = self._setup(db_session)
+        self._login(client, admin_user, main_branch)
+        resp = self._post_create(client, v1, exp, invoice_number='INV-TYPED', ap_number='APV-CUSTOM-9')
+        assert resp.status_code == 302
+        assert AccountsPayable.query.filter_by(ap_number='APV-CUSTOM-9').first() is not None
+
+    def test_duplicate_ap_number_blocked(self, client, db_session, admin_user, main_branch):
+        v1, v2, exp = self._setup(db_session)
+        self._login(client, admin_user, main_branch)
+        assert self._post_create(client, v1, exp, invoice_number='I1', ap_number='APV-DUP').status_code == 302
+        resp = self._post_create(client, v2, exp, invoice_number='I2', ap_number='APV-DUP')
+        assert resp.status_code == 200                       # re-render, not persisted
+        assert 'already in use' in _html.unescape(resp.data.decode())
+        assert AccountsPayable.query.filter_by(ap_number='APV-DUP').count() == 1
+
+    def test_ap_number_editable_on_draft(self, client, db_session, admin_user, main_branch):
+        v1, v2, exp = self._setup(db_session)
+        self._login(client, admin_user, main_branch)
+        self._post_create(client, v1, exp, invoice_number='I1', ap_number='APV-OLD')
+        ap = AccountsPayable.query.filter_by(ap_number='APV-OLD').first()
+        resp = client.post(f'/accounts-payable/{ap.id}/edit', data={
+            'ap_number': 'APV-RENAMED', 'ap_date': date.today().isoformat(),
+            'due_date': date.today().isoformat(), 'vendor_id': v1.id,
+            'vendor_invoice_number': 'I1', 'payment_terms': 'Net 30', 'notes': 'x',
+            'line_items': json.dumps([{'description': 'i', 'amount': 1000.0, 'vat_category': None,
+                                       'account_id': exp.id, 'wt_id': None, 'wt_rate': None}]),
+            'vat_override': '0', 'vat_override_value': '0', 'wt_override': '0', 'wt_override_value': '0',
+        })
+        assert resp.status_code == 302
+        db_session.refresh(ap)
+        assert ap.ap_number == 'APV-RENAMED'
+
     def test_create_accepts_blank_line_description(self, client, db_session, admin_user, main_branch):
         """A line item with no description now SAVES — the required header Notes
         (Particulars) replaces the per-line description as the particulars source."""
@@ -560,8 +594,6 @@ class TestDuplicateVendorInvoice:
             'wt_override': '0', 'wt_override_value': '0',
         })
         assert resp.status_code == 302, "Blank line description must not block save"
-        # ap_number is server-generated (immutable, never trusts the client value);
-        # look the bill up by its (client-supplied) vendor invoice number instead.
         ap = AccountsPayable.query.filter_by(vendor_invoice_number='INV-BLANKDESC').first()
         assert ap is not None
         assert ap.line_items[0].description == ''

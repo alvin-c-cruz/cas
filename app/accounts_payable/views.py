@@ -687,10 +687,15 @@ def create():
                     flash(f"Vendor invoice number '{inv_num}' already exists for this vendor.", 'error')
                     return _render_form(request.form.get('line_items', ''))
 
+            # User-typed AP number (mirrors SI invoice_number); must be unique.
+            ap_num = (form.ap_number.data or '').strip()
+            if AccountsPayable.query.filter(AccountsPayable.ap_number == ap_num).first():
+                flash(f'AP number "{ap_num}" is already in use. Enter a unique AP number.', 'error')
+                return _render_form(request.form.get('line_items', ''))
+
             ap = AccountsPayable(
                 branch_id=session.get('selected_branch_id'),
-                # Regenerate server-side; the read-only form value is never trusted.
-                ap_number=generate_ap_number(),
+                ap_number=ap_num,
                 ap_date=form.ap_date.data,
                 due_date=form.due_date.data,
                 vendor_id=vendor.id,
@@ -970,7 +975,13 @@ def edit(id):
                     flash(f"Vendor invoice number '{inv_num}' already exists for this vendor.", 'error')
                     return _render_edit_form(request.form.get('line_items', ''))
 
-            # ap_number is immutable after creation — never trust the client value.
+            # User-typed AP number, editable while the (draft) form is editable; unique.
+            ap_num = (form.ap_number.data or '').strip()
+            if AccountsPayable.query.filter(AccountsPayable.ap_number == ap_num,
+                                            AccountsPayable.id != ap.id).first():
+                flash(f'AP number "{ap_num}" is already in use. Enter a unique AP number.', 'error')
+                return _render_edit_form(request.form.get('line_items', ''))
+            ap.ap_number = ap_num
             ap.ap_date = form.ap_date.data
             ap.due_date = form.due_date.data
             ap.vendor_id = vendor.id

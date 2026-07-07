@@ -10,12 +10,13 @@ from datetime import date
 class AccountsPayableForm(FlaskForm):
     """Form for creating and editing accounts payable."""
 
-    # Auto-generated server-side (AP-YYYY-MM-NNNN), regenerated on POST and
-    # immutable on edit — read-only so the client value is display-only.
+    # User-typed serial (mirrors SI invoice_number). Pre-filled with the next suggested
+    # number (AP-YYYY-MM-NNNN) on a fresh form, but EDITABLE while the form is editable
+    # (create / draft-edit); the server respects the typed value and enforces uniqueness.
     ap_number = StringField('AP Number', validators=[
         DataRequired(message='AP number is required.'),
         Length(max=50, message='AP number must be 50 characters or less.')
-    ], render_kw={'readonly': True})
+    ])
 
     ap_date = DateField('Voucher Date', validators=[
         DataRequired(message='AP date is required.')
