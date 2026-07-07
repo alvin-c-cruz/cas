@@ -1147,7 +1147,7 @@ def print_crv(id):
         return render_template(
             'cash_receipts/print_preprinted.html', crv=crv,
             je_entries=je_entries, company=company, printed_at=ph_now(),
-            layout=get_layout(), can_edit_layout=current_user.has_full_access,
+            layout=get_layout(crv.branch_id), can_edit_layout=current_user.has_full_access,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
@@ -1166,7 +1166,9 @@ def save_crv_print_layout():
         abort(403)
     from app.cash_receipts.preprinted_layout import save_layout
     data = request.get_json(silent=True) or {}
-    clean = save_layout(data, current_user.username)
+    # Per-branch layout; the session branch equals the document's branch (see
+    # _get_crv_or_404 / print page gating).
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
     return jsonify(ok=True, layout=clean)
 
 

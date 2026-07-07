@@ -269,9 +269,14 @@ def sanitize_layout(raw):
             'page': page, 'fields': fields, 'lineItems': line_items}
 
 
-def get_layout():
-    """Current sanitized layout (defaults if unset or corrupt)."""
-    stored = AppSettings.get_setting(LAYOUT_SETTING_KEY)
+def _layout_key(branch_id):
+    """Per-branch setting key; None -> the legacy un-scoped key (back-compat)."""
+    return f'{LAYOUT_SETTING_KEY}:{branch_id}' if branch_id is not None else LAYOUT_SETTING_KEY
+
+
+def get_layout(branch_id=None):
+    """Current sanitized layout for a branch (defaults if unset or corrupt)."""
+    stored = AppSettings.get_setting(_layout_key(branch_id))
     if not stored:
         return copy.deepcopy(DEFAULT_SV_PREPRINTED_LAYOUT)
     try:
@@ -280,13 +285,15 @@ def get_layout():
         return copy.deepcopy(DEFAULT_SV_PREPRINTED_LAYOUT)
 
 
-def save_layout(raw, username):
-    """Sanitize, persist, audit, and return the clean layout."""
+def save_layout(raw, username, branch_id=None):
+    """Sanitize, persist (per branch), audit, and return the clean layout."""
     clean = sanitize_layout(raw)
-    old = AppSettings.get_setting(LAYOUT_SETTING_KEY)
-    AppSettings.set_setting(LAYOUT_SETTING_KEY, json.dumps(clean), updated_by=username)
+    key = _layout_key(branch_id)
+    old = AppSettings.get_setting(key)
+    AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
     log_audit(module='sales_invoices', action='update', record_id=None,
               record_identifier='sv_preprinted_layout',
-              old_values={'layout': old}, new_values={'layout': json.dumps(clean)},
-              notes='Pre-printed layout updated')
+              old_values={'layout': old, 'branch_id': branch_id},
+              new_values={'layout': json.dumps(clean), 'branch_id': branch_id},
+              notes=f'Pre-printed layout updated (branch {branch_id})')
     return clean

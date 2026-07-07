@@ -1230,7 +1230,7 @@ def print_invoice(id):
         return render_template(
             'sales_invoices/print_preprinted.html', invoice=invoice,
             je_entries=je_entries, company=company, printed_at=ph_now(),
-            layout=get_layout(), can_edit_layout=current_user.has_full_access,
+            layout=get_layout(invoice.branch_id), can_edit_layout=current_user.has_full_access,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
@@ -1247,7 +1247,10 @@ def save_print_layout():
     if not current_user.has_full_access:
         abort(403)
     data = request.get_json(silent=True) or {}
-    clean = save_layout(data, current_user.username)
+    # The layout is per-branch; viewing the print page requires the selected branch
+    # to equal the document's branch (_get_invoice_or_404), so the session branch is
+    # the document's branch.
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
     return jsonify(ok=True, layout=clean)
 
 
