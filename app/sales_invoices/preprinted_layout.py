@@ -10,6 +10,7 @@ import json
 
 from app.settings import AppSettings
 from app.audit.utils import log_audit
+from app.common.preprinted_texts import clean_texts
 
 LAYOUT_SETTING_KEY = 'sv_preprinted_layout'
 
@@ -124,11 +125,11 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
     'paper': 'continuous',
     'dateFormat': 'long',
     'extras': [],
-    'texts': {
-        'preparer': {'text': 'Prepared by:', 'x': 60,  'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-        'checker':  {'text': 'Checked by:',  'x': 340, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-        'approver': {'text': 'Approved by:', 'x': 620, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-    },
+    'texts': [
+        {'id': 'preparer', 'text': 'Prepared by:', 'x': 60,  'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
+        {'id': 'checker',  'text': 'Checked by:',  'x': 340, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
+        {'id': 'approver', 'text': 'Approved by:', 'x': 620, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
+    ],
     'page': {'fontFamily': '"Courier New", Courier, monospace'},
     'fields': {
         'invoice_no':         {'x': 520, 'y': 50,  'fontSize': 12, 'bold': True},
@@ -224,26 +225,6 @@ def _clean_extras(raw):
     return out
 
 
-def _clean_texts(raw):
-    """Layout-only signature texts (preparer/checker/approver)."""
-    raw = raw if isinstance(raw, dict) else {}
-    d = DEFAULT_SV_PREPRINTED_LAYOUT['texts']
-    out = {}
-    for k in TEXT_KEYS:
-        src = raw.get(k) if isinstance(raw.get(k), dict) else {}
-        dk = d[k]
-        text = src.get('text', dk['text'])
-        text = str(text)[:TEXT_MAXLEN] if text is not None else dk['text']
-        out[k] = {
-            'text': text,
-            'x': _clamp(src.get('x'), 0, CANVAS_W, dk['x']),
-            'y': _clamp(src.get('y'), 0, CANVAS_H, dk['y']),
-            'fontSize': _clamp(src.get('fontSize'), FONT_MIN, FONT_MAX, dk['fontSize']),
-            'bold': bool(src.get('bold', dk['bold'])),
-            'hidden': bool(src.get('hidden', dk['hidden'])),
-        }
-    return out
-
 
 def sanitize_layout(raw):
     """Return a fully-populated, validated layout built from `raw` over the defaults."""
@@ -265,7 +246,7 @@ def sanitize_layout(raw):
         'columns': _clean_columns(raw_li.get('columns')),
     }
     return {'paper': paper, 'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
-            'texts': _clean_texts(raw.get('texts')),
+            'texts': clean_texts(raw.get('texts'), DEFAULT_SV_PREPRINTED_LAYOUT['texts']),
             'page': page, 'fields': fields, 'lineItems': line_items}
 
 

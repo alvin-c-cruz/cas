@@ -23,6 +23,30 @@
   saveBtn.style.display = 'none';
   editBtn.after(saveBtn);
 
+  // --- "+ Add text" button (arbitrary layout text) injected next to Save ---
+  const addTextBtn = document.createElement('button');
+  addTextBtn.id = 'addTextBtn';
+  addTextBtn.type = 'button';
+  addTextBtn.className = 'btn btn-edit';
+  addTextBtn.textContent = '+ Add text';
+  addTextBtn.style.display = 'none';
+  saveBtn.after(addTextBtn);
+
+  // --- Non-blocking notice banner (never confirm()/alert()) ---
+  function showNotice(msg) {
+    let n = document.getElementById('ppNotice');
+    if (!n) {
+      n = document.createElement('div');
+      n.id = 'ppNotice';
+      n.className = 'pp-notice screen-only';
+      document.body.appendChild(n);
+    }
+    n.textContent = msg;
+    n.style.display = 'block';
+    clearTimeout(n._t);
+    n._t = setTimeout(() => { n.style.display = 'none'; }, 4000);
+  }
+
   // --- Floating per-element toolbar: font size -/+ and bold ---
   const elBar = document.createElement('div');
   elBar.id = 'ppElemBar';
@@ -59,7 +83,8 @@
     elBar.style.display = 'flex';
     // Only duplicated copies are deletable; primary fields use the Fields checklist.
     const delBtn = elBar.querySelector('#ppDelBtn');
-    if (delBtn) delBtn.style.display = el.dataset.extra ? '' : 'none';
+    // Deletable: duplicated field copies AND any layout text (signatory or added).
+    if (delBtn) delBtn.style.display = (el.dataset.extra || el.classList.contains('pp-text')) ? '' : 'none';
     // Layout texts and line-item columns are not duplicable.
     const isText = el.classList.contains('pp-text');
     const dupBtn = elBar.querySelector('#ppDupBtn');
@@ -80,7 +105,14 @@
     selectEl(clone);
   }
   function deleteSelected() {
-    if (!selected || !selected.dataset.extra) return;   // only copies
+    if (!selected) return;
+    const isText = selected.classList.contains('pp-text');
+    if (!selected.dataset.extra && !isText) return;     // copies + layout texts only
+    // Warn (don't block) when a pre-printed signatory line is removed.
+    if (isText && selected.dataset.signatory) {
+      showNotice('Removed signatory line "' + (selected.textContent || '').trim() +
+        '". The blank-form default still ships it.');
+    }
     const el = selected;
     selectEl(null);
     el.remove();
@@ -168,6 +200,7 @@
     editing = on;
     canvas.classList.toggle('pp-editing', editing);
     saveBtn.style.display = editing ? '' : 'none';
+    addTextBtn.style.display = editing ? '' : 'none';
     if (fontSel) fontSel.style.display = editing ? '' : 'none';
     if (paperSel) paperSel.style.display = editing ? '' : 'none';
     if (dateSel) dateSel.style.display = editing ? '' : 'none';
@@ -270,10 +303,10 @@
         bold: cs.fontWeight === '700' || cs.fontWeight === 'bold',
       };
     });
-    const texts = {};
-    canvas.querySelectorAll('.pp-text').forEach((el) => {
+    const texts = [...canvas.querySelectorAll('.pp-text')].map((el) => {
       const cs = getComputedStyle(el);
-      texts[el.dataset.text] = {
+      return {
+        id: el.dataset.text,
         text: el.textContent,
         x: parseInt(el.style.left) || 0,
         y: parseInt(el.style.top) || 0,
@@ -333,6 +366,22 @@
     } catch (err) {
       saveBtn.textContent = 'Save failed';
     }
+  });
+
+  // --- "+ Add text": drop a fresh, deletable layout text onto the canvas ---
+  let addTextSeq = 0;
+  addTextBtn.addEventListener('click', () => {
+    const el = document.createElement('div');
+    el.className = 'pp-el pp-text';
+    el.dataset.text = 'text_' + Date.now() + '_' + (++addTextSeq);
+    el.dataset.label = 'New text';
+    el.textContent = 'New text';
+    el.style.left = '80px';
+    el.style.top = '120px';
+    el.style.fontSize = '10px';
+    el.style.fontWeight = 'normal';
+    canvas.appendChild(el);
+    selectEl(el);
   });
 
   // page-wide font family (options rendered server-side from ALLOWED_FONTS)

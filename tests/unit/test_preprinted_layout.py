@@ -77,21 +77,35 @@ class TestPaper:
 
 
 class TestTexts:
+    def _by_id(self, out):
+        return {t['id']: t for t in out['texts']}
+
     def test_default_signature_texts(self):
         out = sanitize_layout({})
-        assert set(out['texts']) == {'preparer', 'checker', 'approver'}
-        assert out['texts']['preparer']['text'] == 'Prepared by:'
+        assert isinstance(out['texts'], list)
+        assert {t['id'] for t in out['texts']} == {'preparer', 'checker', 'approver'}
+        assert self._by_id(out)['preparer']['text'] == 'Prepared by:'
 
     def test_text_edited_and_position_kept(self):
+        # Legacy dict input still migrates; a stored override lands on the right id.
         out = sanitize_layout({'texts': {'checker': {'text': 'Checked by JDC', 'x': 200}}})
-        assert out['texts']['checker']['text'] == 'Checked by JDC'
-        assert out['texts']['checker']['x'] == 200
+        by = self._by_id(out)
+        assert by['checker']['text'] == 'Checked by JDC'
+        assert by['checker']['x'] == 200
         # untouched ones keep their default text
-        assert out['texts']['approver']['text'] == 'Approved by:'
+        assert by['approver']['text'] == 'Approved by:'
 
     def test_text_length_capped(self):
         out = sanitize_layout({'texts': {'preparer': {'text': 'x' * 500}}})
-        assert len(out['texts']['preparer']['text']) <= 200
+        assert len(self._by_id(out)['preparer']['text']) <= 200
+
+    def test_added_text_kept_and_deleted_default_stays_gone(self):
+        out = sanitize_layout({'texts': [
+            {'id': 'preparer', 'text': 'Prepared by:', 'x': 60, 'y': 720},
+            {'id': 'note1', 'text': 'Goods received complete', 'x': 60, 'y': 800},
+        ]})
+        ids = [t['id'] for t in out['texts']]
+        assert ids == ['preparer', 'note1']   # checker/approver NOT re-injected
 
 
 class TestExtras:

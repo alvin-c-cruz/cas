@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <title>Sales Invoice {{ invoice.invoice_number }} — Pre-printed</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/sv_preprinted_designer.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sv_preprinted_designer.css') }}?v=5">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
@@ -126,7 +126,7 @@
   {# Duplicated copies (elements outside the line-item group) #}
   {% for ex in layout.extras %}{{ field_extra(ex, field_values[ex.key], field_isos.get(ex.key, '')) }}{% endfor %}
   {# Layout-only editable signature texts (preparer / checker / approver) — not record data #}
-  {% for key in text_keys %}{% set t = layout.texts[key] %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ key }}" data-label="{{ text_labels[key] }}" style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>{% endfor %}
+  {% for t in layout.texts %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"{{ ' data-signatory="1"' if t.id in signatory_ids else '' }} style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>{% endfor %}
 
   {% set li = layout.lineItems %}
   {# Each column is independently positioned (own x); all share the band top (li.y)
@@ -158,7 +158,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=14"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=25"></script>
 {% endif %}
 </body>
 </html>

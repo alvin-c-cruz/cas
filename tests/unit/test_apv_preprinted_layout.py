@@ -75,16 +75,30 @@ class TestSanitize:
 
 
 class TestTexts:
+    def _by_id(self, out):
+        return {t['id']: t for t in out['texts']}
+
     def test_default_signature_texts(self):
         out = sanitize_layout({})
-        assert set(out['texts']) == set(TEXT_KEYS) == {'prepared_by', 'checked_by', 'approved_by'}
-        assert out['texts']['checked_by']['text'] == 'Checked by:'
+        assert isinstance(out['texts'], list)
+        assert {t['id'] for t in out['texts']} == set(TEXT_KEYS) == {'prepared_by', 'checked_by', 'approved_by'}
+        assert self._by_id(out)['checked_by']['text'] == 'Checked by:'
 
     def test_text_edited_and_capped(self):
+        # Legacy dict input still migrates; a stored override lands on the right id.
         out = sanitize_layout({'texts': {'checked_by': {'text': 'x' * 500, 'x': 200}}})
-        assert len(out['texts']['checked_by']['text']) <= 200
-        assert out['texts']['checked_by']['x'] == 200
-        assert out['texts']['approved_by']['text'] == 'Approved by:'
+        by = self._by_id(out)
+        assert len(by['checked_by']['text']) <= 200
+        assert by['checked_by']['x'] == 200
+        assert by['approved_by']['text'] == 'Approved by:'
+
+    def test_added_text_kept_and_deleted_default_stays_gone(self):
+        out = sanitize_layout({'texts': [
+            {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 60, 'y': 720},
+            {'id': 'note1', 'text': 'Subject to 2% EWT', 'x': 60, 'y': 800},
+        ]})
+        ids = [t['id'] for t in out['texts']]
+        assert ids == ['prepared_by', 'note1']   # checked_by/approved_by NOT re-injected
 
 
 class TestPaperAndDate:

@@ -8,3 +8,8 @@
 .pp-elem-bar { position: absolute; z-index: 1000; display: flex; gap: 2px; background: #1565c0; padding: 3px; border-radius: 4px; }
 .pp-elem-bar button { border: none; background: #fff; color: #111; font-size: 12px; line-height: 1; padding: 3px 7px; cursor: pointer; border-radius: 2px; }
 .pp-elem-bar button:hover { background: #e3f2fd; }
+
+/* Non-blocking notice banner (e.g. signatory-delete warning); never confirm()/alert(). */
+.pp-notice { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2000;
+  background: #fff3cd; color: #664d03; border: 1px solid #ffe69c; border-radius: 4px;
+  padding: 8px 16px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none; max-width: 90%; }

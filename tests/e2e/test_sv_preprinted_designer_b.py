@@ -119,3 +119,41 @@ def test_hide_field_persists(logged_in_page, e2e_server):
     hidden = page.locator('[data-el="terms"]').evaluate(
         "e => e.classList.contains('pp-field-hidden')")
     assert hidden is True
+
+
+# --- Phase 3: arbitrary text CRUD (texts dict->list). The designer JS is a shared
+#     clone, so exercising it here covers the identical CRV/APV code path. ---
+
+def test_add_text_persists(logged_in_page, e2e_server):
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    before = page.locator('.pp-text').count()
+    page.click('#addTextBtn')                                # add a fresh layout text
+    assert page.locator('.pp-text').count() == before + 1
+    page.fill('#ppTextInput', 'Subject to 2% EWT')           # edit its content (it's selected)
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                            # fresh reload from server
+    assert page.locator('.pp-text').count() == before + 1    # added text survived
+    texts = page.locator('.pp-text').evaluate_all("els => els.map(e => e.textContent)")
+    assert any('EWT' in (t or '') for t in texts)
+
+
+def test_delete_signatory_warns_and_stays_gone(logged_in_page, e2e_server):
+    # Runs LAST: it removes the 'checker' signatory permanently on the shared server.
+    page = logged_in_page
+    _enable_preprinted(page, e2e_server)
+    url = _first_si_print_url(page, e2e_server)
+    page.goto(url)
+    page.click('#editLayoutBtn')
+    page.click('[data-text="checker"]')                      # select a pre-printed signatory
+    page.click('#ppDelBtn')                                   # delete it
+    assert page.locator('#ppNotice').is_visible()            # non-blocking warning (no confirm())
+    assert page.locator('[data-text="checker"]').count() == 0
+    page.click('#saveLayoutBtn')
+    page.wait_for_selector('#layoutSavedFlag', state='attached', timeout=5000)
+    page.goto(url)                                            # fresh reload
+    assert page.locator('[data-text="checker"]').count() == 0  # stays deleted (not re-injected)

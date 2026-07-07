@@ -855,7 +855,7 @@ def print_ap(id):
     if ap_print_form == 'preprinted':
         from app.accounts_payable.preprinted_layout import (
             get_layout, COLUMN_LABELS, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES,
-            PAPER_LABELS, DATE_FORMATS, TEXT_KEYS, TEXT_LABELS)
+            PAPER_LABELS, DATE_FORMATS, TEXT_KEYS)
         return render_template(
             'accounts_payable/print_preprinted.html', ap=ap,
             je_lines=je_lines, company=company, printed_at=ph_now(),
@@ -863,7 +863,7 @@ def print_ap(id):
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
-            text_keys=TEXT_KEYS, text_labels=TEXT_LABELS,
+            signatory_ids=TEXT_KEYS,
             date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
 
     return render_template(
