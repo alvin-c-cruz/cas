@@ -855,6 +855,50 @@ def seed_firm():
         raise
 
 
+def seed_construction():
+    """Seed a clean construction-contractor instance (CONSTRUCTION_COA + VAT/EWT).
+
+    Same shape as seed_firm but with the CONSTRUCTION_COA chart and a GENERIC identity
+    (company_name='Construction Company') -- never a client name, so no client coupling
+    lands in shared code. Refuses to run if the COA is already populated, and prints the
+    target DB filename so it can never silently seed the wrong instance.
+    """
+    from flask import current_app
+    from app.accounts.models import Account
+    from app.seeds.construction_coa import CONSTRUCTION_COA
+
+    uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    print(f"  DB: {uri.rsplit('/', 1)[-1] or uri}")
+    if Account.query.count() > 0:
+        raise RuntimeError(
+            "Refusing to seed: the Chart of Accounts is not empty. "
+            "seed-construction is for a FRESH instance only.")
+
+    print("\n" + "="*60)
+    print("CONSTRUCTION CONTRACTOR DATABASE SEEDING")
+    print("="*60 + "\n")
+    try:
+        _seed_admin_and_branch()
+        _seed_app_settings('Construction Company')
+        _seed_accounts(CONSTRUCTION_COA)
+        _seed_vat_categories()
+        _seed_sales_vat_categories()
+        _seed_withholding_taxes()
+
+        print("\n" + "="*60)
+        print("CONSTRUCTION SEEDING COMPLETE!")
+        print("="*60)
+        print(f"\n  Accounts created: {len(CONSTRUCTION_COA)}")
+        print("  Company: Construction Company (rename in Company Settings)")
+        print("  Login -> username: admin  password: admin123 (change after deploy)")
+        print("\n")
+
+    except Exception as e:
+        print(f"\n[ERROR] Error during construction seeding: {str(e)}")
+        db.session.rollback()
+        raise
+
+
 if __name__ == '__main__':
     print("This module should be run via Flask CLI:")
     print("  flask seed-db")

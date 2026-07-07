@@ -321,6 +321,12 @@ def create_app(config_name=None):
         from app.seeds.seed_data import seed_firm
         seed_firm()
 
+    @app.cli.command('seed-construction')
+    def seed_construction_database():
+        """Seed a clean construction-contractor instance (CONSTRUCTION_COA + VAT/EWT). Refuses a non-empty COA."""
+        from app.seeds.seed_data import seed_construction
+        seed_construction()
+
     @app.cli.command('seed-history')
     def seed_history_command():
         """Reset the DB and seed 2021->present APV + CDV demo history."""
