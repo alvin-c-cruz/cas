@@ -856,9 +856,18 @@ def print_ap(id):
         from app.accounts_payable.preprinted_layout import (
             get_layout, COLUMN_LABELS, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES,
             PAPER_LABELS, DATE_FORMATS, TEXT_KEYS)
+        # JE face is JE-BOUND: split the already-debits-first legs by sign, tally, and
+        # tie out. An untied face is refused at the template (never printed).
+        je_debits = [l for l in je_lines if (l.debit_amount or 0) > 0]
+        je_credits = [l for l in je_lines if (l.credit_amount or 0) > 0]
+        je_total_debit = sum((l.debit_amount or 0) for l in je_lines)
+        je_total_credit = sum((l.credit_amount or 0) for l in je_lines)
+        je_tied = abs(Decimal(je_total_debit) - Decimal(je_total_credit)) < Decimal('0.005')
         return render_template(
             'accounts_payable/print_preprinted.html', ap=ap,
-            je_lines=je_lines, company=company, printed_at=ph_now(),
+            je_lines=je_lines, je_debits=je_debits, je_credits=je_credits,
+            je_total_debit=je_total_debit, je_total_credit=je_total_credit, je_tied=je_tied,
+            company=company, printed_at=ph_now(),
             layout=get_layout(ap.branch_id), can_edit_layout=current_user.has_full_access,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,

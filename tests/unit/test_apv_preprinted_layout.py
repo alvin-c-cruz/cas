@@ -101,6 +101,30 @@ class TestTexts:
         assert ids == ['prepared_by', 'note1']   # checked_by/approved_by NOT re-injected
 
 
+class TestJournalEntryBlock:
+    def test_default_mode_is_combined(self):
+        assert DEFAULT_APV_PREPRINTED_LAYOUT['journalEntry']['mode'] == 'combined'
+        assert sanitize_layout({})['journalEntry']['mode'] == 'combined'
+
+    def test_mode_whitelisted(self):
+        assert sanitize_layout({'journalEntry': {'mode': 'separated'}})['journalEntry']['mode'] == 'separated'
+        assert sanitize_layout({'journalEntry': {'mode': 'bogus'}})['journalEntry']['mode'] == 'combined'
+
+    def test_band_positions_clamped(self):
+        je = sanitize_layout({'journalEntry': {'combined': {'x': -5, 'y': 99999, 'width': 5}}})['journalEntry']
+        assert je['combined']['x'] == 0
+        assert je['combined']['y'] == 1008
+        assert je['combined']['width'] >= 10          # clamped up to WIDTH_MIN
+
+    def test_debit_and_credit_bands_independent(self):
+        je = sanitize_layout({'journalEntry': {'debit': {'x': 111}, 'credit': {'x': 777}}})['journalEntry']
+        assert je['debit']['x'] == 111 and je['credit']['x'] == 777
+
+    def test_fontsize_and_rowheight_clamped(self):
+        je = sanitize_layout({'journalEntry': {'fontSize': 999, 'rowHeight': 999}})['journalEntry']
+        assert je['fontSize'] == 72 and je['rowHeight'] == 80
+
+
 class TestPaperAndDate:
     def test_default_paper_continuous_date_long(self):
         assert DEFAULT_APV_PREPRINTED_LAYOUT['paper'] == 'continuous'

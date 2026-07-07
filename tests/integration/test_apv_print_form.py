@@ -88,6 +88,117 @@ def _posted_apv(db_session, main_branch):
     return ap
 
 
+def _apv_with_je(db_session, main_branch, balanced=True):
+    """A posted APV carrying a journal entry.
+
+    Balanced: Dr Expense 10,000 + Dr Input VAT 1,200 ; Cr WHT Payable 200 + Cr AP 11,000.
+    Unbalanced (balanced=False): drops the WHT credit so Dr 11,200 != Cr 11,000.
+    """
+    from decimal import Decimal
+    from datetime import date
+    from app.vendors.models import Vendor
+    from app.accounts.models import Account
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    vendor = Vendor(code='JEV1', name='JE Supplier Inc.', tin='222-333-444-000', is_active=True)
+    db_session.add(vendor); db_session.commit()
+
+    def acct(code, name, atype, nb):
+        a = Account(code=code, name=name, account_type=atype, normal_balance=nb, is_active=True)
+        db_session.add(a); db_session.commit(); return a
+    expense = acct('5010', 'Office Supplies', 'Expense', 'debit')
+    input_vat = acct('1160', 'Input VAT', 'Asset', 'debit')
+    wht_pay = acct('2040', 'Withholding Tax Payable', 'Liability', 'credit')
+    ap_acct = acct('2010', 'Accounts Payable', 'Liability', 'credit')
+
+    je = JournalEntry(entry_number='JE-TEST-1', entry_date=date(2026, 7, 7),
+                      description='APV JE', entry_type='purchase', branch_id=main_branch.id,
+                      status='posted', total_debit=Decimal('11200'),
+                      total_credit=Decimal('11200') if balanced else Decimal('11000'),
+                      is_balanced=balanced)
+    db_session.add(je); db_session.commit()
+    lines = [
+        JournalEntryLine(entry_id=je.id, line_number=1, account_id=expense.id,
+                         debit_amount=Decimal('10000'), credit_amount=Decimal('0')),
+        JournalEntryLine(entry_id=je.id, line_number=2, account_id=input_vat.id,
+                         debit_amount=Decimal('1200'), credit_amount=Decimal('0')),
+        JournalEntryLine(entry_id=je.id, line_number=4, account_id=ap_acct.id,
+                         debit_amount=Decimal('0'), credit_amount=Decimal('11000')),
+    ]
+    if balanced:
+        lines.insert(2, JournalEntryLine(entry_id=je.id, line_number=3, account_id=wht_pay.id,
+                                         debit_amount=Decimal('0'), credit_amount=Decimal('200')))
+    for l in lines:
+        db_session.add(l)
+    db_session.commit()
+
+    ap = AccountsPayable(ap_number='APV-JE-1', ap_date=date(2026, 7, 7),
+                         due_date=date(2026, 8, 6), vendor_id=vendor.id,
+                         vendor_name=vendor.name, branch_id=main_branch.id, status='posted',
+                         subtotal=Decimal('11200'), vat_amount=Decimal('1200'),
+                         total_before_wt=Decimal('11200'), withholding_tax_amount=Decimal('200'),
+                         total_amount=Decimal('11000'), journal_entry_id=je.id)
+    ap.line_items.append(AccountsPayableItem(line_number=1, description='Bond paper',
+                                             quantity=Decimal('10'), unit_price=Decimal('1120'),
+                                             line_total=Decimal('11200'), account_id=expense.id))
+    db_session.add(ap); db_session.commit()
+    return ap
+
+
+class TestApvJournalEntryBand:
+    def _open(self, client, main_branch):
+        login(client)
+        with client.session_transaction() as s:
+            s['selected_branch_id'] = main_branch.id
+
+    def test_combined_mode_renders_two_column_grid(
+            self, client, db_session, admin_user, main_branch):
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        ap = _apv_with_je(db_session, main_branch, balanced=True)
+        self._open(client, main_branch)
+        body = client.get(f'/accounts-payable/{ap.id}/print').data.decode()
+        assert 'data-je="combined"' in body
+        # combined grid is active; the separated bands are inactive
+        import re
+        combined = re.search(r'<div class="([^"]*)"\s+data-je="combined"', body)
+        assert combined and 'pp-je-inactive' not in combined.group(1)
+        # distinct named legs (Input VAT + WHT Payable NOT netted)
+        assert 'Input VAT' in body and 'Withholding Tax Payable' in body
+        assert '10,000.00' in body and '1,200.00' in body   # debits-first amounts
+
+    def test_separated_mode_renders_debit_and_credit_bands(
+            self, client, db_session, admin_user, main_branch):
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        ap = _apv_with_je(db_session, main_branch, balanced=True)
+        # switch this branch's layout to separated
+        from app.accounts_payable.preprinted_layout import save_layout
+        save_layout({'journalEntry': {'mode': 'separated'}}, 'admin', branch_id=main_branch.id)
+        self._open(client, main_branch)
+        body = client.get(f'/accounts-payable/{ap.id}/print').data.decode()
+        import re
+        deb = re.search(r'<div class="([^"]*)"\s+data-je="debit"', body)
+        cred = re.search(r'<div class="([^"]*)"\s+data-je="credit"', body)
+        comb = re.search(r'<div class="([^"]*)"\s+data-je="combined"', body)
+        assert deb and 'pp-je-inactive' not in deb.group(1)     # debit band active
+        assert cred and 'pp-je-inactive' not in cred.group(1)   # credit band active
+        assert comb and 'pp-je-inactive' in comb.group(1)       # combined hidden
+
+    def test_untied_je_is_refused_not_rendered(
+            self, client, db_session, admin_user, main_branch):
+        AppSettings.set_setting('ap_print_form', 'preprinted', 'admin')
+        ap = _apv_with_je(db_session, main_branch, balanced=False)
+        self._open(client, main_branch)
+        resp = client.get(f'/accounts-payable/{ap.id}/print')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        # the JE face (the table element) is NOT drawn — match the element, not the
+        # `.pp-je-table` CSS selector that always appears in the inline <style>.
+        assert '<table class="pp-je-table">' not in body
+        assert 'data-je="combined"' not in body   # no band rendered
+        assert 'UNBALANCED' in body               # a refusal marker is shown instead
+
+
 class TestApPrintRoutes:
     def test_preprinted_renders_positioned_canvas(
             self, client, db_session, admin_user, main_branch):

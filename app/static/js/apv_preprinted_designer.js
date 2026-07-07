@@ -9,6 +9,7 @@
   const fontSel = document.getElementById('ppFontFamily');
   const paperSel = document.getElementById('ppPaper');
   const dateSel = document.getElementById('ppDateFormat');
+  const jeModeSel = document.getElementById('ppJEMode');  // APV JE combined/separated
   const fieldStrip = document.getElementById('ppFieldControls');
   const colStrip = document.getElementById('ppColControls');
   const printBtn = document.querySelector('.btn-print');
@@ -88,7 +89,7 @@
     // Layout texts and line-item columns are not duplicable.
     const isText = el.classList.contains('pp-text');
     const dupBtn = elBar.querySelector('#ppDupBtn');
-    if (dupBtn) dupBtn.style.display = (isText || el.classList.contains('pp-col')) ? 'none' : '';
+    if (dupBtn) dupBtn.style.display = (isText || el.classList.contains('pp-col') || el.classList.contains('pp-je')) ? 'none' : '';
     // Layout texts get an editable text box in the toolbar.
     textInput.style.display = isText ? '' : 'none';
     if (isText) textInput.value = el.textContent;
@@ -141,7 +142,7 @@
 
   const li = () => canvas.querySelector('.pp-lineitems');
   const cols = () => [...canvas.querySelectorAll('.pp-col')];
-  const fieldEls = () => [...canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra])')];
+  const fieldEls = () => [...canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra]):not(.pp-je):not(.pp-je-untied)')];
 
   function stripHeading(text) {
     const h = document.createElement('span');
@@ -204,6 +205,7 @@
     if (fontSel) fontSel.style.display = editing ? '' : 'none';
     if (paperSel) paperSel.style.display = editing ? '' : 'none';
     if (dateSel) dateSel.style.display = editing ? '' : 'none';
+    if (jeModeSel) jeModeSel.style.display = editing ? '' : 'none';
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
     if (fieldStrip) { buildFieldControls(); fieldStrip.classList.toggle('pp-show', editing); }
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
@@ -283,7 +285,7 @@
   // --- Serialize DOM -> layout JSON ---
   function collect() {
     const fields = {};
-    canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra]):not(.pp-text)').forEach((el) => {
+    canvas.querySelectorAll('.pp-el:not(.pp-lineitems):not([data-extra]):not(.pp-text):not(.pp-je):not(.pp-je-untied)').forEach((el) => {
       const cs = getComputedStyle(el);
       fields[el.dataset.el] = {
         x: parseInt(el.style.left) || 0,
@@ -324,11 +326,28 @@
       visible: !c.classList.contains('pp-col-hidden'),
       width: parseInt(c.style.width) || 60,
     }));
+    // Journal-entry face: start from the server layout, override x/y/width from the
+    // DOM bands (present even when hidden) and mode from the select.
+    let jeLayout = {};
+    const jeEl = document.getElementById('ppJELayout');
+    if (jeEl) { try { jeLayout = JSON.parse(jeEl.textContent) || {}; } catch (e) { jeLayout = {}; } }
+    ['combined', 'debit', 'credit'].forEach((k) => {
+      const el = canvas.querySelector('.pp-je[data-je="' + k + '"]');
+      if (el) jeLayout[k] = {
+        x: parseInt(el.style.left) || 0,
+        y: parseInt(el.style.top) || 0,
+        width: parseInt(el.style.width) || (jeLayout[k] && jeLayout[k].width) || 100,
+      };
+    });
+    if (jeModeSel) jeLayout.mode = jeModeSel.value;
+    const jeAny = canvas.querySelector('.pp-je');
+    if (jeAny) jeLayout.fontSize = parseInt(getComputedStyle(jeAny).fontSize) || jeLayout.fontSize || 9;
     return {
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
       dateFormat: (dateSel && dateSel.value) || 'long',
       extras,
       texts,
+      journalEntry: jeLayout,
       // read the select (exact ALLOWED_FONTS string) rather than the computed
       // stack, so the value round-trips through the server-side whitelist.
       page: { fontFamily: (fontSel && fontSel.value) || getComputedStyle(document.body).fontFamily },
@@ -416,6 +435,15 @@
       });
     });
   }
+
+  // JE combined/separated: toggle which band(s) are the inactive mode (greyed in edit).
+  function applyJEMode(mode) {
+    canvas.querySelectorAll('.pp-je').forEach((el) => {
+      const active = (mode === 'combined') ? (el.dataset.je === 'combined') : (el.dataset.je !== 'combined');
+      el.classList.toggle('pp-je-inactive', !active);
+    });
+  }
+  if (jeModeSel) jeModeSel.addEventListener('change', () => applyJEMode(jeModeSel.value));
 
   // paper size: resize the canvas + rewrite the @page rule live; guides hide for non-continuous.
   if (paperSel) {

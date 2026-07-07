@@ -144,6 +144,17 @@ DEFAULT_APV_PREPRINTED_LAYOUT = {
         'net_payable':        {'x': 620, 'y': 570, 'fontSize': 13, 'bold': True},
         'notes':              {'x': 40,  'y': 600, 'fontSize': 10, 'bold': False},
     },
+    # Journal-entry face (APV-only). `mode` = combined (one code/account/debit/credit
+    # grid) or separated (a debit band + a credit band). All three bands carry a
+    # position so switching mode in the designer never loses the other mode's layout.
+    'journalEntry': {
+        'mode': 'combined',
+        'fontSize': 9,
+        'rowHeight': 16,
+        'combined': {'x': 40,  'y': 360, 'width': 460},
+        'debit':    {'x': 40,  'y': 360, 'width': 300},
+        'credit':   {'x': 470, 'y': 360, 'width': 300},
+    },
     # Particulars lines: each column INDEPENDENTLY positioned (own x); all share
     # the band top (y) + rowHeight. No header row.
     'lineItems': {
@@ -222,6 +233,35 @@ def _clean_extras(raw):
     return out
 
 
+JE_MODES = ('combined', 'separated')
+
+
+def _clean_je(raw):
+    """The APV journal-entry face: mode + three positioned bands. Layout only —
+    never the numbers (those come JE-bound from the view)."""
+    raw = raw if isinstance(raw, dict) else {}
+    d = DEFAULT_APV_PREPRINTED_LAYOUT['journalEntry']
+    mode = raw.get('mode') if raw.get('mode') in JE_MODES else d['mode']
+
+    def band(key):
+        b = raw.get(key) if isinstance(raw.get(key), dict) else {}
+        db_ = d[key]
+        return {
+            'x': _clamp(b.get('x'), 0, CANVAS_W, db_['x']),
+            'y': _clamp(b.get('y'), 0, CANVAS_H, db_['y']),
+            'width': _clamp(b.get('width'), WIDTH_MIN, WIDTH_MAX, db_['width']),
+        }
+
+    return {
+        'mode': mode,
+        'fontSize': _clamp(raw.get('fontSize'), FONT_MIN, FONT_MAX, d['fontSize']),
+        'rowHeight': _clamp(raw.get('rowHeight'), ROW_MIN, ROW_MAX, d['rowHeight']),
+        'combined': band('combined'),
+        'debit': band('debit'),
+        'credit': band('credit'),
+    }
+
+
 def sanitize_layout(raw):
     """Return a fully-populated, validated layout built from `raw` over the defaults."""
     raw = raw if isinstance(raw, dict) else {}
@@ -243,7 +283,8 @@ def sanitize_layout(raw):
     }
     return {'paper': paper, 'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
             'texts': clean_texts(raw.get('texts'), DEFAULT_APV_PREPRINTED_LAYOUT['texts']),
-            'page': page, 'fields': fields, 'lineItems': line_items}
+            'page': page, 'fields': fields, 'lineItems': line_items,
+            'journalEntry': _clean_je(raw.get('journalEntry'))}
 
 
 def _layout_key(branch_id):
