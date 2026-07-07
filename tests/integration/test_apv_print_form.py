@@ -166,6 +166,9 @@ class TestApvJournalEntryBand:
         # distinct named legs (Input VAT + WHT Payable NOT netted)
         assert 'Input VAT' in body and 'Withholding Tax Payable' in body
         assert '10,000.00' in body and '1,200.00' in body   # debits-first amounts
+        # match the ELEMENTS, not the `.pp-*` CSS selectors that live in the inline <style>
+        assert '<tr class="pp-je-total">' not in body     # JE Dr/Cr TOTAL row removed (user 2026-07-07)
+        assert '<div class="pp-lineitems"' not in body    # Particulars band removed from the APV voucher
 
     def test_separated_mode_renders_debit_and_credit_bands(
             self, client, db_session, admin_user, main_branch):
@@ -213,8 +216,9 @@ class TestApPrintRoutes:
         assert 'pp-canvas' in body                 # the positioned-canvas marker
         assert 'APV-PP-1' in body                  # apv number
         assert 'Preprint Supplier Inc.' in body    # vendor
-        assert 'Bond paper' in body                # a particulars line
-        assert '11,000.00' in body                 # net payable
+        assert 'Bond paper' not in body            # Particulars band removed (user 2026-07-07)
+        assert '<div class="pp-lineitems"' not in body   # no line-items band (match element, not CSS)
+        assert '11,000.00' in body                 # net payable (Summary block kept)
 
     def test_current_renders_standard_form(
             self, client, db_session, admin_user, main_branch):

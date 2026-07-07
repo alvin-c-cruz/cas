@@ -354,7 +354,7 @@
       fields,
       lineItems: {
         y: first ? (parseInt(first.style.top) || 0) : 300,
-        rowHeight: parseInt(li().dataset.rowheight) || 20,
+        rowHeight: (li() && parseInt(li().dataset.rowheight)) || 20,   // band not drawn on APV
         fontSize: lics ? (parseInt(lics.fontSize) || 10) : 10,
         bold: lics ? (lics.fontWeight === '700' || lics.fontWeight === 'bold') : false,
         columns,
