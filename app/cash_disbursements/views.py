@@ -1265,6 +1265,22 @@ def save_cdv_print_layout():
     return jsonify(ok=True, layout=clean)
 
 
+@cash_disbursements_bp.route('/cash-disbursements/check-layout', methods=['POST'])
+@login_required
+def save_cd_check_layout():
+    """Persist the CDV **check** overlay layout JSON (full-access: admin or Chief Accountant).
+
+    Keyed per cash/bank account (`?account_id=<id>`); omitting it edits the Default layout.
+    """
+    if not current_user.has_full_access:
+        abort(403)
+    from app.cash_disbursements.check_layout import save_layout
+    account_id = request.args.get('account_id', type=int)   # None -> the Default layout
+    data = request.get_json(silent=True) or {}
+    clean = save_layout(data, current_user.username, account_id)
+    return jsonify(ok=True, layout=clean)
+
+
 def _cdv_export_data(branch_id):
     """Return (data_dicts, columns, headers) for CDV list export.
 
