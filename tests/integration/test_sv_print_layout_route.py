@@ -1,7 +1,7 @@
 import json
 import pytest
 from app.settings import AppSettings
-from app.sales_invoices.preprinted_layout import LAYOUT_SETTING_KEY
+from app.sales_invoices.preprinted_layout import LAYOUT_SETTING_KEY, _layout_key
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_invoices]
 
@@ -18,7 +18,9 @@ def test_admin_saves_layout(client, db_session, admin_user, main_branch):
     resp = client.post(URL, json=payload)
     assert resp.status_code == 200
     assert resp.get_json()['ok'] is True
-    stored = json.loads(AppSettings.get_setting(LAYOUT_SETTING_KEY))
+    # Phase 1: the save route writes the per-branch key (session branch auto-selected
+    # to the user's single branch), not the legacy global key.
+    stored = json.loads(AppSettings.get_setting(_layout_key(main_branch.id)))
     assert stored['fields']['invoice_no']['x'] == 333
 
 
@@ -39,6 +41,6 @@ def test_garbage_body_still_stores_sanitized_default(client, db_session, admin_u
     login(client)
     resp = client.post(URL, json={'fields': {'evil': {'x': 1}}, 'lineItems': 'not-a-dict'})
     assert resp.status_code == 200
-    stored = json.loads(AppSettings.get_setting(LAYOUT_SETTING_KEY))
+    stored = json.loads(AppSettings.get_setting(_layout_key(main_branch.id)))
     assert 'evil' not in stored['fields']
     assert isinstance(stored['lineItems']['columns'], list)

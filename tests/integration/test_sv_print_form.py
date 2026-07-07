@@ -138,7 +138,10 @@ class TestPreprintedLayoutRender:
         from app.sales_invoices.preprinted_layout import get_layout
         layout = get_layout()
         layout['fields']['invoice_no']['x'] = 654
-        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        # Phase 1 made layouts branch-scoped: the print route reads get_layout(invoice.branch_id),
+        # so seed the layout under the invoice's branch key, not the legacy global key.
+        from app.sales_invoices.preprinted_layout import _layout_key
+        AppSettings.set_setting(_layout_key(main_branch.id), _json.dumps(layout), 'system')
         self._prep(client)
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         assert 'data-el="invoice_no"' in html
@@ -152,7 +155,10 @@ class TestPreprintedLayoutRender:
         for c in layout['lineItems']['columns']:
             if c['key'] == 'uom':
                 c['visible'] = False
-        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        # Phase 1 made layouts branch-scoped: the print route reads get_layout(invoice.branch_id),
+        # so seed the layout under the invoice's branch key, not the legacy global key.
+        from app.sales_invoices.preprinted_layout import _layout_key
+        AppSettings.set_setting(_layout_key(main_branch.id), _json.dumps(layout), 'system')
         self._prep(client)
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         import re as _re
@@ -199,7 +205,10 @@ class TestPreprintedLayoutRender:
         from app.sales_invoices.preprinted_layout import get_layout
         layout = get_layout()
         layout['paper'] = 'letter'
-        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        # Phase 1 made layouts branch-scoped: the print route reads get_layout(invoice.branch_id),
+        # so seed the layout under the invoice's branch key, not the legacy global key.
+        from app.sales_invoices.preprinted_layout import _layout_key
+        AppSettings.set_setting(_layout_key(main_branch.id), _json.dumps(layout), 'system')
         self._prep(client)
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         assert 'data-paper="letter"' in html
@@ -212,7 +221,10 @@ class TestPreprintedLayoutRender:
         from app.sales_invoices.preprinted_layout import get_layout
         layout = get_layout()
         layout['dateFormat'] = 'iso'
-        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        # Phase 1 made layouts branch-scoped: the print route reads get_layout(invoice.branch_id),
+        # so seed the layout under the invoice's branch key, not the legacy global key.
+        from app.sales_invoices.preprinted_layout import _layout_key
+        AppSettings.set_setting(_layout_key(main_branch.id), _json.dumps(layout), 'system')
         self._prep(client)
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         assert 'id="ppDateFormat"' in html
@@ -226,7 +238,10 @@ class TestPreprintedLayoutRender:
         from app.sales_invoices.preprinted_layout import get_layout
         layout = get_layout()
         layout['fields']['terms']['hidden'] = True
-        AppSettings.set_setting('sv_preprinted_layout', _json.dumps(layout), 'system')
+        # Phase 1 made layouts branch-scoped: the print route reads get_layout(invoice.branch_id),
+        # so seed the layout under the invoice's branch key, not the legacy global key.
+        from app.sales_invoices.preprinted_layout import _layout_key
+        AppSettings.set_setting(_layout_key(main_branch.id), _json.dumps(layout), 'system')
         self._prep(client)
         html = client.get(f'/sales-invoices/{_invoice.id}/print').data.decode()
         assert 'id="ppFieldControls"' in html
