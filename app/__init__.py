@@ -315,6 +315,12 @@ def create_app(config_name=None):
         from app.seeds.seed_data import seed_minimal
         seed_minimal()
 
+    @app.cli.command('seed-firm')
+    def seed_firm_database():
+        """Seed a clean accounting-firm + software-company instance (FIRM_COA + VAT/EWT)."""
+        from app.seeds.seed_data import seed_firm
+        seed_firm()
+
     @app.cli.command('seed-history')
     def seed_history_command():
         """Reset the DB and seed 2021->present APV + CDV demo history."""

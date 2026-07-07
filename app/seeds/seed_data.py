@@ -17,6 +17,7 @@ from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.settings import AppSettings
+from app.seeds.firm_coa import FIRM_COA
 from datetime import datetime
 
 # Seller/payee-facing names for WT codes that appear on sales documents.
@@ -819,6 +820,37 @@ def seed_minimal():
 
     except Exception as e:
         print(f"\n[ERROR] Error during minimal seeding: {str(e)}")
+        db.session.rollback()
+        raise
+
+
+def seed_firm():
+    """Seed a clean combined accounting-firm + software-company instance.
+
+    Same shape as seed_minimal (admin/admin123, MAIN branch, 24 settings, 7/3/8 VAT/EWT)
+    but with the FIRM_COA chart of accounts and company_name='Cruz Accounting & Software'.
+    """
+    print("\n" + "="*60)
+    print("FIRM + SOFTWARE DATABASE SEEDING")
+    print("="*60 + "\n")
+    try:
+        _seed_admin_and_branch()
+        _seed_app_settings('Cruz Accounting & Software')
+        _seed_accounts(FIRM_COA)
+        _seed_vat_categories()
+        _seed_sales_vat_categories()
+        _seed_withholding_taxes()
+
+        print("\n" + "="*60)
+        print("FIRM SEEDING COMPLETE!")
+        print("="*60)
+        print(f"\n  Accounts created: {len(FIRM_COA)}")
+        print("  Company: Cruz Accounting & Software (rename in Company Settings)")
+        print("  Login -> username: admin  password: admin123 (change after deploy)")
+        print("\n")
+
+    except Exception as e:
+        print(f"\n[ERROR] Error during firm seeding: {str(e)}")
         db.session.rollback()
         raise
 
