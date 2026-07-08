@@ -1035,6 +1035,7 @@
               {%- elif key == 'cash_flow' and ep.startswith('reports.cash_flow') -%}active
               {%- elif key == 'trial_balance' and ep.startswith('reports.trial_balance') -%}active
               {%- elif key == 'fiscal_year_close' and ep.startswith('year_end.') -%}active
+              {%- elif key == 'vat_settlement' and ep.startswith('vat_settlement.') -%}active
               {%- elif key == 'customers' and ep.startswith('customers.') -%}active
               {%- elif key == 'vendors' and ep.startswith('vendors.') -%}active
               {%- elif key == 'units_of_measure' and ep.startswith('units_of_measure.') -%}active
@@ -1066,6 +1067,7 @@
                 'cash_flow':          'reports.cash_flow',
                 'trial_balance':      'reports.trial_balance',
                 'fiscal_year_close':  'year_end.index',
+                'vat_settlement':     'vat_settlement.index',
                 'customers':          'customers.list_customers',
                 'vendors':            'vendors.list_vendors',
                 'units_of_measure':   'units_of_measure.list',
@@ -1090,6 +1092,7 @@
                 'cash_flow':          '💸',
                 'trial_balance':      '⚖️',
                 'fiscal_year_close':  '🔒',
+                'vat_settlement':     '🧾',
                 'customers':          '👥',
                 'vendors':            '🏢',
                 'units_of_measure':   '📏',

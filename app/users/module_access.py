@@ -76,6 +76,9 @@ MODULE_REGISTRY = [
     {'key': 'fiscal_year_close', 'label': 'Year-End Close', 'section': 'Financial Reports',
      'area': 'Accounting', 'group': 'Financial Statements',
      'endpoints': ('year_end.index', 'year_end.close', 'year_end.reopen')},
+    {'key': 'vat_settlement', 'label': 'VAT Settlement', 'section': 'Financial Reports',
+     'area': 'Compliance', 'group': 'BIR',
+     'endpoints': ('vat_settlement.index', 'vat_settlement.settle', 'vat_settlement.reverse')},
     # ── Maintenance (master data; deny-by-default for staff) ─────────────────
     {'key': 'customers', 'label': 'Customers', 'section': 'Maintenance',
      'area': 'Sales', 'group': 'Masters',
