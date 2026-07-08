@@ -20,6 +20,17 @@ import json
 journal_entries_bp = Blueprint('journal_entries', __name__, template_folder='templates')
 
 
+def _accounts_for_select():
+    """Active accounts for the JV line-item picker, each with a derived `is_group`
+    flag (top-level or has children => non-postable group header, shown disabled).
+    Mirrors the AP picker so the JV account select behaves like the other vouchers.
+    """
+    all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    parent_ids = {a.parent_id for a in all_accts if a.parent_id is not None}
+    return [{'id': a.id, 'code': a.code, 'name': a.name,
+             'is_group': a.id in parent_ids} for a in all_accts]
+
+
 def accountant_or_admin_required(f):
     """Decorator to require accountant or admin role."""
     @wraps(f)
@@ -50,22 +61,20 @@ def create():
     if form.validate_on_submit():
         # Validate that the entry date is not in a closed period
         if not validate_transaction_date_with_flash(form.entry_date.data, 'journal entry'):
-            accounts = Account.query.order_by(Account.code).all()
-            accounts_data = [{'id': acc.id, 'code': acc.code, 'name': acc.name} for acc in accounts]
-            return render_template('journal_entries/form.html', form=form, entry=None, accounts=accounts_data)
+            return render_template('journal_entries/form.html', form=form, entry=None, accounts=_accounts_for_select())
 
         try:
             # Get lines from form
             lines_data = request.form.getlist('lines')
             if not lines_data or not lines_data[0]:
                 flash('Please add at least two journal entry lines (debit and credit).', 'error')
-                return render_template('journal_entries/form.html', form=form, entry=None, accounts=Account.query.order_by(Account.code).all())
+                return render_template('journal_entries/form.html', form=form, entry=None, accounts=_accounts_for_select())
 
             lines = json.loads(lines_data[0])
 
             if len(lines) < 2:
                 flash('Journal entry must have at least two lines.', 'error')
-                return render_template('journal_entries/form.html', form=form, entry=None, accounts=Account.query.order_by(Account.code).all())
+                return render_template('journal_entries/form.html', form=form, entry=None, accounts=_accounts_for_select())
 
             # Calculate totals
             total_debit = Decimal('0.00')
@@ -78,7 +87,7 @@ def create():
             # Validate balance
             if total_debit != total_credit:
                 flash(f'Entry is not balanced! Debits: ₱{total_debit:,.2f}, Credits: ₱{total_credit:,.2f}. Difference: ₱{abs(total_debit - total_credit):,.2f}', 'error')
-                return render_template('journal_entries/form.html', form=form, entry=None, accounts=Account.query.order_by(Account.code).all())
+                return render_template('journal_entries/form.html', form=form, entry=None, accounts=_accounts_for_select())
 
             # Get current branch from session
             from flask import session
@@ -110,7 +119,7 @@ def create():
                 # Validation: both debit and credit cannot be non-zero
                 if debit > 0 and credit > 0:
                     flash(f'Line {idx}: Cannot have both debit and credit amounts.', 'error')
-                    return render_template('journal_entries/form.html', form=form, entry=None, accounts=Account.query.order_by(Account.code).all())
+                    return render_template('journal_entries/form.html', form=form, entry=None, accounts=_accounts_for_select())
 
                 # At least one must be non-zero
                 if debit == 0 and credit == 0:
@@ -167,10 +176,7 @@ def create():
         form.entry_number.data = generate_jv_number(current_branch_id)
         form.entry_date.data = date.today()
 
-    accounts = Account.query.order_by(Account.code).all()
-    # Convert accounts to dictionaries for JSON serialization
-    accounts_data = [{'id': acc.id, 'code': acc.code, 'name': acc.name} for acc in accounts]
-    return render_template('journal_entries/form.html', form=form, entry=None, accounts=accounts_data)
+    return render_template('journal_entries/form.html', form=form, entry=None, accounts=_accounts_for_select())
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>')

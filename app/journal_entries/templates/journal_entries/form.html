@@ -3,14 +3,19 @@
 {% block page_title %}{% if entry %}Edit{% else %}New{% endif %} Journal Entry{% endblock %}
 {% block content %}
 {% from "macros.html" import render_field %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}?v=1">
 
 <div class="card">
     <div class="card-body">
         <form method="POST" id="journalEntryForm">
             {{ form.hidden_tag() }}
 
-            <!-- Header Information -->
-            <div class="form-row-3">
+            <!-- Header grid: Entry Date | Entry Number, then Reference | Entry Type,
+                 then a full-width Description. Auto-reverse lives on the Add Line row. -->
+            <div class="form-row-2">
+                <div class="form-group">
+                    {{ render_field(form.entry_date) }}
+                </div>
                 <div class="form-group">
                     {{ form.entry_number.label(class='form-label') }}
                     {% if entry %}
@@ -26,52 +31,43 @@
                         </div>
                     {% endif %}
                 </div>
+            </div>
+            <div class="form-row-2">
                 <div class="form-group">
-                    {{ render_field(form.entry_date) }}
+                    {{ render_field(form.reference) }}
                 </div>
                 <div class="form-group">
                     {{ render_field(form.entry_type) }}
                 </div>
             </div>
-
-            <div class="form-row-2">
-                <div class="form-group">
-                    {{ render_field(form.description) }}
-                </div>
-                <div class="form-group">
-                    {{ render_field(form.reference) }}
-                </div>
+            <div class="form-group">
+                {{ render_field(form.description) }}
             </div>
 
-            <!-- Reversing Entry Options -->
-            <div class="form-row-2">
-                <div class="form-group">
+            {# Journal Entry Lines #}
+            <div style="margin-top: 14px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label class="checkbox-label">
                         {{ form.is_reversing() }}
                         {{ form.is_reversing.label.text }}
                     </label>
-                </div>
-                <div class="form-group" id="reversalDateGroup" style="display: none;">
-                    {{ render_field(form.reversal_date) }}
-                </div>
-            </div>
-
-            <!-- Journal Entry Lines -->
-            <div style="margin-top: 32px; margin-bottom: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 style="font-size: 16px; font-weight: 600; color: #1e293b; margin: 0;">Journal Entry Lines</h3>
                     <button type="button" class="btn btn-secondary" id="addLineBtn">+ Add Line</button>
+                </div>
+                <div class="form-row-2" style="margin-bottom: 8px;">
+                    <div class="form-group" id="reversalDateGroup" style="display: none;">
+                        {{ render_field(form.reversal_date) }}
+                    </div>
                 </div>
 
                 <!-- Lines Table -->
                 <table class="data-table" id="linesTable">
                     <thead>
                         <tr>
-                            <th style="width: 40%;">Account</th>
-                            <th style="width: 30%;">Description</th>
-                            <th style="width: 12%; text-align: right;">Debit</th>
-                            <th style="width: 12%; text-align: right;">Credit</th>
-                            <th style="width: 6%; text-align: center;">Action</th>
+                            <th style="width: 34%; text-align: center;">Account</th>
+                            <th style="width: 20%; text-align: center;">Particulars</th>
+                            <th style="width: 19%; text-align: center;">Debit</th>
+                            <th style="width: 19%; text-align: center;">Credit</th>
+                            <th style="width: 4%; text-align: center;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="linesTableBody">
@@ -92,9 +88,9 @@
                     </tfoot>
                 </table>
 
-                <!-- Balance Status -->
-                <div style="margin-top: 16px; padding: 12px; border-radius: 6px; text-align: center; font-weight: 600;" id="balanceStatus">
-                    <span id="balanceStatusText">Add journal entry lines</span>
+                <!-- Balance Status (hidden until lines exist; only ✓/⚠ feedback shows) -->
+                <div style="margin-top: 12px; padding: 12px; border-radius: 6px; text-align: center; font-weight: 600; display: none;" id="balanceStatus">
+                    <span id="balanceStatusText"></span>
                 </div>
             </div>
 
@@ -103,7 +99,7 @@
 
             <!-- Form Actions -->
             <div class="form-actions">
-                <button type="submit" class="btn btn-primary">{% if entry %}Update{% else %}Create{% endif %} Journal Entry</button>
+                <button type="submit" class="btn btn-primary">{% if entry %}Update{% else %}Save{% endif %}</button>
                 <a href="{{ url_for('journal_entries.list_entries') }}" class="btn btn-secondary">Back</a>
             </div>
         </form>
@@ -137,13 +133,40 @@
     .line-row:hover {
         background: #f8fafc;
     }
-    .line-row input, .line-row select {
+    /* Every line-item control shares ONE 32px height so the row aligns cleanly. */
+    .line-row td { vertical-align: middle; }
+    .line-row input,
+    .line-row .choices__inner,
+    .btn-remove-line {
+        height: 32px;
+        box-sizing: border-box;
+    }
+    .line-row input {
         width: 100%;
-        padding: 8px;
+        padding: 5px 6px;
         border: 1px solid #cbd5e1;
         border-radius: 4px;
         font-size: 13px;
     }
+    /* Tight cells: minimize the gap between columns and rows. */
+    #linesTable td, #linesTable th { padding: 2px 4px; }
+    /* Account picker: same 32px height + WHITE background & matching border so it
+       looks like the other inputs (Choices defaults to a grey #f9f9f9 fill that
+       reads as "disabled"). */
+    .line-row .choices { margin-bottom: 0; }
+    .line-row .choices__inner {
+        padding: 0 6px; min-height: 32px; font-size: 13px;
+        display: flex; align-items: center;
+        background: #fff; border: 1px solid #cbd5e1;
+    }
+    .line-row .choices.is-focused .choices__inner,
+    .line-row .choices.is-open .choices__inner { border-color: #3b82f6; }
+    /* Compact header: trim the generous form-group/row gaps and the tall
+       description textarea so the header isn't so spread out. Scoped to this form. */
+    #journalEntryForm .form-row-3, #journalEntryForm .form-row-2 { margin-bottom: 0; }
+    #journalEntryForm .form-group { margin-top: 0; margin-bottom: 4px; }
+    #journalEntryForm .form-label { margin-bottom: 2px; }
+    #journalEntryForm textarea { min-height: 54px; height: 54px; }
     .line-row input:focus, .line-row select:focus {
         outline: none;
         border-color: #3b82f6;
@@ -160,9 +183,33 @@
     .btn-remove-line:hover {
         background: #fee2e2;
     }
+    /* Money fields match the other vouchers: right-aligned mono text inputs. */
+    .line-debit, .line-credit { text-align: right; font-family: var(--mono, monospace); }
+    /* Keep account options on ONE line (avoid the wrap that split "10110 : Cash in
+       Bank - Current Account" across two rows). The dropdown sizes to the widest
+       option (capped) so long names stay fully visible without wrapping. */
+    .line-row .choices__list--single .choices__item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .line-row .choices__list--dropdown { width: max-content; min-width: 100%; max-width: 460px; }
+    .line-row .choices__list--dropdown .choices__item { white-space: nowrap; }
 </style>
 
+<script src="{{ url_for('static', filename='choices.min.js') }}?v=1"></script>
 <script>
+// JV money-field helpers (self-contained; same comma formatting as the other vouchers).
+function jvAmtFmt(n) {
+    return (n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function jvAmtFocus(el) {
+    const n = parseFloat((el.value || '').replace(/,/g, '')) || 0;
+    el.value = n ? n.toFixed(2) : '';
+    el.select();
+}
+function jvAmtBlur(el) {
+    const n = parseFloat((el.value || '').replace(/,/g, '')) || 0;
+    el.value = n ? jvAmtFmt(n) : '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));   // recompute totals
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const linesTableBody = document.getElementById('linesTableBody');
     const addLineBtn = document.getElementById('addLineBtn');
@@ -188,21 +235,23 @@ document.addEventListener('DOMContentLoaded', function() {
         row.className = 'line-row';
         row.dataset.lineId = lineCounter;
 
+        const dv = debit ? jvAmtFmt(parseFloat(String(debit).replace(/,/g, '')) || 0) : '';
+        const cv = credit ? jvAmtFmt(parseFloat(String(credit).replace(/,/g, '')) || 0) : '';
         row.innerHTML = `
             <td>
                 <select class="account-select" data-field="account_id">
                     <option value="">Select Account...</option>
-                    ${accounts.map(acc => `<option value="${acc.id}" ${acc.id == account_id ? 'selected' : ''}>${acc.code} - ${acc.name}</option>`).join('')}
+                    ${accounts.map(acc => `<option value="${acc.id}" ${acc.is_group ? 'disabled' : ''} ${acc.id == account_id ? 'selected' : ''}>${acc.code} : ${acc.name}</option>`).join('')}
                 </select>
             </td>
             <td>
-                <input type="text" class="line-description" data-field="description" value="${description}" placeholder="Line description...">
+                <input type="text" class="line-description" data-field="description" value="${description}">
             </td>
             <td>
-                <input type="number" class="line-debit" data-field="debit" value="${debit}" step="0.01" min="0" placeholder="0.00" style="text-align: right;">
+                <input type="text" class="line-debit" data-field="debit" value="${dv}" placeholder="0.00" onfocus="jvAmtFocus(this)" onblur="jvAmtBlur(this)">
             </td>
             <td>
-                <input type="number" class="line-credit" data-field="credit" value="${credit}" step="0.01" min="0" placeholder="0.00" style="text-align: right;">
+                <input type="text" class="line-credit" data-field="credit" value="${cv}" placeholder="0.00" onfocus="jvAmtFocus(this)" onblur="jvAmtBlur(this)">
             </td>
             <td style="text-align: center;">
                 <button type="button" class="btn-remove-line" onclick="removeLine(${lineCounter})">✕</button>
@@ -210,13 +259,24 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
 
         linesTableBody.appendChild(row);
-        updateTotals();
 
-        // Add event listeners for auto-calculation
+        // Auto-calc listeners on the native controls (attach BEFORE Choices wraps the select).
         row.querySelectorAll('input, select').forEach(input => {
             input.addEventListener('input', updateTotals);
             input.addEventListener('change', updateTotals);
         });
+
+        // Account picker: searchable Choices; selected chip keeps the FULL "code : name"
+        // (default item template — deliberately NOT the code-only template SI/AP use).
+        const acctSel = row.querySelector('.account-select');
+        if (window.Choices) {
+            new Choices(acctSel, {
+                searchEnabled: true, itemSelectText: '', shouldSort: false,
+                allowHTML: false, searchResultLimit: 50,
+            });
+        }
+
+        updateTotals();
     }
 
     // Remove line function
@@ -237,8 +297,8 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.line-row').forEach(row => {
             const accountId = row.querySelector('.account-select').value;
             const description = row.querySelector('.line-description').value;
-            const debit = parseFloat(row.querySelector('.line-debit').value) || 0;
-            const credit = parseFloat(row.querySelector('.line-credit').value) || 0;
+            const debit = parseFloat((row.querySelector('.line-debit').value || '').replace(/,/g, '')) || 0;
+            const credit = parseFloat((row.querySelector('.line-credit').value || '').replace(/,/g, '')) || 0;
 
             if (accountId) {
                 lines.push({
@@ -267,16 +327,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const differenceRow = document.getElementById('differenceRow');
 
         if (lines.length === 0) {
-            balanceStatus.style.background = '#f1f5f9';
-            balanceStatus.style.color = '#64748b';
-            balanceStatusText.textContent = 'Add journal entry lines';
+            // No lines yet -> hide the status bar entirely (no "Add journal entry lines").
+            balanceStatus.style.display = 'none';
             differenceRow.style.display = 'none';
         } else if (isBalanced) {
+            balanceStatus.style.display = '';
             balanceStatus.style.background = '#dcfce7';
             balanceStatus.style.color = '#166534';
             balanceStatusText.textContent = '✓ Entry is balanced';
             differenceRow.style.display = 'none';
         } else {
+            balanceStatus.style.display = '';
             balanceStatus.style.background = '#fef2f2';
             balanceStatus.style.color = '#991b1b';
             balanceStatusText.textContent = '⚠ Entry is not balanced';
