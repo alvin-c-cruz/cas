@@ -328,3 +328,53 @@ def settle_quarter(year, quarter, user_id):
                           'new_carryover': str(pos['new_carryover']),
                           'settlement_entry_ids': je_ids}, user_id=user_id)
     return s
+
+
+def _latest_settled():
+    return VatSettlement.query.filter_by(status='settled').order_by(
+        VatSettlement.fiscal_year.desc(), VatSettlement.quarter.desc()).first()
+
+
+def _reverse_je(source_je, year, qtr_end, user_id):
+    rev = JournalEntry(
+        entry_number=settlement_entry_number(year, qtr_end.month, source_je.branch_id),
+        entry_date=qtr_end, description=f'Reverse {source_je.description}',
+        reference=f'VATREV-{year}Q{(qtr_end.month // 3)}',
+        entry_type='vat_settlement_reversal', is_reversing=True,
+        reversed_entry_id=source_je.id, branch_id=source_je.branch_id,
+        posted_by_id=user_id, status='posted', posted_at=ph_now(),
+        is_balanced=False, total_debit=ZERO, total_credit=ZERO)
+    db.session.add(rev); db.session.flush()
+    for i, src in enumerate(source_je.lines.all(), start=1):
+        db.session.add(JournalEntryLine(entry_id=rev.id, line_number=i, account_id=src.account_id,
+                                        description=f'Reverse: {src.description or ""}',
+                                        debit_amount=src.credit_amount,
+                                        credit_amount=src.debit_amount))
+    db.session.flush(); _finalize(rev)
+    return rev
+
+
+def reverse_settlement(year, quarter, user_id):
+    s = VatSettlement.query.filter_by(fiscal_year=year, quarter=quarter,
+                                      status='settled').first()
+    if s is None:
+        raise ValueError(f'{year} Q{quarter} is not settled.')
+    latest = _latest_settled()
+    if latest and (latest.fiscal_year, latest.quarter) != (year, quarter):
+        raise ValueError(f'Only the latest settled quarter '
+                         f'({latest.fiscal_year} Q{latest.quarter}) can be reversed.')
+    qstart, qend = quarter_bounds(year, quarter)
+    for je_id in s.get_settlement_entry_ids():
+        src = db.session.get(JournalEntry, je_id)
+        if src is not None:
+            _reverse_je(src, year, qend, user_id)
+    for m in (qstart.month, qstart.month + 1, qstart.month + 2):
+        p = AccountingPeriod.query.filter_by(year=year, month=m).first()
+        if p is not None and p.status == 'closed':
+            p.status = 'open'; p.closed_by_id = None; p.closed_at = None
+    s.status = 'reversed'; s.reversed_at = ph_now(); s.reversed_by_id = user_id
+    db.session.flush()
+    log_audit(module='vat_settlement', action='reverse', record_id=s.id,
+              record_identifier=f'{year} Q{quarter}',
+              new_values={'fiscal_year': year, 'quarter': quarter}, user_id=user_id)
+    return s
