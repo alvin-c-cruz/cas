@@ -1,10 +1,16 @@
 """
 Utility functions for the CAS application.
 """
+import calendar
 from datetime import datetime, timezone, timedelta
 
 # Philippine Standard Time (UTC+8)
 PHT = timezone(timedelta(hours=8))
+
+
+def end_of_month(d):
+    """Return the last calendar day of d's month."""
+    return d.replace(day=calendar.monthrange(d.year, d.month)[1])
 
 
 def ph_now():
