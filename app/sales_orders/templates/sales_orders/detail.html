@@ -196,8 +196,7 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Description</th>
-                        {% if module_enabled('products') %}<th>Product</th>{% endif %}
+                        <th>Product</th>
                         <th style="text-align:right;">Qty</th>
                         <th>UOM</th>
                         <th style="text-align:right;">Unit Price</th>
@@ -209,8 +208,6 @@
                     {% for item in so.line_items %}
                     <tr>
                         <td>{{ item.line_number }}</td>
-                        <td>{{ item.description or '—' }}</td>
-                        {% if module_enabled('products') %}
                         <td style="font-size:12px; color:var(--text-2);">
                             {% if item.product %}
                                 {{ item.product.code }} — {{ item.product.name }}
@@ -218,7 +215,6 @@
                                 —
                             {% endif %}
                         </td>
-                        {% endif %}
                         <td style="text-align:right; font-family:var(--mono);">
                             {{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
                         </td>

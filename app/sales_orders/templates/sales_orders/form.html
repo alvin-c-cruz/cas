@@ -82,8 +82,7 @@
                     <thead>
                         <tr>
                             <th style="width: 1%; white-space: nowrap; color: var(--text-2);">#</th>
-                            <th style="width: 28%;">Description</th>
-                            {% if module_enabled('products') %}<th style="width: 12%;">Product</th>{% endif %}
+                            <th style="width: 34%;">Product</th>
                             <th style="width: 6%; text-align: right;">Qty</th>
                             <th style="width: 7%;">UOM</th>
                             <th style="width: 10%; text-align: right;">Unit Price</th>
@@ -229,7 +228,7 @@ function applyCustomerTerms(terms) {
 
 function addFirstCustomerLine() {
     addLineItem({
-        description: '', amount: 0.00,
+        amount: 0.00,
         vat_category: currentCustomerVatCategory || '',
     });
 }
@@ -295,7 +294,7 @@ function addLineItem(existingItem) {
     const id = lineCounter;
     const item = existingItem
         ? { ...existingItem, id }
-        : { id, description: '', product_id: null, quantity: null, uom_id: null, uom_text: null,
+        : { id, product_id: null, quantity: null, uom_id: null, uom_text: null,
             unit_price: null, amount: 0.00, vat_category: '' };
 
     const rowNum = lineItems.length + 1;
@@ -303,13 +302,10 @@ function addLineItem(existingItem) {
     row.id = `line-${id}`;
     row.innerHTML = `
         <td style="text-align:center; color:var(--text-2); font-size:12px; white-space:nowrap;" class="line-num-cell">${rowNum}</td>
-        <td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
-                   onchange="updateLineItem(${id}, 'description', this.value)"></td>
-        ${productMasterOn ? `
-        <td><select class="form-control" onchange="onProductPick(${id}, this.value)">
-              <option value="">—</option>
+        <td><select class="form-control" required onchange="onProductPick(${id}, this.value)">
+              <option value="">— select product —</option>
               ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
-            </select></td>` : ''}
+            </select></td>
         <td><input type="number" step="0.0001" min="0" id="qty-${id}" class="form-control"
                    style="text-align:right;"
                    value="${item.quantity != null ? item.quantity : ''}"
@@ -415,11 +411,6 @@ function onProductPick(id, productId) {
     item.product_id = productId || null;
     const p = products.find(pp => String(pp.id) === String(productId));
     if (!p) return;
-    if (p.name) {
-        item.description = p.name;
-        const descEl = document.getElementById(`desc-${id}`);
-        if (descEl) descEl.value = p.name;
-    }
     if (p.default_uom_id != null) {
         item.uom_id = p.default_uom_id;
         const uomEl = document.getElementById(`uom-sel-${id}`);
@@ -477,10 +468,8 @@ function validateForm() {
     for (let i = 0; i < lineItems.length; i++) {
         const item = lineItems[i];
         const n = i + 1;
+        if (!item.product_id) { block(`Line ${n}: select a product.`); return; }
         if (!item.amount || item.amount <= 0) { block(`Line ${n}: enter an amount greater than zero.`); return; }
-        if (lineItems.length > 1 && !(item.description || '').trim()) {
-            block(`Line ${n}: enter a description.`); return;
-        }
     }
 
     allow();
@@ -493,7 +482,6 @@ document.getElementById('soForm').addEventListener('submit', function () {
         const vat     = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
         return {
-            description:  item.description,
             product_id:   item.product_id  != null ? item.product_id  : null,
             quantity:     item.quantity    != null ? item.quantity    : null,
             uom_id:       item.uom_id      != null ? item.uom_id      : null,

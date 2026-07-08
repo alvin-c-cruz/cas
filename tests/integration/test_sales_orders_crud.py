@@ -110,6 +110,19 @@ def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, ad
     assert '₱' not in html           # peso sign U+20B1
 
 
+def test_create_form_is_product_first_no_description(client, db_session, admin_user, main_branch):
+    """The SO create form is product-first: the product picker is present and there is
+    no free-text line Description input anywhere in the editor JS/markup."""
+    _product(db_session)
+    _enable_products(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/sales-orders/create').get_data(as_text=True)
+    assert 'onProductPick' in html          # product picker is present
+    assert 'desc-${id}' not in html         # the description input template is gone
+    assert "'description'" not in html and 'item.description' not in html
+
+
 def test_line_without_product_is_rejected(client, db_session, admin_user, main_branch):
     """A real line (amount > 0) with no product must be rejected server-side and the
     SO must not persist — product is required per line."""
