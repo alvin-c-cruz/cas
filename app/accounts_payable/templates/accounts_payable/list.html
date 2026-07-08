@@ -157,7 +157,7 @@
                     <td><input type="checkbox" class="pb-row-check" value="{{ ap.id }}" aria-label="Select {{ ap.ap_number }}"></td>
                     <td><a href="{{ url_for('accounts_payable.view', id=ap.id) }}" style="font-weight:600;color:var(--blue);">{{ ap.ap_number }}</a></td>
                     <td>{{ ap.ap_date.strftime('%b %d, %Y') }}</td>
-                    <td>{{ ap.vendor_name }}</td>
+                    <td>{{ ap.vendor_name }}{% if ap.payee_type == 'employee' %} <span class="badge badge-wt" title="Employee payee">Employee</span>{% endif %}</td>
                     <td {% if ap.due_date and ap.due_date < today and ap.status in ['posted', 'partially_paid'] %}style="color:var(--red);font-weight:600;"{% endif %}>
                         {{ ap.due_date.strftime('%b %d, %Y') if ap.due_date else '—' }}
                     </td>

@@ -1,5 +1,5 @@
 """Employee master views (opt-in payroll module)."""
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -11,6 +11,14 @@ from app.users.utils import get_accessible_branches
 from app.users.models import User
 
 employees_bp = Blueprint('employees', __name__, template_folder='templates')
+
+
+def _wants_json():
+    """True when the request is an AJAX/JSON call (modal quick-add)."""
+    return (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        or request.accept_mimetypes.best == 'application/json'
+    )
 
 _FIELDS = ['employee_no', 'first_name', 'middle_name', 'last_name', 'birthdate',
            'address', 'phone', 'email', 'tin', 'sss_no', 'philhealth_no', 'pagibig_no',
@@ -87,7 +95,10 @@ def create():
     _set_choices(form)
     if form.validate_on_submit():
         if Employee.query.filter_by(employee_no=form.employee_no.data).first():
-            flash(f'Employee number "{form.employee_no.data}" already exists.', 'error')
+            msg = f'Employee number "{form.employee_no.data}" already exists.'
+            if _wants_json():
+                return jsonify(ok=False, errors={'employee_no': msg}), 422
+            flash(msg, 'error')
             return render_template('employees/form.html', form=form, employee=None)
         e = Employee()
         _apply(form, e)
@@ -95,8 +106,15 @@ def create():
         log_create(module='employee', record_id=e.id,
                    record_identifier=f'{e.employee_no} - {e.full_name}',
                    new_values=model_to_dict(e, _FIELDS))
+        if _wants_json():
+            return jsonify(ok=True, employee={
+                'id': e.id,
+                'label': f'{e.employee_no} - {e.full_name}',
+            })
         flash(f'Employee "{e.full_name}" created successfully!', 'success')
         return redirect(url_for('employees.list_employees'))
+    if request.method == 'POST' and _wants_json():
+        return jsonify(ok=False, errors={f: errs[0] for f, errs in form.errors.items()}), 422
     if request.method == 'GET':
         form.employee_no.data = generate_next_employee_no()
         form.is_active.data = '1'
