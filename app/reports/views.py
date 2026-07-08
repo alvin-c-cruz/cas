@@ -569,24 +569,6 @@ def trial_balance_print():
                            company=company, branch_name=branch_name)
 
 
-def _is_params():
-    """Shared (start_date, end_date, branch_id) parsing for Income Statement routes.
-
-    Defaults to year-to-date (Jan 1 of the current year -> today).
-    """
-    today = date.today()
-
-    def _parse(param, fallback):
-        try:
-            return date.fromisoformat(request.args.get(param, ''))
-        except (ValueError, TypeError):
-            return fallback
-
-    return (_parse('start_date', date(today.year, 1, 1)),
-            _parse('end_date', today),
-            session.get('selected_branch_id'))
-
-
 def _stmt_params():
     """Single reporting-date parsing for Income Statement & Cash Flow.
 
@@ -708,26 +690,30 @@ def cash_flow():
 @reports_bp.route('/reports/cash-flow/export/excel')
 @login_required
 def cash_flow_export_excel():
-    """Export the Statement of Cash Flows to a formatted Excel workbook."""
+    """Export the two-column Statement of Cash Flows to a formatted Excel workbook."""
     from app.reports.statement_export import build_cash_flow_xlsx
-    start_date, end_date, branch_id = _is_params()
-    cf = generate_cash_flow(start_date, end_date, branch_id=branch_id)
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    cf = merge_cf_two_column(
+        generate_cash_flow(mtd_start, as_of, branch_id=branch_id),
+        generate_cash_flow(ytd_start, as_of, branch_id=branch_id))
     company, branch_name = _bs_company_branch(branch_id)
-    period_label = f"{start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
-    filename = f'Cash_Flow_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx'
-    return build_cash_flow_xlsx(cf, period_label, company, branch_name, filename)
+    as_of_label = f'As of {as_of.strftime("%B %d, %Y")}'
+    filename = f'Cash_Flow_{as_of.isoformat()}.xlsx'
+    return build_cash_flow_xlsx(cf, as_of_label, company, branch_name, filename)
 
 
 @reports_bp.route('/reports/cash-flow/print')
 @login_required
 def cash_flow_print():
     from app.reports.statement_export import cash_flow_lines
-    start_date, end_date, branch_id = _is_params()
-    cf = generate_cash_flow(start_date, end_date, branch_id=branch_id)
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    cf = merge_cf_two_column(
+        generate_cash_flow(mtd_start, as_of, branch_id=branch_id),
+        generate_cash_flow(ytd_start, as_of, branch_id=branch_id))
     company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/cash_flow_print.html',
-                           lines=cash_flow_lines(cf), start_date=start_date,
-                           end_date=end_date, company=company, branch_name=branch_name)
+                           lines=cash_flow_lines(cf), as_of=as_of,
+                           company=company, branch_name=branch_name)
 
 
 def _descendant_leaf_ids(account):

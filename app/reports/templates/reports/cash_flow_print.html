@@ -29,15 +29,20 @@
         {% if branch_name %}Branch: {{ branch_name }} &nbsp; {% endif %}
     </div>
     <h1>Statement of Cash Flows</h1>
-    <div class="meta">Indirect Method &nbsp;·&nbsp; {{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
+    <div class="meta">Indirect Method &nbsp;·&nbsp; As of {{ as_of.strftime('%B %d, %Y') }} — Current month vs. Year to date</div>
 
     <table>
         <tbody>
-            <tr class="colhead"><td>Particulars</td><td class="num">Amount</td></tr>
+            <tr class="colhead">
+                <td>Particulars</td>
+                <td class="num">{{ as_of.strftime('%b %Y') }}</td>
+                <td class="num">YTD {{ as_of.year }}</td>
+            </tr>
             {% for ln in lines %}
             <tr class="{{ ln.kind }}{% if ln.indent %} indent{% endif %}{% if ln.rule %} rule-{{ ln.rule }}{% endif %}">
                 <td>{{ ln.label }}</td>
-                <td class="num">{% if ln.amount is not none %}{% if ln.amount < 0 %}(₱{{ '{:,.2f}'.format(-ln.amount) }}){% else %}₱{{ '{:,.2f}'.format(ln.amount) }}{% endif %}{% endif %}</td>
+                <td class="num">{% if ln.mtd is not none %}{% if ln.mtd < 0 %}(₱{{ '{:,.2f}'.format(-ln.mtd) }}){% else %}₱{{ '{:,.2f}'.format(ln.mtd) }}{% endif %}{% endif %}</td>
+                <td class="num">{% if ln.ytd is not none %}{% if ln.ytd < 0 %}(₱{{ '{:,.2f}'.format(-ln.ytd) }}){% else %}₱{{ '{:,.2f}'.format(ln.ytd) }}{% endif %}{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>
