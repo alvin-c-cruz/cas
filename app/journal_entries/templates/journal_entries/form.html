@@ -10,9 +10,12 @@
         <form method="POST" id="journalEntryForm">
             {{ form.hidden_tag() }}
 
-            <!-- Header 2x2 grid: Entry Number | Reference (top), Entry Date | Description
-                 (below) so Reference sits directly above Description. -->
+            <!-- Header grid: Entry Date | Entry Number, then Reference | Entry Type,
+                 then a full-width Description. Auto-reverse lives on the Add Line row. -->
             <div class="form-row-2">
+                <div class="form-group">
+                    {{ render_field(form.entry_date) }}
+                </div>
                 <div class="form-group">
                     {{ form.entry_number.label(class='form-label') }}
                     {% if entry %}
@@ -28,41 +31,32 @@
                         </div>
                     {% endif %}
                 </div>
+            </div>
+            <div class="form-row-2">
                 <div class="form-group">
                     {{ render_field(form.reference) }}
                 </div>
-            </div>
-            <div class="form-row-2">
-                <div class="form-group">
-                    {{ render_field(form.entry_date) }}
-                </div>
-                <div class="form-group">
-                    {{ render_field(form.description) }}
-                </div>
-            </div>
-
-            <!-- Entry Type + Reversing options -->
-            <div class="form-row-2">
                 <div class="form-group">
                     {{ render_field(form.entry_type) }}
                 </div>
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        {{ form.is_reversing() }}
-                        {{ form.is_reversing.label.text }}
-                    </label>
-                </div>
             </div>
-            <div class="form-row-2">
-                <div class="form-group" id="reversalDateGroup" style="display: none;">
-                    {{ render_field(form.reversal_date) }}
-                </div>
+            <div class="form-group">
+                {{ render_field(form.description) }}
             </div>
 
             {# Journal Entry Lines #}
             <div style="margin-top: 14px; margin-bottom: 20px;">
-                <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label class="checkbox-label">
+                        {{ form.is_reversing() }}
+                        {{ form.is_reversing.label.text }}
+                    </label>
                     <button type="button" class="btn btn-secondary" id="addLineBtn">+ Add Line</button>
+                </div>
+                <div class="form-row-2" style="margin-bottom: 8px;">
+                    <div class="form-group" id="reversalDateGroup" style="display: none;">
+                        {{ render_field(form.reversal_date) }}
+                    </div>
                 </div>
 
                 <!-- Lines Table -->
