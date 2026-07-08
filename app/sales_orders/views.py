@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, render_template, redirect, url_for, flash,
-                   request, session, abort, current_app)
+                   request, session, abort, current_app, jsonify)
 from flask_login import login_required, current_user
 
 from app import db
@@ -23,6 +23,9 @@ from app.audit.utils import log_create, log_update, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products, get_sales_vat_categories
+from app.sales_orders.preprinted_layout import (
+    get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
+    DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
 
 sales_orders_bp = Blueprint('sales_orders', __name__, template_folder='templates')
 
@@ -441,6 +444,42 @@ def print_so(id):
     }
     return render_template('sales_orders/print.html', so=so,
                            company=company, printed_at=ph_now())
+
+
+@sales_orders_bp.route('/sales-orders/<int:id>/print-preprinted')
+@login_required
+def print_preprinted(id):
+    """Drag-positioned, data-only overlay for BIR-registered physical pre-printed SO stock."""
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    return render_template(
+        'sales_orders/print_preprinted.html', so=so, company=company,
+        printed_at=ph_now(), layout=get_layout(so.branch_id),
+        can_edit_layout=current_user.has_full_access,
+        col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+        paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+        date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+        signatory_ids=TEXT_KEYS,
+        date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
+
+
+@sales_orders_bp.route('/sales-orders/print-layout', methods=['POST'])
+@login_required
+def save_print_layout():
+    """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    # The layout is per-branch; the print page requires the selected branch to equal
+    # the document's branch, so the session branch is the document's branch.
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    return jsonify(ok=True, layout=clean)
 
 
 # ── confirm / cancel ──────────────────────────────────────────────────────────

@@ -284,3 +284,25 @@ def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, m
     # Status badge renders the text "Draft"
     assert b'badge-draft' in resp.data
     assert b'Draft' in resp.data
+
+
+def test_print_preprinted_renders_designer_no_currency_glyph(client, db_session, admin_user, main_branch):
+    """GET /sales-orders/<id>/print-preprinted → 200; the drag designer canvas is present
+    and no peso glyph leaks (no-currency-symbol convention)."""
+    c = _customer(db_session)
+    p = _product(db_session, code='PPF', name='PrePrint Widget')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0'}])
+    client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-PPF1', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-PPF1').first()
+    assert so is not None
+    resp = client.get(f'/sales-orders/{so.id}/print-preprinted')
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'ppCanvas' in html            # drag-designer canvas rendered
+    assert '₱' not in html          # peso sign U+20B1
