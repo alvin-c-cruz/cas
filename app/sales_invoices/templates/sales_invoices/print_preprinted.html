@@ -142,11 +142,7 @@
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
         {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.name }}{% else %}{{ item.description or '—' }}{% endif %}
         {%- elif col.key == 'quantity' -%}
-          {%- if item.quantity is none -%}—
-          {%- else -%}
-            {%- set uom_pcs = item.unit_of_measure and ((item.unit_of_measure.name or '')|lower in ('pieces', 'piece') or (item.unit_of_measure.code or '')|upper in ('PC', 'PCS', 'PCE')) -%}
-            {{- '{:,.0f}'.format(item.quantity) if uom_pcs else '{:,.4f}'.format(item.quantity) -}}
-          {%- endif -%}
+          {{- item | qty_fmt('—') -}}
         {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '—') }}
         {%- elif col.key == 'unit_price' -%}{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
         {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}

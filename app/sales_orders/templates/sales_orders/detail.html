@@ -219,7 +219,7 @@
                             {% endif %}
                         </td>
                         <td style="text-align:right; font-family:var(--mono);">
-                            {{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
+                            {{ item | qty_fmt('—') }}
                         </td>
                         <td style="font-size:12px;">
                             {{ item.unit_of_measure.code if item.unit_of_measure
