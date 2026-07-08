@@ -155,9 +155,17 @@
     }
     /* Tight cells: minimize the gap between columns and rows. */
     #linesTable td, #linesTable th { padding: 2px 4px; }
-    /* Account picker: same 32px height, vertically-centred chip, no extra margin. */
+    /* Account picker: same 32px height + WHITE background & matching border so it
+       looks like the other inputs (Choices defaults to a grey #f9f9f9 fill that
+       reads as "disabled"). */
     .line-row .choices { margin-bottom: 0; }
-    .line-row .choices__inner { padding: 0 6px; min-height: 32px; font-size: 13px; display: flex; align-items: center; }
+    .line-row .choices__inner {
+        padding: 0 6px; min-height: 32px; font-size: 13px;
+        display: flex; align-items: center;
+        background: #fff; border: 1px solid #cbd5e1;
+    }
+    .line-row .choices.is-focused .choices__inner,
+    .line-row .choices.is-open .choices__inner { border-color: #3b82f6; }
     .line-row input:focus, .line-row select:focus {
         outline: none;
         border-color: #3b82f6;
