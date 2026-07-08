@@ -8,7 +8,7 @@ pytestmark = [pytest.mark.usefixtures("app"), pytest.mark.sales_orders]
 
 
 def test_item_derived_amount_and_vat():
-    li = SalesOrderItem(line_number=1, description='Widget', quantity=Decimal('10'),
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'),
                         unit_price=Decimal('112.00'), vat_rate=Decimal('12.00'))
     li.calculate_amounts()
     assert li.amount == Decimal('1120.00')        # 10 × 112.00
@@ -17,14 +17,14 @@ def test_item_derived_amount_and_vat():
 
 
 def test_item_lump_sum_when_no_qty():
-    li = SalesOrderItem(line_number=1, description='x', amount=Decimal('5000.00'),
+    li = SalesOrderItem(line_number=1, amount=Decimal('5000.00'),
                         vat_rate=Decimal('0.00'))
     li.calculate_amounts()
     assert li.amount == Decimal('5000.00')
 
 
 def test_item_to_dict_has_p56_keys_no_account():
-    li = SalesOrderItem(line_number=1, description='x', quantity=Decimal('2'),
+    li = SalesOrderItem(line_number=1, quantity=Decimal('2'),
                         unit_price=Decimal('50.00'), uom_text='pcs', vat_rate=Decimal('0.00'))
     li.calculate_amounts()
     d = li.to_dict()
@@ -32,6 +32,7 @@ def test_item_to_dict_has_p56_keys_no_account():
               'product_id', 'product_code', 'product_name'):
         assert k in d
     assert 'account_id' not in d and 'wt_id' not in d
+    assert 'description' not in d
 
 
 def test_order_has_no_accounting_fields():
@@ -44,8 +45,8 @@ def test_order_has_no_accounting_fields():
 
 def test_calculate_totals_sums_vat_inclusive_lines():
     so = SalesOrder()
-    i1 = SalesOrderItem(line_number=1, description='a', amount=Decimal('1120.00'), vat_rate=Decimal('12'))
-    i2 = SalesOrderItem(line_number=2, description='b', amount=Decimal('2240.00'), vat_rate=Decimal('12'))
+    i1 = SalesOrderItem(line_number=1, amount=Decimal('1120.00'), vat_rate=Decimal('12'))
+    i2 = SalesOrderItem(line_number=2, amount=Decimal('2240.00'), vat_rate=Decimal('12'))
     for i in (i1, i2):
         i.calculate_amounts()
     so.line_items = [i1, i2]

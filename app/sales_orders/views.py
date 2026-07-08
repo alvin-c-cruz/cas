@@ -52,7 +52,6 @@ def _parse_and_attach_so_lines(so, lines_json):
         vat_rate = _dec(d.get('vat_rate')) or Decimal('0.00')
         li = SalesOrderItem(
             line_number=idx,
-            description=d.get('description', ''),
             quantity=_dec(d.get('quantity')),
             unit_price=_dec(d.get('unit_price')),
             uom_text=(d.get('uom_text') or None),

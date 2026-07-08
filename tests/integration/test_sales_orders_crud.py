@@ -43,13 +43,36 @@ def _customer(db_session):
     return c
 
 
+def _product(db_session, code='WIDGET', name='Widget'):
+    from app.units_of_measure.models import UnitOfMeasure
+    from app.products.models import Product
+    uom = UnitOfMeasure.query.filter_by(code='pcs').first()
+    if uom is None:
+        uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+        db_session.add(uom); db_session.commit()
+    p = Product(code=code, name=name, default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('100.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+    return p
+
+
+def _enable_products(db_session):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:units_of_measure', '1')
+    AppSettings.set_setting('module_enabled:products', '1')
+    db_session.commit()
+    clear_module_config_cache()
+
+
 # ── tests ─────────────────────────────────────────────────────────────────────
 
 def test_create_sales_order_persists_and_audits(client, db_session, admin_user, main_branch):
     c = _customer(db_session)
+    p = _product(db_session)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
-    lines = json.dumps([{'description': 'Widget', 'quantity': '2', 'unit_price': '100.00',
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
                          'vat_category': None, 'vat_rate': '0'}])
     resp = client.post('/sales-orders/create', data={
         'so_number': 'SO-2026-06-0001', 'order_date': '2026-06-15',
@@ -69,12 +92,13 @@ def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, ad
     """SO detail must render em-dashes as the literal glyph (never the '&#8212;'
     entity, which Jinja autoescaping leaks as literal text when it sits inside a
     {{ }} string fallback), and must show bare numbers with no peso glyph
-    (no-currency-symbol convention). A line with no UOM/product exercises the
-    em-dash fallbacks; a unit price exercises the money cells."""
+    (no-currency-symbol convention). A line with no UOM exercises the em-dash
+    fallback; a unit price exercises the money cells."""
     c = _customer(db_session)
+    p = _product(db_session)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
-    lines = json.dumps([{'description': 'Widget', 'quantity': '2', 'unit_price': '100.00',
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
                          'vat_category': None, 'vat_rate': '0'}])
     client.post('/sales-orders/create', data={
         'so_number': 'SO-2026-06-0009', 'order_date': '2026-06-15',
@@ -124,8 +148,10 @@ def test_duplicate_so_number_rejected(client, db_session, admin_user, main_branc
 
 
 def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
-    """GET /sales-orders/<id> → 200; SO number, line description, and amount render."""
+    """GET /sales-orders/<id> → 200; SO number, line product, and amount render."""
     c = _customer(db_session)
+    p = _product(db_session, code='BLUE', name='Blue Widget')
+    _enable_products(db_session)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
 
@@ -143,7 +169,7 @@ def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
     line = SalesOrderItem(
         sales_order_id=so.id,
         line_number=1,
-        description='Blue Widget',
+        product_id=p.id,
         quantity=Decimal('3.0000'),
         unit_price=Decimal('50.00'),
         amount=Decimal('150.00'),
@@ -158,7 +184,7 @@ def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
     resp = client.get(f'/sales-orders/{so.id}')
     assert resp.status_code == 200
     assert b'SO-VIEW-0001' in resp.data
-    assert b'Blue Widget' in resp.data
+    assert b'Blue Widget' in resp.data   # product name renders in the line
     assert b'150' in resp.data  # amount appears in the line
 
 

@@ -10,7 +10,6 @@ pytestmark = [pytest.mark.usefixtures("app"), pytest.mark.sales_orders]
 def test_parser_reads_qty_uom_price_product(db_session, main_branch):
     so = SalesOrder(branch_id=main_branch.id)
     payload = json.dumps([{
-        'description': 'Widget',
         'quantity': '10',
         'unit_price': '112.00',
         'uom_id': None,
