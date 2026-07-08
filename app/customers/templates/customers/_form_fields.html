@@ -23,6 +23,13 @@
             {% if form.name.errors %}<div class="error-message">{{ form.name.errors[0] }}</div>{% endif %}
         </div>
         {{ status_toggle(form.is_active, label_class='') }}
+        <div class="form-group">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                {{ form.po_required(style="width:auto; margin:0;") }}
+                {{ form.po_required.label.text }}
+            </label>
+            <small class="form-hint">When set, a Purchase Order number is required before a Sales Order for this customer can be confirmed.</small>
+        </div>
     </div>
 </div>
 
