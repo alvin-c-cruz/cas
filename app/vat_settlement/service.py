@@ -132,3 +132,197 @@ def compute_vat_position(year, quarter):
         'output_ids': out_ids, 'input_ids': in_ids,
         'payable_account': payable_acct, 'carryover_account': carry_acct,
     }
+
+
+from app.branches.models import Branch
+from app.periods.models import AccountingPeriod
+from app.audit.utils import log_audit
+from app.utils import ph_now
+from app.vat_settlement.models import VatSettlement
+
+
+def primary_branch():
+    b = Branch.query.filter_by(is_active=True).order_by(Branch.id).first()
+    if b is None:
+        raise ValueError('No active branch to post the settlement entry under.')
+    return b
+
+
+def settlement_entry_number(year, qtr_end_month, branch_id):
+    prefix = f'JV-{year}-{qtr_end_month:02d}-'
+    latest = JournalEntry.query.filter(
+        JournalEntry.entry_number.like(f'{prefix}%'),
+        JournalEntry.branch_id == branch_id,
+    ).order_by(JournalEntry.entry_number.desc()).first()
+    nxt = 1
+    if latest:
+        try:
+            nxt = int(latest.entry_number.split('-')[-1]) + 1
+        except (ValueError, IndexError):
+            nxt = 1
+    return f'{prefix}{nxt:04d}'
+
+
+def draft_vat_docs_in_quarter(year, quarter):
+    from app.sales_invoices.models import SalesInvoice
+    from app.accounts_payable.models import AccountsPayable
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    from app.cash_receipts.models import CashReceiptVoucher
+    qstart, qend = quarter_bounds(year, quarter)
+    found = []
+    checks = [
+        (SalesInvoice, SalesInvoice.invoice_date, SalesInvoice.invoice_number, 'Sales Invoice'),
+        (AccountsPayable, AccountsPayable.ap_date, AccountsPayable.ap_number, 'AP Bill'),
+        (CashDisbursementVoucher, CashDisbursementVoucher.cdv_date,
+         CashDisbursementVoucher.cdv_number, 'Cash Disbursement'),
+        (CashReceiptVoucher, CashReceiptVoucher.crv_date,
+         CashReceiptVoucher.crv_number, 'Cash Receipt'),
+    ]
+    for model, datecol, numcol, label in checks:
+        rows = model.query.filter(model.status == 'draft',
+                                  datecol >= qstart, datecol <= qend).all()
+        found += [f'{label} {getattr(r, numcol.key)}' for r in rows]
+    return found
+
+
+def _has_posted_vat_movement_before(qstart):
+    """Any posted, non-settlement VAT-account movement strictly before qstart."""
+    ids = output_account_ids() + input_account_ids()
+    if not ids:
+        return False
+    row = db.session.query(JournalEntryLine.id).join(JournalEntry).filter(
+        JournalEntry.status == 'posted',
+        ~JournalEntry.entry_type.in_(SETTLEMENT_TYPES),
+        JournalEntry.entry_date < qstart,
+        JournalEntryLine.account_id.in_(ids),
+    ).first()
+    return row is not None
+
+
+def assert_settleable(year, quarter, today):
+    qstart, qend = quarter_bounds(year, quarter)
+    if qend > today:
+        raise ValueError(f'{year} Q{quarter} has not ended yet; it can be settled on or '
+                         f'after {qend.isoformat()}.')
+    if VatSettlement.query.filter_by(fiscal_year=year, quarter=quarter,
+                                     status='settled').first():
+        raise ValueError(f'{year} Q{quarter} VAT is already settled.')
+    # prior quarter must be settled if there is any earlier VAT activity
+    prior_year, prior_q = (year - 1, 4) if quarter == 1 else (year, quarter - 1)
+    prior_settled = VatSettlement.query.filter_by(fiscal_year=prior_year, quarter=prior_q,
+                                                  status='settled').first() is not None
+    if not prior_settled and _has_posted_vat_movement_before(qstart):
+        raise ValueError(f'Settle {prior_year} Q{prior_q} before settling {year} Q{quarter}.')
+    drafts = draft_vat_docs_in_quarter(year, quarter)
+    if drafts:
+        preview = ', '.join(drafts[:5]) + ('…' if len(drafts) > 5 else '')
+        raise ValueError(f'Cannot settle {year} Q{quarter}: post or void these draft documents '
+                         f'first ({len(drafts)}): {preview}')
+
+
+def eligible_quarters(today):
+    from app.vat_settlement.models import VatSettlement as _VS  # noqa
+    earliest = db.session.query(func.min(JournalEntry.entry_date)).filter(
+        JournalEntry.status == 'posted').scalar()
+    if earliest is None:
+        return []
+    out = []
+    y = earliest.year
+    while date(y, 1, 1) <= today:
+        for q in range(1, 5):
+            try:
+                assert_settleable(y, q, today)
+                out.append((y, q))
+            except ValueError:
+                continue
+        y += 1
+    return out
+
+
+def _new_settlement_je(branch_id, year, qtr_end, description, user_id):
+    je = JournalEntry(
+        entry_number=settlement_entry_number(year, qtr_end.month, branch_id),
+        entry_date=qtr_end, description=description,
+        reference=f'VAT-{year}Q{(qtr_end.month // 3)}',
+        entry_type='vat_settlement', branch_id=branch_id,
+        created_by_id=user_id, status='posted', posted_at=ph_now(),
+        is_balanced=False, total_debit=ZERO, total_credit=ZERO)
+    db.session.add(je); db.session.flush()
+    return je
+
+
+def _finalize(je):
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'Settlement entry {je.entry_number} is not balanced '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+
+def settle_quarter(year, quarter, user_id):
+    assert_settleable(year, quarter, ph_now().date())
+    pos = compute_vat_position(year, quarter)
+    qstart, qend = quarter_bounds(year, quarter)
+    branch = primary_branch()
+    je_ids = []
+
+    has_activity = (pos['output_vat'] != ZERO or pos['input_vat'] != ZERO
+                    or pos['prior_carryover'] != ZERO)
+    if has_activity:
+        je = _new_settlement_je(branch.id, year, qend,
+                                f'VAT settlement — {year} Q{quarter}', user_id)
+        ln = 1
+        # zero every output account (debit its credit balance)
+        for aid in pos['output_ids']:
+            bal = _q2(_balance([aid], qend, 'credit'))
+            if bal != ZERO:
+                db.session.add(JournalEntryLine(entry_id=je.id, line_number=ln, account_id=aid,
+                                                description='Clear Output VAT',
+                                                debit_amount=bal, credit_amount=ZERO)); ln += 1
+        # zero every input account (credit its debit balance)
+        for aid in pos['input_ids']:
+            bal = _q2(_balance([aid], qend, 'debit'))
+            if bal != ZERO:
+                db.session.add(JournalEntryLine(entry_id=je.id, line_number=ln, account_id=aid,
+                                                description='Clear Input VAT',
+                                                debit_amount=ZERO, credit_amount=bal)); ln += 1
+        carry_id = pos['carryover_account'].id
+        if pos['net_payable'] > ZERO:
+            if pos['prior_carryover'] > ZERO:  # draw prior carryover to zero
+                db.session.add(JournalEntryLine(entry_id=je.id, line_number=ln, account_id=carry_id,
+                                                description='Apply prior Excess Input Tax',
+                                                debit_amount=ZERO,
+                                                credit_amount=pos['prior_carryover'])); ln += 1
+            db.session.add(JournalEntryLine(entry_id=je.id, line_number=ln,
+                                            account_id=pos['payable_account'].id,
+                                            description='VAT Payable',
+                                            debit_amount=ZERO, credit_amount=pos['net_payable'])); ln += 1
+        else:  # net creditable: move carryover to its new balance
+            delta = _q2(pos['new_carryover'] - pos['prior_carryover'])
+            if delta > ZERO:
+                db.session.add(JournalEntryLine(entry_id=je.id, line_number=ln, account_id=carry_id,
+                                                description='Excess Input Tax carried forward',
+                                                debit_amount=delta, credit_amount=ZERO)); ln += 1
+            elif delta < ZERO:
+                db.session.add(JournalEntryLine(entry_id=je.id, line_number=ln, account_id=carry_id,
+                                                description='Excess Input Tax carried forward',
+                                                debit_amount=ZERO, credit_amount=-delta)); ln += 1
+        db.session.flush(); _finalize(je); je_ids.append(je.id)
+
+    s = VatSettlement(fiscal_year=year, quarter=quarter, status='settled',
+                      output_vat=pos['output_vat'], input_vat=pos['input_vat'],
+                      prior_carryover=pos['prior_carryover'], net_payable=pos['net_payable'],
+                      new_carryover=pos['new_carryover'], settled_by_id=user_id, settled_at=ph_now())
+    s.set_settlement_entry_ids(je_ids)
+    db.session.add(s); db.session.flush()
+
+    for m in (qstart.month, qstart.month + 1, qstart.month + 2):
+        p = AccountingPeriod.get_or_create_period(year, m)
+        if p.status != 'closed':
+            p.status = 'closed'; p.closed_by_id = user_id; p.closed_at = ph_now()
+
+    log_audit(module='vat_settlement', action='settle', record_id=s.id,
+              record_identifier=f'{year} Q{quarter}',
+              new_values={'net_payable': str(pos['net_payable']),
+                          'new_carryover': str(pos['new_carryover']),
+                          'settlement_entry_ids': je_ids}, user_id=user_id)
+    return s
