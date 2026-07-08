@@ -363,6 +363,17 @@ def create_app(config_name=None):
         if summary['unbalanced']:
             print("  [WARN] Some posted JEs are unbalanced — investigate before demo.")
 
+    @app.cli.command('seed-philgen-demo')
+    def seed_philgen_demo_command():
+        """Build the Philgen Pacific Food Products (exporter) demo dataset into the active DB."""
+        from app.seeds.philgen_demo import run_seed_philgen_demo
+        summary = run_seed_philgen_demo(reset=False)
+        print("\n[OK] Philgen demo seed complete:")
+        for k in ('si', 'si_export', 'si_domestic', 'ap', 'crv', 'cdv', 'jv', 'unbalanced'):
+            print(f"  {k:>12}: {summary[k]}")
+        if summary['unbalanced']:
+            print("  [WARN] Some posted JEs are unbalanced — investigate before demo.")
+
     # Request/Response logging middleware
     @app.before_request
     def log_request_info():
