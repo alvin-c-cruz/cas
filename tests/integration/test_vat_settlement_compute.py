@@ -102,6 +102,20 @@ def test_tieout_invariant_breaks_on_unsettled_prior_movement(db_session, main_br
         service.compute_vat_position(2025, 3)
 
 
+def test_zero_rated_sale_contributes_no_output_vat(db_session, main_branch):
+    from app.sales_vat_categories.models import SalesVATCategory
+    w = _vat_world(main_branch)
+    db.session.add(SalesVATCategory(code='V0', name='Zero-Rated', rate=Decimal('0.00'),
+                                    transaction_nature='zero_export', is_active=True,
+                                    output_vat_account_id=None))
+    db.session.commit()
+    assert None not in service.output_account_ids()           # V0's null account is not a source
+    _je(main_branch.id, date(2025, 7, 10), [(w['ar'].id, 120000, 0), (w['out'].id, 0, 120000)])
+    db.session.commit()
+    pos = service.compute_vat_position(2025, 3)
+    assert pos['output_vat'] == Decimal('120000.00')          # only the 12% sale; V0 added nothing
+
+
 def test_resolve_target_fails_closed_when_unset(db_session, main_branch):
     _vat_world(main_branch)
     AppSettings.query.filter_by(key='vat_payable_account_code').delete()

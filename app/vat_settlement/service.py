@@ -200,6 +200,8 @@ def _has_posted_vat_movement_before(qstart):
 
 
 def assert_settleable(year, quarter, today):
+    resolve_target_account('vat_payable_account_code', 'VAT Payable')
+    resolve_target_account('input_vat_carryover_account_code', 'Excess Input Tax Carry-Over')
     qstart, qend = quarter_bounds(year, quarter)
     if qend > today:
         raise ValueError(f'{year} Q{quarter} has not ended yet; it can be settled on or '

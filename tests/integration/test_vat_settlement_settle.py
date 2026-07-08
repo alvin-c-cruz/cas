@@ -98,6 +98,17 @@ def test_cannot_settle_twice(db_session, main_branch, admin_user):
         service.assert_settleable(2025, 3, TODAY)
 
 
+def test_assert_settleable_requires_assigned_accounts(db_session, main_branch, admin_user):
+    from app.settings import AppSettings
+    _vat_world(main_branch)
+    AppSettings.query.filter(AppSettings.key.in_(
+        ['vat_payable_account_code', 'input_vat_carryover_account_code'])).delete(
+        synchronize_session=False)
+    db.session.commit()
+    with pytest.raises(ValueError):
+        service.assert_settleable(2025, 3, TODAY)
+
+
 def test_settle_writes_audit(db_session, main_branch, admin_user):
     from app.audit.models import AuditLog
     _vat_world(main_branch); db.session.commit()

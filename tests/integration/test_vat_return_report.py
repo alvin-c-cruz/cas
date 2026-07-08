@@ -22,6 +22,19 @@ def test_vat_return_summary_payable(db_session, main_branch):
     assert 'error' not in r
 
 
+def test_vat_return_summary_for_settled_quarter_uses_snapshot(db_session, main_branch, admin_user):
+    from app.vat_settlement import service
+    w = _vat_world(main_branch)
+    _je(main_branch.id, date(2025, 7, 10), [(w['ar'].id, 120000, 0), (w['out'].id, 0, 120000)])
+    _je(main_branch.id, date(2025, 8, 10), [(w['inp'].id, 50000, 0), (w['ap'].id, 0, 50000)])
+    db.session.commit()
+    service.settle_quarter(2025, 3, admin_user.id); db.session.commit()
+    r = get_vat_return_summary(2025, 3)
+    assert 'error' not in r
+    assert r['net_payable'] == Decimal('70000.00')
+    assert r['output_vat'] == Decimal('120000.00') and r['input_vat'] == Decimal('50000.00')
+
+
 def test_vat_return_page_renders(client, db_session, main_branch, admin_user):
     _vat_world(main_branch); db.session.commit()
     client.post('/login', data={'username': 'admin', 'password': 'admin123'},
