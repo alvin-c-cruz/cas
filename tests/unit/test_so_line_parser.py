@@ -14,7 +14,7 @@ def test_parser_reads_qty_uom_price_product(db_session, main_branch):
         'unit_price': '112.00',
         'uom_id': None,
         'uom_text': 'pcs',
-        'product_id': None,
+        'product_id': '1',
         'vat_category': None,
         'vat_rate': '12.00',
     }])

@@ -48,16 +48,28 @@ def _parse_and_attach_so_lines(so, lines_json):
             return None
 
     items = json.loads(lines_json) if lines_json else []
+    kept = 0
     for idx, d in enumerate(items, start=1):
         vat_rate = _dec(d.get('vat_rate')) or Decimal('0.00')
+        product_id = _int(d.get('product_id'))
+        amount = Decimal(str(d.get('amount', '0') or '0'))
+        qty = _dec(d.get('quantity'))
+        price = _dec(d.get('unit_price'))
+        is_empty = (product_id is None and (amount is None or amount == 0)
+                    and qty is None and price is None)
+        if is_empty:
+            continue  # skip a blank trailing line
+        if product_id is None:
+            raise ValueError(f'Line {idx}: select a product.')
+        kept += 1
         li = SalesOrderItem(
-            line_number=idx,
-            quantity=_dec(d.get('quantity')),
-            unit_price=_dec(d.get('unit_price')),
+            line_number=kept,
+            quantity=qty,
+            unit_price=price,
             uom_text=(d.get('uom_text') or None),
             unit_of_measure_id=_int(d.get('uom_id')),
-            product_id=_int(d.get('product_id')),
-            amount=Decimal(str(d.get('amount', '0') or '0')),
+            product_id=product_id,
+            amount=amount,
             vat_category=d.get('vat_category') or None,
             vat_rate=vat_rate,
         )
@@ -238,6 +250,11 @@ def create():
             flash(f'Sales Order "{so.so_number}" created successfully!', 'success')
             return redirect(url_for('sales_orders.list'))
 
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), 'error')
+            return render_template('sales_orders/form.html', form=form, so=None,
+                                   line_items=[], **_common_form_ctx())
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error creating sales order', exc_info=True)
@@ -335,6 +352,11 @@ def edit(id):
             flash(f'Sales Order "{so.so_number}" updated successfully!', 'success')
             return redirect(url_for('sales_orders.view', id=so.id))
 
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), 'error')
+            return render_template('sales_orders/form.html', form=form, so=so,
+                                   line_items=restore_items, **_common_form_ctx())
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error updating sales order', exc_info=True)

@@ -110,6 +110,23 @@ def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, ad
     assert '₱' not in html           # peso sign U+20B1
 
 
+def test_line_without_product_is_rejected(client, db_session, admin_user, main_branch):
+    """A real line (amount > 0) with no product must be rejected server-side and the
+    SO must not persist — product is required per line."""
+    c = _customer(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': None, 'quantity': '1', 'unit_price': '50.00',
+                         'vat_category': None, 'vat_rate': '0'}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0100', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'select a product' in resp.data
+    assert SalesOrder.query.filter_by(so_number='SO-2026-06-0100').first() is None
+
+
 def test_create_form_renders_so_number_and_line_editor(client, db_session, admin_user, main_branch):
     """GET /sales-orders/create → 200; full editor present (so_number editable, line table, add-line btn)."""
     _login(client, admin_user)
