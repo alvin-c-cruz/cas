@@ -21,7 +21,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.accounts_payable]
 AP_CREATE = '/accounts-payable/create'
 DESC_SENTINEL = 'ZZTOPDESC_must_not_appear_in_account_title'
 
-VENDOR_SCOPE = '.choices:has(#vendor_id)'
+VENDOR_SCOPE = '.choices:has(#payee)'
 ACCT_SCOPE = '.choices:has(select.acct-select)'
 
 
@@ -54,7 +54,7 @@ def _fill_first_line(page, amount='1000', account_code='50226'):
 def test_line_items_unlock_when_vendor_selected(logged_in_page, e2e_server):
     page = logged_in_page
     page.goto(e2e_server + AP_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
     # Locked before a vendor is chosen.
     assert page.locator('#lineItemsSection').is_hidden()
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
@@ -69,7 +69,7 @@ def test_je_preview_shows_account_name_not_description(logged_in_page, e2e_serve
     never the line description, and debits must equal credits."""
     page = logged_in_page
     page.goto(e2e_server + AP_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
     page.wait_for_selector('#lineItemsSection', state='visible')
     _fill_first_line(page, amount='1000', account_code='50226')
@@ -119,7 +119,7 @@ def test_wt_scoping_tracks_vendor(logged_in_page, e2e_server):
     """
     page = logged_in_page
     page.goto(e2e_server + AP_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
 
     # V001 has WC100 — line items unlock, WT dropdown initialises enabled.
     _pick_in_choices(page, VENDOR_SCOPE, 'V001')
@@ -174,7 +174,7 @@ def test_quick_add_modal_opens_and_selects_new_vendor(logged_in_page, e2e_server
     leave the line items unlocked."""
     page = logged_in_page
     page.goto(e2e_server + AP_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
 
     # Open the picker and click the add-vendor action.
     _pick_in_choices(page, VENDOR_SCOPE, 'Add Vendor')
@@ -191,7 +191,7 @@ def test_quick_add_modal_opens_and_selects_new_vendor(logged_in_page, e2e_server
     overlay.wait_for(state='hidden')
     page.wait_for_function(
         """(name) => {
-            const chip = document.querySelector('.choices:has(#vendor_id) .choices__list--single .choices__item');
+            const chip = document.querySelector('.choices:has(#payee) .choices__list--single .choices__item');
             return chip && chip.textContent.includes(name);
         }""",
         arg=new_name,

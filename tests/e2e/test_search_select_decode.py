@@ -23,7 +23,7 @@ import pytest
 pytestmark = [pytest.mark.e2e, pytest.mark.accounts_payable]
 
 AP_CREATE = '/accounts-payable/create'
-VENDOR_SCOPE = '.choices:has(#vendor_id)'
+VENDOR_SCOPE = '.choices:has(#payee)'
 
 DECODED_NAME = 'O\'Brien & <Sons> "Co."'
 ENTITY_FRAGMENTS = ['&amp;', '&lt;', '&gt;', '&#34;', '&#39;', '&quot;', '&apos;']
@@ -34,7 +34,7 @@ def test_vendor_picker_dropdown_shows_decoded_label(logged_in_page, e2e_server):
     the escaped entity strings that Jinja put into the <option>'s innerHTML."""
     page = logged_in_page
     page.goto(e2e_server + AP_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
 
     scope = page.locator(VENDOR_SCOPE)
     scope.locator('.choices__inner').click()
@@ -60,7 +60,7 @@ def test_vendor_picker_selected_chip_shows_decoded_label(logged_in_page, e2e_ser
     Choices "single item" display) must also show the decoded label."""
     page = logged_in_page
     page.goto(e2e_server + AP_CREATE)
-    page.wait_for_selector('#vendor_id', state='attached')
+    page.wait_for_selector('#payee', state='attached')
 
     scope = page.locator(VENDOR_SCOPE)
     scope.locator('.choices__inner').click()
