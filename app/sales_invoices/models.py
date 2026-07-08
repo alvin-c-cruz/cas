@@ -90,6 +90,9 @@ class SalesInvoice(db.Model):
     amount_paid = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     balance = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
+    salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True, index=True)
+    salesperson = db.relationship('Employee', foreign_keys=[salesperson_id])
+
     # Audit fields
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_sales_invoices')
@@ -146,6 +149,8 @@ class SalesInvoice(db.Model):
             'customer_id': self.customer_id,
             'customer_name': self.customer_name,
             'customer_tin': self.customer_tin,
+            'salesperson_id': self.salesperson_id,
+            'salesperson_name': self.salesperson.full_name if self.salesperson else None,
             'customer_po_number': self.customer_po_number,
             'payment_terms': self.payment_terms,
             'reference': self.reference,
