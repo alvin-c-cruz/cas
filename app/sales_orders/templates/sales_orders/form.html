@@ -103,31 +103,11 @@
                     <div>
                         <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Sales Order Summary</div>
                         <div class="bill-summary-panel">
-
-                            {# Row 1: Subtotal (VAT-inclusive) #}
-                            <div class="bsr">
-                                <span class="bsr-label">Subtotal (VAT-incl.)</span>
-                                <span id="subtotalDisplay" class="bsr-amt">0.00</span>
-                            </div>
-
-                            {# Row 2: Less: Output VAT #}
-                            <div class="bsr">
-                                <span class="bsr-label">Less: Output VAT</span>
-                                <span id="vatDisplay" class="bsr-amt">0.00</span>
-                            </div>
-
-                            {# Row 3: Net of VAT #}
-                            <div class="bsr bsr--sep">
-                                <span class="bsr-label">Net of VAT</span>
-                                <span id="netOfVatDisplay" class="bsr-amt">0.00</span>
-                            </div>
-
-                            {# Row 4: Total Amount (= Subtotal for SO — no WHT deduction) #}
+                            {# SO is a pre-sale order — only the total sales figure is shown (VAT/WHT belong on the invoice). #}
                             <div class="bsr bsr--total">
-                                <span class="bsr-label bsr-label--total">Total Amount</span>
+                                <span class="bsr-label bsr-label--total">Total Sales</span>
                                 <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
                             </div>
-
                         </div>{# end .bill-summary-panel #}
                     </div>
                 </div>
@@ -443,12 +423,8 @@ function calculateTotals() {
     });
 
     const subtotal  = subtotalC / 100;
-    const vatAmt    = autoVatC  / 100;
-    const netOfVat  = subtotal - vatAmt;
 
-    document.getElementById('subtotalDisplay').textContent  = fmt(subtotal);
-    document.getElementById('vatDisplay').textContent       = fmt(vatAmt);
-    document.getElementById('netOfVatDisplay').textContent  = fmt(netOfVat);
+    // SO summary shows only the total sales figure (VAT/WHT belong on the invoice).
     document.getElementById('totalDisplay').textContent     = fmt(subtotal);
 
     validateForm();

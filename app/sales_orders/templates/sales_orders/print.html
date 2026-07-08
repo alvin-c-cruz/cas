@@ -151,26 +151,8 @@
   <div class="summary-block">
     <div class="section-label">SUMMARY</div>
     <div class="summary-inner">
-      <div class="summary-row">
-        <span class="slabel">Subtotal (VAT-incl.):</span>
-        <span class="sval">{{ '{:,.2f}'.format(so.subtotal) }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="slabel">Less: VAT:</span>
-        <span class="sval">{{ '{:,.2f}'.format(so.vat_amount) }}</span>
-      </div>
-      <div class="summary-divider"></div>
-      <div class="summary-row">
-        <span class="slabel">Net of VAT:</span>
-        <span class="sval">{{ '{:,.2f}'.format(so.subtotal - so.vat_amount) }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="slabel">Add: VAT:</span>
-        <span class="sval">{{ '{:,.2f}'.format(so.vat_amount) }}</span>
-      </div>
-      <div class="summary-divider-double"></div>
       <div class="summary-net">
-        <span class="netlabel">Total Amount:</span>
+        <span class="netlabel">Total Sales:</span>
         <span class="netval">{{ '{:,.2f}'.format(so.total_amount) }}</span>
       </div>
     </div>

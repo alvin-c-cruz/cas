@@ -254,24 +254,8 @@
                         letter-spacing:0; color:var(--text-3);">(amounts in PHP)</span>
                 </div>
                 <div class="bill-summary-panel">
-                    <div class="bsr">
-                        <span class="bsr-label">Subtotal (VAT-incl.)</span>
-                        <span class="bsr-amt">{{ '{:,.2f}'.format(so.subtotal) }}</span>
-                    </div>
-                    <div class="bsr">
-                        <span class="bsr-label">Less: VAT</span>
-                        <span class="bsr-amt">{{ '{:,.2f}'.format(so.vat_amount) }}</span>
-                    </div>
-                    <div class="bsr bsr--sep">
-                        <span class="bsr-label">Net of VAT</span>
-                        <span class="bsr-amt">{{ '{:,.2f}'.format(so.subtotal - so.vat_amount) }}</span>
-                    </div>
-                    <div class="bsr">
-                        <span class="bsr-label">Add: VAT</span>
-                        <span class="bsr-amt">{{ '{:,.2f}'.format(so.vat_amount) }}</span>
-                    </div>
                     <div class="bsr bsr--total">
-                        <span class="bsr-label bsr-label--total">Total Amount</span>
+                        <span class="bsr-label bsr-label--total">Total Sales</span>
                         <span class="bsr-amt bsr-amt--total">{{ '{:,.2f}'.format(so.total_amount) }}</span>
                     </div>
                 </div>
