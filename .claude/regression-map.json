@@ -30,6 +30,7 @@
     "app/vat_categories/models.py":        ["accounts_payable", "cash_disbursements", "sales_invoices", "journals"],
     "app/withholding_tax/models.py":       ["accounts_payable", "cash_disbursements", "sales_invoices"],
     "app/journal_entries/utils.py":        ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/sales_orders/monitoring.py":      ["sales_orders"],
     "app/journal_entries/views.py":        ["journal_entries"],
     "app/journal_entries/templates/journal_entries/form.html": ["journal_entries"],
     "app/accounts/models.py":              ["accounts_payable", "cash_disbursements", "sales_invoices"],

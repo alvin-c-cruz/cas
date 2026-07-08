@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Order Monitoring{% endblock %}
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+  <h1>Order Monitoring</h1>
+  <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary btn-sm">&#8592; Sales Orders</a>
+</div>
+
+<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px;">
+  <a class="card" href="{{ url_for('sales_orders.list', status='confirmed') }}" style="text-decoration:none;">
+    <div class="card-body" style="text-align:center;">
+      <div style="font-size:28px; font-weight:700;">{{ cards.open }}</div>
+      <div style="color:var(--text-2); font-size:12px; text-transform:uppercase;">Open</div>
+    </div>
+  </a>
+  <a class="card" href="{{ url_for('sales_orders.list', status='draft') }}" style="text-decoration:none;">
+    <div class="card-body" style="text-align:center;">
+      <div style="font-size:28px; font-weight:700;">{{ cards.drafts }}</div>
+      <div style="color:var(--text-2); font-size:12px; text-transform:uppercase;">Drafts</div>
+    </div>
+  </a>
+  <a class="card" href="{{ url_for('sales_orders.list', status='confirmed', overdue='1') }}" style="text-decoration:none;">
+    <div class="card-body" style="text-align:center;">
+      <div style="font-size:28px; font-weight:700; color:var(--red,#dc2626);">{{ cards.overdue }}</div>
+      <div style="color:var(--text-2); font-size:12px; text-transform:uppercase;">Overdue</div>
+    </div>
+  </a>
+  <a class="card" href="{{ url_for('sales_orders.list', status='confirmed', due_soon='1') }}" style="text-decoration:none;">
+    <div class="card-body" style="text-align:center;">
+      <div style="font-size:28px; font-weight:700;">{{ cards.due_soon }}</div>
+      <div style="color:var(--text-2); font-size:12px; text-transform:uppercase;">Due soon</div>
+    </div>
+  </a>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px;">
+  <div class="card"><div class="card-header"><div class="card-title">By Status</div></div>
+    <div class="card-body">
+      {% if by_status.data | sum %}<canvas id="byStatusChart"></canvas>
+      {% else %}<div class="empty-state"><p>No orders yet</p></div>{% endif %}
+    </div>
+  </div>
+  <div class="card"><div class="card-header"><div class="card-title">Aging of Open Orders</div></div>
+    <div class="card-body">
+      {% if aging.data | sum %}<canvas id="agingChart"></canvas>
+      {% else %}<div class="empty-state"><p>No open orders</p></div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card"><div class="card-header"><div class="card-title">Top Customers by Open Orders</div></div>
+  <div class="card-body">
+    {% if top_customers %}
+    <table class="table"><thead><tr><th>Customer</th><th style="text-align:right;">Open Orders</th></tr></thead>
+      <tbody>{% for row in top_customers %}
+        <tr><td>{{ row.customer_name }}</td><td style="text-align:right;">{{ row.count }}</td></tr>
+      {% endfor %}</tbody></table>
+    {% else %}<div class="empty-state"><p>No open orders</p></div>{% endif %}
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
+<script>
+const byStatusCtx = document.getElementById('byStatusChart');
+if (byStatusCtx) new Chart(byStatusCtx, {
+  type: 'doughnut',
+  data: { labels: {{ by_status.labels | tojson }},
+          datasets: [{ data: {{ by_status.data | tojson }},
+                       backgroundColor: ['#94a3b8', '#3b82f6', '#dc2626'] }] },
+  options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+});
+const agingCtx = document.getElementById('agingChart');
+if (agingCtx) new Chart(agingCtx, {
+  type: 'bar',
+  data: { labels: {{ aging.labels | tojson }},
+          datasets: [{ label: 'Open orders', data: {{ aging.data | tojson }},
+                       backgroundColor: '#3b82f6' }] },
+  options: { responsive: true, plugins: { legend: { display: false } },
+             scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+});
+</script>
+{% endblock %}

@@ -34,3 +34,26 @@ def test_metrics_counts_buckets_and_branch_isolation(db_session, main_branch, br
     assert m['aging'] == {'labels': ['0-7', '8-30', '31-60', '60+'], 'data': [1, 1, 0, 1]}
     assert m['top_customers'] == [{'customer_name': 'Acme', 'count': 2},
                                   {'customer_name': 'Beta', 'count': 1}]
+
+
+def test_monitor_page_renders_and_is_gated(client, db_session, admin_user, main_branch, login_user):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    db_session.commit(); clear_module_config_cache()
+    login_user(client, 'admin', 'admin123')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    resp = client.get('/sales-orders/monitor')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'Order Monitoring' in body
+    assert 'Overdue' in body and 'Due soon' in body          # card labels
+    assert 'byStatusChart' in body and 'agingChart' in body  # canvas ids
+    assert '₱' not in body                                    # no peso glyph
+
+    # disabling the module blocks the page
+    AppSettings.set_setting('module_enabled:sales_orders', '0')
+    db_session.commit(); clear_module_config_cache()
+    blocked = client.get('/sales-orders/monitor')
+    assert blocked.status_code in (302, 403) or b'Order Monitoring' not in blocked.data

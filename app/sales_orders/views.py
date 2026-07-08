@@ -120,6 +120,19 @@ def _common_form_ctx():
 
 # ── routes ───────────────────────────────────────────────────────────────────
 
+@sales_orders_bp.route('/sales-orders/monitor')
+@login_required
+def monitor():
+    """Read-only, count-based Order Monitoring dashboard (branch-scoped)."""
+    branch_id = session.get('selected_branch_id')
+    if not branch_id:
+        flash('Please select a branch first.', 'error')
+        return redirect(url_for('users.select_branch', next=request.url))
+    from app.sales_orders.monitoring import get_order_monitoring
+    metrics = get_order_monitoring(branch_id, ph_now().date())
+    return render_template('sales_orders/monitoring.html', **metrics)
+
+
 @sales_orders_bp.route('/sales-orders')
 @login_required
 def list():
