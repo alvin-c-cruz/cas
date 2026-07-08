@@ -494,6 +494,11 @@ def confirm(id):
         flash('Only draft Sales Orders can be confirmed.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 
+    if so.customer and so.customer.po_required and not (so.customer_po_number or '').strip():
+        flash(f'Customer "{so.customer_name}" requires a Purchase Order number before this '
+              f'Sales Order can be confirmed.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
     old_values = model_to_dict(so, ['status'])
     so.status = 'confirmed'
     so.confirmed_by_id = current_user.id

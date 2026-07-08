@@ -162,3 +162,35 @@ def test_edit_confirmed_so_is_blocked(client, db_session, main_branch,
     # Status must still be confirmed
     so = db.session.get(SalesOrder, draft_so.id)
     assert so.status == 'confirmed'
+
+
+def test_confirm_blocked_when_po_required_and_blank(client, db_session, admin_user, main_branch):
+    from app.customers.models import Customer
+    from app.sales_orders.models import SalesOrder
+    import datetime
+    cust = Customer(code='C-POREQ', name='PO Corp', is_active=True, po_required=True)
+    db_session.add(cust); db_session.commit()
+    _login(client, admin_user); _select_branch(client, main_branch.id)
+    so = SalesOrder(so_number='SO-PO-1', order_date=datetime.date(2026, 7, 8),
+                    customer_id=cust.id, customer_name='PO Corp', branch_id=main_branch.id,
+                    status='draft', customer_po_number=None)
+    db_session.add(so); db_session.commit()
+    client.post(f'/sales-orders/{so.id}/confirm', follow_redirects=True)
+    db_session.refresh(so)
+    assert so.status == 'draft' and so.confirmed_at is None
+
+
+def test_confirm_ok_when_po_required_and_filled(client, db_session, admin_user, main_branch):
+    from app.customers.models import Customer
+    from app.sales_orders.models import SalesOrder
+    import datetime
+    cust = Customer(code='C-POREQ2', name='PO Corp 2', is_active=True, po_required=True)
+    db_session.add(cust); db_session.commit()
+    _login(client, admin_user); _select_branch(client, main_branch.id)
+    so = SalesOrder(so_number='SO-PO-2', order_date=datetime.date(2026, 7, 8),
+                    customer_id=cust.id, customer_name='PO Corp 2', branch_id=main_branch.id,
+                    status='draft', customer_po_number='PO-12345')
+    db_session.add(so); db_session.commit()
+    client.post(f'/sales-orders/{so.id}/confirm', follow_redirects=True)
+    db_session.refresh(so)
+    assert so.status == 'confirmed'
