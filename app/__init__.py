@@ -332,6 +332,12 @@ def create_app(config_name=None):
         from app.seeds.seed_data import seed_construction
         seed_construction()
 
+    @app.cli.command('seed-manufacturing')
+    def seed_manufacturing_database():
+        """Seed a clean manufacturing-company instance (MANUFACTURING_COA + VAT/EWT incl. V0 zero-rated). Refuses a non-empty COA."""
+        from app.seeds.seed_data import seed_manufacturing
+        seed_manufacturing()
+
     @app.cli.command('seed-history')
     def seed_history_command():
         """Reset the DB and seed 2021->present APV + CDV demo history."""

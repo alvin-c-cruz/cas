@@ -899,6 +899,56 @@ def seed_construction():
         raise
 
 
+def seed_manufacturing():
+    """Seed a clean manufacturing-company instance (MANUFACTURING_COA + VAT/EWT incl. V0 zero-rated).
+
+    Same shape as seed_construction but with the 146-account MANUFACTURING_COA and a GENERIC
+    identity (company_name='Manufacturing Company') -- rename in Company Settings per client, so
+    no client name is coupled into shared code. Suited to manufacturers/exporters: RM/WIP/FG
+    inventory accounts + the V0 VAT zero-rated (export) sales category. Refuses to run if the COA
+    is already populated, and prints the target DB filename so it can never silently seed the
+    wrong instance. Seeds masters only -- NO transactions (contrast seed-food-demo).
+    """
+    from flask import current_app
+    from app.accounts.models import Account
+    from app.seeds.manufacturing_coa import MANUFACTURING_COA
+
+    uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    print(f"  DB: {uri.rsplit('/', 1)[-1] or uri}")
+    if Account.query.count() > 0:
+        raise RuntimeError(
+            "Refusing to seed: the Chart of Accounts is not empty. "
+            "seed-manufacturing is for a FRESH instance only.")
+
+    # MANUFACTURING_COA is a list of dicts; _seed_accounts unpacks 6-tuples.
+    coa = [(a['code'], a['name'], a['type'], a['classification'], a['normal_balance'], a['parent'])
+           for a in MANUFACTURING_COA]
+
+    print("\n" + "="*60)
+    print("MANUFACTURING COMPANY DATABASE SEEDING")
+    print("="*60 + "\n")
+    try:
+        _seed_admin_and_branch()
+        _seed_app_settings('Manufacturing Company')
+        _seed_accounts(coa)
+        _seed_vat_categories()
+        _seed_sales_vat_categories()
+        _seed_withholding_taxes()
+
+        print("\n" + "="*60)
+        print("MANUFACTURING SEEDING COMPLETE!")
+        print("="*60)
+        print(f"\n  Accounts created: {len(coa)}")
+        print("  Company: Manufacturing Company (rename in Company Settings)")
+        print("  Login -> username: admin  password: admin123 (change after deploy)")
+        print("\n")
+
+    except Exception as e:
+        print(f"\n[ERROR] Error during manufacturing seeding: {str(e)}")
+        db.session.rollback()
+        raise
+
+
 if __name__ == '__main__':
     print("This module should be run via Flask CLI:")
     print("  flask seed-db")
