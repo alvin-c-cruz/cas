@@ -20,8 +20,15 @@ from app.reports.statement_export import (
     build_balance_sheet_xlsx,
     income_statement_lines,
 )
+from app.reports.two_column import merge_is_two_column
 
 pytestmark = [pytest.mark.unit]
+
+
+def _two_col(start, end, branch_id):
+    """Build a merged two-column IS dict (same range in both columns for tests)."""
+    single = generate_income_statement(start, end, branch_id)
+    return merge_is_two_column(single, single)
 
 
 # ── shared helpers (mirror test_income_statement_generator.py) ────────────────
@@ -95,19 +102,40 @@ def _xlsx_cells(xlsx_or_response):
 
 def test_is_xlsx_has_subtotal_rows(db_session):
     """Workbook must open and contain the Net Income label."""
-    data = generate_income_statement(date(2026, 6, 1), date(2026, 6, 30), None)
-    xlsx = build_income_statement_xlsx(data, period_label='June 2026',
+    data = _two_col(date(2026, 6, 1), date(2026, 6, 30), None)
+    xlsx = build_income_statement_xlsx(data, as_of_label='As of June 30, 2026',
                                        company={}, branch_name=None,
                                        filename='test.xlsx')
     cells = _xlsx_cells(xlsx)
     assert 'Net Income' in cells
 
 
+def test_is_xlsx_has_two_amount_column_headers(db_session):
+    """Workbook has both the current-month and YTD column headers."""
+    data = _two_col(date(2026, 6, 1), date(2026, 6, 30), None)
+    xlsx = build_income_statement_xlsx(data, as_of_label='As of June 30, 2026',
+                                       company={}, branch_name=None,
+                                       filename='test.xlsx')
+    cells = _xlsx_cells(xlsx)
+    assert 'Jun 2026' in cells          # current-month header
+    assert 'YTD 2026' in cells          # year-to-date header
+
+
+def test_income_statement_lines_carry_two_columns(db_session):
+    """Every amount-bearing line exposes both mtd and ytd values."""
+    b = _full_pl(db_session)
+    stmt = _two_col(date(2026, 6, 1), date(2026, 6, 30), b.id)
+    rows = income_statement_lines(stmt)
+    net = [r for r in rows if r['label'] == 'Net Income'][0]
+    assert 'mtd' in net and 'ytd' in net
+    assert net['mtd'] == net['ytd'] == 250.0    # same range in both cols
+
+
 def test_is_xlsx_section_labels_and_subtotals(db_session):
     """Real data workbook: section labels and subtotal rows appear."""
     b = _full_pl(db_session)
-    data = generate_income_statement(date(2026, 6, 1), date(2026, 6, 30), b.id)
-    xlsx = build_income_statement_xlsx(data, period_label='June 2026',
+    data = _two_col(date(2026, 6, 1), date(2026, 6, 30), b.id)
+    xlsx = build_income_statement_xlsx(data, as_of_label='As of June 30, 2026',
                                        company={'name': 'Test Co'},
                                        branch_name='Main',
                                        filename='test.xlsx')
@@ -127,8 +155,8 @@ def test_is_xlsx_section_labels_and_subtotals(db_session):
 def test_is_xlsx_numeric_values_present(db_session):
     """Net income value (250.0) is written into a cell."""
     b = _full_pl(db_session)
-    data = generate_income_statement(date(2026, 6, 1), date(2026, 6, 30), b.id)
-    xlsx = build_income_statement_xlsx(data, period_label='June 2026',
+    data = _two_col(date(2026, 6, 1), date(2026, 6, 30), b.id)
+    xlsx = build_income_statement_xlsx(data, as_of_label='As of June 30, 2026',
                                        company={}, branch_name=None,
                                        filename='test.xlsx')
     cells = _xlsx_cells(xlsx)
@@ -173,7 +201,7 @@ def test_income_statement_lines_net_income_kind_and_rule(db_session):
     generic subtotal kind/rule would silently drop that formatting.
     """
     b = _full_pl(db_session)
-    stmt = generate_income_statement(date(2026, 6, 1), date(2026, 6, 30), b.id)
+    stmt = _two_col(date(2026, 6, 1), date(2026, 6, 30), b.id)
     lines = income_statement_lines(stmt)
 
     net_income_rows = [ln for ln in lines if ln.get('label') == 'Net Income']

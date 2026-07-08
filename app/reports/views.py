@@ -620,42 +620,29 @@ def income_statement():
 @reports_bp.route('/reports/income-statement/export/excel')
 @login_required
 def income_statement_export_excel():
-    """Export Income Statement to a formatted Excel workbook."""
-    from app.settings import AppSettings
-    from app.branches.models import Branch
+    """Export the two-column Income Statement to a formatted Excel workbook."""
     from app.reports.statement_export import build_income_statement_xlsx
-    start_date, end_date, branch_id = _is_params()
-    stmt = generate_income_statement(start_date, end_date, branch_id=branch_id)
-    company = {
-        'name': AppSettings.get_setting('company_name', ''),
-        'address': AppSettings.get_setting('company_address', ''),
-        'tin': AppSettings.get_setting('company_tin', ''),
-    }
-    branch = db.session.get(Branch, branch_id) if branch_id else None
-    branch_name = branch.name if (branch and Branch.query.count() > 1) else None
-    period_label = f"{start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
-    filename = f'Income_Statement_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx'
-    return build_income_statement_xlsx(stmt, period_label, company, branch_name, filename)
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    stmt = merge_is_two_column(
+        generate_income_statement(mtd_start, as_of, branch_id=branch_id),
+        generate_income_statement(ytd_start, as_of, branch_id=branch_id))
+    company, branch_name = _bs_company_branch(branch_id)
+    as_of_label = f'As of {as_of.strftime("%B %d, %Y")}'
+    filename = f'Income_Statement_{as_of.isoformat()}.xlsx'
+    return build_income_statement_xlsx(stmt, as_of_label, company, branch_name, filename)
 
 
 @reports_bp.route('/reports/income-statement/print')
 @login_required
 def income_statement_print():
-    from app.settings import AppSettings
-    from app.branches.models import Branch
     from app.reports.statement_export import income_statement_lines
-    start_date, end_date, branch_id = _is_params()
-    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
-    company = {
-        'name': AppSettings.get_setting('company_name', ''),
-        'address': AppSettings.get_setting('company_address', ''),
-        'tin': AppSettings.get_setting('company_tin', ''),
-    }
-    branch = db.session.get(Branch, branch_id) if branch_id else None
-    branch_name = branch.name if (branch and Branch.query.count() > 1) else None
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    stmt = merge_is_two_column(
+        generate_income_statement(mtd_start, as_of, branch_id=branch_id),
+        generate_income_statement(ytd_start, as_of, branch_id=branch_id))
+    company, branch_name = _bs_company_branch(branch_id)
     return render_template('reports/income_statement_print.html',
-                           lines=income_statement_lines(income_stmt_data),
-                           start_date=start_date, end_date=end_date,
+                           lines=income_statement_lines(stmt), as_of=as_of,
                            company=company, branch_name=branch_name)
 
 
