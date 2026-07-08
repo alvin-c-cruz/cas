@@ -296,3 +296,19 @@ def get_quarter_months(quarter):
     start_month = (quarter - 1) * 3 + 1
     end_month = start_month + 2
     return f'{get_month_name(start_month)} - {get_month_name(end_month)}'
+
+
+def get_vat_return_summary(year, quarter):
+    """Quarterly net-VAT worksheet (BIR 2550Q pre-cursor). Company-wide."""
+    from app.vat_settlement import service
+    base = {'year': year, 'quarter': quarter, 'quarter_name': get_quarter_name(quarter)}
+    try:
+        pos = service.compute_vat_position(year, quarter)
+    except ValueError as e:
+        z = Decimal('0.00')
+        return {**base, 'output_vat': z, 'input_vat': z, 'prior_carryover': z,
+                'creditable': z, 'net_payable': z, 'new_carryover': z, 'error': str(e)}
+    return {**base,
+            'output_vat': pos['output_vat'], 'input_vat': pos['input_vat'],
+            'prior_carryover': pos['prior_carryover'], 'creditable': pos['creditable'],
+            'net_payable': pos['net_payable'], 'new_carryover': pos['new_carryover']}

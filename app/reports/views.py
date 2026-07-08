@@ -17,7 +17,8 @@ from app.reports.bir import (
     get_alphalist_of_payees,
     get_month_name,
     get_quarter_name,
-    get_quarter_months
+    get_quarter_months,
+    get_vat_return_summary
 )
 from app.reports.financial import (
     generate_trial_balance,
@@ -505,6 +506,39 @@ def bir_alphalist_export_excel():
     title = f'Alphalist of Payees - {get_quarter_name(quarter)} {year}'
 
     return export_to_excel(payees_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/bir/vat-return')
+@login_required
+@accountant_or_admin_required
+def bir_vat_return():
+    """Net-VAT worksheet (BIR 2550Q pre-cursor) for a quarter."""
+    year = request.args.get('year', datetime.now().year, type=int)
+    quarter = request.args.get('quarter', (datetime.now().month - 1) // 3 + 1, type=int)
+    data = get_vat_return_summary(year, quarter)
+    return render_template('reports/bir_vat_return.html', data=data, year=year,
+                           quarter=quarter, company=get_company_identity())
+
+
+@reports_bp.route('/reports/bir/vat-return/export/excel')
+@login_required
+@accountant_or_admin_required
+def bir_vat_return_export_excel():
+    """Export the net-VAT worksheet to Excel."""
+    year = request.args.get('year', datetime.now().year, type=int)
+    quarter = request.args.get('quarter', (datetime.now().month - 1) // 3 + 1, type=int)
+    data = get_vat_return_summary(year, quarter)
+    rows = [
+        {'line': 'Output VAT', 'amount': data['output_vat']},
+        {'line': 'Less: Input VAT (this quarter)', 'amount': data['input_vat']},
+        {'line': 'Less: Excess Input Tax carried over', 'amount': data['prior_carryover']},
+        {'line': 'Total creditable', 'amount': data['creditable']},
+        {'line': 'VAT Payable', 'amount': data['net_payable']},
+        {'line': 'Excess Input Tax carried forward', 'amount': data['new_carryover']},
+    ]
+    filename = f'VAT_Return_{year}_Q{quarter}.xlsx'
+    title = f'VAT Return Worksheet - {get_quarter_name(quarter)} {year}'
+    return export_to_excel(rows, ['line', 'amount'], ['Line', 'Amount'], filename, title)
 
 
 # ============================================================================
