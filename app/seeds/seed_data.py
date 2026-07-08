@@ -658,8 +658,13 @@ def _seed_admin_and_branch():
     return admin, main_branch
 
 
-def _seed_app_settings(company_name='Company Name'):
-    """Seed the 24-row settings block (idempotent). company_name is parameterized."""
+def _seed_app_settings(company_name='Company Name', bir_reports_enabled='1'):
+    """Seed the 24-row settings block (idempotent). company_name is parameterized.
+
+    bir_reports_enabled controls the seeded 'module_enabled:bir_reports' flag (BIR Reports +
+    VAT Settlement share this switch). Fresh CLIENT instances (seed_firm/construction/
+    manufacturing) ship it ON ('1'); seed_minimal's lean CORE-only demo baseline keeps it OFF.
+    """
     if AppSettings.query.count() > 0:
         return
     settings = [
@@ -685,7 +690,7 @@ def _seed_app_settings(company_name='Company Name'):
         {'key': 'cr_print_access',      'value': 'posted_only'},
         {'key': 'company_logo',         'value': ''},
         {'key': 'accountant_email_self_approval', 'value': '0'},
-        {'key': 'module_enabled:bir_reports',      'value': '0'},
+        {'key': 'module_enabled:bir_reports',      'value': bir_reports_enabled},
         {'key': 'module_enabled:units_of_measure', 'value': '0'},
         {'key': 'module_enabled:products',         'value': '0'},
     ]
@@ -804,7 +809,7 @@ def seed_minimal():
 
     try:
         _seed_admin_and_branch()
-        _seed_app_settings('Company Name')
+        _seed_app_settings('Company Name', bir_reports_enabled='0')
         _seed_accounts(BASELINE_COA)
         _seed_vat_categories()
         _seed_sales_vat_categories()

@@ -76,9 +76,6 @@ MODULE_REGISTRY = [
     {'key': 'fiscal_year_close', 'label': 'Year-End Close', 'section': 'Financial Reports',
      'area': 'Accounting', 'group': 'Financial Statements',
      'endpoints': ('year_end.index', 'year_end.close', 'year_end.reopen')},
-    {'key': 'vat_settlement', 'label': 'VAT Settlement', 'section': 'Financial Reports',
-     'area': 'Compliance', 'group': 'BIR',
-     'endpoints': ('vat_settlement.index', 'vat_settlement.settle', 'vat_settlement.reverse')},
     # ── Maintenance (master data; deny-by-default for staff) ─────────────────
     {'key': 'customers', 'label': 'Customers', 'section': 'Maintenance',
      'area': 'Sales', 'group': 'Masters',
@@ -104,7 +101,9 @@ MODULE_REGISTRY = [
      'optional': True, 'depends_on': [], 'default_enabled': True,
      'endpoints': ('reports.bir_index', 'reports.bir_sales', 'reports.bir_sales_export_excel',
                    'reports.bir_purchases', 'reports.bir_purchases_export_excel',
-                   'reports.bir_alphalist', 'reports.bir_alphalist_export_excel')},
+                   'reports.bir_alphalist', 'reports.bir_alphalist_export_excel',
+                   'reports.bir_vat_return', 'reports.bir_vat_return_export_excel',
+                   'vat_settlement.')},
 ]
 
 AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Accounting', 'Compliance', 'Payroll', 'Admin']
