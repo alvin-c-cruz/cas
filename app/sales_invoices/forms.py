@@ -42,6 +42,9 @@ class SalesInvoiceForm(FlaskForm):
 
     reference = StringField('Reference', validators=[Optional(), Length(max=100)])
 
+    salesperson_id = SelectField('Salesperson', coerce=int, validators=[Optional()],
+                                 validate_choice=False)
+
     notes = TextAreaField('Notes (Particulars)', validators=[
         DataRequired(message='Notes are required — this becomes the Particulars in the Sales Journal.')
     ])

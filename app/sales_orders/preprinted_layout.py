@@ -1,5 +1,6 @@
-"""Layout model for the Sales Invoice pre-printed print designer (SI-P-71).
+"""Layout model for the Sales Order pre-printed print designer.
 
+Faithful clone of the Sales Invoice pre-printed layout, adapted to the SO record.
 The whole layout is one JSON value in an app_settings row. Everything is sanitized
 on read AND write against these defaults, so stored or POSTed JSON can never inject
 unknown keys, out-of-range numbers, or an unlisted font, and a layout saved before a
@@ -12,7 +13,7 @@ from app.settings import AppSettings
 from app.audit.utils import log_audit
 from app.common.preprinted_texts import clean_texts
 
-LAYOUT_SETTING_KEY = 'sv_preprinted_layout'
+LAYOUT_SETTING_KEY = 'so_preprinted_layout'
 
 # Dot-matrix continuous-form stock: 9.5in x 10.5in. At 96dpi (CSS px) that is the
 # canvas size, so what is dragged on screen maps 1:1 to the printed form.
@@ -44,34 +45,28 @@ FONT_GROUPS = [
         'Georgia, serif',
     ]),
 ]
-# Flat allow-list — the sanitizer's exact-string guard reads this.
+# Flat allow-list -- the sanitizer's exact-string guard reads this.
 ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 
 FIELD_KEYS = [
-    'invoice_no', 'invoice_date', 'due_date', 'terms', 'salesperson',
-    'customer_name', 'customer_tin', 'customer_address', 'customer_po',
-    # BIR-standard SI summary
-    'gross_sales', 'output_vat', 'net_of_vat', 'wht_amount', 'amount_collectible',
-    'notes',
+    'so_no', 'order_date', 'expected_delivery', 'customer_name', 'customer_tin',
+    'customer_address', 'customer_po', 'po_date', 'terms', 'salesperson',
+    'total_sales',
 ]
 
 # Friendly names for the per-field show/hide strip.
 FIELD_LABELS = {
-    'invoice_no': 'Invoice No.',
-    'invoice_date': 'Date',
-    'due_date': 'Due Date',
-    'terms': 'Terms',
-    'salesperson': 'Salesperson',
+    'so_no': 'SO No.',
+    'order_date': 'Order Date',
+    'expected_delivery': 'Expected Delivery',
     'customer_name': 'Customer',
     'customer_tin': 'TIN',
     'customer_address': 'Address',
     'customer_po': 'PO No.',
-    'gross_sales': 'Total Sales (VAT-incl.)',
-    'output_vat': 'VAT',
-    'net_of_vat': 'Amount Net of VAT',
-    'wht_amount': 'Withholding Tax',
-    'amount_collectible': 'Amount Collectible',
-    'notes': 'Notes',
+    'po_date': 'PO Date',
+    'terms': 'Terms',
+    'salesperson': 'Salesperson',
+    'total_sales': 'Total Sales',
 }
 
 COLUMN_KEYS = [
@@ -80,13 +75,14 @@ COLUMN_KEYS = [
 ]
 
 # Header labels for the line-item columns (presentation; keyed by COLUMN_KEYS).
+# Bare 'Amount' -- this app renders no currency symbol.
 COLUMN_LABELS = {
     'line_number': '#',
     'product': 'Product',
     'quantity': 'Qty',
     'uom': 'UOM',
     'unit_price': 'Unit Price',
-    'amount': 'Amount (₱)',
+    'amount': 'Amount',
 }
 
 ALLOWED_PAPERS = ('continuous', 'letter')
@@ -103,9 +99,9 @@ PAPER_LABELS = {
     'letter':     'Letter 8.5 x 11',
 }
 
-# Date format for the invoice/due dates. key -> strftime. The dropdown labels are
+# Date format for the order/delivery/PO dates. key -> strftime. The dropdown labels are
 # generated from a sample date so they always match. The JS live-preview mirrors these
-# keys (sv_preprinted_designer.js::fmtDate).
+# keys (so_preprinted_designer.js::fmtDate).
 DATE_FORMATS = {
     'long':   '%d %B %Y',
     'medium': '%b %d, %Y',
@@ -117,13 +113,13 @@ ALLOWED_DATE_FORMATS = tuple(DATE_FORMATS)
 
 MAX_EXTRAS = 50   # duplicated field copies cap
 
-# Free-text, LAYOUT-ONLY signature elements (not tied to the invoice record). Editable
-# in the designer; the same text prints on every invoice.
+# Free-text, LAYOUT-ONLY signature elements (not tied to the order record). Editable
+# in the designer; the same text prints on every order.
 TEXT_KEYS = ['preparer', 'checker', 'approver']
 TEXT_LABELS = {'preparer': 'Preparer', 'checker': 'Checker', 'approver': 'Approver'}
 TEXT_MAXLEN = 200
 
-DEFAULT_SV_PREPRINTED_LAYOUT = {
+DEFAULT_SO_PREPRINTED_LAYOUT = {
     'paper': 'continuous',
     'dateFormat': 'long',
     'extras': [],
@@ -134,21 +130,17 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
     ],
     'page': {'fontFamily': '"Courier New", Courier, monospace'},
     'fields': {
-        'invoice_no':         {'x': 520, 'y': 50,  'fontSize': 12, 'bold': True},
-        'invoice_date':       {'x': 520, 'y': 74,  'fontSize': 11, 'bold': False},
-        'due_date':           {'x': 520, 'y': 98,  'fontSize': 11, 'bold': False},
-        'terms':              {'x': 520, 'y': 122, 'fontSize': 11, 'bold': False},
-        'salesperson':        {'x': 520, 'y': 146, 'fontSize': 11, 'bold': False},
+        'so_no':              {'x': 520, 'y': 50,  'fontSize': 12, 'bold': True},
+        'order_date':         {'x': 520, 'y': 74,  'fontSize': 11, 'bold': False},
+        'expected_delivery':  {'x': 520, 'y': 98,  'fontSize': 11, 'bold': False},
+        'po_date':            {'x': 520, 'y': 122, 'fontSize': 11, 'bold': False},
+        'terms':              {'x': 520, 'y': 146, 'fontSize': 11, 'bold': False},
+        'salesperson':        {'x': 520, 'y': 170, 'fontSize': 11, 'bold': False},
         'customer_name':      {'x': 60,  'y': 50,  'fontSize': 12, 'bold': True},
         'customer_tin':       {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
         'customer_address':   {'x': 60,  'y': 98,  'fontSize': 11, 'bold': False},
         'customer_po':        {'x': 60,  'y': 122, 'fontSize': 11, 'bold': False},
-        'gross_sales':        {'x': 620, 'y': 470, 'fontSize': 10, 'bold': False},
-        'output_vat':         {'x': 620, 'y': 494, 'fontSize': 10, 'bold': False},
-        'net_of_vat':         {'x': 620, 'y': 518, 'fontSize': 10, 'bold': False},
-        'wht_amount':         {'x': 620, 'y': 542, 'fontSize': 10, 'bold': False},
-        'amount_collectible': {'x': 620, 'y': 570, 'fontSize': 13, 'bold': True},
-        'notes':              {'x': 60,  'y': 600, 'fontSize': 10, 'bold': False},
+        'total_sales':        {'x': 620, 'y': 470, 'fontSize': 13, 'bold': True},
     },
     # Line items: each column is INDEPENDENTLY positioned (its own x) so it can line
     # up with the pre-printed column boxes; all columns share the band top (y) and
@@ -189,7 +181,7 @@ def _clean_box(raw, default):
 def _clean_columns(raw):
     raw = raw if isinstance(raw, list) else []
     by_key = {c.get('key'): c for c in raw if isinstance(c, dict) and c.get('key') in COLUMN_KEYS}
-    defaults = {c['key']: c for c in DEFAULT_SV_PREPRINTED_LAYOUT['lineItems']['columns']}
+    defaults = {c['key']: c for c in DEFAULT_SO_PREPRINTED_LAYOUT['lineItems']['columns']}
     ordered_keys = [c['key'] for c in raw
                     if isinstance(c, dict) and c.get('key') in COLUMN_KEYS]
     # keep first-seen order, then append any known column the input omitted
@@ -232,7 +224,7 @@ def _clean_extras(raw):
 def sanitize_layout(raw):
     """Return a fully-populated, validated layout built from `raw` over the defaults."""
     raw = raw if isinstance(raw, dict) else {}
-    d = DEFAULT_SV_PREPRINTED_LAYOUT
+    d = DEFAULT_SO_PREPRINTED_LAYOUT
     paper = raw.get('paper') if raw.get('paper') in ALLOWED_PAPERS else d['paper']
     date_fmt = raw.get('dateFormat') if raw.get('dateFormat') in ALLOWED_DATE_FORMATS else d['dateFormat']
     font = (raw.get('page') or {}).get('fontFamily')
@@ -249,7 +241,7 @@ def sanitize_layout(raw):
         'columns': _clean_columns(raw_li.get('columns')),
     }
     return {'paper': paper, 'dateFormat': date_fmt, 'extras': _clean_extras(raw.get('extras')),
-            'texts': clean_texts(raw.get('texts'), DEFAULT_SV_PREPRINTED_LAYOUT['texts']),
+            'texts': clean_texts(raw.get('texts'), DEFAULT_SO_PREPRINTED_LAYOUT['texts']),
             'page': page, 'fields': fields, 'lineItems': line_items}
 
 
@@ -262,11 +254,11 @@ def get_layout(branch_id=None):
     """Current sanitized layout for a branch (defaults if unset or corrupt)."""
     stored = AppSettings.get_setting(_layout_key(branch_id))
     if not stored:
-        return copy.deepcopy(DEFAULT_SV_PREPRINTED_LAYOUT)
+        return copy.deepcopy(DEFAULT_SO_PREPRINTED_LAYOUT)
     try:
         return sanitize_layout(json.loads(stored))
     except (ValueError, TypeError):
-        return copy.deepcopy(DEFAULT_SV_PREPRINTED_LAYOUT)
+        return copy.deepcopy(DEFAULT_SO_PREPRINTED_LAYOUT)
 
 
 def save_layout(raw, username, branch_id=None):
@@ -275,8 +267,8 @@ def save_layout(raw, username, branch_id=None):
     key = _layout_key(branch_id)
     old = AppSettings.get_setting(key)
     AppSettings.set_setting(key, json.dumps(clean), updated_by=username)
-    log_audit(module='sales_invoices', action='update', record_id=None,
-              record_identifier='sv_preprinted_layout',
+    log_audit(module='sales_orders', action='update', record_id=None,
+              record_identifier='so_preprinted_layout',
               old_values={'layout': old, 'branch_id': branch_id},
               new_values={'layout': json.dumps(clean), 'branch_id': branch_id},
               notes=f'Pre-printed layout updated (branch {branch_id})')

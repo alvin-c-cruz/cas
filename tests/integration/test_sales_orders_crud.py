@@ -43,13 +43,36 @@ def _customer(db_session):
     return c
 
 
+def _product(db_session, code='WIDGET', name='Widget'):
+    from app.units_of_measure.models import UnitOfMeasure
+    from app.products.models import Product
+    uom = UnitOfMeasure.query.filter_by(code='pcs').first()
+    if uom is None:
+        uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+        db_session.add(uom); db_session.commit()
+    p = Product(code=code, name=name, default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('100.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+    return p
+
+
+def _enable_products(db_session):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:units_of_measure', '1')
+    AppSettings.set_setting('module_enabled:products', '1')
+    db_session.commit()
+    clear_module_config_cache()
+
+
 # ── tests ─────────────────────────────────────────────────────────────────────
 
 def test_create_sales_order_persists_and_audits(client, db_session, admin_user, main_branch):
     c = _customer(db_session)
+    p = _product(db_session)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
-    lines = json.dumps([{'description': 'Widget', 'quantity': '2', 'unit_price': '100.00',
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
                          'vat_category': None, 'vat_rate': '0'}])
     resp = client.post('/sales-orders/create', data={
         'so_number': 'SO-2026-06-0001', 'order_date': '2026-06-15',
@@ -63,6 +86,99 @@ def test_create_sales_order_persists_and_audits(client, db_session, admin_user, 
     # no journal entry — SalesOrder is operational only
     assert not hasattr(so, 'journal_entry_id') or so.journal_entry_id is None
     assert AuditLog.query.filter_by(module='sales_orders', action='create').count() >= 1
+
+
+def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, admin_user, main_branch):
+    """SO detail must render em-dashes as the literal glyph (never the '&#8212;'
+    entity, which Jinja autoescaping leaks as literal text when it sits inside a
+    {{ }} string fallback), and must show bare numbers with no peso glyph
+    (no-currency-symbol convention). A line with no UOM exercises the em-dash
+    fallback; a unit price exercises the money cells."""
+    c = _customer(db_session)
+    p = _product(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0'}])
+    client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0009', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0009').first()
+    html = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
+    assert '&#8212;' not in html          # em-dash entity (leaks or clutters — use the glyph)
+    assert '₱' not in html           # peso sign U+20B1
+
+
+def test_so_persists_salesperson_when_employees_enabled(client, db_session, admin_user, main_branch):
+    from app.employees.models import Employee
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:employees', '1')
+    db_session.commit(); clear_module_config_cache()
+    e = Employee(employee_no='E-9', first_name='Rey', last_name='Santos',
+                 branch_id=main_branch.id, is_active=True)
+    db_session.add(e); db_session.commit()
+    c = _customer(db_session); p = _product(db_session)
+    _login(client, admin_user); _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '1', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0'}])
+    client.post('/sales-orders/create', data={
+        'so_number': 'SO-SP-100', 'order_date': '2026-07-08', 'customer_id': str(c.id),
+        'customer_name': 'Acme', 'payment_terms': 'Net 30', 'notes': '',
+        'salesperson_id': str(e.id), 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='SO-SP-100').first()
+    assert so is not None and so.salesperson_id == e.id
+
+
+def test_list_overdue_filter(client, db_session, admin_user, main_branch):
+    """?overdue=1 narrows the SO list to confirmed orders whose expected delivery is past."""
+    import datetime
+    from app.utils import ph_now
+    c = _customer(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    today = ph_now().date()
+    db.session.add(SalesOrder(so_number='SO-OVD-1', order_date=today, customer_id=c.id,
+                              customer_name='Acme', branch_id=main_branch.id, status='confirmed',
+                              expected_delivery_date=today - datetime.timedelta(days=3)))
+    db.session.add(SalesOrder(so_number='SO-FUT-1', order_date=today, customer_id=c.id,
+                              customer_name='Acme', branch_id=main_branch.id, status='confirmed',
+                              expected_delivery_date=today + datetime.timedelta(days=30)))
+    db.session.commit()
+    html = client.get('/sales-orders?overdue=1').get_data(as_text=True)
+    assert 'SO-OVD-1' in html
+    assert 'SO-FUT-1' not in html
+
+
+def test_create_form_is_product_first_no_description(client, db_session, admin_user, main_branch):
+    """The SO create form is product-first: the product picker is present and there is
+    no free-text line Description input anywhere in the editor JS/markup."""
+    _product(db_session)
+    _enable_products(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/sales-orders/create').get_data(as_text=True)
+    assert 'onProductPick' in html          # product picker is present
+    assert 'desc-${id}' not in html         # the description input template is gone
+    assert "'description'" not in html and 'item.description' not in html
+
+
+def test_line_without_product_is_rejected(client, db_session, admin_user, main_branch):
+    """A real line (amount > 0) with no product must be rejected server-side and the
+    SO must not persist — product is required per line."""
+    c = _customer(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': None, 'quantity': '1', 'unit_price': '50.00',
+                         'vat_category': None, 'vat_rate': '0'}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0100', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'select a product' in resp.data
+    assert SalesOrder.query.filter_by(so_number='SO-2026-06-0100').first() is None
 
 
 def test_create_form_renders_so_number_and_line_editor(client, db_session, admin_user, main_branch):
@@ -103,8 +219,10 @@ def test_duplicate_so_number_rejected(client, db_session, admin_user, main_branc
 
 
 def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
-    """GET /sales-orders/<id> → 200; SO number, line description, and amount render."""
+    """GET /sales-orders/<id> → 200; SO number, line product, and amount render."""
     c = _customer(db_session)
+    p = _product(db_session, code='BLUE', name='Blue Widget')
+    _enable_products(db_session)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
 
@@ -122,7 +240,7 @@ def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
     line = SalesOrderItem(
         sales_order_id=so.id,
         line_number=1,
-        description='Blue Widget',
+        product_id=p.id,
         quantity=Decimal('3.0000'),
         unit_price=Decimal('50.00'),
         amount=Decimal('150.00'),
@@ -137,7 +255,7 @@ def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
     resp = client.get(f'/sales-orders/{so.id}')
     assert resp.status_code == 200
     assert b'SO-VIEW-0001' in resp.data
-    assert b'Blue Widget' in resp.data
+    assert b'Blue Widget' in resp.data   # product name renders in the line
     assert b'150' in resp.data  # amount appears in the line
 
 
@@ -166,3 +284,28 @@ def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, m
     # Status badge renders the text "Draft"
     assert b'badge-draft' in resp.data
     assert b'Draft' in resp.data
+
+
+def test_print_preprinted_renders_designer_no_currency_glyph(client, db_session, admin_user, main_branch):
+    """With so_print_form='preprinted', the Print route serves the drag-designer canvas
+    (no peso glyph). Printing is now setting-driven like SI."""
+    from app.settings import AppSettings
+    AppSettings.set_setting('so_print_form', 'preprinted')
+    db_session.commit()
+    c = _customer(db_session)
+    p = _product(db_session, code='PPF', name='PrePrint Widget')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0'}])
+    client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-PPF1', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-PPF1').first()
+    assert so is not None
+    resp = client.get(f'/sales-orders/{so.id}/print')
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'ppCanvas' in html            # drag-designer canvas rendered
+    assert '₱' not in html          # peso sign U+20B1

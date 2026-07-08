@@ -114,6 +114,7 @@
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center; justify-content:flex-end;">
             {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <a href="{{ url_for('sales_orders.create') }}" class="btn btn-green">&#x2795; Enter Sales Order</a>
+            <a href="{{ url_for('sales_orders.monitor') }}" class="btn btn-secondary">&#x1F4CA; Order Monitoring</a>
             {% endif %}
         </div>
     </div>
@@ -129,7 +130,7 @@
                     <th>Order Date</th>
                     <th>Customer</th>
                     <th>Status</th>
-                    <th style="text-align:right;">Total</th>
+                    <th style="text-align:right;">Total (PHP)</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -148,7 +149,7 @@
                         </span>
                     </td>
                     <td style="text-align:right;font-family:var(--mono);font-weight:600;">
-                        ₱{{ '{:,.2f}'.format(order.total_amount) }}
+                        {{ '{:,.2f}'.format(order.total_amount) }}
                     </td>
                     <td>
                         <a href="{{ url_for('sales_orders.view', id=order.id) }}" class="btn-action">&#x1F441;&#xFE0F;</a>

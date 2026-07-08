@@ -38,6 +38,8 @@ class SalesOrder(db.Model):
     # Forward-compat hook for P-60 (billing); null until billed.
     sales_invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=True)
 
+    salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True, index=True)
+    salesperson = db.relationship('Employee', foreign_keys=[salesperson_id])
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
@@ -59,6 +61,8 @@ class SalesOrder(db.Model):
         return {'id': self.id, 'so_number': self.so_number,
                 'order_date': self.order_date.isoformat() if self.order_date else None,
                 'customer_name': self.customer_name, 'status': self.status,
+                'salesperson_id': self.salesperson_id,
+                'salesperson_name': self.salesperson.full_name if self.salesperson else None,
                 'total_amount': float(self.total_amount) if self.total_amount is not None else 0.0}
 
 
@@ -68,7 +72,6 @@ class SalesOrderItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sales_order_id = db.Column(db.Integer, db.ForeignKey('sales_orders.id'), nullable=False, index=True)
     line_number = db.Column(db.Integer, nullable=False)
-    description = db.Column(db.String(500), nullable=False)
     amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     quantity = db.Column(db.Numeric(15, 4), nullable=True)
     unit_price = db.Column(db.Numeric(15, 2), nullable=True)
@@ -100,7 +103,7 @@ class SalesOrderItem(db.Model):
 
     def to_dict(self):
         return {
-            'id': self.id, 'line_number': self.line_number, 'description': self.description,
+            'id': self.id, 'line_number': self.line_number,
             'amount': float(self.amount) if self.amount is not None else 0.0,
             'quantity': float(self.quantity) if self.quantity is not None else None,
             'unit_price': float(self.unit_price) if self.unit_price is not None else None,
@@ -114,3 +117,8 @@ class SalesOrderItem(db.Model):
             'vat_category': self.vat_category,
             'vat_rate': float(self.vat_rate) if self.vat_rate is not None else 0.0,
         }
+
+
+def copy_salesperson(src, dst):
+    """Carry the salesperson down the SO->DR->SI chain (future cascade hook)."""
+    dst.salesperson_id = src.salesperson_id

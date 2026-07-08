@@ -114,7 +114,7 @@
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700;
                                  text-transform:uppercase; letter-spacing:0.04em;">Order Date</span>
-                    <span>{{ so.order_date.strftime('%b %d, %Y') if so.order_date else '&#8212;' }}</span>
+                    <span>{{ so.order_date.strftime('%b %d, %Y') if so.order_date else '—' }}</span>
                 </div>
                 {% if so.expected_delivery_date %}
                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -126,7 +126,7 @@
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700;
                                  text-transform:uppercase; letter-spacing:0.04em;">Payment Terms</span>
-                    <span>{{ so.payment_terms or '&#8212;' }}</span>
+                    <span>{{ so.payment_terms or '—' }}</span>
                 </div>
                 {% if so.reference %}
                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -196,45 +196,41 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Description</th>
-                        {% if module_enabled('products') %}<th>Product</th>{% endif %}
+                        <th>Product</th>
                         <th style="text-align:right;">Qty</th>
                         <th>UOM</th>
-                        <th style="text-align:right;">Unit Price (₱)</th>
-                        <th style="text-align:right;">Amount (₱)</th>
-                        <th>VAT Category</th>
+                        <th style="text-align:right;">Unit Price</th>
+                        <th style="text-align:right;">Amount</th>
+                        <th>VT</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for item in so.line_items %}
                     <tr>
                         <td>{{ item.line_number }}</td>
-                        <td>{{ item.description or '&#8212;' }}</td>
-                        {% if module_enabled('products') %}
                         <td style="font-size:12px; color:var(--text-2);">
                             {% if item.product %}
-                                {{ item.product.code }} &#8212; {{ item.product.name }}
+                                {{ item.product.code }} — {{ item.product.name }}
                             {% else %}
-                                &#8212;
+                                —
                             {% endif %}
                         </td>
-                        {% endif %}
                         <td style="text-align:right; font-family:var(--mono);">
-                            {{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '&#8212;' }}
+                            {{ item | qty_fmt('—') }}
                         </td>
                         <td style="font-size:12px;">
                             {{ item.unit_of_measure.code if item.unit_of_measure
-                               else (item.uom_text or '&#8212;') }}
+                               else (item.uom_text or '—') }}
                         </td>
                         <td style="text-align:right; font-family:var(--mono);">
                             {% if item.unit_price is not none %}
-                                ₱{{ '{:,.2f}'.format(item.unit_price) }}
+                                {{ '{:,.2f}'.format(item.unit_price) }}
                             {% else %}
-                                &#8212;
+                                —
                             {% endif %}
                         </td>
                         <td style="text-align:right; font-family:var(--mono); font-weight:600;">
-                            ₱{{ '{:,.2f}'.format(item.amount) }}
+                            {{ '{:,.2f}'.format(item.amount) }}
                         </td>
                         <td>
                             {% if item.vat_category %}
@@ -246,39 +242,14 @@
                     </tr>
                     {% endfor %}
                 </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="5" style="text-align:right; font-weight:700;">Total Sales</td>
+                        <td style="text-align:right; font-family:var(--mono); font-weight:700;">{{ '{:,.2f}'.format(so.total_amount) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
-        </div>
-
-        {# ── Order Summary ─────────────────────────────────────────────────── #}
-        <div style="display:flex; justify-content:flex-end; margin-bottom:24px;">
-            <div>
-                <div style="font-size:11px; font-weight:700; text-transform:uppercase;
-                            letter-spacing:.05em; color:var(--text-2); margin-bottom:10px;">
-                    Order Summary
-                </div>
-                <div class="bill-summary-panel">
-                    <div class="bsr">
-                        <span class="bsr-label">Subtotal (VAT-incl.)</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.subtotal) }}</span>
-                    </div>
-                    <div class="bsr">
-                        <span class="bsr-label">Less: VAT</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.vat_amount) }}</span>
-                    </div>
-                    <div class="bsr bsr--sep">
-                        <span class="bsr-label">Net of VAT</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.subtotal - so.vat_amount) }}</span>
-                    </div>
-                    <div class="bsr">
-                        <span class="bsr-label">Add: VAT</span>
-                        <span class="bsr-amt">₱{{ '{:,.2f}'.format(so.vat_amount) }}</span>
-                    </div>
-                    <div class="bsr bsr--total">
-                        <span class="bsr-label bsr-label--total">Total Amount</span>
-                        <span class="bsr-amt bsr-amt--total">₱{{ '{:,.2f}'.format(so.total_amount) }}</span>
-                    </div>
-                </div>
-            </div>
         </div>
 
         {# ── Audit footer ──────────────────────────────────────────────────── #}

@@ -142,6 +142,12 @@ def create_app(config_name=None):
     app.jinja_env.globals['module_enabled'] = module_enabled
     app.jinja_env.globals['build_sidebar'] = build_sidebar
 
+    # Line-item quantity display: whole number for pieces, else 4 decimals.
+    @app.template_filter('qty_fmt')
+    def qty_fmt_filter(item, blank=''):
+        from app.utils import format_line_qty
+        return format_line_qty(item, blank)
+
     # Add custom Jinja2 filter for JSON parsing
     @app.template_filter('from_json')
     def from_json_filter(s):

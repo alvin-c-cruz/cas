@@ -76,7 +76,7 @@
 
   <div class="print-bar screen-only">
     <button class="btn-print" onclick="window.print()">Print</button>
-    <a class="btn-close" href="{{ url_for('sales_orders.view', id=so.id) }}">Close</a>
+    <button type="button" class="btn-close" onclick="window.close()">Close</button>
   </div>
 
   <div class="so-header">
@@ -95,7 +95,7 @@
       <tr><td class="label">Expected Delivery</td>
           <td>{{ so.expected_delivery_date.strftime('%d %B %Y') }}</td></tr>
       {% endif %}
-      <tr><td class="label">Terms</td><td>{{ so.payment_terms or '&#8212;' }}</td></tr>
+      <tr><td class="label">Terms</td><td>{{ so.payment_terms or '—' }}</td></tr>
       {% if so.reference %}
       <tr><td class="label">Reference</td><td>{{ so.reference }}</td></tr>
       {% endif %}
@@ -125,60 +125,35 @@
     <thead>
       <tr>
         <th style="width:4%">#</th>
-        <th>Description / Particulars</th>
-        {% if module_enabled('products') %}<th style="width:12%">Product</th>{% endif %}
+        <th style="width:34%">Product</th>
         <th style="width:6%;text-align:right">Qty</th>
         <th style="width:6%">UOM</th>
-        <th style="width:9%;text-align:right">Unit Price (&#8369;)</th>
-        <th style="width:12%;text-align:right">Amount (&#8369;)</th>
-        <th style="width:12%">VAT Category</th>
+        <th style="width:9%;text-align:right">Unit Price</th>
+        <th style="width:12%;text-align:right">Amount</th>
+        <th style="width:12%">VT</th>
       </tr>
     </thead>
     <tbody>
       {% for item in so.line_items %}
       <tr>
         <td>{{ item.line_number }}</td>
-        <td>{{ item.description or '&#8212;' }}</td>
-        {% if module_enabled('products') %}
-        <td>{% if item.product %}{{ item.product.code }} &#8212; {{ item.product.name }}{% else %}&#8212;{% endif %}</td>
-        {% endif %}
-        <td class="amount">{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '&#8212;' }}</td>
-        <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '&#8212;') }}</td>
-        <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}&#8212;{% endif %}</td>
+        <td>{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}</td>
+        <td class="amount">{{ item | qty_fmt('—') }}</td>
+        <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
+        <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}</td>
         <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
         <td>{% if item.vat_category %}{{ item.vat_category }} ({{ '{:.2f}'.format(item.vat_rate) }}%){% else %}N/A{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5" style="text-align:right;font-weight:700">Total Sales</td>
+        <td class="amount" style="font-weight:700">{{ '{:,.2f}'.format(so.total_amount) }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
   </table>
-
-  <div class="summary-block">
-    <div class="section-label">SUMMARY</div>
-    <div class="summary-inner">
-      <div class="summary-row">
-        <span class="slabel">Subtotal (VAT-incl.):</span>
-        <span class="sval">{{ '{:,.2f}'.format(so.subtotal) }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="slabel">Less: VAT:</span>
-        <span class="sval">{{ '{:,.2f}'.format(so.vat_amount) }}</span>
-      </div>
-      <div class="summary-divider"></div>
-      <div class="summary-row">
-        <span class="slabel">Net of VAT:</span>
-        <span class="sval">{{ '{:,.2f}'.format(so.subtotal - so.vat_amount) }}</span>
-      </div>
-      <div class="summary-row">
-        <span class="slabel">Add: VAT:</span>
-        <span class="sval">{{ '{:,.2f}'.format(so.vat_amount) }}</span>
-      </div>
-      <div class="summary-divider-double"></div>
-      <div class="summary-net">
-        <span class="netlabel">Total Amount:</span>
-        <span class="netval">{{ '{:,.2f}'.format(so.total_amount) }}</span>
-      </div>
-    </div>
-  </div>
 
   {% if so.notes %}
   <div class="notes-box">

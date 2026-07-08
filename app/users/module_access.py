@@ -16,7 +16,7 @@ MODULE_REGISTRY = [
     # ── Sales Area (optional — per-company configurable) ───────────────────
     {'key': 'sales_orders', 'label': 'Sales Orders', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
-     'optional': False, 'depends_on': [],
+     'optional': True, 'depends_on': ['products'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('sales_orders.',)},
     {'key': 'accounts_receivable', 'label': 'Sales Invoices', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
@@ -182,8 +182,10 @@ def all_permission_keys():
 
     Optional modules (e.g. bir_reports) are instance-gated via module_enabled,
     never per-user, so they are excluded here — matching the admin user-save
-    path and the form grid."""
-    return [m['key'] for m in MODULE_REGISTRY if not m.get('optional')]
+    path and the form grid. EXCEPTION: an optional module flagged per_user (e.g.
+    sales_orders) is both instance-gated AND per-user grantable, so it stays in
+    the grid — a bare optional would silently drop it to admin-only."""
+    return [m['key'] for m in MODULE_REGISTRY if not m.get('optional') or m.get('per_user')]
 
 
 def default_all_permissions():

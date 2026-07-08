@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>Sales Invoice {{ invoice.invoice_number }} — Pre-printed</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/sv_preprinted_designer.css') }}?v=5">
+<title>Sales Order {{ so.so_number }} — Pre-printed</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/so_preprinted_designer.css') }}?v=1">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
@@ -103,25 +103,22 @@
   {# Values only — the pre-printed stock supplies every label/header. #}
   {% set date_fmt = date_formats[layout.dateFormat] %}
   {% set field_values = {
-    'invoice_no': invoice.invoice_number,
-    'invoice_date': invoice.invoice_date.strftime(date_fmt),
-    'due_date': invoice.due_date.strftime(date_fmt) if invoice.due_date else '',
-    'terms': invoice.payment_terms or '',
-    'salesperson': invoice.salesperson.full_name if invoice.salesperson else 'Company Account',
-    'customer_name': invoice.customer_name,
-    'customer_tin': invoice.customer_tin or '',
-    'customer_address': invoice.customer_address or '',
-    'customer_po': invoice.customer_po_number or '',
-    'gross_sales': '{:,.2f}'.format(invoice.subtotal or 0),
-    'output_vat': '{:,.2f}'.format(invoice.vat_amount or 0),
-    'net_of_vat': '{:,.2f}'.format((invoice.subtotal or 0) - (invoice.vat_amount or 0)),
-    'wht_amount': '{:,.2f}'.format(invoice.withholding_tax_amount or 0),
-    'amount_collectible': '{:,.2f}'.format(invoice.total_amount or 0),
-    'notes': invoice.notes or '',
+    'so_no': so.so_number,
+    'order_date': so.order_date.strftime(date_fmt),
+    'expected_delivery': so.expected_delivery_date.strftime(date_fmt) if so.expected_delivery_date else '',
+    'customer_name': so.customer_name,
+    'customer_tin': so.customer_tin or '',
+    'customer_address': so.customer_address or '',
+    'customer_po': so.customer_po_number or '',
+    'po_date': so.customer_po_date.strftime(date_fmt) if so.customer_po_date else '',
+    'terms': so.payment_terms or '',
+    'salesperson': so.salesperson.full_name if so.salesperson else 'Company Account',
+    'total_sales': '{:,.2f}'.format(so.total_amount or 0),
   } %}
   {% set field_isos = {
-    'invoice_date': invoice.invoice_date.isoformat(),
-    'due_date': invoice.due_date.isoformat() if invoice.due_date else '',
+    'order_date': so.order_date.isoformat(),
+    'expected_delivery': so.expected_delivery_date.isoformat() if so.expected_delivery_date else '',
+    'po_date': so.customer_po_date.isoformat() if so.customer_po_date else '',
   } %}
   {% for key in field_values %}{{ field(key, field_values[key], field_isos.get(key, '')) }}{% endfor %}
   {# Duplicated copies (elements outside the line-item group) #}
@@ -137,14 +134,13 @@
     <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key in ('amount', 'unit_price', 'quantity') else '' }}"
          data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
          style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
-      {%- for item in invoice.line_items %}
+      {%- for item in so.line_items %}
       <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
-        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.name }}{% else %}{{ item.description or '—' }}{% endif %}
-        {%- elif col.key == 'quantity' -%}
-          {{- item | qty_fmt('—') -}}
-        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '—') }}
-        {%- elif col.key == 'unit_price' -%}{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}
+        {%- elif col.key == 'product' -%}{% if item.product %}{{ item.product.code ~ ' — ' ~ item.product.name }}{% else %}{{ '' }}{% endif %}
+        {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
+        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '') }}
+        {%- elif col.key == 'unit_price' -%}{{ '{:,.2f}'.format(item.unit_price) if item.unit_price is not none else '' }}
         {%- elif col.key == 'amount' -%}{{ '{:,.2f}'.format(item.amount) }}
         {%- endif -%}
       </div>
@@ -155,7 +151,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=25"></script>
+<script src="{{ url_for('static', filename='js/so_preprinted_designer.js') }}?v=1"></script>
 {% endif %}
 </body>
 </html>

@@ -48,6 +48,8 @@ class Employee(db.Model):
     user = db.relationship('User', foreign_keys=[user_id])
 
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Eligible to be credited as the salesperson on sales documents (capability, not a title).
+    is_salesperson = db.Column(db.Boolean, default=False, nullable=False)
 
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
@@ -88,6 +90,7 @@ class Employee(db.Model):
             'pay_frequency': self.pay_frequency,
             'user_id': self.user_id,
             'is_active': self.is_active,
+            'is_salesperson': self.is_salesperson,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

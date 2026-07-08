@@ -4,13 +4,17 @@ from app.users.module_access import all_permission_keys, default_all_permissions
 pytestmark = [pytest.mark.unit]
 
 
-def test_all_permission_keys_excludes_optional():
+def test_all_permission_keys_excludes_optional_except_per_user():
     keys = all_permission_keys()
-    optional = [m['key'] for m in MODULE_REGISTRY if m.get('optional')]
+    # optional-and-NOT-per_user modules are excluded (instance-gated only)
+    optional_not_per_user = [m['key'] for m in MODULE_REGISTRY
+                             if m.get('optional') and not m.get('per_user')]
     assert 'accounts_payable' in keys
-    assert 'bir_reports' not in keys           # optional → excluded
-    for k in optional:
+    assert 'bir_reports' not in keys           # optional, not per_user → excluded
+    for k in optional_not_per_user:
         assert k not in keys
+    # optional-BUT-per_user modules stay in the grid (e.g. sales_orders)
+    assert 'sales_orders' in keys
 
 
 def test_default_all_permissions_grants_every_non_optional_key():

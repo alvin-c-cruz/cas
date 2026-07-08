@@ -104,6 +104,13 @@
                     </label>
                     <small class="form-hint">Minimum-wage earners are exempt from withholding tax on compensation.</small>
                 </div>
+                <div class="form-group">
+                    <label class="form-label" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        {{ form.is_salesperson(style="width:auto; margin:0;") }}
+                        {{ form.is_salesperson.label.text }}
+                    </label>
+                    <small class="form-hint">Only salespersons appear in the Salesperson picker on Sales Orders and Sales Invoices.</small>
+                </div>
             </div>
 
             <!-- Compensation Section -->

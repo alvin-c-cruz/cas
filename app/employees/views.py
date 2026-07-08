@@ -71,6 +71,7 @@ def _apply(form, e):
     e.pay_frequency = form.pay_frequency.data or None
     e.user_id = form.user_id.data or None
     e.is_active = form.is_active.data == '1'
+    e.is_salesperson = bool(form.is_salesperson.data)
 
 
 @employees_bp.route('/employees')

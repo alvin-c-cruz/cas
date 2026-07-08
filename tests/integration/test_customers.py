@@ -521,3 +521,18 @@ def test_customer_edit_keeping_own_name_no_warning(
     }, follow_redirects=True)
     body = html_mod.unescape(resp.data.decode())
     assert 'already exists' not in body
+
+
+def test_customer_create_persists_po_required(
+        client, db_session, accountant_user, main_branch):
+    """Ticking 'Requires Purchase Order' on create persists po_required=True."""
+    from app.customers.models import Customer
+
+    _login_accountant(client, accountant_user, main_branch)
+    client.post('/customers/create', data={
+        'code': 'C-POREQ', 'name': 'PO Required Corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'default_vat_category': '', 'default_wt_code': '',
+        'po_required': 'y',
+    }, follow_redirects=True)
+    c = Customer.query.filter_by(code='C-POREQ').first()
+    assert c is not None and c.po_required is True

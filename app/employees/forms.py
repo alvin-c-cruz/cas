@@ -35,6 +35,7 @@ class EmployeeForm(FlaskForm):
     qualified_dependents = IntegerField('Qualified Dependents', validators=[
         Optional(), NumberRange(min=0)], default=0)
     is_minimum_wage = BooleanField('Minimum-Wage Earner')
+    is_salesperson = BooleanField('Salesperson (can be credited on sales documents)')
 
     pay_basis = SelectField('Pay Basis', validators=[Optional()], choices=[
         ('', '— select —'), ('monthly', 'Monthly'), ('daily', 'Daily')])

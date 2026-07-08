@@ -2,7 +2,7 @@
 Forms for Customer management
 """
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SelectField
+from wtforms import StringField, TextAreaField, SelectField, BooleanField
 from wtforms.validators import DataRequired, Length, Email, Optional
 
 
@@ -64,3 +64,5 @@ class CustomerForm(FlaskForm):
     default_vat_category = SelectField('Registration Type', choices=[], validators=[Optional()])
 
     default_wt_code = SelectField('Withholding Tax', choices=[], validators=[Optional()])
+
+    po_required = BooleanField('Requires Purchase Order')
