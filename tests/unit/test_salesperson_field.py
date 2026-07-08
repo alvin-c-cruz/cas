@@ -36,3 +36,20 @@ def test_copy_salesperson(db_session, main_branch):
                      customer_name='Acme', branch_id=main_branch.id)
     copy_salesperson(src, dst)
     assert dst.salesperson_id == e.id
+
+
+def test_salesperson_choices_only_includes_flagged_employees(app, db_session, main_branch):
+    from app.sales_orders.views import _salesperson_choices
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:employees', '1')
+    db_session.commit(); clear_module_config_cache()
+    db_session.add(Employee(employee_no='S1', first_name='Sal', last_name='Rep',
+                            branch_id=main_branch.id, is_active=True, is_salesperson=True))
+    db_session.add(Employee(employee_no='A1', first_name='Ac', last_name='Count',
+                            branch_id=main_branch.id, is_active=True, is_salesperson=False))
+    db_session.commit()
+    with app.test_request_context():
+        labels = [lbl for (val, lbl) in _salesperson_choices(main_branch.id)]
+    assert any('S1' in l for l in labels)       # salesperson included
+    assert not any('A1' in l for l in labels)   # non-salesperson excluded

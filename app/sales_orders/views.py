@@ -110,9 +110,9 @@ def _salesperson_choices(branch_id):
     from app.employees.models import Employee
     choices = [(0, '-- None --')]
     if module_enabled('employees') and branch_id:
-        emps = (Employee.query.filter_by(is_active=True, branch_id=branch_id)
+        emps = (Employee.query.filter_by(is_active=True, is_salesperson=True, branch_id=branch_id)
                 .order_by(Employee.last_name, Employee.first_name).all())
-        choices += [(e.id, e.full_name) for e in emps]
+        choices += [(e.id, f'{e.employee_no} - {e.full_name}') for e in emps]
     return choices
 
 
