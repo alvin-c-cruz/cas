@@ -85,8 +85,8 @@
                     <thead>
                         <tr>
                             <th style="width: 3%; white-space: nowrap; color: var(--text-2);">#</th>
-                            {% if not module_enabled('products') %}<th style="width: 27%;">Description</th>{% endif %}
-                            {% if module_enabled('products') %}<th style="width: 23%;">Product</th>{% endif %}
+                            <th style="width: 20%;">Description</th>
+                            {% if module_enabled('products') %}<th style="width: 16%;">Product</th>{% endif %}
                             <th style="width: 6%; text-align: right;">Qty</th>
                             <th style="width: 6%;">UOM</th>
                             <th style="width: 9%; text-align: right;">UP</th>
@@ -586,9 +586,9 @@ function addLineItem(existingItem) {
     row.id = `line-${id}`;
     row.innerHTML = `
         <td style="text-align:center; color:var(--text-2); font-size:12px; white-space:nowrap;" class="line-num-cell">${rowNum}</td>
-        ${!productMasterOn ? `<td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
+        <td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
                    style="border:none; background:transparent; padding-left:0;"
-                   onchange="updateLineItem(${id}, 'description', this.value)"></td>` : ''}
+                   onchange="updateLineItem(${id}, 'description', this.value)"></td>
         ${productMasterOn ? `
         <td><select class="form-control prod-select">
               <option value="">—</option>
@@ -825,11 +825,8 @@ function onProductPick(id, productId) {
     refreshNotesAutofill();   // reflect the changed product set in Notes (if user hasn't touched it)
     const p = products.find(pp => String(pp.id) === String(productId));
     if (!p) return;
-    if (p.name) {
-        item.description = p.name;
-        const descEl = document.getElementById(`desc-${id}`);
-        if (descEl) descEl.value = p.name;
-    }
+    // Product-pick autofills account / unit_price / UoM only — NEVER the
+    // Description (it is the user's own free text, the JE particulars source).
     if (p.default_uom_id != null) {
         item.uom_id = p.default_uom_id;
         const lc = lineChoices[id];
