@@ -39,8 +39,12 @@ class AccountsPayable(db.Model):
     ap_date = db.Column(db.Date, nullable=False, index=True)
     due_date = db.Column(db.Date, nullable=False)
 
-    # Vendor reference
-    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False, index=True)
+    # Payee reference (polymorphic: vendor OR employee)
+    payee_type = db.Column(db.String(20), nullable=False, default='vendor', server_default='vendor', index=True)
+    payee_id = db.Column(db.Integer, nullable=False, default=0)
+
+    # Vendor reference — nullable now; set for vendor payees, NULL for employees.
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=True, index=True)
     vendor = db.relationship('Vendor', backref='accounts_payable')
 
     # Vendor details snapshot (for historical accuracy)
