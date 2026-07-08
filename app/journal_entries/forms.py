@@ -19,7 +19,7 @@ class JournalEntryForm(FlaskForm):
         DataRequired(message='Entry date is required.')
     ], format='%Y-%m-%d', default=date.today)
 
-    description = StringField('Description', validators=[
+    description = TextAreaField('Description', validators=[
         DataRequired(message='Description is required.'),
         Length(max=500, message='Description must be 500 characters or less.')
     ])

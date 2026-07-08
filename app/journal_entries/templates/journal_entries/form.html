@@ -69,7 +69,7 @@
                     <thead>
                         <tr>
                             <th style="width: 34%;">Account</th>
-                            <th style="width: 20%;">Description</th>
+                            <th style="width: 20%;">Particulars</th>
                             <th style="width: 19%; text-align: right;">Debit</th>
                             <th style="width: 19%; text-align: right;">Credit</th>
                             <th style="width: 4%; text-align: center;">Action</th>
@@ -138,7 +138,15 @@
     .line-row:hover {
         background: #f8fafc;
     }
-    .line-row input, .line-row select {
+    /* Every line-item control shares ONE 32px height so the row aligns cleanly. */
+    .line-row td { vertical-align: middle; }
+    .line-row input,
+    .line-row .choices__inner,
+    .btn-remove-line {
+        height: 32px;
+        box-sizing: border-box;
+    }
+    .line-row input {
         width: 100%;
         padding: 5px 6px;
         border: 1px solid #cbd5e1;
@@ -147,9 +155,9 @@
     }
     /* Tight cells: minimize the gap between columns and rows. */
     #linesTable td, #linesTable th { padding: 2px 4px; }
-    /* Trim the Choices account picker's chrome so it doesn't inflate row height. */
+    /* Account picker: same 32px height, vertically-centred chip, no extra margin. */
     .line-row .choices { margin-bottom: 0; }
-    .line-row .choices__inner { padding: 3px 6px; min-height: 30px; font-size: 13px; }
+    .line-row .choices__inner { padding: 0 6px; min-height: 32px; font-size: 13px; display: flex; align-items: center; }
     .line-row input:focus, .line-row select:focus {
         outline: none;
         border-color: #3b82f6;
