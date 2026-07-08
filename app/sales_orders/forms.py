@@ -47,6 +47,9 @@ class SalesOrderForm(FlaskForm):
 
     reference = StringField('Reference', validators=[Optional(), Length(max=100)])
 
+    salesperson_id = SelectField('Salesperson', coerce=int, validators=[Optional()],
+                                 validate_choice=False)
+
     notes = TextAreaField('Notes', validators=[Optional()])
 
     # Hidden JSON blob carrying the line items submitted from the JS line-item grid.

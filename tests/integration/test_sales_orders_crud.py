@@ -110,6 +110,27 @@ def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, ad
     assert '₱' not in html           # peso sign U+20B1
 
 
+def test_so_persists_salesperson_when_employees_enabled(client, db_session, admin_user, main_branch):
+    from app.employees.models import Employee
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:employees', '1')
+    db_session.commit(); clear_module_config_cache()
+    e = Employee(employee_no='E-9', first_name='Rey', last_name='Santos',
+                 branch_id=main_branch.id, is_active=True)
+    db_session.add(e); db_session.commit()
+    c = _customer(db_session); p = _product(db_session)
+    _login(client, admin_user); _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '1', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0'}])
+    client.post('/sales-orders/create', data={
+        'so_number': 'SO-SP-100', 'order_date': '2026-07-08', 'customer_id': str(c.id),
+        'customer_name': 'Acme', 'payment_terms': 'Net 30', 'notes': '',
+        'salesperson_id': str(e.id), 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='SO-SP-100').first()
+    assert so is not None and so.salesperson_id == e.id
+
+
 def test_list_overdue_filter(client, db_session, admin_user, main_branch):
     """?overdue=1 narrows the SO list to confirmed orders whose expected delivery is past."""
     import datetime

@@ -104,6 +104,18 @@ def _role_gate():
 
 # ── form context helper ───────────────────────────────────────────────────────
 
+def _salesperson_choices(branch_id):
+    """(0,'-- None --') + active, branch-scoped employees — only when the Employees module is on."""
+    from app.users.module_access import module_enabled
+    from app.employees.models import Employee
+    choices = [(0, '-- None --')]
+    if module_enabled('employees') and branch_id:
+        emps = (Employee.query.filter_by(is_active=True, branch_id=branch_id)
+                .order_by(Employee.last_name, Employee.first_name).all())
+        choices += [(e.id, e.full_name) for e in emps]
+    return choices
+
+
 def _common_form_ctx():
     """Build the common template context shared by create and edit."""
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
@@ -214,6 +226,7 @@ def create():
         return gate
 
     form = SalesOrderForm()
+    form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
 
     if form.validate_on_submit():
         so_number = (form.so_number.data or '').strip()
@@ -255,6 +268,7 @@ def create():
                 customer_po_date=form.customer_po_date.data or None,
                 payment_terms=form.payment_terms.data,
                 reference=form.reference.data or None,
+                salesperson_id=(form.salesperson_id.data or None),
                 notes=form.notes.data or '',
                 status='draft',
                 created_by_id=current_user.id,
@@ -309,6 +323,7 @@ def edit(id):
         return redirect(url_for('sales_orders.view', id=id))
 
     form = SalesOrderForm(obj=so)
+    form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
 
     restore_items = ([item.to_dict() for item in so.line_items]
                      if request.method == 'GET'
@@ -356,6 +371,7 @@ def edit(id):
             so.customer_po_date = form.customer_po_date.data or None
             so.payment_terms = form.payment_terms.data
             so.reference = form.reference.data or None
+            so.salesperson_id = form.salesperson_id.data or None
             so.notes = form.notes.data or ''
 
             db.session.execute(db.delete(SalesOrderItem).where(SalesOrderItem.sales_order_id == so.id))
