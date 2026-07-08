@@ -39,6 +39,7 @@ class Customer(db.Model):
                                         backref=db.backref('customers', lazy='dynamic'))
 
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    po_required = db.Column(db.Boolean, default=False, nullable=False)
 
     # Audit fields
     created_at = db.Column(db.DateTime, default=ph_now)
@@ -77,6 +78,7 @@ class Customer(db.Model):
                 for w in self.withholding_taxes
             ],
             'is_active': self.is_active,
+            'po_required': self.po_required,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
