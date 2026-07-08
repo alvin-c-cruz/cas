@@ -110,6 +110,26 @@ def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, ad
     assert '₱' not in html           # peso sign U+20B1
 
 
+def test_list_overdue_filter(client, db_session, admin_user, main_branch):
+    """?overdue=1 narrows the SO list to confirmed orders whose expected delivery is past."""
+    import datetime
+    from app.utils import ph_now
+    c = _customer(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    today = ph_now().date()
+    db.session.add(SalesOrder(so_number='SO-OVD-1', order_date=today, customer_id=c.id,
+                              customer_name='Acme', branch_id=main_branch.id, status='confirmed',
+                              expected_delivery_date=today - datetime.timedelta(days=3)))
+    db.session.add(SalesOrder(so_number='SO-FUT-1', order_date=today, customer_id=c.id,
+                              customer_name='Acme', branch_id=main_branch.id, status='confirmed',
+                              expected_delivery_date=today + datetime.timedelta(days=30)))
+    db.session.commit()
+    html = client.get('/sales-orders?overdue=1').get_data(as_text=True)
+    assert 'SO-OVD-1' in html
+    assert 'SO-FUT-1' not in html
+
+
 def test_create_form_is_product_first_no_description(client, db_session, admin_user, main_branch):
     """The SO create form is product-first: the product picker is present and there is
     no free-text line Description input anywhere in the editor JS/markup."""

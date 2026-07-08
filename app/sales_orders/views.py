@@ -4,7 +4,7 @@ Operational module only: posts NO journal entry, has NO GL account, NO WHT, NO p
 Mirrors sales_invoices.views create/edit with all accounting stripped.
 """
 import json
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, render_template, redirect, url_for, flash,
@@ -132,6 +132,18 @@ def list():
     status_filter = request.args.get('status', 'all')
     if status_filter in VALID_SO_STATUSES:
         query = query.filter_by(status=status_filter)
+
+    # Drill-through filters from Order Monitoring (applied only when present)
+    _today = ph_now().date()
+    if request.args.get('overdue') == '1':
+        query = query.filter(SalesOrder.status == 'confirmed',
+                             SalesOrder.expected_delivery_date.isnot(None),
+                             SalesOrder.expected_delivery_date < _today)
+    if request.args.get('due_soon') == '1':
+        query = query.filter(SalesOrder.status == 'confirmed',
+                             SalesOrder.expected_delivery_date.isnot(None),
+                             SalesOrder.expected_delivery_date >= _today,
+                             SalesOrder.expected_delivery_date <= _today + timedelta(days=7))
 
     # Customer filter
     customer_filter = request.args.get('customer_id', 'all')
