@@ -21,6 +21,11 @@ def _post_ap(payee_type, payee_id, vendor_id, name, num, branch_id, wht=Decimal(
 
 
 def _setup(client, admin_user, branch, login_user):
+    # bir_reports is default-enabled, but a sibling test may have disabled it and
+    # left a stale memoize entry on the session-scoped app cache; clear it so the
+    # BIR routes are reachable from a clean DB state.
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
     login_user(client, 'admin', 'admin123')
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch.id
