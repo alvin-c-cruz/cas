@@ -107,7 +107,7 @@
     'invoice_date': invoice.invoice_date.strftime(date_fmt),
     'due_date': invoice.due_date.strftime(date_fmt) if invoice.due_date else '',
     'terms': invoice.payment_terms or '',
-    'salesperson': invoice.salesperson.full_name if invoice.salesperson else '',
+    'salesperson': invoice.salesperson.full_name if invoice.salesperson else 'Company Account',
     'customer_name': invoice.customer_name,
     'customer_tin': invoice.customer_tin or '',
     'customer_address': invoice.customer_address or '',

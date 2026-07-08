@@ -108,7 +108,7 @@ def _salesperson_choices(branch_id):
     """(0,'-- None --') + active, branch-scoped employees — only when the Employees module is on."""
     from app.users.module_access import module_enabled
     from app.employees.models import Employee
-    choices = [(0, '-- None --')]
+    choices = [(0, 'Company Account')]   # null salesperson = house/company account
     if module_enabled('employees') and branch_id:
         emps = (Employee.query.filter_by(is_active=True, is_salesperson=True, branch_id=branch_id)
                 .order_by(Employee.last_name, Employee.first_name).all())
