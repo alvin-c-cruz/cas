@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}VAT Settlement - {{ company_name }}{% endblock %}
+{% block page_title %}VAT Settlement{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+
+{# ── Settle modals (one per eligible quarter) ──────────────────────────── #}
+{% for y, q in eligible %}
+<div id="settle-modal-{{ y }}-{{ q }}" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Settle {{ y }} Q{{ q }} VAT?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">
+      This computes the net VAT position for {{ y }} Q{{ q }}, posts a settlement journal entry
+      clearing the Output/Input VAT accounts, and closes the periods in this quarter.
+      This action cannot be undone without reversing.
+    </p>
+    <form method="post" action="{{ url_for('vat_settlement.settle') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="year" value="{{ y }}">
+      <input type="hidden" name="quarter" value="{{ q }}">
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('settle-modal-{{ y }}-{{ q }}').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-primary">Settle Quarter</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{# ── Reverse modal (latest settled quarter only) ───────────────────────── #}
+{% for s in settlements %}
+{% if latest_key and (s.fiscal_year, s.quarter) == latest_key and s.status == 'settled' %}
+<div id="reverse-modal-{{ s.fiscal_year }}-{{ s.quarter }}" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Reverse {{ s.fiscal_year }} Q{{ s.quarter }} Settlement?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">
+      This reverses the settlement journal entry and reopens the periods in
+      {{ s.fiscal_year }} Q{{ s.quarter }}.
+    </p>
+    <form method="post" action="{{ url_for('vat_settlement.reverse') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="year" value="{{ s.fiscal_year }}">
+      <input type="hidden" name="quarter" value="{{ s.quarter }}">
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary"
+                onclick="document.getElementById('reverse-modal-{{ s.fiscal_year }}-{{ s.quarter }}').style.display='none'">Cancel</button>
+        <button type="submit" class="btn btn-danger">Reverse Settlement</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{# ── VAT accounts config card ──────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">VAT Accounts</div>
+    <div class="card-sub">Assign the accounts a quarterly settlement posts to</div>
+  </div>
+  <div class="card-body">
+    {% if not accounts_assigned %}
+    <div class="alert alert-warning">
+      Assign the VAT Payable and Excess Input Tax Carry-Over accounts below before settling.
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('vat_settlement.save_accounts') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label class="form-label" for="vatPayableAccountSelect">VAT Payable account</label>
+          <select name="vat_payable_account_code" id="vatPayableAccountSelect" class="form-control">
+            <option value="">— not assigned —</option>
+            {% for a in accounts %}
+            <option value="{{ a.code }}" {{ 'selected' if pay_code and a.code == pay_code else '' }}>{{ a.code }}: {{ a.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="inputVatCarryoverAccountSelect">Excess Input Tax Carry-Over account</label>
+          <select name="input_vat_carryover_account_code" id="inputVatCarryoverAccountSelect" class="form-control">
+            <option value="">— not assigned —</option>
+            {% for a in accounts %}
+            <option value="{{ a.code }}" {{ 'selected' if carry_code and a.code == carry_code else '' }}>{{ a.code }}: {{ a.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Eligible Quarters to Settle ───────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Settle a Quarter</div>
+    <div class="card-sub">Select an eligible quarter to post the VAT settlement entry</div>
+  </div>
+  <div class="card-body">
+    {% if eligible %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Fiscal Year</th>
+          <th>Quarter</th>
+          <th>Worksheet</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for y, q in eligible %}
+        <tr>
+          <td>{{ y }}</td>
+          <td>Q{{ q }}</td>
+          <td><a href="{{ url_for('reports.bir_vat_return', year=y, quarter=q) }}">View worksheet</a></td>
+          <td>
+            {% if accounts_assigned %}
+            <button type="button" class="btn btn-primary"
+                    onclick="document.getElementById('settle-modal-{{ y }}-{{ q }}').style.display='flex'">
+              Settle Quarter
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No quarter is currently eligible to settle.</p>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Settlement History ────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Settlement History</div>
+    <div class="card-sub">History of quarterly VAT settlements</div>
+  </div>
+  <div class="card-body">
+    {% if settlements %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Year</th>
+          <th>Quarter</th>
+          <th style="text-align:right;">Net Payable</th>
+          <th style="text-align:right;">New Carryover</th>
+          <th>Status</th>
+          <th>Worksheet</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in settlements %}
+        <tr>
+          <td>{{ s.fiscal_year }}</td>
+          <td>Q{{ s.quarter }}</td>
+          <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(s.net_payable) }}</td>
+          <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(s.new_carryover) }}</td>
+          <td>
+            <span class="badge badge-{{ 'active' if s.status == 'settled' else 'inactive' }}">
+              {{ s.status|title }}
+            </span>
+          </td>
+          <td><a href="{{ url_for('reports.bir_vat_return', year=s.fiscal_year, quarter=s.quarter) }}">View worksheet</a></td>
+          <td>
+            {% if accounts_assigned and latest_key and (s.fiscal_year, s.quarter) == latest_key and s.status == 'settled' %}
+            <button type="button" class="btn btn-danger"
+                    onclick="document.getElementById('reverse-modal-{{ s.fiscal_year }}-{{ s.quarter }}').style.display='flex'">
+              Reverse Settlement
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No quarters have been settled yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  ['vatPayableAccountSelect', 'inputVatCarryoverAccountSelect'].forEach(function (id) {
+    var sel = document.getElementById(id);
+    if (sel && typeof initSearchSelect === 'function' && !sel.closest('.choices')) {
+      initSearchSelect(sel);
+    }
+  });
+});
+</script>
+{% endblock %}

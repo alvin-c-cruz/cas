@@ -42,6 +42,7 @@ CONSTRUCTION_COA = [
     ('10504', 'Input VAT - Importation',                       'Asset', 'Current', 'debit',  '10500'),
     ('10505', 'Deferred Input VAT',                            'Asset', 'Current', 'debit',  '10500'),
     ('10506', 'Creditable VAT Withheld',                       'Asset', 'Current', 'debit',  '10500'),
+    ('10507', 'Excess Input Tax Carry-Over',                   'Asset', 'Current', 'debit',  '10500'),
     # ===== ASSETS - Non-Current =====
     ('11100', 'Property, Plant and Equipment',                 'Asset', 'Non-Current', 'debit',  None),
     ('11110', 'Land',                                          'Asset', 'Non-Current', 'debit',  '11100'),

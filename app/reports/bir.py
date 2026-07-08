@@ -296,3 +296,31 @@ def get_quarter_months(quarter):
     start_month = (quarter - 1) * 3 + 1
     end_month = start_month + 2
     return f'{get_month_name(start_month)} - {get_month_name(end_month)}'
+
+
+def get_vat_return_summary(year, quarter):
+    """Quarterly net-VAT worksheet (BIR 2550Q pre-cursor). Company-wide."""
+    from app.vat_settlement import service
+    from app.vat_settlement.models import VatSettlement
+    base = {'year': year, 'quarter': quarter, 'quarter_name': get_quarter_name(quarter)}
+    settled = VatSettlement.query.filter_by(fiscal_year=year, quarter=quarter,
+                                            status='settled').first()
+    if settled is not None:
+        # Filed quarter: show the immutable snapshot. Re-deriving would trip the tie-out,
+        # since the quarter-end settlement JE zeroes the balance side but not the movement side.
+        creditable = settled.input_vat + settled.prior_carryover
+        return {**base, 'output_vat': settled.output_vat, 'input_vat': settled.input_vat,
+                'prior_carryover': settled.prior_carryover, 'creditable': creditable,
+                'net_payable': settled.net_payable, 'new_carryover': settled.new_carryover,
+                'settled': True}
+    try:
+        pos = service.compute_vat_position(year, quarter)
+    except ValueError as e:
+        z = Decimal('0.00')
+        return {**base, 'output_vat': z, 'input_vat': z, 'prior_carryover': z,
+                'creditable': z, 'net_payable': z, 'new_carryover': z, 'error': str(e)}
+    return {**base,
+            'output_vat': pos['output_vat'], 'input_vat': pos['input_vat'],
+            'prior_carryover': pos['prior_carryover'], 'creditable': pos['creditable'],
+            'net_payable': pos['net_payable'], 'new_carryover': pos['new_carryover'],
+            'settled': False}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% block title %}VAT Return Worksheet{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=2">
+{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  {{ bir_book_header(company, 'VAT RETURN WORKSHEET (2550Q)', data.quarter_name ~ ' ' ~ year) }}
+
+  <form method="get" style="margin:12px 0;display:flex;gap:8px;align-items:center;">
+    <label>Year <input type="number" name="year" value="{{ year }}" style="width:90px;"></label>
+    <label>Quarter
+      <select name="quarter">
+        {% for q in [1,2,3,4] %}
+        <option value="{{ q }}" {% if q == quarter %}selected{% endif %}>Q{{ q }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-secondary btn-sm">View</button>
+  </form>
+
+  {% if data.error %}
+  <p style="color:var(--alert-error-text);">{{ data.error }}</p>
+  {% endif %}
+
+  <table style="width:100%;max-width:520px;border-collapse:collapse;font-size:14px;">
+    <tr><td style="padding:6px 8px;">Output VAT</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(data.output_vat) }}</td></tr>
+    <tr><td style="padding:6px 8px;">Less: Input VAT (this quarter)</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(data.input_vat) }}</td></tr>
+    <tr><td style="padding:6px 8px;">Less: Excess Input Tax carried over</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(data.prior_carryover) }}</td></tr>
+    <tr style="border-top:1px solid var(--border);"><td style="padding:6px 8px;">Total creditable</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(data.creditable) }}</td></tr>
+    <tr style="border-top:2px solid var(--border);font-weight:600;">
+        <td style="padding:6px 8px;">VAT Payable</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(data.net_payable) }}</td></tr>
+    <tr style="font-weight:600;"><td style="padding:6px 8px;">Excess Input Tax carried forward</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(data.new_carryover) }}</td></tr>
+  </table>
+
+  <a class="btn btn-secondary btn-sm" style="margin-top:12px;"
+     href="{{ url_for('reports.bir_vat_return_export_excel', year=year, quarter=quarter) }}">Export Excel</a>
+</div></div>
+{% endblock %}

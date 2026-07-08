@@ -1128,6 +1128,10 @@
                         <span class="nav-text">Annual ITR</span>
                         <span class="nav-coming-soon">Soon</span>
                     </a>
+                    <a href="{{ url_for('vat_settlement.index') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('vat_settlement.') %}active{% endif %}">
+                        <span class="nav-icon">🧾</span>
+                        <span class="nav-text">VAT Settlement</span>
+                    </a>
                     {% else %}
                     {# Standard single-endpoint nav link — exact url_for + icon from old hardcoded blocks #}
                     <a href="{{ url_for(_nav_ep[m.key]) }}" class="nav-item {{ active_class(m.key) }}">
