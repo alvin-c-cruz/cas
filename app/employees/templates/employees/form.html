@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Edit Employee' if employee else 'Create Employee' }}{% endblock %}
+{% block page_title %}{{ 'Edit Employee' if employee else 'Create Employee' }}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field, status_toggle %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}?v=1">
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate data-track-changes="{{ 'true' if employee else 'false' }}">
+            {{ form.hidden_tag() }}
+
+            <!-- Identity Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">🪪</span>
+                    <div>
+                        <h3 class="form-section-title">Identity</h3>
+                        <p class="form-section-desc">Employee number and personal details</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    {{ render_field(form.employee_no, required=True) }}
+                    {{ render_field(form.branch_id, required=True) }}
+                </div>
+                <div class="form-row-2">
+                    {{ render_field(form.first_name, required=True) }}
+                    {{ render_field(form.middle_name) }}
+                </div>
+                <div class="form-row-2">
+                    {{ render_field(form.last_name, required=True) }}
+                    {{ render_field(form.birthdate) }}
+                </div>
+                <div class="form-group">
+                    {{ render_field(form.address) }}
+                </div>
+                <div class="form-row-2">
+                    {{ render_field(form.phone) }}
+                    {{ render_field(form.email) }}
+                </div>
+            </div>
+
+            <!-- Government IDs Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">📇</span>
+                    <div>
+                        <h3 class="form-section-title">Government IDs</h3>
+                        <p class="form-section-desc">Statutory identification numbers</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    {{ render_field(form.tin) }}
+                    {{ render_field(form.sss_no) }}
+                </div>
+                <div class="form-row-2">
+                    {{ render_field(form.philhealth_no) }}
+                    {{ render_field(form.pagibig_no) }}
+                </div>
+            </div>
+
+            <!-- Employment Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">💼</span>
+                    <div>
+                        <h3 class="form-section-title">Employment</h3>
+                        <p class="form-section-desc">Hiring details and HR position</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    {{ render_field(form.date_hired) }}
+                    {{ render_field(form.employment_status) }}
+                </div>
+                <div class="form-group">
+                    {{ render_field(form.position) }}
+                    <small class="form-hint">Free-form HR job title (e.g. "Site Engineer"). Not a system role.</small>
+                </div>
+            </div>
+
+            <!-- Tax Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">🧾</span>
+                    <div>
+                        <h3 class="form-section-title">Tax</h3>
+                        <p class="form-section-desc">Withholding-tax status for payroll</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    {{ render_field(form.tax_status_code) }}
+                    {{ render_field(form.qualified_dependents) }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        {{ form.is_minimum_wage(style="width:auto; margin:0;") }}
+                        {{ form.is_minimum_wage.label.text }}
+                    </label>
+                    <small class="form-hint">Minimum-wage earners are exempt from withholding tax on compensation.</small>
+                </div>
+            </div>
+
+            <!-- Compensation Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">💰</span>
+                    <div>
+                        <h3 class="form-section-title">Compensation</h3>
+                        <p class="form-section-desc">Basic pay and frequency</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    {{ render_field(form.pay_basis) }}
+                    {{ render_field(form.basic_rate) }}
+                </div>
+                <div class="form-group">
+                    {{ render_field(form.pay_frequency) }}
+                </div>
+            </div>
+
+            <!-- Link + Status Section -->
+            <div class="form-section">
+                <div class="form-section-header">
+                    <span class="form-section-icon">🔗</span>
+                    <div>
+                        <h3 class="form-section-title">Link &amp; Status</h3>
+                        <p class="form-section-desc">Optional login link and active status</p>
+                    </div>
+                </div>
+
+                <div class="form-row-2">
+                    {{ render_field(form.user_id) }}
+                    {{ status_toggle(form.is_active) }}
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    {{ 'Update' if employee else 'Create' }}
+                </button>
+                <a href="{{ url_for('employees.list_employees') }}" class="btn btn-secondary">Back</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.form-section {
+    margin-bottom: 28px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+}
+.form-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 24px;
+}
+.form-section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.form-section-icon {
+    font-size: 24px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.form-section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+.form-section-desc {
+    font-size: 13px;
+    color: var(--text-2);
+    margin: 0;
+}
+.form-hint {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-3);
+    font-size: 12px;
+}
+</style>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}?v=1"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Status toggles wired globally by initStatusToggle() in cas-ui.js.
+
+    // Branch + linked-user pickers use ": " separator convention.
+    ['branch_id', 'user_id'].forEach(function(id) {
+        const sel = document.getElementById(id);
+        if (sel && window.Choices) {
+            new Choices(sel, {searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false, searchResultLimit: 100});
+        }
+    });
+});
+</script>
+{% endblock %}
