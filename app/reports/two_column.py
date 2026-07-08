@@ -81,3 +81,43 @@ def merge_is_two_column(mtd, ytd):
     for k in _IS_SCALARS:
         out[k] = {'mtd': mtd.get(k, 0.0), 'ytd': ytd.get(k, 0.0)}
     return out
+
+
+def _pair(a, b):
+    return {'mtd': a, 'ytd': b}
+
+
+def _merge_named_lines(a_lines, b_lines):
+    rows = _union_by(a_lines, b_lines, key='name', a_field='amount', b_field='amount')
+    for r in rows:
+        r['mtd_amount'] = r.pop('mtd')
+        r['ytd_amount'] = r.pop('ytd')
+        r.pop('amount', None)
+    return rows
+
+
+def merge_cf_two_column(mtd, ytd):
+    """Two-column Statement of Cash Flows. See module docstring."""
+    return {
+        'method': mtd.get('method', 'indirect'),
+        'mtd_start': mtd.get('period_start'), 'mtd_end': mtd.get('period_end'),
+        'ytd_start': ytd.get('period_start'), 'as_of': ytd.get('period_end'),
+        'operating': {
+            'net_income': _pair(mtd['operating']['net_income'], ytd['operating']['net_income']),
+            'depreciation': _pair(mtd['operating']['depreciation'], ytd['operating']['depreciation']),
+            'working_capital': _merge_named_lines(mtd['operating']['working_capital'],
+                                                  ytd['operating']['working_capital']),
+            'total': _pair(mtd['operating']['total'], ytd['operating']['total']),
+        },
+        'investing': {
+            'lines': _merge_named_lines(mtd['investing']['lines'], ytd['investing']['lines']),
+            'total': _pair(mtd['investing']['total'], ytd['investing']['total']),
+        },
+        'financing': {
+            'lines': _merge_named_lines(mtd['financing']['lines'], ytd['financing']['lines']),
+            'total': _pair(mtd['financing']['total'], ytd['financing']['total']),
+        },
+        'net_change': _pair(mtd['net_change'], ytd['net_change']),
+        'cash_begin': _pair(mtd['cash_begin'], ytd['cash_begin']),
+        'cash_end': _pair(mtd['cash_end'], ytd['cash_end']),
+    }

@@ -1,7 +1,30 @@
 import pytest
-from app.reports.two_column import merge_is_two_column, _union_by
+from app.reports.two_column import merge_is_two_column, merge_cf_two_column, _union_by
 
 pytestmark = [pytest.mark.unit]
+
+
+def _cf(op_total, wc_amt, net_change, cash_begin, cash_end):
+    return {
+        'period_start': None, 'period_end': None, 'method': 'indirect',
+        'operating': {'net_income': op_total, 'depreciation': 0.0,
+                      'working_capital': [{'name': 'Increase in AR', 'amount': wc_amt}],
+                      'total': op_total},
+        'investing': {'lines': [], 'total': 0.0},
+        'financing': {'lines': [], 'total': 0.0},
+        'net_change': net_change, 'cash_begin': cash_begin, 'cash_end': cash_end,
+        'is_reconciled': True, 'difference': 0.0,
+    }
+
+
+def test_merge_cf_pairs_scalars_and_unions_lines():
+    merged = merge_cf_two_column(_cf(60.0, -10.0, 60.0, 0.0, 60.0),
+                                 _cf(420.0, -70.0, 420.0, 0.0, 420.0))
+    assert merged['net_change'] == {'mtd': 60.0, 'ytd': 420.0}
+    assert merged['cash_end'] == {'mtd': 60.0, 'ytd': 420.0}
+    assert merged['operating']['total'] == {'mtd': 60.0, 'ytd': 420.0}
+    wc = merged['operating']['working_capital'][0]
+    assert wc['name'] == 'Increase in AR' and wc['mtd_amount'] == -10.0 and wc['ytd_amount'] == -70.0
 
 
 def _is(section_total, line_total, net):
