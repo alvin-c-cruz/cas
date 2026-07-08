@@ -5,8 +5,30 @@ import pytest
 from app import db
 from app.accounts.models import Account
 from app.journal_entries.models import JournalEntry, JournalEntryLine
+from app.utils import end_of_month, ph_now
+from app.reports.views import _stmt_params
 
 pytestmark = [pytest.mark.integration]
+
+
+def test_stmt_params_defaults_to_month_end(app):
+    with app.test_request_context('/reports/income-statement'):
+        as_of, mtd_start, ytd_start, _branch = _stmt_params()
+    assert as_of == end_of_month(ph_now().date())
+    assert mtd_start == as_of.replace(day=1)
+    assert ytd_start == as_of.replace(month=1, day=1)
+
+
+def test_stmt_params_explicit_as_of(app):
+    with app.test_request_context('/reports/income-statement?as_of=2026-06-30'):
+        as_of, mtd_start, ytd_start, _branch = _stmt_params()
+    assert (as_of, mtd_start, ytd_start) == (date(2026, 6, 30), date(2026, 6, 1), date(2026, 1, 1))
+
+
+def test_stmt_params_legacy_end_date_coerced(app):
+    with app.test_request_context('/reports/income-statement?end_date=2026-05-31'):
+        as_of, mtd_start, ytd_start, _branch = _stmt_params()
+    assert (as_of, mtd_start) == (date(2026, 5, 31), date(2026, 5, 1))
 
 
 def _login(client, user):

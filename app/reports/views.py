@@ -586,6 +586,24 @@ def _is_params():
             session.get('selected_branch_id'))
 
 
+def _stmt_params():
+    """Single reporting-date parsing for Income Statement & Cash Flow.
+
+    Returns (as_of, mtd_start, ytd_start, branch_id). Reporting date defaults to
+    the end of the current month (PH time); param name 'as_of'. A legacy
+    'end_date' param is accepted as the reporting date for back-compat.
+    """
+    default = end_of_month(ph_now().date())
+    raw = request.args.get('as_of') or request.args.get('end_date') or default.isoformat()
+    try:
+        as_of = date.fromisoformat(raw)
+    except (ValueError, TypeError):
+        as_of = default
+    mtd_start = as_of.replace(day=1)
+    ytd_start = date(as_of.year, 1, 1)
+    return as_of, mtd_start, ytd_start, session.get('selected_branch_id')
+
+
 @reports_bp.route('/reports/income-statement')
 @login_required
 def income_statement():
