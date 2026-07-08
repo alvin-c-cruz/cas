@@ -80,8 +80,8 @@
                     <table class="table" id="lineItemsTable">
                         <thead>
                             <tr>
-                                {% if module_enabled('products') %}<th style="width: 23%;">Product</th>{% endif %}
-                                {% if not module_enabled('products') %}<th style="width: 27%;">Description</th>{% endif %}
+                                <th style="width: 20%;">Description</th>
+                                {% if module_enabled('products') %}<th style="width: 16%;">Product</th>{% endif %}
                                 <th style="width: 6%; text-align: right;">Qty</th>
                                 <th style="width: 6%;">UOM</th>
                                 <th style="width: 9%; text-align: right;">UP</th>
@@ -508,6 +508,9 @@ function addLineItem(existingItem, firstDefaults) {
     const row = document.createElement('tr');
     row.id = `line-${id}`;
     row.innerHTML = `
+        <td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
+                   style="border:none; background:transparent; padding-left:0;"
+                   onchange="updateLineItem(${id}, 'description', this.value)"></td>
         ${productMasterOn ? `
         <td>
             <select class="form-control prod-select" id="prod-${id}">
@@ -516,9 +519,6 @@ function addLineItem(existingItem, firstDefaults) {
                 ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id === p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
             </select>
         </td>` : ''}
-        ${!productMasterOn ? `<td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
-                   style="border:none; background:transparent; padding-left:0;"
-                   onchange="updateLineItem(${id}, 'description', this.value)"></td>` : ''}
         <td><input type="text" id="qty-${id}" class="form-control"
                    style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
                    value="${item.quantity != null ? amtFmt(item.quantity) : ''}"
@@ -719,12 +719,8 @@ function onProductPick(id, productId) {
     const prod = products.find(p => p.id === productId);
     if (!prod) { calculateTotals(); return; }
 
-    // Autofill description (overridable by user)
-    if (prod.name) {
-        item.description = prod.name;
-        const descEl = document.getElementById(`desc-${id}`);
-        if (descEl) descEl.value = item.description;
-    }
+    // Product-pick autofills account / unit_price / UoM only — NEVER the
+    // Description (the user's own free text and JE-particulars source).
 
     // Autofill UOM
     if (prod.unit_of_measure_id) {
