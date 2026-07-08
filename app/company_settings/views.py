@@ -44,6 +44,7 @@ SETTINGS_KEYS = [
     'apv_print_access',
     'sv_print_access',
     'sv_print_form',
+    'so_print_form',
     'cd_print_access',
     'cd_check_print_access',
     'cr_print_access',

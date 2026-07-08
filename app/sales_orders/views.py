@@ -433,40 +433,33 @@ def view(id):
 @sales_orders_bp.route('/sales-orders/<int:id>/print')
 @login_required
 def print_so(id):
-    """Print-friendly view for a Sales Order."""
+    """Print a Sales Order — the form is chosen by the `so_print_form` company setting
+    (current = standard printable form · preprinted = data-only overlay for BIR-registered
+    physical stock · hidden = printing disabled). Mirrors the SI/APV/CRV/CDV pattern."""
     so = db.get_or_404(SalesOrder, id)
     if so.branch_id != session.get('selected_branch_id'):
         abort(404)
+    so_print_form = AppSettings.get_setting('so_print_form', 'current')
+    if so_print_form == 'hidden':
+        flash('Sales Order printing is not enabled.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
     company = {
         'name': AppSettings.get_setting('company_name', ''),
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
+    if so_print_form == 'preprinted':
+        return render_template(
+            'sales_orders/print_preprinted.html', so=so, company=company,
+            printed_at=ph_now(), layout=get_layout(so.branch_id),
+            can_edit_layout=current_user.has_full_access,
+            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+            signatory_ids=TEXT_KEYS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('sales_orders/print.html', so=so,
                            company=company, printed_at=ph_now())
-
-
-@sales_orders_bp.route('/sales-orders/<int:id>/print-preprinted')
-@login_required
-def print_preprinted(id):
-    """Drag-positioned, data-only overlay for BIR-registered physical pre-printed SO stock."""
-    so = db.get_or_404(SalesOrder, id)
-    if so.branch_id != session.get('selected_branch_id'):
-        abort(404)
-    company = {
-        'name': AppSettings.get_setting('company_name', ''),
-        'address': AppSettings.get_setting('company_address', ''),
-        'tin': AppSettings.get_setting('company_tin', ''),
-    }
-    return render_template(
-        'sales_orders/print_preprinted.html', so=so, company=company,
-        printed_at=ph_now(), layout=get_layout(so.branch_id),
-        can_edit_layout=current_user.has_full_access,
-        col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
-        paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
-        date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
-        signatory_ids=TEXT_KEYS,
-        date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
 
 
 @sales_orders_bp.route('/sales-orders/print-layout', methods=['POST'])

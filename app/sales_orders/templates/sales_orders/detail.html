@@ -77,9 +77,6 @@
             <a href="{{ url_for('sales_orders.print_so', id=so.id) }}"
                target="_blank" rel="noopener noreferrer"
                class="btn btn-secondary">Print</a>
-            <a href="{{ url_for('sales_orders.print_preprinted', id=so.id) }}"
-               target="_blank" rel="noopener noreferrer"
-               class="btn btn-secondary">Pre-printed</a>
             {# Confirm: staff/accountant/admin, draft only (logic wired in Task 8) #}
             {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <button type="button" class="btn btn-success"

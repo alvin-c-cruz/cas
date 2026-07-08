@@ -287,8 +287,11 @@ def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, m
 
 
 def test_print_preprinted_renders_designer_no_currency_glyph(client, db_session, admin_user, main_branch):
-    """GET /sales-orders/<id>/print-preprinted → 200; the drag designer canvas is present
-    and no peso glyph leaks (no-currency-symbol convention)."""
+    """With so_print_form='preprinted', the Print route serves the drag-designer canvas
+    (no peso glyph). Printing is now setting-driven like SI."""
+    from app.settings import AppSettings
+    AppSettings.set_setting('so_print_form', 'preprinted')
+    db_session.commit()
     c = _customer(db_session)
     p = _product(db_session, code='PPF', name='PrePrint Widget')
     _login(client, admin_user)
@@ -301,7 +304,7 @@ def test_print_preprinted_renders_designer_no_currency_glyph(client, db_session,
         'notes': '', 'line_items': lines}, follow_redirects=True)
     so = SalesOrder.query.filter_by(so_number='SO-2026-06-PPF1').first()
     assert so is not None
-    resp = client.get(f'/sales-orders/{so.id}/print-preprinted')
+    resp = client.get(f'/sales-orders/{so.id}/print')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert 'ppCanvas' in html            # drag-designer canvas rendered
