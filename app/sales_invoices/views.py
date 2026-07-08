@@ -639,6 +639,8 @@ def create():
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
     form.customer_id.choices = [(0, '-- Select Customer --')] + [
         (c.id, f'{c.code} - {c.name}') for c in customers]
+    from app.sales_orders.views import _salesperson_choices
+    form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
 
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.invoice_date.data, 'Sales Invoice'):
@@ -692,6 +694,7 @@ def create():
                 customer_address=cust.address,
                 customer_po_number=form.customer_po_number.data or None,
                 customer_po_date=form.customer_po_date.data or None,
+                salesperson_id=(form.salesperson_id.data or None),
                 payment_terms=form.payment_terms.data,
                 reference=form.reference.data,
                 notes=form.notes.data or '',
@@ -767,6 +770,8 @@ def edit(id):
     form = SalesInvoiceForm(obj=invoice)
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
     form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
+    from app.sales_orders.views import _salesperson_choices
+    form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
 
     # On a failed POST, re-render with the user's SUBMITTED line items (preserve their edits);
     # on a GET, show the saved line items.
@@ -829,6 +834,7 @@ def edit(id):
             invoice.customer_po_date = form.customer_po_date.data or None
             invoice.payment_terms = form.payment_terms.data
             invoice.reference = form.reference.data
+            invoice.salesperson_id = form.salesperson_id.data or None
             invoice.notes = form.notes.data or ''
 
             db.session.execute(db.delete(SalesInvoiceItem).where(SalesInvoiceItem.invoice_id == invoice.id))

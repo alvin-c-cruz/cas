@@ -90,6 +90,7 @@
       <tr><td class="label">Date</td><td>{{ invoice.invoice_date.strftime('%d %B %Y') }}</td></tr>
       <tr><td class="label">Due Date</td><td>{{ invoice.due_date.strftime('%d %B %Y') if invoice.due_date else '—' }}</td></tr>
       <tr><td class="label">Terms</td><td>{{ invoice.payment_terms or '—' }}</td></tr>
+      {% if invoice.salesperson %}<tr><td class="label">Salesperson</td><td>{{ invoice.salesperson.full_name }}</td></tr>{% endif %}
       {% if invoice.reference %}
       <tr><td class="label">Reference</td><td>{{ invoice.reference }}</td></tr>
       {% endif %}

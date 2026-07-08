@@ -48,7 +48,7 @@ FONT_GROUPS = [
 ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 
 FIELD_KEYS = [
-    'invoice_no', 'invoice_date', 'due_date', 'terms',
+    'invoice_no', 'invoice_date', 'due_date', 'terms', 'salesperson',
     'customer_name', 'customer_tin', 'customer_address', 'customer_po',
     # BIR-standard SI summary
     'gross_sales', 'output_vat', 'net_of_vat', 'wht_amount', 'amount_collectible',
@@ -61,6 +61,7 @@ FIELD_LABELS = {
     'invoice_date': 'Date',
     'due_date': 'Due Date',
     'terms': 'Terms',
+    'salesperson': 'Salesperson',
     'customer_name': 'Customer',
     'customer_tin': 'TIN',
     'customer_address': 'Address',
@@ -137,6 +138,7 @@ DEFAULT_SV_PREPRINTED_LAYOUT = {
         'invoice_date':       {'x': 520, 'y': 74,  'fontSize': 11, 'bold': False},
         'due_date':           {'x': 520, 'y': 98,  'fontSize': 11, 'bold': False},
         'terms':              {'x': 520, 'y': 122, 'fontSize': 11, 'bold': False},
+        'salesperson':        {'x': 520, 'y': 146, 'fontSize': 11, 'bold': False},
         'customer_name':      {'x': 60,  'y': 50,  'fontSize': 12, 'bold': True},
         'customer_tin':       {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
         'customer_address':   {'x': 60,  'y': 98,  'fontSize': 11, 'bold': False},

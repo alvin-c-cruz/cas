@@ -685,3 +685,64 @@ def test_si_create_form_vat_context(client, db_session, accountant_user, branch)
     # B-14: Add-Customer modal button must say "Save Customer" not "Create Customer"
     assert b'Save Customer' in response.data
     assert b'Create Customer' not in response.data
+
+
+def test_si_persists_salesperson_when_employees_enabled(client, db_session, accountant_user, customer, revenue_account, branch):
+    """SI create persists salesperson_id (an Employee) when the Employees module is on."""
+    import json as _json
+    from app.employees.models import Employee
+    from app.sales_invoices.models import SalesInvoice
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:employees', '1')
+    db_session.commit(); clear_module_config_cache()
+    e = Employee(employee_no='E-SI', first_name='Ana', last_name='Reyes',
+                 branch_id=branch.id, is_active=True)
+    db_session.add(e); db_session.commit()
+    from app.accounts.models import Account
+    if not Account.query.filter_by(code='10201').first():
+        db_session.add(Account(code='10201', name='AR - Trade', account_type='Asset',
+                               normal_balance='debit', is_active=True)); db_session.commit()
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+    good = {'description': 'Item', 'amount': '1120.00', 'vat_category': '',
+            'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
+    client.post('/sales-invoices/create', data={
+        'invoice_number': 'SI-SP-01', 'invoice_date': '2026-07-08', 'due_date': '2026-08-08',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 30', 'notes': 'x',
+        'salesperson_id': str(e.id), 'line_items': _json.dumps([good]),
+    }, follow_redirects=True)
+    si = SalesInvoice.query.filter_by(invoice_number='SI-SP-01').first()
+    assert si is not None and si.salesperson_id == e.id
+
+
+def test_si_print_shows_salesperson(client, db_session, accountant_user, customer, revenue_account, branch):
+    """The SI printout renders the salesperson full name when set."""
+    import json as _json
+    from app.employees.models import Employee
+    from app.sales_invoices.models import SalesInvoice
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:employees', '1')
+    db_session.commit(); clear_module_config_cache()
+    e = Employee(employee_no='E-PR', first_name='Ben', last_name='Tan',
+                 branch_id=branch.id, is_active=True)
+    db_session.add(e); db_session.commit()
+    from app.accounts.models import Account
+    if not Account.query.filter_by(code='10201').first():
+        db_session.add(Account(code='10201', name='AR - Trade', account_type='Asset',
+                               normal_balance='debit', is_active=True)); db_session.commit()
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(accountant_user.id)
+    good = {'description': 'Item', 'amount': '1120.00', 'vat_category': '',
+            'vat_rate': '0', 'wt_id': '', 'account_id': str(revenue_account.id)}
+    client.post('/sales-invoices/create', data={
+        'invoice_number': 'SI-PR-01', 'invoice_date': '2026-07-08', 'due_date': '2026-08-08',
+        'customer_id': str(customer.id), 'payment_terms': 'Net 30', 'notes': 'x',
+        'salesperson_id': str(e.id), 'line_items': _json.dumps([good]),
+    }, follow_redirects=True)
+    si = SalesInvoice.query.filter_by(invoice_number='SI-PR-01').first()
+    body = client.get(f'/sales-invoices/{si.id}/print').get_data(as_text=True)
+    assert 'Ben Tan' in body

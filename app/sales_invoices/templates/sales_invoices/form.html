@@ -31,6 +31,7 @@
                     {{ render_field(form.customer_po_number) }}
                     {{ render_field(form.customer_po_date) }}
                     {{ render_field(form.reference) }}
+                    {% if module_enabled('employees') %}{{ render_field(form.salesperson_id) }}{% endif %}
                 </div>
 
                 <!-- Right 2/3: customer picker card -->
