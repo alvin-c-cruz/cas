@@ -33,6 +33,7 @@ FIRM_COA = [
     ('10502', 'Input VAT - Domestic Goods',                 'Asset', 'Current', 'debit',  '10500'),
     ('10503', 'Input VAT - Services',                       'Asset', 'Current', 'debit',  '10500'),
     ('10504', 'Input VAT - Importation',                    'Asset', 'Current', 'debit',  '10500'),
+    ('10505', 'Excess Input Tax Carry-Over',                'Asset', 'Current', 'debit',  '10500'),
     # ===== ASSETS - Non-Current =====
     ('11100', 'Property and Equipment',                            'Asset', 'Non-Current', 'debit',  None),
     ('11110', 'Office Equipment',                                  'Asset', 'Non-Current', 'debit',  '11100'),

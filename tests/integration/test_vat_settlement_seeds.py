@@ -23,21 +23,12 @@ def test_construction_has_carryover_candidate_at_10507():
     assert _row(coa, '10505')[1] == 'Deferred Input VAT'
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Pre-existing gap, out of Task 1 scope: firm_coa.FIRM_COA currently has no code "
-        "'10505' (list stops at 10504 'Input VAT - Importation'), so it does NOT yet have "
-        "an Excess Input Tax Carry-Over candidate despite the design brief's premise that "
-        "'firm already has both'. Task 1 is construction-chart-only and is explicitly "
-        "forbidden from modifying firm_coa.py; closing this gap needs its own approved "
-        "seed change. Remove this xfail once firm_coa gains a 10505 carry-over row."
-    ),
-)
-def test_firm_already_has_both_targets():
+def test_firm_has_vat_payable_and_added_carryover():
     coa = firm_coa.FIRM_COA
-    assert _row(coa, '20202')[1] == 'VAT Payable'
-    assert _row(coa, '10505')[1] == 'Excess Input Tax Carry-Over'
+    row = next(r for r in coa if r[0] == '10505')
+    assert row[1] == 'Excess Input Tax Carry-Over'
+    assert row[2] == 'Asset' and row[4] == 'debit' and row[5] == '10500'
+    assert next(r for r in coa if r[0] == '20202')[1] == 'VAT Payable'
 
 
 def test_baseline_coa_unchanged_no_new_vat_payable_name():
