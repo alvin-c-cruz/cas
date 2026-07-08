@@ -183,9 +183,11 @@
             <!-- RIGHT: vendor + notes -->
             <div style="display:flex; flex-direction:column; gap:16px;">
                 <div>
-                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">Vendor</div>
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-2); margin-bottom:6px;">Payee</div>
                     <div style="border:2px solid var(--green, #22c55e); background:var(--alert-success-bg); border-radius:8px; padding:16px 20px;">
-                        <div style="font-weight:700; font-size:15px; margin-bottom:4px;">{{ ap.vendor_name }}</div>
+                        <div style="font-weight:700; font-size:15px; margin-bottom:4px;">{{ ap.vendor_name }}
+                            <span class="badge badge-wt" title="Payee type">{{ 'Employee' if ap.payee_type == 'employee' else 'Vendor' }}</span>
+                        </div>
                         {% if ap.vendor_tin %}
                         <div style="color:var(--text-2); font-size:12px; margin-bottom:2px;">TIN: {{ ap.vendor_tin }}</div>
                         {% endif %}

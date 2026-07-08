@@ -190,7 +190,8 @@ def _build_ap_aging_data(as_of_date, branch_id):
     bills = AccountsPayable.query.filter(
         AccountsPayable.status.in_(['posted', 'partially_paid']),
         AccountsPayable.balance > 0,
-        AccountsPayable.branch_id == branch_id
+        AccountsPayable.branch_id == branch_id,
+        AccountsPayable.payee_type == 'vendor',   # exclude employee-payee vouchers
     ).order_by(AccountsPayable.vendor_name, AccountsPayable.due_date).all()
 
     vendors = {}

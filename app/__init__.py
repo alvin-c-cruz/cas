@@ -204,6 +204,7 @@ def create_app(config_name=None):
     from app.products.models import Product
     from app.sales_orders.models import SalesOrder, SalesOrderItem
     from app.backup.models import BackupRun
+    from app.employees.models import Employee  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
@@ -211,6 +212,7 @@ def create_app(config_name=None):
     from app.users.views import users_bp
     from app.branches.views import branches_bp
     from app.vendors.views import vendors_bp
+    from app.employees.views import employees_bp
     from app.vat_categories.views import vat_categories_bp
     from app.sales_vat_categories.views import sales_vat_categories_bp
     from app.withholding_tax.views import withholding_tax_bp
@@ -238,6 +240,7 @@ def create_app(config_name=None):
     app.register_blueprint(users_bp)
     app.register_blueprint(branches_bp)
     app.register_blueprint(vendors_bp)
+    app.register_blueprint(employees_bp)
     app.register_blueprint(vat_categories_bp, url_prefix='/vat-categories')
     app.register_blueprint(sales_vat_categories_bp, url_prefix='/sales-vat-categories')
     app.register_blueprint(withholding_tax_bp, url_prefix='/withholding-tax')
@@ -328,6 +331,12 @@ def create_app(config_name=None):
         """Seed a clean construction-contractor instance (CONSTRUCTION_COA + VAT/EWT). Refuses a non-empty COA."""
         from app.seeds.seed_data import seed_construction
         seed_construction()
+
+    @app.cli.command('seed-manufacturing')
+    def seed_manufacturing_database():
+        """Seed a clean manufacturing-company instance (MANUFACTURING_COA + VAT/EWT incl. V0 zero-rated). Refuses a non-empty COA."""
+        from app.seeds.seed_data import seed_manufacturing
+        seed_manufacturing()
 
     @app.cli.command('seed-history')
     def seed_history_command():

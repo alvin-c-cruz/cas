@@ -91,6 +91,10 @@ MODULE_REGISTRY = [
      'area': 'Inventory', 'group': 'Masters',
      'optional': True, 'depends_on': ['units_of_measure'], 'default_enabled': False,
      'endpoints': ('products.',)},
+    {'key': 'employees', 'label': 'Employees', 'section': 'Maintenance',
+     'area': 'Payroll', 'group': 'Masters',
+     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'endpoints': ('employees.',)},
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
      'area': 'Compliance', 'group': 'BIR',
@@ -109,7 +113,7 @@ TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY
 # Vendor sub-actions reached FROM transaction forms (inline quick-add + autofill). These must
 # stay reachable for a staff user who has a transaction module but not the Vendors module —
 # otherwise the AP/CD quick-add and the AP vendor-defaults autofill would break.
-EXEMPT_ENDPOINTS = {'vendors.create', 'vendors.vendor_defaults'}
+EXEMPT_ENDPOINTS = {'vendors.create', 'vendors.vendor_defaults', 'employees.create'}
 
 
 def module_key_for_endpoint(endpoint):

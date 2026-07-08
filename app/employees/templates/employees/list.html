@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Employees{% endblock %}
+{% block page_title %}Employees{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div class="search-box">
+        <form method="get" action="{{ url_for('employees.list_employees') }}">
+            <input type="text" name="q" value="{{ search_query or '' }}"
+                   placeholder="Search by employee no. or name..." class="search-input">
+        </form>
+    </div>
+    <div class="page-actions" style="display: flex; gap: 8px;">
+        {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+        <a href="{{ url_for('employees.create') }}" class="btn btn-primary">
+            + Create Employee
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table" id="employeesTable">
+            <thead>
+                <tr>
+                    <th>EMPLOYEE NO.</th>
+                    <th>NAME</th>
+                    <th>POSITION</th>
+                    <th>BRANCH</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for employee in employees %}
+                <tr>
+                    <td><a href="{{ url_for('employees.edit', id=employee.id) }}" class="employee-link"><strong>{{ employee.employee_no }}</strong></a></td>
+                    <td>
+                        <a href="{{ url_for('employees.edit', id=employee.id) }}" class="employee-link">{{ employee.full_name }}</a>
+                    </td>
+                    <td>{{ employee.position or '—' }}</td>
+                    <td>{{ employee.branch.code if employee.branch else '—' }}</td>
+                    <td>
+                        {% if employee.is_active %}
+                            <span class="badge badge-active">Active</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+                        <div class="action-buttons" style="display:flex; gap:8px; align-items:center;">
+                            <a href="{{ url_for('employees.edit', id=employee.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                            <form method="POST" action="{{ url_for('employees.toggle_status', id=employee.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-action" title="Toggle status">
+                                    {{ 'Deactivate' if employee.is_active else 'Activate' }}
+                                </button>
+                            </form>
+                            <button type="button" class="btn-action btn-action-delete"
+                                    onclick="document.getElementById('delete-modal-{{ employee.id }}').style.display='flex'">
+                                Delete
+                            </button>
+                        </div>
+                        <!-- Delete confirmation modal -->
+                        <div id="delete-modal-{{ employee.id }}"
+                             style="display:none; position:fixed; inset:0; background:var(--backdrop); z-index:1000; align-items:center; justify-content:center;">
+                            <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%; box-shadow:0 8px 24px rgba(0,0,0,0.2);">
+                                <h3 style="margin:0 0 12px 0;">Delete Employee</h3>
+                                <p style="color:var(--text-2); margin-bottom:24px;">
+                                    Delete <strong>{{ employee.employee_no }} — {{ employee.full_name }}</strong>? This cannot be undone.
+                                </p>
+                                <div style="display:flex; gap:12px; justify-content:flex-end;">
+                                    <button type="button" class="btn btn-secondary btn-sm"
+                                            onclick="document.getElementById('delete-modal-{{ employee.id }}').style.display='none'">
+                                        Cancel
+                                    </button>
+                                    <form method="POST" action="{{ url_for('employees.delete', id=employee.id) }}" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if not employees %}
+        <div class="empty-state">
+            {% if search_query %}
+            <p>No employees match "{{ search_query }}".</p>
+            <p><a href="{{ url_for('employees.list_employees') }}" class="btn btn-secondary">Clear search</a></p>
+            {% else %}
+            <p>No employees found.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 20px;
+}
+
+.search-box {
+    flex: 1;
+    max-width: 400px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.employee-link {
+    color: inherit;
+    text-decoration: none;
+}
+.employee-link:hover {
+    color: var(--blue);
+    text-decoration: underline;
+}
+
+.btn-danger {
+    background: var(--red);
+    color: #fff;
+    border: none;
+    padding: 6px 18px;
+    font-size: 14px;
+    border-radius: 5px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn-danger:hover { filter: brightness(0.92); }
+.btn.btn-secondary.btn-sm {
+    background: var(--text-2);
+    color: #fff;
+    border: none;
+    padding: 6px 18px;
+    font-size: 14px;
+    border-radius: 5px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.btn.btn-secondary.btn-sm:hover { filter: brightness(0.92); }
+</style>
+{% endblock %}

@@ -268,6 +268,29 @@ def _products_for_form():
     return [p.to_dict() for p in get_active_products()]
 
 
+def _parse_payee(raw):
+    """'vendor:12' | 'employee:3' -> (payee_type, payee_id) or (None, None)."""
+    try:
+        kind, sid = (raw or '').split(':', 1)
+        if kind in ('vendor', 'employee'):
+            return kind, int(sid)
+    except (ValueError, AttributeError):
+        pass
+    return None, None
+
+
+def _resolve_payee(payee_type, payee_id):
+    """Return the Vendor/Employee row for the payee, or None."""
+    if not payee_id:
+        return None
+    if payee_type == 'employee':
+        from app.employees.models import Employee
+        return db.session.get(Employee, payee_id)
+    if payee_type == 'vendor':
+        return db.session.get(Vendor, payee_id)
+    return None
+
+
 def _build_validated_ap_lines():
     """Parse line_items JSON from request.form, validate each line server-side,
     and return a list of (unattached) AccountsPayableItem objects.
@@ -655,12 +678,16 @@ def create():
         quick_add_form.is_active.data = '1'
         quick_add_form.payment_terms.data = 'Net 30'
         quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+        from app.employees.models import Employee
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.employee_no).all()
+        current_payee = request.form.get('payee', '') if request.method == 'POST' else ''
         return render_template('accounts_payable/form.html',
                                form=form, ap=None, restore_lines=restore_lines,
                                vat_categories=vat_categories, all_accounts=all_accounts,
                                gl_accounts=gl_accounts,
                                units=_units_for_form(),
                                products=_products_for_form(),
+                               vendors=vendors, employees=employees, current_payee=current_payee,
                                vendor_quick_add_form=quick_add_form,
                                vendor_quick_add_whts=quick_add_whts)
 
@@ -670,16 +697,23 @@ def create():
             return _render_form(request.form.get('line_items', ''))
 
         try:
-            vendor = db.session.get(Vendor, form.vendor_id.data)
-            if not vendor:
-                flash('Selected vendor not found.', 'error')
+            # Resolve the payee: prefer the combined `payee` value (vendor:<id> /
+            # employee:<id>); fall back to a bare vendor_id (legacy callers/tests).
+            payee_type, payee_id = _parse_payee(request.form.get('payee'))
+            if payee_type is None and form.vendor_id.data:
+                payee_type, payee_id = 'vendor', form.vendor_id.data
+            payee = _resolve_payee(payee_type, payee_id)
+            if payee is None:
+                flash('Selected payee not found.', 'error')
                 return _render_form(request.form.get('line_items', ''))
+            is_vendor = payee_type == 'vendor'
 
-            # B-09: block duplicate vendor invoice number per vendor (voided/cancelled excluded)
+            # B-09: block duplicate vendor invoice number per vendor (voided/cancelled
+            # excluded). Employees have no vendor-invoice concept, so skip for them.
             inv_num = form.vendor_invoice_number.data
-            if inv_num:
+            if is_vendor and inv_num:
                 dup = AccountsPayable.query.filter(
-                    AccountsPayable.vendor_id == vendor.id,
+                    AccountsPayable.vendor_id == payee.id,
                     AccountsPayable.vendor_invoice_number == inv_num,
                     AccountsPayable.status.notin_(['voided', 'cancelled'])
                 ).first()
@@ -698,10 +732,12 @@ def create():
                 ap_number=ap_num,
                 ap_date=form.ap_date.data,
                 due_date=form.due_date.data,
-                vendor_id=vendor.id,
-                vendor_name=vendor.name,
-                vendor_tin=vendor.tin,
-                vendor_address=vendor.address,
+                payee_type=payee_type,
+                payee_id=payee_id,
+                vendor_id=(payee.id if is_vendor else None),
+                vendor_name=(payee.name if is_vendor else payee.full_name),
+                vendor_tin=payee.tin,
+                vendor_address=payee.address,
                 vendor_invoice_number=form.vendor_invoice_number.data,
                 vendor_invoice_date=form.vendor_invoice_date.data,
                 payment_terms=form.payment_terms.data,
@@ -941,11 +977,18 @@ def edit(id):
         quick_add_form.is_active.data = '1'
         quick_add_form.payment_terms.data = 'Net 30'
         quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+        from app.employees.models import Employee
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.employee_no).all()
+        if request.method == 'POST':
+            current_payee = request.form.get('payee', '')
+        else:
+            current_payee = f'{ap.payee_type}:{ap.payee_id}'
         return render_template('accounts_payable/form.html',
                                form=form, ap=ap, restore_lines=restore_lines,
                                vat_categories=vat_categories, all_accounts=all_accounts,
                                line_items=line_items, gl_accounts=gl_accounts,
                                units=_units_for_form(), products=_products_for_form(),
+                               vendors=vendors, employees=employees, current_payee=current_payee,
                                vendor_quick_add_form=quick_add_form,
                                vendor_quick_add_whts=quick_add_whts)
 
@@ -957,16 +1000,22 @@ def edit(id):
         try:
             old_values = model_to_dict(ap, ['ap_number', 'ap_date', 'due_date', 'vendor_name', 'subtotal', 'vat_amount', 'withholding_tax_amount', 'total_amount', 'status'])
 
-            vendor = db.session.get(Vendor, form.vendor_id.data)
-            if not vendor:
-                flash('Selected vendor not found.', 'error')
+            # Resolve payee (combined value, or legacy bare vendor_id).
+            payee_type, payee_id = _parse_payee(request.form.get('payee'))
+            if payee_type is None and form.vendor_id.data:
+                payee_type, payee_id = 'vendor', form.vendor_id.data
+            payee = _resolve_payee(payee_type, payee_id)
+            if payee is None:
+                flash('Selected payee not found.', 'error')
                 return _render_edit_form(request.form.get('line_items', ''))
+            is_vendor = payee_type == 'vendor'
 
-            # B-09: block duplicate vendor invoice number per vendor (exclude self; voided/cancelled excluded)
+            # B-09: block duplicate vendor invoice number per vendor (exclude self;
+            # voided/cancelled excluded). Skip for employee payees.
             inv_num = form.vendor_invoice_number.data
-            if inv_num:
+            if is_vendor and inv_num:
                 dup = AccountsPayable.query.filter(
-                    AccountsPayable.vendor_id == vendor.id,
+                    AccountsPayable.vendor_id == payee.id,
                     AccountsPayable.vendor_invoice_number == inv_num,
                     AccountsPayable.status.notin_(['voided', 'cancelled']),
                     AccountsPayable.id != ap.id
@@ -984,10 +1033,12 @@ def edit(id):
             ap.ap_number = ap_num
             ap.ap_date = form.ap_date.data
             ap.due_date = form.due_date.data
-            ap.vendor_id = vendor.id
-            ap.vendor_name = vendor.name
-            ap.vendor_tin = vendor.tin
-            ap.vendor_address = vendor.address
+            ap.payee_type = payee_type
+            ap.payee_id = payee_id
+            ap.vendor_id = (payee.id if is_vendor else None)
+            ap.vendor_name = (payee.name if is_vendor else payee.full_name)
+            ap.vendor_tin = payee.tin
+            ap.vendor_address = payee.address
             ap.vendor_invoice_number = form.vendor_invoice_number.data
             ap.vendor_invoice_date = form.vendor_invoice_date.data
             ap.payment_terms = form.payment_terms.data

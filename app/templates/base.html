@@ -1039,6 +1039,7 @@
               {%- elif key == 'vendors' and ep.startswith('vendors.') -%}active
               {%- elif key == 'units_of_measure' and ep.startswith('units_of_measure.') -%}active
               {%- elif key == 'products' and ep.startswith('products.') -%}active
+              {%- elif key == 'employees' and ep.startswith('employees.') -%}active
               {%- endif -%}
             {%- endif -%}
             {%- endmacro %}
@@ -1068,7 +1069,8 @@
                 'customers':          'customers.list_customers',
                 'vendors':            'vendors.list_vendors',
                 'units_of_measure':   'units_of_measure.list',
-                'products':           'products.list'
+                'products':           'products.list',
+                'employees':          'employees.list_employees'
             } %}
             {% set _nav_icon = {
                 'sales_orders':       '📦',
@@ -1091,7 +1093,8 @@
                 'customers':          '👥',
                 'vendors':            '🏢',
                 'units_of_measure':   '📏',
-                'products':           '📦'
+                'products':           '📦',
+                'employees':          '🧑‍💼'
             } %}
 
             {% for area in build_sidebar(current_user) %}

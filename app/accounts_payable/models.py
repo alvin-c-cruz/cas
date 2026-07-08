@@ -39,8 +39,12 @@ class AccountsPayable(db.Model):
     ap_date = db.Column(db.Date, nullable=False, index=True)
     due_date = db.Column(db.Date, nullable=False)
 
-    # Vendor reference
-    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False, index=True)
+    # Payee reference (polymorphic: vendor OR employee)
+    payee_type = db.Column(db.String(20), nullable=False, default='vendor', server_default='vendor', index=True)
+    payee_id = db.Column(db.Integer, nullable=False, default=0)
+
+    # Vendor reference — nullable now; set for vendor payees, NULL for employees.
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=True, index=True)
     vendor = db.relationship('Vendor', backref='accounts_payable')
 
     # Vendor details snapshot (for historical accuracy)
@@ -137,6 +141,22 @@ class AccountsPayable(db.Model):
         self.total_amount = self.subtotal - self.withholding_tax_amount
         self.balance = self.total_amount - self.amount_paid
 
+    @property
+    def payee(self):
+        """Resolve the polymorphic payee to its Vendor or Employee row (or None)."""
+        if self.payee_type == 'employee':
+            from app.employees.models import Employee
+            return db.session.get(Employee, self.payee_id) if self.payee_id else None
+        from app.vendors.models import Vendor
+        return db.session.get(Vendor, self.payee_id) if self.payee_id else None
+
+    @property
+    def payee_display_name(self):
+        p = self.payee
+        if p is None:
+            return self.vendor_name          # historical snapshot fallback
+        return p.full_name if self.payee_type == 'employee' else p.name
+
     def to_dict(self):
         """Convert AP to dictionary for JSON serialization."""
         return {
@@ -145,6 +165,9 @@ class AccountsPayable(db.Model):
             'ap_date': self.ap_date.isoformat() if self.ap_date else None,
             'due_date': self.due_date.isoformat() if self.due_date else None,
             'vendor_id': self.vendor_id,
+            'payee_type': self.payee_type,
+            'payee_id': self.payee_id,
+            'payee_name': self.payee_display_name,
             'vendor_name': self.vendor_name,
             'vendor_tin': self.vendor_tin,
             'vendor_invoice_number': self.vendor_invoice_number,

@@ -4,14 +4,15 @@ from playwright.sync_api import expect
 pytestmark = [pytest.mark.accounts_payable, pytest.mark.smoke]
 
 
-def _select_vendor(page, label='SUP001 - Test Supplier'):
-    """Pick a vendor through the Choices.js UI.
+def _select_vendor(page, label='Test Supplier'):
+    """Pick a vendor through the combined payee Choices.js UI.
 
-    #vendor_id is a Choices picker, which strips the native <option>s — so
+    #payee is a Choices picker, which strips the native <option>s — so
     page.select_option() times out. Open the widget and click the item instead.
     Selecting fires a native 'change' that reveals the line-items section.
+    `label` is a substring — the option now renders "SUP001 : Test Supplier [Vendor]".
     """
-    scope = page.locator('.choices:has(#vendor_id)')
+    scope = page.locator('.choices:has(#payee)')
     scope.locator('.choices__inner').click()
     scope.locator('.choices__list--dropdown .choices__item--choice',
                   has_text=label).first.click()
