@@ -10,6 +10,7 @@ Provides cached access to:
 
 Cache TTL: 1 hour (static data changes infrequently)
 """
+from sqlalchemy.orm import joinedload
 from app import cache
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
@@ -47,8 +48,16 @@ def get_vat_categories():
 
 @cache.memoize(timeout=3600)
 def get_sales_vat_categories():
-    """Get all active Sales VAT categories (cached for 1 hour)."""
-    return SalesVATCategory.query.filter_by(is_active=True).order_by(SalesVATCategory.code).all()
+    """Get all active Sales VAT categories (cached for 1 hour).
+
+    joinedload(output_vat_account) is REQUIRED: these ORM objects are memoized and
+    outlive their request/session, and to_dict() reads output_vat_account.code/name.
+    Without eager-load, the detached read raises DetachedInstanceError -> HTTP 500 on
+    /sales-orders/create once the cache warms. See test_sales_vat_cache.py.
+    """
+    return (SalesVATCategory.query
+            .options(joinedload(SalesVATCategory.output_vat_account))
+            .filter_by(is_active=True).order_by(SalesVATCategory.code).all())
 
 
 @cache.memoize(timeout=3600)
