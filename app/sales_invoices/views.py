@@ -13,6 +13,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
+from app.utils.line_mode import validate_line_mode
 from app.utils.wt_labels import wt_label
 from app.utils.cache_helpers import get_active_units, get_active_products
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
@@ -1019,12 +1020,19 @@ def _parse_and_attach_line_items(invoice, line_items_json, assign_invoice_id=Fal
         if account_id not in leaf_account_ids:
             raise ValueError('Each line item must use a valid, postable account.')
 
+        qty = _dec(item_data.get('quantity'))
+        unit_price = _dec(item_data.get('unit_price'))
+        # Reject a half-filled line before calculate_amounts() can silently keep
+        # the typed amount while one of qty/price is set (shared guard, all docs).
+        validate_line_mode(_int(item_data.get('product_id')), qty, unit_price,
+                           item_data.get('amount'), line_number=idx)
+
         line_item = SalesInvoiceItem(
             line_number=idx,
             description=item_data.get('description', ''),
             amount=Decimal(str(item_data.get('amount', '0') or '0')),
-            quantity=_dec(item_data.get('quantity')),
-            unit_price=_dec(item_data.get('unit_price')),
+            quantity=qty,
+            unit_price=unit_price,
             uom_text=(item_data.get('uom_text') or None),
             unit_of_measure_id=_int(item_data.get('uom_id')),
             product_id=_int(item_data.get('product_id')),
