@@ -204,6 +204,7 @@ def create_app(config_name=None):
     from app.products.models import Product
     from app.sales_orders.models import SalesOrder, SalesOrderItem
     from app.backup.models import BackupRun
+    from app.employees.models import Employee  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
