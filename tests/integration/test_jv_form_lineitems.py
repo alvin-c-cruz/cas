@@ -3,8 +3,11 @@
 The interactive behaviour (Choices dropdown, comma formatting, full-label chip) is
 browser-verified; these assertions pin the server+template contract that enables it.
 """
+import pytest
 from app import db
 from app.accounts.models import Account
+
+pytestmark = pytest.mark.journal_entries
 
 
 def _seed_coa():

@@ -30,6 +30,8 @@
     "app/vat_categories/models.py":        ["accounts_payable", "cash_disbursements", "sales_invoices", "journals"],
     "app/withholding_tax/models.py":       ["accounts_payable", "cash_disbursements", "sales_invoices"],
     "app/journal_entries/utils.py":        ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/journal_entries/views.py":        ["journal_entries"],
+    "app/journal_entries/templates/journal_entries/form.html": ["journal_entries"],
     "app/accounts/models.py":              ["accounts_payable", "cash_disbursements", "sales_invoices"],
     "app/audit/utils.py":                  ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
     "app/utils/__init__.py":               ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
@@ -54,7 +56,8 @@
     "vendors":           { "marker": "vendors", "e2e": null },
     "sales_vat_categories": { "marker": "sales_vat", "e2e": null },
     "customers":         { "marker": "customers", "e2e": null },
-    "reports":           { "marker": "reports", "e2e": null }
+    "reports":           { "marker": "reports", "e2e": null },
+    "journal_entries":   { "marker": "journal_entries", "e2e": null }
   },
   "notes": [
     "Only the JS/browser layer is e2e-covered (pytest renders HTML but never executes JS). accounts_payable (test_ap_smoke.py) and sales_invoices (test_si_smoke.py) have smoke suites; mirror to cash_disbursements as it gets verified, then set its 'e2e' path here.",
