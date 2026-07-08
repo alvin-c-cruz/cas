@@ -58,7 +58,7 @@
             </div>
 
             <!-- Journal Entry Lines -->
-            <div style="margin-top: 32px; margin-bottom: 24px;">
+            <div style="margin-top: 14px; margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                     <h3 style="font-size: 16px; font-weight: 600; color: #1e293b; margin: 0;">Journal Entry Lines</h3>
                     <button type="button" class="btn btn-secondary" id="addLineBtn">+ Add Line</button>
@@ -93,9 +93,9 @@
                     </tfoot>
                 </table>
 
-                <!-- Balance Status -->
-                <div style="margin-top: 16px; padding: 12px; border-radius: 6px; text-align: center; font-weight: 600;" id="balanceStatus">
-                    <span id="balanceStatusText">Add journal entry lines</span>
+                <!-- Balance Status (hidden until lines exist; only ✓/⚠ feedback shows) -->
+                <div style="margin-top: 12px; padding: 12px; border-radius: 6px; text-align: center; font-weight: 600; display: none;" id="balanceStatus">
+                    <span id="balanceStatusText"></span>
                 </div>
             </div>
 
@@ -166,6 +166,11 @@
     }
     .line-row .choices.is-focused .choices__inner,
     .line-row .choices.is-open .choices__inner { border-color: #3b82f6; }
+    /* Compact header: trim the generous form-group/row gaps and the tall
+       description textarea so the header isn't so spread out. Scoped to this form. */
+    #journalEntryForm .form-row-3, #journalEntryForm .form-row-2 { margin-bottom: 6px; }
+    #journalEntryForm .form-group { margin-bottom: 8px; }
+    #journalEntryForm textarea { min-height: 54px; height: 54px; }
     .line-row input:focus, .line-row select:focus {
         outline: none;
         border-color: #3b82f6;
@@ -326,16 +331,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const differenceRow = document.getElementById('differenceRow');
 
         if (lines.length === 0) {
-            balanceStatus.style.background = '#f1f5f9';
-            balanceStatus.style.color = '#64748b';
-            balanceStatusText.textContent = 'Add journal entry lines';
+            // No lines yet -> hide the status bar entirely (no "Add journal entry lines").
+            balanceStatus.style.display = 'none';
             differenceRow.style.display = 'none';
         } else if (isBalanced) {
+            balanceStatus.style.display = '';
             balanceStatus.style.background = '#dcfce7';
             balanceStatus.style.color = '#166534';
             balanceStatusText.textContent = '✓ Entry is balanced';
             differenceRow.style.display = 'none';
         } else {
+            balanceStatus.style.display = '';
             balanceStatus.style.background = '#fef2f2';
             balanceStatus.style.color = '#991b1b';
             balanceStatusText.textContent = '⚠ Entry is not balanced';
