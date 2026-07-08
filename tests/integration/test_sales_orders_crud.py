@@ -65,6 +65,27 @@ def test_create_sales_order_persists_and_audits(client, db_session, admin_user, 
     assert AuditLog.query.filter_by(module='sales_orders', action='create').count() >= 1
 
 
+def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, admin_user, main_branch):
+    """SO detail must render em-dashes as the literal glyph (never the '&#8212;'
+    entity, which Jinja autoescaping leaks as literal text when it sits inside a
+    {{ }} string fallback), and must show bare numbers with no peso glyph
+    (no-currency-symbol convention). A line with no UOM/product exercises the
+    em-dash fallbacks; a unit price exercises the money cells."""
+    c = _customer(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'description': 'Widget', 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0'}])
+    client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0009', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0009').first()
+    html = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
+    assert '&#8212;' not in html          # em-dash entity (leaks or clutters — use the glyph)
+    assert '₱' not in html           # peso sign U+20B1
+
+
 def test_create_form_renders_so_number_and_line_editor(client, db_session, admin_user, main_branch):
     """GET /sales-orders/create → 200; full editor present (so_number editable, line table, add-line btn)."""
     _login(client, admin_user)

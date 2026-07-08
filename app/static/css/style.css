@@ -312,6 +312,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 /* base.html's inline <style> sets .card-body{padding:0} (loads last, wins); restore
    comfortable padding on the transaction-document forms so fields don't hug the edge. */
 .page-sales-invoice .card-body { padding: 24px; }
+/* Sales Order detail carries only .page-sales-order (no .page-sales-invoice), so it
+   fell through to base.html's zero padding — restore it the same way. */
+.page-sales-order .card-body { padding: 24px; }
 /* Same inline-zero hazard on the settings cards — the .settings-card scope beats
    base.html's bare .card-body{padding:0} so labels/fields don't hug the border. */
 .settings-card .card-body { padding: 24px; }

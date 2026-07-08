@@ -129,7 +129,7 @@
                     <th>Order Date</th>
                     <th>Customer</th>
                     <th>Status</th>
-                    <th style="text-align:right;">Total</th>
+                    <th style="text-align:right;">Total (PHP)</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -148,7 +148,7 @@
                         </span>
                     </td>
                     <td style="text-align:right;font-family:var(--mono);font-weight:600;">
-                        ₱{{ '{:,.2f}'.format(order.total_amount) }}
+                        {{ '{:,.2f}'.format(order.total_amount) }}
                     </td>
                     <td>
                         <a href="{{ url_for('sales_orders.view', id=order.id) }}" class="btn-action">&#x1F441;&#xFE0F;</a>
