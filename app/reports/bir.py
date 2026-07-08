@@ -110,8 +110,7 @@ def get_summary_list_of_purchases(year, month, branch_id=None):
     query = AccountsPayable.query.filter(
         extract('year', AccountsPayable.ap_date) == year,
         extract('month', AccountsPayable.ap_date) == month,
-        AccountsPayable.status.in_(['posted', 'paid', 'partially_paid']),
-        AccountsPayable.payee_type == 'vendor',   # supplier report — exclude employee payees
+        AccountsPayable.status.in_(['posted', 'paid', 'partially_paid'])
     )
     if branch_id:
         query = query.filter(AccountsPayable.branch_id == branch_id)
@@ -201,8 +200,7 @@ def get_alphalist_of_payees(year, quarter, branch_id=None):
         extract('month', AccountsPayable.ap_date) >= start_month,
         extract('month', AccountsPayable.ap_date) <= end_month,
         AccountsPayable.status.in_(['posted', 'paid', 'partially_paid']),
-        AccountsPayable.withholding_tax_amount > 0,
-        AccountsPayable.payee_type == 'vendor',   # supplier alphalist — exclude employee payees
+        AccountsPayable.withholding_tax_amount > 0
     )
     if branch_id:
         query = query.filter(AccountsPayable.branch_id == branch_id)
