@@ -80,8 +80,8 @@ def _sum(account_ids, upto=None, start=None, end=None, exclude_settlement=False)
     return Decimal(str(d)), Decimal(str(c))
 
 
-def _balance(account_ids, upto, normal, exclude_settlement=False):
-    d, c = _sum(account_ids, upto=upto, exclude_settlement=exclude_settlement)
+def _balance(account_ids, upto, normal):
+    d, c = _sum(account_ids, upto=upto)
     return (d - c) if normal == 'debit' else (c - d)
 
 
@@ -104,8 +104,8 @@ def compute_vat_position(year, quarter):
     out_ids, in_ids = output_account_ids(), input_account_ids()
     qstart, qend = quarter_bounds(year, quarter)
 
-    output_bal = _q2(_balance(out_ids, qend, 'credit', exclude_settlement=True))
-    input_bal = _q2(_balance(in_ids, qend, 'debit', exclude_settlement=True))
+    output_bal = _q2(_balance(out_ids, qend, 'credit'))
+    input_bal = _q2(_balance(in_ids, qend, 'debit'))
     output_mv = _q2(_movement(out_ids, qstart, qend, 'credit'))
     input_mv = _q2(_movement(in_ids, qstart, qend, 'debit'))
 

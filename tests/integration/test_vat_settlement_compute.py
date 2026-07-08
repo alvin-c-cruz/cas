@@ -77,7 +77,9 @@ def test_net_creditable_position(db_session, main_branch):
 
 def test_prior_carryover_consumed_into_payable(db_session, main_branch):
     w = _vat_world(main_branch)
-    # opening carryover 30k booked before the quarter (Q2)
+    # realistic prior state: a Q2 purchase (input Dr 30k) that the Q2 settlement then
+    # clears, moving the 30k into carryover ahead of the quarter under test (Q3)
+    _je(main_branch.id, date(2025, 5, 1), [(w['inp'].id, 30000, 0), (w['ap'].id, 0, 30000)])
     _je(main_branch.id, date(2025, 6, 1), [(w['carry'].id, 30000, 0), (w['inp'].id, 0, 30000)],
         entry_type='vat_settlement')
     _je(main_branch.id, date(2025, 7, 10), [(w['ar'].id, 100000, 0), (w['out'].id, 0, 100000)])
