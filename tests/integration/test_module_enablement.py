@@ -33,3 +33,25 @@ def test_new_optional_module_defaults_off(db_session, monkeypatch):
          'optional': True, 'depends_on': [], 'default_enabled': False, 'endpoints': ()}
     ])
     assert module_access.module_enabled('demo_optional') is False
+
+
+def test_sales_orders_requires_products_to_enable():
+    from app.users.module_access import can_toggle
+    ok, reason = can_toggle('sales_orders', True, enabled_keys=[])
+    assert ok is False and 'products' in reason
+    ok2, _ = can_toggle('sales_orders', True, enabled_keys=['units_of_measure', 'products'])
+    assert ok2 is True
+
+
+def test_sales_orders_stays_in_per_user_grid_though_optional():
+    from app.users.module_access import all_permission_keys, MODULE_REGISTRY
+    entry = next(m for m in MODULE_REGISTRY if m['key'] == 'sales_orders')
+    assert entry['optional'] is True and entry.get('per_user') is True
+    assert 'sales_orders' in all_permission_keys()   # not dropped to admin-only
+
+
+def test_sales_orders_disabled_by_default(db_session):
+    from app.users.module_access import module_enabled
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
+    assert module_enabled('sales_orders') is False   # default_enabled False, no override

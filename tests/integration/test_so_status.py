@@ -15,6 +15,19 @@ from app import db
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
 
+@pytest.fixture(autouse=True)
+def sales_orders_module_enabled(db_session):
+    """Sales Orders is now an optional, default-off module — enable it for these
+    route tests (mirrors the autouse fixture in test_sales_orders_crud.py)."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    db_session.commit()
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
 # ── helpers (pasted from test_sales_invoices.py pattern) ────────────────────
 
 def _login(client, user):
