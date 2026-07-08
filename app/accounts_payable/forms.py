@@ -30,9 +30,17 @@ class AccountsPayableForm(FlaskForm):
         if self.ap_date.data and field.data and field.data < self.ap_date.data:
             raise ValidationError('Due date cannot be earlier than the voucher date.')
 
-    vendor_id = SelectField('Vendor', validators=[
-        DataRequired(message='Vendor is required.')
-    ], coerce=int)
+    # Combined payee: "vendor:<id>" or "employee:<id>" (parsed in the view).
+    # The new AP form submits this instead of vendor_id.
+    payee = StringField('Payee', validators=[Optional()])
+
+    # Legacy vendor select — kept for back-compat (older callers/tests POST
+    # vendor_id directly). Optional now; the view treats a bare vendor_id as a
+    # vendor payee when no `payee` value is present. Tolerant coerce so an empty
+    # submission (new payee path) doesn't raise.
+    vendor_id = SelectField('Vendor', validators=[Optional()],
+                            coerce=lambda v: int(v) if v not in (None, '') else None,
+                            validate_choice=False)
 
     vendor_invoice_number = StringField('Vendor Invoice #', validators=[
         Optional(),
