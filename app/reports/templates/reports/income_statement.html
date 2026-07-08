@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Income Statement{% endblock %}
 {% block page_title %}Income Statement (P&L){% endblock %}
@@ -8,20 +8,28 @@
     <div class="card-header">
         <div>
             <div class="card-title">Income Statement (Profit &amp; Loss)</div>
-            <div class="card-sub">{{ start_date.strftime('%B %d, %Y') }} to {{ end_date.strftime('%B %d, %Y') }}</div>
+            <div class="card-sub">As of {{ as_of.strftime('%B %d, %Y') }} — Current month vs. Year to date</div>
         </div>
         <div class="card-header-actions" style="display:flex;gap:8px;">
-            <a href="{{ url_for('reports.income_statement_export_excel', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
+            <a href="{{ url_for('reports.income_statement_export_excel', as_of=as_of.isoformat()) }}"
                class="btn btn-secondary">📊 Excel</a>
-            <a href="{{ url_for('reports.income_statement_print', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
+            <a href="{{ url_for('reports.income_statement_print', as_of=as_of.isoformat()) }}"
                target="_blank" class="btn btn-secondary">Print</a>
-            <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Period</button>
+            <button class="btn btn-secondary" onclick="showPeriodPicker()">📅 Change Date</button>
         </div>
     </div>
 
     <div class="card-body">
         <table class="table" style="margin:0;">
             <tbody>
+                {# Two-column header #}
+                <tr class="fs-section-header">
+                    <td style="width:30px;"></td>
+                    <td></td>
+                    <td class="num-col" style="width:160px;">{{ as_of.strftime('%b %Y') }}</td>
+                    <td class="num-col" style="width:160px;">YTD {{ as_of.year }}</td>
+                </tr>
+
                 {% for sec in income_statement.sections %}
                 {% set sidx = loop.index %}
                 {# Umbrella "Operating Expenses" grouping caption before Selling (per spec):
@@ -30,14 +38,16 @@
                 <tr class="fs-section-header">
                     <td style="width:30px;"></td>
                     <td>OPERATING EXPENSES</td>
-                    <td class="num-col" style="width:180px;"></td>
+                    <td class="num-col"></td>
+                    <td class="num-col"></td>
                 </tr>
                 {% endif %}
                 {# Section header row — always shown #}
                 <tr class="fs-section-header">
                     <td style="width:30px;"></td>
                     <td{% if sec.key in ['selling', 'admin'] %} style="padding-left:18px;"{% endif %}>{{ sec.label }}</td>
-                    <td class="num-col" style="width:180px;">{% if sec.sign == -1 %}(₱{{ '{:,.2f}'.format(sec.total) }}){% else %}₱{{ '{:,.2f}'.format(sec.total) }}{% endif %}</td>
+                    <td class="num-col">{% if sec.sign == -1 %}(₱{{ '{:,.2f}'.format(sec.mtd_total) }}){% else %}₱{{ '{:,.2f}'.format(sec.mtd_total) }}{% endif %}</td>
+                    <td class="num-col">{% if sec.sign == -1 %}(₱{{ '{:,.2f}'.format(sec.ytd_total) }}){% else %}₱{{ '{:,.2f}'.format(sec.ytd_total) }}{% endif %}</td>
                 </tr>
 
                 {# Roll-up lines within the section #}
@@ -46,8 +56,8 @@
                 <tr class="fs-line-row{% if line.children %} fs-line-expandable{% endif %}"
                     {% if line.account_id %}
                     data-account-id="{{ line.account_id }}"
-                    data-start="{{ start_date.isoformat() }}"
-                    data-end="{{ end_date.isoformat() }}"
+                    data-start="{{ ytd_start.isoformat() }}"
+                    data-end="{{ as_of.isoformat() }}"
                     {% endif %}>
                     <td>
                         {% if line.children %}
@@ -61,7 +71,8 @@
                         {% if line.code %}<span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ line.code }}</span>&nbsp;{% endif %}
                         {{ line.name }}
                     </td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(line.total) }}</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(line.mtd_amount) }}</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(line.ytd_amount) }}</td>
                 </tr>
 
                 {# Child detail rows (collapsed by default) #}
@@ -69,15 +80,16 @@
                 <tr class="fs-child-row" data-fs-children="{{ lkey }}" hidden
                     {% if child.account_id %}
                     data-account-id="{{ child.account_id }}"
-                    data-start="{{ start_date.isoformat() }}"
-                    data-end="{{ end_date.isoformat() }}"
+                    data-start="{{ ytd_start.isoformat() }}"
+                    data-end="{{ as_of.isoformat() }}"
                     {% endif %}>
                     <td></td>
                     <td style="padding-left:40px;">
                         <span style="font-family:var(--mono);color:var(--text-2);font-size:12px;">{{ child.code }}</span>
                         &nbsp;{{ child.name }}
                     </td>
-                    <td class="num-col">₱{{ '{:,.2f}'.format(child.amount) }}</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(child.mtd_amount) }}</td>
+                    <td class="num-col">₱{{ '{:,.2f}'.format(child.ytd_amount) }}</td>
                 </tr>
                 {% endfor %}
                 {% endfor %}
@@ -87,7 +99,8 @@
                 <tr class="fs-subtotal-row">
                     <td></td>
                     <td style="color:var(--blue);">{{ sec.subtotal_label }}</td>
-                    <td class="num-col" style="color:var(--blue);">₱{{ '{:,.2f}'.format(sec.subtotal) }}</td>
+                    <td class="num-col" style="color:var(--blue);">₱{{ '{:,.2f}'.format(sec.mtd_subtotal) }}</td>
+                    <td class="num-col" style="color:var(--blue);">₱{{ '{:,.2f}'.format(sec.ytd_subtotal) }}</td>
                 </tr>
                 {% endif %}
                 {% endfor %}
@@ -95,16 +108,12 @@
                 {# Net Income grand total #}
                 <tr class="fs-grand-total-row">
                     <td></td>
-                    <td>NET INCOME (LOSS)
-                        {% if income_statement.net_income and income_statement.net_income != 0 %}
-                        {% set margin = (income_statement.net_income / income_statement.net_sales * 100) if income_statement.net_sales else 0 %}
-                        {% if margin %}
-                        &nbsp;<span style="font-weight:600;color:var(--text-2);font-size:13px;">({{ '{:.1f}'.format(margin) }}% Net Margin)</span>
-                        {% endif %}
-                        {% endif %}
+                    <td>NET INCOME (LOSS)</td>
+                    <td class="num-col" style="color:{% if income_statement.net_income.mtd >= 0 %}var(--green){% else %}var(--red){% endif %};">
+                        ₱{{ '{:,.2f}'.format(income_statement.net_income.mtd) }}
                     </td>
-                    <td class="num-col" style="color:{% if income_statement.net_income >= 0 %}var(--green){% else %}var(--red){% endif %};">
-                        ₱{{ '{:,.2f}'.format(income_statement.net_income) }}
+                    <td class="num-col" style="color:{% if income_statement.net_income.ytd >= 0 %}var(--green){% else %}var(--red){% endif %};">
+                        ₱{{ '{:,.2f}'.format(income_statement.net_income.ytd) }}
                     </td>
                 </tr>
             </tbody>
@@ -114,31 +123,15 @@
 
 {% include 'reports/_ledger_modal.html' %}
 
-<!-- Period Picker Modal -->
+<!-- Reporting Date Modal -->
 <div id="periodPicker" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
-    <div style="background:var(--card);padding:30px;border-radius:8px;max-width:500px;width:90%;">
-        <h3 style="margin-top:0;">Select Period</h3>
+    <div style="background:var(--card);padding:30px;border-radius:8px;max-width:420px;width:90%;">
+        <h3 style="margin-top:0;">Reporting Date</h3>
         <form action="{{ url_for('reports.income_statement') }}" method="get">
-            <div style="margin-bottom:20px;">
-                <label for="start_date" style="display:block;margin-bottom:8px;font-weight:600;">Start Date:</label>
-                <input type="date" id="start_date" name="start_date" value="{{ start_date.isoformat() }}"
-                       style="width:100%;padding:10px;border:1px solid var(--border);border-radius:4px;font-family:inherit;">
-            </div>
-            <div style="margin-bottom:30px;">
-                <label for="end_date" style="display:block;margin-bottom:8px;font-weight:600;">End Date:</label>
-                <input type="date" id="end_date" name="end_date" value="{{ end_date.isoformat() }}"
-                       style="width:100%;padding:10px;border:1px solid var(--border);border-radius:4px;font-family:inherit;">
-            </div>
-            <div style="margin-bottom:20px;">
-                <div style="font-weight:600;margin-bottom:10px;font-size:14px;color:var(--text-2);">Quick Periods:</div>
-                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="setCurrentMonth()">This Month</button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="setLastMonth()">Last Month</button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="setYTD()">Year to Date</button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="setLastYear()">Last Year</button>
-                </div>
-            </div>
-            <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <label for="as_of" style="display:block;margin-bottom:8px;font-weight:600;">As of (month-end):</label>
+            <input type="date" id="as_of" name="as_of" value="{{ as_of.isoformat() }}"
+                   style="width:100%;padding:10px;border:1px solid var(--border);border-radius:4px;font-family:inherit;">
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:24px;">
                 <button type="button" class="btn btn-secondary" onclick="hidePeriodPicker()">Cancel</button>
                 <button type="submit" class="btn btn-primary">Generate Report</button>
             </div>
@@ -146,31 +139,10 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/fs-drilldown.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/fs-drilldown.js') }}?v=3"></script>
 <script>
 function showPeriodPicker() { document.getElementById('periodPicker').style.display = 'flex'; }
 function hidePeriodPicker() { document.getElementById('periodPicker').style.display = 'none'; }
-
-function setCurrentMonth() {
-    var now = new Date();
-    document.getElementById('start_date').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    document.getElementById('end_date').value = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-}
-function setLastMonth() {
-    var now = new Date();
-    document.getElementById('start_date').value = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
-    document.getElementById('end_date').value = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
-}
-function setYTD() {
-    var now = new Date();
-    document.getElementById('start_date').value = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0];
-    document.getElementById('end_date').value = now.toISOString().split('T')[0];
-}
-function setLastYear() {
-    var now = new Date();
-    document.getElementById('start_date').value = new Date(now.getFullYear() - 1, 0, 1).toISOString().split('T')[0];
-    document.getElementById('end_date').value = new Date(now.getFullYear() - 1, 11, 31).toISOString().split('T')[0];
-}
 document.getElementById('periodPicker').addEventListener('click', function (e) {
     if (e.target === this) hidePeriodPicker();
 });

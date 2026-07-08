@@ -32,6 +32,7 @@ from app.journal_entries.models import JournalEntry
 from app.reports.general_journal_data import (build_general_journal,
     build_general_journal_xlsx, _write_gj_rows, VOUCHER_ENTRY_TYPES)
 from app.reports.books_data import BOOKS
+from app.reports.two_column import merge_is_two_column
 from app.journals.ap_journal_data import resolve_period   # pure fn, not modified
 from app.utils import ph_now, end_of_month
 from datetime import date, timedelta, datetime
@@ -607,12 +608,13 @@ def _stmt_params():
 @reports_bp.route('/reports/income-statement')
 @login_required
 def income_statement():
-    start_date, end_date, branch_id = _is_params()
-    income_stmt_data = generate_income_statement(start_date, end_date, branch_id=branch_id)
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    mtd = generate_income_statement(mtd_start, as_of, branch_id=branch_id)
+    ytd = generate_income_statement(ytd_start, as_of, branch_id=branch_id)
+    data = merge_is_two_column(mtd, ytd)
     return render_template('reports/income_statement.html',
-                           income_statement=income_stmt_data,
-                           start_date=start_date,
-                           end_date=end_date)
+                           income_statement=data, as_of=as_of,
+                           mtd_start=mtd_start, ytd_start=ytd_start)
 
 
 @reports_bp.route('/reports/income-statement/export/excel')

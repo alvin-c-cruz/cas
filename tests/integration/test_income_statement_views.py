@@ -104,7 +104,7 @@ def test_income_statement_admin_renders(client, db_session, main_branch, admin_u
     assert b'NET INCOME' in resp.data
     assert b'Gross Profit' in resp.data                # P&L subtotal
     assert b'Operating Income' in resp.data            # P&L subtotal
-    assert b'Net Margin' in resp.data                  # net income line (positive revenue)
+    assert f'YTD {end_of_month(ph_now().date()).year}'.encode() in resp.data  # YTD column header
 
 
 def test_income_statement_groups_selling_and_admin_under_operating_expenses(
@@ -209,13 +209,29 @@ def test_income_statement_print_renders(client, db_session, main_branch, admin_u
     assert b'ACME Trading Corp' in resp.data
 
 
-def test_income_statement_defaults_to_year_to_date(client, db_session, main_branch, admin_user):
+def test_income_statement_defaults_to_month_end_reporting_date(client, db_session, main_branch, admin_user):
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
     resp = client.get('/reports/income-statement')
     assert resp.status_code == 200
-    jan1 = f'{date.today().year}-01-01'
-    assert f'value="{jan1}"'.encode() in resp.data           # start_date defaults to Jan 1
+    expected = end_of_month(ph_now().date())
+    # the reporting-date picker defaults to month-end
+    assert f'value="{expected.isoformat()}"'.encode() in resp.data
+    # and both column headers are present
+    assert expected.strftime('%b %Y').encode() in resp.data      # "Jul 2026"
+    assert f'YTD {expected.year}'.encode() in resp.data
+
+
+def test_income_statement_page_two_columns(client, db_session, main_branch, admin_user):
+    _seed_pl(main_branch.id)          # revenue 100 / admin 40 -> net 60, dated today
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(f'/reports/income-statement?as_of={date.today().isoformat()}')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert date.today().strftime('%b %Y') in body                # "Jul 2026" current-month header
+    assert f'YTD {date.today().year}' in body
+    assert '60.00' in body                                        # net income appears
 
 
 def test_is_page_shows_subtotal_and_drilldown_hooks(client, db_session, admin_user, main_branch):
