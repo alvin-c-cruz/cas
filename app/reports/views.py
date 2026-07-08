@@ -33,7 +33,7 @@ from app.reports.general_journal_data import (build_general_journal,
     build_general_journal_xlsx, _write_gj_rows, VOUCHER_ENTRY_TYPES)
 from app.reports.books_data import BOOKS
 from app.journals.ap_journal_data import resolve_period   # pure fn, not modified
-from app.utils import ph_now
+from app.utils import ph_now, end_of_month
 from datetime import date, timedelta, datetime
 from decimal import Decimal
 from sqlalchemy import func
@@ -511,12 +511,16 @@ def bir_alphalist_export_excel():
 # ============================================================================
 
 def _tb_params():
-    """Shared (as_of_date, branch_id) parsing for the Trial Balance routes."""
-    as_of_str = request.args.get('as_of', date.today().isoformat())
+    """Shared (as_of_date, branch_id) for Trial Balance & Balance Sheet routes.
+
+    Defaults the reporting date to the end of the current month (PH time).
+    """
+    default = end_of_month(ph_now().date())
+    as_of_str = request.args.get('as_of', default.isoformat())
     try:
         as_of_date = date.fromisoformat(as_of_str)
     except (ValueError, TypeError):
-        as_of_date = date.today()
+        as_of_date = default
     return as_of_date, session.get('selected_branch_id')
 
 

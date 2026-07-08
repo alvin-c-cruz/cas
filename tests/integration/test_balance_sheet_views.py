@@ -5,8 +5,19 @@ import pytest
 from app import db
 from app.accounts.models import Account
 from app.journal_entries.models import JournalEntry, JournalEntryLine
+from app.utils import end_of_month, ph_now
 
 pytestmark = [pytest.mark.integration]
+
+
+def test_balance_sheet_defaults_to_month_end(client, db_session, main_branch, admin_user):
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/balance-sheet')
+    assert resp.status_code == 200
+    expected = end_of_month(ph_now().date())
+    body = resp.get_data(as_text=True)
+    assert expected.strftime('%B %d, %Y') in body   # "As of July 31, 2026"
 
 
 def _login(client, user):
