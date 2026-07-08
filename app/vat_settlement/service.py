@@ -221,7 +221,6 @@ def assert_settleable(year, quarter, today):
 
 
 def eligible_quarters(today):
-    from app.vat_settlement.models import VatSettlement as _VS  # noqa
     earliest = db.session.query(func.min(JournalEntry.entry_date)).filter(
         JournalEntry.status == 'posted').scalar()
     if earliest is None:
@@ -306,7 +305,10 @@ def settle_quarter(year, quarter, user_id):
                 db.session.add(JournalEntryLine(entry_id=je.id, line_number=ln, account_id=carry_id,
                                                 description='Excess Input Tax carried forward',
                                                 debit_amount=ZERO, credit_amount=-delta)); ln += 1
-        db.session.flush(); _finalize(je); je_ids.append(je.id)
+        if ln > 1:  # at least one line was added
+            db.session.flush(); _finalize(je); je_ids.append(je.id)
+        else:  # dormant quarter: unchanged carryover, no current activity -> no JE
+            db.session.delete(je); db.session.flush()
 
     s = VatSettlement(fiscal_year=year, quarter=quarter, status='settled',
                       output_vat=pos['output_vat'], input_vat=pos['input_vat'],

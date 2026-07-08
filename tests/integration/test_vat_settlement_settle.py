@@ -103,3 +103,36 @@ def test_settle_writes_audit(db_session, main_branch, admin_user):
     _vat_world(main_branch); db.session.commit()
     service.settle_quarter(2025, 3, admin_user.id); db.session.commit()
     assert AuditLog.query.filter_by(module='vat_settlement', action='settle').first() is not None
+
+
+def test_idle_quarter_with_prior_carryover_records_row_no_je(db_session, main_branch, admin_user):
+    w = _vat_world(main_branch)
+    # Q3 net creditable 80k -> settle -> carryover 80k
+    _je(main_branch.id, date(2025, 7, 10), [(w['ar'].id, 20000, 0), (w['out'].id, 0, 20000)])
+    _je(main_branch.id, date(2025, 8, 10), [(w['inp'].id, 100000, 0), (w['ap'].id, 0, 100000)])
+    db.session.commit()
+    service.settle_quarter(2025, 3, admin_user.id); db.session.commit()
+    n_before = JournalEntry.query.filter_by(entry_type='vat_settlement').count()
+    # Q4: no VAT activity at all, but the 80k carryover exists
+    s4 = service.settle_quarter(2025, 4, admin_user.id); db.session.commit()
+    assert s4.output_vat == Decimal('0.00') and s4.input_vat == Decimal('0.00')
+    assert s4.prior_carryover == Decimal('80000.00') and s4.new_carryover == Decimal('80000.00')
+    assert s4.net_payable == Decimal('0.00')
+    assert s4.get_settlement_entry_ids() == []           # NO JE for the idle quarter
+    assert JournalEntry.query.filter_by(entry_type='vat_settlement').count() == n_before
+    # carryover ledger balance unchanged at 80k
+    d, c = service._sum([w['carry'].id], upto=date(2025, 12, 31))
+    assert (d - c) == Decimal('80000.00')
+
+
+def test_draft_vat_doc_blocks_settle(db_session, main_branch, admin_user):
+    from app.accounts_payable.models import AccountsPayable
+    w = _vat_world(main_branch)
+    _je(main_branch.id, date(2025, 7, 10), [(w['ar'].id, 120000, 0), (w['out'].id, 0, 120000)])
+    db.session.commit()
+    doc = AccountsPayable(status='draft', ap_number='AP-TEST-DRAFT-0001',
+                          ap_date=date(2025, 8, 5), due_date=date(2025, 9, 5),
+                          vendor_name='Test Vendor Draft', branch_id=main_branch.id)
+    db.session.add(doc); db.session.commit()
+    with pytest.raises(ValueError):
+        service.assert_settleable(2025, 3, TODAY)
