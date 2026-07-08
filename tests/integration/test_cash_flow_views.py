@@ -71,6 +71,22 @@ def test_cash_flow_admin_renders(client, db_session, main_branch, admin_user):
     assert b'Reconciled' in body
 
 
+def test_cash_flow_page_two_columns(client, db_session, main_branch, admin_user):
+    from app.utils import end_of_month, ph_now
+    _seed_cf(main_branch.id)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(f'/reports/cash-flow?as_of={date.today().isoformat()}')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert date.today().strftime('%b %Y') in body            # current-month header
+    assert f'YTD {date.today().year}' in body
+    # default (no param) snaps the reporting date to month-end
+    resp2 = client.get('/reports/cash-flow')
+    expected = end_of_month(ph_now().date())
+    assert f'value="{expected.isoformat()}"'.encode() in resp2.data
+
+
 def test_cash_flow_staff_without_grant_denied(client, db_session, main_branch, staff_user):
     staff_user.branches.append(main_branch)
     db_session.commit()

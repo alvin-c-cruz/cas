@@ -120,4 +120,6 @@ def merge_cf_two_column(mtd, ytd):
         'net_change': _pair(mtd['net_change'], ytd['net_change']),
         'cash_begin': _pair(mtd['cash_begin'], ytd['cash_begin']),
         'cash_end': _pair(mtd['cash_end'], ytd['cash_end']),
+        'is_reconciled': bool(mtd.get('is_reconciled', True) and ytd.get('is_reconciled', True)),
+        'difference': _pair(mtd.get('difference', 0.0), ytd.get('difference', 0.0)),
     }

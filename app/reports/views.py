@@ -32,7 +32,7 @@ from app.journal_entries.models import JournalEntry
 from app.reports.general_journal_data import (build_general_journal,
     build_general_journal_xlsx, _write_gj_rows, VOUCHER_ENTRY_TYPES)
 from app.reports.books_data import BOOKS
-from app.reports.two_column import merge_is_two_column
+from app.reports.two_column import merge_is_two_column, merge_cf_two_column
 from app.journals.ap_journal_data import resolve_period   # pure fn, not modified
 from app.utils import ph_now, end_of_month
 from datetime import date, timedelta, datetime
@@ -697,10 +697,12 @@ def balance_sheet_print():
 @reports_bp.route('/reports/cash-flow')
 @login_required
 def cash_flow():
-    start_date, end_date, branch_id = _is_params()
-    cf = generate_cash_flow(start_date, end_date, branch_id=branch_id)
-    return render_template('reports/cash_flow.html', cash_flow=cf,
-                           start_date=start_date, end_date=end_date)
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    data = merge_cf_two_column(
+        generate_cash_flow(mtd_start, as_of, branch_id=branch_id),
+        generate_cash_flow(ytd_start, as_of, branch_id=branch_id))
+    return render_template('reports/cash_flow.html', cash_flow=data, as_of=as_of,
+                           mtd_start=mtd_start, ytd_start=ytd_start)
 
 
 @reports_bp.route('/reports/cash-flow/export/excel')
