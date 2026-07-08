@@ -5,6 +5,10 @@
 
 function initVendorQuickAdd(opts) {
     const selectEl = opts && opts.selectEl;
+    // Optional prefix for the inserted option value (e.g. 'vendor:' when the
+    // picker is a combined payee dropdown). Defaults to '' so existing callers
+    // (CD form) keep inserting a bare vendor id.
+    const valuePrefix = (opts && opts.valuePrefix) || '';
     const overlay = document.getElementById('vendorQuickAddOverlay');
     if (!selectEl || !overlay || typeof initSearchSelect !== 'function') return;
 
@@ -61,11 +65,12 @@ function initVendorQuickAdd(opts) {
             .then(({ status, body }) => {
                 if (status === 200 && body.ok) {
                     // Add the new vendor and select it.
+                    const newVal = valuePrefix + String(body.vendor.id);
                     choices.setChoices(
-                        [{ value: String(body.vendor.id), label: body.vendor.label }],
+                        [{ value: newVal, label: body.vendor.label }],
                         'value', 'label', false
                     );
-                    choices.setChoiceByValue(String(body.vendor.id));
+                    choices.setChoiceByValue(newVal);
                     // setChoiceByValue does not emit a native `change` on the
                     // underlying <select>, so fire it ourselves — that's what
                     // the page's vendor handler listens on (AP defaults / CD bills).

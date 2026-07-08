@@ -31,16 +31,22 @@
                 <div class="right-col">
                     <div id="vendorCard" class="vendor-step-card{% if ap %} vendor-step-card--done{% endif %}">
                         <div class="vendor-step-label" id="vendorCardLabel">
-                            {% if ap %}✓ {{ ap.vendor_name }}{% else %}Step 1 — Select Vendor{% endif %}
+                            {% if ap %}✓ {{ ap.vendor_name }}{% else %}Step 1 — Select Payee{% endif %}
                         </div>
                         <div id="vendorBadges" class="vendor-badges"></div>
-                        <select name="vendor_id" id="vendor_id" class="form-control" required
+                        <select name="payee" id="payee" class="form-control" required
                                 {% if not ap %}autofocus{% endif %}>
-                            <option value="">Search or select a vendor…</option>
-                            {% for choice in form.vendor_id.choices %}
-                            <option value="{{ choice[0] }}"
-                                {% if (ap and ap.vendor_id == choice[0]) or (restore_lines and form.vendor_id.data == choice[0]) %}selected{% endif %}>
-                                {{ choice[1] }}
+                            <option value="">Search or select a payee…</option>
+                            {% for v in vendors %}
+                            <option value="vendor:{{ v.id }}"
+                                {% if current_payee == 'vendor:' ~ v.id %}selected{% endif %}>
+                                {{ v.code }} : {{ v.name }} [Vendor]
+                            </option>
+                            {% endfor %}
+                            {% for e in employees %}
+                            <option value="employee:{{ e.id }}"
+                                {% if current_payee == 'employee:' ~ e.id %}selected{% endif %}>
+                                {{ e.employee_no }} : {{ e.full_name }} [Employee]
                             </option>
                             {% endfor %}
                         </select>
@@ -61,10 +67,10 @@
             <div id="lineItemsLocked" class="line-items-locked{% if ap %} line-items-locked--hidden{% endif %}">
                 <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
                 <div style="font-size: 14px; font-weight: 600; color: var(--alert-warning-text);">
-                    Select a vendor above to add line items
+                    Select a payee above to add line items
                 </div>
                 <div style="font-size: 12px; color: var(--text-2); margin-top: 6px;">
-                    WHT codes and VAT defaults will load from the vendor.
+                    For vendors, WHT codes and VAT defaults load automatically.
                 </div>
             </div>
 
@@ -328,7 +334,7 @@
 <script src="{{ url_for('static', filename='transaction-utils.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='vendor-form-widgets.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='vendor-quick-add.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='vendor-quick-add.js') }}?v=3"></script>
 {% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
 {% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
 <script>
@@ -1053,13 +1059,44 @@ function setLineItemsLoadError() {
         '<div style="font-size:14px;font-weight:600;color:var(--alert-warning-text);">Could not load vendor details — please re-select the vendor.</div>';
 }
 
-document.getElementById('vendor_id').addEventListener('change', function () {
-    const vendorId = this.value;
-    const vendorName = this.options[this.selectedIndex].text;
-    if (!vendorId || vendorId == '0' || vendorId === '__add_vendor__') return;
+// Strip the trailing "[Vendor]"/"[Employee]" badge + collapse whitespace to a
+// clean display name for the "✓ …" done label.
+function payeeDisplayName(optText) {
+    return (optText || '').replace(/\s+/g, ' ').replace(/\s*\[(Vendor|Employee)\]$/, '').trim();
+}
 
+function unlockLinesForEmployee(name) {
+    // Employees carry no vendor-defaults — unlock with no VAT / no WHT.
+    currentVendorWHTs = [];
+    currentVendorVatCategory = '';
+    currentVendorLastAccountId = null;
+    const hadItems = lineItems.length > 0;
+    setVendorDone(name, {});
+    if (hadItems) {
+        rebuildAllWhtSelects();
+        rebuildAllVatSelects();
+        calculateTotals();
+    } else {
+        addFirstLineItem();
+    }
+}
+
+document.getElementById('payee').addEventListener('change', function () {
+    const raw = this.value;
+    const payeeName = payeeDisplayName(this.options[this.selectedIndex].text);
+    if (!raw || raw === '__add_vendor__' || raw === '__add_employee__') return;
+    const sep = raw.indexOf(':');
+    const kind = sep >= 0 ? raw.slice(0, sep) : 'vendor';
+    const id = sep >= 0 ? raw.slice(sep + 1) : raw;
+
+    if (kind === 'employee') {
+        unlockLinesForEmployee(payeeName);
+        return;
+    }
+
+    // Vendor path — load defaults as before.
     setLineItemsLoading();
-    fetch(`/vendors/${vendorId}/defaults`)
+    fetch(`/vendors/${id}/defaults`)
         .then(r => r.json())
         .then(data => {
             currentVendorWHTs = data.withholding_taxes || [];
@@ -1068,7 +1105,7 @@ document.getElementById('vendor_id').addEventListener('change', function () {
             applyVendorTerms(data.payment_terms || 'Net 30');
 
             const hadItems = lineItems.length > 0;
-            setVendorDone(vendorName, data);
+            setVendorDone(payeeName, data);
 
             if (hadItems) {
                 rebuildAllWhtSelects();
@@ -1125,11 +1162,12 @@ function initOverrides() {
 }
 
 // ── Vendor search-select ──────────────────────────────────────────────────────
-const vendorSel = document.getElementById('vendor_id');
-if (vendorSel) {
+const payeeSel = document.getElementById('payee');
+if (payeeSel) {
     // The shared search-select (via initVendorQuickAdd) creates the Choices
-    // instance and wires typeahead + the "Add Vendor" action.
-    initVendorQuickAdd({ selectEl: vendorSel });
+    // instance and wires typeahead + the "Add Vendor" action. valuePrefix makes
+    // a quick-added vendor land as "vendor:<id>" to match the combined dropdown.
+    initVendorQuickAdd({ selectEl: payeeSel, valuePrefix: 'vendor:' });
 }
 if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
 if (uomMasterOn    && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
@@ -1156,22 +1194,26 @@ const _notesInput = document.querySelector('textarea[name="notes"]');
 if (_notesInput) _notesInput.addEventListener('input', validateForm);
 
 {% if ap or restore_lines %}
-const initVendorId = document.getElementById('vendor_id').value;
-const initVendorSel = document.getElementById('vendor_id');
-const initVendorName = initVendorSel.options[initVendorSel.selectedIndex]
-    ? initVendorSel.options[initVendorSel.selectedIndex].text
+const initPayeeSel = document.getElementById('payee');
+const initPayeeVal = initPayeeSel.value;
+const initPayeeName = initPayeeSel.options[initPayeeSel.selectedIndex]
+    ? payeeDisplayName(initPayeeSel.options[initPayeeSel.selectedIndex].text)
     : '{% if ap %}{{ ap.vendor_name | e }}{% endif %}';
 
-currentVendorName = initVendorName;
+currentVendorName = initPayeeName;
 
-if (initVendorId && initVendorId !== '0') {
-    fetch(`/vendors/${initVendorId}/defaults`)
+const _initSep = initPayeeVal ? initPayeeVal.indexOf(':') : -1;
+const _initKind = _initSep >= 0 ? initPayeeVal.slice(0, _initSep) : '';
+const _initId = _initSep >= 0 ? initPayeeVal.slice(_initSep + 1) : '';
+
+if (_initKind === 'vendor' && _initId) {
+    fetch(`/vendors/${_initId}/defaults`)
         .then(r => r.json())
         .then(data => {
             currentVendorWHTs = data.withholding_taxes || [];
             currentVendorVatCategory = resolveVatCode(data.default_vat_category || '');
             currentVendorLastAccountId = data.last_account_id || null;
-            setVendorDone(initVendorName, data);
+            setVendorDone(initPayeeName, data);
             initItems();
             initOverrides();
         })
@@ -1179,6 +1221,10 @@ if (initVendorId && initVendorId !== '0') {
             initItems();
             initOverrides();
         });
+} else if (_initKind === 'employee' && _initId) {
+    setVendorDone(initPayeeName, {});
+    initItems();
+    initOverrides();
 } else {
     initItems();
     initOverrides();

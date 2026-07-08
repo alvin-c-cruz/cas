@@ -678,12 +678,16 @@ def create():
         quick_add_form.is_active.data = '1'
         quick_add_form.payment_terms.data = 'Net 30'
         quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+        from app.employees.models import Employee
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.employee_no).all()
+        current_payee = request.form.get('payee', '') if request.method == 'POST' else ''
         return render_template('accounts_payable/form.html',
                                form=form, ap=None, restore_lines=restore_lines,
                                vat_categories=vat_categories, all_accounts=all_accounts,
                                gl_accounts=gl_accounts,
                                units=_units_for_form(),
                                products=_products_for_form(),
+                               vendors=vendors, employees=employees, current_payee=current_payee,
                                vendor_quick_add_form=quick_add_form,
                                vendor_quick_add_whts=quick_add_whts)
 
@@ -973,11 +977,18 @@ def edit(id):
         quick_add_form.is_active.data = '1'
         quick_add_form.payment_terms.data = 'Net 30'
         quick_add_whts = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
+        from app.employees.models import Employee
+        employees = Employee.query.filter_by(is_active=True).order_by(Employee.employee_no).all()
+        if request.method == 'POST':
+            current_payee = request.form.get('payee', '')
+        else:
+            current_payee = f'{ap.payee_type}:{ap.payee_id}'
         return render_template('accounts_payable/form.html',
                                form=form, ap=ap, restore_lines=restore_lines,
                                vat_categories=vat_categories, all_accounts=all_accounts,
                                line_items=line_items, gl_accounts=gl_accounts,
                                units=_units_for_form(), products=_products_for_form(),
+                               vendors=vendors, employees=employees, current_payee=current_payee,
                                vendor_quick_add_form=quick_add_form,
                                vendor_quick_add_whts=quick_add_whts)
 
