@@ -15,7 +15,7 @@
       <tbody>
         {% for dr in receipts %}
         <tr>
-          <td>{{ dr.dr_number }}</td>
+          <td><a href="{{ url_for('delivery_receipts.view', id=dr.id) }}">{{ dr.dr_number }}</a></td>
           <td>{{ dr.delivery_date.strftime('%b %d, %Y') }}</td>
           <td>{{ dr.customer_name }}</td>
           <td>{{ dr.sales_order.so_number if dr.sales_order else '' }}</td>

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ dr.dr_number }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Delivery Receipt {{ dr.dr_number }}</h1>
+  <div class="page-actions">
+    <a href="{{ url_for('delivery_receipts.list') }}" class="btn btn-secondary btn-sm">Back to list</a>
+    {% if dr.status == 'draft' %}
+    <a href="{{ url_for('delivery_receipts.edit', id=dr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card"><div class="card-body">
+  <dl class="detail-grid">
+    <dt>Status</dt>
+    <dd>
+      <span class="badge badge-{{ 'secondary' if dr.status == 'draft'
+                                  else 'success' if dr.status in ('approved', 'delivered')
+                                  else 'info' if dr.status == 'billed'
+                                  else 'danger' }}">{{ dr.status|title }}</span>
+    </dd>
+    <dt>Delivery Date</dt><dd>{{ dr.delivery_date.strftime('%b %d, %Y') }}</dd>
+    <dt>Customer</dt><dd>{{ dr.customer_name }}</dd>
+    <dt>Sales Order</dt>
+    <dd>
+      {% if dr.sales_order %}
+      <a href="{{ url_for('sales_orders.view', id=dr.sales_order_id) }}">{{ dr.sales_order.so_number }}</a>
+      {% endif %}
+    </dd>
+    <dt>Salesperson</dt><dd>{{ dr.salesperson.full_name if dr.salesperson else 'Company Account' }}</dd>
+    {% if dr.remarks %}<dt>Remarks</dt><dd>{{ dr.remarks }}</dd>{% endif %}
+    {% if dr.status == 'cancelled' %}<dt>Cancelled</dt><dd>{{ dr.cancel_reason }}</dd>{% endif %}
+  </dl>
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2 class="card-title">Delivered lines</h2>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>#</th><th>Product</th><th>UOM</th>
+          <th class="text-right">Ordered</th>
+          <th class="text-right">Delivered</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in dr.line_items %}
+        <tr>
+          <td>{{ item.line_number }}</td>
+          <td>
+            {%- set soi = item.sales_order_item -%}
+            {%- if soi and soi.product %}{{ soi.product.code }}: {{ soi.product.name }}
+            {%- elif item.product %}{{ item.product.code }}: {{ item.product.name }}{% endif -%}
+          </td>
+          <td>{{ item.to_dict()['uom'] or '' }}</td>
+          <td class="text-right">{{ item.sales_order_item | qty_fmt }}</td>
+          <td class="text-right">{{ item | qty_fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+{% endblock %}
