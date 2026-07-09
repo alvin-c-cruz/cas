@@ -108,3 +108,61 @@ def test_edit_draft_updates_quantities(client, db_session, admin_user, main_bran
     db_session.refresh(dr)
     assert dr.line_items[0].delivered_quantity == Decimal('6')
     assert dr.delivery_date == date(2026, 7, 10)
+
+
+def test_print_renders_lines_and_has_no_currency_glyph(client, db_session, admin_user, main_branch):
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    lines = json.dumps([{'sales_order_item_id': so.line_items[0].id, 'delivered_quantity': '3'}])
+    client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'lines': lines},
+        follow_redirects=True)
+    dr = DeliveryReceipt.query.filter_by(sales_order_id=so.id).first()
+    body = client.get(f'/delivery-receipts/{dr.id}/print').get_data(as_text=True)
+    assert dr.dr_number in body and 'Widget' in body
+    # The delivered quantity must actually render -- qty_fmt returns '' for a line
+    # item that does not expose `quantity`, which would leave the column blank.
+    assert '3.0000' in body
+    assert '₱' not in body     # no peso glyph on a delivery document
+
+
+def test_print_is_branch_scoped(client, db_session, admin_user, main_branch, branch_manila):
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    lines = json.dumps([{'sales_order_item_id': so.line_items[0].id, 'delivered_quantity': '3'}])
+    client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'lines': lines},
+        follow_redirects=True)
+    dr = DeliveryReceipt.query.first()
+    with client.session_transaction() as s: s['selected_branch_id'] = branch_manila.id
+    assert client.get(f'/delivery-receipts/{dr.id}/print').status_code == 404
+
+
+def test_so_detail_offers_create_dr_when_module_on(client, db_session, admin_user, main_branch):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    # The SO detail page itself lives behind the optional sales_orders module gate.
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    db_session.commit(); clear_module_config_cache()
+
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    body = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
+    assert f'/delivery-receipts/create?so={so.id}' in body
+
+
+def test_so_detail_hides_create_dr_when_module_off(client, db_session, admin_user, main_branch):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    AppSettings.set_setting('module_enabled:delivery_receipts', '0')   # override the autouse fixture
+    db_session.commit(); clear_module_config_cache()
+
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    body = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
+    assert '/delivery-receipts/create' not in body

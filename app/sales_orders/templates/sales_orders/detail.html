@@ -77,6 +77,11 @@
             <a href="{{ url_for('sales_orders.print_so', id=so.id) }}"
                target="_blank" rel="noopener noreferrer"
                class="btn btn-secondary">Print</a>
+            {# Deliver against this SO -- only once it is confirmed and the DR module is on. #}
+            {% if so.status == 'confirmed' and module_enabled('delivery_receipts') %}
+            <a href="{{ url_for('delivery_receipts.create', so=so.id) }}"
+               class="btn btn-secondary">+ Delivery Receipt</a>
+            {% endif %}
             {# Confirm: staff/accountant/admin, draft only (logic wired in Task 8) #}
             {% if so.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             <button type="button" class="btn btn-success"

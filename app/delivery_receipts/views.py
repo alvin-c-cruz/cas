@@ -307,3 +307,17 @@ def cancel(id):
               record_identifier=dr.dr_number, notes=f'Cancelled: {reason}')
     flash(f'Delivery Receipt "{dr.dr_number}" cancelled.', 'warning')
     return redirect(url_for('delivery_receipts.view', id=id))
+
+
+# -- print ---------------------------------------------------------------------
+
+@delivery_receipts_bp.route('/delivery-receipts/<int:id>/print')
+@login_required
+def print_dr(id):
+    from app.settings import AppSettings
+    dr = _dr_or_404(id)
+    company = {'name': AppSettings.get_setting('company_name', ''),
+               'address': AppSettings.get_setting('company_address', ''),
+               'tin': AppSettings.get_setting('company_tin', '')}
+    return render_template('delivery_receipts/print.html', dr=dr, company=company,
+                           printed_at=ph_now())
