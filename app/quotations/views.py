@@ -289,3 +289,139 @@ def view(id):
     created_by_user = db.session.get(User, q.created_by_id) if q.created_by_id else None
     return render_template('quotations/detail.html', quote=q,
                            created_by_user=created_by_user)
+
+
+# -- lifecycle transitions -----------------------------------------------------
+
+def _quote_admin_gate():
+    """Accept/reject/cancel are approver actions (accountant/admin)."""
+    if not (current_user.has_full_access or current_user.role == 'accountant'):
+        flash('Only accountant/admin can perform this action.', 'error')
+        return False
+    return True
+
+
+@quotations_bp.route('/quotations/<int:id>/send', methods=['POST'])
+@login_required
+def send(id):
+    q = db.get_or_404(Quotation, id)
+    if q.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+    if q.status != 'draft':
+        flash('Only a draft quotation can be sent.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+    q.status = 'sent'; q.sent_by_id = current_user.id; q.sent_at = ph_now()
+    db.session.commit()
+    log_audit(module='quotations', action='update', record_id=q.id,
+              record_identifier=q.quotation_number, notes='Sent')
+    flash(f'Quotation "{q.quotation_number}" sent.', 'success')
+    return redirect(url_for('quotations.view', id=id))
+
+
+@quotations_bp.route('/quotations/<int:id>/accept', methods=['POST'])
+@login_required
+def accept(id):
+    q = db.get_or_404(Quotation, id)
+    if q.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    if not _quote_admin_gate():
+        return redirect(url_for('quotations.view', id=id))
+    if q.status != 'sent':
+        flash('Only a sent quotation can be accepted.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+    if q.is_expired:
+        flash('This quotation has expired and can no longer be accepted.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+    from app.sales_orders.models import SalesOrder, SalesOrderItem
+    from app.sales_orders.views import generate_so_number
+    try:
+        so = SalesOrder(so_number=generate_so_number(), branch_id=q.branch_id,
+                        order_date=ph_now().date(), customer_id=q.customer_id,
+                        customer_name=q.customer_name, customer_tin=q.customer_tin,
+                        customer_address=q.customer_address, payment_terms=q.payment_terms,
+                        reference=q.reference, notes=q.notes or '', status='draft',
+                        quotation_id=q.id, created_by_id=current_user.id)
+        copy_salesperson(q, so)
+        for qi in q.line_items:
+            up = qi.unit_price
+            vat_cat, vat_rate = qi.vat_category, qi.vat_rate
+            if q.vat_treatment == 'exclusive' and up is not None:
+                up = (Decimal(str(up)) * Decimal('1.12')).quantize(Decimal('0.01'), ROUND_HALF_UP)
+                vat_cat, vat_rate = 'V12', Decimal('12')
+            elif q.vat_treatment == 'zero_rated':
+                vat_cat, vat_rate = 'V0', Decimal('0')
+            si = SalesOrderItem(line_number=qi.line_number, product_id=qi.product_id,
+                                quantity=qi.quantity, unit_price=up, uom_text=qi.uom_text,
+                                unit_of_measure_id=qi.unit_of_measure_id,
+                                amount=(Decimal(str(up)) * Decimal(str(qi.quantity))
+                                        ).quantize(Decimal('0.01'), ROUND_HALF_UP)
+                                        if (up is not None and qi.quantity is not None) else qi.amount,
+                                vat_category=vat_cat, vat_rate=vat_rate)
+            si.calculate_amounts()
+            so.line_items.append(si)
+        so.calculate_totals()
+        db.session.add(so); db.session.flush()
+        q.status = 'accepted'; q.accepted_by_id = current_user.id; q.accepted_at = ph_now()
+        q.sales_order_id = so.id
+        db.session.commit()
+        log_audit(module='quotations', action='accept', record_id=q.id,
+                  record_identifier=q.quotation_number, notes=f'Accepted -> {so.so_number}')
+        flash(f'Quotation accepted. Sales Order "{so.so_number}" created (draft).', 'success')
+        return redirect(url_for('sales_orders.view', id=so.id))
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error accepting quotation', exc_info=True)
+        log_exception(e, severity='ERROR', module='quotations.accept')
+        flash('An error occurred creating the Sales Order from this quotation.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+
+
+@quotations_bp.route('/quotations/<int:id>/reject', methods=['POST'])
+@login_required
+def reject(id):
+    q = db.get_or_404(Quotation, id)
+    if q.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    if not _quote_admin_gate():
+        return redirect(url_for('quotations.view', id=id))
+    if q.status != 'sent':
+        flash('Only a sent quotation can be rejected.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+    reason = (request.form.get('reject_reason') or '').strip()
+    if len(reason) < 10:
+        flash('A rejection reason (min 10 chars) is required.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+    q.status = 'rejected'; q.rejected_by_id = current_user.id; q.rejected_at = ph_now()
+    q.reject_reason = reason
+    db.session.commit()
+    log_audit(module='quotations', action='update', record_id=q.id,
+              record_identifier=q.quotation_number, notes=f'Rejected: {reason}')
+    flash(f'Quotation "{q.quotation_number}" rejected.', 'warning')
+    return redirect(url_for('quotations.view', id=id))
+
+
+@quotations_bp.route('/quotations/<int:id>/cancel', methods=['POST'])
+@login_required
+def cancel(id):
+    q = db.get_or_404(Quotation, id)
+    if q.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    if not _quote_admin_gate():
+        return redirect(url_for('quotations.view', id=id))
+    if q.status in ('accepted', 'cancelled'):
+        flash('This quotation can no longer be cancelled.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+    reason = (request.form.get('cancel_reason') or '').strip()
+    if len(reason) < 10:
+        flash('A cancellation reason (min 10 chars) is required.', 'error')
+        return redirect(url_for('quotations.view', id=id))
+    q.status = 'cancelled'; q.cancelled_by_id = current_user.id; q.cancelled_at = ph_now()
+    q.cancel_reason = reason
+    db.session.commit()
+    log_audit(module='quotations', action='update', record_id=q.id,
+              record_identifier=q.quotation_number, notes=f'Cancelled: {reason}')
+    flash(f'Quotation "{q.quotation_number}" cancelled.', 'warning')
+    return redirect(url_for('quotations.view', id=id))

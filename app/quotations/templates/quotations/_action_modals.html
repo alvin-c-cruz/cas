@@ -1,0 +1,62 @@
+{# Reject / Cancel modals — custom HTML (no JS popups). Gated by status + approver role. #}
+{% set can_approve = current_user.has_full_access or current_user.role == 'accountant' %}
+
+{% if quote.status == 'sent' and can_approve %}
+<div id="rejectModal" style="display:none; position:fixed; inset:0; background:var(--backdrop);
+     z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Reject this Quotation?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;">
+            <strong>{{ quote.quotation_number }}</strong> will be marked as rejected. This cannot be undone.
+        </p>
+        <form method="POST" action="{{ url_for('quotations.reject', id=quote.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    Reason <span style="color:var(--red);">*</span>
+                </label>
+                <textarea name="reject_reason" rows="3" class="form-control"
+                          placeholder="Minimum 10 characters" required minlength="10"
+                          style="width:100%; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary"
+                        onclick="document.getElementById('rejectModal').style.display='none'">
+                    Keep Quotation
+                </button>
+                <button type="submit" class="btn btn-danger">Reject Quotation</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if quote.status in ['draft', 'sent'] and can_approve %}
+<div id="cancelModal" style="display:none; position:fixed; inset:0; background:var(--backdrop);
+     z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Cancel this Quotation?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;">
+            <strong>{{ quote.quotation_number }}</strong> will be marked as cancelled. This cannot be undone.
+        </p>
+        <form method="POST" action="{{ url_for('quotations.cancel', id=quote.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    Reason <span style="color:var(--red);">*</span>
+                </label>
+                <textarea name="cancel_reason" rows="3" class="form-control"
+                          placeholder="Minimum 10 characters" required minlength="10"
+                          style="width:100%; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary"
+                        onclick="document.getElementById('cancelModal').style.display='none'">
+                    Keep Quotation
+                </button>
+                <button type="submit" class="btn btn-danger">Cancel Quotation</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}

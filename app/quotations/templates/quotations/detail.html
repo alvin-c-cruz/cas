@@ -24,9 +24,34 @@
             {% endif %}
         </div>
         <div class="card-header-actions">
-            {% block detail_actions %}{% endblock %}
+            {% set can_write = current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+            {% set can_approve = current_user.has_full_access or current_user.role == 'accountant' %}
+            {# Send: staff/accountant/admin, draft only #}
+            {% if quote.status == 'draft' and can_write %}
+            <form method="POST" action="{{ url_for('quotations.send', id=quote.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-info">Send</button>
+            </form>
+            {% endif %}
+            {# Accept: accountant/admin, sent + not expired #}
+            {% if quote.status == 'sent' and not quote.is_expired and can_approve %}
+            <form method="POST" action="{{ url_for('quotations.accept', id=quote.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-success">Accept &amp; Create SO</button>
+            </form>
+            {% endif %}
+            {# Reject: accountant/admin, sent only #}
+            {% if quote.status == 'sent' and can_approve %}
+            <button type="button" class="btn btn-danger"
+                    onclick="document.getElementById('rejectModal').style.display='flex'">Reject</button>
+            {% endif %}
+            {# Cancel: accountant/admin, not yet terminal (accepted/cancelled) #}
+            {% if quote.status in ['draft', 'sent'] and can_approve %}
+            <button type="button" class="btn btn-secondary"
+                    onclick="document.getElementById('cancelModal').style.display='flex'">Cancel</button>
+            {% endif %}
             {# Edit: staff/accountant/admin, draft only #}
-            {% if quote.status == 'draft' and current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+            {% if quote.status == 'draft' and can_write %}
             <a href="{{ url_for('quotations.edit', id=quote.id) }}" class="btn btn-primary">Edit</a>
             {% endif %}
             <a href="{{ url_for('quotations.list') }}" class="btn btn-secondary">&#8592; Back to List</a>
