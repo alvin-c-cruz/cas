@@ -14,11 +14,13 @@ results without DetachedInstanceError exposure.
 from collections import namedtuple
 from decimal import Decimal
 
+from sqlalchemy.orm import selectinload
+
 from app import db
-from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
-from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
-from app.cash_receipts.models import CashReceiptVoucher, CRVRevenueLine
-from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+from app.accounts_payable.models import AccountsPayable
+from app.cash_disbursements.models import CashDisbursementVoucher
+from app.cash_receipts.models import CashReceiptVoucher
+from app.sales_invoices.models import SalesInvoice
 from app.vat_categories.models import PURCHASE_NATURES
 
 UNCLASSIFIED = 'unclassified'
@@ -64,7 +66,8 @@ def _emit(side, source, doc_id, doc_no, doc_date, pid, pname, ptin, line):
 def _sales(date_from, date_to, branch_id):
     out = []
 
-    q = db.session.query(SalesInvoice).filter(
+    q = db.session.query(SalesInvoice).options(
+        selectinload(SalesInvoice.line_items)).filter(
         SalesInvoice.invoice_date >= date_from,
         SalesInvoice.invoice_date <= date_to,
         SalesInvoice.status.in_(SI_STATUSES))
@@ -76,7 +79,8 @@ def _sales(date_from, date_to, branch_id):
                              inv.invoice_date, inv.customer_id, inv.customer_name,
                              inv.customer_tin, line))
 
-    q = db.session.query(CashReceiptVoucher).filter(
+    q = db.session.query(CashReceiptVoucher).options(
+        selectinload(CashReceiptVoucher.revenue_lines)).filter(
         CashReceiptVoucher.crv_date >= date_from,
         CashReceiptVoucher.crv_date <= date_to,
         CashReceiptVoucher.status == 'posted')
@@ -93,7 +97,8 @@ def _sales(date_from, date_to, branch_id):
 def _purchases(date_from, date_to, branch_id):
     out = []
 
-    q = db.session.query(AccountsPayable).filter(
+    q = db.session.query(AccountsPayable).options(
+        selectinload(AccountsPayable.line_items)).filter(
         AccountsPayable.ap_date >= date_from,
         AccountsPayable.ap_date <= date_to,
         AccountsPayable.status.in_(AP_STATUSES))
@@ -105,7 +110,8 @@ def _purchases(date_from, date_to, branch_id):
                              bill.vendor_invoice_number, bill.ap_date,
                              bill.vendor_id, bill.vendor_name, bill.vendor_tin, line))
 
-    q = db.session.query(CashDisbursementVoucher).filter(
+    q = db.session.query(CashDisbursementVoucher).options(
+        selectinload(CashDisbursementVoucher.expense_lines)).filter(
         CashDisbursementVoucher.cdv_date >= date_from,
         CashDisbursementVoucher.cdv_date <= date_to,
         CashDisbursementVoucher.status == 'posted')

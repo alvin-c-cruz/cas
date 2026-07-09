@@ -17,11 +17,13 @@ results without DetachedInstanceError exposure.
 from collections import namedtuple
 from decimal import Decimal
 
+from sqlalchemy.orm import selectinload, joinedload
+
 from app import db
-from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
-from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
-from app.cash_receipts.models import CashReceiptVoucher, CRVRevenueLine
-from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+from app.accounts_payable.models import AccountsPayable
+from app.cash_disbursements.models import CashDisbursementVoucher
+from app.cash_receipts.models import CashReceiptVoucher
+from app.sales_invoices.models import SalesInvoice
 from app.reports.vat_lines import AP_STATUSES, SI_STATUSES
 
 WhtLine = namedtuple('WhtLine', [
@@ -50,7 +52,11 @@ def _emit(side, source, doc_no, doc_date, pid, pname, ptin, line):
 def _collect(header_model, line_attr, date_col, status_filter, doc_no_attr,
              partner_id_attr, partner_name_attr, partner_tin_attr,
              side, source, date_from, date_to, branch_id):
-    q = db.session.query(header_model).filter(
+    line_rel = getattr(header_model, line_attr)
+    line_model = line_rel.property.mapper.class_
+    q = db.session.query(header_model).options(
+        selectinload(line_rel).joinedload(line_model.withholding_tax)
+    ).filter(
         date_col >= date_from, date_col <= date_to, status_filter)
     if branch_id:
         q = q.filter(header_model.branch_id == branch_id)
