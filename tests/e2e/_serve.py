@@ -91,7 +91,7 @@ with app.app_context():
             from app.products.models import Product
             from app.sales_orders.models import SalesOrder, SalesOrderItem
             for key in ('units_of_measure', 'products', 'sales_orders',
-                        'quotations', 'delivery_receipts'):
+                        'quotations', 'delivery_receipts', 'credit_memos'):
                 AppSettings.set_setting(f'module_enabled:{key}', '1')
             db.session.commit()
 
@@ -125,6 +125,24 @@ with app.app_context():
                 so.line_items.append(item)
                 so.calculate_totals()
                 db.session.add(so); db.session.commit()
+
+            # A POSTED Sales Invoice with one line -- the fixture the Credit Memo create
+            # grid references (pick SI -> load lines -> enter a credit amount). Line is
+            # VAT-free so the create smoke needs no assigned memo accounts (JE is at post,
+            # which is covered by integration tests).
+            from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+            if branch and c001 and not SalesInvoice.query.filter_by(invoice_number='SI-E2E-0001').first():
+                si = SalesInvoice(
+                    branch_id=branch.id, invoice_number='SI-E2E-0001', invoice_date=today,
+                    due_date=today + timedelta(days=30), customer_id=c001.id,
+                    customer_name=c001.name, notes='', status='posted',
+                    total_amount=Decimal('1000.00'), balance=Decimal('1000.00'))
+                si_item = SalesInvoiceItem(
+                    line_number=1, description='Consulting service', amount=Decimal('1000.00'),
+                    vat_category=None, vat_rate=Decimal('0'), account_id=None)
+                si_item.calculate_amounts()
+                si.line_items.append(si_item)
+                db.session.add(si); db.session.commit()
 
 if __name__ == '__main__':
     port = int(os.environ.get('E2E_PORT', '5099'))
