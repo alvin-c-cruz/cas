@@ -9,7 +9,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, render_template, redirect, url_for, flash,
-                   request, session, current_app)
+                   request, session, current_app, abort)
 from flask_login import login_required, current_user
 
 from app import db
@@ -17,9 +17,10 @@ from app.sales_memos.models import SalesMemo, SalesMemoItem, generate_memo_numbe
 from app.sales_memos.forms import SalesMemoForm
 from app.sales_memos import service
 from app.sales_orders.models import copy_salesperson
-from app.audit.utils import log_create, model_to_dict
+from app.audit.utils import log_create, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
+from app.sales_memos.je import post_memo_je, reverse_memo_je
 
 sales_memos_bp = Blueprint('sales_memos', __name__, template_folder='templates')
 
@@ -207,6 +208,111 @@ def credit_create():
 def _render_credit_form(form, eligible):
     return render_template('sales_memos/form.html', form=form, memo=None,
                            memo_type='credit', doc_title='Credit Memo')
+
+
+# -- lifecycle: post / void ----------------------------------------------------
+
+def _memo_or_404(id, memo_type):
+    memo = db.get_or_404(SalesMemo, id)
+    if memo.memo_type != memo_type or memo.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    return memo
+
+
+def _apply_memo_to_ar(memo):
+    """Credit-memo AR settlement: reduce the referenced SI's open balance (mirror
+    _apply_ar_collections). Only for destination='ar'."""
+    inv = memo.sales_invoice
+    amount = Decimal(str(memo.total_amount or 0))
+    current = Decimal(str(inv.balance or 0))
+    if amount > current:
+        raise ValueError(
+            f'The credit ({amount}) exceeds the invoice open balance ({current}). '
+            f'Use a cash refund or a customer credit balance instead.')
+    inv.amount_paid = Decimal(str(inv.amount_paid or 0)) + amount
+    inv.balance = Decimal(str(inv.total_amount)) - inv.amount_paid
+    if inv.balance <= 0:
+        inv.status = 'paid'
+    elif inv.amount_paid > 0:
+        inv.status = 'partially_paid'
+
+
+def _reverse_memo_from_ar(memo):
+    inv = memo.sales_invoice
+    amount = Decimal(str(memo.total_amount or 0))
+    inv.amount_paid = Decimal(str(inv.amount_paid or 0)) - amount
+    if inv.amount_paid < 0:
+        inv.amount_paid = Decimal('0.00')
+    inv.balance = Decimal(str(inv.total_amount)) - inv.amount_paid
+    inv.status = 'posted' if inv.amount_paid <= 0 else 'partially_paid'
+
+
+@sales_memos_bp.route('/credit-memos/<int:id>/post', methods=['POST'])
+@login_required
+def credit_post(id):
+    memo = _memo_or_404(id, 'credit')
+    if not _accountant_or_admin():
+        flash('Only an accountant or administrator can post a Credit Memo.', 'error')
+        return redirect(url_for('sales_memos.credit_list'))
+    if memo.status != 'draft':
+        flash('Only a draft Credit Memo can be posted.', 'error')
+        return redirect(url_for('sales_memos.credit_list'))
+    try:
+        memo.status = 'posted'
+        memo.posted_by_id = current_user.id
+        memo.posted_at = ph_now()
+        je = post_memo_je(memo, current_user.id)   # status posted -> JE posted
+        memo.journal_entry_id = je.id
+        if memo.destination == 'ar':
+            _apply_memo_to_ar(memo)
+        db.session.commit()
+        log_audit(module='sales_memos', action='post', record_id=memo.id,
+                  record_identifier=memo.memo_number, notes='Posted')
+        flash(f'Credit Memo "{memo.memo_number}" posted.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error posting credit memo', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_memos.credit_post')
+        flash('An error occurred posting the Credit Memo.', 'error')
+    return redirect(url_for('sales_memos.credit_list'))
+
+
+@sales_memos_bp.route('/credit-memos/<int:id>/void', methods=['POST'])
+@login_required
+def credit_void(id):
+    memo = _memo_or_404(id, 'credit')
+    if not _accountant_or_admin():
+        flash('Only an accountant or administrator can void a Credit Memo.', 'error')
+        return redirect(url_for('sales_memos.credit_list'))
+    if memo.status == 'voided':
+        flash('This Credit Memo is already voided.', 'error')
+        return redirect(url_for('sales_memos.credit_list'))
+    reason = (request.form.get('void_reason') or '').strip()
+    if len(reason) < 10:
+        flash('A void reason (min 10 characters) is required.', 'error')
+        return redirect(url_for('sales_memos.credit_list'))
+    try:
+        if memo.status == 'posted':
+            reverse_memo_je(memo, current_user.id)
+            if memo.destination == 'ar':
+                _reverse_memo_from_ar(memo)
+        memo.status = 'voided'
+        memo.voided_by_id = current_user.id
+        memo.voided_at = ph_now()
+        memo.void_reason = reason
+        db.session.commit()
+        log_audit(module='sales_memos', action='void', record_id=memo.id,
+                  record_identifier=memo.memo_number, notes=f'Voided: {reason}')
+        flash(f'Credit Memo "{memo.memo_number}" voided.', 'warning')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error voiding credit memo', exc_info=True)
+        log_exception(e, severity='ERROR', module='sales_memos.credit_void')
+        flash('An error occurred voiding the Credit Memo.', 'error')
+    return redirect(url_for('sales_memos.credit_list'))
 
 
 # -- Shared settings: accountant-assigned accounts -----------------------------

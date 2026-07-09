@@ -110,3 +110,33 @@ def post_memo_je(memo, user_id):
         raise ValueError(
             f'Credit memo JE is not balanced (debit={je.total_debit}, credit={je.total_credit}).')
     return je
+
+
+def reverse_memo_je(memo, user_id):
+    """Post a reversing JE (swap debit/credit of the memo's JE) when a posted memo is voided.
+    Returns the reversal JE, or None if the memo has no JE (a draft void)."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    src = memo.journal_entry
+    if src is None:
+        return None
+    je = JournalEntry(
+        entry_number=generate_entry_number(memo.branch_id),
+        entry_date=ph_now().date(),
+        description=f'Void Credit Memo {memo.memo_number} - {memo.customer_name}',
+        reference=memo.memo_number, entry_type='reversal', branch_id=memo.branch_id,
+        created_by_id=user_id, status='posted', posted_by_id=user_id, posted_at=ph_now(),
+        is_balanced=False, total_debit=Decimal('0.00'), total_credit=Decimal('0.00'))
+    db.session.add(je)
+    db.session.flush()
+    n = 1
+    for l in (JournalEntryLine.query.filter_by(entry_id=src.id)
+              .order_by(JournalEntryLine.line_number).all()):
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=n, account_id=l.account_id,
+            description=f'Reversal: {l.description}',
+            debit_amount=l.credit_amount, credit_amount=l.debit_amount))
+        n += 1
+    db.session.flush()
+    je.calculate_totals()
+    return je
