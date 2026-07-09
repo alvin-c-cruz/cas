@@ -1,0 +1,112 @@
+"""Optimistic locking for transaction documents (the lost-update guard).
+
+Every document edit route in CAS is a replace-all: it discards the stored line
+items -- and, for APV/CDV/CRV, deletes and recreates the linked journal entry --
+then rebuilds everything from the submitted payload.  Nothing coordinates two
+encoders working the same draft, so the second save silently destroys the
+first one's work, leaving only an audit-log trace.
+
+This module supplies the one primitive the edit routes share.  It is shared, not
+copy-pasted, on purpose: a guard that drifts and fails *open* is worse than no
+guard at all, because it is trusted.
+
+Usage in an edit route, as the FIRST write, before any line or JE teardown:
+
+    if not claim_version(AccountsPayable, ap.id, form.row_version.data):
+        db.session.rollback()
+        flash(conflict_message('accounts_payable', ap.id), 'error')
+        return _render_edit_form(request.form.get('line_items', ''))
+"""
+from wtforms import IntegerField
+from wtforms.validators import InputRequired
+from wtforms.widgets import HiddenInput
+
+from app import db
+from app.audit.models import AuditLog
+from app.utils import format_ph_datetime
+
+
+# No apostrophes: flash text is asserted against raw response bytes, and Jinja
+# autoescapes ' into &#39;.
+_SUFFIX = 'Your changes were NOT saved - reload the page to see the current version.'
+
+
+class RowVersioned:
+    """Declarative mixin contributing the optimistic-locking counter.
+
+    A plain Column on a mixin is copied onto each subclass by SQLAlchemy, so
+    the seven document headers each get their own column.
+    """
+
+    row_version = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+
+
+class RowVersionFormMixin:
+    """Carries the version token through the edit form.
+
+    IntegerField (not HiddenField) so WTForms coerces the submitted string.
+    The HiddenInput widget means `form.hidden_tag()` -- which every document
+    form.html already calls -- renders it automatically.  Do NOT also render it
+    explicitly: the name would post twice and request.form would read the empty
+    first copy, which pytest cannot see.
+    """
+
+    row_version = IntegerField(
+        widget=HiddenInput(),
+        validators=[InputRequired(message='Missing version token. Reload the page.')],
+    )
+
+
+def claim_version(model, doc_id, submitted):
+    """Atomically claim the right to write `doc_id`, or lose to a concurrent writer.
+
+    Returns True for exactly one of any number of racers holding the same token.
+
+    This is a conditional UPDATE rather than a read-then-compare on purpose.
+    SQLAlchemy defers BEGIN until the first write, so a comparison would read
+    outside the transaction: both racers see version 3, both pass the check, and
+    both write 4.  Folding the check into the WHERE clause makes the database
+    the arbiter.
+
+    The increment is computed SQL-side (`row_version + 1`), never from the
+    client-supplied number.
+    """
+    if submitted is None:
+        return False
+
+    result = db.session.execute(
+        db.update(model)
+        .where(model.id == doc_id, model.row_version == submitted)
+        .values(row_version=model.row_version + 1)
+        .execution_options(synchronize_session=False)
+    )
+
+    if result.rowcount != 1:
+        return False
+
+    # The Core UPDATE bypassed the ORM, so the in-session attribute is stale.
+    obj = db.session.get(model, doc_id)
+    if obj is not None:
+        db.session.expire(obj, ['row_version'])
+    return True
+
+
+def conflict_message(module, doc_id):
+    """Name who changed the document out from under this editor, and when.
+
+    Read from the audit log rather than an `updated_by` column, which these
+    document headers do not carry.  `log_audit` swallows its own errors, so the
+    row may legitimately be missing -- degrade to a nameless message.
+    """
+    entry = (
+        AuditLog.query
+        .filter_by(module=module, action='update', record_id=doc_id)
+        .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+        .first()
+    )
+
+    if entry is not None and entry.user is not None and entry.user.full_name:
+        when = format_ph_datetime(entry.timestamp)
+        return f'This document was changed by {entry.user.full_name} at {when}. {_SUFFIX}'
+
+    return f'This document was changed by another user. {_SUFFIX}'
