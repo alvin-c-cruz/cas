@@ -507,6 +507,7 @@ class TestCDVWHTOverrideDomainError:
             'payment_method': 'cash',
             'cash_account_id': cash.id,
             'notes': 'Edited to trigger WHT override domain error',
+            'row_version': cdv.row_version,
             'ap_lines': json.dumps([]),
             'expense_lines': json.dumps(new_expense_lines),
             'vat_override': '0', 'vat_override_value': '0',

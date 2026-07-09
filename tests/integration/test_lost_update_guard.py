@@ -16,7 +16,9 @@ from decimal import Decimal
 
 from app.accounts.models import Account
 from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+from app.cash_disbursements.models import CashDisbursementVoucher
 from app.journal_entries.models import JournalEntry
+from app.utils import ph_now
 from app.vendors.models import Vendor
 
 pytestmark = [pytest.mark.integration, pytest.mark.accounts_payable]
@@ -39,7 +41,7 @@ def get_or_create_account(db_session, code, name, acct_type):
     a = Account.query.filter_by(code=code).first()
     if not a:
         a = Account(code=code, name=name, account_type=acct_type,
-                    normal_balance='debit' if acct_type == 'Expense' else 'credit',
+                    normal_balance='debit' if acct_type in ('Expense', 'Asset') else 'credit',
                     is_active=True)
         db_session.add(a)
         db_session.commit()
@@ -86,6 +88,165 @@ def bill(client, db_session, accountant_user, main_branch):
     assert ap is not None, 'setup: bill was not created'
     assert ap.status == 'draft'
     return ap, vendor, exp
+
+
+def admin_login(client):
+    client.post('/login', data={'username': 'admin', 'password': 'admin123'},
+                follow_redirects=True)
+
+
+def cdv_payload(vendor, cash, exp, amount, row_version, cdv_number='CD-GUARD-0001',
+                check_number=None):
+    data = {
+        'cdv_number': cdv_number,
+        'cdv_date': ph_now().date().isoformat(),
+        'vendor_id': vendor.id,
+        'payment_method': 'check' if check_number else 'cash',
+        'cash_account_id': cash.id,
+        'notes': 'guard test',
+        'ap_lines': json.dumps([]),
+        'expense_lines': json.dumps([{
+            'description': 'Guard Expense', 'amount': amount,
+            'vat_category': '', 'account_id': exp.id, 'wt_id': None,
+        }]),
+        'vat_override': '0', 'vat_override_value': '0',
+        'wt_override': '0', 'wt_override_value': '0',
+    }
+    if check_number:
+        data['check_number'] = check_number
+        data['check_date'] = ph_now().date().isoformat()
+    if row_version is not None:
+        data['row_version'] = row_version
+    return data
+
+
+@pytest.fixture
+def voucher(client, db_session, admin_user, main_branch):
+    """A freshly created draft CDV at row_version 1."""
+    admin_login(client)
+    # CDV's JE assembly resolves AP Trade and WHT Payable by code, so both must
+    # exist or create() raises and the fixture silently yields nothing.
+    get_or_create_account(db_session, '20101', 'AP Trade', 'Liability')
+    get_or_create_account(db_session, '20301', 'WHT Payable', 'Liability')
+    cash = get_or_create_account(db_session, '10101', 'Cash on Hand', 'Asset')
+    exp = get_or_create_account(db_session, '60101', 'Office Supplies', 'Expense')
+    vendor = make_vendor(db_session, code='CDVG1')
+
+    client.post('/cash-disbursements/create',
+                data=cdv_payload(vendor, cash, exp, 500.00, row_version=None),
+                follow_redirects=True)
+    cdv = CashDisbursementVoucher.query.order_by(CashDisbursementVoucher.id.desc()).first()
+    assert cdv is not None, 'setup: CDV was not created'
+    return cdv, vendor, cash, exp
+
+
+class TestCDVLostUpdateGuard:
+
+    def test_second_encoder_with_a_stale_token_is_refused(self, client, db_session, voucher):
+        cdv, vendor, cash, exp = voucher
+        cdv_id, num = cdv.id, cdv.cdv_number
+
+        client.post(f'/cash-disbursements/{cdv_id}/edit',
+                    data=cdv_payload(vendor, cash, exp, 700.00, 1, cdv_number=num),
+                    follow_redirects=True)
+
+        resp = client.post(f'/cash-disbursements/{cdv_id}/edit',
+                           data=cdv_payload(vendor, cash, exp, 9999.00, 1, cdv_number=num),
+                           follow_redirects=True)
+
+        assert b'NOT saved' in resp.data
+        db_session.expire_all()
+        cdv = db_session.get(CashDisbursementVoucher, cdv_id)
+        assert cdv.row_version == 2
+        assert len(cdv.expense_lines) == 1
+        assert cdv.expense_lines[0].amount == Decimal('700.00'), \
+            "encoder B's line must survive the loser's replace-all"
+
+    def test_missing_token_fails_closed(self, client, db_session, voucher):
+        cdv, vendor, cash, exp = voucher
+        cdv_id, num = cdv.id, cdv.cdv_number
+
+        resp = client.post(f'/cash-disbursements/{cdv_id}/edit',
+                           data=cdv_payload(vendor, cash, exp, 9999.00, None, cdv_number=num),
+                           follow_redirects=True)
+
+        assert b'NOT saved' in resp.data
+        db_session.expire_all()
+        assert db_session.get(CashDisbursementVoucher, cdv_id).row_version == 1
+
+
+class TestCDVEditRestoresSubmittedLines:
+    """CDV edit re-rendered from the DB, silently discarding the encoder's lines."""
+
+    def test_conflict_rerender_shows_the_losers_typed_amount(self, client, db_session, voucher):
+        cdv, vendor, cash, exp = voucher
+        cdv_id, num = cdv.id, cdv.cdv_number
+
+        client.post(f'/cash-disbursements/{cdv_id}/edit',
+                    data=cdv_payload(vendor, cash, exp, 700.00, 1, cdv_number=num),
+                    follow_redirects=True)
+
+        resp = client.post(f'/cash-disbursements/{cdv_id}/edit',
+                           data=cdv_payload(vendor, cash, exp, 9999.00, 1, cdv_number=num),
+                           follow_redirects=True)
+
+        body = resp.data.decode()
+        assert '9999' in body, "the loser's typed line must be carried back"
+        assert 'restore_expense_lines' not in body  # sanity: template consumed it
+
+    def test_duplicate_cdv_number_rerenders_the_submitted_lines(
+            self, client, db_session, voucher):
+        cdv, vendor, cash, exp = voucher
+
+        # A second CDV whose number we will collide with.
+        client.post('/cash-disbursements/create',
+                    data=cdv_payload(vendor, cash, exp, 100.00, None,
+                                     cdv_number='CD-GUARD-0002'),
+                    follow_redirects=True)
+
+        resp = client.post(f'/cash-disbursements/{cdv.id}/edit',
+                           data=cdv_payload(vendor, cash, exp, 4242.00, cdv.row_version,
+                                            cdv_number='CD-GUARD-0002'),
+                           follow_redirects=True)
+
+        assert resp.status_code == 200
+        assert b'already in use' in resp.data
+        assert b'4242' in resp.data, 'submitted lines must survive a bounced edit'
+
+
+class TestCDVEditSerialErrorDoesNotCrash:
+    """edit() called _render_form(), which is nested in create() -- a NameError.
+
+    That call was dead code: `_check_serial_error(cdv)` runs a Query while `cdv`
+    is already dirty with the new check_number, so autoflush trips the partial
+    unique index and raises IntegrityError before the friendly message is ever
+    returned.  The request then lands in `except Exception`.
+
+    So this test pins only what the fix guarantees: the edit route does not blow
+    up on this path.  That the user sees the GENERIC error instead of the curated
+    "Check number ... is already used" flash is a separate, pre-existing defect
+    (the query needs db.session.no_autoflush) and is NOT fixed here.
+    """
+
+    def test_duplicate_check_serial_on_edit_does_not_raise_nameerror(
+            self, client, db_session, voucher):
+        cdv, vendor, cash, exp = voucher
+
+        # Another CDV already holds check serial 1001 on the same cash account.
+        client.post('/cash-disbursements/create',
+                    data=cdv_payload(vendor, cash, exp, 100.00, None,
+                                     cdv_number='CD-GUARD-0003', check_number='1001'),
+                    follow_redirects=True)
+
+        resp = client.post(f'/cash-disbursements/{cdv.id}/edit',
+                           data=cdv_payload(vendor, cash, exp, 300.00, cdv.row_version,
+                                            cdv_number=cdv.cdv_number, check_number='1001'),
+                           follow_redirects=True)
+
+        assert resp.status_code == 200, 'must re-render, not raise NameError'
+        # The bad serial is not persisted, whichever error path ran.
+        db_session.expire_all()
+        assert db_session.get(CashDisbursementVoucher, cdv.id).check_number != '1001'
 
 
 class TestAPVLostUpdateGuard:

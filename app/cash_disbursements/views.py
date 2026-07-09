@@ -16,6 +16,7 @@ from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products
+from app.utils.concurrency import claim_version, conflict_message, submitted_version
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.settings import AppSettings
@@ -957,16 +958,37 @@ def edit(id):
         (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
     ]
 
-    # Serialize existing lines so the form template can restore them in edit mode
-    # (the restore loop iterates `ap_lines` / `expense_lines`).
-    tmpl_ap_lines = [l.to_dict() for l in cdv.ap_lines]
-    tmpl_expense_lines = [l.to_dict() for l in cdv.expense_lines]
+    def _render_edit_form():
+        """Render the edit form.
+
+        On a failed POST, carry the SUBMITTED lines back -- as create()'s
+        _render_form already does -- instead of re-reading the stored ones.
+        Re-reading silently replaced the encoder's typed lines with the
+        database's, so every bounced edit lost their work.
+
+        The template renders edit-mode rows server-side from `ap_lines` inside
+        `{% if cdv %}`, while the JS restore path keys off `restore_ap_lines`.
+        Both would emit rows, so the server-side loop is starved with empty
+        lists whenever a restore payload is present.
+        """
+        ctx = _form_context(all_accounts=all_accounts,
+                            selected_vendor_id=form.vendor_id.data)
+        if request.method == 'POST':
+            return render_template(
+                'cash_disbursements/form.html', form=form, cdv=cdv,
+                ap_lines=[], expense_lines=[],
+                restore_ap_lines=request.form.get('ap_lines', ''),
+                restore_expense_lines=request.form.get('expense_lines', ''),
+                **ctx)
+        return render_template(
+            'cash_disbursements/form.html', form=form, cdv=cdv,
+            ap_lines=[l.to_dict() for l in cdv.ap_lines],
+            expense_lines=[l.to_dict() for l in cdv.expense_lines],
+            **ctx)
 
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.cdv_date.data, 'Cash Disbursement Voucher'):
-            ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
-            return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
-                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
+            return _render_edit_form()
         # Uniqueness check: the edited CD number must not conflict with any OTHER
         # CDV (self is excluded via id != cdv.id).
         edit_cdv_number = (form.cdv_number.data or '').strip()
@@ -975,16 +997,21 @@ def edit(id):
                 CashDisbursementVoucher.id != cdv.id).first():
             flash(f'CD number "{edit_cdv_number}" is already in use. '
                   'Enter a unique CD number.', 'error')
-            ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
-            return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
-                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
+            return _render_edit_form()
         try:
             vendor = db.session.get(Vendor, form.vendor_id.data)
             if not vendor:
                 flash('Selected vendor not found.', 'error')
-                ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
-                return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
-                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
+                return _render_edit_form()
+
+            # Lost-update guard. First write of the request: everything above is
+            # read-only, everything below deletes the AP/expense lines and the
+            # linked JE. The check IS the write (conditional UPDATE) -- a
+            # read-then-compare races, since BEGIN is deferred until the first write.
+            if not claim_version(CashDisbursementVoucher, cdv.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('cash_disbursement', cdv.id), 'error')
+                return _render_edit_form()
 
             cdv.cdv_number = edit_cdv_number
             cdv.cdv_date = form.cdv_date.data
@@ -1000,8 +1027,11 @@ def edit(id):
 
             serial_err = _check_serial_error(cdv)
             if serial_err:
+                db.session.rollback()
                 flash(serial_err, 'error')
-                return _render_form()
+                # Was `_render_form()`, which is nested inside create() -- calling
+                # it here raised NameError (HTTP 500) on this path.
+                return _render_edit_form()
 
             # Delete old line items and rebuild
             for ap in list(cdv.ap_lines):
@@ -1045,15 +1075,11 @@ def edit(id):
         except CDVLineError as ce:
             db.session.rollback()
             flash(str(ce), 'error')
-            ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
-            return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
-                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
+            return _render_edit_form()
         except ValueError as e:
             db.session.rollback()
             flash(str(e), 'error')
-            ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
-            return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
-                               ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
+            return _render_edit_form()
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error editing CDV', exc_info=True)
@@ -1061,9 +1087,7 @@ def edit(id):
             flash('An unexpected error occurred while updating the CDV. Please try '
                   'again; if it persists, contact your administrator.', 'error')
 
-    ctx = _form_context(all_accounts=all_accounts, selected_vendor_id=form.vendor_id.data)
-    return render_template('cash_disbursements/form.html', form=form, cdv=cdv,
-                           ap_lines=tmpl_ap_lines, expense_lines=tmpl_expense_lines, **ctx)
+    return _render_edit_form()
 
 
 @cash_disbursements_bp.route('/cash-disbursements/<int:id>')
