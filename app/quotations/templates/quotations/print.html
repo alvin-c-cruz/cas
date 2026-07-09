@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Quotation {{ quote.quotation_number }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
+
+  .screen-only { }
+  @media print {
+    .screen-only { display: none !important; }
+    @page { size: A4 portrait; margin: 15mm; }
+  }
+
+  .page-wrap { max-width: 740px; margin: 0 auto; padding: 24px; }
+
+  .q-header { text-align: center; border-bottom: 2px solid #111;
+              padding-bottom: 10px; margin-bottom: 12px; }
+  .q-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .q-header .company-sub { font-size: 10px; color: #444; margin-top: 2px; }
+  .q-header .doc-title { font-size: 14px; font-weight: 700; letter-spacing: 2px; margin-top: 8px; }
+
+  .info-row { display: flex; gap: 16px; margin-bottom: 10px; }
+  .info-row table { border-collapse: collapse; flex: 1; font-size: 10px; }
+  .info-row td { border: 1px solid #aaa; padding: 3px 7px; }
+  .info-row td.label { background: #f0f0f0; font-weight: 600; width: 42%; }
+  .customer-header { background: #222; color: #fff; font-weight: 700; }
+
+  .particulars { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 10px; }
+  .particulars th { background: #222; color: #fff; padding: 4px 7px;
+                    text-align: left; border: 1px solid #555; }
+  .particulars td { border: 1px solid #aaa; padding: 3px 7px; }
+  .particulars td.amount { text-align: right; font-family: monospace; }
+
+  .summary-block { max-width: 260px; margin-left: auto; margin-bottom: 10px; }
+  .summary-inner { border: 1px solid #aaa; padding: 10px 12px; font-size: 10px; }
+  .summary-row { display: flex; justify-content: space-between; margin-bottom: 7px; }
+  .summary-row .slabel { color: #555; }
+  .summary-row .sval { font-family: monospace; font-weight: 600; }
+  .summary-divider { height: 2px; background: #888; margin: 8px 0; }
+  .summary-net { display: flex; justify-content: space-between; }
+  .summary-net .netlabel { font-weight: 700; font-size: 11px; }
+  .summary-net .netval { font-family: monospace; font-weight: 700; font-size: 13px; color: #1565c0; }
+
+  .notes-box { border: 1px solid #aaa; padding: 5px 8px; margin-bottom: 10px;
+               background: #fffde7; font-size: 10px; }
+  .notes-box .notes-label { font-weight: 700; font-size: 9px; color: #555;
+                             text-transform: uppercase; margin-right: 8px; }
+
+  .sig-row { display: flex; margin-top: 8px; }
+  .sig-box { flex: 1; border: 1px solid #aaa; border-right: none;
+             padding: 5px 7px; min-height: 56px; }
+  .sig-box:last-child { border-right: 1px solid #aaa; }
+  .sig-box .sig-title { font-size: 9px; font-weight: 700; color: #555; margin-bottom: 24px; }
+  .sig-box .sig-line { border-top: 1px solid #666; padding-top: 2px; font-size: 9px; color: #555; }
+
+  .audit-footer { margin-top: 6px; font-size: 9px; color: #888; text-align: center;
+                  border-top: 1px solid #ddd; padding-top: 4px; }
+
+  .print-bar { margin-bottom: 20px; display: flex; gap: 8px; }
+  .btn-print { padding: 8px 20px; background: #1565c0; color: #fff;
+               border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .btn-close { padding: 8px 20px; background: #666; color: #fff;
+               border: none; border-radius: 4px; font-size: 13px; cursor: pointer;
+               text-decoration: none; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <div class="print-bar screen-only">
+    <button class="btn-print" onclick="window.print()">Print</button>
+    <button type="button" class="btn-close" onclick="window.close()">Close</button>
+  </div>
+
+  <div class="q-header">
+    <div class="company-name">{{ company.name | upper }}</div>
+    <div class="company-sub">
+      {{ company.address }}{% if company.address and company.tin %} &nbsp;&middot;&nbsp; {% endif %}{% if company.tin %}TIN: {{ company.tin }}{% endif %}
+    </div>
+    <div class="doc-title">QUOTATION</div>
+  </div>
+
+  <div class="info-row">
+    <table>
+      <tr><td class="label">Quotation No.</td><td><strong>{{ quote.quotation_number }}</strong></td></tr>
+      <tr><td class="label">Date</td><td>{{ quote.quotation_date.strftime('%d %B %Y') }}</td></tr>
+      <tr><td class="label">Valid Until</td>
+          <td>{{ quote.valid_until.strftime('%d %B %Y') if quote.valid_until else '—' }}</td></tr>
+      <tr><td class="label">VAT Treatment</td><td>{{ treatment_label }}</td></tr>
+      <tr><td class="label">Terms</td><td>{{ quote.payment_terms or '—' }}</td></tr>
+      {% if quote.reference %}
+      <tr><td class="label">Reference</td><td>{{ quote.reference }}</td></tr>
+      {% endif %}
+      {% if quote.salesperson %}
+      <tr><td class="label">Salesperson</td><td>{{ quote.salesperson.full_name }}</td></tr>
+      {% endif %}
+      <tr><td class="label">Status</td><td><strong>{{ 'Expired' if quote.is_expired else quote.status | title }}</strong></td></tr>
+    </table>
+    <table>
+      <tr><td colspan="2" class="label customer-header">CUSTOMER</td></tr>
+      <tr><td colspan="2"><strong>{{ quote.customer_name }}</strong></td></tr>
+      {% if quote.customer_tin %}
+      <tr><td class="label">TIN</td><td>{{ quote.customer_tin }}</td></tr>
+      {% endif %}
+      {% if quote.customer_address %}
+      <tr><td class="label">Address</td><td>{{ quote.customer_address }}</td></tr>
+      {% endif %}
+    </table>
+  </div>
+
+  <table class="particulars">
+    <thead>
+      <tr>
+        <th style="width:4%">#</th>
+        <th style="width:34%">Product</th>
+        <th style="width:6%;text-align:right">Qty</th>
+        <th style="width:6%">UOM</th>
+        <th style="width:9%;text-align:right">Unit Price</th>
+        <th style="width:12%;text-align:right">Amount</th>
+        <th style="width:12%">VT</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in quote.line_items %}
+      <tr>
+        <td>{{ item.line_number }}</td>
+        <td>{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}</td>
+        <td class="amount">{{ item | qty_fmt('—') }}</td>
+        <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
+        <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}</td>
+        <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
+        <td>{% if item.vat_category %}{{ item.vat_category }} ({{ '{:.2f}'.format(item.vat_rate) }}%){% else %}N/A{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="summary-block">
+    <div class="summary-inner">
+      <div class="summary-row"><span class="slabel">Subtotal</span><span class="sval">{{ '{:,.2f}'.format(quote.subtotal) }}</span></div>
+      <div class="summary-row"><span class="slabel">VAT</span><span class="sval">{{ '{:,.2f}'.format(quote.vat_amount) }}</span></div>
+      <div class="summary-divider"></div>
+      <div class="summary-net"><span class="netlabel">Total</span><span class="netval">{{ '{:,.2f}'.format(quote.total_amount) }}</span></div>
+    </div>
+  </div>
+
+  {% if quote.notes %}
+  <div class="notes-box">
+    <span class="notes-label">Notes:</span>{{ quote.notes }}
+  </div>
+  {% endif %}
+
+  <div class="sig-row">
+    <div class="sig-box">
+      <div class="sig-title">PREPARED BY</div>
+      <div class="sig-line">Name &amp; Date</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-title">CONFORME (CUSTOMER)</div>
+      <div class="sig-line">Name &amp; Date</div>
+    </div>
+  </div>
+
+  <div class="audit-footer">
+    Quotation {{ quote.quotation_number }} &nbsp;&middot;&nbsp; Amounts in Philippine Peso
+    &nbsp;|&nbsp; Printed: {{ printed_at.strftime('%d %b %Y %I:%M %p') }}
+  </div>
+
+</div>
+</body>
+</html>
