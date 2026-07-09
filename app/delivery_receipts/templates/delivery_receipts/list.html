@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Delivery Receipts{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Delivery Receipts</h1>
+  <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary btn-sm">Sales Orders</a>
+</div>
+<div class="card"><div class="card-body">
+  {% if receipts %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr><th>DR #</th><th>Date</th><th>Customer</th><th>SO #</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for dr in receipts %}
+        <tr>
+          <td><a href="{{ url_for('delivery_receipts.view', id=dr.id) }}">{{ dr.dr_number }}</a></td>
+          <td>{{ dr.delivery_date.strftime('%b %d, %Y') }}</td>
+          <td>{{ dr.customer_name }}</td>
+          <td>{{ dr.sales_order.so_number if dr.sales_order else '' }}</td>
+          <td>
+            <span class="badge badge-{{ 'secondary' if dr.status == 'draft'
+                                        else 'success' if dr.status in ('approved', 'delivered')
+                                        else 'info' if dr.status == 'billed'
+                                        else 'danger' }}">{{ dr.status|title }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>No delivery receipts found.</p>
+  {% endif %}
+</div></div>
+{% endblock %}

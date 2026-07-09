@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ dr.dr_number }}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; margin: 24px; }
+  .dr-header { text-align: center; margin-bottom: 18px; }
+  .dr-header .company-name { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+  .dr-header .company-sub { font-size: 10px; color: #444; margin-top: 2px; }
+  .doc-title { font-size: 14px; font-weight: 700; margin-top: 10px; text-transform: uppercase; }
+  .meta { width: 100%; margin: 14px 0; }
+  .meta td { padding: 2px 0; vertical-align: top; }
+  .meta .label { font-weight: 700; width: 110px; }
+  table.lines { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  table.lines th, table.lines td { border: 1px solid #000; padding: 5px 6px; }
+  table.lines th { background: #eee; text-align: left; }
+  .text-right { text-align: right; }
+  .sig-row { margin-top: 48px; display: flex; justify-content: space-between; gap: 40px; }
+  .sig { flex: 1; border-top: 1px solid #000; padding-top: 4px; font-size: 10px; text-align: center; }
+  .printed { margin-top: 24px; font-size: 9px; color: #666; }
+  .print-bar { margin-bottom: 16px; }
+  @media print { .print-bar { display: none; } body { margin: 0; } }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <button class="btn-print" onclick="window.print()">Print</button>
+  <button class="btn-close" onclick="window.close()">Close</button>
+</div>
+
+<div class="dr-header">
+  <div class="company-name">{{ company.name | upper }}</div>
+  <div class="company-sub">
+    {{ company.address }}{% if company.address and company.tin %} &nbsp;&middot;&nbsp; {% endif %}{% if company.tin %}TIN: {{ company.tin }}{% endif %}
+  </div>
+  <div class="doc-title">Delivery Receipt</div>
+</div>
+
+<table class="meta">
+  <tr>
+    <td class="label">DR No.</td><td>{{ dr.dr_number }}</td>
+    <td class="label">Date</td><td>{{ dr.delivery_date.strftime('%b %d, %Y') }}</td>
+  </tr>
+  <tr>
+    <td class="label">Customer</td><td>{{ dr.customer_name }}</td>
+    <td class="label">SO No.</td><td>{{ dr.sales_order.so_number if dr.sales_order else '' }}</td>
+  </tr>
+  <tr>
+    <td class="label">Salesperson</td>
+    <td>{{ dr.salesperson.full_name if dr.salesperson else 'Company Account' }}</td>
+    <td class="label">Status</td><td>{{ dr.status | title }}</td>
+  </tr>
+  {% if dr.remarks %}
+  <tr><td class="label">Remarks</td><td colspan="3">{{ dr.remarks }}</td></tr>
+  {% endif %}
+</table>
+
+{# A delivery document carries no amounts -- quantities only, so no currency glyph. #}
+<table class="lines">
+  <thead>
+    <tr>
+      <th style="width:36px;">#</th>
+      <th>Product</th>
+      <th style="width:80px;">UOM</th>
+      <th style="width:110px;" class="text-right">Qty Delivered</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in dr.line_items %}
+    <tr>
+      <td>{{ item.line_number }}</td>
+      <td>
+        {%- set soi = item.sales_order_item -%}
+        {%- if soi and soi.product %}{{ soi.product.code }}: {{ soi.product.name }}
+        {%- elif item.product %}{{ item.product.code }}: {{ item.product.name }}{% endif -%}
+      </td>
+      <td>{{ item.to_dict()['uom'] or '' }}</td>
+      <td class="text-right">{{ item | qty_fmt }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="sig-row">
+  <div class="sig">Prepared by</div>
+  <div class="sig">Released by</div>
+  <div class="sig">Received by (Signature over printed name / Date)</div>
+</div>
+
+<div class="printed">Printed {{ printed_at.strftime('%b %d, %Y %H:%M') }}</div>
+
+</body>
+</html>
