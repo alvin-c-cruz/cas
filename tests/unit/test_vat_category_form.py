@@ -11,6 +11,7 @@ def make_form(app, rate, account_id):
         'code': 'VX', 'name': 'X', 'rate': str(rate),
         'is_active': '1', 'request_reason': 'test reason',
         'input_vat_account_id': str(account_id) if account_id is not None else '0',
+        'transaction_nature': 'domestic_goods',
     }):
         form = VATCategoryForm(meta={'csrf': False})
         # choices are populated by the view; emulate

@@ -77,6 +77,7 @@ def vat_form_data(code='VATX', name='Test VAT', reason='Needed for BIR complianc
         'description': 'test',
         'rate': '12.00',
         'is_active': '1',
+        'transaction_nature': 'domestic_goods',
     }
     if input_vat_account_id is not None:
         data['input_vat_account_id'] = str(input_vat_account_id)

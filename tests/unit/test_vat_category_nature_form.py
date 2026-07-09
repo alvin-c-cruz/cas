@@ -1,7 +1,9 @@
 import pytest
+from werkzeug.datastructures import MultiDict
 from app.vat_categories.models import (
     VATCategory, PURCHASE_NATURES, PURCHASE_NATURE_BY_CODE,
 )
+from app.vat_categories.forms import VATCategoryForm
 
 
 class TestPurchaseNatures:
@@ -55,3 +57,40 @@ class TestVATCategoryNatureColumn:
         db_session.add(cat)
         db_session.commit()
         assert cat.to_dict()['transaction_nature'] == 'exempt'
+
+
+class TestVATCategoryFormNature:
+    """WTForms validation tests MUST feed formdata=MultiDict, never data=.
+    Passing data= skips coercion, so validator bugs pass silently."""
+
+    def _formdata(self, **overrides):
+        base = {
+            'code': 'V12DG', 'name': 'Input Tax Domestic Goods',
+            'rate': '12.00', 'input_vat_account_id': '1',
+            'transaction_nature': 'domestic_goods', 'is_active': '1',
+        }
+        base.update(overrides)
+        return MultiDict(base)
+
+    def test_valid_nature_accepted(self, app):
+        with app.test_request_context():
+            form = VATCategoryForm(formdata=self._formdata(), meta={'csrf': False})
+            form.input_vat_account_id.choices = [(1, 'Input VAT')]
+            assert form.validate(), form.errors
+            assert form.transaction_nature.data == 'domestic_goods'
+
+    def test_missing_nature_rejected(self, app):
+        with app.test_request_context():
+            form = VATCategoryForm(formdata=self._formdata(transaction_nature=''),
+                                   meta={'csrf': False})
+            form.input_vat_account_id.choices = [(1, 'Input VAT')]
+            assert not form.validate()
+            assert 'transaction_nature' in form.errors
+
+    def test_bogus_nature_rejected(self, app):
+        with app.test_request_context():
+            form = VATCategoryForm(formdata=self._formdata(transaction_nature='banana'),
+                                   meta={'csrf': False})
+            form.input_vat_account_id.choices = [(1, 'Input VAT')]
+            assert not form.validate()
+            assert 'transaction_nature' in form.errors
