@@ -10,7 +10,7 @@ from app.delivery_receipts.models import (
     DeliveryReceipt, DeliveryReceiptItem, so_line_open_qty, generate_dr_number)
 from app.delivery_receipts.forms import DeliveryReceiptForm
 from app.sales_orders.models import SalesOrder, SalesOrderItem, copy_salesperson
-from app.audit.utils import log_create, log_update, model_to_dict
+from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
 
 delivery_receipts_bp = Blueprint('delivery_receipts', __name__, template_folder='templates')
@@ -25,6 +25,15 @@ def _dr_role_gate():
         flash('You do not have permission to manage Delivery Receipts.', 'error')
         return redirect(url_for('delivery_receipts.list'))
     return None
+
+
+def _approve_role_gate():
+    # TODO(Approver role): swap this interim gate for the dedicated Approver role when it ships.
+    # has_full_access == admin or chief_accountant.
+    if not (current_user.has_full_access or current_user.role == 'accountant'):
+        flash('Only an approver (accountant/admin) can approve Delivery Receipts.', 'error')
+        return False
+    return True
 
 
 # -- form context --------------------------------------------------------------
@@ -179,6 +188,9 @@ def edit(id):
     if gate:
         return gate
     dr = _dr_or_404(id)
+    if dr.status != 'draft':
+        flash('Only a draft Delivery Receipt can be edited.', 'error')
+        return redirect(url_for('delivery_receipts.view', id=dr.id))
     branch_id = session.get('selected_branch_id')
     form = DeliveryReceiptForm(obj=dr)
     eligible = _eligible_sales_orders(branch_id)
@@ -216,3 +228,82 @@ def edit(id):
     return render_template('delivery_receipts/form.html', form=form, dr=dr, eligible=eligible,
                            so_lines=_so_lines_payload(eligible, exclude_dr_id=dr.id),
                            existing=_existing_lines(dr))
+
+
+# -- lifecycle transitions -----------------------------------------------------
+
+@delivery_receipts_bp.route('/delivery-receipts/<int:id>/approve', methods=['POST'])
+@login_required
+def approve(id):
+    dr = _dr_or_404(id)
+    if not _approve_role_gate():
+        return redirect(url_for('delivery_receipts.view', id=id))
+    if dr.status != 'draft':
+        flash('Only a draft Delivery Receipt can be approved.', 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
+    # Guard: committing these lines must not exceed each SO line's OPEN qty.
+    # `open` excludes THIS dr so a re-check stays idempotent.
+    for li in dr.line_items:
+        open_qty = so_line_open_qty(li.sales_order_item, exclude_dr_id=dr.id)
+        if Decimal(str(li.delivered_quantity)) > open_qty:
+            soi = li.sales_order_item
+            prod = soi.product.name if (soi and soi.product) else 'item'
+            flash(f'Line {li.line_number}: delivering {li.delivered_quantity} exceeds the open '
+                  f'quantity {open_qty} for {prod}.', 'error')
+            return redirect(url_for('delivery_receipts.view', id=id))
+    dr.status = 'approved'
+    dr.approved_by_id = current_user.id
+    dr.approved_at = ph_now()
+    db.session.commit()
+    log_audit(module='delivery_receipts', action='approve', record_id=dr.id,
+              record_identifier=dr.dr_number, notes='Approved')
+    flash(f'Delivery Receipt "{dr.dr_number}" approved.', 'success')
+    return redirect(url_for('delivery_receipts.view', id=id))
+
+
+@delivery_receipts_bp.route('/delivery-receipts/<int:id>/deliver', methods=['POST'])
+@login_required
+def mark_delivered(id):
+    dr = _dr_or_404(id)
+    gate = _dr_role_gate()
+    if gate:
+        return gate
+    if dr.status != 'approved':
+        flash('Only an approved Delivery Receipt can be marked delivered.', 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
+    dr.status = 'delivered'
+    dr.delivered_by_id = current_user.id
+    dr.delivered_at = ph_now()
+    db.session.commit()
+    log_audit(module='delivery_receipts', action='update', record_id=dr.id,
+              record_identifier=dr.dr_number, notes='Delivered')
+    flash(f'Delivery Receipt "{dr.dr_number}" marked delivered.', 'success')
+    return redirect(url_for('delivery_receipts.view', id=id))
+
+
+@delivery_receipts_bp.route('/delivery-receipts/<int:id>/cancel', methods=['POST'])
+@login_required
+def cancel(id):
+    dr = _dr_or_404(id)
+    if not (current_user.has_full_access or current_user.role == 'accountant'):
+        flash('Only accountant/admin can cancel a Delivery Receipt.', 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
+    if dr.status == 'billed':
+        flash('A billed Delivery Receipt cannot be cancelled.', 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
+    if dr.status == 'cancelled':
+        flash('This Delivery Receipt is already cancelled.', 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
+    reason = (request.form.get('cancel_reason') or '').strip()
+    if len(reason) < 10:
+        flash('A cancellation reason (min 10 chars) is required.', 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
+    dr.status = 'cancelled'
+    dr.cancelled_by_id = current_user.id
+    dr.cancelled_at = ph_now()
+    dr.cancel_reason = reason
+    db.session.commit()   # cancelling drops it out of COMMITTED_STATUSES -> qty released
+    log_audit(module='delivery_receipts', action='update', record_id=dr.id,
+              record_identifier=dr.dr_number, notes=f'Cancelled: {reason}')
+    flash(f'Delivery Receipt "{dr.dr_number}" cancelled.', 'warning')
+    return redirect(url_for('delivery_receipts.view', id=id))

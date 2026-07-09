@@ -1,12 +1,62 @@
 {% extends "base.html" %}
 {% block title %}{{ dr.dr_number }}{% endblock %}
 {% block content %}
+{% set may_approve = current_user.has_full_access or current_user.role == 'accountant' %}
+
+{# Cancel modal -- custom HTML, never a JS confirm(). #}
+{% if dr.status not in ('billed', 'cancelled') and may_approve %}
+<div id="cancelModal" style="display:none; position:fixed; inset:0; background:var(--backdrop);
+     z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Cancel this Delivery Receipt?</h3>
+        <p style="color:var(--text-2); margin-bottom:20px;">
+            <strong>{{ dr.dr_number }}</strong> will be marked as cancelled and its delivered
+            quantities released back to the Sales Order. This cannot be undone.
+        </p>
+        <form method="POST" action="{{ url_for('delivery_receipts.cancel', id=dr.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    Reason <span style="color:var(--red);">*</span>
+                </label>
+                <textarea name="cancel_reason" rows="3" class="form-control"
+                          placeholder="Minimum 10 characters" required minlength="10"
+                          style="width:100%; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary"
+                        onclick="document.getElementById('cancelModal').style.display='none'">
+                    Keep Receipt
+                </button>
+                <button type="submit" class="btn btn-danger">Cancel Receipt</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <div class="page-header">
   <h1>Delivery Receipt {{ dr.dr_number }}</h1>
   <div class="page-actions">
     <a href="{{ url_for('delivery_receipts.list') }}" class="btn btn-secondary btn-sm">Back to list</a>
     {% if dr.status == 'draft' %}
     <a href="{{ url_for('delivery_receipts.edit', id=dr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+    {% endif %}
+    {% if dr.status == 'draft' and may_approve %}
+    <form method="POST" action="{{ url_for('delivery_receipts.approve', id=dr.id) }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+    </form>
+    {% endif %}
+    {% if dr.status == 'approved' %}
+    <form method="POST" action="{{ url_for('delivery_receipts.mark_delivered', id=dr.id) }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <button type="submit" class="btn btn-primary btn-sm">Mark Delivered</button>
+    </form>
+    {% endif %}
+    {% if dr.status not in ('billed', 'cancelled') and may_approve %}
+    <button type="button" class="btn btn-danger btn-sm"
+            onclick="document.getElementById('cancelModal').style.display='flex'">Cancel</button>
     {% endif %}
   </div>
 </div>
