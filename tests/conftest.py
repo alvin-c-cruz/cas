@@ -571,3 +571,261 @@ def posted_cdv_v12sv(db_session, main_branch, cash_account, revenue_account, vl_
     db_session.add(cdv)
     db_session.commit()
     return cdv
+
+
+# --- R-08 Task 7: wht_lines() fixtures -------------------------------------
+# Mirrors the Task 6 vat_lines() fixtures above: one document, one line,
+# posted, dated 2026-02-15, with wt_id/wt_rate/wt_amount set so the line
+# carries withholding. Reuses vl_customer/vl_vendor from Task 6.
+
+@pytest.fixture
+def vl_wht_expanded(db_session):
+    """Creditable (expanded) WithholdingTax code, 2% -- flows to 2307/QAP/SAWT."""
+    from decimal import Decimal
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC160', name='Services', rate=Decimal('2.00'),
+                        tax_type='expanded')
+    db_session.add(wt)
+    db_session.commit()
+    return wt
+
+
+@pytest.fixture
+def vl_wht_final(db_session):
+    """Non-creditable (final) WithholdingTax code -- must never reach a
+    2307/QAP/SAWT surface; tax_type filtering in wht_lines() is what prevents this."""
+    from decimal import Decimal
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WF010', name='Final tax on interest',
+                        rate=Decimal('20.00'), tax_type='final')
+    db_session.add(wt)
+    db_session.commit()
+    return wt
+
+
+@pytest.fixture
+def posted_ap_with_wht(db_session, main_branch, revenue_account, vl_vendor, vl_wht_expanded):
+    """One posted Accounts Payable bill, one line with expanded WHT withheld."""
+    from datetime import date
+    from decimal import Decimal
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    bill = AccountsPayable(
+        branch_id=main_branch.id,
+        ap_number='AP-WHT-0001',
+        ap_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        payee_type='vendor', payee_id=vl_vendor.id,
+        vendor_id=vl_vendor.id,
+        vendor_name=vl_vendor.name,
+        vendor_tin=vl_vendor.tin,
+        status='posted',
+    )
+    item = AccountsPayableItem(
+        line_number=1, description='Professional services',
+        amount=Decimal('5600.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12SV', vat_nature='domestic_services',
+        line_total=Decimal('5600.00'), vat_amount=Decimal('600.00'),
+        wt_id=vl_wht_expanded.id, wt_rate=vl_wht_expanded.rate,
+        wt_amount=Decimal('100.00'),
+        account_id=revenue_account.id,
+    )
+    bill.line_items.append(item)
+    db_session.add(bill)
+    db_session.commit()
+    return bill
+
+
+@pytest.fixture
+def posted_ap_with_final_wht(db_session, main_branch, revenue_account, vl_vendor, vl_wht_final):
+    """One posted Accounts Payable bill whose line carries FINAL (non-creditable)
+    withholding -- must be excluded when wht_lines() is called with
+    tax_type='expanded'."""
+    from datetime import date
+    from decimal import Decimal
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    bill = AccountsPayable(
+        branch_id=main_branch.id,
+        ap_number='AP-WHT-FINAL-0001',
+        ap_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        payee_type='vendor', payee_id=vl_vendor.id,
+        vendor_id=vl_vendor.id,
+        vendor_name=vl_vendor.name,
+        vendor_tin=vl_vendor.tin,
+        status='posted',
+    )
+    item = AccountsPayableItem(
+        line_number=1, description='Interest expense',
+        amount=Decimal('1000.00'), vat_rate=Decimal('0.00'),
+        vat_category=None, vat_nature='exempt',
+        line_total=Decimal('1000.00'), vat_amount=Decimal('0.00'),
+        wt_id=vl_wht_final.id, wt_rate=vl_wht_final.rate,
+        wt_amount=Decimal('200.00'),
+        account_id=revenue_account.id,
+    )
+    bill.line_items.append(item)
+    db_session.add(bill)
+    db_session.commit()
+    return bill
+
+
+@pytest.fixture
+def posted_cdv_with_wht(db_session, main_branch, cash_account, revenue_account, vl_vendor, vl_wht_expanded):
+    """One posted Cash Disbursement Voucher, one line with expanded WHT withheld.
+    The hole in today's get_alphalist_of_payees(): AP only, misses CDV."""
+    from datetime import date
+    from decimal import Decimal
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+    cdv = CashDisbursementVoucher(
+        branch_id=main_branch.id,
+        cdv_number='CDV-WHT-0001',
+        cdv_date=date(2026, 2, 15),
+        vendor_id=vl_vendor.id,
+        vendor_name=vl_vendor.name,
+        vendor_tin=vl_vendor.tin,
+        cash_account_id=cash_account.id,
+        status='posted',
+    )
+    line = CDVExpenseLine(
+        line_number=1, description='Cash-paid services',
+        amount=Decimal('5600.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12SV', vat_nature='domestic_services',
+        line_total=Decimal('5600.00'), vat_amount=Decimal('600.00'),
+        wt_id=vl_wht_expanded.id, wt_rate=vl_wht_expanded.rate,
+        wt_amount=Decimal('100.00'),
+        account_id=revenue_account.id,
+    )
+    cdv.expense_lines.append(line)
+    db_session.add(cdv)
+    db_session.commit()
+    return cdv
+
+
+@pytest.fixture
+def cancelled_cdv_with_wht(db_session, main_branch, cash_account, revenue_account, vl_vendor, vl_wht_expanded):
+    """One CANCELLED Cash Disbursement Voucher -- must never appear in
+    wht_lines(); closes the gap where CRV/CDV voided-exclusion was only
+    proven structurally, never by a test."""
+    from datetime import date
+    from decimal import Decimal
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+    cdv = CashDisbursementVoucher(
+        branch_id=main_branch.id,
+        cdv_number='CDV-WHT-CANCEL-0001',
+        cdv_date=date(2026, 2, 15),
+        vendor_id=vl_vendor.id,
+        vendor_name=vl_vendor.name,
+        vendor_tin=vl_vendor.tin,
+        cash_account_id=cash_account.id,
+        status='cancelled',
+    )
+    line = CDVExpenseLine(
+        line_number=1, description='Cancelled cash-paid services',
+        amount=Decimal('5600.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12SV', vat_nature='domestic_services',
+        line_total=Decimal('5600.00'), vat_amount=Decimal('600.00'),
+        wt_id=vl_wht_expanded.id, wt_rate=vl_wht_expanded.rate,
+        wt_amount=Decimal('100.00'),
+        account_id=revenue_account.id,
+    )
+    cdv.expense_lines.append(line)
+    db_session.add(cdv)
+    db_session.commit()
+    return cdv
+
+
+@pytest.fixture
+def posted_si_with_wht(db_session, main_branch, revenue_account, vl_customer, vl_wht_expanded):
+    """One posted Sales Invoice, one line with expanded WHT withheld by the
+    customer -- feeds the SAWT reconciliation."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-WHT-0001',
+        invoice_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='posted',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Consulting services',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12', vat_nature='regular',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        wt_id=vl_wht_expanded.id, wt_rate=vl_wht_expanded.rate,
+        wt_amount=Decimal('200.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
+def voided_si_with_wht(db_session, main_branch, revenue_account, vl_customer, vl_wht_expanded):
+    """One VOIDED Sales Invoice with WHT on its line -- must never appear in
+    wht_lines(); closes the gap where voided-exclusion was only proven
+    structurally, never by a test (per Task 6's reviewer)."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-WHT-VOID-0001',
+        invoice_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='voided',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Voided consulting services',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12', vat_nature='regular',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        wt_id=vl_wht_expanded.id, wt_rate=vl_wht_expanded.rate,
+        wt_amount=Decimal('200.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
+def posted_crv_with_wht(db_session, main_branch, cash_account, revenue_account, vl_customer, vl_wht_expanded):
+    """One posted Cash Receipt Voucher, one line with expanded WHT withheld by
+    the customer -- feeds the SAWT reconciliation."""
+    from datetime import date
+    from decimal import Decimal
+    from app.cash_receipts.models import CashReceiptVoucher, CRVRevenueLine
+    crv = CashReceiptVoucher(
+        branch_id=main_branch.id,
+        crv_number='CRV-WHT-0001',
+        crv_date=date(2026, 2, 15),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        cash_account_id=cash_account.id,
+        status='posted',
+    )
+    line = CRVRevenueLine(
+        line_number=1, description='Cash sale',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12', vat_nature='regular',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        wt_id=vl_wht_expanded.id, wt_rate=vl_wht_expanded.rate,
+        wt_amount=Decimal('200.00'),
+        account_id=revenue_account.id,
+    )
+    crv.revenue_lines.append(line)
+    db_session.add(crv)
+    db_session.commit()
+    return crv
