@@ -122,6 +122,7 @@ def test_edit_draft_updates_quantities(client, db_session, admin_user, main_bran
     dr = DeliveryReceipt.query.first()
     client.post(f'/delivery-receipts/{dr.id}/edit', data={
         'sales_order_id': so.id, 'delivery_date': '2026-07-10',
+        'row_version': dr.row_version,
         'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '6'}])},
         follow_redirects=True)
     db_session.refresh(dr)

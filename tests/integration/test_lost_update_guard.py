@@ -249,6 +249,78 @@ class TestCDVEditSerialErrorDoesNotCrash:
         assert db_session.get(CashDisbursementVoucher, cdv.id).check_number != '1001'
 
 
+class TestDRLineOnlyEditBumpsVersion:
+    """DR is why row_version is an explicit column rather than reused `updated_at`.
+
+    Its header carries no totals and its edit is line-only (`dr.line_items.clear()`),
+    so the header row is never dirtied by an ORM mutation and SQLAlchemy's
+    `onupdate=ph_now` would never fire.  A guard built on `updated_at` would fail
+    OPEN on exactly this module.  claim_version's UPDATE always advances the row.
+    """
+
+    @pytest.fixture
+    def dr_setup(self, client, db_session, admin_user, main_branch):
+        from tests.integration.test_delivery_receipts_crud import _confirmed_so, _login
+        from app.delivery_receipts.models import DeliveryReceipt
+        from app.settings import AppSettings
+        from app.utils.cache_helpers import clear_module_config_cache
+
+        # Delivery Receipts is an opt-in module; without this the route 404s and
+        # the fixture yields no DR at all.
+        AppSettings.set_setting('module_enabled:delivery_receipts', '1')
+        db_session.commit()
+        clear_module_config_cache()
+
+        so = _confirmed_so(db_session, main_branch.id)
+        _login(client, admin_user)
+        with client.session_transaction() as s:
+            s['selected_branch_id'] = main_branch.id
+        soi_id = so.line_items[0].id
+        client.post('/delivery-receipts/create', data={
+            'sales_order_id': so.id, 'delivery_date': '2026-07-09',
+            'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '4'}]),
+        }, follow_redirects=True)
+        dr = DeliveryReceipt.query.first()
+        assert dr is not None, 'setup: DR was not created'
+        return dr, so, soi_id, DeliveryReceipt
+
+    def test_line_only_edit_advances_the_version(self, client, db_session, dr_setup):
+        dr, so, soi_id, DeliveryReceipt = dr_setup
+        assert dr.row_version == 1
+
+        client.post(f'/delivery-receipts/{dr.id}/edit', data={
+            'sales_order_id': so.id, 'delivery_date': '2026-07-09',  # header unchanged
+            'row_version': 1,
+            'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '6'}]),
+        }, follow_redirects=True)
+
+        db_session.expire_all()
+        dr = db_session.get(DeliveryReceipt, dr.id)
+        assert dr.row_version == 2, 'a line-only edit must still advance the version'
+        assert dr.line_items[0].delivered_quantity == Decimal('6')
+
+    def test_stale_token_refused_after_a_line_only_edit(self, client, db_session, dr_setup):
+        dr, so, soi_id, DeliveryReceipt = dr_setup
+        dr_id = dr.id
+
+        client.post(f'/delivery-receipts/{dr_id}/edit', data={
+            'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'row_version': 1,
+            'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '6'}]),
+        }, follow_redirects=True)
+
+        resp = client.post(f'/delivery-receipts/{dr_id}/edit', data={
+            'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'row_version': 1,
+            'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '2'}]),
+        }, follow_redirects=True)
+
+        assert b'NOT saved' in resp.data
+        db_session.expire_all()
+        dr = db_session.get(DeliveryReceipt, dr_id)
+        assert dr.row_version == 2
+        assert dr.line_items[0].delivered_quantity == Decimal('6'), \
+            "the winner's quantity must survive"
+
+
 class TestAPVLostUpdateGuard:
 
     def test_fresh_document_starts_at_version_one(self, bill, db_session):

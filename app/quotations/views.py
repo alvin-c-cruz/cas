@@ -21,6 +21,7 @@ from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products, get_sales_vat_categories
+from app.utils.concurrency import claim_version, conflict_message, submitted_version
 
 quotations_bp = Blueprint('quotations', __name__, template_folder='templates')
 
@@ -232,6 +233,13 @@ def edit(id):
             old_values = model_to_dict(q, [
                 'quotation_date', 'customer_name', 'vat_treatment',
                 'subtotal', 'vat_amount', 'total_amount', 'status'])
+
+            # Lost-update guard: the first write, before the line teardown below.
+            if not claim_version(Quotation, q.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('quotations', q.id), 'error')
+                return render_template('quotations/form.html', form=form, quote=q,
+                                       line_items=restore_items, **_common_form_ctx())
 
             q.quotation_date = form.quotation_date.data
             q.valid_until = form.valid_until.data or None

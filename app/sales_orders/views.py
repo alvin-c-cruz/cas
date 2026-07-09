@@ -23,6 +23,7 @@ from app.audit.utils import log_create, log_update, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products, get_sales_vat_categories
+from app.utils.concurrency import claim_version, conflict_message, submitted_version
 from app.sales_orders.preprinted_layout import (
     get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
     DATE_FORMATS, FIELD_LABELS, TEXT_KEYS)
@@ -362,6 +363,13 @@ def edit(id):
             old_values = model_to_dict(so, [
                 'so_number', 'order_date', 'customer_name',
                 'subtotal', 'vat_amount', 'total_amount', 'status'])
+
+            # Lost-update guard: the first write, before the line teardown below.
+            if not claim_version(SalesOrder, so.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('sales_orders', so.id), 'error')
+                return render_template('sales_orders/form.html', form=form, so=so,
+                                       line_items=restore_items, **_common_form_ctx())
 
             so.so_number = so_number
             so.order_date = form.order_date.data

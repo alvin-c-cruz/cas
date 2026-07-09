@@ -138,6 +138,7 @@ def test_edit_draft_updates_treatment_and_lines(client, db_session, admin_user, 
                              'vat_category': 'V12', 'vat_rate': '12'}])
     client.post(f'/quotations/{q.id}/edit', data={'customer_id': str(c.id),
         'quotation_date': '2026-07-09', 'valid_until': '2026-08-09',
+        'row_version': q.row_version,
         'vat_treatment': 'zero_rated', 'payment_terms': 'Net 30', 'lines': new_lines},
         follow_redirects=True)
     db_session.refresh(q)
