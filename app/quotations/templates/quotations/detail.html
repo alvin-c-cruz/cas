@@ -26,6 +26,8 @@
         <div class="card-header-actions">
             {% set can_write = current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
             {% set can_approve = current_user.has_full_access or current_user.role == 'accountant' %}
+            <a href="{{ url_for('quotations.print_quote', id=quote.id) }}"
+               target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Print</a>
             {# Send: staff/accountant/admin, draft only #}
             {% if quote.status == 'draft' and can_write %}
             <form method="POST" action="{{ url_for('quotations.send', id=quote.id) }}" style="display:inline;">
