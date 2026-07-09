@@ -13,6 +13,14 @@ from app.sales_memos.models import SalesMemo, SalesMemoItem
 pytestmark = [pytest.mark.integration, pytest.mark.credit_memos]
 
 
+@pytest.fixture(autouse=True)
+def _module_cache_isolation():
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
 def _login(client, u):
     with client.session_transaction() as s:
         s['_user_id'] = str(u.id); s['_fresh'] = True

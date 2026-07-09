@@ -4,6 +4,16 @@ import pytest
 pytestmark = [pytest.mark.integration, pytest.mark.credit_memos]
 
 
+@pytest.fixture(autouse=True)
+def _module_cache_isolation():
+    """Clear the memoized module-config override before AND after each test so enabling
+    credit_memos here never leaks into sibling tests (e.g. sidebar module-set asserts)."""
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
 def _login(client, user):
     with client.session_transaction() as sess:
         sess['_user_id'] = str(user.id); sess['_fresh'] = True
