@@ -13,6 +13,7 @@ from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
+from app.utils.line_mode import validate_line_mode
 from app.utils.wt_labels import wt_label
 from app.utils.cache_helpers import get_active_units, get_active_products
 from app.settings import AppSettings
@@ -611,12 +612,20 @@ def _parse_and_attach_revenue_lines(crv, revenue_lines_json):
             wt_obj = db.session.get(WithholdingTax, wt_id)
             if wt_obj:
                 wt_rate = wt_obj.rate
+        qty = _dec(item.get('quantity'))
+        unit_price = _dec(item.get('unit_price'))
+        try:
+            validate_line_mode(_int(item.get('product_id')), qty, unit_price,
+                               amount, line_number=idx)
+        except ValueError as e:
+            raise CRVLineError(str(e))
+
         rev_line = CRVRevenueLine(
             line_number=idx,
             description=item.get('description', ''),
             amount=amount,
-            quantity=_dec(item.get('quantity')),
-            unit_price=_dec(item.get('unit_price')),
+            quantity=qty,
+            unit_price=unit_price,
             uom_text=(item.get('uom_text') or None),
             unit_of_measure_id=_int(item.get('uom_id')),
             product_id=_int(item.get('product_id')),

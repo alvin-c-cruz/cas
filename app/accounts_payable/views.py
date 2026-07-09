@@ -17,6 +17,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.export import export_to_excel, export_to_csv
+from app.utils.line_mode import validate_line_mode
 from app.utils.cache_helpers import get_active_units, get_active_products
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
@@ -347,12 +348,20 @@ def _build_validated_ap_lines():
             if wt_obj:
                 wt_rate = wt_obj.rate
 
+        qty = _dec(item_data.get('quantity'))
+        unit_price = _dec(item_data.get('unit_price'))
+        try:
+            validate_line_mode(_int_safe(item_data.get('product_id')), qty, unit_price,
+                               amount, line_number=idx)
+        except ValueError as e:
+            raise APVLineError(str(e))
+
         line_item = AccountsPayableItem(
             line_number=idx,
             description=item_data.get('description', ''),
             amount=amount,
-            quantity=_dec(item_data.get('quantity')),
-            unit_price=_dec(item_data.get('unit_price')),
+            quantity=qty,
+            unit_price=unit_price,
             uom_text=(item_data.get('uom_text') or None),
             unit_of_measure_id=_int_safe(item_data.get('uom_id')),
             product_id=_int_safe(item_data.get('product_id')),

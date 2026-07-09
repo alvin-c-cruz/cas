@@ -212,8 +212,8 @@
               <table class="table" id="revenueLinesTable">
                 <thead>
                   <tr>
-                    {% if module_enabled('products') %}<th style="width:23%">Product</th>{% endif %}
-                    {% if not module_enabled('products') %}<th style="width:27%">Description</th>{% endif %}
+                    <th style="width:20%">Description</th>
+                    {% if module_enabled('products') %}<th style="width:16%">Product</th>{% endif %}
                     <th style="width:6%;text-align:right">Qty</th>
                     <th style="width:6%">UOM</th>
                     <th style="width:9%;text-align:right">UP</th>
@@ -685,15 +685,15 @@ function addRevenueLine(existingItem) {
     const row = document.createElement('tr');
     row.id = `rev-${id}`;
     row.innerHTML = `
+        <td><input type="text" class="form-control rev-desc" value="${escHtml(item.description || '')}"
+                   style="border:none; background:transparent; padding-left:0;"
+                   onchange="updateRevenue(${id}, 'description', this.value)"></td>
         ${productMasterOn ? `
         <td><select class="form-control rev-prod prod-select">
               <option value="">—</option>
               <option value="__add_product__">+ Add Product</option>
               ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
             </select></td>` : ''}
-        ${!productMasterOn ? `<td><input type="text" class="form-control rev-desc" value="${escHtml(item.description || '')}"
-                   style="border:none; background:transparent; padding-left:0;"
-                   onchange="updateRevenue(${id}, 'description', this.value)"></td>` : ''}
         <td><input type="text" class="form-control rev-qty"
                    style="text-align:right; border:none; background:transparent; font-family:var(--mono);"
                    value="${item.quantity != null ? amtFmt(item.quantity) : ''}"
@@ -870,12 +870,8 @@ function onProductPick(id, productId) {
     item.product_id = productId ? parseInt(productId) : null;
     const p = products.find(pp => String(pp.id) === String(productId));
     if (!p) { recalculate(); return; }
-    // Autofill description (overridable)
-    if (p.name) {
-        item.description = p.name;
-        const descEl = document.querySelector(`#rev-${id} .rev-desc`);
-        if (descEl) descEl.value = p.name;
-    }
+    // Product-pick autofills UoM / unit_price / account only — NEVER the
+    // Description (the user's own free text and JE-particulars source).
     // Autofill UOM
     if (p.default_uom_id != null) {
         item.uom_id = p.default_uom_id;

@@ -227,8 +227,8 @@
               <table class="table" id="expenseLinesTable">
                 <thead>
                   <tr>
-                    {% if module_enabled('products') %}<th style="width:23%">Product</th>{% endif %}
-                    {% if not module_enabled('products') %}<th style="width:28%">Description</th>{% endif %}
+                    <th style="width:20%">Description</th>
+                    {% if module_enabled('products') %}<th style="width:16%">Product</th>{% endif %}
                     <th style="width:6%;text-align:right">Qty</th>
                     <th style="width:6%">UOM</th>
                     <th style="width:9%;text-align:right">UP</th>
@@ -741,10 +741,10 @@ function addExpenseLine(existingItem) {
     const row = document.createElement('tr');
     row.id = `exp-${id}`;
     row.innerHTML = `
-        ${productCell}
-        ${!productMasterOn ? `<td><input type="text" class="form-control" id="exp-desc-${id}" value="${escHtml(item.description || '')}"
+        <td><input type="text" class="form-control" id="exp-desc-${id}" value="${escHtml(item.description || '')}"
                    style="border:none; background:transparent; padding-left:0;"
-                   onchange="updateExpense(${id}, 'description', this.value)"></td>` : ''}
+                   onchange="updateExpense(${id}, 'description', this.value)"></td>
+        ${productCell}
         <td><input type="text" class="form-control" id="exp-qty-${id}"
                    style="text-align:right;font-family:var(--mono);min-width:60px;border:none;background:transparent;"
                    value="${item.quantity != null ? amtFmt(item.quantity) : ''}"
@@ -911,7 +911,7 @@ function updateDerivedAmount(id) {
     recalculate();
 }
 
-// Auto-fill description, UOM, unit_price, account from a selected product.
+// Auto-fill UOM, unit_price, account from a selected product (never description).
 function onProductPick(id, productId) {
     const item = expenseLines.find(i => i.id === id);
     if (!item) return;
@@ -920,11 +920,8 @@ function onProductPick(id, productId) {
     const p = products.find(pr => pr.id === productId);
     if (!p) { updateDerivedAmount(id); return; }
     const row = document.getElementById(`exp-${id}`);
-    if (p.name) {
-        item.description = p.name;
-        const descEl = document.getElementById(`exp-desc-${id}`);
-        if (descEl) descEl.value = p.name;
-    }
+    // Product-pick autofills UoM / unit_price / account only — NEVER the
+    // Description (the user's own free text and JE-particulars source).
     if (p.default_uom_id && uomMasterOn) {
         item.uom_id = p.default_uom_id;
         const uomC = expenseChoices[id] ? expenseChoices[id].uom : null;
