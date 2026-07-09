@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=15">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=16">
     <style>
         /* Minimal scrollbar styling for better accessibility */
         * {
@@ -526,11 +526,11 @@
             align-items: center;
         }
 
-        /* Card styles — .card itself is defined in style.css using design tokens;
-           do not redefine it here (a hardcoded copy shadowed .dashboard-hero's gradient). */
-        .card-body {
-            padding: 0;
-        }
+        /* Card styles — .card and .card-body padding are defined in style.css using design
+           tokens; do NOT redefine them here. A hardcoded copy here (padding:0, loading after
+           style.css) used to zero every card-body's padding — so every page hugged the border
+           until it added its own `.page-X .card-body{padding}` restore rule. Removed so the
+           style.css default (18px) governs; full-bleed cards opt out with `.card-body--flush`. */
 
         /* Data table */
         .data-table {
