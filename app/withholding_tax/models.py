@@ -4,6 +4,19 @@ Withholding Tax models for Philippine BIR compliance
 from app import db
 from app.utils import ph_now
 
+# BIR withholding regimes. 'expanded' (EWT) is creditable and flows to BIR 2307,
+# the 1601-EQ QAP, and the SAWT. 'final' (FWT) is NOT creditable and belongs on
+# BIR 2306 / 1601-FQ, neither of which is implemented -- see the R-08 spec.
+TAX_TYPES = ('expanded', 'final')
+
+# Human-readable label for each TAX_TYPES token. NOT NULL with only two values,
+# so unlike PURCHASE_NATURE_LABELS this needs no '(unclassified)' /
+# 'Unrecognized:' handling -- a plain dict lookup is enough.
+TAX_TYPE_LABELS = {
+    'expanded': 'Expanded (creditable)',
+    'final': 'Final',
+}
+
 
 class WithholdingTax(db.Model):
     """Withholding Tax master table (shared across branches)"""
@@ -18,6 +31,8 @@ class WithholdingTax(db.Model):
     description = db.Column(db.Text)
     rate = db.Column(db.Numeric(5, 2), nullable=False)  # e.g., 10.00 for 10%
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    tax_type = db.Column(db.String(10), nullable=False, default='expanded',
+                         server_default='expanded')
 
     # Per-ATC GL account mapping (NULL falls back to the hardcoded anchors
     # 20301 / 10212 in the posting views).
@@ -49,6 +64,7 @@ class WithholdingTax(db.Model):
             'sales_name': self.sales_name,
             'description': self.description,
             'rate': float(self.rate) if self.rate else 0.0,
+            'tax_type': self.tax_type,
             'is_active': self.is_active,
             'payable_account_id': self.payable_account_id,
             'payable_account_code': self.payable_account.code if self.payable_account else None,

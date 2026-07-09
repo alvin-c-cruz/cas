@@ -233,6 +233,7 @@ def wht_form_data(code='WCX', name='Test WHT', reason='Needed for BIR compliance
         'name': name,
         'description': 'test',
         'rate': '2.00',
+        'tax_type': 'expanded',
         'is_active': '1',
         'payable_account_id': '0',
         'receivable_account_id': '0',

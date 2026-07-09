@@ -21,6 +21,6 @@ def test_admin_create_persists_sales_name(client, db_session, admin_user, main_b
     client.post('/withholding-tax/create', data={
         'code': 'WC010', 'name': 'Professional Fees - Individuals',
         'sales_name': 'Professional Fees Income - Individual', 'description': '',
-        'rate': '10.00', 'is_active': '1'}, follow_redirects=True)
+        'rate': '10.00', 'tax_type': 'expanded', 'is_active': '1'}, follow_redirects=True)
     wt = WithholdingTax.query.filter_by(code='WC010').first()
     assert wt is not None and wt.sales_name == 'Professional Fees Income - Individual'

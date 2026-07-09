@@ -67,6 +67,9 @@
             <div style="font-weight: 600; color: #64748b;">Rate:</div>
             <div>{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
 
+            <div style="font-weight: 600; color: #64748b;">Withholding Regime:</div>
+            <div>{{ tax_type_labels.get(proposed_data.get('tax_type'), proposed_data.get('tax_type')) }}</div>
+
             <div style="font-weight: 600; color: #64748b;">Status:</div>
             <div>
                 {% if proposed_data.get('is_active') %}
@@ -100,6 +103,14 @@
             <div style="text-align: center;">{{ "%.2f"|format(change_request.withholding_tax.rate) if change_request.withholding_tax else 'N/A' }}%</div>
             <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
 
+            <div style="font-weight: 600; color: #64748b;">Withholding Regime:</div>
+            <div style="text-align: center;">
+                {{ tax_type_labels.get(change_request.withholding_tax.tax_type, change_request.withholding_tax.tax_type) if change_request.withholding_tax else 'N/A' }}
+            </div>
+            <div style="text-align: center; color: #3b82f6; font-weight: 500;">
+                {{ tax_type_labels.get(proposed_data.get('tax_type'), proposed_data.get('tax_type')) }}
+            </div>
+
             <div style="font-weight: 600; color: #64748b;">Status:</div>
             <div style="text-align: center;">
                 {% if change_request.withholding_tax and change_request.withholding_tax.is_active %}
@@ -132,6 +143,9 @@
 
             <div style="font-weight: 600; color: #64748b;">Rate:</div>
             <div>{{ "%.2f"|format(change_request.withholding_tax.rate) }}%</div>
+
+            <div style="font-weight: 600; color: #64748b;">Withholding Regime:</div>
+            <div>{{ tax_type_labels.get(change_request.withholding_tax.tax_type, change_request.withholding_tax.tax_type) }}</div>
         </div>
         {% else %}
         <p style="color: #ef4444;">Warning: withholding tax has already been deleted.</p>

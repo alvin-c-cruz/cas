@@ -4,7 +4,7 @@ Withholding Tax views with approval workflow
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from app import db
-from app.withholding_tax.models import WithholdingTax, WithholdingTaxChangeRequest
+from app.withholding_tax.models import WithholdingTax, WithholdingTaxChangeRequest, TAX_TYPE_LABELS
 from app.withholding_tax.forms import WithholdingTaxForm, WithholdingTaxChangeReviewForm
 from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
@@ -119,6 +119,7 @@ def create():
                 'sales_name': form.sales_name.data,
                 'description': form.description.data,
                 'rate': float(form.rate.data),
+                'tax_type': form.tax_type.data,
                 'is_active': bool(int(form.is_active.data)) if form.is_active.data else True,
                 'payable_account_id': form.payable_account_id.data or None,
                 'receivable_account_id': form.receivable_account_id.data or None,
@@ -194,6 +195,7 @@ def edit(id):
                 'sales_name': form.sales_name.data,
                 'description': form.description.data,
                 'rate': float(form.rate.data),
+                'tax_type': form.tax_type.data,
                 'is_active': bool(int(form.is_active.data)) if form.is_active.data else True,
                 'payable_account_id': form.payable_account_id.data or None,
                 'receivable_account_id': form.receivable_account_id.data or None,
@@ -203,7 +205,7 @@ def edit(id):
             # even for a lone reviewer — it always routes to a second reviewer.
             if tax_edit_may_auto_approve(withholding_tax.rate, change_data['rate']):
                 # Capture old values before update
-                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
+                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id'])
 
                 # Update withholding tax directly
                 withholding_tax.code = change_data['code']
@@ -211,6 +213,7 @@ def edit(id):
                 withholding_tax.sales_name = change_data['sales_name']
                 withholding_tax.description = change_data['description']
                 withholding_tax.rate = change_data['rate']
+                withholding_tax.tax_type = change_data['tax_type']
                 withholding_tax.is_active = change_data['is_active']
                 withholding_tax.payable_account_id = change_data['payable_account_id']
                 withholding_tax.receivable_account_id = change_data['receivable_account_id']
@@ -247,7 +250,7 @@ def edit(id):
                 db.session.flush()  # Get the ID before commit
 
                 # Audit log for update change request submission
-                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
+                old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id'])
                 log_audit(
                     module='withholding_tax',
                     action='update',
@@ -278,6 +281,7 @@ def edit(id):
         form.sales_name.data = withholding_tax.sales_name
         form.description.data = withholding_tax.description
         form.rate.data = withholding_tax.rate
+        form.tax_type.data = withholding_tax.tax_type
         form.is_active.data = '1' if withholding_tax.is_active else '0'
         form.payable_account_id.data = withholding_tax.payable_account_id or 0
         form.receivable_account_id.data = withholding_tax.receivable_account_id or 0
@@ -311,7 +315,7 @@ def delete(id):
         # Check if auto-approval is allowed
         if sole_full_access_user_can_auto_approve():
             # Capture values before delete
-            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
+            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id'])
             wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
             wt_id = withholding_tax.id
             wt_name = withholding_tax.name
@@ -347,7 +351,7 @@ def delete(id):
             db.session.flush()  # Get the ID before commit
 
             # Audit log for delete change request submission
-            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
+            old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id'])
             log_audit(
                 module='withholding_tax',
                 action='delete',
@@ -396,7 +400,8 @@ def change_requests():
         }
         requests_with_data.append(req_dict)
 
-    return render_template('withholding_tax/change_requests.html', requests=requests_with_data)
+    return render_template('withholding_tax/change_requests.html', requests=requests_with_data,
+                         tax_type_labels=TAX_TYPE_LABELS)
 
 
 @withholding_tax_bp.route('/change-requests/<int:id>/review', methods=['GET', 'POST'])
@@ -462,6 +467,7 @@ def review_change_request(id):
                         sales_name=proposed_data.get('sales_name'),
                         description=proposed_data.get('description'),
                         rate=proposed_data['rate'],
+                        tax_type=proposed_data.get('tax_type', 'expanded'),
                         is_active=proposed_data.get('is_active', True),
                         payable_account_id=proposed_data.get('payable_account_id') or None,
                         receivable_account_id=proposed_data.get('receivable_account_id') or None,
@@ -477,7 +483,7 @@ def review_change_request(id):
                         action='create',
                         record_id=withholding_tax.id,
                         record_identifier=f'{withholding_tax.code} - {withholding_tax.name}',
-                        new_values=model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id']),
+                        new_values=model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id']),
                         notes=f'Approved by {current_user.username}'
                     )
                     clear_withholding_tax_cache()
@@ -489,13 +495,14 @@ def review_change_request(id):
                     withholding_tax = change_request.withholding_tax
                     if withholding_tax:
                         # Capture old values before update
-                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
+                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id'])
 
                         withholding_tax.code = proposed_data['code']
                         withholding_tax.name = proposed_data['name']
                         withholding_tax.sales_name = proposed_data.get('sales_name')
                         withholding_tax.description = proposed_data.get('description')
                         withholding_tax.rate = proposed_data['rate']
+                        withholding_tax.tax_type = proposed_data.get('tax_type', 'expanded')
                         withholding_tax.is_active = proposed_data.get('is_active', True)
                         withholding_tax.payable_account_id = proposed_data.get('payable_account_id') or None
                         withholding_tax.receivable_account_id = proposed_data.get('receivable_account_id') or None
@@ -503,7 +510,7 @@ def review_change_request(id):
                         withholding_tax.updated_at = ph_now()
 
                         # Audit log for approved update
-                        new_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
+                        new_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id'])
                         log_audit(
                             module='withholding_tax',
                             action='update',
@@ -522,7 +529,7 @@ def review_change_request(id):
                     withholding_tax = change_request.withholding_tax
                     if withholding_tax:
                         # Capture values before delete
-                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'is_active', 'payable_account_id', 'receivable_account_id'])
+                        old_values = model_to_dict(withholding_tax, ['code', 'name', 'sales_name', 'description', 'rate', 'tax_type', 'is_active', 'payable_account_id', 'receivable_account_id'])
                         wt_identifier = f'{withholding_tax.code} - {withholding_tax.name}'
                         wt_id = withholding_tax.id
                         wt_name = withholding_tax.name
@@ -599,6 +606,7 @@ def review_change_request(id):
     return render_template('withholding_tax/review_change_request.html',
                          change_request=change_request,
                          proposed_data=proposed_data,
+                         tax_type_labels=TAX_TYPE_LABELS,
                          old_rate=old_rate, new_rate=new_rate,
                          rate_changed=rate_changed,
                          form=form)
