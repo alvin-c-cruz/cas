@@ -71,14 +71,6 @@ def test_deliver_qty_serializes_into_hidden_field(logged_in_sales_page, sales_e2
     assert isinstance(serialized[0]['sales_order_item_id'], int), serialized
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "BUG-DR-DUP-LINES: the DR form renders name='lines' TWICE -- once via "
-    "form.hidden_tag() (HiddenField, empty) and once via form.lines(id='lines-json') "
-    "(populated by JS). Flask request.form.get('lines') reads the FIRST (empty), so "
-    "every real browser DR creation fails 'Add at least one delivered line.' The JS "
-    "grid + serialize are correct (see the two tests above); the bug is the duplicate "
-    "form field. Unit/integration tests miss it because the test client POSTs a single "
-    "'lines' key. XPASS here == the template was fixed."))
 def test_dr_round_trip_submit(logged_in_sales_page, sales_e2e_server):
     """A delivery of part of the open qty submits, persists a draft DR, and lands on
     its detail view."""
