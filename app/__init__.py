@@ -212,6 +212,7 @@ def create_app(config_name=None):
     from app.sales_orders.models import SalesOrder, SalesOrderItem
     from app.quotations.models import Quotation, QuotationItem
     from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
+    from app.sales_memos.models import SalesMemo, SalesMemoItem
     from app.backup.models import BackupRun
     from app.employees.models import Employee  # noqa: F401
 
