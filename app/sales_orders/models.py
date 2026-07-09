@@ -38,6 +38,9 @@ class SalesOrder(db.Model):
     # Forward-compat hook for P-60 (billing); null until billed.
     sales_invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=True)
 
+    # Chain link: the Quotation this SO was created from on accept (null for directly-entered SOs).
+    quotation_id = db.Column(db.Integer, db.ForeignKey('quotations.id'), nullable=True, index=True)
+
     salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True, index=True)
     salesperson = db.relationship('Employee', foreign_keys=[salesperson_id])
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
