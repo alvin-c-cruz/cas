@@ -6,6 +6,7 @@ Span: Jan 2024 -> Jun 2026, single MAIN branch. NOT idempotent (refuses re-run).
 from decimal import Decimal
 from app import db
 from app.accounts.models import Account
+from app.common.vat_nature import resolve_sales_nature
 
 # (code, name, account_type, classification, normal_balance, parent_code)
 # classification is None for Equity/Revenue/expense; set for every Asset/Liability.
@@ -165,13 +166,13 @@ def seed_food_baseline():
         vat_acct = {a.code: a.id for a in Account.query.filter(
             Account.code.in_(['10501', '10502', '10503', '10504'])).all()}
         for c in [
-            {'code': 'VEX', 'name': 'VAT Exempt', 'rate': 0.00, 'acct': None},
-            {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'acct': '10501'},
-            {'code': 'V12DG', 'name': 'Input Tax Domestic Goods', 'rate': 12.00, 'acct': '10502'},
-            {'code': 'V12SV', 'name': 'Input Tax Services', 'rate': 12.00, 'acct': '10503'},
+            {'code': 'VEX',   'name': 'VAT Exempt',              'rate':  0.00, 'nature': 'exempt',            'acct': None},
+            {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'nature': 'capital_goods',     'acct': '10501'},
+            {'code': 'V12DG', 'name': 'Input Tax Domestic Goods','rate': 12.00, 'nature': 'domestic_goods',    'acct': '10502'},
+            {'code': 'V12SV', 'name': 'Input Tax Services',      'rate': 12.00, 'nature': 'domestic_services', 'acct': '10503'},
         ]:
             db.session.add(VATCategory(code=c['code'], name=c['name'], rate=c['rate'],
-                                       description='', is_active=True,
+                                       description='', transaction_nature=c['nature'], is_active=True,
                                        input_vat_account_id=vat_acct.get(c['acct']) if c['acct'] else None))
         db.session.commit()
 
@@ -294,7 +295,8 @@ def build_food_si(doc_date, customer_obj, gross_amount, refs, admin_id, branch_i
     )
     item = SalesInvoiceItem(
         line_number=1, description='Packed food products — finished goods',
-        amount=_money(gross_amount), vat_category='V12', vat_rate=Decimal('12.00'),
+        amount=_money(gross_amount), vat_category='V12', vat_nature=resolve_sales_nature('V12'),
+        vat_rate=Decimal('12.00'),
         account_id=refs['revenue'].id,
         wt_id=wt.id if wt else None,
         wt_rate=Decimal(str(wt.rate)) if wt else Decimal('0.00'),

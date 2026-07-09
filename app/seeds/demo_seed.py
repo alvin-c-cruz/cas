@@ -12,6 +12,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from app import db
 from app.accounts.models import Account
+from app.common.vat_nature import resolve_sales_nature, resolve_purchase_nature
 
 TWO = Decimal('0.01')
 
@@ -211,16 +212,16 @@ def seed_demo_baseline():
         vat_acct = {a.code: a.id for a in Account.query.filter(
             Account.code.in_(['10501', '10502', '10503', '10504'])).all()}
         for c in [
-            {'code': 'VEX', 'name': 'VAT Exempt', 'rate': 0.00, 'acct': None},
-            {'code': 'V0', 'name': 'VAT Zero-Rated', 'rate': 0.00, 'acct': None},
-            {'code': 'INV', 'name': 'Invalid', 'rate': 0.00, 'acct': None},
-            {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'acct': '10501'},
-            {'code': 'V12DG', 'name': 'Input Tax Domestic Goods', 'rate': 12.00, 'acct': '10502'},
-            {'code': 'V12SV', 'name': 'Input Tax Services', 'rate': 12.00, 'acct': '10503'},
-            {'code': 'V12IM', 'name': 'Input Tax Importation', 'rate': 12.00, 'acct': '10504'},
+            {'code': 'VEX',   'name': 'VAT Exempt',              'rate':  0.00, 'nature': 'exempt',            'acct': None},
+            {'code': 'V0',    'name': 'VAT Zero-Rated',          'rate':  0.00, 'nature': 'zero_rated',        'acct': None},
+            {'code': 'INV',   'name': 'Invalid',                 'rate':  0.00, 'nature': 'not_qualified',     'acct': None},
+            {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'nature': 'capital_goods',     'acct': '10501'},
+            {'code': 'V12DG', 'name': 'Input Tax Domestic Goods','rate': 12.00, 'nature': 'domestic_goods',    'acct': '10502'},
+            {'code': 'V12SV', 'name': 'Input Tax Services',      'rate': 12.00, 'nature': 'domestic_services', 'acct': '10503'},
+            {'code': 'V12IM', 'name': 'Input Tax Importation',   'rate': 12.00, 'nature': 'importation',       'acct': '10504'},
         ]:
             db.session.add(VATCategory(code=c['code'], name=c['name'], rate=c['rate'],
-                                       description='', is_active=True,
+                                       description='', transaction_nature=c['nature'], is_active=True,
                                        input_vat_account_id=vat_acct.get(c['acct']) if c['acct'] else None))
         db.session.commit()
 
@@ -402,6 +403,7 @@ def build_apv(doc_date, vendor_obj, vendor_spec, gross_amount, refs, admin_id, b
         description=f'{vendor_obj.name} — {doc_date.strftime("%b %Y")}',
         amount=_money(gross_amount),
         vat_category=vendor_spec['vat'],
+        vat_nature=resolve_purchase_nature(vendor_spec['vat']),
         vat_rate=Decimal('12.00') if vatable else Decimal('0.00'),
         account_id=refs['expense'][vendor_spec['expense_code']].id,
         wt_id=wt.id if wt else None,
@@ -448,6 +450,7 @@ def build_si(doc_date, customer_obj, gross_amount, refs, admin_id, branch_id, co
         description='Progress billing — construction works',
         amount=_money(gross_amount),
         vat_category='V12' if vatable else 'VEX',
+        vat_nature=resolve_sales_nature('V12' if vatable else 'VEX'),
         vat_rate=Decimal('12.00') if vatable else Decimal('0.00'),
         account_id=refs['revenue_contract'].id,
         wt_id=wt.id if wt else None,
@@ -519,6 +522,7 @@ def build_crv_revenue(doc_date, customer_obj, gross_amount, refs, admin_id, bran
         description='Equipment rental income',
         amount=_money(gross_amount),
         vat_category='V12',
+        vat_nature=resolve_sales_nature('V12'),
         vat_rate=Decimal('12.00'),
         account_id=refs['revenue_rental'].id,
         wt_rate=Decimal('0.00'),
@@ -592,6 +596,7 @@ def build_cdv_expense(doc_date, vendor_obj, vendor_spec, gross_amount, refs, adm
         description=f'{vendor_obj.name} — {doc_date.strftime("%b %Y")}',
         amount=_money(gross_amount),
         vat_category=vendor_spec['vat'],
+        vat_nature=resolve_purchase_nature(vendor_spec['vat']),
         vat_rate=Decimal('12.00') if vatable else Decimal('0.00'),
         account_id=refs['expense'][vendor_spec['expense_code']].id,
         wt_id=wt.id if wt else None,

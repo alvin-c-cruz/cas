@@ -344,10 +344,10 @@ def seed_vat_categories():
     input_vat_id = input_vat_acct.id if input_vat_acct else None
 
     vat_categories = [
-        {'code': 'VATABLE', 'name': 'Vatable (12%)', 'rate': 12.00, 'description': 'Standard VAT rate', 'input_vat_account_id': input_vat_id},
-        {'code': 'VAT-EXEMPT', 'name': 'VAT-Exempt', 'rate': 0.00, 'description': 'Transactions exempt from VAT', 'input_vat_account_id': None},
-        {'code': 'ZERO-RATED', 'name': 'Zero-Rated', 'rate': 0.00, 'description': 'Zero-rated transactions (exports, etc.)', 'input_vat_account_id': None},
-        {'code': 'NON-VAT', 'name': 'Non-VAT', 'rate': 0.00, 'description': 'Non-VAT transactions', 'input_vat_account_id': None},
+        {'code': 'VATABLE', 'name': 'Vatable (12%)', 'rate': 12.00, 'description': 'Standard VAT rate', 'nature': 'domestic_goods', 'input_vat_account_id': input_vat_id},
+        {'code': 'VAT-EXEMPT', 'name': 'VAT-Exempt', 'rate': 0.00, 'description': 'Transactions exempt from VAT', 'nature': 'exempt', 'input_vat_account_id': None},
+        {'code': 'ZERO-RATED', 'name': 'Zero-Rated', 'rate': 0.00, 'description': 'Zero-rated transactions (exports, etc.)', 'nature': 'zero_rated', 'input_vat_account_id': None},
+        {'code': 'NON-VAT', 'name': 'Non-VAT', 'rate': 0.00, 'description': 'Non-VAT transactions', 'nature': 'not_qualified', 'input_vat_account_id': None},
     ]
 
     for cat_data in vat_categories:
@@ -356,6 +356,7 @@ def seed_vat_categories():
             name=cat_data['name'],
             rate=cat_data['rate'],
             description=cat_data['description'],
+            transaction_nature=cat_data['nature'],
             input_vat_account_id=cat_data['input_vat_account_id'],
             is_active=True
         )
@@ -426,17 +427,18 @@ def seed_withholding_tax_codes():
         return False
 
     wt_codes = [
-        # Expanded Withholding Tax (EWT)
-        {'code': 'WC010', 'name': 'Professional Fees', 'description': 'EWT - Professional Fees', 'rate': 10.00},
-        {'code': 'WC020', 'name': 'Professional Fees to General Professional Partnerships', 'description': 'EWT - Professional Fees to GPP', 'rate': 10.00},
-        {'code': 'WC030', 'name': 'Income Payments to Certain Professionals', 'description': 'EWT - Certain Professionals', 'rate': 5.00},
-        {'code': 'WC040', 'name': 'Rental Income - Real Property', 'description': 'EWT - Real Property Rental', 'rate': 5.00},
-        {'code': 'WC050', 'name': 'Rental Income - Personal Property', 'description': 'EWT - Personal Property Rental', 'rate': 5.00},
-        {'code': 'WC060', 'name': 'Income Payment to Contractors', 'description': 'EWT - Contractors', 'rate': 2.00},
-        {'code': 'WC070', 'name': 'Income Payment for Services', 'description': 'EWT - Services', 'rate': 2.00},
-        {'code': 'WC080', 'name': 'Commission', 'description': 'EWT - Commission', 'rate': 10.00},
-        {'code': 'WC090', 'name': 'Tolling Fees', 'description': 'EWT - Tolling Fees', 'rate': 5.00},
-        {'code': 'WC100', 'name': 'Interest from Bank Deposits', 'description': 'EWT - Bank Interest', 'rate': 20.00},
+        # Expanded Withholding Tax (EWT) -- creditable, flows to 2307 / 1601-EQ / SAWT
+        {'code': 'WC010', 'name': 'Professional Fees', 'description': 'EWT - Professional Fees', 'rate': 10.00, 'tax_type': 'expanded'},
+        {'code': 'WC020', 'name': 'Professional Fees to General Professional Partnerships', 'description': 'EWT - Professional Fees to GPP', 'rate': 10.00, 'tax_type': 'expanded'},
+        {'code': 'WC030', 'name': 'Income Payments to Certain Professionals', 'description': 'EWT - Certain Professionals', 'rate': 5.00, 'tax_type': 'expanded'},
+        {'code': 'WC040', 'name': 'Rental Income - Real Property', 'description': 'EWT - Real Property Rental', 'rate': 5.00, 'tax_type': 'expanded'},
+        {'code': 'WC050', 'name': 'Rental Income - Personal Property', 'description': 'EWT - Personal Property Rental', 'rate': 5.00, 'tax_type': 'expanded'},
+        {'code': 'WC060', 'name': 'Income Payment to Contractors', 'description': 'EWT - Contractors', 'rate': 2.00, 'tax_type': 'expanded'},
+        {'code': 'WC070', 'name': 'Income Payment for Services', 'description': 'EWT - Services', 'rate': 2.00, 'tax_type': 'expanded'},
+        {'code': 'WC080', 'name': 'Commission', 'description': 'EWT - Commission', 'rate': 10.00, 'tax_type': 'expanded'},
+        {'code': 'WC090', 'name': 'Tolling Fees', 'description': 'EWT - Tolling Fees', 'rate': 5.00, 'tax_type': 'expanded'},
+        # Final Withholding Tax (FWT) -- NOT creditable; must never reach a 2307 or SAWT
+        {'code': 'WC100', 'name': 'Interest from Bank Deposits', 'description': 'FWT - Bank Interest', 'rate': 20.00, 'tax_type': 'final'},
     ]
 
     for wt_data in wt_codes:
@@ -445,6 +447,7 @@ def seed_withholding_tax_codes():
             name=wt_data['name'],
             description=wt_data['description'],
             rate=wt_data['rate'],
+            tax_type=wt_data['tax_type'],
             sales_name=_WT_SALES_NAMES.get(wt_data['code']),
             is_active=True
         )
@@ -723,17 +726,18 @@ def _seed_vat_categories():
     vat_accounts = {a.code: a.id for a in Account.query.filter(
         Account.code.in_(['10501', '10502', '10503', '10504'])).all()}
     vat_categories = [
-        {'code': 'VEX',   'name': 'VAT Exempt',              'rate':  0.00, 'input_vat_account_id': None},
-        {'code': 'V0',    'name': 'VAT Zero-Rated',          'rate':  0.00, 'input_vat_account_id': None},
-        {'code': 'INV',   'name': 'Invalid',                 'rate':  0.00, 'input_vat_account_id': None},
-        {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10501')},
-        {'code': 'V12DG', 'name': 'Input Tax Domestic Goods','rate': 12.00, 'input_vat_account_id': vat_accounts.get('10502')},
-        {'code': 'V12SV', 'name': 'Input Tax Services',      'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10503')},
-        {'code': 'V12IM', 'name': 'Input Tax Importation',   'rate': 12.00, 'input_vat_account_id': vat_accounts.get('10504')},
+        {'code': 'VEX',   'name': 'VAT Exempt',              'rate':  0.00, 'nature': 'exempt',            'input_vat_account_id': None},
+        {'code': 'V0',    'name': 'VAT Zero-Rated',          'rate':  0.00, 'nature': 'zero_rated',        'input_vat_account_id': None},
+        {'code': 'INV',   'name': 'Invalid',                 'rate':  0.00, 'nature': 'not_qualified',     'input_vat_account_id': None},
+        {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'nature': 'capital_goods',     'input_vat_account_id': vat_accounts.get('10501')},
+        {'code': 'V12DG', 'name': 'Input Tax Domestic Goods','rate': 12.00, 'nature': 'domestic_goods',    'input_vat_account_id': vat_accounts.get('10502')},
+        {'code': 'V12SV', 'name': 'Input Tax Services',      'rate': 12.00, 'nature': 'domestic_services', 'input_vat_account_id': vat_accounts.get('10503')},
+        {'code': 'V12IM', 'name': 'Input Tax Importation',   'rate': 12.00, 'nature': 'importation',       'input_vat_account_id': vat_accounts.get('10504')},
     ]
     for cat in vat_categories:
         db.session.add(VATCategory(code=cat['code'], name=cat['name'], rate=cat['rate'],
-                                   description='', input_vat_account_id=cat['input_vat_account_id'],
+                                   description='', transaction_nature=cat['nature'],
+                                   input_vat_account_id=cat['input_vat_account_id'],
                                    is_active=True))
     db.session.commit()
 
@@ -781,7 +785,7 @@ def _seed_withholding_taxes():
     ]
     for wt in wht_codes:
         db.session.add(WithholdingTax(code=wt['code'], name=wt['name'], description='',
-                                      rate=wt['rate'], sales_name=None, is_active=True))
+                                      rate=wt['rate'], tax_type='expanded', sales_name=None, is_active=True))
     db.session.commit()
 
 

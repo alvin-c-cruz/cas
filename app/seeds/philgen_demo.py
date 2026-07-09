@@ -14,6 +14,7 @@ This is a SAMPLE / DEMO dataset for proposal purposes only.
 from decimal import Decimal
 from app import db
 from app.accounts.models import Account
+from app.common.vat_nature import resolve_sales_nature
 
 # Reuse the food-manufacturing COA + every proven balanced builder unchanged.
 from app.seeds.food_demo import (
@@ -104,13 +105,13 @@ def seed_philgen_baseline():
         vat_acct = {a.code: a.id for a in Account.query.filter(
             Account.code.in_(['10501', '10502', '10503', '10504'])).all()}
         for c in [
-            {'code': 'VEX', 'name': 'VAT Exempt', 'rate': 0.00, 'acct': None},
-            {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'acct': '10501'},
-            {'code': 'V12DG', 'name': 'Input Tax Domestic Goods', 'rate': 12.00, 'acct': '10502'},
-            {'code': 'V12SV', 'name': 'Input Tax Services', 'rate': 12.00, 'acct': '10503'},
+            {'code': 'VEX',   'name': 'VAT Exempt',              'rate':  0.00, 'nature': 'exempt',            'acct': None},
+            {'code': 'V12CG', 'name': 'Input Tax Capital Goods', 'rate': 12.00, 'nature': 'capital_goods',     'acct': '10501'},
+            {'code': 'V12DG', 'name': 'Input Tax Domestic Goods','rate': 12.00, 'nature': 'domestic_goods',    'acct': '10502'},
+            {'code': 'V12SV', 'name': 'Input Tax Services',      'rate': 12.00, 'nature': 'domestic_services', 'acct': '10503'},
         ]:
             db.session.add(VATCategory(code=c['code'], name=c['name'], rate=c['rate'],
-                                       description='', is_active=True,
+                                       description='', transaction_nature=c['nature'], is_active=True,
                                        input_vat_account_id=vat_acct.get(c['acct']) if c['acct'] else None))
         db.session.commit()
 
@@ -198,7 +199,8 @@ def build_philgen_si(doc_date, customer_obj, gross_amount, is_export, refs,
     )
     item = SalesInvoiceItem(
         line_number=1, description=desc,
-        amount=_money(gross_amount), vat_category=vat_code, vat_rate=vat_rate,
+        amount=_money(gross_amount), vat_category=vat_code, vat_nature=resolve_sales_nature(vat_code),
+        vat_rate=vat_rate,
         account_id=refs['revenue'].id,
         wt_id=wt.id if wt else None,
         wt_rate=Decimal(str(wt.rate)) if wt else Decimal('0.00'),
