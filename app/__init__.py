@@ -157,6 +157,15 @@ def create_app(config_name=None):
         except:
             return {}
 
+    # BIR purchase-nature classification label. Distinguishes an
+    # unclassified value (None) from an unrecognized/stale token -- a bare
+    # dict .get(value, '-') would render both identically and hide the
+    # latter, which is a data-integrity signal.
+    @app.template_filter('nature_label')
+    def nature_label_filter(value):
+        from app.vat_categories.models import format_purchase_nature
+        return format_purchase_nature(value)
+
     # Initialize extensions
     db.init_app(app)
     csrf.init_app(app)

@@ -2,6 +2,7 @@ import pytest
 from werkzeug.datastructures import MultiDict
 from app.vat_categories.models import (
     VATCategory, PURCHASE_NATURES, PURCHASE_NATURE_BY_CODE,
+    PURCHASE_NATURE_LABELS, format_purchase_nature,
 )
 from app.vat_categories.forms import VATCategoryForm
 
@@ -35,6 +36,29 @@ class TestPurchaseNatures:
     def test_nonresident_services_is_selectable_but_unseeded(self):
         assert 'nonresident_services' in PURCHASE_NATURES
         assert 'nonresident_services' not in PURCHASE_NATURE_BY_CODE.values()
+
+    def test_labels_have_exactly_one_entry_per_nature(self):
+        """PURCHASE_NATURE_LABELS must never drift from PURCHASE_NATURES --
+        exactly one label per defined nature, no more, no fewer."""
+        assert set(PURCHASE_NATURE_LABELS.keys()) == set(PURCHASE_NATURES)
+        assert len(PURCHASE_NATURE_LABELS) == len(PURCHASE_NATURES)
+
+
+class TestFormatPurchaseNature:
+    """The '-' fallback used to conflate None (legitimately unclassified)
+    with a present-but-unrecognized token (a data-integrity signal). The two
+    must render distinguishably."""
+
+    def test_none_renders_unclassified(self):
+        assert format_purchase_nature(None) == '(unclassified)'
+
+    def test_recognized_value_renders_its_label(self):
+        assert format_purchase_nature('capital_goods') == PURCHASE_NATURE_LABELS['capital_goods']
+
+    def test_unrecognized_value_renders_distinctly_from_unclassified(self):
+        result = format_purchase_nature('some_stale_token')
+        assert result != '(unclassified)'
+        assert 'some_stale_token' in result
 
 
 class TestVATCategoryNatureColumn:

@@ -5,14 +5,15 @@ hardcoded an explicit field list (code/name/description/rate/is_active/
 input_vat_account) that omitted transaction_nature, so an approver reviewing
 a create or update change request saw no signal of the proposed BIR 2550Q
 Part II classification. This asserts the human-readable label (from
-app.vat_categories.forms._NATURE_LABELS) is actually present in the
+app.vat_categories.models.PURCHASE_NATURE_LABELS) is actually present in the
 rendered review + list pages -- not just the raw enum token -- for both a
-pending 'create' request and a pending 'update' request (old -> new diff).
+pending 'create' request and a pending 'update' request (old -> new diff),
+and for a pending 'delete' request.
 """
 import json
 
-from app.vat_categories.forms import _NATURE_LABELS
-from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
+from app.vat_categories.models import (
+    VATCategory, VATCategoryChangeRequest, PURCHASE_NATURE_LABELS)
 from app.accounts.models import Account
 import pytest
 
@@ -80,11 +81,11 @@ class TestNatureShownOnReview:
         resp = client.get(f'/vat-categories/change-requests/{req.id}/review')
         assert resp.status_code == 200
         body = resp.data.decode()
-        assert _NATURE_LABELS['capital_goods'] in body
+        assert PURCHASE_NATURE_LABELS['capital_goods'] in body
 
         resp = client.get('/vat-categories/change-requests')
         assert resp.status_code == 200
-        assert _NATURE_LABELS['capital_goods'] in resp.data.decode()
+        assert PURCHASE_NATURE_LABELS['capital_goods'] in resp.data.decode()
 
     def test_update_request_review_page_shows_old_and_new_nature_labels(
             self, client, db_session, admin_user, accountant_user, main_branch):
@@ -120,5 +121,100 @@ class TestNatureShownOnReview:
         # An approver must see BOTH the current classification and the
         # proposed one -- a blind approval that shows only one side would
         # not catch a submitter mis-selecting the wrong BIR box.
-        assert _NATURE_LABELS['domestic_goods'] in body
-        assert _NATURE_LABELS['domestic_services'] in body
+        assert PURCHASE_NATURE_LABELS['domestic_goods'] in body
+        assert PURCHASE_NATURE_LABELS['domestic_services'] in body
+
+    def test_delete_request_review_page_shows_classification_label(
+            self, client, db_session, admin_user, accountant_user, main_branch):
+        """review_change_request.html:160-161 renders the classification row
+        for the delete branch too -- an approver reviewing a pending deletion
+        must still see the category's BIR classification, not just
+        code/name/description/rate."""
+        make_second_admin(db_session)
+        acct = make_account(db_session, code='10503', name='Input VAT - Domestic Services')
+
+        cat = VATCategory(code='V12D', name='Del Nature', rate=12.00, is_active=True,
+                          input_vat_account_id=acct.id,
+                          transaction_nature='domestic_services')
+        db_session.add(cat)
+        db_session.commit()
+
+        login(client, 'admin', 'admin123')
+        client.post(f'/vat-categories/{cat.id}/delete',
+                    data={'request_reason': 'nature review-display delete test'},
+                    follow_redirects=True)
+
+        req = VATCategoryChangeRequest.query.order_by(
+            VATCategoryChangeRequest.id.desc()).first()
+        assert req is not None
+        assert req.status == 'pending'
+        assert req.action == 'delete'
+
+        login(client, 'admin2', 'admin2pass')
+        resp = client.get(f'/vat-categories/change-requests/{req.id}/review')
+        assert resp.status_code == 200
+        assert PURCHASE_NATURE_LABELS['domestic_services'] in resp.data.decode()
+
+
+class TestUnclassifiedVsUnrecognizedRendering:
+    """Minor-finding fix: nature_labels.get(value, '-') rendered an identical
+    '-' whether the category was legitimately unclassified (None) or carried
+    a stale/unrecognized token. The two must render distinguishably -- the
+    latter is a data-integrity signal that must not hide behind the same
+    default as the former."""
+
+    def test_none_nature_renders_as_unclassified(
+            self, client, db_session, admin_user, accountant_user, main_branch):
+        make_second_admin(db_session)
+        acct = make_account(db_session, code='10504', name='Input VAT - Unclassified')
+
+        cat = VATCategory(code='V12X', name='Legacy Unclassified', rate=12.00,
+                          is_active=True, input_vat_account_id=acct.id,
+                          transaction_nature=None)
+        db_session.add(cat)
+        db_session.commit()
+
+        login(client, 'admin', 'admin123')
+        client.post(f'/vat-categories/{cat.id}/delete',
+                    data={'request_reason': 'unclassified rendering test'},
+                    follow_redirects=True)
+
+        req = VATCategoryChangeRequest.query.order_by(
+            VATCategoryChangeRequest.id.desc()).first()
+        assert req is not None and req.status == 'pending'
+
+        login(client, 'admin2', 'admin2pass')
+        resp = client.get(f'/vat-categories/change-requests/{req.id}/review')
+        assert resp.status_code == 200
+        assert '(unclassified)' in resp.data.decode()
+
+    def test_unrecognized_token_renders_distinctly_from_unclassified(
+            self, client, db_session, admin_user, accountant_user, main_branch):
+        make_second_admin(db_session)
+        acct = make_account(db_session, code='10505', name='Input VAT - Stale')
+
+        # Stale/unrecognized token: not a key in PURCHASE_NATURE_LABELS. This
+        # is legitimate on real data (e.g. a code from before the classifier
+        # existed, or a hand-edited row) and must not be silently folded
+        # into the same '-'/'(unclassified)' rendering as a real None.
+        cat = VATCategory(code='V12Y', name='Stale Token', rate=12.00,
+                          is_active=True, input_vat_account_id=acct.id,
+                          transaction_nature='legacy_stale_code')
+        db_session.add(cat)
+        db_session.commit()
+
+        login(client, 'admin', 'admin123')
+        client.post(f'/vat-categories/{cat.id}/delete',
+                    data={'request_reason': 'unrecognized rendering test'},
+                    follow_redirects=True)
+
+        req = VATCategoryChangeRequest.query.order_by(
+            VATCategoryChangeRequest.id.desc()).first()
+        assert req is not None and req.status == 'pending'
+
+        login(client, 'admin2', 'admin2pass')
+        resp = client.get(f'/vat-categories/change-requests/{req.id}/review')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'Unrecognized: legacy_stale_code' in body
+        assert '(unclassified)' not in body

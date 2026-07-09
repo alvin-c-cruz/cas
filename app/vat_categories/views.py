@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from app import db
 from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
-from app.vat_categories.forms import VATCategoryForm, VATCategoryChangeReviewForm, _NATURE_LABELS
+from app.vat_categories.forms import VATCategoryForm, VATCategoryChangeReviewForm
 from app.accounts.models import Account
 from app.utils import ph_now
 from app.audit.utils import log_audit, model_to_dict
@@ -421,8 +421,7 @@ def change_requests():
         }
         requests_with_data.append(req_dict)
 
-    return render_template('vat_categories/change_requests.html', requests=requests_with_data,
-                         nature_labels=_NATURE_LABELS)
+    return render_template('vat_categories/change_requests.html', requests=requests_with_data)
 
 
 @vat_categories_bp.route('/change-requests/<int:id>/review', methods=['GET', 'POST'])
@@ -623,15 +622,12 @@ def review_change_request(id):
                                  change_request=change_request,
                                  proposed_data=proposed_data,
                                  proposed_account=proposed_account,
-                                 nature_labels=_NATURE_LABELS,
-
                                  form=form)
 
     return render_template('vat_categories/review_change_request.html',
                          change_request=change_request,
                          proposed_data=proposed_data,
                          proposed_account=proposed_account,
-                         nature_labels=_NATURE_LABELS,
                          old_rate=old_rate, new_rate=new_rate,
                          rate_changed=rate_changed,
                          form=form)

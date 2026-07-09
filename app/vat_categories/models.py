@@ -37,6 +37,37 @@ PURCHASE_NATURE_BY_CODE = {
     'NON-VAT': 'not_qualified',
 }
 
+# Human-readable label for each PURCHASE_NATURES token. Public (no leading
+# underscore) so it can be imported across modules (forms.py, views.py,
+# templates via the nature_label filter) -- promoted from a
+# forms.py-private _NATURE_LABELS, which was the only cross-module
+# underscore import in app/.
+PURCHASE_NATURE_LABELS = {
+    'capital_goods': 'Capital Goods',
+    'domestic_goods': 'Domestic Purchase of Goods',
+    'domestic_services': 'Domestic Purchase of Services',
+    'importation': 'Importation of Goods',
+    'nonresident_services': 'Services Rendered by Non-Residents',
+    'exempt': 'VAT-Exempt Purchase',
+    'zero_rated': 'Zero-Rated Purchase',
+    'not_qualified': 'Not Qualified for Input Tax',
+}
+
+
+def format_purchase_nature(value):
+    """Render a transaction_nature value for display.
+
+    A bare dict .get(value, '-') conflates two different situations:
+    value is None (a legitimately unclassified legacy or client-created
+    category) vs. value present but not a recognized key (a stale or
+    unrecognized token -- a data-integrity signal). Render them
+    distinguishably so the second case is never silently hidden behind the
+    same default as the first.
+    """
+    if value is None:
+        return '(unclassified)'
+    return PURCHASE_NATURE_LABELS.get(value, f'Unrecognized: {value}')
+
 
 class VATCategory(db.Model):
     """VAT Category master table (shared across branches)"""

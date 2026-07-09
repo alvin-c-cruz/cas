@@ -68,7 +68,7 @@
             <div>{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
 
             <div style="font-weight: 600; color: var(--text-2);">BIR Purchase Classification:</div>
-            <div>{{ nature_labels.get(proposed_data.get('transaction_nature'), '-') }}</div>
+            <div>{{ proposed_data.get('transaction_nature') | nature_label }}</div>
 
             <div style="font-weight: 600; color: var(--text-2);">Input Tax Account:</div>
             <div>{% if proposed_account %}{{ proposed_account.code }} : {{ proposed_account.name }}{% else %}&mdash;{% endif %}</div>
@@ -108,10 +108,10 @@
 
             <div style="font-weight: 600; color: var(--text-2);">BIR Purchase Classification:</div>
             <div style="text-align: center;">
-                {{ nature_labels.get(change_request.vat_category.transaction_nature, '-') if change_request.vat_category else 'N/A' }}
+                {{ (change_request.vat_category.transaction_nature | nature_label) if change_request.vat_category else 'N/A' }}
             </div>
             <div style="text-align: center; color: var(--blue); font-weight: 500;">
-                {{ nature_labels.get(proposed_data.get('transaction_nature'), '-') }}
+                {{ proposed_data.get('transaction_nature') | nature_label }}
             </div>
 
             <div style="font-weight: 600; color: var(--text-2);">Input Tax Account:</div>
@@ -158,7 +158,7 @@
             <div>{{ "%.2f"|format(change_request.vat_category.rate) }}%</div>
 
             <div style="font-weight: 600; color: var(--text-2);">BIR Purchase Classification:</div>
-            <div>{{ nature_labels.get(change_request.vat_category.transaction_nature, '-') }}</div>
+            <div>{{ change_request.vat_category.transaction_nature | nature_label }}</div>
 
             <div style="font-weight: 600; color: var(--text-2);">Input Tax Account:</div>
             <div>
