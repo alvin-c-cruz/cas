@@ -86,6 +86,42 @@ def test_view_is_branch_scoped(client, db_session, admin_user, main_branch, bran
     assert client.get(f'/quotations/{q.id}').status_code == 404
 
 
+def test_print_renders_summary_and_has_no_peso_glyph(client, db_session, admin_user, main_branch):
+    from app.quotations.models import Quotation
+    c = _customer(db_session); p = _product(db_session)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': 'V12', 'vat_rate': '12'}])
+    client.post('/quotations/create', data={'customer_id': str(c.id),
+        'quotation_date': '2026-07-09', 'valid_until': '2026-08-09',
+        'vat_treatment': 'exclusive', 'payment_terms': 'Net 30', 'lines': lines},
+        follow_redirects=True)
+    q = Quotation.query.filter_by(customer_id=c.id).first()
+    body = client.get(f'/quotations/{q.id}/print').get_data(as_text=True)
+    assert q.quotation_number in body and 'Widget' in body
+    assert 'VAT-Exclusive' in body           # treatment label
+    assert 'Subtotal' in body and 'VAT' in body and 'Total' in body
+    assert '2.0000' in body                   # quantity actually renders
+    assert '₱' not in body                    # no peso glyph on the printout
+
+
+def test_print_is_branch_scoped(client, db_session, admin_user, main_branch, branch_manila):
+    from app.quotations.models import Quotation
+    c = _customer(db_session); p = _product(db_session)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': 'V12', 'vat_rate': '12'}])
+    client.post('/quotations/create', data={'customer_id': str(c.id),
+        'quotation_date': '2026-07-09', 'valid_until': '2026-08-09',
+        'vat_treatment': 'inclusive', 'payment_terms': 'Net 30', 'lines': lines},
+        follow_redirects=True)
+    q = Quotation.query.first()
+    with client.session_transaction() as s: s['selected_branch_id'] = branch_manila.id
+    assert client.get(f'/quotations/{q.id}/print').status_code == 404
+
+
 def test_edit_draft_updates_treatment_and_lines(client, db_session, admin_user, main_branch):
     from app.quotations.models import Quotation
     c = _customer(db_session); p = _product(db_session)

@@ -291,6 +291,26 @@ def view(id):
                            created_by_user=created_by_user)
 
 
+@quotations_bp.route('/quotations/<int:id>/print')
+@login_required
+def print_quote(id):
+    """Standard printable quotation (Subtotal / VAT / Total per the quote's VAT treatment)."""
+    from app.settings import AppSettings
+    q = db.get_or_404(Quotation, id)
+    if q.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    treatment_labels = {'inclusive': 'VAT-Inclusive', 'exclusive': 'VAT-Exclusive',
+                        'zero_rated': 'Zero-Rated'}
+    return render_template('quotations/print.html', quote=q, company=company,
+                           printed_at=ph_now(),
+                           treatment_label=treatment_labels.get(q.vat_treatment, q.vat_treatment))
+
+
 # -- lifecycle transitions -----------------------------------------------------
 
 def _quote_admin_gate():
