@@ -8,7 +8,10 @@
 
 <form method="POST" id="dr-form"
       action="{{ url_for('delivery_receipts.edit', id=dr.id) if dr else url_for('delivery_receipts.create') }}">
-  {{ form.hidden_tag() }}
+  {# CSRF only -- NOT form.hidden_tag(): that also emits the `lines` HiddenField, which is
+     rendered explicitly below (id="lines-json") for the JS to populate. Emitting both makes
+     a duplicate name="lines" and Flask reads the empty first copy (BUG-DR-DUP-LINES). #}
+  {{ form.csrf_token }}
 
   <div class="card"><div class="card-body">
     <div class="form-row">

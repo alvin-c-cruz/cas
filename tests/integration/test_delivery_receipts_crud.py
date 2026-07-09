@@ -51,6 +51,25 @@ def test_create_draft_dr_persists_and_snapshots_customer(client, db_session, adm
     assert dr.dr_number.startswith('DR-')
 
 
+def test_create_form_renders_lines_field_exactly_once(client, db_session, admin_user, main_branch):
+    """Regression (BUG-DR-DUP-LINES): the hidden `lines` field must render EXACTLY ONCE.
+
+    `form.hidden_tag()` auto-emits every WTForms HiddenField (incl. `lines`), so ALSO
+    rendering `{{ form.lines(id="lines-json") }}` explicitly produced a duplicate
+    name="lines" input. The browser then posted `lines` twice, and Flask's
+    request.form.get('lines') read the empty first copy -> every real-browser DR
+    creation failed 'Add at least one delivered line.' (unit tests miss it because the
+    test client posts a single `lines` key)."""
+    _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    resp = client.get('/delivery-receipts/create')
+    assert resp.status_code == 200
+    count = resp.data.count(b'name="lines"')
+    assert count == 1, f'expected exactly one name="lines" input, found {count}'
+
+
 def test_create_dr_logs_audit_entry(client, db_session, admin_user, main_branch):
     from app.audit.models import AuditLog
     so = _confirmed_so(db_session, main_branch.id)
