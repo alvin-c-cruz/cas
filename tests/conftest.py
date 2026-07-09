@@ -308,3 +308,266 @@ def db_with_data(db_session, admin_user, main_branch, cash_account, revenue_acco
         'cash': cash_account,
         'revenue': revenue_account
     }
+
+
+# --- R-08 Task 6: vat_lines() fixtures -------------------------------------
+# One document with one line each, posted, dated 2026-02-15 (except
+# posted_si_on_mar_31). Reuse admin_user/main_branch/cash_account/revenue_account;
+# account_id on the line is never read by vat_lines(), so revenue_account is
+# reused for all four document types to keep these fixtures small.
+
+@pytest.fixture
+def vl_customer(db_session):
+    """Minimal Customer to satisfy SI/CRV customer_id FK."""
+    from app.customers.models import Customer
+    customer = Customer(code='VL-CUST', name='VAT Lines Customer',
+                        tin='123-456-789-000')
+    db_session.add(customer)
+    db_session.commit()
+    return customer
+
+
+@pytest.fixture
+def vl_vendor(db_session):
+    """Minimal Vendor to satisfy AP/CDV vendor_id FK."""
+    from app.vendors.models import Vendor
+    vendor = Vendor(code='VL-VEND', name='VAT Lines Vendor',
+                    tin='987-654-321-000')
+    db_session.add(vendor)
+    db_session.commit()
+    return vendor
+
+
+@pytest.fixture
+def posted_si_v12(db_session, main_branch, revenue_account, vl_customer):
+    """One posted Sales Invoice, one V12/regular line, dated 2026-02-15."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-VL-0001',
+        invoice_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='posted',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Consulting services',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12', vat_nature='regular',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
+def voided_si_v12(db_session, main_branch, revenue_account, vl_customer):
+    """One VOIDED Sales Invoice -- must never appear in vat_lines(); real data
+    (instance/cas.db) has a voided SI, so this exclusion is not hypothetical."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-VL-VOID-0001',
+        invoice_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='voided',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Voided consulting services',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12', vat_nature='regular',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
+def draft_si_v12(db_session, main_branch, revenue_account, vl_customer):
+    """One DRAFT Sales Invoice -- must be excluded from vat_lines()."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-VL-DRAFT-0001',
+        invoice_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='draft',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Draft consulting services',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12', vat_nature='regular',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
+def posted_si_no_category(db_session, main_branch, revenue_account, vl_customer):
+    """One posted Sales Invoice whose line has NULL vat_nature (unclassified)."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-VL-NOCAT-0001',
+        invoice_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='posted',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Unclassified line',
+        amount=Decimal('1000.00'), vat_rate=Decimal('0.00'),
+        vat_category=None, vat_nature=None,
+        line_total=Decimal('1000.00'), vat_amount=Decimal('0.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
+def posted_si_on_mar_31(db_session, main_branch, revenue_account, vl_customer):
+    """One posted Sales Invoice dated the LAST day of the quarter -- proves the
+    date range's upper bound is inclusive."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-VL-MAR31-0001',
+        invoice_date=date(2026, 3, 31),
+        due_date=date(2026, 4, 30),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='posted',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Quarter-end services',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12', vat_nature='regular',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
+def posted_crv_v12(db_session, main_branch, cash_account, revenue_account, vl_customer):
+    """One posted Cash Receipt Voucher, one V12/regular revenue line."""
+    from datetime import date
+    from decimal import Decimal
+    from app.cash_receipts.models import CashReceiptVoucher, CRVRevenueLine
+    crv = CashReceiptVoucher(
+        branch_id=main_branch.id,
+        crv_number='CRV-VL-0001',
+        crv_date=date(2026, 2, 15),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        cash_account_id=cash_account.id,
+        status='posted',
+    )
+    line = CRVRevenueLine(
+        line_number=1, description='Cash sale',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12', vat_nature='regular',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        account_id=revenue_account.id,
+    )
+    crv.revenue_lines.append(line)
+    db_session.add(crv)
+    db_session.commit()
+    return crv
+
+
+@pytest.fixture
+def posted_ap_v12sv(db_session, main_branch, revenue_account, vl_vendor):
+    """One posted Accounts Payable bill, one V12SV/domestic_services line."""
+    from datetime import date
+    from decimal import Decimal
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    bill = AccountsPayable(
+        branch_id=main_branch.id,
+        ap_number='AP-VL-0001',
+        ap_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        payee_type='vendor', payee_id=vl_vendor.id,
+        vendor_id=vl_vendor.id,
+        vendor_name=vl_vendor.name,
+        vendor_tin=vl_vendor.tin,
+        status='posted',
+    )
+    item = AccountsPayableItem(
+        line_number=1, description='Professional services',
+        amount=Decimal('5600.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12SV', vat_nature='domestic_services',
+        line_total=Decimal('5600.00'), vat_amount=Decimal('600.00'),
+        account_id=revenue_account.id,
+    )
+    bill.line_items.append(item)
+    db_session.add(bill)
+    db_session.commit()
+    return bill
+
+
+@pytest.fixture
+def posted_cdv_v12sv(db_session, main_branch, cash_account, revenue_account, vl_vendor):
+    """One posted Cash Disbursement Voucher, one V12SV/domestic_services line."""
+    from datetime import date
+    from decimal import Decimal
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+    cdv = CashDisbursementVoucher(
+        branch_id=main_branch.id,
+        cdv_number='CDV-VL-0001',
+        cdv_date=date(2026, 2, 15),
+        vendor_id=vl_vendor.id,
+        vendor_name=vl_vendor.name,
+        vendor_tin=vl_vendor.tin,
+        cash_account_id=cash_account.id,
+        status='posted',
+    )
+    line = CDVExpenseLine(
+        line_number=1, description='Cash-paid services',
+        amount=Decimal('5600.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12SV', vat_nature='domestic_services',
+        line_total=Decimal('5600.00'), vat_amount=Decimal('600.00'),
+        account_id=revenue_account.id,
+    )
+    cdv.expense_lines.append(line)
+    db_session.add(cdv)
+    db_session.commit()
+    return cdv
