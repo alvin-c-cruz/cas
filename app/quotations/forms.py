@@ -4,10 +4,11 @@ number is server-generated (QTN-YYYY-MM-####), so it is not a form field."""
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField, HiddenField
 from wtforms.validators import DataRequired, Length, Optional
+from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
 
 
-class QuotationForm(FlaskForm):
+class QuotationForm(RowVersionFormMixin, FlaskForm):
     quotation_date = DateField('Quotation Date', validators=[
         DataRequired(message='Quotation date is required.')
     ], format='%Y-%m-%d', default=date.today)

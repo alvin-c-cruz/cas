@@ -18,7 +18,7 @@ Usage in an edit route, as the FIRST write, before any line or JE teardown:
         return _render_edit_form(request.form.get('line_items', ''))
 """
 from wtforms import IntegerField
-from wtforms.validators import InputRequired
+from wtforms.validators import Optional
 from wtforms.widgets import HiddenInput
 
 from app import db
@@ -48,12 +48,18 @@ class RowVersionFormMixin:
     form.html already calls -- renders it automatically.  Do NOT also render it
     explicitly: the name would post twice and request.form would read the empty
     first copy, which pytest cannot see.
+
+    The validator is Optional(), NOT InputRequired(), because the same form class
+    serves create and edit.  On a create GET the field has no data, so hidden_tag
+    renders value="", the POST sends '', IntegerField coerces that to None, and
+    InputRequired would make every create invalid.
+
+    Absence is therefore rejected in the edit route instead: claim_version(None)
+    returns False, so a missing token fails CLOSED.  A non-numeric token still
+    fails coercion and invalidates the form.
     """
 
-    row_version = IntegerField(
-        widget=HiddenInput(),
-        validators=[InputRequired(message='Missing version token. Reload the page.')],
-    )
+    row_version = IntegerField(widget=HiddenInput(), validators=[Optional()])
 
 
 def claim_version(model, doc_id, submitted):

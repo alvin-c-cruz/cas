@@ -142,9 +142,21 @@ class TestRowVersionFormMixin:
         form = _VersionedForm(formdata=MultiDict({'row_version': '7'}))
         assert form.row_version.data == 7
 
-    def test_missing_token_fails_validation(self):
+    def test_missing_token_validates_but_yields_none(self):
+        """Optional(), not InputRequired(): the same form class serves create.
+
+        On a create GET the field has no data, so hidden_tag renders value="",
+        the POST sends '', and InputRequired would invalidate every create.
+        Absence is rejected in the edit route instead -- claim_version(None) is
+        False -- so a missing token still fails CLOSED.
+        """
         form = _VersionedForm(formdata=MultiDict({}))
-        assert form.validate() is False
+        assert form.validate() is True
+        assert form.row_version.data is None
+
+    def test_empty_token_yields_none_so_the_route_rejects_it(self):
+        form = _VersionedForm(formdata=MultiDict({'row_version': ''}))
+        assert form.row_version.data is None
 
     def test_non_numeric_token_fails_validation(self):
         form = _VersionedForm(formdata=MultiDict({'row_version': 'abc'}))

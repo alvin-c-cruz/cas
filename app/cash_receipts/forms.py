@@ -1,10 +1,11 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Length, Optional, ValidationError
+from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
 
 
-class CashReceiptForm(FlaskForm):
+class CashReceiptForm(RowVersionFormMixin, FlaskForm):
     # Pre-printed receipt serial typed in by the accountant (like SI invoice_number),
     # not a system-generated sequence — so it is editable, not readonly.
     crv_number = StringField('CR Number', validators=[

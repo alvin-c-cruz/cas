@@ -1,10 +1,11 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Length, Optional, ValidationError
+from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
 
 
-class CashDisbursementForm(FlaskForm):
+class CashDisbursementForm(RowVersionFormMixin, FlaskForm):
 
     # Pre-filled with the next auto-generated CD-YYYY-MM-NNNN sequence as a
     # suggested default, but editable by the user.  Uniqueness is validated
