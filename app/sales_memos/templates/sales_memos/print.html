@@ -1,0 +1,69 @@
+{% set dest_label = {'ar': 'Applied to invoice', 'cash_refund': 'Cash refund',
+                     'customer_credit': 'Customer credit balance'} %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ doc_title }} {{ memo.memo_number }}</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 24px; font-size: 12px; }
+    h1 { font-size: 18px; margin: 0 0 2px; }
+    .muted { color: #555; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 6px 8px; border-bottom: 1px solid #ccc; text-align: left; }
+    td.r, th.r { text-align: right; }
+    tfoot td { border-bottom: none; }
+    .head { display: flex; justify-content: space-between; align-items: flex-start; }
+    .doc-title { text-align: right; }
+    .meta { margin-top: 10px; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>{{ company.name or 'Company' }}</h1>
+      <div class="muted">{{ company.address or '' }}</div>
+      {% if company.tin %}<div class="muted">TIN: {{ company.tin }}</div>{% endif %}
+    </div>
+    <div class="doc-title">
+      <h1>CREDIT MEMO</h1>
+      <div><strong>{{ memo.memo_number }}</strong></div>
+      <div class="muted">{{ memo.memo_date.strftime('%B %d, %Y') }}</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div><strong>Customer:</strong> {{ memo.customer_name }}{% if memo.customer_tin %} — TIN {{ memo.customer_tin }}{% endif %}</div>
+    <div><strong>Against Invoice:</strong> {{ memo.original_invoice_number }}</div>
+    <div><strong>Reason:</strong> {{ memo.reason }}</div>
+    <div><strong>Settlement:</strong> {{ dest_label.get(memo.destination, memo.destination) }}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>#</th><th>Description</th><th>VT</th><th>WT</th><th class="r">Amount</th></tr>
+    </thead>
+    <tbody>
+      {% for li in memo.line_items %}
+      <tr>
+        <td>{{ li.line_number }}</td>
+        <td>{% if li.product %}{{ li.product.code }}: {{ li.product.name }}{% else %}(item){% endif %}</td>
+        <td>{{ li.vat_category or '' }}</td>
+        <td>{% if li.wt_rate %}{{ li.wt_rate }}%{% endif %}</td>
+        <td class="r">{{ '%.2f'|format(li.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><td colspan="4" class="r"><strong>Subtotal</strong></td><td class="r">{{ '%.2f'|format(memo.subtotal) }}</td></tr>
+      <tr><td colspan="4" class="r">VAT</td><td class="r">{{ '%.2f'|format(memo.vat_amount) }}</td></tr>
+      {% if memo.withholding_tax_amount %}<tr><td colspan="4" class="r">Withholding Tax</td><td class="r">{{ '%.2f'|format(memo.withholding_tax_amount) }}</td></tr>{% endif %}
+      <tr><td colspan="4" class="r"><strong>Total Credit (PHP)</strong></td><td class="r"><strong>{{ '%.2f'|format(memo.total_amount) }}</strong></td></tr>
+    </tfoot>
+  </table>
+
+  <p class="muted" style="margin-top:24px;">Printed {{ printed_at.strftime('%B %d, %Y %I:%M %p') }}</p>
+  <button class="no-print" onclick="window.print()">Print</button>
+</body>
+</html>
