@@ -27,6 +27,10 @@ def _acct(db_session, code, name, atype, nb):
 
 def test_credit_list_blocked_when_module_off(client, db_session, admin_user, main_branch):
     """Disabled optional module looks ABSENT (before_request abort(404))."""
+    # Clear any module-config memo leaked by a sibling test that enabled credit_memos
+    # (db tables reset per test, but the 1h-memoized override does not).
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
     _login(client, admin_user)
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = main_branch.id

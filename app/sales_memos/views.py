@@ -188,7 +188,7 @@ def credit_create():
                                                        'original_invoice_number', 'total_amount',
                                                        'destination', 'status']))
             flash(f'Credit Memo "{memo.memo_number}" created.', 'success')
-            return redirect(url_for('sales_memos.credit_list'))
+            return redirect(url_for('sales_memos.credit_view', id=memo.id))
         except ValueError as e:
             db.session.rollback()
             flash(str(e), 'error')
@@ -208,6 +208,28 @@ def credit_create():
 def _render_credit_form(form, eligible):
     return render_template('sales_memos/form.html', form=form, memo=None,
                            memo_type='credit', doc_title='Credit Memo')
+
+
+@sales_memos_bp.route('/credit-memos/<int:id>')
+@login_required
+def credit_view(id):
+    from app.users.models import User
+    memo = _memo_or_404(id, 'credit')
+    created_by = db.session.get(User, memo.created_by_id) if memo.created_by_id else None
+    return render_template('sales_memos/detail.html', memo=memo, doc_title='Credit Memo',
+                           can_manage=_accountant_or_admin(), created_by=created_by)
+
+
+@sales_memos_bp.route('/credit-memos/<int:id>/print')
+@login_required
+def credit_print(id):
+    from app.settings import AppSettings
+    memo = _memo_or_404(id, 'credit')
+    company = {'name': AppSettings.get_setting('company_name', ''),
+               'address': AppSettings.get_setting('company_address', ''),
+               'tin': AppSettings.get_setting('company_tin', '')}
+    return render_template('sales_memos/print.html', memo=memo, company=company,
+                           printed_at=ph_now(), doc_title='Credit Memo')
 
 
 # -- lifecycle: post / void ----------------------------------------------------
@@ -253,10 +275,10 @@ def credit_post(id):
     memo = _memo_or_404(id, 'credit')
     if not _accountant_or_admin():
         flash('Only an accountant or administrator can post a Credit Memo.', 'error')
-        return redirect(url_for('sales_memos.credit_list'))
+        return redirect(url_for('sales_memos.credit_view', id=id))
     if memo.status != 'draft':
         flash('Only a draft Credit Memo can be posted.', 'error')
-        return redirect(url_for('sales_memos.credit_list'))
+        return redirect(url_for('sales_memos.credit_view', id=id))
     try:
         memo.status = 'posted'
         memo.posted_by_id = current_user.id
@@ -277,7 +299,7 @@ def credit_post(id):
         current_app.logger.error('Error posting credit memo', exc_info=True)
         log_exception(e, severity='ERROR', module='sales_memos.credit_post')
         flash('An error occurred posting the Credit Memo.', 'error')
-    return redirect(url_for('sales_memos.credit_list'))
+    return redirect(url_for('sales_memos.credit_view', id=id))
 
 
 @sales_memos_bp.route('/credit-memos/<int:id>/void', methods=['POST'])
@@ -286,14 +308,14 @@ def credit_void(id):
     memo = _memo_or_404(id, 'credit')
     if not _accountant_or_admin():
         flash('Only an accountant or administrator can void a Credit Memo.', 'error')
-        return redirect(url_for('sales_memos.credit_list'))
+        return redirect(url_for('sales_memos.credit_view', id=id))
     if memo.status == 'voided':
         flash('This Credit Memo is already voided.', 'error')
-        return redirect(url_for('sales_memos.credit_list'))
+        return redirect(url_for('sales_memos.credit_view', id=id))
     reason = (request.form.get('void_reason') or '').strip()
     if len(reason) < 10:
         flash('A void reason (min 10 characters) is required.', 'error')
-        return redirect(url_for('sales_memos.credit_list'))
+        return redirect(url_for('sales_memos.credit_view', id=id))
     try:
         if memo.status == 'posted':
             reverse_memo_je(memo, current_user.id)
@@ -312,7 +334,7 @@ def credit_void(id):
         current_app.logger.error('Error voiding credit memo', exc_info=True)
         log_exception(e, severity='ERROR', module='sales_memos.credit_void')
         flash('An error occurred voiding the Credit Memo.', 'error')
-    return redirect(url_for('sales_memos.credit_list'))
+    return redirect(url_for('sales_memos.credit_view', id=id))
 
 
 # -- Shared settings: accountant-assigned accounts -----------------------------
