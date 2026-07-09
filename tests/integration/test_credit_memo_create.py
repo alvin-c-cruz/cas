@@ -65,6 +65,8 @@ def test_si_lines_endpoint_returns_invoice_lines(client, db_session, admin_user,
     assert data['customer_name'] == 'Acme Corp'
     assert len(data['lines']) == 1
     assert data['lines'][0]['creditable'] == 1120.0
+    # The grid JS keys on sales_invoice_item_id (NOT the to_dict 'id') to serialize lines.
+    assert data['lines'][0]['sales_invoice_item_id'] == si.line_items[0].id
 
 
 def test_create_persists_memo_with_snapshot_and_calc(client, db_session, admin_user, main_branch):

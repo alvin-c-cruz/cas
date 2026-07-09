@@ -130,6 +130,8 @@ def credit_si_lines(si_id):
     lines = []
     for li in si.line_items:
         d = li.to_dict()
+        # to_dict keys the line id as 'id'; the memo grid JS reads 'sales_invoice_item_id'.
+        d['sales_invoice_item_id'] = li.id
         d['creditable'] = float(li.line_total if li.line_total is not None else (li.amount or 0))
         lines.append(d)
     return {'customer_name': si.customer_name, 'salesperson_id': si.salesperson_id, 'lines': lines}
