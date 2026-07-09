@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Quotations{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Quotations</h1>
+  <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary btn-sm">Sales Orders</a>
+</div>
+<div class="card"><div class="card-body">
+  {% if quotes %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr><th>QTN #</th><th>Date</th><th>Customer</th><th>Valid Until</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for q in quotes %}
+        <tr>
+          <td><a href="{{ url_for('quotations.view', id=q.id) }}">{{ q.quotation_number }}</a></td>
+          <td>{{ q.quotation_date.strftime('%b %d, %Y') }}</td>
+          <td>{{ q.customer_name }}</td>
+          <td>{{ q.valid_until.strftime('%b %d, %Y') if q.valid_until else '' }}</td>
+          <td>
+            {% if q.is_expired %}
+            <span class="badge badge-danger">Expired</span>
+            {% else %}
+            <span class="badge badge-{{ 'secondary' if q.status == 'draft'
+                                        else 'info' if q.status == 'sent'
+                                        else 'success' if q.status == 'accepted'
+                                        else 'danger' }}">{{ q.status|title }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>No quotations found.</p>
+  {% endif %}
+</div></div>
+{% endblock %}

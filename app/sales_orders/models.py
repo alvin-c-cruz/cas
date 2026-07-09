@@ -39,7 +39,11 @@ class SalesOrder(db.Model):
     sales_invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=True)
 
     # Chain link: the Quotation this SO was created from on accept (null for directly-entered SOs).
-    quotation_id = db.Column(db.Integer, db.ForeignKey('quotations.id'), nullable=True, index=True)
+    # Plain Integer (no ORM FK) on purpose: the reverse edge Quotation.sales_order_id -> sales_orders
+    # already forms the pair, and declaring an FK here too creates a metadata cycle SQLAlchemy can't
+    # sort for create_all/drop_all (SAWarning). The DB column is likewise a plain integer (batch mode
+    # can't name the FK; SQLite FK enforcement is off app-wide). No relationship uses this column.
+    quotation_id = db.Column(db.Integer, nullable=True, index=True)
 
     salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True, index=True)
     salesperson = db.relationship('Employee', foreign_keys=[salesperson_id])

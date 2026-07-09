@@ -1020,6 +1020,7 @@
             {%- set ep = request.endpoint -%}
             {%- if ep -%}
               {%- if key == 'sales_orders' and ep.startswith('sales_orders.') -%}active
+              {%- elif key == 'quotations' and ep.startswith('quotations.') -%}active
               {%- elif key == 'delivery_receipts' and ep.startswith('delivery_receipts.') -%}active
               {%- elif key == 'accounts_receivable' and ep.startswith('sales_invoices.') -%}active
               {%- elif key == 'collections' and ep.startswith('cash_receipts.') -%}active
@@ -1051,6 +1052,7 @@
                When adding a new module to MODULE_REGISTRY, add its entry here too. #}
             {% set _nav_ep = {
                 'sales_orders':       'sales_orders.list',
+                'quotations':         'quotations.list',
                 'delivery_receipts':  'delivery_receipts.list',
                 'accounts_receivable':'sales_invoices.list_invoices',
                 'collections':        'cash_receipts.list_crvs',
@@ -1076,6 +1078,7 @@
             } %}
             {% set _nav_icon = {
                 'sales_orders':       '📦',
+                'quotations':         '📝',
                 'delivery_receipts':  '🚚',
                 'accounts_receivable':'📄',
                 'collections':        '💰',
@@ -1142,6 +1145,7 @@
                         <span class="nav-text">
                             {{ m.label }}
                             {%- if m.key == 'sales_orders' %}<span class="nav-subtext">(Customer Order)</span>{% endif %}
+                            {%- if m.key == 'quotations' %}<span class="nav-subtext">(Price Offer)</span>{% endif %}
                             {%- if m.key == 'delivery_receipts' %}<span class="nav-subtext">(Deliveries)</span>{% endif %}
                             {%- if m.key == 'accounts_receivable' %}<span class="nav-subtext">(Bill Client)</span>{% endif %}
                             {%- if m.key == 'collections' %}<span class="nav-subtext">(Collection)</span>{% endif %}
