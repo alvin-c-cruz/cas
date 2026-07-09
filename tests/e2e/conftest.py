@@ -36,8 +36,15 @@ def _free_port():
 # tracked separately), which made the LATER e2e tests in a big batch time out on the
 # post-login sidebar wait. A fresh server per test file keeps each batch small and
 # healthy, fixing the flaky pre-push guard without masking the underlying leak.
-@pytest.fixture(scope='module')
-def e2e_server(tmp_path_factory):
+def _launch_seeded_server(tmp_path_factory, extra_env=None):
+    """Start _serve.py against a fresh temp DB and yield its base URL.
+
+    `extra_env` overlays onto the child environment — e.g. E2E_SEED_PROFILE=sales
+    to additionally enable the optional Sales-cycle modules and seed products +
+    a confirmed Sales Order (used by the Quotation/Delivery-Receipt smokes). The
+    default (no profile) keeps the lean AP/SI/CDV/CRV seed so those smokes are
+    unaffected by the Sales-cycle module toggles (products ON changes their forms).
+    """
     port = _free_port()
     db_path = tmp_path_factory.mktemp('e2e_db') / 'cas_e2e.db'
     log_path = tmp_path_factory.mktemp('e2e_log') / 'server.log'
@@ -48,6 +55,8 @@ def e2e_server(tmp_path_factory):
     env.setdefault('SECRET_KEY', 'e2e-secret-key-deadbeefdeadbeefdeadbeefdeadbeef')
     env['E2E_PORT'] = str(port)
     env['PYTHONPATH'] = PROJECT_ROOT + os.pathsep + env.get('PYTHONPATH', '')
+    if extra_env:
+        env.update(extra_env)
 
     serve = os.path.join(PROJECT_ROOT, 'tests', 'e2e', '_serve.py')
     base = f'http://127.0.0.1:{port}'
@@ -86,10 +95,23 @@ def e2e_server(tmp_path_factory):
                 proc.kill()
 
 
-@pytest.fixture
-def logged_in_page(page, e2e_server):
-    """Admin logged in via the real form (password field is readonly until focused)."""
-    page.goto(e2e_server + '/login')
+@pytest.fixture(scope='module')
+def e2e_server(tmp_path_factory):
+    yield from _launch_seeded_server(tmp_path_factory)
+
+
+@pytest.fixture(scope='module')
+def sales_e2e_server(tmp_path_factory):
+    """Server with the Sales-cycle modules ON + products + a confirmed SO seeded.
+
+    Isolated from `e2e_server` so enabling `products`/`sales_orders`/`quotations`/
+    `delivery_receipts` never perturbs the lean AP/SI/CDV/CRV smokes."""
+    yield from _launch_seeded_server(tmp_path_factory, {'E2E_SEED_PROFILE': 'sales'})
+
+
+def _login_admin(page, base):
+    """Log the seeded admin in via the real form (password field is readonly until focused)."""
+    page.goto(base + '/login')
     page.click('#username')
     page.fill('#username', 'admin')
     page.click('#password')
@@ -98,3 +120,15 @@ def logged_in_page(page, e2e_server):
     # 1 seeded branch -> auto-selected -> dashboard. Wait for the sidebar to confirm login.
     page.wait_for_selector('text=Accounts Payable', timeout=15000)
     return page
+
+
+@pytest.fixture
+def logged_in_page(page, e2e_server):
+    """Admin logged in against the default (lean) seed server."""
+    return _login_admin(page, e2e_server)
+
+
+@pytest.fixture
+def logged_in_sales_page(page, sales_e2e_server):
+    """Admin logged in against the Sales-cycle seed server (products + confirmed SO)."""
+    return _login_admin(page, sales_e2e_server)

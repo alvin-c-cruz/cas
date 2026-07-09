@@ -79,6 +79,53 @@ with app.app_context():
                 ))
             db.session.commit()
 
+        # ── Sales-cycle profile ────────────────────────────────────────────────
+        # Only when explicitly requested (E2E_SEED_PROFILE=sales), enable the optional
+        # Sales-cycle modules and seed products + a confirmed Sales Order so the
+        # Quotation and Delivery-Receipt create-form smokes have real data to drive.
+        # Kept OUT of the default seed because turning `products` ON changes the
+        # AP/SI/CDV/CRV line grids and would break their (lean-seed) smokes.
+        if os.environ.get('E2E_SEED_PROFILE') == 'sales':
+            from app.settings import AppSettings
+            from app.units_of_measure.models import UnitOfMeasure
+            from app.products.models import Product
+            from app.sales_orders.models import SalesOrder, SalesOrderItem
+            for key in ('units_of_measure', 'products', 'sales_orders',
+                        'quotations', 'delivery_receipts'):
+                AppSettings.set_setting(f'module_enabled:{key}', '1')
+            db.session.commit()
+
+            pc = UnitOfMeasure.query.filter_by(code='PC').first()
+            if not pc:
+                pc = UnitOfMeasure(code='PC', name='Piece', is_active=True)
+                db.session.add(pc); db.session.commit()
+            if not Product.query.filter_by(code='P001').first():
+                for code, name, price in [('P001', 'Widget Standard', '100.00'),
+                                          ('P002', 'Gadget Deluxe', '250.00')]:
+                    db.session.add(Product(code=code, name=name, is_active=True,
+                                           default_unit_of_measure_id=pc.id,
+                                           default_unit_price=Decimal(price)))
+                db.session.commit()
+
+            # A CONFIRMED Sales Order with one product line (open qty = ordered, since
+            # no Delivery Receipt exists yet) — the fixture the DR create grid reads.
+            branch = Branch.query.first()
+            c001 = Customer.query.filter_by(code='C001').first()
+            p001 = Product.query.filter_by(code='P001').first()
+            if branch and c001 and p001 and not SalesOrder.query.filter_by(so_number='SO-E2E-0001').first():
+                so = SalesOrder(
+                    so_number='SO-E2E-0001', branch_id=branch.id, order_date=today,
+                    customer_id=c001.id, customer_name=c001.name, notes='',
+                    status='confirmed')
+                item = SalesOrderItem(
+                    line_number=1, product_id=p001.id, quantity=Decimal('10'),
+                    unit_price=Decimal('100.00'), unit_of_measure_id=pc.id,
+                    vat_category='V0', vat_rate=Decimal('0'))
+                item.calculate_amounts()
+                so.line_items.append(item)
+                so.calculate_totals()
+                db.session.add(so); db.session.commit()
+
 if __name__ == '__main__':
     port = int(os.environ.get('E2E_PORT', '5099'))
     # threaded=True so Playwright's sequential actions never block; reloader off for a clean child.
