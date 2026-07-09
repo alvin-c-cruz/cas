@@ -526,6 +526,7 @@ class TestDuplicateVendorInvoice:
             'vendor_invoice_number': 'INV-SELF',
             'payment_terms': 'Net 30',
             'notes': 'Updated particulars B09',
+            'row_version': ap.row_version,
             'line_items': json.dumps([{
                 'description': 'Updated item', 'amount': 1500.0,
                 'vat_category': None, 'account_id': exp.id,
@@ -564,6 +565,7 @@ class TestDuplicateVendorInvoice:
             'ap_number': 'APV-RENAMED', 'ap_date': date.today().isoformat(),
             'due_date': date.today().isoformat(), 'vendor_id': v1.id,
             'vendor_invoice_number': 'I1', 'payment_terms': 'Net 30', 'notes': 'x',
+            'row_version': ap.row_version,
             'line_items': json.dumps([{'description': 'i', 'amount': 1000.0, 'vat_category': None,
                                        'account_id': exp.id, 'wt_id': None, 'wt_rate': None}]),
             'vat_override': '0', 'vat_override_value': '0', 'wt_override': '0', 'wt_override_value': '0',

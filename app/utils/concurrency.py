@@ -54,12 +54,32 @@ class RowVersionFormMixin:
     renders value="", the POST sends '', IntegerField coerces that to None, and
     InputRequired would make every create invalid.
 
-    Absence is therefore rejected in the edit route instead: claim_version(None)
-    returns False, so a missing token fails CLOSED.  A non-numeric token still
-    fails coercion and invalidates the form.
+    This field is for RENDERING ONLY.  Never read the token from
+    `form.row_version.data` -- use `submitted_version()`.  See its docstring.
     """
 
     row_version = IntegerField(widget=HiddenInput(), validators=[Optional()])
+
+
+def submitted_version():
+    """Read the version token from the raw POST body.  Fails closed.
+
+    Never use `form.row_version.data` for this.  Every edit route builds its
+    form as `Form(obj=doc)`, and WTForms falls back to the obj value when a
+    field is absent from formdata:
+
+        F(formdata=MultiDict({}), obj=doc).row_version.data  ->  doc.row_version
+
+    So a POST that omitted the token entirely would yield the document's CURRENT
+    version, claim_version() would succeed, and the guard would silently pass --
+    failing OPEN on exactly the request it exists to stop.
+
+    request.form.get(..., type=int) returns None for both an absent key and a
+    non-numeric one, and claim_version(None) is False.
+    """
+    from flask import request
+
+    return request.form.get('row_version', type=int)
 
 
 def claim_version(model, doc_id, submitted):

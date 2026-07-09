@@ -20,6 +20,7 @@ from app.utils.concurrency import (
     RowVersionFormMixin,
     claim_version,
     conflict_message,
+    submitted_version,
 )
 
 pytestmark = pytest.mark.unit
@@ -135,6 +136,26 @@ class TestConflictMessage:
         assert "'" not in conflict_message('_test_versioned_thing', 1)
 
 
+class TestSubmittedVersion:
+    """The token must come from the raw POST body, never from form.<field>.data."""
+
+    def test_reads_the_token_from_the_post_body(self, app):
+        with app.test_request_context('/', method='POST', data={'row_version': '3'}):
+            assert submitted_version() == 3
+
+    def test_absent_token_is_none_so_claim_version_rejects(self, app):
+        with app.test_request_context('/', method='POST', data={}):
+            assert submitted_version() is None
+
+    def test_non_numeric_token_is_none(self, app):
+        with app.test_request_context('/', method='POST', data={'row_version': 'abc'}):
+            assert submitted_version() is None
+
+    def test_empty_token_is_none(self, app):
+        with app.test_request_context('/', method='POST', data={'row_version': ''}):
+            assert submitted_version() is None
+
+
 class TestRowVersionFormMixin:
 
     def test_coerces_formdata_string_to_int(self):
@@ -161,6 +182,19 @@ class TestRowVersionFormMixin:
     def test_non_numeric_token_fails_validation(self):
         form = _VersionedForm(formdata=MultiDict({'row_version': 'abc'}))
         assert form.validate() is False
+
+    def test_wtforms_falls_back_to_obj_which_is_why_we_never_read_field_data(self):
+        """Pins the fail-open hole that `submitted_version()` exists to avoid.
+
+        Every edit route builds `Form(obj=doc)`. A POST with no token would make
+        form.row_version.data return the document's CURRENT version, so
+        claim_version() would succeed and the guard would pass.
+        """
+        class _Doc:
+            row_version = 7
+
+        form = _VersionedForm(formdata=MultiDict({}), obj=_Doc())
+        assert form.row_version.data == 7, 'WTForms obj fallback (documented, not a bug)'
 
     def test_field_is_hidden_so_hidden_tag_emits_it(self):
         """All 7 form.html call hidden_tag(); it emits HiddenInput-widget fields.

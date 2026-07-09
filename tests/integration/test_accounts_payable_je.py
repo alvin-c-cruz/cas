@@ -227,7 +227,7 @@ class TestBillCreatePostsJE:
         old_je_id = bill.journal_entry_id
         assert old_je_id is not None
 
-        # Edit the bill
+        # Edit the bill (row_version: the edit contract now carries a version token)
         client.post(f'/accounts-payable/{bill.id}/edit', data={
             'ap_number': 'PBJ-003',
             'ap_date': date.today().isoformat(),
@@ -235,6 +235,7 @@ class TestBillCreatePostsJE:
             'vendor_id': vendor.id,
             'payment_terms': 'Net 30',
             'notes': 'Test particulars',
+            'row_version': bill.row_version,
             'line_items': make_line_items_payload(
                 amount=6000.00, vat_code='', account_id=exp.id),
             'vat_override': '0', 'vat_override_value': '0',
@@ -295,6 +296,7 @@ class TestBillCreatePostsJE:
             'vendor_id': vendor.id,
             'payment_terms': 'Net 30',
             'notes': 'Test subtotal',
+            'row_version': bill.row_version,
             'line_items': make_line_items_payload(amount=7500.00, vat_code='', account_id=exp.id),
             'vat_override': '0', 'vat_override_value': '0',
             'wt_override': '0', 'wt_override_value': '0',

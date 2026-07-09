@@ -16,6 +16,7 @@ from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
+from app.utils.concurrency import claim_version, conflict_message, submitted_version
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.utils.cache_helpers import get_active_units, get_active_products
@@ -1039,6 +1040,17 @@ def edit(id):
                                             AccountsPayable.id != ap.id).first():
                 flash(f'AP number "{ap_num}" is already in use. Enter a unique AP number.', 'error')
                 return _render_edit_form(request.form.get('line_items', ''))
+
+            # Lost-update guard. This is the FIRST write of the request: everything
+            # above is read-only, and everything below deletes the line items and
+            # the linked JE. A losing racer must never reach that teardown.
+            # The check IS the write (conditional UPDATE) -- a read-then-compare
+            # would race, because BEGIN is deferred until the first write.
+            if not claim_version(AccountsPayable, ap.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('accounts_payable', ap.id), 'error')
+                return _render_edit_form(request.form.get('line_items', ''))
+
             ap.ap_number = ap_num
             ap.ap_date = form.ap_date.data
             ap.due_date = form.due_date.data
