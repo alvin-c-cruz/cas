@@ -9,6 +9,7 @@ from app.customers.models import Customer
 from app.accounts.models import Account
 from app.sales_vat_categories.models import SalesVATCategory
 from app.withholding_tax.models import WithholdingTax
+from app.common.vat_nature import resolve_sales_nature
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
@@ -630,6 +631,7 @@ def _parse_and_attach_revenue_lines(crv, revenue_lines_json):
             unit_of_measure_id=_int(item.get('uom_id')),
             product_id=_int(item.get('product_id')),
             vat_category=vat_category,
+            vat_nature=resolve_sales_nature(vat_category),
             vat_rate=vat_rate,
             account_id=account_id,
             wt_id=wt_id,

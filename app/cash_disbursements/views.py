@@ -12,6 +12,7 @@ from app.vendors.utils import populate_vat_category_choices, generate_next_vendo
 from app.accounts.models import Account
 from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
+from app.common.vat_nature import resolve_purchase_nature
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
@@ -710,6 +711,7 @@ def _parse_and_attach_expense_lines(cdv, exp_lines_json):
             unit_of_measure_id=_int(item.get('uom_id')),
             product_id=_int(item.get('product_id')),
             vat_category=vat_category,
+            vat_nature=resolve_purchase_nature(vat_category),
             vat_rate=vat_rate,
             account_id=account_id,
             wt_id=wt_id,
