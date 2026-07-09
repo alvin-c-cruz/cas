@@ -12,10 +12,12 @@ guard at all, because it is trusted.
 
 Usage in an edit route, as the FIRST write, before any line or JE teardown:
 
-    if not claim_version(AccountsPayable, ap.id, form.row_version.data):
+    if not claim_version(AccountsPayable, ap.id, submitted_version()):
         db.session.rollback()
         flash(conflict_message('accounts_payable', ap.id), 'error')
         return _render_edit_form(request.form.get('line_items', ''))
+
+Note `submitted_version()`, never `form.row_version.data` -- see its docstring.
 """
 from wtforms import IntegerField
 from wtforms.validators import Optional
