@@ -4,12 +4,13 @@ Operational, NOT accounting: posts no journal entry. Middle link of SO -> DR -> 
 from decimal import Decimal
 from app import db
 from app.utils import ph_now
+from app.utils.concurrency import RowVersioned
 
 # DR statuses that CONSUME the SO's open quantity (draft & cancelled do not).
 COMMITTED_STATUSES = ('approved', 'delivered', 'billed')
 
 
-class DeliveryReceipt(db.Model):
+class DeliveryReceipt(RowVersioned, db.Model):
     __tablename__ = 'delivery_receipts'
 
     id = db.Column(db.Integer, primary_key=True)

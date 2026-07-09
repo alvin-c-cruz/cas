@@ -4,12 +4,13 @@ accept is always VAT-inclusive."""
 from decimal import Decimal, ROUND_HALF_UP
 from app import db
 from app.utils import ph_now
+from app.utils.concurrency import RowVersioned
 
 VAT_TREATMENTS = ('inclusive', 'exclusive', 'zero_rated')
 STANDARD_VAT_RATE = Decimal('12')
 
 
-class Quotation(db.Model):
+class Quotation(RowVersioned, db.Model):
     __tablename__ = 'quotations'
 
     id = db.Column(db.Integer, primary_key=True)

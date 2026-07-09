@@ -3,9 +3,10 @@ posts no journal entry, has no GL account/WHT/payment. Mirrors SalesInvoice minu
 from decimal import Decimal, ROUND_HALF_UP
 from app import db
 from app.utils import ph_now
+from app.utils.concurrency import RowVersioned
 
 
-class SalesOrder(db.Model):
+class SalesOrder(RowVersioned, db.Model):
     __tablename__ = 'sales_orders'
 
     id = db.Column(db.Integer, primary_key=True)

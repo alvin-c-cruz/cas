@@ -1,9 +1,10 @@
 from app import db
 from app.utils import ph_now
+from app.utils.concurrency import RowVersioned
 from decimal import Decimal
 
 
-class CashDisbursementVoucher(db.Model):
+class CashDisbursementVoucher(RowVersioned, db.Model):
     __tablename__ = 'cash_disbursement_vouchers'
     __table_args__ = (
         # Check-serial integrity: a non-null check_number is unique per cash/bank

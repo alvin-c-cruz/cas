@@ -1,9 +1,10 @@
 from app import db
 from app.utils import ph_now
+from app.utils.concurrency import RowVersioned
 from decimal import Decimal
 
 
-class CashReceiptVoucher(db.Model):
+class CashReceiptVoucher(RowVersioned, db.Model):
     __tablename__ = 'cash_receipt_vouchers'
 
     id = db.Column(db.Integer, primary_key=True)

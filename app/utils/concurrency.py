@@ -22,7 +22,6 @@ from wtforms.validators import InputRequired
 from wtforms.widgets import HiddenInput
 
 from app import db
-from app.audit.models import AuditLog
 from app.utils import format_ph_datetime
 
 
@@ -98,6 +97,10 @@ def conflict_message(module, doc_id):
     document headers do not carry.  `log_audit` swallows its own errors, so the
     row may legitimately be missing -- degrade to a nameless message.
     """
+    # Imported lazily: the document models import this module at class-definition
+    # time, and audit.models must not be pulled into that edge.
+    from app.audit.models import AuditLog
+
     entry = (
         AuditLog.query
         .filter_by(module=module, action='update', record_id=doc_id)
