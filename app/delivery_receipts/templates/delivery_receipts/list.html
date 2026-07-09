@@ -10,7 +10,7 @@
   <div class="table-responsive">
     <table class="table">
       <thead>
-        <tr><th>DR #</th><th>Date</th><th>Customer</th><th>SO #</th><th>Status</th></tr>
+        <tr><th>DR #</th><th>Date</th><th>Customer</th><th>SO #</th><th>Status</th><th></th></tr>
       </thead>
       <tbody>
         {% for dr in receipts %}
@@ -24,6 +24,11 @@
                                         else 'success' if dr.status in ('approved', 'delivered')
                                         else 'info' if dr.status == 'billed'
                                         else 'danger' }}">{{ dr.status|title }}</span>
+          </td>
+          <td class="text-right">
+            {% if dr.status == 'draft' %}
+            <a href="{{ url_for('delivery_receipts.edit', id=dr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
