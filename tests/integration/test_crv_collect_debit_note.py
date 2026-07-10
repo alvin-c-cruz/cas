@@ -169,6 +169,32 @@ def test_apply_and_reverse_collect_the_debit_note_balance(client, db_session, ad
     assert memo.status == 'posted'
 
 
+def test_edit_form_renders_debit_note_ar_line(client, db_session, admin_user, main_branch):
+    # The restore block must not emit `invoice_id: None` (broken JS) for a debit-note
+    # line — it restores by ref_id/type. GET the draft CRV edit form and assert a clean render.
+    c, si, li = _setup(client, admin_user, main_branch)
+    memo = _post_debit_note(client, si, li, charge='560')
+    crv = _draft_crv(c, main_branch, num='CR-EDIT-1')
+    crv.ar_lines.append(CRVArLine(
+        line_number=1, sales_memo_id=memo.id, invoice_number=memo.memo_number,
+        original_balance=memo.balance, amount_applied=Decimal('560')))
+    db.session.commit()
+    resp = client.get(f'/cash-receipts/{crv.id}/edit')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'restoreArLine(' in body
+    assert memo.memo_number in body
+    assert '"type": "debit_note"' in body          # ref carried into restore payload
+    assert 'invoice_id: None' not in body           # no broken JS literal
+
+    # Detail view must link a debit-note AR line to the debit note (not /sales-invoices/None).
+    detail = client.get(f'/cash-receipts/{crv.id}')
+    assert detail.status_code == 200
+    dbody = detail.get_data(as_text=True)
+    assert f'/debit-notes/{memo.id}' in dbody
+    assert 'Debit Note' in dbody
+
+
 def test_apply_reverse_si_path_still_flips_status(client, db_session, admin_user, main_branch):
     c, si, li = _setup(client, admin_user, main_branch)
     crv = _draft_crv(c, main_branch)

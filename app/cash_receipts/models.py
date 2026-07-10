@@ -129,7 +129,12 @@ class CRVArLine(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
+            # Phase 2b: a line settles an invoice OR a debit note; `type` + `ref_id`
+            # let the form restore either without the two doc-id spaces colliding.
+            'type': 'debit_note' if self.sales_memo_id else 'invoice',
             'invoice_id': self.invoice_id,
+            'sales_memo_id': self.sales_memo_id,
+            'ref_id': self.sales_memo_id or self.invoice_id,
             'invoice_number': self.invoice_number,
             'original_balance': float(self.original_balance),
             'amount_applied': float(self.amount_applied),

@@ -144,9 +144,16 @@
         <tbody>
           {% for ar_line in crv.ar_lines %}
           <tr>
+            {% if ar_line.sales_memo_id %}
+            <td><a href="{{ url_for('sales_memos.debit_view', id=ar_line.sales_memo_id) }}"
+                   style="color:var(--blue);font-weight:600;">{{ ar_line.invoice_number }}</a>
+                <span class="badge badge-partial">Debit Note</span></td>
+            <td>{{ ar_line.sales_memo.memo_date.strftime('%b %d, %Y') if ar_line.sales_memo else '—' }}</td>
+            {% else %}
             <td><a href="{{ url_for('sales_invoices.view', id=ar_line.invoice_id) }}"
                    style="color:var(--blue);font-weight:600;">{{ ar_line.invoice_number }}</a></td>
             <td>{{ ar_line.sales_invoice.invoice_date.strftime('%b %d, %Y') if ar_line.sales_invoice else '—' }}</td>
+            {% endif %}
             <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(ar_line.original_balance) }}</td>
             <td style="text-align:right;font-family:var(--mono);font-weight:600;">₱{{ '{:,.2f}'.format(ar_line.amount_applied) }}</td>
           </tr>

@@ -81,6 +81,7 @@
 .inv-opt__no  { font-family: var(--mono); font-weight: 600; color: var(--text-1); }
 .inv-opt__date { color: var(--text-3); font-size: 13px; }
 .inv-opt__bal { font-family: var(--mono); text-align: right; color: var(--text-1); white-space: nowrap; }
+.inv-opt .badge { margin-left: 6px; }
 
 .bill-summary-panel { min-width: 240px; }
 .bsr {
@@ -347,6 +348,10 @@ let currentWHTs = {{ all_whts | tojson }};
 let arLines      = [];
 let revenueLines = [];
 let revenueCounter = 0;
+
+// Phase 2b: an open item is either an invoice or a debit note whose id spaces can
+// collide (SI #5 and DN #5). Key every AR row/lookup by "<type>:<id>", never id alone.
+function arKey(type, id) { return (type || 'invoice') + ':' + id; }
 let revenueChoices = {};
 let openInvoices = [];
 let autoVat = 0, autoWt = 0;
@@ -377,8 +382,10 @@ const invChoices = new Choices(document.getElementById('arInvPicker'), {
     searchFields: ['label'],
 });
 function invOptionHtml(inv) {
+    const tag = inv.type === 'debit_note'
+        ? `<span class="badge badge-partial">Debit Note</span>` : '';
     return `<span class="inv-opt">`
-         + `<span class="inv-opt__no">${escHtml(inv.invoice_number)}</span>`
+         + `<span class="inv-opt__no">${escHtml(inv.invoice_number)}${tag}</span>`
          + `<span class="inv-opt__date">${escHtml(inv.invoice_date || '')}</span>`
          + `<span class="inv-opt__bal">₱${escHtml(fmt(inv.balance))}</span>`
          + `</span>`;
@@ -543,25 +550,29 @@ function setInvPickerLoading(loading, error) {
 }
 
 function refreshInvPicker() {
-    const addedIds = new Set(arLines.map(l => l.invoice_id));
+    const addedKeys = new Set(arLines.map(l => l.key));
     const items = openInvoices
-        .filter(inv => !addedIds.has(inv.id))
-        .map(inv => ({ value: String(inv.id), label: invOptionHtml(inv) }));
+        .filter(inv => !addedKeys.has(arKey(inv.type, inv.id)))
+        .map(inv => ({ value: arKey(inv.type, inv.id), label: invOptionHtml(inv) }));
     setInvChoices(items);
 }
 
 // Section A: AR Lines
 function addSelectedInvoice() {
-    const invId = parseInt(invChoices.getValue(true));
-    if (!invId) return;
-    const inv = openInvoices.find(i => i.id === invId);
+    const key = invChoices.getValue(true);
+    if (!key) return;
+    const inv = openInvoices.find(i => arKey(i.type, i.id) === key);
     if (!inv) return;
     addArLine(inv);
     refreshInvPicker();
 }
 
 function addArLine(inv) {
+    const type = inv.type || 'invoice';
+    const key = arKey(type, inv.id);
     const line = {
+        key: key,
+        type: type,
         invoice_id: inv.id,
         invoice_number: inv.invoice_number,
         invoice_date: inv.invoice_date,
@@ -570,21 +581,23 @@ function addArLine(inv) {
     };
     arLines.push(line);
 
+    const tag = type === 'debit_note'
+        ? ` <span class="badge badge-partial">Debit Note</span>` : '';
     const tbody = document.getElementById('arLinesBody');
     const tr = document.createElement('tr');
-    tr.id = `ar-row-${inv.id}`;
+    tr.id = `ar-row-${key}`;
     tr.innerHTML = `
-        <td style="font-family:var(--mono)">${escHtml(inv.invoice_number)}</td>
+        <td style="font-family:var(--mono)">${escHtml(inv.invoice_number)}${tag}</td>
         <td>${escHtml(inv.invoice_date || '-')}</td>
         <td style="text-align:right;font-family:var(--mono)">₱${fmt(inv.balance)}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt(inv.balance)}"
                    onfocus="amtFocus(this)"
-                   onblur="onArAmountBlur(this, ${inv.id}, ${inv.balance})"
-                   oninput="onArAmountInput(this, ${inv.id}, ${inv.balance})">
+                   onblur="onArAmountBlur(this, '${key}', ${inv.balance})"
+                   oninput="onArAmountInput(this, '${key}', ${inv.balance})">
         </td>
-        <td><button type="button" class="btn-action" onclick="removeArLine(${inv.id})">X</button></td>
+        <td><button type="button" class="btn-action" onclick="removeArLine('${key}')">X</button></td>
     `;
     tbody.appendChild(tr);
     renderArEmpty();
@@ -593,28 +606,37 @@ function addArLine(inv) {
 }
 
 function restoreArLine(line) {
+    const type = line.type || 'invoice';
+    // The parser reads a line's `invoice_id` as the settled doc id (SI id OR debit-note
+    // id) and `type` as the discriminator, so restore the doc id from ref_id.
+    const docId = (line.ref_id != null) ? line.ref_id : line.invoice_id;
+    const key = arKey(type, docId);
     arLines.push({
-        invoice_id:       line.invoice_id,
+        key:              key,
+        type:             type,
+        invoice_id:       docId,
         invoice_number:   line.invoice_number,
         invoice_date:     line.invoice_date || '',
         original_balance: line.original_balance,
         amount_applied:   line.amount_applied,
     });
+    const tag = type === 'debit_note'
+        ? ` <span class="badge badge-partial">Debit Note</span>` : '';
     const tbody = document.getElementById('arLinesBody');
     const tr = document.createElement('tr');
-    tr.id = `ar-row-${line.invoice_id}`;
+    tr.id = `ar-row-${key}`;
     tr.innerHTML = `
-        <td style="font-family:var(--mono)">${escHtml(line.invoice_number)}</td>
+        <td style="font-family:var(--mono)">${escHtml(line.invoice_number)}${tag}</td>
         <td>${escHtml(line.invoice_date || '-')}</td>
         <td style="text-align:right;font-family:var(--mono)">₱${fmt(line.original_balance)}</td>
         <td style="text-align:right">
             <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
                    value="${fmt(line.amount_applied)}"
                    onfocus="amtFocus(this)"
-                   onblur="onArAmountBlur(this, ${line.invoice_id}, ${line.original_balance})"
-                   oninput="onArAmountInput(this, ${line.invoice_id}, ${line.original_balance})">
+                   onblur="onArAmountBlur(this, '${key}', ${line.original_balance})"
+                   oninput="onArAmountInput(this, '${key}', ${line.original_balance})">
         </td>
-        <td><button type="button" class="btn-action" onclick="removeArLine(${line.invoice_id})">X</button></td>
+        <td><button type="button" class="btn-action" onclick="removeArLine('${key}')">X</button></td>
     `;
     tbody.appendChild(tr);
     renderArEmpty();
@@ -622,26 +644,26 @@ function restoreArLine(line) {
     updateNotesAutofill();
 }
 
-function onArAmountInput(input, invId, maxVal) {
+function onArAmountInput(input, key, maxVal) {
     const v = parseFloat(input.value.replace(/,/g, '')) || 0;
-    const line = arLines.find(l => l.invoice_id === invId);
+    const line = arLines.find(l => l.key === key);
     if (line) line.amount_applied = Math.min(v, maxVal);
     recalculate();
 }
 
-function onArAmountBlur(input, invId, maxVal) {
+function onArAmountBlur(input, key, maxVal) {
     let v = parseFloat(input.value.replace(/,/g, '')) || 0;
     if (v > maxVal) v = maxVal;
     if (v <= 0) v = maxVal;
     input.value = amtFmt(v);
-    const line = arLines.find(l => l.invoice_id === invId);
+    const line = arLines.find(l => l.key === key);
     if (line) line.amount_applied = v;
     recalculate();
 }
 
-function removeArLine(invId) {
-    arLines = arLines.filter(l => l.invoice_id !== invId);
-    const row = document.getElementById(`ar-row-${invId}`);
+function removeArLine(key) {
+    arLines = arLines.filter(l => l.key !== key);
+    const row = document.getElementById(`ar-row-${key}`);
     if (row) row.remove();
     refreshInvPicker();
     renderArEmpty();
@@ -1186,32 +1208,7 @@ function fmt(n) { return (Math.round(n * 100) / 100).toFixed(2).replace(/\B(?=(\
 // Restore state on edit
 {% if crv %}
 {% for ar_line in ar_lines %}
-arLines.push({
-    invoice_id:       {{ ar_line.invoice_id }},
-    invoice_number:   {{ ar_line.invoice_number | tojson }},
-    invoice_date:     '',
-    original_balance: {{ ar_line.original_balance }},
-    amount_applied:   {{ ar_line.amount_applied }},
-});
-(function() {
-    const tbody = document.getElementById('arLinesBody');
-    const tr = document.createElement('tr');
-    tr.id = 'ar-row-{{ ar_line.invoice_id }}';
-    tr.innerHTML = `
-        <td style="font-family:var(--mono)">{{ ar_line.invoice_number }}</td>
-        <td>-</td>
-        <td style="text-align:right;font-family:var(--mono)">₱${fmt({{ ar_line.original_balance }})}</td>
-        <td style="text-align:right">
-            <input type="text" class="form-control" style="text-align:right;font-family:var(--mono);width:120px"
-                   value="${fmt({{ ar_line.amount_applied }})}"
-                   onfocus="amtFocus(this)"
-                   onblur="onArAmountBlur(this, {{ ar_line.invoice_id }}, {{ ar_line.original_balance }})"
-                   oninput="onArAmountInput(this, {{ ar_line.invoice_id }}, {{ ar_line.original_balance }})">
-        </td>
-        <td><button type="button" class="btn-action" onclick="removeArLine({{ ar_line.invoice_id }})">X</button></td>
-    `;
-    tbody.appendChild(tr);
-})();
+restoreArLine({{ ar_line | tojson }});
 {% endfor %}
 
 {% for rev_line in revenue_lines %}
