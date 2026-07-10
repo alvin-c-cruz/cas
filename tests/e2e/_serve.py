@@ -145,22 +145,33 @@ with app.app_context():
                 db.session.add(si); db.session.commit()
 
             # DR->SI billing fixture: give P001 a revenue account (so a pulled SI line has one)
-            # and seed a DELIVERED, unbilled DR from SO-E2E-0001 for the SI form's picker.
+            # and seed a DELIVERED, unbilled DR for the SI form's picker. Use a SEPARATE SO
+            # (SO-E2E-0002) so SO-E2E-0001 stays fully-open for the DR *create* smoke (a
+            # delivered DR against SO-E2E-0001 would consume its open qty and hide it there).
             from app.accounts.models import Account
             from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
             rev = Account.query.filter(Account.account_type.in_(['Income', 'Revenue'])).first()
             if rev and p001 and p001.default_account_id is None:
                 p001.default_account_id = rev.id
                 db.session.commit()
-            so = SalesOrder.query.filter_by(so_number='SO-E2E-0001').first()
-            if (branch and c001 and so
-                    and not DeliveryReceipt.query.filter_by(dr_number='DR-E2E-0001').first()):
+            if (branch and c001 and p001
+                    and not SalesOrder.query.filter_by(so_number='SO-E2E-0002').first()):
+                so2 = SalesOrder(
+                    so_number='SO-E2E-0002', branch_id=branch.id, order_date=today,
+                    customer_id=c001.id, customer_name=c001.name, notes='', status='confirmed')
+                bi = SalesOrderItem(
+                    line_number=1, product_id=p001.id, quantity=Decimal('10'),
+                    unit_price=Decimal('100.00'), unit_of_measure_id=pc.id,
+                    vat_category='V0', vat_rate=Decimal('0'))
+                bi.calculate_amounts()
+                so2.line_items.append(bi); so2.calculate_totals()
+                db.session.add(so2); db.session.commit()
                 dr = DeliveryReceipt(
                     dr_number='DR-E2E-0001', branch_id=branch.id, delivery_date=today,
-                    sales_order_id=so.id, customer_id=c001.id, customer_name=c001.name,
+                    sales_order_id=so2.id, customer_id=c001.id, customer_name=c001.name,
                     status='delivered')
                 dr.line_items.append(DeliveryReceiptItem(
-                    line_number=1, sales_order_item_id=so.line_items[0].id,
+                    line_number=1, sales_order_item_id=so2.line_items[0].id,
                     product_id=p001.id, delivered_quantity=Decimal('10')))
                 db.session.add(dr); db.session.commit()
 
