@@ -100,6 +100,7 @@ def _check_login_guards(user, form):
 
 def _post_login_redirect(user, form):
     """Persist successful login state and redirect to branch or dashboard."""
+    from flask import current_app
     try:
         user.last_login = ph_now()
         user.reset_failed_attempts()
@@ -110,6 +111,16 @@ def _post_login_redirect(user, form):
         db.session.commit()
     except Exception:
         db.session.rollback()
+
+    # Force a still-default password to be changed before anything else. The
+    # submitted password IS the stored one (auth just succeeded), so this is a free
+    # compare -- no hash. Caching the result also spares the before_request hook its
+    # own hash check for the common non-default case.
+    if current_app.config.get('ENFORCE_DEFAULT_PW_CHANGE'):
+        if form.password.data == 'admin123':
+            session['pw_is_default'] = True
+            return redirect(url_for('users.change_password'))
+        session['pw_is_default'] = False
 
     from app.users.utils import get_accessible_branches
     accessible_branches = get_accessible_branches(user)
@@ -579,6 +590,12 @@ def change_password():
         try:
             current_user.set_password(form.new_password.data)
             db.session.commit()
+            # Release the default-password gate for this session (the before_request
+            # hook re-verifies anyway, but this avoids one extra redirect).
+            session['pw_is_default'] = False
+            log_audit(module='users', action='change_password', record_id=current_user.id,
+                      record_identifier=current_user.username,
+                      notes='Password changed by the account owner', user_id=current_user.id)
             flash('Password changed successfully!', 'success')
             return redirect(url_for('users.profile'))
         except Exception as e:

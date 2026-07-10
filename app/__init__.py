@@ -459,7 +459,44 @@ def create_app(config_name=None):
         'users.register',
         'users.select_branch',
         'static',
+        # A forced-password-change admin must reach change-password even before a
+        # branch is selected, or the two before_request gates deadlock.
+        'users.change_password',
     }
+
+    # Endpoints a user forced to change the default password may still reach.
+    PW_ROTATION_EXEMPT = {
+        'users.change_password', 'users.logout', 'users.login', 'static',
+    }
+
+    @app.before_request
+    def enforce_password_rotation():
+        """Force any user still on the seeded default password to change it.
+
+        Config-gated (ENFORCE_DEFAULT_PW_CHANGE): on in production, off in the plain
+        testing config. Runs BEFORE validate_branch_session so a forced user goes
+        straight to change-password rather than the branch picker. The check is
+        authoritative on each request while the session is still default, so it
+        catches sessions alive from before this guard deployed AND self-heals a
+        console-side rotation; a session already proven non-default short-circuits.
+        """
+        from flask import session, redirect, url_for, request, flash
+        from flask_login import current_user
+
+        if not app.config.get('ENFORCE_DEFAULT_PW_CHANGE'):
+            return
+        if request.endpoint is None or request.endpoint in PW_ROTATION_EXEMPT:
+            return
+        if not current_user.is_authenticated:
+            return
+        if session.get('pw_is_default') is False:
+            return  # proven non-default this session — fast path, no hash
+        if current_user.check_password('admin123'):
+            session['pw_is_default'] = True
+            flash('Your account still uses the default password. Please set a new one to continue.',
+                  'warning')
+            return redirect(url_for('users.change_password'))
+        session['pw_is_default'] = False
 
     @app.before_request
     def validate_branch_session():

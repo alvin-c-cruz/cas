@@ -57,6 +57,14 @@ class Config:
     RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
     RATELIMIT_HEADERS_ENABLED = True
 
+    # Force any admin still on the seeded default password to change it at login.
+    # Default ON everywhere except the plain testing config (which sets it False so
+    # the suite's admin123 fixtures are not force-redirected). The guard's own tests
+    # flip it back on locally, exactly like the rate-limit tests do (this mirrors the
+    # TestingErrorsConfig pattern: config-scoped, tested where it actually fires).
+    ENFORCE_DEFAULT_PW_CHANGE = os.environ.get(
+        'ENFORCE_DEFAULT_PW_CHANGE', 'True').lower() == 'true'
+
     # Backup module — fail-closed: disabled unless explicitly enabled per instance.
     BACKUP_ENABLED = os.environ.get('BACKUP_ENABLED', 'False').lower() == 'true'
     BACKUP_STORAGE = os.environ.get('BACKUP_STORAGE', 'local')
@@ -112,6 +120,10 @@ class TestingConfig(Config):
     # Disable rate limiting by default so it does not throttle the suite; the
     # dedicated rate-limit tests enable it locally (see test_login_rate_limit.py).
     RATELIMIT_ENABLED = False
+
+    # Off in the plain testing config so the admin123 fixtures are not force-
+    # redirected; the guard's own tests set it True locally.
+    ENFORCE_DEFAULT_PW_CHANGE = False
 
 
 class TestingErrorsConfig(TestingConfig):
