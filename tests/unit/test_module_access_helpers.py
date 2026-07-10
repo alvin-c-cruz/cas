@@ -49,7 +49,7 @@ def test_visible_modules_admin_sees_whole_section(db_session):
     from app.users.module_access import visible_modules
     keys = {m['key'] for m in visible_modules(_u('admin'), 'Ledger')}
     assert keys == {'chart_of_accounts', 'general_ledger', 'ar_aging', 'ap_aging',
-                    'books_of_accounts', 'opening_balances'}
+                    'books_of_accounts', 'opening_balances', 'statement_of_account'}
 
 
 def test_visible_modules_accountant_sees_only_granted(db_session):
