@@ -7,6 +7,8 @@ from flask_login import login_required, current_user
 from functools import wraps
 from app import db
 from app.sales_invoices.models import SalesInvoice
+from app.customers.models import Customer
+from app.reports.statement_data import build_statement_of_account
 from app.accounts.models import Account
 from app.accounts_payable.models import AccountsPayable
 from app.cash_receipts.models import CashReceiptVoucher
@@ -258,6 +260,28 @@ def ar_aging():
                            customers=customers_list,
                            grand_totals=grand_totals,
                            as_of_date=as_of_date)
+
+
+@reports_bp.route('/reports/statement-of-account')
+@login_required
+@accountant_or_admin_required
+def statement_of_account():
+    branch_id = session.get('selected_branch_id')
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    customer_id = request.args.get('customer_id', type=int)
+    period = resolve_period(request.args, ph_now().date())
+
+    statement = None
+    customer = None
+    if customer_id:
+        customer = db.session.get(Customer, customer_id)
+        if customer:
+            statement = build_statement_of_account(customer_id, branch_id, period)
+
+    return render_template('reports/statement_of_account.html',
+                           customers=customers, customer=customer,
+                           customer_id=customer_id, period=period,
+                           statement=statement, company=get_company_identity())
 
 
 @reports_bp.route('/reports/ap-aging')
