@@ -327,6 +327,13 @@ def _void_impl(id, memo_type):
     if len(reason) < 10:
         flash('A void reason (min 10 characters) is required.', 'error')
         return redirect(view_url)
+    # Phase 2b: a debit note that has been (partly) collected via a CRV cannot be voided —
+    # doing so would strand the cash receipt against a voided receivable. Cancel the CRV(s)
+    # first to release the collection, then void.
+    if memo_type == 'debit' and Decimal(str(memo.amount_paid or 0)) > 0:
+        flash(f'This {meta["title"]} has collections applied and cannot be voided. '
+              'Cancel the related cash receipt(s) first.', 'error')
+        return redirect(view_url)
     try:
         if memo.status == 'posted':
             reverse_memo_je(memo, current_user.id)

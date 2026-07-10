@@ -72,17 +72,44 @@ def test_crvarline_is_polymorphic():
     assert cols['invoice_id'].nullable is True  # invoice_id relaxed to nullable
 
 
-def test_debit_note_post_sets_collectible_balance(client, db_session, admin_user, main_branch):
-    si, li = _setup(client, admin_user, main_branch)
+def _create_and_post_debit_note(client, si, li, amount='560'):
     client.post('/debit-notes/create', data={
         'sales_invoice_id': si.id, 'memo_date': '2026-07-10', 'reason': 'Undercharge',
         'destination': 'ar',
-        'lines': json.dumps([{'sales_invoice_item_id': li.id, 'amount': '560'}]),
+        'lines': json.dumps([{'sales_invoice_item_id': li.id, 'amount': amount}]),
     }, follow_redirects=True)
     memo = SalesMemo.query.filter_by(memo_type='debit').first()
     client.post(f'/debit-notes/{memo.id}/post', follow_redirects=True)
-    memo = db.session.get(SalesMemo, memo.id)
+    return db.session.get(SalesMemo, memo.id)
+
+
+def test_debit_note_post_sets_collectible_balance(client, db_session, admin_user, main_branch):
+    si, li = _setup(client, admin_user, main_branch)
+    memo = _create_and_post_debit_note(client, si, li, amount='560')
     assert memo.status == 'posted'
     assert memo.total_amount == Decimal('560.00')
     assert memo.balance == Decimal('560.00')     # full receivable open for collection
     assert memo.amount_paid == Decimal('0.00')
+
+
+def test_debit_note_void_blocked_once_collected(client, db_session, admin_user, main_branch):
+    si, li = _setup(client, admin_user, main_branch)
+    memo = _create_and_post_debit_note(client, si, li, amount='560')
+    # Simulate a partial collection on this debit note.
+    memo.amount_paid = Decimal('100.00')
+    memo.balance = memo.total_amount - memo.amount_paid
+    db.session.commit()
+    client.post(f'/debit-notes/{memo.id}/void',
+                data={'void_reason': 'change of mind here'}, follow_redirects=True)
+    memo = db.session.get(SalesMemo, memo.id)
+    assert memo.status == 'posted'               # void refused — money already collected
+    assert memo.amount_paid == Decimal('100.00')
+
+
+def test_debit_note_void_allowed_when_uncollected(client, db_session, admin_user, main_branch):
+    si, li = _setup(client, admin_user, main_branch)
+    memo = _create_and_post_debit_note(client, si, li, amount='560')
+    client.post(f'/debit-notes/{memo.id}/void',
+                data={'void_reason': 'issued in error ok'}, follow_redirects=True)
+    memo = db.session.get(SalesMemo, memo.id)
+    assert memo.status == 'voided'               # uncollected debit note still voidable
