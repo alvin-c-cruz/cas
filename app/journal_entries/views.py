@@ -254,6 +254,13 @@ def cancel(id):
         flash('Journal entry is already cancelled.', 'error')
         return redirect(url_for('journal_entries.view', id=id))
 
+    # `create` guards its date; `cancel` never did. Cancelling is the ONLY in-app
+    # mutation a posted voucher has -- there is no journal-entry edit route -- so
+    # without this an accountant could soft-void a historical entry in a period the
+    # books were already closed on. Matters most for replayed legacy books.
+    if not validate_transaction_date_with_flash(entry.entry_date, 'journal entry'):
+        return redirect(url_for('journal_entries.view', id=id))
+
     try:
         entry.status = 'cancelled'
         entry.cancelled_at = ph_now()
