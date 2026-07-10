@@ -47,3 +47,15 @@ def test_statement_no_customer_shows_picker(client, db_session, admin_user, main
     resp = client.get('/reports/statement-of-account')
     assert resp.status_code == 200
     assert 'customer_id' in resp.get_data(as_text=True)   # picker present, no statement yet
+
+
+def test_statement_print_renders_bir_header(client, db_session, admin_user, main_branch):
+    c = _setup(client, admin_user, main_branch)
+    resp = client.get(
+        f'/reports/statement-of-account/print?customer_id={c.id}&mode=custom'
+        '&date_from=2026-07-01&date_to=2026-07-31')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'STATEMENT OF ACCOUNT' in body     # bir_book_header title (upper-case)
+    assert 'window.print()' in body
+    assert 'SI-0007' in body

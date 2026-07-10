@@ -284,6 +284,23 @@ def statement_of_account():
                            statement=statement, company=get_company_identity())
 
 
+@reports_bp.route('/reports/statement-of-account/print')
+@login_required
+@accountant_or_admin_required
+def statement_of_account_print():
+    branch_id = session.get('selected_branch_id')
+    customer_id = request.args.get('customer_id', type=int)
+    customer = db.session.get(Customer, customer_id) if customer_id else None
+    if not customer:
+        flash('Select a customer to print a statement.', 'error')
+        return redirect(url_for('reports.statement_of_account'))
+    period = resolve_period(request.args, ph_now().date())
+    statement = build_statement_of_account(customer_id, branch_id, period)
+    return render_template('reports/statement_of_account_print.html',
+                           customer=customer, period=period, statement=statement,
+                           company=get_company_identity())
+
+
 @reports_bp.route('/reports/ap-aging')
 @login_required
 def ap_aging():

@@ -1,0 +1,18 @@
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% from 'reports/_soa_table.html' import soa_body %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Statement of Account &mdash; {{ customer.name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=2">
+</head>
+<body onload="window.print()">
+    {{ bir_book_header(company, 'STATEMENT OF ACCOUNT', period.label) }}
+    <div style="margin:8px 0;">
+        <strong>{{ customer.name }}</strong>{% if customer.tin %} &middot; TIN {{ customer.tin }}{% endif %}
+        {% if customer.address %}<br>{{ customer.address }}{% endif %}
+    </div>
+    {{ soa_body(statement, currency='₱') }}
+</body>
+</html>

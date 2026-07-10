@@ -28,6 +28,10 @@
       </div>
       <input type="hidden" name="mode" value="custom">
       <button type="submit" class="btn btn-primary">View</button>
+      {% if statement %}
+      <a class="btn btn-secondary" target="_blank" rel="noopener noreferrer"
+         href="{{ url_for('reports.statement_of_account_print', customer_id=customer_id, mode='custom', date_from=period.date_from, date_to=period.date_to) }}">Print</a>
+      {% endif %}
     </form>
   </div>
 </div>
