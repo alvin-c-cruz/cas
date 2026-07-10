@@ -32,6 +32,8 @@
     "app/reports/vat_lines.py":            ["reports", "vat_settlement", "accounts_payable", "sales_invoices", "cash_receipts", "cash_disbursements"],
     "app/reports/wht_lines.py":            ["reports", "accounts_payable", "sales_invoices", "cash_receipts", "cash_disbursements"],
     "app/reports/bir.py":                  ["reports", "vat_settlement"],
+    "app/reports/statement_data.py":       ["reports"],
+    "app/reports/views.py":                ["reports"],
     "app/common/vat_nature.py":            ["reports", "accounts_payable", "sales_invoices", "cash_receipts", "cash_disbursements"],
     "app/journal_entries/utils.py":        ["accounts_payable", "cash_disbursements", "sales_invoices"],
     "app/sales_orders/monitoring.py":      ["sales_orders"],

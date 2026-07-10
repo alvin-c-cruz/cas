@@ -5,6 +5,7 @@ Covers:
   FIX 2 — SI cancel with reversal_date in closed period
   FIX 3 — CRV post into closed period
   FIX 4 — CDV post into closed period
+  FIX 5 — JV cancel of an entry dated in a closed period
 """
 import pytest
 from datetime import date
@@ -329,3 +330,91 @@ class TestCDVPostClosedPeriod:
         db_session.refresh(cdv)
         assert cdv.status == 'draft', (
             'CDV should remain draft when its date is in a closed period')
+
+
+# ── FIX 5: JV cancel of an entry dated in a closed period ────────────────────
+
+class TestJVCancelClosedPeriod:
+    """A posted journal voucher dated inside a closed period must not be cancellable.
+
+    JE `create` guards its date, but `cancel` never did -- so an accountant could
+    soft-void a historical posted voucher in a period the books were closed on.
+    This matters most for replayed legacy books (`entry_type='legacy_import'`),
+    where cancel is the only in-app mutation path: CAS has no journal-entry edit
+    route, for drafts or posted entries.
+    """
+
+    def _make_posted_je(self, db_session, branch_id, user, entry_date):
+        acct = Account(code='10302', name='JV Test Account', account_type='Asset',
+                       normal_balance='debit', is_active=True)
+        db_session.add(acct)
+        db_session.flush()
+
+        je = JournalEntry(
+            entry_number='JV-CLOSED-0001',
+            entry_date=entry_date,
+            description='Posted voucher inside a closed period',
+            entry_type='adjustment',
+            branch_id=branch_id,
+            created_by_id=user.id,
+            status='posted',
+            is_balanced=True,
+            total_debit=Decimal('500.00'),
+            total_credit=Decimal('500.00'),
+        )
+        db_session.add(je)
+        db_session.flush()
+        db_session.add_all([
+            JournalEntryLine(entry_id=je.id, line_number=1, account_id=acct.id,
+                             debit_amount=Decimal('500.00'), credit_amount=Decimal('0.00')),
+            JournalEntryLine(entry_id=je.id, line_number=2, account_id=acct.id,
+                             debit_amount=Decimal('0.00'), credit_amount=Decimal('500.00')),
+        ])
+        db_session.commit()
+        return je
+
+    def test_cancel_blocked_when_entry_date_in_closed_period(
+            self, client, db_session, admin_user, main_branch):
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        _close_period(db_session)
+
+        je = self._make_posted_je(db_session, main_branch.id, admin_user, CLOSED_DATE)
+
+        resp = client.post(f'/journal-entries/{je.id}/cancel', follow_redirects=False)
+        assert resp.status_code == 302
+
+        db_session.refresh(je)
+        assert je.status == 'posted', (
+            'A posted JV dated in a closed period must not be cancellable')
+        assert je.cancelled_at is None
+
+    def test_cancel_allowed_when_entry_date_in_open_period(
+            self, client, db_session, admin_user, main_branch):
+        """The guard must not fail closed on an OPEN period -- cancel still works."""
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        _close_period(db_session)   # closes 2024-01 only
+
+        je = self._make_posted_je(db_session, main_branch.id, admin_user,
+                                  date(2099, 6, 1))
+
+        client.post(f'/journal-entries/{je.id}/cancel', follow_redirects=False)
+
+        db_session.refresh(je)
+        assert je.status == 'cancelled'
+        assert je.cancelled_at is not None
+
+    def test_already_cancelled_entry_still_short_circuits(
+            self, client, db_session, admin_user, main_branch):
+        """The pre-existing 'already cancelled' branch must keep its own message."""
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+
+        je = self._make_posted_je(db_session, main_branch.id, admin_user,
+                                  date(2099, 6, 1))
+        je.status = 'cancelled'
+        db_session.commit()
+
+        resp = client.post(f'/journal-entries/{je.id}/cancel', follow_redirects=True)
+        assert b'already cancelled' in resp.data.lower()
