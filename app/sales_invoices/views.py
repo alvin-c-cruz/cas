@@ -582,6 +582,51 @@ def list_invoices():
     )
 
 
+def _si_billing_consolidate():
+    from app.settings import AppSettings
+    return AppSettings.get_setting('si_dr_billing_consolidate', '0') == '1'
+
+
+@sales_invoices_bp.route('/sales-invoices/billable-drs')
+@login_required
+def billable_drs():
+    """JSON: delivered, unbilled DRs for a customer, each line priced from its SO line +
+    the product's default revenue account. Data source for the SI form's DR-billing picker."""
+    from app.delivery_receipts.models import DeliveryReceipt
+    branch_id = session.get('selected_branch_id')
+    customer_id = request.args.get('customer_id', type=int)
+    if not customer_id:
+        return jsonify({'consolidate': _si_billing_consolidate(), 'drs': []})
+    drs = (DeliveryReceipt.query
+           .filter(DeliveryReceipt.branch_id == branch_id,
+                   DeliveryReceipt.customer_id == customer_id,
+                   DeliveryReceipt.status == 'delivered',
+                   DeliveryReceipt.sales_invoice_id.is_(None))
+           .order_by(DeliveryReceipt.delivery_date.desc(), DeliveryReceipt.id.desc()).all())
+    out = []
+    for dr in drs:
+        lines = []
+        for li in dr.line_items:
+            soi = li.sales_order_item
+            product = li.product or (soi.product if soi else None)
+            lines.append({
+                'sales_order_item_id': li.sales_order_item_id,
+                'product_id': product.id if product else None,
+                'product_code': product.code if product else None,
+                'product_name': product.name if product else None,
+                'quantity': float(li.delivered_quantity) if li.delivered_quantity is not None else 0.0,
+                'unit_price': float(soi.unit_price) if soi and soi.unit_price is not None else None,
+                'uom_display': (soi.unit_of_measure.code if soi and soi.unit_of_measure else None),
+                'vat_category': soi.vat_category if soi else None,
+                'vat_rate': float(soi.vat_rate) if soi and soi.vat_rate is not None else 0.0,
+                'account_id': (product.default_account_id if product else None),
+            })
+        out.append({'id': dr.id, 'dr_number': dr.dr_number,
+                    'delivery_date': dr.delivery_date.isoformat() if dr.delivery_date else None,
+                    'lines': lines})
+    return jsonify({'consolidate': _si_billing_consolidate(), 'drs': out})
+
+
 @sales_invoices_bp.route('/sales-invoices/print')
 @login_required
 @staff_or_above_required
