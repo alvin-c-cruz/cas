@@ -14,7 +14,7 @@ results without DetachedInstanceError exposure.
 from collections import namedtuple
 from decimal import Decimal
 
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 
 from app import db
 from app.accounts_payable.models import AccountsPayable
@@ -81,19 +81,23 @@ def _sales(date_from, date_to, branch_id):
                              inv.customer_tin, inv.customer_address, line))
 
     q = db.session.query(CashReceiptVoucher).options(
-        selectinload(CashReceiptVoucher.revenue_lines)).filter(
+        selectinload(CashReceiptVoucher.revenue_lines),
+        joinedload(CashReceiptVoucher.customer)).filter(
         CashReceiptVoucher.crv_date >= date_from,
         CashReceiptVoucher.crv_date <= date_to,
         CashReceiptVoucher.status == 'posted')
     if branch_id:
         q = q.filter(CashReceiptVoucher.branch_id == branch_id)
     for crv in q.all():
+        # CashReceiptVoucher has no customer_address column on its own header
+        # (unlike SalesInvoice) -- joinedload(.customer) pulls it in the SAME
+        # statement as the header row (many-to-one, no fan-out), so this stays
+        # O(1). Extract the scalar here; no ORM object reaches VatLine.
+        customer_address = crv.customer.address if crv.customer else None
         for line in crv.revenue_lines:
-            # CashReceiptVoucher has no customer_address column on its header
-            # (unlike SalesInvoice) -- '' rather than a per-row Customer query.
             out.append(_emit('sales', 'cash_receipt', crv.id, crv.crv_number,
                              crv.crv_date, crv.customer_id, crv.customer_name,
-                             crv.customer_tin, '', line))
+                             crv.customer_tin, customer_address, line))
     return out
 
 
@@ -115,19 +119,24 @@ def _purchases(date_from, date_to, branch_id):
                              bill.vendor_address, line))
 
     q = db.session.query(CashDisbursementVoucher).options(
-        selectinload(CashDisbursementVoucher.expense_lines)).filter(
+        selectinload(CashDisbursementVoucher.expense_lines),
+        joinedload(CashDisbursementVoucher.vendor)).filter(
         CashDisbursementVoucher.cdv_date >= date_from,
         CashDisbursementVoucher.cdv_date <= date_to,
         CashDisbursementVoucher.status == 'posted')
     if branch_id:
         q = q.filter(CashDisbursementVoucher.branch_id == branch_id)
     for cdv in q.all():
+        # CashDisbursementVoucher has no vendor_address column on its own
+        # header (unlike AccountsPayable) -- joinedload(.vendor) pulls it in
+        # the SAME statement as the header row (many-to-one, no fan-out), so
+        # this stays O(1). Extract the scalar here; no ORM object reaches
+        # VatLine.
+        vendor_address = cdv.vendor.address if cdv.vendor else None
         for line in cdv.expense_lines:
-            # CashDisbursementVoucher has no vendor_address column on its header
-            # (unlike AccountsPayable) -- '' rather than a per-row Vendor query.
             out.append(_emit('purchases', 'cash_disbursement', cdv.id, cdv.cdv_number,
                              cdv.cdv_date, cdv.vendor_id, cdv.vendor_name,
-                             cdv.vendor_tin, '', line))
+                             cdv.vendor_tin, vendor_address, line))
     return out
 
 

@@ -72,9 +72,11 @@ class TestVatLinesContract:
 
     def test_returns_vatline_namedtuples(self, db_session):
         # Task 9: SLS/SLP templates render an address column, so VatLine grew
-        # partner_address (sourced from the header, '' for CRV/CDV whose
-        # headers carry no address column) -- not a re-derivation, a real
-        # interface addition needed by the report rewrite.
+        # partner_address (sourced from the header for SI/AP; CRV/CDV have no
+        # address column of their own, so it's sourced via joinedload(.customer)
+        # / joinedload(.vendor), '' only when that relationship's address is
+        # NULL) -- not a re-derivation, a real interface addition needed by
+        # the report rewrite.
         assert VatLine._fields == (
             'side', 'source', 'doc_id', 'doc_no', 'doc_date',
             'partner_id', 'partner_name', 'partner_tin', 'partner_address',
@@ -126,3 +128,78 @@ class TestVatLinesSources:
     def test_date_range_is_inclusive_on_both_ends(self, db_session, posted_si_on_mar_31):
         assert len(vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'sales')) == 1
         assert vat_lines(date(2026, 1, 1), date(2026, 3, 30), 'sales') == []
+
+
+class TestPartnerAddressFromRelationship:
+    """Review finding 2: CashReceiptVoucher / CashDisbursementVoucher have no
+    address column of their own, but `.customer` / `.vendor` do -- one join
+    away. A cash sale/purchase must not appear on the SLS/SLP with a blank
+    address when the data is available."""
+
+    def test_crv_row_address_comes_from_customer(
+            self, db_session, main_branch, cash_account, revenue_account):
+        from decimal import Decimal
+        from app.customers.models import Customer
+        from app.cash_receipts.models import CashReceiptVoucher, CRVRevenueLine
+
+        customer = Customer(code='VL-ADDR', name='Addressed Customer',
+                            tin='111-222-333-000', address='123 Rizal St, Manila')
+        db_session.add(customer)
+        db_session.commit()
+        crv = CashReceiptVoucher(
+            branch_id=main_branch.id, crv_number='CRV-ADDR-0001',
+            crv_date=date(2026, 2, 15), customer_id=customer.id,
+            customer_name=customer.name, customer_tin=customer.tin,
+            cash_account_id=cash_account.id, status='posted')
+        line = CRVRevenueLine(
+            line_number=1, description='Cash sale', amount=Decimal('11200.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+            line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+            account_id=revenue_account.id)
+        crv.revenue_lines.append(line)
+        db_session.add(crv)
+        db_session.commit()
+
+        rows = vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'sales')
+        assert rows[0].partner_address == '123 Rizal St, Manila'
+        assert type(rows[0]) is VatLine
+
+    def test_crv_row_address_is_empty_string_when_customer_has_no_address(
+            self, db_session, posted_crv_v12):
+        """vl_customer carries no address -> '' not None, not literal 'None'."""
+        rows = vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'sales')
+        assert rows[0].partner_address == ''
+
+    def test_cdv_row_address_comes_from_vendor(
+            self, db_session, main_branch, cash_account, revenue_account):
+        from decimal import Decimal
+        from app.vendors.models import Vendor
+        from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+
+        vendor = Vendor(code='VL-ADDR', name='Addressed Vendor',
+                        tin='444-555-666-000', address='456 Mabini St, Quezon City')
+        db_session.add(vendor)
+        db_session.commit()
+        cdv = CashDisbursementVoucher(
+            branch_id=main_branch.id, cdv_number='CDV-ADDR-0001',
+            cdv_date=date(2026, 2, 15), vendor_id=vendor.id,
+            vendor_name=vendor.name, vendor_tin=vendor.tin,
+            cash_account_id=cash_account.id, status='posted')
+        line = CDVExpenseLine(
+            line_number=1, description='Cash-paid services', amount=Decimal('5600.00'),
+            vat_rate=Decimal('12.00'), vat_category='V12SV', vat_nature='domestic_services',
+            line_total=Decimal('5600.00'), vat_amount=Decimal('600.00'),
+            account_id=revenue_account.id)
+        cdv.expense_lines.append(line)
+        db_session.add(cdv)
+        db_session.commit()
+
+        rows = vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'purchases')
+        assert rows[0].partner_address == '456 Mabini St, Quezon City'
+        assert type(rows[0]) is VatLine
+
+    def test_cdv_row_address_is_empty_string_when_vendor_has_no_address(
+            self, db_session, posted_cdv_v12sv):
+        """vl_vendor carries no address -> '' not None, not literal 'None'."""
+        rows = vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'purchases')
+        assert rows[0].partner_address == ''

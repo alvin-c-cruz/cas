@@ -77,6 +77,11 @@ def get_summary_list_of_purchases(year, month, branch_id=None):
     purchase booked through a CDV used to be invisible here. Lines whose nature
     is unknown land in 'unclassified_purchases' -- never silently folded into
     a generic vatable bucket.
+
+    Deliberately drops the legacy crude buckets vatable_purchases /
+    vat_exempt_purchases / zero_rated_purchases: PURCHASE_BUCKET_BY_NATURE is
+    an identity map over the eight real BIR purchase natures, so those three
+    keys would always be zero, and no consumer in app/ reads them.
     """
     date_from, date_to = _month_bounds(year, month)
     rows = {}
@@ -101,7 +106,14 @@ def get_summary_list_of_purchases(year, month, branch_id=None):
 
     for partner_id, r in rows.items():
         distinct = doc_nos[partner_id]
-        r['vendor_invoice_number'] = 'Various' if len(distinct) > 1 else next(iter(distinct))
+        # Coalesce None -> '' so a bill with no invoice number on file (a real,
+        # unremarkable case -- the column is nullable and Optional() at the
+        # form layer) never prints the literal string "None" on a filing
+        # document. A vendor with one bill carrying None and another carrying
+        # a real number is deliberately 'Various' too: None and the real value
+        # are two distinct doc_no's, so there is no single number to print.
+        r['vendor_invoice_number'] = ('Various' if len(distinct) > 1
+                                      else next(iter(distinct)) or '')
 
     summary = sorted(rows.values(), key=lambda x: x['vendor_name'])
     if summary:

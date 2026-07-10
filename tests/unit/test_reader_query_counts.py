@@ -211,6 +211,102 @@ class TestWhtLinesQueryCount:
             assert not hasattr(row, '__mapper__')
 
 
+def _make_crv_vouchers(session, branch, customer, cash_account, account, n, start=0):
+    from app.cash_receipts.models import CashReceiptVoucher, CRVRevenueLine
+    crvs = []
+    for i in range(start, start + n):
+        crv = CashReceiptVoucher(
+            branch_id=branch.id,
+            crv_number=f'CRV-QC-{i:04d}',
+            crv_date=date(2026, 2, 15),
+            customer_id=customer.id,
+            customer_name=customer.name,
+            customer_tin=customer.tin,
+            cash_account_id=cash_account.id,
+            status='posted',
+        )
+        for j in range(2):
+            line = CRVRevenueLine(
+                line_number=j + 1, description=f'Line {j + 1}',
+                amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+                vat_category='V12', vat_nature='regular',
+                line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+                account_id=account.id,
+            )
+            crv.revenue_lines.append(line)
+        crvs.append(crv)
+    session.add_all(crvs)
+    session.commit()
+    return crvs
+
+
+class TestVatLinesQueryCountWithCrv:
+    """Review finding 2 follow-up: `_sales()` now adds `joinedload
+    (CashReceiptVoucher.customer)` to source `partner_address`, alongside the
+    existing `selectinload(CashReceiptVoucher.revenue_lines)`. A joinedload on
+    a many-to-one relationship joins into the SAME header SELECT -- it must
+    not add a new statement. Populate the CRV side (SalesInvoice stays empty)
+    to prove the sales path is still O(1). Expected, fixed statement count:
+      1 SELECT SalesInvoice headers (0 rows -> no follow-up)
+    + 1 SELECT (JOIN customers) CashReceiptVoucher headers
+    + 1 SELECT (selectin) CashReceiptVoucher.revenue_lines
+    = 3, regardless of how many CRV headers/lines matched.
+    """
+
+    def test_crv_side_is_also_bounded(
+            self, db_session, main_branch, cash_account, revenue_account, vl_customer):
+        _make_crv_vouchers(db_session, main_branch, vl_customer, cash_account,
+                           revenue_account, n=5)
+
+        with count_queries() as counter_5:
+            rows_5 = vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'sales')
+
+        _make_crv_vouchers(db_session, main_branch, vl_customer, cash_account,
+                           revenue_account, n=1, start=5)
+
+        with count_queries() as counter_6:
+            rows_6 = vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'sales')
+
+        assert len(rows_5) == 10
+        assert len(rows_6) == 12
+        assert counter_5.count == counter_6.count, (
+            f'{counter_5.count} queries for 5 CRV headers vs '
+            f'{counter_6.count} queries for 6 CRV headers')
+        assert counter_5.count <= 3, counter_5.count
+
+
+class TestVatLinesQueryCountWithCdv:
+    """Mirror of the CRV test above for the purchases side: `_purchases()`
+    adds `joinedload(CashDisbursementVoucher.vendor)`. Populate the CDV side
+    (AccountsPayable stays empty). Expected, fixed statement count:
+      1 SELECT AccountsPayable headers (0 rows -> no follow-up)
+    + 1 SELECT (JOIN vendors) CashDisbursementVoucher headers
+    + 1 SELECT (selectin) CashDisbursementVoucher.expense_lines
+    = 3, regardless of how many CDV headers/lines matched.
+    """
+
+    def test_cdv_side_is_also_bounded(
+            self, db_session, main_branch, cash_account, revenue_account, vl_vendor):
+        _make_cdv_vouchers(db_session, main_branch, vl_vendor, cash_account,
+                           revenue_account, n=5)
+
+        with count_queries() as counter_5:
+            rows_5 = vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'purchases')
+
+        _make_cdv_vouchers(db_session, main_branch, vl_vendor, cash_account,
+                           revenue_account, n=1, start=5)
+
+        with count_queries() as counter_6:
+            rows_6 = vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'purchases')
+
+        assert len(rows_5) == 10
+        assert len(rows_6) == 12
+        assert counter_5.count == counter_6.count, (
+            f'{counter_5.count} queries for 5 CDV headers vs '
+            f'{counter_6.count} queries for 6 CDV headers')
+        assert counter_5.count <= 3, counter_5.count
+
+
 class TestWhtLinesQueryCountWithCdv:
     """Sanity check the CDV side of `wht_lines(side='payor')` is ALSO eager
     loaded (not just AP): mirror the AP-only test above but populate CDV
