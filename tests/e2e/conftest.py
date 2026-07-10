@@ -2,7 +2,7 @@
 Fixtures for the Playwright e2e smoke suite.
 
 `live_server` launches tests/e2e/_serve.py in a subprocess against an isolated temp
-SQLite DB (seeded with admin/admin123, COA, VAT/WHT, and vendors V001-V003), polls until
+SQLite DB (seeded with admin + a known e2e password, COA, VAT/WHT, and vendors V001-V003), polls until
 it answers, and yields the base URL. `logged_in_page` logs the admin in through the real
 login form (handling the anti-autofill readonly fields).
 
@@ -20,6 +20,11 @@ import urllib.request
 import pytest
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+# The seeded admin password for e2e: a known strong value (NOT admin123, which the
+# default-password guard would force-change at login). Passed to the server subprocess
+# as CAS_SEED_ADMIN_PASSWORD and reused by _login_admin so the two always match.
+E2E_ADMIN_PASSWORD = 'E2e-Admin#Test-2026'
 
 
 def _free_port():
@@ -53,6 +58,10 @@ def _launch_seeded_server(tmp_path_factory, extra_env=None):
     env['FLASK_ENV'] = 'development'
     env['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + str(db_path).replace('\\', '/')
     env.setdefault('SECRET_KEY', 'e2e-secret-key-deadbeefdeadbeefdeadbeefdeadbeef')
+    # The dev config has the default-password guard ON, so the seeded admin must NOT
+    # be admin123 or every smoke would be force-redirected to change-password at login.
+    # Seed a known strong value and log in with the same one (E2E_ADMIN_PASSWORD).
+    env['CAS_SEED_ADMIN_PASSWORD'] = E2E_ADMIN_PASSWORD
     env['E2E_PORT'] = str(port)
     env['PYTHONPATH'] = PROJECT_ROOT + os.pathsep + env.get('PYTHONPATH', '')
     if extra_env:
@@ -115,7 +124,7 @@ def _login_admin(page, base):
     page.click('#username')
     page.fill('#username', 'admin')
     page.click('#password')
-    page.fill('#password', 'admin123')
+    page.fill('#password', E2E_ADMIN_PASSWORD)
     page.click('button[type="submit"]')
     # 1 seeded branch -> auto-selected -> dashboard. Wait for the sidebar to confirm login.
     page.wait_for_selector('text=Accounts Payable', timeout=15000)

@@ -21,7 +21,7 @@ with app.app_context():
     # Seed only once (the temp DB is fresh, but guard for safety / restarts).
     if not User.query.filter_by(username='admin').first():
         from app.seeds.seed_data import seed_minimal
-        seed_minimal()  # admin/admin123, MAIN branch, COA, VAT cats, WHT codes, settings
+        seed_minimal()  # admin (password via CAS_SEED_ADMIN_PASSWORD), MAIN branch, COA, VAT cats, WHT codes, settings
         from app.vendors.models import Vendor
         from app.withholding_tax.models import WithholdingTax
         existing = {v.code for v in Vendor.query.all()}

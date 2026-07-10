@@ -187,9 +187,12 @@ def seed_demo_baseline():
     if admin is None:
         admin = User(username='admin', email='admin@zhiyuanconstruction.ph',
                      full_name='System Administrator', role='admin', is_active=True)
-        admin.set_password('admin123')
+        from app.seeds.seed_data import resolve_seed_admin_password
+        pw = resolve_seed_admin_password()
+        admin.set_password(pw)
         db.session.add(admin)
         db.session.commit()
+        print(f"  [OK] Demo admin password: {pw} (shown once)")
 
     # Branch + assignment
     branch = Branch.query.filter_by(code='MAIN').first()

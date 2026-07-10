@@ -31,10 +31,12 @@ def load_default_admin():
         role='admin',
         is_active=True
     )
-    admin.set_password('admin123')
+    from app.seeds.seed_data import resolve_seed_admin_password
+    pw = resolve_seed_admin_password()
+    admin.set_password(pw)
     db.session.add(admin)
     db.session.commit()
-    print("  [OK] Default admin user created (username: admin, password: admin123)")
+    print(f"  [OK] Default admin user created (username: admin, password: {pw}) -- shown once.")
     return admin
 
 

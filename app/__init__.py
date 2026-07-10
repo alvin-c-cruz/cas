@@ -338,7 +338,8 @@ def create_app(config_name=None):
         print("\nYou can now:")
         print("  1. Start the application: python flask_app.py")
         print("  2. Login with username: admin")
-        print("  3. Password: admin123")
+        print("  3. Password: the value printed above when the admin was created")
+        print("     (set CAS_SEED_ADMIN_PASSWORD before seeding for a stable value).")
         print("="*60 + "\n")
 
     @app.cli.command('seed-minimal')

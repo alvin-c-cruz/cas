@@ -19,6 +19,20 @@ from app.withholding_tax.models import WithholdingTax
 from app.settings import AppSettings
 from app.seeds.firm_coa import FIRM_COA
 from datetime import datetime
+import os
+import secrets
+
+
+def resolve_seed_admin_password():
+    """The password a freshly seeded admin is given.
+
+    Honors CAS_SEED_ADMIN_PASSWORD (set it in a dev .env for a stable local value);
+    otherwise a random token, which the caller prints ONCE so the operator can log
+    in and rotate. Never admin123 -- that was the live-instance exposure, and the
+    login guard would force an immediate change anyway.
+    """
+    return os.environ.get('CAS_SEED_ADMIN_PASSWORD') or secrets.token_urlsafe(16)
+
 
 # Seller/payee-facing names for WT codes that appear on sales documents.
 _WT_SALES_NAMES = {
@@ -35,7 +49,7 @@ def seed_admin_user():
 
     Credentials:
         Username: admin
-        Password: admin123
+        Password: generated (CAS_SEED_ADMIN_PASSWORD or a random token), never admin123
         Role: admin
     """
     # Check if admin already exists
@@ -53,12 +67,14 @@ def seed_admin_user():
         role='admin',
         is_active=True
     )
-    admin.set_password('admin123')
+    pw = resolve_seed_admin_password()
+    admin.set_password(pw)
 
     db.session.add(admin)
     db.session.commit()
 
-    print("  [OK] Admin user created (username: admin, password: admin123)")
+    print(f"  [OK] Admin user created (username: admin, password: {pw})")
+    print("       ^ record this now -- it is shown only once; log in and change it.")
     return True
 
 
@@ -589,7 +605,7 @@ def seed_all(force=False):
         print(f"\nSeeded: {seeded_count}/{total_count} categories")
         print("\nYou can now log in with:")
         print("  Username: admin")
-        print("  Password: admin123")
+        print("  Password: see the value printed above (or set CAS_SEED_ADMIN_PASSWORD).")
         print("\n")
 
         return results
@@ -642,14 +658,20 @@ BASELINE_COA = [
 
 
 def _seed_admin_and_branch():
-    """Create admin/admin123 + MAIN branch (idempotent); assign admin to the branch."""
+    """Create the admin + MAIN branch (idempotent); assign admin to the branch.
+
+    The admin password comes from resolve_seed_admin_password() -- CAS_SEED_ADMIN_PASSWORD
+    or a random token printed once, never admin123.
+    """
     admin = User.query.filter_by(username='admin').first()
     if not admin:
         admin = User(username='admin', email='admin@cascorp.ph',
                      full_name='System Administrator', role='admin', is_active=True)
-        admin.set_password('admin123')
+        pw = resolve_seed_admin_password()
+        admin.set_password(pw)
         db.session.add(admin)
         db.session.commit()
+        print(f"  [OK] Admin created (username: admin, password: {pw}) -- shown once; log in and change it.")
     main_branch = Branch.query.filter_by(code='MAIN').first()
     if not main_branch:
         main_branch = Branch(code='MAIN', name='Main Branch', address='Head Office', is_active=True)
@@ -794,7 +816,7 @@ def seed_minimal():
     Seed the bare-minimum, general-purpose CORE baseline used by /reset-database.
 
     Creates:
-    - 1 admin user (admin / admin123), assigned to
+    - 1 admin user (admin / generated password), assigned to
     - 1 Main Branch
     - 24 app settings (21 settings + 3 core-only module flags: bir_reports/units_of_measure/
       products all OFF)
@@ -824,7 +846,7 @@ def seed_minimal():
         print("="*60)
         print("\nYou can now log in with:")
         print("  Username: admin")
-        print("  Password: admin123")
+        print("  Password: see the value printed above (or set CAS_SEED_ADMIN_PASSWORD).")
         print("\n")
 
     except Exception as e:
@@ -836,7 +858,7 @@ def seed_minimal():
 def seed_firm():
     """Seed a clean combined accounting-firm + software-company instance.
 
-    Same shape as seed_minimal (admin/admin123, MAIN branch, 24 settings, 7/3/8 VAT/EWT)
+    Same shape as seed_minimal (admin/generated-password, MAIN branch, 24 settings, 7/3/8 VAT/EWT)
     but with the FIRM_COA chart of accounts and company_name='Cruz Accounting & Software'.
     """
     print("\n" + "="*60)
@@ -855,7 +877,7 @@ def seed_firm():
         print("="*60)
         print(f"\n  Accounts created: {len(FIRM_COA)}")
         print("  Company: Cruz Accounting & Software (rename in Company Settings)")
-        print("  Login -> username: admin  password: admin123 (change after deploy)")
+        print("  Login -> username: admin  password: see the value printed above; change after deploy.")
         print("\n")
 
     except Exception as e:
@@ -899,7 +921,7 @@ def seed_construction():
         print("="*60)
         print(f"\n  Accounts created: {len(CONSTRUCTION_COA)}")
         print("  Company: Construction Company (rename in Company Settings)")
-        print("  Login -> username: admin  password: admin123 (change after deploy)")
+        print("  Login -> username: admin  password: see the value printed above; change after deploy.")
         print("\n")
 
     except Exception as e:
@@ -949,7 +971,7 @@ def seed_manufacturing():
         print("="*60)
         print(f"\n  Accounts created: {len(coa)}")
         print("  Company: Manufacturing Company (rename in Company Settings)")
-        print("  Login -> username: admin  password: admin123 (change after deploy)")
+        print("  Login -> username: admin  password: see the value printed above; change after deploy.")
         print("\n")
 
     except Exception as e:
