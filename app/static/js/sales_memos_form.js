@@ -67,9 +67,11 @@
     if (totalEl) { totalEl.textContent = fmt(total); }
   }
 
+  var siLinesBase = (form && form.dataset.siLinesBase) || '/credit-memos/si-lines/';
+
   function loadSI(id) {
     if (!id) { tbody.innerHTML = ''; emptyMsg.hidden = false; serialize(); return; }
-    fetch('/credit-memos/si-lines/' + id)
+    fetch(siLinesBase + id)
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
       .then(function (data) {
         if (custEl) { custEl.textContent = data.customer_name ? ('Customer: ' + data.customer_name) : ''; }

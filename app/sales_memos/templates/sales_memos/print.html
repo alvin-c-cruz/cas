@@ -27,7 +27,7 @@
       {% if company.tin %}<div class="muted">TIN: {{ company.tin }}</div>{% endif %}
     </div>
     <div class="doc-title">
-      <h1>CREDIT MEMO</h1>
+      <h1>{{ doc_title|upper }}</h1>
       <div><strong>{{ memo.memo_number }}</strong></div>
       <div class="muted">{{ memo.memo_date.strftime('%B %d, %Y') }}</div>
     </div>
@@ -59,7 +59,7 @@
       <tr><td colspan="4" class="r"><strong>Subtotal</strong></td><td class="r">{{ '%.2f'|format(memo.subtotal) }}</td></tr>
       <tr><td colspan="4" class="r">VAT</td><td class="r">{{ '%.2f'|format(memo.vat_amount) }}</td></tr>
       {% if memo.withholding_tax_amount %}<tr><td colspan="4" class="r">Withholding Tax</td><td class="r">{{ '%.2f'|format(memo.withholding_tax_amount) }}</td></tr>{% endif %}
-      <tr><td colspan="4" class="r"><strong>Total Credit (PHP)</strong></td><td class="r"><strong>{{ '%.2f'|format(memo.total_amount) }}</strong></td></tr>
+      <tr><td colspan="4" class="r"><strong>Total (PHP)</strong></td><td class="r"><strong>{{ '%.2f'|format(memo.total_amount) }}</strong></td></tr>
     </tfoot>
   </table>
 

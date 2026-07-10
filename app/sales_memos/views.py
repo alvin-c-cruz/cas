@@ -1,9 +1,14 @@
-"""Sales Memo views -- Credit Memo (Sales Returns) register + shared settings.
+"""Sales Memo views -- Credit Memo (Sales Returns) + Debit Note, one blueprint.
 
-Phase 1 builds the Credit Memo (memo_type='credit'); Debit Note (memo_type='debit')
-routes arrive in Phase 2. View functions are prefixed `credit_*` / `debit_*` so the two
-MODULE_REGISTRY keys can gate one blueprint by endpoint prefix. The account-assignment
-settings routes are intentionally NOT prefixed (shared config, inline accountant/admin gated).
+Both BIR documents share one implementation, parameterized by `memo_type`
+('credit' | 'debit'). Thin `credit_*` / `debit_*` route wrappers give each its own
+endpoint prefix so the two MODULE_REGISTRY keys can gate them independently. The
+account-assignment settings routes are shared (inline accountant/admin gated).
+
+Credit memo REDUCES the referenced SI's AR balance on post (a return). Debit note is a
+supplementary charge that INCREASES AR via its JE; in Phase 2a it posts the JE only
+(its own receivable) -- wiring debit notes into the CRV open-receivables collection loop
+is Phase 2b.
 """
 import json
 from decimal import Decimal, InvalidOperation
@@ -27,15 +32,21 @@ sales_memos_bp = Blueprint('sales_memos', __name__, template_folder='templates')
 VALID_STATUSES = ('draft', 'posted', 'voided')
 CREDITABLE_SI_STATUSES = ('posted', 'partially_paid', 'paid')
 
+# Per-type presentation + endpoint prefix (templates build url_for(ep_prefix + '<route>')).
+MEMO_META = {
+    'credit': {'title': 'Credit Memo', 'plural': 'Credit Memos', 'prefix': 'sales_memos.credit_'},
+    'debit':  {'title': 'Debit Note',  'plural': 'Debit Notes',  'prefix': 'sales_memos.debit_'},
+}
+
 
 def _accountant_or_admin():
     return current_user.role == 'accountant' or current_user.has_full_access
 
 
-def _memo_create_gate():
+def _memo_create_gate(memo_type):
     if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
         flash('You do not have permission to enter memos.', 'error')
-        return redirect(url_for('sales_memos.credit_list'))
+        return redirect(url_for(MEMO_META[memo_type]['prefix'] + 'list'))
     return None
 
 
@@ -61,9 +72,9 @@ def _cash_account_choices():
 def _parse_memo_lines(memo, si, lines_json):
     """Attach memo lines from [{sales_invoice_item_id, amount}]. Each line snapshots the
     referenced SI line's VAT/WHT/account/product, but is AMOUNT-based: quantity/unit_price
-    are deliberately left null so calculate_amounts uses the credited amount directly (a
-    partial credit is a monetary amount, not qty x unit_price). Credited amount is guarded
-    to the referenced SI line's amount."""
+    are left null so calculate_amounts uses the given amount directly (a partial adjustment
+    is a monetary amount, not qty x unit_price). The per-line amount is guarded to the
+    referenced SI line's amount."""
     items = json.loads(lines_json) if lines_json else []
     si_lines = {li.id: li for li in si.line_items}
     kept = 0
@@ -80,8 +91,7 @@ def _parse_memo_lines(memo, si, lines_json):
             raise ValueError('A memo line references a line not on the selected invoice.')
         orig = Decimal(str(src.line_total if src.line_total is not None else (src.amount or 0)))
         if amt > orig:
-            raise ValueError(
-                f'Line credit {amt} exceeds the invoice line amount {orig}.')
+            raise ValueError(f'Line amount {amt} exceeds the invoice line amount {orig}.')
         kept += 1
         li = SalesMemoItem(
             line_number=kept,
@@ -99,34 +109,31 @@ def _parse_memo_lines(memo, si, lines_json):
         li.calculate_amounts()
         memo.line_items.append(li)
     if kept == 0:
-        raise ValueError('Add at least one line to credit.')
+        raise ValueError('Add at least one line.')
 
 
-# -- Credit Memo register ------------------------------------------------------
+# -- shared implementations ----------------------------------------------------
 
-@sales_memos_bp.route('/credit-memos')
-@login_required
-def credit_list():
+def _list_impl(memo_type):
+    meta = MEMO_META[memo_type]
     branch_id = session.get('selected_branch_id')
     status_filter = request.args.get('status', 'all')
-    query = SalesMemo.query.filter_by(branch_id=branch_id, memo_type='credit')
+    query = SalesMemo.query.filter_by(branch_id=branch_id, memo_type=memo_type)
     if status_filter in VALID_STATUSES:
         query = query.filter_by(status=status_filter)
     memos = query.order_by(SalesMemo.memo_date.desc(), SalesMemo.id.desc()).all()
-    return render_template('sales_memos/list.html', memos=memos, memo_type='credit',
-                           doc_title='Credit Memos', status_filter=status_filter,
-                           can_configure=_accountant_or_admin())
+    return render_template('sales_memos/list.html', memos=memos, memo_type=memo_type,
+                           doc_title=meta['plural'], ep_prefix=meta['prefix'],
+                           status_filter=status_filter, can_configure=_accountant_or_admin())
 
 
-@sales_memos_bp.route('/credit-memos/si-lines/<int:si_id>')
-@login_required
-def credit_si_lines(si_id):
-    """JSON: the referenced SI's lines for the create grid (reuses SalesInvoiceItem.to_dict)."""
+def _si_lines_impl(si_id):
+    """JSON: the referenced SI's lines for the create grid (shared by both memo types)."""
     from app.sales_invoices.models import SalesInvoice
     branch_id = session.get('selected_branch_id')
     si = db.session.get(SalesInvoice, si_id)
     if not si or si.branch_id != branch_id or si.status not in CREDITABLE_SI_STATUSES:
-        return {'error': 'Invoice not found or not creditable.'}, 404
+        return {'error': 'Invoice not found or not eligible.'}, 404
     lines = []
     for li in si.line_items:
         d = li.to_dict()
@@ -137,10 +144,15 @@ def credit_si_lines(si_id):
     return {'customer_name': si.customer_name, 'salesperson_id': si.salesperson_id, 'lines': lines}
 
 
-@sales_memos_bp.route('/credit-memos/create', methods=['GET', 'POST'])
-@login_required
-def credit_create():
-    gate = _memo_create_gate()
+def _render_form(form, memo_type):
+    meta = MEMO_META[memo_type]
+    return render_template('sales_memos/form.html', form=form, memo=None,
+                           memo_type=memo_type, doc_title=meta['title'], ep_prefix=meta['prefix'])
+
+
+def _create_impl(memo_type):
+    meta = MEMO_META[memo_type]
+    gate = _memo_create_gate(memo_type)
     if gate:
         return gate
     branch_id = session.get('selected_branch_id')
@@ -156,14 +168,14 @@ def credit_create():
         si = db.session.get(SalesInvoice, form.sales_invoice_id.data)
         if not si or si.branch_id != branch_id or si.status not in CREDITABLE_SI_STATUSES:
             flash('Select a valid posted Sales Invoice.', 'error')
-            return _render_credit_form(form, eligible)
+            return _render_form(form, memo_type)
         if form.destination.data == 'cash_refund' and not form.cash_account_id.data:
-            flash('Select a cash account for the refund.', 'error')
-            return _render_credit_form(form, eligible)
+            flash('Select a cash account.', 'error')
+            return _render_form(form, memo_type)
         try:
             memo = SalesMemo(
-                memo_type='credit',
-                memo_number=generate_memo_number('credit'),
+                memo_type=memo_type,
+                memo_number=generate_memo_number(memo_type),
                 memo_date=form.memo_date.data,
                 branch_id=branch_id,
                 sales_invoice_id=si.id,
@@ -189,52 +201,23 @@ def credit_create():
                        new_values=model_to_dict(memo, ['memo_number', 'memo_type',
                                                        'original_invoice_number', 'total_amount',
                                                        'destination', 'status']))
-            flash(f'Credit Memo "{memo.memo_number}" created.', 'success')
-            return redirect(url_for('sales_memos.credit_view', id=memo.id))
+            flash(f'{meta["title"]} "{memo.memo_number}" created.', 'success')
+            return redirect(url_for(meta['prefix'] + 'view', id=memo.id))
         except ValueError as e:
             db.session.rollback()
             flash(str(e), 'error')
-            return _render_credit_form(form, eligible)
+            return _render_form(form, memo_type)
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error('Error creating credit memo', exc_info=True)
-            log_exception(e, severity='ERROR', module='sales_memos.credit_create')
-            flash('An error occurred while creating the Credit Memo.', 'error')
-            return _render_credit_form(form, eligible)
+            current_app.logger.error('Error creating %s', meta['title'], exc_info=True)
+            log_exception(e, severity='ERROR', module=f'sales_memos.{memo_type}_create')
+            flash(f'An error occurred while creating the {meta["title"]}.', 'error')
+            return _render_form(form, memo_type)
 
     if request.method == 'GET':
         form.memo_date.data = ph_now().date()
-    return _render_credit_form(form, eligible)
+    return _render_form(form, memo_type)
 
-
-def _render_credit_form(form, eligible):
-    return render_template('sales_memos/form.html', form=form, memo=None,
-                           memo_type='credit', doc_title='Credit Memo')
-
-
-@sales_memos_bp.route('/credit-memos/<int:id>')
-@login_required
-def credit_view(id):
-    from app.users.models import User
-    memo = _memo_or_404(id, 'credit')
-    created_by = db.session.get(User, memo.created_by_id) if memo.created_by_id else None
-    return render_template('sales_memos/detail.html', memo=memo, doc_title='Credit Memo',
-                           can_manage=_accountant_or_admin(), created_by=created_by)
-
-
-@sales_memos_bp.route('/credit-memos/<int:id>/print')
-@login_required
-def credit_print(id):
-    from app.settings import AppSettings
-    memo = _memo_or_404(id, 'credit')
-    company = {'name': AppSettings.get_setting('company_name', ''),
-               'address': AppSettings.get_setting('company_address', ''),
-               'tin': AppSettings.get_setting('company_tin', '')}
-    return render_template('sales_memos/print.html', memo=memo, company=company,
-                           printed_at=ph_now(), doc_title='Credit Memo')
-
-
-# -- lifecycle: post / void ----------------------------------------------------
 
 def _memo_or_404(id, memo_type):
     memo = db.get_or_404(SalesMemo, id)
@@ -243,9 +226,30 @@ def _memo_or_404(id, memo_type):
     return memo
 
 
+def _view_impl(id, memo_type):
+    from app.users.models import User
+    meta = MEMO_META[memo_type]
+    memo = _memo_or_404(id, memo_type)
+    created_by = db.session.get(User, memo.created_by_id) if memo.created_by_id else None
+    return render_template('sales_memos/detail.html', memo=memo, doc_title=meta['title'],
+                           ep_prefix=meta['prefix'], can_manage=_accountant_or_admin(),
+                           created_by=created_by)
+
+
+def _print_impl(id, memo_type):
+    from app.settings import AppSettings
+    meta = MEMO_META[memo_type]
+    memo = _memo_or_404(id, memo_type)
+    company = {'name': AppSettings.get_setting('company_name', ''),
+               'address': AppSettings.get_setting('company_address', ''),
+               'tin': AppSettings.get_setting('company_tin', '')}
+    return render_template('sales_memos/print.html', memo=memo, company=company,
+                           printed_at=ph_now(), doc_title=meta['title'])
+
+
 def _apply_memo_to_ar(memo):
     """Credit-memo AR settlement: reduce the referenced SI's open balance (mirror
-    _apply_ar_collections). Only for destination='ar'."""
+    _apply_ar_collections). Only for a credit memo with destination='ar'."""
     inv = memo.sales_invoice
     amount = Decimal(str(memo.total_amount or 0))
     current = Decimal(str(inv.balance or 0))
@@ -271,57 +275,59 @@ def _reverse_memo_from_ar(memo):
     inv.status = 'posted' if inv.amount_paid <= 0 else 'partially_paid'
 
 
-@sales_memos_bp.route('/credit-memos/<int:id>/post', methods=['POST'])
-@login_required
-def credit_post(id):
-    memo = _memo_or_404(id, 'credit')
+def _post_impl(id, memo_type):
+    meta = MEMO_META[memo_type]
+    memo = _memo_or_404(id, memo_type)
+    view_url = url_for(meta['prefix'] + 'view', id=id)
     if not _accountant_or_admin():
-        flash('Only an accountant or administrator can post a Credit Memo.', 'error')
-        return redirect(url_for('sales_memos.credit_view', id=id))
+        flash(f'Only an accountant or administrator can post a {meta["title"]}.', 'error')
+        return redirect(view_url)
     if memo.status != 'draft':
-        flash('Only a draft Credit Memo can be posted.', 'error')
-        return redirect(url_for('sales_memos.credit_view', id=id))
+        flash(f'Only a draft {meta["title"]} can be posted.', 'error')
+        return redirect(view_url)
     try:
         memo.status = 'posted'
         memo.posted_by_id = current_user.id
         memo.posted_at = ph_now()
         je = post_memo_je(memo, current_user.id)   # status posted -> JE posted
         memo.journal_entry_id = je.id
-        if memo.destination == 'ar':
+        # A credit memo settles the referenced SI's AR; a debit note is its own receivable
+        # (collection via the CRV loop is Phase 2b), so it touches no SI balance here.
+        if memo_type == 'credit' and memo.destination == 'ar':
             _apply_memo_to_ar(memo)
         db.session.commit()
         log_audit(module='sales_memos', action='post', record_id=memo.id,
                   record_identifier=memo.memo_number, notes='Posted')
-        flash(f'Credit Memo "{memo.memo_number}" posted.', 'success')
+        flash(f'{meta["title"]} "{memo.memo_number}" posted.', 'success')
     except ValueError as e:
         db.session.rollback()
         flash(str(e), 'error')
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error('Error posting credit memo', exc_info=True)
-        log_exception(e, severity='ERROR', module='sales_memos.credit_post')
-        flash('An error occurred posting the Credit Memo.', 'error')
-    return redirect(url_for('sales_memos.credit_view', id=id))
+        current_app.logger.error('Error posting %s', meta['title'], exc_info=True)
+        log_exception(e, severity='ERROR', module=f'sales_memos.{memo_type}_post')
+        flash(f'An error occurred posting the {meta["title"]}.', 'error')
+    return redirect(view_url)
 
 
-@sales_memos_bp.route('/credit-memos/<int:id>/void', methods=['POST'])
-@login_required
-def credit_void(id):
-    memo = _memo_or_404(id, 'credit')
+def _void_impl(id, memo_type):
+    meta = MEMO_META[memo_type]
+    memo = _memo_or_404(id, memo_type)
+    view_url = url_for(meta['prefix'] + 'view', id=id)
     if not _accountant_or_admin():
-        flash('Only an accountant or administrator can void a Credit Memo.', 'error')
-        return redirect(url_for('sales_memos.credit_view', id=id))
+        flash(f'Only an accountant or administrator can void a {meta["title"]}.', 'error')
+        return redirect(view_url)
     if memo.status == 'voided':
-        flash('This Credit Memo is already voided.', 'error')
-        return redirect(url_for('sales_memos.credit_view', id=id))
+        flash(f'This {meta["title"]} is already voided.', 'error')
+        return redirect(view_url)
     reason = (request.form.get('void_reason') or '').strip()
     if len(reason) < 10:
         flash('A void reason (min 10 characters) is required.', 'error')
-        return redirect(url_for('sales_memos.credit_view', id=id))
+        return redirect(view_url)
     try:
         if memo.status == 'posted':
             reverse_memo_je(memo, current_user.id)
-            if memo.destination == 'ar':
+            if memo_type == 'credit' and memo.destination == 'ar':
                 _reverse_memo_from_ar(memo)
         memo.status = 'voided'
         memo.voided_by_id = current_user.id
@@ -330,13 +336,101 @@ def credit_void(id):
         db.session.commit()
         log_audit(module='sales_memos', action='void', record_id=memo.id,
                   record_identifier=memo.memo_number, notes=f'Voided: {reason}')
-        flash(f'Credit Memo "{memo.memo_number}" voided.', 'warning')
+        flash(f'{meta["title"]} "{memo.memo_number}" voided.', 'warning')
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error('Error voiding credit memo', exc_info=True)
-        log_exception(e, severity='ERROR', module='sales_memos.credit_void')
-        flash('An error occurred voiding the Credit Memo.', 'error')
-    return redirect(url_for('sales_memos.credit_view', id=id))
+        current_app.logger.error('Error voiding %s', meta['title'], exc_info=True)
+        log_exception(e, severity='ERROR', module=f'sales_memos.{memo_type}_void')
+        flash(f'An error occurred voiding the {meta["title"]}.', 'error')
+    return redirect(view_url)
+
+
+# -- Credit Memo routes --------------------------------------------------------
+
+@sales_memos_bp.route('/credit-memos')
+@login_required
+def credit_list():
+    return _list_impl('credit')
+
+
+@sales_memos_bp.route('/credit-memos/si-lines/<int:si_id>')
+@login_required
+def credit_si_lines(si_id):
+    return _si_lines_impl(si_id)
+
+
+@sales_memos_bp.route('/credit-memos/create', methods=['GET', 'POST'])
+@login_required
+def credit_create():
+    return _create_impl('credit')
+
+
+@sales_memos_bp.route('/credit-memos/<int:id>')
+@login_required
+def credit_view(id):
+    return _view_impl(id, 'credit')
+
+
+@sales_memos_bp.route('/credit-memos/<int:id>/print')
+@login_required
+def credit_print(id):
+    return _print_impl(id, 'credit')
+
+
+@sales_memos_bp.route('/credit-memos/<int:id>/post', methods=['POST'])
+@login_required
+def credit_post(id):
+    return _post_impl(id, 'credit')
+
+
+@sales_memos_bp.route('/credit-memos/<int:id>/void', methods=['POST'])
+@login_required
+def credit_void(id):
+    return _void_impl(id, 'credit')
+
+
+# -- Debit Note routes ---------------------------------------------------------
+
+@sales_memos_bp.route('/debit-notes')
+@login_required
+def debit_list():
+    return _list_impl('debit')
+
+
+@sales_memos_bp.route('/debit-notes/si-lines/<int:si_id>')
+@login_required
+def debit_si_lines(si_id):
+    return _si_lines_impl(si_id)
+
+
+@sales_memos_bp.route('/debit-notes/create', methods=['GET', 'POST'])
+@login_required
+def debit_create():
+    return _create_impl('debit')
+
+
+@sales_memos_bp.route('/debit-notes/<int:id>')
+@login_required
+def debit_view(id):
+    return _view_impl(id, 'debit')
+
+
+@sales_memos_bp.route('/debit-notes/<int:id>/print')
+@login_required
+def debit_print(id):
+    return _print_impl(id, 'debit')
+
+
+@sales_memos_bp.route('/debit-notes/<int:id>/post', methods=['POST'])
+@login_required
+def debit_post(id):
+    return _post_impl(id, 'debit')
+
+
+@sales_memos_bp.route('/debit-notes/<int:id>/void', methods=['POST'])
+@login_required
+def debit_void(id):
+    return _void_impl(id, 'debit')
 
 
 # -- Shared settings: accountant-assigned accounts -----------------------------
@@ -364,7 +458,6 @@ def save_accounts():
         flash('Only Accountants and Administrators can perform this action.', 'error')
         return redirect(url_for('dashboard.index'))
     from app.accounts.models import Account
-    from app.audit.utils import log_audit
     returns = (request.form.get(service.SALES_RETURNS_KEY) or '').strip()
     credits = (request.form.get(service.CUSTOMER_CREDITS_KEY) or '').strip()
     for code, label in ((returns, 'Sales Returns & Allowances'),
