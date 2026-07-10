@@ -14,6 +14,7 @@ from app.vendors.utils import populate_vat_category_choices, generate_next_vendo
 from app.vat_categories.models import VATCategory
 from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
+from app.common.vat_nature import resolve_purchase_nature
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
@@ -367,6 +368,7 @@ def _build_validated_ap_lines():
             unit_of_measure_id=_int_safe(item_data.get('uom_id')),
             product_id=_int_safe(item_data.get('product_id')),
             vat_category=vat_category,
+            vat_nature=resolve_purchase_nature(vat_category),
             vat_rate=vat_rate,
             account_id=account_id,
             wt_id=wt_id,

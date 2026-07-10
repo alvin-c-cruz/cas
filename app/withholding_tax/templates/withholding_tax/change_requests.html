@@ -47,10 +47,10 @@
                         <td>
                             {% if request.action == 'create' %}
                             <strong>{{ proposed.get('name', 'N/A') }}</strong> ({{ proposed.get('code', 'N/A') }})
-                            <br><span style="font-size: 12px; color: #64748b;">Rate: {{ "%.2f"|format(proposed.get('rate', 0)) }}%</span>
+                            <br><span style="font-size: 12px; color: #64748b;">Rate: {{ "%.2f"|format(proposed.get('rate', 0)) }}% &middot; {{ tax_type_labels.get(proposed.get('tax_type'), proposed.get('tax_type')) }}</span>
                             {% elif request.action == 'update' and request.withholding_tax %}
                             <strong>{{ request.withholding_tax.name }}</strong> ({{ request.withholding_tax.code }})
-                            <br><span style="font-size: 12px; color: #64748b;">New: {{ proposed.get('name', 'N/A') }} - {{ "%.2f"|format(proposed.get('rate', 0)) }}%</span>
+                            <br><span style="font-size: 12px; color: #64748b;">New: {{ proposed.get('name', 'N/A') }} - {{ "%.2f"|format(proposed.get('rate', 0)) }}% &middot; {{ tax_type_labels.get(proposed.get('tax_type'), proposed.get('tax_type')) }}</span>
                             {% elif request.action == 'delete' %}
                             <strong>{{ proposed.get('name', 'N/A') }}</strong> ({{ proposed.get('code', 'N/A') }})
                             {% endif %}

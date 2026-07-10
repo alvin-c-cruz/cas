@@ -35,6 +35,7 @@ def vat_data(account_id, code='V12T', rate='12.00'):
         'code': code, 'name': f'Test {code}', 'description': 'test',
         'rate': rate, 'is_active': '1',
         'input_vat_account_id': str(account_id),
+        'transaction_nature': 'domestic_goods',
         'request_reason': 'B-014 workflow test',
     }
 

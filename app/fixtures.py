@@ -255,11 +255,11 @@ def load_default_vat_categories():
     input_vat_id = input_vat_acct.id if input_vat_acct else None
 
     vat_categories = [
-        VATCategory(code='VAT-12', name='Other Goods (12%)', description='Standard VAT rate for other goods', rate=12.00, input_vat_account_id=input_vat_id, is_active=True),
-        VATCategory(code='VAT-SVC', name='Services (12%)', description='Standard VAT rate for services', rate=12.00, input_vat_account_id=input_vat_id, is_active=True),
-        VATCategory(code='VAT-CAP', name='Capital Goods (12%)', description='Standard VAT rate for capital goods', rate=12.00, input_vat_account_id=input_vat_id, is_active=True),
-        VATCategory(code='VAT-EX', name='VAT-Exempt', description='Transactions exempt from VAT', rate=0.00, is_active=True),
-        VATCategory(code='VAT-ZR', name='Zero-Rated', description='Transactions subject to 0% VAT', rate=0.00, is_active=True),
+        VATCategory(code='VAT-12', name='Other Goods (12%)', description='Standard VAT rate for other goods', rate=12.00, input_vat_account_id=input_vat_id, transaction_nature='domestic_goods', is_active=True),
+        VATCategory(code='VAT-SVC', name='Services (12%)', description='Standard VAT rate for services', rate=12.00, input_vat_account_id=input_vat_id, transaction_nature='domestic_services', is_active=True),
+        VATCategory(code='VAT-CAP', name='Capital Goods (12%)', description='Standard VAT rate for capital goods', rate=12.00, input_vat_account_id=input_vat_id, transaction_nature='capital_goods', is_active=True),
+        VATCategory(code='VAT-EX', name='VAT-Exempt', description='Transactions exempt from VAT', rate=0.00, transaction_nature='exempt', is_active=True),
+        VATCategory(code='VAT-ZR', name='Zero-Rated', description='Transactions subject to 0% VAT', rate=0.00, transaction_nature='zero_rated', is_active=True),
     ]
 
     for vat_category in vat_categories:

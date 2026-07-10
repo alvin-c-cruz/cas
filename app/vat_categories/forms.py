@@ -4,6 +4,7 @@ VAT Category forms
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, DecimalField, SelectField
 from wtforms.validators import DataRequired, InputRequired, Length, NumberRange, Optional, ValidationError
+from app.vat_categories.models import PURCHASE_NATURES, PURCHASE_NATURE_LABELS
 
 
 class VATCategoryForm(FlaskForm):
@@ -24,6 +25,11 @@ class VATCategoryForm(FlaskForm):
         InputRequired(message='VAT rate is required'),
         NumberRange(min=0, max=100, message='VAT rate must be between 0 and 100')
     ], places=2)
+    transaction_nature = SelectField(
+        'BIR Purchase Classification',
+        choices=[(n, PURCHASE_NATURE_LABELS[n]) for n in PURCHASE_NATURES],
+        validators=[DataRequired(message='BIR purchase classification is required')],
+        description='Determines which 2550Q input-tax box this category feeds.')
     input_vat_account_id = SelectField('Input Tax Account', coerce=int,
                                        validators=[], default=0)
 

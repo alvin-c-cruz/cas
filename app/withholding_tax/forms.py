@@ -4,6 +4,7 @@ Withholding Tax forms
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, DecimalField, SelectField
 from wtforms.validators import DataRequired, Length, NumberRange, Optional
+from app.withholding_tax.models import TAX_TYPES
 
 
 def _coerce_int_opt(v):
@@ -38,6 +39,11 @@ class WithholdingTaxForm(FlaskForm):
         DataRequired(message='WT rate is required'),
         NumberRange(min=0, max=100, message='WT rate must be between 0 and 100')
     ], places=2)
+    tax_type = SelectField('Withholding Regime', choices=[
+        ('expanded', 'Expanded (creditable) — BIR 2307 / 1601-EQ / SAWT'),
+        ('final', 'Final — BIR 2306 / 1601-FQ'),
+    ], validators=[DataRequired(message='Withholding regime is required')],
+       description='Final tax is not creditable and is excluded from 2307, QAP, and SAWT.')
     payable_account_id = SelectField('WHT Payable GL Account',
         coerce=_coerce_int_opt, validators=[], default=0, validate_choice=False,
         description='GL account for WHT payable (APV/CDV — crediting held tax)')

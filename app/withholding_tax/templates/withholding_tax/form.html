@@ -64,6 +64,9 @@
 
                     {{ status_toggle(form.is_active, hint='Only active withholding taxes appear in vendor forms') }}
                 </div>
+
+                {{ render_field(form.tax_type, required=True) }}
+                <small class="form-hint">{{ form.tax_type.description }}</small>
             </div>
 
             {# GL Accounts Section #}

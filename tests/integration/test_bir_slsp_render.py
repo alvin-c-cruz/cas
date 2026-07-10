@@ -41,3 +41,31 @@ def test_bir_purchases_page_renders(client, db_session, main_branch, admin_user)
     resp = client.get('/reports/bir/purchases')
     assert resp.status_code == 200
     assert b'Summary List of Purchases' in resp.data
+
+
+def test_bir_sales_page_renders_with_unclassified_banner(
+        client, db_session, main_branch, admin_user, posted_si_no_category):
+    """R-08 Task 9: a populated SLS page (real vat_lines() data, including an
+    unclassified line) must render without crashing and must surface the
+    unclassified banner -- no currency symbol anywhere in the response."""
+    _set_company()
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/bir/sales?year=2026&month=2')
+    assert resp.status_code == 200
+    assert b'could not be classified for BIR' in resp.data
+    assert '₱'.encode('utf-8') not in resp.data
+    assert b'$' not in resp.data
+
+
+def test_bir_purchases_page_renders_with_unclassified_banner(
+        client, db_session, main_branch, admin_user, posted_ap_no_category):
+    """R-08 Task 9: same as above for SLP."""
+    _set_company()
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/reports/bir/purchases?year=2026&month=2')
+    assert resp.status_code == 200
+    assert b'could not be classified for BIR' in resp.data
+    assert '₱'.encode('utf-8') not in resp.data
+    assert b'$' not in resp.data

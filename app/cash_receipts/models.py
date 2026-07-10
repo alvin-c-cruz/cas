@@ -161,6 +161,9 @@ class CRVRevenueLine(db.Model):
     vat_rate = db.Column(db.Numeric(5, 2), default=0, nullable=False)
     line_total = db.Column(db.Numeric(15, 2), default=0, nullable=False)
     vat_amount = db.Column(db.Numeric(15, 2), default=0, nullable=False)
+    # BIR classification snapshotted at post time, alongside vat_rate/vat_amount.
+    # NULL = unclassified; never coerced to a vatable default. See the R-08 spec.
+    vat_nature = db.Column(db.String(24), nullable=True, index=True)
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'))
     account = db.relationship('Account')
     wt_id = db.Column(db.Integer, db.ForeignKey('withholding_tax.id'), nullable=True)
@@ -210,6 +213,7 @@ class CRVRevenueLine(db.Model):
             'product_code': self.product.code if self.product else None,
             'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
+            'vat_nature': self.vat_nature,
             'vat_rate': float(self.vat_rate),
             'line_total': float(self.line_total),
             'vat_amount': float(self.vat_amount),

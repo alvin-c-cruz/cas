@@ -6,6 +6,69 @@ from datetime import datetime
 from app.utils import ph_now
 
 
+# BIR 2550Q Part II purchase classifier. Mirrors SalesVATCategory.transaction_nature
+# on the sales side, but nullable: there is no purchase-side "regular", and an
+# unrecognized legacy code must stay honestly unclassified rather than be guessed.
+PURCHASE_NATURES = (
+    'capital_goods',         # 2550Q 18A/18B (not split at 1,000,000)
+    'domestic_goods',        # 18C
+    'domestic_services',     # 18E
+    'importation',           # 18D
+    'nonresident_services',  # 18F -- selectable, unseeded
+    'exempt',                # exempt purchases
+    'zero_rated',            # zero-rated purchases
+    'not_qualified',         # 18G -- no input tax
+)
+
+# Seeded-code -> nature. Covers the standard 7-code seed and the legacy 4-code
+# seed (seed_data.py::seed_vat_categories). Unlisted codes are client-created and
+# resolve to NULL.
+PURCHASE_NATURE_BY_CODE = {
+    'V12CG': 'capital_goods',
+    'V12DG': 'domestic_goods',
+    'V12SV': 'domestic_services',
+    'V12IM': 'importation',
+    'VEX': 'exempt',
+    'V0': 'zero_rated',
+    'INV': 'not_qualified',
+    'VATABLE': 'domestic_goods',
+    'VAT-EXEMPT': 'exempt',
+    'ZERO-RATED': 'zero_rated',
+    'NON-VAT': 'not_qualified',
+}
+
+# Human-readable label for each PURCHASE_NATURES token. Public (no leading
+# underscore) so it can be imported across modules (forms.py, views.py,
+# templates via the nature_label filter) -- promoted from a
+# forms.py-private _NATURE_LABELS, which was the only cross-module
+# underscore import in app/.
+PURCHASE_NATURE_LABELS = {
+    'capital_goods': 'Capital Goods',
+    'domestic_goods': 'Domestic Purchase of Goods',
+    'domestic_services': 'Domestic Purchase of Services',
+    'importation': 'Importation of Goods',
+    'nonresident_services': 'Services Rendered by Non-Residents',
+    'exempt': 'VAT-Exempt Purchase',
+    'zero_rated': 'Zero-Rated Purchase',
+    'not_qualified': 'Not Qualified for Input Tax',
+}
+
+
+def format_purchase_nature(value):
+    """Render a transaction_nature value for display.
+
+    A bare dict .get(value, '-') conflates two different situations:
+    value is None (a legitimately unclassified legacy or client-created
+    category) vs. value present but not a recognized key (a stale or
+    unrecognized token -- a data-integrity signal). Render them
+    distinguishably so the second case is never silently hidden behind the
+    same default as the first.
+    """
+    if value is None:
+        return '(unclassified)'
+    return PURCHASE_NATURE_LABELS.get(value, f'Unrecognized: {value}')
+
+
 class VATCategory(db.Model):
     """VAT Category master table (shared across branches)"""
     __tablename__ = 'vat_categories'
@@ -16,6 +79,9 @@ class VATCategory(db.Model):
     description = db.Column(db.Text)
     rate = db.Column(db.Numeric(5, 2), nullable=False)  # e.g., 12.00 for 12%
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # BIR 2550Q Part II classifier. NULL = unclassified (legacy rows only).
+    transaction_nature = db.Column(db.String(30), nullable=True)
 
     # Input VAT account used for purchase journal entries (B-014).
     # NULL is correct for zero-rate categories; the form requires it when rate > 0.
@@ -43,6 +109,7 @@ class VATCategory(db.Model):
             'name': self.name,
             'description': self.description,
             'rate': float(self.rate) if self.rate else 0.0,
+            'transaction_nature': self.transaction_nature,
             'input_vat_account_id': self.input_vat_account_id,
             'input_vat_account_code': self.input_vat_account.code if self.input_vat_account else None,
             'input_vat_account_name': self.input_vat_account.name if self.input_vat_account else None,

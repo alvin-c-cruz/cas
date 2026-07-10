@@ -13,6 +13,7 @@ from app import db
 from app.accounts.models import Account
 from app.vendors.models import Vendor
 from app.users.models import User
+from app.common.vat_nature import resolve_purchase_nature
 
 TWO = Decimal('0.01')
 
@@ -156,6 +157,7 @@ def build_apv(doc_date, vendor_spec, vendor_obj, refs, creator_id, poster_id,
         description=f'{vendor_spec["category"].title()} — {doc_date.strftime("%b %Y")}',
         amount=line_total,
         vat_category=vendor_spec['vat_code'],
+        vat_nature=resolve_purchase_nature(vendor_spec['vat_code']),
         vat_rate=Decimal('12.00') if vendor_spec['vat_code'] == 'VATABLE' else Decimal('0.00'),
         line_total=line_total,
         vat_amount=vat_amt,
@@ -248,6 +250,7 @@ def build_cdv_expense(doc_date, vendor_spec, vendor_obj, refs, creator_id, poste
         description=f'{vendor_spec["category"].title()} — {doc_date.strftime("%b %Y")}',
         amount=line_total,
         vat_category=vendor_spec['vat_code'],
+        vat_nature=resolve_purchase_nature(vendor_spec['vat_code']),
         vat_rate=Decimal('12.00') if vendor_spec['vat_code'] == 'VATABLE' else Decimal('0.00'),
         line_total=line_total,
         vat_amount=vat_amt,
@@ -413,7 +416,8 @@ def _build_draft_apv(doc_date, spec, vobj, refs, creator_id, branch_id, counters
     )
     ap.line_items.append(AccountsPayableItem(
         line_number=1, description='Draft bill', amount=amt,
-        vat_category=spec['vat_code'], vat_rate=Decimal('12.00'),
+        vat_category=spec['vat_code'], vat_nature=resolve_purchase_nature(spec['vat_code']),
+        vat_rate=Decimal('12.00'),
         line_total=amt, vat_amount=vat_amt,
         account_id=refs['expense'][spec['expense_code']].id,
         wt_rate=Decimal('0.00'), wt_amount=Decimal('0.00'),

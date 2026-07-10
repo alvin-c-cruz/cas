@@ -493,9 +493,11 @@ def bir_sales_export_excel():
     sales_data = get_summary_list_of_sales(year, month, branch_id=current_branch_id)
 
     columns = ['customer_tin', 'customer_name', 'customer_address', 'vatable_sales',
-               'vat_exempt_sales', 'zero_rated_sales', 'vat_amount', 'gross_sales']
+               'vat_exempt_sales', 'zero_rated_sales', 'government_sales',
+               'unclassified_sales', 'vat_amount', 'gross_sales']
     headers = ['TIN', 'Customer Name', 'Address', 'Vatable Sales',
-               'VAT-Exempt Sales', 'Zero-Rated Sales', 'Output VAT', 'Gross Sales']
+               'VAT-Exempt Sales', 'Zero-Rated Sales', 'Government Sales',
+               'Unclassified Sales', 'Output VAT', 'Gross Sales']
 
     filename = f'BIR_Summary_Sales_{year}_{month:02d}.xlsx'
     title = f'Summary List of Sales - {get_month_name(month)} {year}'
@@ -532,10 +534,13 @@ def bir_purchases_export_excel():
     purchases_data = get_summary_list_of_purchases(year, month, branch_id=current_branch_id)
 
     columns = ['vendor_tin', 'vendor_name', 'vendor_address', 'vendor_invoice_number',
-               'vatable_purchases', 'vat_exempt_purchases', 'zero_rated_purchases',
-               'input_vat', 'gross_purchases']
-    headers = ['TIN', 'Vendor Name', 'Address', 'Invoice #', 'Vatable Purchases',
-               'VAT-Exempt Purchases', 'Zero-Rated Purchases', 'Input VAT', 'Gross Purchases']
+               'capital_goods', 'domestic_goods', 'domestic_services', 'importation',
+               'nonresident_services', 'exempt', 'zero_rated', 'not_qualified',
+               'unclassified_purchases', 'input_vat', 'gross_purchases']
+    headers = ['TIN', 'Vendor Name', 'Address', 'Invoice #', 'Capital Goods',
+               'Domestic Goods', 'Domestic Services', 'Importation',
+               'Non-Resident Services', 'Exempt', 'Zero-Rated', 'Not Qualified',
+               'Unclassified', 'Input VAT', 'Gross Purchases']
 
     filename = f'BIR_Summary_Purchases_{year}_{month:02d}.xlsx'
     title = f'Summary List of Purchases - {get_month_name(month)} {year}'

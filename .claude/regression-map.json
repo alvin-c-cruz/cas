@@ -27,8 +27,12 @@
     "app/dashboard/action_items_service.py": ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
     "app/vendors/utils.py":                ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
     "app/vendors/models.py":               ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],
-    "app/vat_categories/models.py":        ["accounts_payable", "cash_disbursements", "sales_invoices", "journals"],
-    "app/withholding_tax/models.py":       ["accounts_payable", "cash_disbursements", "sales_invoices"],
+    "app/vat_categories/models.py":        ["accounts_payable", "cash_disbursements", "sales_invoices", "journals", "reports", "vat_settlement"],
+    "app/withholding_tax/models.py":       ["accounts_payable", "cash_disbursements", "sales_invoices", "reports", "cash_receipts"],
+    "app/reports/vat_lines.py":            ["reports", "vat_settlement", "accounts_payable", "sales_invoices", "cash_receipts", "cash_disbursements"],
+    "app/reports/wht_lines.py":            ["reports", "accounts_payable", "sales_invoices", "cash_receipts", "cash_disbursements"],
+    "app/reports/bir.py":                  ["reports", "vat_settlement"],
+    "app/common/vat_nature.py":            ["reports", "accounts_payable", "sales_invoices", "cash_receipts", "cash_disbursements"],
     "app/journal_entries/utils.py":        ["accounts_payable", "cash_disbursements", "sales_invoices"],
     "app/sales_orders/monitoring.py":      ["sales_orders"],
     "app/delivery_receipts/models.py":     ["delivery_receipts", "sales_invoices"],
@@ -77,10 +81,12 @@
     "sales_vat_categories": { "marker": "sales_vat", "e2e": null },
     "customers":         { "marker": "customers", "e2e": null },
     "reports":           { "marker": "reports", "e2e": null },
-    "journal_entries":   { "marker": "journal_entries", "e2e": null }
+    "journal_entries":   { "marker": "journal_entries", "e2e": null },
+    "vat_settlement":    { "marker": "vat_settlement", "e2e": null }
   },
   "notes": [
     "Only the JS/browser layer is e2e-covered (pytest renders HTML but never executes JS). accounts_payable (test_ap_smoke.py) and sales_invoices (test_si_smoke.py) have smoke suites; mirror to cash_disbursements as it gets verified, then set its 'e2e' path here.",
-    "When you ADD a new shared file or a new module dependency, add it here in the SAME commit -- a stale map is a silent coverage hole."
+    "When you ADD a new shared file or a new module dependency, add it here in the SAME commit -- a stale map is a silent coverage hole.",
+    "'vat_settlement' has no marker registered in pytest.ini yet (feat/vat-settlement is reviewed but not merged, R-08 memory project-vat-settlement) -- its map entries are forward-wired now so /guard doesn't need a second edit when that branch lands; until then `pytest -m vat_settlement` legitimately selects 0 tests."
   ]
 }

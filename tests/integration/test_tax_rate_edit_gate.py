@@ -44,6 +44,7 @@ class TestVatRateEditForcesReview:
         client.post(url_for("vat_categories.edit", id=vc.id), data={
             "code": "V12", "name": "Vatable 12%", "description": "std",
             "rate": "2.00", "is_active": "1", "input_vat_account_id": str(acct.id),
+            "transaction_nature": "domestic_goods",
             "request_reason": "correcting the rate",
         }, follow_redirects=True)
         db_session.refresh(vc)
@@ -60,6 +61,7 @@ class TestVatRateEditForcesReview:
         client.post(url_for("vat_categories.edit", id=vc.id), data={
             "code": "V12", "name": "Vatable 12% (renamed)", "description": "std",
             "rate": "12.00", "is_active": "1", "input_vat_account_id": str(acct.id),
+            "transaction_nature": "domestic_goods",
             "request_reason": "rename only",
         }, follow_redirects=True)
         db_session.refresh(vc)

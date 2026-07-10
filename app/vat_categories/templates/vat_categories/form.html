@@ -60,6 +60,9 @@
                     {{ status_toggle(form.is_active, hint='Only active categories appear in dropdowns') }}
                 </div>
 
+                {{ render_field(form.transaction_nature, required=True) }}
+                <small class="form-hint">{{ form.transaction_nature.description }}</small>
+
                 <div class="form-group" id="inputVatAccountGroup">
                     {{ form.input_vat_account_id.label(class="form-label", for="inputVatAccountSelect") }}
                     {{ form.input_vat_account_id(class="form-control", id="inputVatAccountSelect") }}

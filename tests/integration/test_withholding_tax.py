@@ -51,7 +51,7 @@ def test_auto_approve_sets_account_ids(client, db_session, admin_user, main_bran
     resp = client.post('/withholding-tax/create', data={
         'code': 'WC010MA', 'name': 'Test WHT GL',
         'sales_name': '', 'description': '',
-        'rate': '10.00', 'is_active': '1',
+        'rate': '10.00', 'tax_type': 'expanded', 'is_active': '1',
         'payable_account_id': str(payable_acct.id),
         'receivable_account_id': str(recv_acct.id),
         'request_reason': '',

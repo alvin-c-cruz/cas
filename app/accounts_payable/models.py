@@ -225,6 +225,10 @@ class AccountsPayableItem(db.Model):
     line_total = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # equals amount (VAT-inclusive)
     vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # extracted from amount
 
+    # BIR classification snapshotted at post time, alongside vat_rate/vat_amount.
+    # NULL = unclassified; never coerced to a vatable default. See the R-08 spec.
+    vat_nature = db.Column(db.String(24), nullable=True, index=True)
+
     # Account reference (for posting to GL)
     account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'))
     account = db.relationship('Account')
@@ -276,6 +280,7 @@ class AccountsPayableItem(db.Model):
             'product_code': self.product.code if self.product else None,
             'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
+            'vat_nature': self.vat_nature,
             'vat_rate': float(self.vat_rate),
             'line_total': float(self.line_total),
             'vat_amount': float(self.vat_amount),
