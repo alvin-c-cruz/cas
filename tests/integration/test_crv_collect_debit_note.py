@@ -7,6 +7,10 @@ import pytest
 
 from app import db
 from app.accounts.models import Account
+from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+from app.cash_receipts.views import (
+    _parse_line_items, _apply_ar_collections, _reverse_ar_collections, CRVLineError,
+)
 from app.customers.models import Customer
 from app.sales_vat_categories.models import SalesVATCategory
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
@@ -39,6 +43,7 @@ def _acct(code, name, atype, nb):
 
 def _setup(client, admin_user, main_branch):
     coa = {
+        'cash': _acct('10101', 'Cash on Hand', 'Asset', 'Debit'),
         'ar': _acct('10201', 'Accounts Receivable - Trade', 'Asset', 'Debit'),
         'wt': _acct('10212', 'Creditable Withholding Tax', 'Asset', 'Debit'),
         'outvat': _acct('20401', 'Output VAT', 'Liability', 'Credit'),
@@ -76,6 +81,16 @@ def _post_debit_note(client, si, li, charge='560'):
     return db.session.get(SalesMemo, memo.id)
 
 
+def _draft_crv(c, main_branch, num='CR-T3-1'):
+    cash = Account.query.filter_by(code='10101').first()
+    crv = CashReceiptVoucher(
+        branch_id=main_branch.id, crv_number=num, crv_date=date(2026, 7, 11),
+        customer_id=c.id, customer_name=c.name, payment_method='cash',
+        cash_account_id=cash.id, notes='', status='draft')
+    db.session.add(crv); db.session.commit()
+    return crv
+
+
 def test_open_invoices_includes_posted_debit_notes_tagged(client, db_session, admin_user, main_branch):
     c, si, li = _setup(client, admin_user, main_branch)
     memo = _post_debit_note(client, si, li, charge='560')
@@ -88,3 +103,86 @@ def test_open_invoices_includes_posted_debit_notes_tagged(client, db_session, ad
     assert dn['type'] == 'debit_note'
     assert dn['id'] == memo.id
     assert dn['balance'] == 560.0
+
+
+# --- T3: parser routes an AR line to either SI or debit note (nullable dual FK) --------
+
+def test_parser_routes_debit_note_line_to_sales_memo(client, db_session, admin_user, main_branch, app):
+    c, si, li = _setup(client, admin_user, main_branch)
+    memo = _post_debit_note(client, si, li, charge='560')
+    crv = _draft_crv(c, main_branch)
+    ar = json.dumps([{'invoice_id': memo.id, 'amount_applied': '560', 'type': 'debit_note'}])
+    with app.test_request_context('/cash-receipts/create', method='POST',
+                                  data={'ar_lines': ar, 'revenue_lines': '[]'}):
+        _parse_line_items(crv)
+    db.session.commit()
+    line = crv.ar_lines[0]
+    assert line.sales_memo_id == memo.id      # routed to the debit note
+    assert line.invoice_id is None            # exactly-one: SI side left null
+    assert line.invoice_number == memo.memo_number
+    assert line.original_balance == Decimal('560.00')
+
+
+def test_parser_si_line_unaffected(client, db_session, admin_user, main_branch, app):
+    c, si, li = _setup(client, admin_user, main_branch)
+    crv = _draft_crv(c, main_branch)
+    ar = json.dumps([{'invoice_id': si.id, 'amount_applied': '1120'}])  # no type -> invoice
+    with app.test_request_context('/cash-receipts/create', method='POST',
+                                  data={'ar_lines': ar, 'revenue_lines': '[]'}):
+        _parse_line_items(crv)
+    db.session.commit()
+    line = crv.ar_lines[0]
+    assert line.invoice_id == si.id
+    assert line.sales_memo_id is None
+
+
+def test_parser_rejects_overcollecting_a_debit_note(client, db_session, admin_user, main_branch, app):
+    c, si, li = _setup(client, admin_user, main_branch)
+    memo = _post_debit_note(client, si, li, charge='560')  # balance 560
+    crv = _draft_crv(c, main_branch)
+    ar = json.dumps([{'invoice_id': memo.id, 'amount_applied': '600', 'type': 'debit_note'}])
+    with app.test_request_context('/cash-receipts/create', method='POST',
+                                  data={'ar_lines': ar, 'revenue_lines': '[]'}):
+        with pytest.raises(CRVLineError):
+            _parse_line_items(crv)
+
+
+def test_apply_and_reverse_collect_the_debit_note_balance(client, db_session, admin_user, main_branch):
+    c, si, li = _setup(client, admin_user, main_branch)
+    memo = _post_debit_note(client, si, li, charge='560')
+    crv = _draft_crv(c, main_branch)
+    crv.ar_lines.append(CRVArLine(
+        line_number=1, sales_memo_id=memo.id, invoice_number=memo.memo_number,
+        original_balance=memo.balance, amount_applied=Decimal('560')))
+    db.session.commit()
+
+    _apply_ar_collections(crv); db.session.commit()
+    memo = db.session.get(SalesMemo, memo.id)
+    assert memo.amount_paid == Decimal('560.00')
+    assert memo.balance == Decimal('0.00')
+    assert memo.status == 'posted'      # balance-only tracking: no status flip for a debit note
+
+    _reverse_ar_collections(crv); db.session.commit()
+    memo = db.session.get(SalesMemo, memo.id)
+    assert memo.amount_paid == Decimal('0.00')
+    assert memo.balance == Decimal('560.00')
+    assert memo.status == 'posted'
+
+
+def test_apply_reverse_si_path_still_flips_status(client, db_session, admin_user, main_branch):
+    c, si, li = _setup(client, admin_user, main_branch)
+    crv = _draft_crv(c, main_branch)
+    crv.ar_lines.append(CRVArLine(
+        line_number=1, invoice_id=si.id, invoice_number=si.invoice_number,
+        original_balance=si.balance, amount_applied=Decimal('1120')))
+    db.session.commit()
+
+    _apply_ar_collections(crv); db.session.commit()
+    si = db.session.get(SalesInvoice, si.id)
+    assert si.balance == Decimal('0.00')
+    assert si.status == 'paid'          # invoice still flips status
+
+    _reverse_ar_collections(crv); db.session.commit()
+    si = db.session.get(SalesInvoice, si.id)
+    assert si.balance == Decimal('1120.00')
+    assert si.status == 'posted'

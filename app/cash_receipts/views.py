@@ -500,36 +500,43 @@ def _apply_crv_overrides(crv):
 
 
 def _apply_ar_collections(crv):
-    """Increase invoice amount_paid and reduce balance on CRV post."""
+    """Increase amount_paid and reduce balance on CRV post, for the settled document.
+
+    Each AR line settles either a Sales Invoice or a debit note (Phase 2b). Both carry
+    amount_paid/balance/total_amount, so the arithmetic is shared. An invoice also flips
+    its lifecycle status (posted -> partially_paid -> paid); a debit note is balance-only
+    tracking and stays 'posted'.
+    """
     for ar_line in crv.ar_lines:
-        inv = ar_line.sales_invoice
+        doc = ar_line.sales_invoice or ar_line.sales_memo
         amount_applied = Decimal(str(ar_line.amount_applied))
-        current_balance = Decimal(str(inv.balance))
+        current_balance = Decimal(str(doc.balance))
         if amount_applied > current_balance:
             raise ValueError(
                 f'Cannot post: collection on {ar_line.invoice_number} ({amount_applied}) '
                 f'exceeds its current open balance ({current_balance}).')
-        inv.amount_paid = Decimal(str(inv.amount_paid)) + amount_applied
-        inv.balance = Decimal(str(inv.total_amount)) - inv.amount_paid
-        if inv.balance <= 0:
-            inv.status = 'paid'
-        elif inv.amount_paid > 0:
-            inv.status = 'partially_paid'
+        doc.amount_paid = Decimal(str(doc.amount_paid)) + amount_applied
+        doc.balance = Decimal(str(doc.total_amount)) - doc.amount_paid
+        if ar_line.sales_invoice is not None:
+            if doc.balance <= 0:
+                doc.status = 'paid'
+            elif doc.amount_paid > 0:
+                doc.status = 'partially_paid'
 
 
 def _reverse_ar_collections(crv):
-    """Reverse invoice amounts on CRV cancel. Raises ValueError on inconsistency."""
+    """Reverse the settled document's amounts on CRV cancel. Raises on inconsistency."""
     for ar_line in crv.ar_lines:
-        inv = ar_line.sales_invoice
-        new_paid = Decimal(str(inv.amount_paid)) - Decimal(str(ar_line.amount_applied))
+        doc = ar_line.sales_invoice or ar_line.sales_memo
+        new_paid = Decimal(str(doc.amount_paid)) - Decimal(str(ar_line.amount_applied))
         if new_paid < 0:
             raise ValueError(
                 f'Cannot cancel: reversing collection on {ar_line.invoice_number} '
                 f'would result in negative amount_paid.')
-        inv.amount_paid = new_paid
-        inv.balance = Decimal(str(inv.total_amount)) - new_paid
-        if inv.status in ('paid', 'partially_paid'):
-            inv.status = 'posted' if inv.amount_paid <= 0 else 'partially_paid'
+        doc.amount_paid = new_paid
+        doc.balance = Decimal(str(doc.total_amount)) - new_paid
+        if ar_line.sales_invoice is not None and doc.status in ('paid', 'partially_paid'):
+            doc.status = 'posted' if doc.amount_paid <= 0 else 'partially_paid'
 
 
 # ---------------------------------------------------------------------------
@@ -668,14 +675,38 @@ def _parse_and_attach_revenue_lines(crv, revenue_lines_json):
 def _parse_line_items(crv):
     ar_lines_data = request.form.getlist('ar_lines')
     ar_lines = json.loads(ar_lines_data[0]) if ar_lines_data and ar_lines_data[0] else []
+    from app.sales_memos.models import SalesMemo
     for idx, item in enumerate(ar_lines, start=1):
         try:
-            invoice_id = int(item['invoice_id'])
+            ref_id = int(item['invoice_id'])
             amount_applied = Decimal(str(item['amount_applied']))
         except (KeyError, ValueError, TypeError, InvalidOperation):
             raise CRVLineError('An AR line is malformed — please re-select the invoice and try again.')
+        # Phase 2b: a line settles EITHER a Sales Invoice OR a posted debit note. The
+        # picker tags each open item with `type`; route to the right document and set
+        # exactly one of {invoice_id, sales_memo_id} on the CRVArLine.
+        if (item.get('type') or 'invoice') == 'debit_note':
+            memo = SalesMemo.query.filter_by(
+                id=ref_id, memo_type='debit', status='posted',
+                branch_id=crv.branch_id, customer_id=crv.customer_id
+            ).first()
+            if not memo:
+                raise CRVLineError('A selected debit note is not available for this customer and branch.')
+            if amount_applied <= 0 or amount_applied > memo.balance:
+                raise CRVLineError(
+                    f'Amount to collect for {memo.memo_number} must be between 0.01 and the '
+                    f'open balance ({memo.balance:,.2f}).'
+                )
+            crv.ar_lines.append(CRVArLine(
+                line_number=idx,
+                sales_memo_id=memo.id,
+                invoice_number=memo.memo_number,
+                original_balance=memo.balance,
+                amount_applied=amount_applied,
+            ))
+            continue
         inv = SalesInvoice.query.filter_by(
-            id=invoice_id, branch_id=crv.branch_id, customer_id=crv.customer_id
+            id=ref_id, branch_id=crv.branch_id, customer_id=crv.customer_id
         ).first()
         if not inv:
             raise CRVLineError('A selected invoice is not available for this customer and branch.')
