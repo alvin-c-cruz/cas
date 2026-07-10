@@ -79,3 +79,40 @@ def test_override_below_line_totals_raises(db_session):
     ap = _bill_with_lines([(w1, '10.00'), (w2, '200.00')], wt_total='1.00')  # override 1 << 210
     with pytest.raises(ValueError):
         _wht_payable_buckets(ap, fb)
+
+
+# ---------------------------------------------------------------------------
+# The empty-bucket gap. CDV was fixed for this (a4092f8, "FINDING 1 (Critical)"
+# in test_cdv_wht_buckets.py); AP never was, though it is the same routine.
+#
+# `if diff != 0 and ordered:` silently returns [] when the bill carries a WHT
+# total but no line contributes any -- so `_post_ap_je` books no WHT-payable leg
+# and its residual absorber quietly adds the amount to the first expense line's
+# debit (views.py:1367). Expense overstated, WHT payable unrecorded, JE balanced.
+# Dr == Cr proves nothing.
+# ---------------------------------------------------------------------------
+
+def test_pure_override_with_no_line_wht_uses_fallback(db_session):
+    """A bill-level WHT with no line-level WHT must book to the 20301 fallback."""
+    fallback = _acct('20301', 'Withholding Tax Payable - Expanded')
+    ap = _bill_with_lines([], wt_total='50.00')
+    assert [(a.code, amt) for a, amt in _wht_payable_buckets(ap, fallback)] == [
+        ('20301', Decimal('50.00'))
+    ]
+
+
+def test_pure_override_with_no_bucket_and_no_fallback_raises(db_session):
+    """No line WHT and no 20301 in the COA: fail loudly, never return [] and let the
+    residual absorber bury the amount in an expense line."""
+    ap = _bill_with_lines([], wt_total='50.00')
+    with pytest.raises(ValueError, match='Withholding Tax Payable'):
+        _wht_payable_buckets(ap, None)
+
+
+def test_lines_present_but_none_carry_wht_uses_fallback(db_session):
+    """Same gap, reached via lines that exist but carry zero WHT."""
+    fallback = _acct('20301', 'Withholding Tax Payable - Expanded')
+    ap = _bill_with_lines([(None, '0.00'), (None, '0.00')], wt_total='30.00')
+    assert [(a.code, amt) for a, amt in _wht_payable_buckets(ap, fallback)] == [
+        ('20301', Decimal('30.00'))
+    ]
