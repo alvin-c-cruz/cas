@@ -587,6 +587,40 @@ def _si_billing_consolidate():
     return AppSettings.get_setting('si_dr_billing_consolidate', '0') == '1'
 
 
+def _parse_source_dr_ids(raw):
+    try:
+        return [int(x) for x in (json.loads(raw or '[]') or [])]
+    except (ValueError, TypeError):
+        return []
+
+
+def _bill_drs(invoice, dr_ids):
+    """Mark each source DR billed + linked to this SI. Validates eligibility and enforces
+    the consolidate setting. Raises ValueError (caught by create -> full rollback) on any
+    problem, so a bad pull never half-bills."""
+    if not dr_ids:
+        return
+    from app.delivery_receipts.models import DeliveryReceipt
+    if not _si_billing_consolidate() and len(dr_ids) > 1:
+        raise ValueError('Consolidated billing is off - bill one Delivery Receipt per invoice.')
+    for dr_id in dr_ids:
+        dr = db.session.get(DeliveryReceipt, dr_id)
+        if (dr is None or dr.branch_id != invoice.branch_id
+                or dr.customer_id != invoice.customer_id
+                or dr.status != 'delivered' or dr.sales_invoice_id is not None):
+            raise ValueError(f'Delivery Receipt {dr_id} is no longer billable.')
+        dr.status = 'billed'
+        dr.sales_invoice_id = invoice.id
+
+
+def _unbill_drs(invoice):
+    """Revert every DR billed by this SI back to 'delivered' + unlink (SI void/cancel)."""
+    from app.delivery_receipts.models import DeliveryReceipt
+    for dr in DeliveryReceipt.query.filter_by(sales_invoice_id=invoice.id).all():
+        dr.status = 'delivered'
+        dr.sales_invoice_id = None
+
+
 @sales_invoices_bp.route('/sales-invoices/billable-drs')
 @login_required
 def billable_drs():
@@ -760,6 +794,8 @@ def create():
 
             je = _post_invoice_je(invoice, current_user.id)
             invoice.journal_entry_id = je.id
+            # Bill any Delivery Receipts pulled into this SI (flips them to 'billed' + links).
+            _bill_drs(invoice, _parse_source_dr_ids(request.form.get('source_dr_ids', '[]')))
             db.session.commit()
 
             log_create(
@@ -1188,6 +1224,7 @@ def cancel(id):
         invoice.status = 'cancelled'
         invoice.cancelled_at = ph_now()
         invoice.cancel_reason = cancel_reason
+        _unbill_drs(invoice)   # release any DRs this SI billed
         db.session.commit()
         log_audit('sales_invoice', 'cancel', invoice.id,
                   f'{invoice.invoice_number} - {invoice.customer_name}',
@@ -1237,6 +1274,7 @@ def void(id):
         invoice.voided_at = ph_now()
         invoice.voided_by_id = current_user.id
         invoice.void_reason = void_reason
+        _unbill_drs(invoice)   # release any DRs this SI billed
         db.session.commit()
 
         for fp in attachment_paths:
