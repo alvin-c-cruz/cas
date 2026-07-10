@@ -158,3 +158,43 @@ def test_same_date_events_ordered_deterministically(db_session, main_branch):
     bals = [row['running_balance'] for row in r['rows']]
     opening = r['opening_balance']
     assert bals == [opening + Decimal('5000.00'), opening + Decimal('5000.00') - Decimal('2000.00')]
+
+
+def test_aging_buckets_tie_to_closing_balance(db_session, main_branch):
+    c = _cust(main_branch)
+    # SI dated 2026-05-01, due 2026-05-31 -> 61 days overdue as of 07-31 -> 61-90 bucket
+    si_old = _si(main_branch, c, 'SI-OLD', date(2026, 5, 1), '7000.00')
+    si_old.due_date = date(2026, 5, 31); db.session.commit()
+    # SI dated + due 2026-07-20 -> current as of 07-31
+    _si(main_branch, c, 'SI-NEW', date(2026, 7, 20), '3000.00')
+    r = build_statement_of_account(c.id, main_branch.id, JULY)
+    ag = r['aging']
+    assert ag['61-90'] == Decimal('7000.00')
+    # SI-NEW due 2026-07-20, as_of 2026-07-31 -> 11 days overdue -> 1-30 bucket
+    # (days_overdue <= 0 is required for 'current'; 11 > 0)
+    assert ag['1-30'] == Decimal('3000.00')
+    assert ag['total'] == r['closing_balance'] == Decimal('10000.00')
+
+
+def test_aging_nets_payments_and_credits_as_of_date_to(db_session, main_branch):
+    c = _cust(main_branch)
+    si = _si(main_branch, c, 'SI-0007', date(2026, 7, 3), '5600.00')
+    si.due_date = date(2026, 7, 3); db.session.commit()          # current on 07-31? 28 days -> 1-30
+    _credit_ar(main_branch, c, si, 'CM-0002', date(2026, 7, 18), '1120.00')
+    _crv_pay(main_branch, c, 'CR-0044', date(2026, 7, 25), si, '2000.00')
+    r = build_statement_of_account(c.id, main_branch.id, JULY)
+    # remaining on SI-0007 = 5600 - 1120 - 2000 = 2480, bucket 1-30
+    assert r['aging']['1-30'] == Decimal('2480.00')
+    assert r['aging']['total'] == r['closing_balance'] == Decimal('2480.00')
+
+
+def test_debit_note_aged_by_memo_date(db_session, main_branch):
+    c = _cust(main_branch)
+    si = _si(main_branch, c, 'SI-0007', date(2026, 7, 20), '1000.00')
+    si.due_date = date(2026, 7, 20); db.session.commit()
+    _debit(main_branch, c, si, 'DM-0001', date(2026, 7, 25), '560.00')  # memo_date basis
+    r = build_statement_of_account(c.id, main_branch.id, JULY)
+    # SI due 2026-07-20 (11 days overdue) and DM memo_date 2026-07-25 (6 days overdue) as of
+    # 2026-07-31 both land in 1-30 (days_overdue <= 0 required for 'current'; both > 0).
+    assert r['aging']['1-30'] == Decimal('1560.00')
+    assert r['aging']['total'] == r['closing_balance']
