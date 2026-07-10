@@ -551,13 +551,34 @@ def open_invoices():
         SalesInvoice.status.in_(['posted', 'partially_paid']),
         SalesInvoice.balance > 0,
     ).order_by(SalesInvoice.invoice_date).all()
-    return jsonify([{
+    items = [{
         'id': i.id,
+        'type': 'invoice',
         'invoice_number': i.invoice_number,
         'invoice_date': i.invoice_date.isoformat(),
         'due_date': i.due_date.isoformat() if i.due_date else None,
         'balance': float(i.balance),
-    } for i in invs])
+    } for i in invs]
+    # Phase 2b: a posted debit note is itself a collectible receivable — a CRV can
+    # settle it just like an invoice. Union them in, tagged so the parser routes each
+    # AR line to the right document (SalesInvoice vs SalesMemo).
+    from app.sales_memos.models import SalesMemo
+    debit_notes = SalesMemo.query.filter(
+        SalesMemo.memo_type == 'debit',
+        SalesMemo.branch_id == branch_id,
+        SalesMemo.customer_id == customer_id,
+        SalesMemo.status == 'posted',
+        SalesMemo.balance > 0,
+    ).order_by(SalesMemo.memo_date).all()
+    items.extend({
+        'id': m.id,
+        'type': 'debit_note',
+        'invoice_number': m.memo_number,
+        'invoice_date': m.memo_date.isoformat() if m.memo_date else None,
+        'due_date': None,
+        'balance': float(m.balance),
+    } for m in debit_notes)
+    return jsonify(items)
 
 
 # ---------------------------------------------------------------------------
