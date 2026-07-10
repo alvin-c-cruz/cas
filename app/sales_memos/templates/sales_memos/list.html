@@ -4,7 +4,7 @@
 <div class="page-header">
   <h1>{{ doc_title }}</h1>
   <div class="page-actions">
-    <a href="{{ url_for('sales_memos.credit_create') }}" class="btn btn-primary btn-sm">+ Enter Credit Memo</a>
+    <a href="{{ url_for(ep_prefix + 'create') }}" class="btn btn-primary btn-sm">+ Enter {{ doc_title[:-1] if doc_title.endswith('s') else doc_title }}</a>
     {% if can_configure %}
     <a href="{{ url_for('sales_memos.settings') }}" class="btn btn-secondary btn-sm">Settings</a>
     {% endif %}
@@ -24,7 +24,7 @@
       <tbody>
       {% for m in memos %}
         <tr>
-          <td><a href="{{ url_for('sales_memos.credit_view', id=m.id) }}">{{ m.memo_number }}</a></td>
+          <td><a href="{{ url_for(ep_prefix + 'view', id=m.id) }}">{{ m.memo_number }}</a></td>
           <td>{{ m.memo_date.strftime('%b %d, %Y') }}</td>
           <td>{{ m.original_invoice_number }}</td>
           <td>{{ m.customer_name }}</td>

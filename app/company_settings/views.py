@@ -124,6 +124,15 @@ def edit_settings():
                 old_values[_sa_key] = _sa_old
                 new_values[_sa_key] = _sa_new
 
+            # DR->SI consolidated-billing flag (default OFF).
+            _cb_key = 'si_dr_billing_consolidate'
+            _cb_old = AppSettings.get_setting(_cb_key, '0')
+            _cb_new = '1' if form.si_dr_billing_consolidate.data else '0'
+            if _cb_old != _cb_new:
+                AppSettings.set_setting(_cb_key, _cb_new, updated_by=current_user.username)
+                old_values[_cb_key] = _cb_old
+                new_values[_cb_key] = _cb_new
+
             if new_values:
                 log_audit(
                     module='settings',
@@ -152,6 +161,8 @@ def edit_settings():
 
         form.accountant_email_self_approval.data = (
             AppSettings.get_setting('accountant_email_self_approval', '0') == '1')
+        form.si_dr_billing_consolidate.data = (
+            AppSettings.get_setting('si_dr_billing_consolidate', '0') == '1')
 
     return render_template(
         'company_settings/form.html',
