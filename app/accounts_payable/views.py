@@ -118,9 +118,22 @@ def _wht_payable_buckets(ap, fallback_acct):
         buckets[acct.id][1] += wt
     ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
     diff = total_wt - sum((amt for _, amt in ordered), Decimal('0.00'))
-    if diff != Decimal('0.00') and ordered:
-        largest_id = max(ordered, key=lambda b: b[1])[0].id
-        ordered = [(a, amt + diff if a.id == largest_id else amt) for a, amt in ordered]
+    if diff != Decimal('0.00'):
+        if ordered:
+            largest_id = max(ordered, key=lambda b: b[1])[0].id
+            ordered = [(a, amt + diff if a.id == largest_id else amt) for a, amt in ordered]
+        elif fallback_acct is not None:
+            # The bill carries WHT but no line contributes any (a pure bill-level
+            # override). Without this branch the buckets come back empty, no WHT-payable
+            # leg is booked, and _post_ap_je's residual absorber silently adds the amount
+            # to the first expense line -- expense overstated, WHT payable unrecorded,
+            # JE still balanced. Mirrors CDV's _cdv_wht_payable_buckets.
+            ordered = [(fallback_acct, diff)]
+        else:
+            raise ValueError(
+                "Withholding tax is non-zero but no line item carries WHT and no "
+                "Withholding Tax Payable - Expanded (20301) fallback account was found "
+                "in the COA. Adjust the withholding or configure the WHT Payable account.")
     if any(amt < Decimal('0.00') for _, amt in ordered):
         raise ValueError(
             'Withholding tax override is too far below the computed WHT to allocate '

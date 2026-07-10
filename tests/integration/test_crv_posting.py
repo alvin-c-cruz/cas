@@ -691,3 +691,138 @@ class TestCRVPosting:
         assert crv.total_amount == Decimal('-1000.00'), (
             f'Expected total_amount=-1000 (no WHT offset on negative line), got {crv.total_amount}')
 
+
+
+# ---------------------------------------------------------------------------
+# WHT override — backlog item 83
+#
+# `_post_crv_je` summed per-line `wt_amount` and never consulted `crv.wt_override`
+# / `crv.total_wt`, even though `_apply_crv_overrides` persists both and the model's
+# `total_amount` is computed FROM the override. Cash is the residual plug, so an
+# overridden CRV still balanced while BOTH the Creditable-WHT leg and the Cash leg
+# were wrong by (override - line_sum). Dr == Cr proves nothing here.
+#
+# CRV books a SINGLE 10212 leg (like SI), not per-ATC buckets:
+# `WithholdingTax.receivable_account` is consumed nowhere in any posting path.
+# ---------------------------------------------------------------------------
+
+def _leg(je, code):
+    """The (debit, credit) posted to `code`, or None if that account has no leg."""
+    for line in je.lines:
+        if line.account.code == code:
+            return line.debit_amount, line.credit_amount
+    return None
+
+
+class TestCRVWhtOverride:
+
+    def _fixture(self, db_session, main_branch, *, wt_amount=100, with_wht_account=True):
+        """One 1,000.00 no-VAT revenue line carrying `wt_amount` of WHT."""
+        ar = make_account(db_session, '10201', 'Accounts Receivable - Trade')
+        if with_wht_account:
+            make_account(db_session, '10212', 'Creditable WHT Receivable')
+        cash = make_account(db_session, '1001', 'Cash on Hand')
+        revenue = make_account(db_session, '4001', 'Sales Revenue',
+                               account_type='Income', classification='Operating Revenue',
+                               normal_balance='Credit')
+        customer = make_customer(db_session)
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        revenue_lines=[{
+                            'description': 'Service',
+                            'amount': 1000, 'line_total': 1000,
+                            'vat_amount': Decimal('0.00'),
+                            'account_id': revenue.id,
+                            'wt_amount': Decimal(str(wt_amount)),
+                        }], status='draft')
+        return crv
+
+    @staticmethod
+    def _override(db_session, crv, value):
+        """Apply a header WHT override exactly as `_apply_crv_overrides` does."""
+        crv.wt_override = True
+        crv.total_wt = Decimal(str(value))
+        crv.calculate_totals()          # honors the flag; recomputes total_amount
+        db_session.flush()
+        return crv
+
+    def test_wt_override_posts_header_total_to_wht_leg(self, db_session, admin_user, main_branch):
+        """The 10212 leg must equal crv.total_wt, and cash must equal crv.total_amount."""
+        from app.cash_receipts.views import _post_crv_je
+
+        crv = self._fixture(db_session, main_branch, wt_amount=100)
+        self._override(db_session, crv, 75)
+        assert crv.total_amount == Decimal('925.00')   # 1000 - 75
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.flush()
+
+        assert _leg(je, '10212') == (Decimal('75.00'), Decimal('0.00'))
+        assert _leg(je, '1001') == (Decimal('925.00'), Decimal('0.00'))
+        assert je.is_balanced
+
+    def test_wt_override_pure_no_line_wht_still_posts_leg(self, db_session, admin_user, main_branch):
+        """A pure override (no line carries WHT) must still book the WHT leg."""
+        from app.cash_receipts.views import _post_crv_je
+
+        crv = self._fixture(db_session, main_branch, wt_amount=0)
+        self._override(db_session, crv, 50)
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.flush()
+
+        assert _leg(je, '10212') == (Decimal('50.00'), Decimal('0.00'))
+        assert _leg(je, '1001') == (Decimal('950.00'), Decimal('0.00'))
+
+    def test_wt_override_pure_missing_10212_raises(self, db_session, admin_user, main_branch):
+        """Fail loudly rather than silently absorbing the WHT into cash."""
+        from app.cash_receipts.views import _post_crv_je
+
+        crv = self._fixture(db_session, main_branch, wt_amount=0, with_wht_account=False)
+        self._override(db_session, crv, 50)
+
+        with pytest.raises(ValueError, match='Creditable Withholding Tax'):
+            _post_crv_je(crv, admin_user.id)
+
+    def test_wt_override_zero_suppresses_wht_leg(self, db_session, admin_user, main_branch):
+        """Overriding to 0 must drop the WHT leg, not post the line sum."""
+        from app.cash_receipts.views import _post_crv_je
+
+        crv = self._fixture(db_session, main_branch, wt_amount=50)
+        self._override(db_session, crv, 0)
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.flush()
+
+        assert _leg(je, '10212') is None
+        assert _leg(je, '1001') == (Decimal('1000.00'), Decimal('0.00'))
+
+    def test_no_override_posts_line_sum_wht(self, db_session, admin_user, main_branch):
+        """Pin the non-override path: it must stay byte-identical to the old behavior.
+
+        There is no positive-WHT CRV posting test anywhere else in the suite.
+        """
+        from app.cash_receipts.views import _post_crv_je
+
+        crv = self._fixture(db_session, main_branch, wt_amount=50)
+        assert crv.wt_override is False
+        assert crv.total_wt == Decimal('50.00')
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.flush()
+
+        assert _leg(je, '10212') == (Decimal('50.00'), Decimal('0.00'))
+        assert _leg(je, '1001') == (Decimal('950.00'), Decimal('0.00'))
+
+    def test_preview_matches_posted_je_under_wt_override(self, db_session, admin_user, main_branch):
+        """The draft preview the user sees must agree with what posting will book."""
+        from app.cash_receipts.views import _build_crv_je_preview
+
+        crv = self._fixture(db_session, main_branch, wt_amount=100)
+        self._override(db_session, crv, 75)
+        crv.journal_entry = None        # force the recompute branch, not the stored-JE branch
+
+        rows = _build_crv_je_preview(crv)
+        by_code = {r['code']: r for r in rows}
+
+        assert by_code['10212']['debit'] == Decimal('75.00')
+        assert by_code['1001']['debit'] == Decimal('925.00')
