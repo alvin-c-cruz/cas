@@ -1023,6 +1023,7 @@
               {%- elif key == 'quotations' and ep.startswith('quotations.') -%}active
               {%- elif key == 'delivery_receipts' and ep.startswith('delivery_receipts.') -%}active
               {%- elif key == 'credit_memos' and ep.startswith('sales_memos.credit_') -%}active
+              {%- elif key == 'debit_memos' and ep.startswith('sales_memos.debit_') -%}active
               {%- elif key == 'accounts_receivable' and ep.startswith('sales_invoices.') -%}active
               {%- elif key == 'collections' and ep.startswith('cash_receipts.') -%}active
               {%- elif key == 'accounts_payable' and ep.startswith('accounts_payable.') -%}active
@@ -1056,6 +1057,7 @@
                 'quotations':         'quotations.list',
                 'delivery_receipts':  'delivery_receipts.list',
                 'credit_memos':       'sales_memos.credit_list',
+                'debit_memos':        'sales_memos.debit_list',
                 'accounts_receivable':'sales_invoices.list_invoices',
                 'collections':        'cash_receipts.list_crvs',
                 'accounts_payable':   'accounts_payable.list_ap',
@@ -1083,6 +1085,7 @@
                 'quotations':         '📝',
                 'delivery_receipts':  '🚚',
                 'credit_memos':       '↩️',
+                'debit_memos':        '↪️',
                 'accounts_receivable':'📄',
                 'collections':        '💰',
                 'accounts_payable':   '📋',
@@ -1151,6 +1154,7 @@
                             {%- if m.key == 'quotations' %}<span class="nav-subtext">(Price Offer)</span>{% endif %}
                             {%- if m.key == 'delivery_receipts' %}<span class="nav-subtext">(Deliveries)</span>{% endif %}
                             {%- if m.key == 'credit_memos' %}<span class="nav-subtext">(Sales Returns)</span>{% endif %}
+                            {%- if m.key == 'debit_memos' %}<span class="nav-subtext">(Surcharge)</span>{% endif %}
                             {%- if m.key == 'accounts_receivable' %}<span class="nav-subtext">(Bill Client)</span>{% endif %}
                             {%- if m.key == 'collections' %}<span class="nav-subtext">(Collection)</span>{% endif %}
                             {%- if m.key == 'accounts_payable' %}<span class="nav-subtext">(Enter Bill)</span>{% endif %}

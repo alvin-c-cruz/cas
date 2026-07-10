@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% set dest_label = {'ar': 'Applied to invoice (reduces AR)',
-                     'cash_refund': 'Cash refund',
+{% set dest_label = {'ar': 'Accounts Receivable',
+                     'cash_refund': 'Cash',
                      'customer_credit': 'Customer credit balance'} %}
 {% block title %}{{ doc_title }} {{ memo.memo_number }}{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>{{ doc_title }} {{ memo.memo_number }}</h1>
   <div class="page-actions">
-    <a href="{{ url_for('sales_memos.credit_list') }}" class="btn btn-secondary btn-sm">Back to list</a>
-    <a href="{{ url_for('sales_memos.credit_print', id=memo.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    <a href="{{ url_for(ep_prefix + 'list') }}" class="btn btn-secondary btn-sm">Back to list</a>
+    <a href="{{ url_for(ep_prefix + 'print', id=memo.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
     {% if memo.status == 'draft' and can_manage %}
-    <form method="POST" action="{{ url_for('sales_memos.credit_post', id=memo.id) }}" class="inline-form">
+    <form method="POST" action="{{ url_for(ep_prefix + 'post', id=memo.id) }}" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <button type="submit" class="btn btn-primary btn-sm">Post</button>
     </form>
@@ -32,7 +32,7 @@
 </div></div>
 
 <div class="card"><div class="card-body">
-  <h2 class="card-title">Lines credited</h2>
+  <h2 class="card-title">Lines</h2>
   <div class="table-responsive">
     <table class="table">
       <thead>
@@ -53,7 +53,7 @@
         <tr><td colspan="4" class="text-right"><strong>Subtotal</strong></td><td class="text-right">{{ '%.2f'|format(memo.subtotal) }}</td></tr>
         <tr><td colspan="4" class="text-right">VAT</td><td class="text-right">{{ '%.2f'|format(memo.vat_amount) }}</td></tr>
         {% if memo.withholding_tax_amount %}<tr><td colspan="4" class="text-right">Withholding Tax</td><td class="text-right">{{ '%.2f'|format(memo.withholding_tax_amount) }}</td></tr>{% endif %}
-        <tr><td colspan="4" class="text-right"><strong>Total credit</strong></td><td class="text-right"><strong>{{ '%.2f'|format(memo.total_amount) }}</strong></td></tr>
+        <tr><td colspan="4" class="text-right"><strong>Total</strong></td><td class="text-right"><strong>{{ '%.2f'|format(memo.total_amount) }}</strong></td></tr>
       </tfoot>
     </table>
   </div>
@@ -63,7 +63,7 @@
 {% if memo.status != 'voided' and can_manage %}
 <div class="card"><div class="card-body">
   <h2 class="card-title">Void this memo</h2>
-  <form method="POST" action="{{ url_for('sales_memos.credit_void', id=memo.id) }}">
+  <form method="POST" action="{{ url_for(ep_prefix + 'void', id=memo.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <div class="form-group">
       <label class="form-label" for="void_reason">Reason (min 10 characters)</label>
