@@ -144,6 +144,23 @@ with app.app_context():
                 si.line_items.append(si_item)
                 db.session.add(si); db.session.commit()
 
+            # A POSTED DEBIT NOTE (Phase 2b) with an open balance -- the fixture the CRV
+            # open-items picker unions in, so the collect-a-debit-note smoke has a debit
+            # note to pick. Header-only (the CRV reads the memo's balance, not its lines).
+            from app.sales_memos.models import SalesMemo
+            si_e2e = SalesInvoice.query.filter_by(invoice_number='SI-E2E-0001').first()
+            if (branch and c001 and si_e2e
+                    and not SalesMemo.query.filter_by(memo_number='DM-E2E-0001').first()):
+                db.session.add(SalesMemo(
+                    memo_type='debit', memo_number='DM-E2E-0001', memo_date=today,
+                    sales_invoice_id=si_e2e.id, original_invoice_number=si_e2e.invoice_number,
+                    branch_id=branch.id, customer_id=c001.id, customer_name=c001.name,
+                    reason='Undercharge correction (e2e)', notes='',
+                    subtotal=Decimal('560.00'), total_amount=Decimal('560.00'),
+                    balance=Decimal('560.00'), amount_paid=Decimal('0.00'),
+                    destination='ar', status='posted'))
+                db.session.commit()
+
             # DR->SI billing fixture: give P001 a revenue account (so a pulled SI line has one)
             # and seed a DELIVERED, unbilled DR for the SI form's picker. Use a SEPARATE SO
             # (SO-E2E-0002) so SO-E2E-0001 stays fully-open for the DR *create* smoke (a
