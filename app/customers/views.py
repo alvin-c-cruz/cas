@@ -428,14 +428,24 @@ def delete(id):
     # message clear rather than relying on an IntegrityError fallback.
     from app.sales_invoices.models import SalesInvoice
     from app.cash_receipts.models import CashReceiptVoucher
-    si_count = SalesInvoice.query.filter_by(customer_id=customer.id).count()
-    cr_count = CashReceiptVoucher.query.filter_by(customer_id=customer.id).count()
-    if si_count or cr_count:
-        parts = []
-        if si_count:
-            parts.append(f'{si_count} sales invoice(s)')
-        if cr_count:
-            parts.append(f'{cr_count} cash receipt(s)')
+    from app.delivery_receipts.models import DeliveryReceipt
+    from app.sales_memos.models import SalesMemo
+    from app.quotations.models import Quotation
+    from app.sales_orders.models import SalesOrder
+    checks = [
+        ('sales invoice(s)', SalesInvoice),
+        ('cash receipt(s)', CashReceiptVoucher),
+        ('sales order(s)', SalesOrder),
+        ('delivery receipt(s)', DeliveryReceipt),
+        ('quotation(s)', Quotation),
+        ('memo(s)', SalesMemo),
+    ]
+    parts = []
+    for label, model in checks:
+        n = model.query.filter_by(customer_id=customer.id).count()
+        if n:
+            parts.append(f'{n} {label}')
+    if parts:
         flash(f'Cannot delete customer "{customer.name}": it is referenced by '
               f'{" and ".join(parts)}. Set it inactive instead.', 'error')
         return redirect(url_for('customers.list_customers'))

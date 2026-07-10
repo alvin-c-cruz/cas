@@ -347,8 +347,16 @@ def delete(id):
     vendor = db.get_or_404(Vendor, id)
 
     bill_count = AccountsPayable.query.filter_by(vendor_id=vendor.id).count()
-    if bill_count > 0:
-        flash(f'Cannot delete vendor "{vendor.name}": {bill_count} associated purchase bill(s) exist.', 'error')
+    from app.cash_disbursements.models import CashDisbursementVoucher
+    cdv_count = CashDisbursementVoucher.query.filter_by(vendor_id=vendor.id).count()
+    if bill_count or cdv_count:
+        parts = []
+        if bill_count:
+            parts.append(f'{bill_count} purchase bill(s)')
+        if cdv_count:
+            parts.append(f'{cdv_count} cash disbursement(s)')
+        flash(f'Cannot delete vendor "{vendor.name}": it is referenced by '
+              f'{" and ".join(parts)}. Set it inactive instead.', 'error')
         return redirect(url_for('vendors.list_vendors'))
 
     try:

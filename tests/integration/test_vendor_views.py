@@ -649,3 +649,46 @@ class TestVendorDuplicateName:
         body = html_mod.unescape(resp.data.decode())
         assert 'already exists' not in body
 
+
+
+class TestVendorDeleteReferenceGuard:
+    """Vendor delete must block on a CDV reference, not just a purchase bill."""
+
+    def _cdv_for(self, db_session, vendor, branch, cash):
+        from decimal import Decimal
+        from app.cash_disbursements.models import CashDisbursementVoucher
+        cdv = CashDisbursementVoucher(
+            branch_id=branch.id, cdv_number='CD-VG-0001', cdv_date=ph_now().date(),
+            vendor_id=vendor.id, vendor_name=vendor.name, payment_method='cash',
+            cash_account_id=cash.id, status='posted',
+            total_ap_applied=Decimal('0.00'), total_expense=Decimal('100.00'),
+            total_vat=Decimal('0.00'), total_wt=Decimal('0.00'),
+            total_amount=Decimal('100.00'))
+        db_session.add(cdv)
+        db_session.commit()
+        return cdv
+
+    def test_delete_blocked_by_cdv_only_reference(self, client, db_session, admin_user, main_branch):
+        from app.accounts.models import Account
+        login(client)
+        with client.session_transaction() as s:
+            s['selected_branch_id'] = main_branch.id
+        vendor = make_vendor(db_session, code='VGAP', name='CDV-only Vendor')
+        cash = Account(code='1001', name='Cash', account_type='Asset',
+                       normal_balance='debit', is_active=True)
+        db_session.add(cash); db_session.commit()
+        self._cdv_for(db_session, vendor, main_branch, cash)   # NO purchase bill
+
+        client.post(f'/vendors/{vendor.id}/delete', follow_redirects=True)
+        from app.vendors.models import Vendor as V
+        assert db_session.get(V, vendor.id) is not None, (
+            'a vendor referenced only by a CDV must not be deletable')
+
+    def test_delete_allowed_when_unreferenced(self, client, db_session, admin_user, main_branch):
+        from app.vendors.models import Vendor as V
+        login(client)
+        with client.session_transaction() as s:
+            s['selected_branch_id'] = main_branch.id
+        vendor = make_vendor(db_session, code='VCLEAN', name='Clean Vendor')
+        client.post(f'/vendors/{vendor.id}/delete', follow_redirects=True)
+        assert db_session.get(V, vendor.id) is None

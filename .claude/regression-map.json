@@ -56,6 +56,8 @@
     "app/accounts_payable/models.py":      ["accounts_payable"],
     "app/cash_disbursements/models.py":    ["cash_disbursements"],
     "app/cash_receipts/models.py":         ["cash_receipts"],
+    "app/accounts/views.py":               ["accounts"],
+    "app/vendors/views.py":                ["vendors"],
     "app/sales_orders/models.py":          ["sales_orders", "delivery_receipts", "quotations", "credit_memos", "debit_memos"],
     "app/sales_orders/preprinted_layout.py": ["sales_orders"],
     "app/journal_entries/views.py":        ["journal_entries"],
@@ -75,6 +77,7 @@
     "app/customers/models.py":             ["customers", "sales_invoices", "cash_receipts"]
   },
   "modules": {
+    "accounts":          { "marker": "accounts", "e2e": null },
     "accounts_payable":  { "marker": "accounts_payable", "e2e": "tests/e2e/test_ap_smoke.py" },
     "cash_disbursements": { "marker": "cash_disbursements", "e2e": "tests/e2e/test_cdv_smoke.py" },
     "sales_invoices":    { "marker": "sales_invoices", "e2e": "tests/e2e/test_si_smoke.py" },

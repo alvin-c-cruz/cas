@@ -68,6 +68,63 @@ def find_pending_request(account_id=None, code=None):
     return None
 
 
+def _account_delete_blockers(account):
+    """Human-readable reasons an account cannot be deleted, or [] if it can.
+
+    SQLite FK enforcement is off app-wide, so this is the only thing between a
+    delete and orphaned posted GL lines (and document lines, cash headers,
+    tax-config FKs, child accounts). Mirrors the customer/vendor guards; the
+    Chart of Accounts is the highest-impact table, so it checks every referent.
+    """
+    from app.journal_entries.models import JournalEntryLine
+    from app.sales_invoices.models import SalesInvoiceItem
+    from app.accounts_payable.models import AccountsPayableItem
+    from app.cash_receipts.models import CRVRevenueLine, CashReceiptVoucher
+    from app.cash_disbursements.models import CDVExpenseLine, CashDisbursementVoucher
+    from app.sales_memos.models import SalesMemoItem, SalesMemo
+    from app.products.models import Product
+    from app.vat_categories.models import VATCategory
+    from app.sales_vat_categories.models import SalesVATCategory
+    from app.withholding_tax.models import WithholdingTax
+
+    aid = account.id
+    reasons = []
+
+    def _count(label, q):
+        n = q.count()
+        if n:
+            reasons.append(f'{n} {label}')
+
+    # Highest impact first: posted GL lines and child accounts.
+    _count('journal entry line(s)',
+           JournalEntryLine.query.filter_by(account_id=aid))
+    _count('child account(s)', Account.query.filter_by(parent_id=aid))
+    # Document line items.
+    _count('sales invoice line(s)', SalesInvoiceItem.query.filter_by(account_id=aid))
+    _count('purchase bill line(s)', AccountsPayableItem.query.filter_by(account_id=aid))
+    _count('cash receipt line(s)', CRVRevenueLine.query.filter_by(account_id=aid))
+    _count('cash disbursement line(s)', CDVExpenseLine.query.filter_by(account_id=aid))
+    _count('memo line(s)', SalesMemoItem.query.filter_by(account_id=aid))
+    # Cash-account headers.
+    _count('cash-receipt cash account use(s)',
+           CashReceiptVoucher.query.filter_by(cash_account_id=aid))
+    _count('cash-disbursement cash account use(s)',
+           CashDisbursementVoucher.query.filter_by(cash_account_id=aid))
+    _count('memo cash account use(s)', SalesMemo.query.filter_by(cash_account_id=aid))
+    # Tax / product configuration FKs.
+    _count('VAT category input-account link(s)',
+           VATCategory.query.filter_by(input_vat_account_id=aid))
+    _count('sales-VAT category output-account link(s)',
+           SalesVATCategory.query.filter_by(output_vat_account_id=aid))
+    _count('withholding-tax payable-account link(s)',
+           WithholdingTax.query.filter_by(payable_account_id=aid))
+    _count('withholding-tax receivable-account link(s)',
+           WithholdingTax.query.filter_by(receivable_account_id=aid))
+    _count('product default-account link(s)',
+           Product.query.filter_by(default_account_id=aid))
+    return reasons
+
+
 def flash_duplicate_pending(existing_request):
     """Flash a consistent error message about an existing pending change request."""
     requested_on = (existing_request.requested_at.strftime('%b %d, %Y')
@@ -544,6 +601,16 @@ def delete(id):
             flash_duplicate_pending(existing_request)
             return redirect(url_for('accounts.list_accounts'))
 
+        # Refuse a delete that would orphan referencing rows. Because the sole-
+        # accountant path auto-approves inside this route, this check IS the
+        # apply-site guard there, and it also stops a doomed request entering the
+        # queue for the reviewer path.
+        blockers = _account_delete_blockers(account)
+        if blockers:
+            flash(f'Cannot delete account "{account.code} - {account.name}": it is '
+                  f'referenced by {", ".join(blockers)}. Set it inactive instead.', 'error')
+            return redirect(url_for('accounts.list_accounts'))
+
         # Store account data for audit trail
         change_data = {
             'code': account.code,
@@ -697,6 +764,16 @@ def approve_request(request_id):
             # Delete account
             account = db.session.get(Account, change_request.account_id)
             if account:
+                # TOCTOU: references may have appeared since the request was
+                # submitted. Re-check at apply time and leave the request pending
+                # so the reviewer can reject it with a reason (mirrors the
+                # create-branch uniqueness re-check above).
+                blockers = _account_delete_blockers(account)
+                if blockers:
+                    flash(f'Cannot approve deletion of "{account.code} - {account.name}": '
+                          f'it is now referenced by {", ".join(blockers)}. '
+                          f'The request stays pending — reject it instead.', 'error')
+                    return redirect(url_for('accounts.pending_approvals'))
                 old_values = change_data  # Already contains account data
                 db.session.delete(account)
             else:
