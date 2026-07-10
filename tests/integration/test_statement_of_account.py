@@ -70,3 +70,22 @@ def test_statement_excel_export(client, db_session, admin_user, main_branch):
     assert resp.headers['Content-Type'].startswith(
         'application/vnd.openxmlformats-officedocument.spreadsheetml')
     assert len(resp.data) > 0
+
+
+def test_statement_in_registry_and_sidebar(client, db_session, admin_user, main_branch):
+    from app.users.module_access import MODULE_REGISTRY, module_key_for_endpoint
+    keys = [m['key'] for m in MODULE_REGISTRY]
+    assert 'statement_of_account' in keys
+    assert module_key_for_endpoint('reports.statement_of_account') == 'statement_of_account'
+    # sidebar renders without KeyError for an admin (who sees every module)
+    _setup(client, admin_user, main_branch)
+    resp = client.get('/dashboard')
+    assert resp.status_code == 200
+
+
+def test_statement_blocked_for_viewer(client, db_session, admin_user, viewer_user, main_branch):
+    _setup(client, admin_user, main_branch)          # seed as admin
+    with client.session_transaction() as s:
+        s['_user_id'] = str(viewer_user.id); s['_fresh'] = True
+    resp = client.get('/reports/statement-of-account', follow_redirects=False)
+    assert resp.status_code in (302, 403)            # accountant_or_admin_required blocks viewer
