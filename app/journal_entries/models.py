@@ -36,8 +36,15 @@ class JournalEntry(db.Model):
     description = db.Column(db.String(500), nullable=False)
     reference = db.Column(db.String(100))
 
-    # Entry type: 'adjustment', 'closing', 'opening', 'purchase', 'reversal', 'reclassification'
+    # Entry type: 'adjustment', 'closing', 'opening', 'purchase', 'reversal',
+    # 'reclassification', 'legacy_import'
     entry_type = db.Column(db.String(20), default='adjustment', nullable=False)
+
+    # Provenance for entries replayed from a client's legacy books:
+    # '<client>:<legacy_table>:<legacy_id>' (e.g. 'ric:sales_x:1234').
+    # NULL for every entry created inside CAS. Unique, so a re-run of the
+    # importer is idempotent rather than doubling the books.
+    source_ref = db.Column(db.String(100), unique=True, index=True)
 
     # Reversing entry support
     is_reversing = db.Column(db.Boolean, default=False, nullable=False)
