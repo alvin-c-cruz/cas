@@ -1,7 +1,7 @@
 """
 Journal Entry views for manual GL adjustments.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -42,6 +42,19 @@ def accountant_or_admin_required(f):
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def _get_entry_or_404(id):
+    """Fetch a journal entry scoped to the selected branch.
+
+    Mirrors _get_invoice_or_404 / _get_ap_or_404: a voucher in another branch is a
+    404, so ids cannot be walked across branches. No admin bypass -- a full-access
+    user reaches another branch by switching the session branch.
+    """
+    entry = db.get_or_404(JournalEntry, id)
+    if entry.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    return entry
 
 
 @journal_entries_bp.route('/journal-entries')
@@ -183,7 +196,7 @@ def create():
 @login_required
 def view(id):
     """View journal entry details."""
-    entry = db.get_or_404(JournalEntry, id)
+    entry = _get_entry_or_404(id)
     return render_template('journal_entries/detail.html', entry=entry)
 
 
@@ -191,7 +204,7 @@ def view(id):
 @login_required
 def print_entry(id):
     """Standalone print preview for a journal entry."""
-    entry = db.get_or_404(JournalEntry, id)
+    entry = _get_entry_or_404(id)
 
     company = {
         'name': AppSettings.get_setting('company_name', ''),
@@ -207,7 +220,7 @@ def print_entry(id):
 @accountant_or_admin_required
 def post(id):
     """Post journal entry (makes it final)."""
-    entry = db.get_or_404(JournalEntry, id)
+    entry = _get_entry_or_404(id)
 
     if entry.status != 'draft':
         flash('Only draft journal entries can be posted.', 'error')
@@ -248,7 +261,7 @@ def post(id):
 @accountant_or_admin_required
 def cancel(id):
     """Cancel journal entry."""
-    entry = db.get_or_404(JournalEntry, id)
+    entry = _get_entry_or_404(id)
 
     if entry.status == 'cancelled':
         flash('Journal entry is already cancelled.', 'error')
@@ -291,7 +304,7 @@ def cancel(id):
 @accountant_or_admin_required
 def delete(id):
     """Delete journal entry (only drafts can be deleted)."""
-    entry = db.get_or_404(JournalEntry, id)
+    entry = _get_entry_or_404(id)
 
     if entry.status != 'draft':
         flash('Only draft journal entries can be deleted.', 'error')
