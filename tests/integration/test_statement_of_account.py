@@ -59,3 +59,14 @@ def test_statement_print_renders_bir_header(client, db_session, admin_user, main
     assert 'STATEMENT OF ACCOUNT' in body     # bir_book_header title (upper-case)
     assert 'window.print()' in body
     assert 'SI-0007' in body
+
+
+def test_statement_excel_export(client, db_session, admin_user, main_branch):
+    c = _setup(client, admin_user, main_branch)
+    resp = client.get(
+        f'/reports/statement-of-account/export/excel?customer_id={c.id}&mode=custom'
+        '&date_from=2026-07-01&date_to=2026-07-31')
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'].startswith(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml')
+    assert len(resp.data) > 0
