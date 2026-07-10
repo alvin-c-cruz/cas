@@ -11,10 +11,11 @@ Supports:
 """
 from app import db
 from app.utils import ph_now
+from app.utils.concurrency import RowVersioned
 from decimal import Decimal
 
 
-class SalesInvoice(db.Model):
+class SalesInvoice(RowVersioned, db.Model):
     """
     Sales Invoice header model.
 

@@ -4,10 +4,11 @@ Forms for Sales Invoice management.
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Length, Optional
+from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
 
 
-class SalesInvoiceForm(FlaskForm):
+class SalesInvoiceForm(RowVersionFormMixin, FlaskForm):
     """Form for creating and editing sales invoices."""
 
     invoice_number = StringField('Invoice #', validators=[

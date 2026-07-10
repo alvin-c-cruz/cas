@@ -1,10 +1,11 @@
 from flask_wtf import FlaskForm
 from wtforms import SelectField, DateField, TextAreaField, HiddenField
 from wtforms.validators import DataRequired, Optional
+from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
 
 
-class DeliveryReceiptForm(FlaskForm):
+class DeliveryReceiptForm(RowVersionFormMixin, FlaskForm):
     sales_order_id = SelectField('Sales Order', coerce=int, validators=[DataRequired()],
                                  validate_choice=False)
     delivery_date = DateField('Delivery Date', validators=[DataRequired()],

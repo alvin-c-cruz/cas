@@ -4,10 +4,11 @@ Forms for Accounts Payable management.
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField
 from wtforms.validators import DataRequired, Length, Optional, ValidationError
+from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
 
 
-class AccountsPayableForm(FlaskForm):
+class AccountsPayableForm(RowVersionFormMixin, FlaskForm):
     """Form for creating and editing accounts payable."""
 
     # User-typed serial (mirrors SI invoice_number). Pre-filled with the next suggested

@@ -12,6 +12,7 @@ from app.delivery_receipts.forms import DeliveryReceiptForm
 from app.sales_orders.models import SalesOrder, SalesOrderItem, copy_salesperson
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
+from app.utils.concurrency import claim_version, conflict_message, submitted_version
 
 delivery_receipts_bp = Blueprint('delivery_receipts', __name__, template_folder='templates')
 
@@ -76,6 +77,39 @@ def _existing_lines(dr):
     if not dr:
         return {}
     return {li.sales_order_item_id: float(li.delivered_quantity) for li in dr.line_items}
+
+
+def _submitted_existing_lines():
+    """The same shape as _existing_lines(), rebuilt from the POSTed hidden JSON.
+
+    On a bounced edit the grid must show what the encoder typed, not what the
+    database holds -- otherwise a conflict banner claims their work is preserved
+    while silently redisplaying someone else's quantities.
+    """
+    try:
+        items = json.loads(request.form.get('lines', '[]') or '[]')
+    except (ValueError, TypeError):
+        return {}
+    out = {}
+    for d in items:
+        soi_id = d.get('sales_order_item_id')
+        if not soi_id:
+            continue
+        try:
+            out[int(soi_id)] = float(d.get('delivered_quantity') or 0)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _render_edit(dr, form, eligible):
+    """Render the DR edit form, carrying submitted quantities back on a failed POST."""
+    existing = (_submitted_existing_lines() if request.method == 'POST'
+                else _existing_lines(dr))
+    return render_template('delivery_receipts/form.html', form=form, dr=dr,
+                           eligible=eligible,
+                           so_lines=_so_lines_payload(eligible, exclude_dr_id=dr.id),
+                           existing=existing)
 
 
 def _parse_dr_lines(dr, lines_json):
@@ -202,6 +236,15 @@ def edit(id):
     if form.validate_on_submit():
         old = model_to_dict(dr, ['dr_number', 'status', 'delivery_date'])
         try:
+            # Lost-update guard: the first write, before dr.line_items.clear() below.
+            # DR is the module that motivated an explicit row_version column: its
+            # header carries no totals, so a line-only edit never dirties the row
+            # and `updated_at`'s onupdate would never fire.
+            if not claim_version(DeliveryReceipt, dr.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('delivery_receipts', dr.id), 'error')
+                return _render_edit(dr, form, eligible)
+
             dr.delivery_date = form.delivery_date.data
             dr.remarks = form.remarks.data or None
             if form.salesperson_id.data:
@@ -225,9 +268,7 @@ def edit(id):
     if request.method == 'GET':
         form.sales_order_id.data = dr.sales_order_id
         form.salesperson_id.data = dr.salesperson_id or 0
-    return render_template('delivery_receipts/form.html', form=form, dr=dr, eligible=eligible,
-                           so_lines=_so_lines_payload(eligible, exclude_dr_id=dr.id),
-                           existing=_existing_lines(dr))
+    return _render_edit(dr, form, eligible)
 
 
 # -- lifecycle transitions -----------------------------------------------------

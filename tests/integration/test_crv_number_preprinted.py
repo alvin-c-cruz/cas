@@ -98,6 +98,7 @@ class TestPrePrintedCrvNumber:
             'payment_method': 'cash',
             'cash_account_id': cash.id,
             'notes': 'Edited particulars',
+            'row_version': crv.row_version,
             'ar_lines': json.dumps([]),
             'revenue_lines': json.dumps([{'description': 'Service fee', 'amount': 1000.0,
                                           'vat_category': '', 'account_id': rev.id, 'wt_id': None}]),

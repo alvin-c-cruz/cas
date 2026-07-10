@@ -12,6 +12,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
+from app.utils.concurrency import claim_version, conflict_message, submitted_version
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.utils.wt_labels import wt_label
@@ -894,29 +895,55 @@ def edit(id):
         (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
     ]
 
-    tmpl_ar_lines = [l.to_dict() for l in crv.ar_lines]
-    tmpl_revenue_lines = [l.to_dict() for l in crv.revenue_lines]
+    def _render_edit_form():
+        """Render the edit form.
+
+        On a failed POST, carry the SUBMITTED lines back -- as create()'s
+        _render_form already does -- instead of re-reading the stored ones.
+        Re-reading silently replaced the encoder's typed lines with the
+        database's, so every bounced edit lost their work. Mirrors CDV.
+
+        The server-side `{% if crv %}` row loop and the JS restore path would
+        both emit rows, so the loop is starved with empty lists when a restore
+        payload is present.
+        """
+        ctx = _form_context(all_accounts=all_accounts)
+        if request.method == 'POST':
+            return render_template(
+                'cash_receipts/form.html', form=form, crv=crv,
+                ar_lines=[], revenue_lines=[],
+                restore_ar_lines=request.form.get('ar_lines', ''),
+                restore_revenue_lines=request.form.get('revenue_lines', ''),
+                **ctx)
+        return render_template(
+            'cash_receipts/form.html', form=form, crv=crv,
+            ar_lines=[l.to_dict() for l in crv.ar_lines],
+            revenue_lines=[l.to_dict() for l in crv.revenue_lines],
+            **ctx)
 
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.crv_date.data, 'Cash Receipt Voucher'):
-            ctx = _form_context(all_accounts=all_accounts)
-            return render_template('cash_receipts/form.html', form=form, crv=crv,
-                                   ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+            return _render_edit_form()
         if CashReceiptVoucher.query.filter(
                 CashReceiptVoucher.crv_number == form.crv_number.data,
                 CashReceiptVoucher.id != crv.id).first():
             flash(f'CR Number "{form.crv_number.data}" already exists. '
                   'Enter the number printed on the receipt.', 'error')
-            ctx = _form_context(all_accounts=all_accounts)
-            return render_template('cash_receipts/form.html', form=form, crv=crv,
-                                   ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+            return _render_edit_form()
         try:
             customer = db.session.get(Customer, form.customer_id.data)
             if not customer:
                 flash('Selected customer not found.', 'error')
-                ctx = _form_context(all_accounts=all_accounts)
-                return render_template('cash_receipts/form.html', form=form, crv=crv,
-                                       ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+                return _render_edit_form()
+
+            # Lost-update guard. First write of the request: everything above is
+            # read-only, everything below deletes the AR/revenue lines and the
+            # linked JE. The check IS the write (conditional UPDATE) -- a
+            # read-then-compare races, since BEGIN is deferred until the first write.
+            if not claim_version(CashReceiptVoucher, crv.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('cash_receipt', crv.id), 'error')
+                return _render_edit_form()
 
             crv.crv_number = form.crv_number.data
             crv.crv_date = form.crv_date.data
@@ -970,9 +997,7 @@ def edit(id):
         except CRVLineError as ce:
             db.session.rollback()
             flash(str(ce), 'error')
-            ctx = _form_context(all_accounts=all_accounts)
-            return render_template('cash_receipts/form.html', form=form, crv=crv,
-                                   ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+            return _render_edit_form()
         except Exception as e:
             db.session.rollback()
             current_app.logger.error('Error editing CRV', exc_info=True)
@@ -980,9 +1005,7 @@ def edit(id):
             flash('An unexpected error occurred while updating the CRV. Please try '
                   'again; if it persists, contact your administrator.', 'error')
 
-    ctx = _form_context(all_accounts=all_accounts)
-    return render_template('cash_receipts/form.html', form=form, crv=crv,
-                           ar_lines=tmpl_ar_lines, revenue_lines=tmpl_revenue_lines, **ctx)
+    return _render_edit_form()
 
 
 # ---------------------------------------------------------------------------

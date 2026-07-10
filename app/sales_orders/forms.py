@@ -4,10 +4,11 @@ Forms for Sales Order management.
 from flask_wtf import FlaskForm
 from wtforms import StringField, DateField, TextAreaField, SelectField, HiddenField
 from wtforms.validators import DataRequired, Length, Optional
+from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
 
 
-class SalesOrderForm(FlaskForm):
+class SalesOrderForm(RowVersionFormMixin, FlaskForm):
     """Form for creating and editing sales orders. Operational only — no GL/WHT/payment fields."""
 
     so_number = StringField('SO #', validators=[

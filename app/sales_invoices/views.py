@@ -12,6 +12,7 @@ from app.accounts.models import Account
 from app.withholding_tax.models import WithholdingTax
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
+from app.utils.concurrency import claim_version, conflict_message, submitted_version
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.utils.wt_labels import wt_label
@@ -895,6 +896,23 @@ def edit(id):
             line_err = _line_items_error(request.form.get('line_items', '[]'))
             if line_err:
                 flash(line_err, 'error')
+                return render_template('sales_invoices/form.html', form=form, invoice=invoice,
+                                       vat_categories=_vat_categories_for_form(),
+                                       all_accounts=_get_all_accounts_for_select(),
+                                       line_items=restore_items,
+                                       gl_accounts=_gl_accounts_dict(),
+                                       wht_codes=_wht_codes_for_form(),
+                                       units=_units_for_form(),
+                                       products=_products_for_form(),
+                                       customer_quick_add_form=build_customer_quick_add_form(),
+                                       customer_quick_add_whts=_customer_quick_add_whts())
+
+            # Lost-update guard: the first write, before the line teardown below.
+            # The check IS the write (conditional UPDATE) -- a read-then-compare
+            # races, since BEGIN is deferred until the first write.
+            if not claim_version(SalesInvoice, invoice.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('sales_invoice', invoice.id), 'error')
                 return render_template('sales_invoices/form.html', form=form, invoice=invoice,
                                        vat_categories=_vat_categories_for_form(),
                                        all_accounts=_get_all_accounts_for_select(),
