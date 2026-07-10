@@ -203,6 +203,12 @@
                 <strong>Pre-printed Form</strong> prints data-only onto a pre-printed form (designed
                 in the layout editor); <strong>Hidden</strong> turns printing off entirely — the
                 Print button is removed and the print link is disabled.</div>
+            <label class="checkbox-label" style="margin-top:12px;">
+                {{ form.si_dr_billing_consolidate() }}
+                <span>{{ form.si_dr_billing_consolidate.label.text }}</span>
+            </label>
+            <div class="form-hint">When on, the Sales Invoice's "Bill delivered DRs" picker can pull
+                several Delivery Receipts into one invoice. When off (default), one DR per invoice.</div>
         </div>
     </div>
 

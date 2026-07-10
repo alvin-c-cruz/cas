@@ -582,6 +582,86 @@ def list_invoices():
     )
 
 
+def _si_billing_consolidate():
+    from app.settings import AppSettings
+    return AppSettings.get_setting('si_dr_billing_consolidate', '0') == '1'
+
+
+def _parse_source_dr_ids(raw):
+    try:
+        return [int(x) for x in (json.loads(raw or '[]') or [])]
+    except (ValueError, TypeError):
+        return []
+
+
+def _bill_drs(invoice, dr_ids):
+    """Mark each source DR billed + linked to this SI. Validates eligibility and enforces
+    the consolidate setting. Raises ValueError (caught by create -> full rollback) on any
+    problem, so a bad pull never half-bills."""
+    if not dr_ids:
+        return
+    from app.delivery_receipts.models import DeliveryReceipt
+    if not _si_billing_consolidate() and len(dr_ids) > 1:
+        raise ValueError('Consolidated billing is off - bill one Delivery Receipt per invoice.')
+    for dr_id in dr_ids:
+        dr = db.session.get(DeliveryReceipt, dr_id)
+        if (dr is None or dr.branch_id != invoice.branch_id
+                or dr.customer_id != invoice.customer_id
+                or dr.status != 'delivered' or dr.sales_invoice_id is not None):
+            raise ValueError(f'Delivery Receipt {dr_id} is no longer billable.')
+        dr.status = 'billed'
+        dr.sales_invoice_id = invoice.id
+
+
+def _unbill_drs(invoice):
+    """Revert every DR billed by this SI back to 'delivered' + unlink (SI void/cancel)."""
+    from app.delivery_receipts.models import DeliveryReceipt
+    for dr in DeliveryReceipt.query.filter_by(sales_invoice_id=invoice.id).all():
+        dr.status = 'delivered'
+        dr.sales_invoice_id = None
+
+
+@sales_invoices_bp.route('/sales-invoices/billable-drs')
+@login_required
+def billable_drs():
+    """JSON: delivered, unbilled DRs for a customer, each line priced from its SO line +
+    the product's default revenue account. Data source for the SI form's DR-billing picker."""
+    from app.delivery_receipts.models import DeliveryReceipt
+    branch_id = session.get('selected_branch_id')
+    customer_id = request.args.get('customer_id', type=int)
+    if not customer_id:
+        return jsonify({'consolidate': _si_billing_consolidate(), 'drs': []})
+    drs = (DeliveryReceipt.query
+           .filter(DeliveryReceipt.branch_id == branch_id,
+                   DeliveryReceipt.customer_id == customer_id,
+                   DeliveryReceipt.status == 'delivered',
+                   DeliveryReceipt.sales_invoice_id.is_(None))
+           .order_by(DeliveryReceipt.delivery_date.desc(), DeliveryReceipt.id.desc()).all())
+    out = []
+    for dr in drs:
+        lines = []
+        for li in dr.line_items:
+            soi = li.sales_order_item
+            product = li.product or (soi.product if soi else None)
+            lines.append({
+                'sales_order_item_id': li.sales_order_item_id,
+                'product_id': product.id if product else None,
+                'product_code': product.code if product else None,
+                'product_name': product.name if product else None,
+                'quantity': float(li.delivered_quantity) if li.delivered_quantity is not None else 0.0,
+                'unit_price': float(soi.unit_price) if soi and soi.unit_price is not None else None,
+                'uom_id': (soi.unit_of_measure_id if soi else None),
+                'uom_display': (soi.unit_of_measure.code if soi and soi.unit_of_measure else None),
+                'vat_category': soi.vat_category if soi else None,
+                'vat_rate': float(soi.vat_rate) if soi and soi.vat_rate is not None else 0.0,
+                'account_id': (product.default_account_id if product else None),
+            })
+        out.append({'id': dr.id, 'dr_number': dr.dr_number,
+                    'delivery_date': dr.delivery_date.isoformat() if dr.delivery_date else None,
+                    'lines': lines})
+    return jsonify({'consolidate': _si_billing_consolidate(), 'drs': out})
+
+
 @sales_invoices_bp.route('/sales-invoices/print')
 @login_required
 @staff_or_above_required
@@ -715,6 +795,8 @@ def create():
 
             je = _post_invoice_je(invoice, current_user.id)
             invoice.journal_entry_id = je.id
+            # Bill any Delivery Receipts pulled into this SI (flips them to 'billed' + links).
+            _bill_drs(invoice, _parse_source_dr_ids(request.form.get('source_dr_ids', '[]')))
             db.session.commit()
 
             log_create(
@@ -1143,6 +1225,7 @@ def cancel(id):
         invoice.status = 'cancelled'
         invoice.cancelled_at = ph_now()
         invoice.cancel_reason = cancel_reason
+        _unbill_drs(invoice)   # release any DRs this SI billed
         db.session.commit()
         log_audit('sales_invoice', 'cancel', invoice.id,
                   f'{invoice.invoice_number} - {invoice.customer_name}',
@@ -1192,6 +1275,7 @@ def void(id):
         invoice.voided_at = ph_now()
         invoice.voided_by_id = current_user.id
         invoice.void_reason = void_reason
+        _unbill_drs(invoice)   # release any DRs this SI billed
         db.session.commit()
 
         for fp in attachment_paths:
