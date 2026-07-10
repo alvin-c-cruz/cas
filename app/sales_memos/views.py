@@ -291,10 +291,13 @@ def _post_impl(id, memo_type):
         memo.posted_at = ph_now()
         je = post_memo_je(memo, current_user.id)   # status posted -> JE posted
         memo.journal_entry_id = je.id
-        # A credit memo settles the referenced SI's AR; a debit note is its own receivable
-        # (collection via the CRV loop is Phase 2b), so it touches no SI balance here.
+        # A credit memo settles the referenced SI's AR; a debit note is its OWN receivable --
+        # open its collectible balance so a Cash Receipt can settle it (Phase 2b).
         if memo_type == 'credit' and memo.destination == 'ar':
             _apply_memo_to_ar(memo)
+        elif memo_type == 'debit':
+            memo.balance = memo.total_amount
+            memo.amount_paid = Decimal('0.00')
         db.session.commit()
         log_audit(module='sales_memos', action='post', record_id=memo.id,
                   record_identifier=memo.memo_number, notes='Posted')

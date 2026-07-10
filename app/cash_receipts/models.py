@@ -113,8 +113,12 @@ class CRVArLine(db.Model):
     crv_id = db.Column(db.Integer, db.ForeignKey('cash_receipt_vouchers.id'),
                        nullable=False, index=True)
     line_number = db.Column(db.Integer, nullable=False)
-    invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=False)
+    # Polymorphic AR reference: a line settles EITHER a Sales Invoice OR a debit note
+    # (Phase 2b). Exactly one of {invoice_id, sales_memo_id} is set (parser-enforced).
+    invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=True)
     sales_invoice = db.relationship('SalesInvoice', foreign_keys=[invoice_id])
+    sales_memo_id = db.Column(db.Integer, db.ForeignKey('sales_memos.id'), nullable=True)
+    sales_memo = db.relationship('SalesMemo', foreign_keys=[sales_memo_id])
     invoice_number = db.Column(db.String(50), nullable=False)
     original_balance = db.Column(db.Numeric(15, 2), nullable=False)
     amount_applied = db.Column(db.Numeric(15, 2), nullable=False)

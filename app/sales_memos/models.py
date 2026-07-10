@@ -48,6 +48,11 @@ class SalesMemo(db.Model):
     withholding_tax_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     total_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)  # subtotal - WHT
 
+    # Debit-note collection (Phase 2b): a posted debit note is a collectible receivable.
+    # Set balance = total_amount on debit-note post; a CRV reduces it. Unused (0) for credit memos.
+    amount_paid = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
+    balance = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
+
     # Where the credit/charge lands: 'ar' (referenced SI balance), 'cash_refund', 'customer_credit'.
     destination = db.Column(db.String(20), default='ar', nullable=False)
     cash_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
