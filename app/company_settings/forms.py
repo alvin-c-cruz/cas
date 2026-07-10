@@ -145,3 +145,7 @@ class CompanySettingsForm(FlaskForm):
     # Administration / policy
     accountant_email_self_approval = BooleanField(
         'Allow accountants to self-approve Staff/Viewer registration emails')
+
+    si_dr_billing_consolidate = BooleanField(
+        'Consolidate multiple Delivery Receipts into one Sales Invoice '
+        '(off = one DR per invoice)')
