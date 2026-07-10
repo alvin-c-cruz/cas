@@ -149,18 +149,10 @@ def primary_branch():
 
 
 def settlement_entry_number(year, qtr_end_month, branch_id):
-    prefix = f'JV-{year}-{qtr_end_month:02d}-'
-    latest = JournalEntry.query.filter(
-        JournalEntry.entry_number.like(f'{prefix}%'),
-        JournalEntry.branch_id == branch_id,
-    ).order_by(JournalEntry.entry_number.desc()).first()
-    nxt = 1
-    if latest:
-        try:
-            nxt = int(latest.entry_number.split('-')[-1]) + 1
-        except (ValueError, IndexError):
-            nxt = 1
-    return f'{prefix}{nxt:04d}'
+    """Company-wide -- see `closing_entry_number`; a per-branch sequence collides
+    with the global unique index on `entry_number`."""
+    from app.journal_entries.utils import next_sequence_number
+    return next_sequence_number(f'JV-{year}-{qtr_end_month:02d}-')
 
 
 def draft_vat_docs_in_quarter(year, quarter):

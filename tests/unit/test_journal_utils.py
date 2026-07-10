@@ -65,6 +65,57 @@ def test_generate_jv_number_increments(app_ctx):
         assert result.endswith('0002')
 
 
+def _mk_user():
+    user = User(username='acc', email='acc@test.com', full_name='A',
+                role='accountant', is_active=True)
+    user.set_password('pass')
+    return user
+
+
+def _mk_je(number, branch_id, user_id):
+    from datetime import date
+    return JournalEntry(
+        entry_number=number,
+        entry_date=date.today(),
+        description='Test',
+        entry_type='adjustment',
+        branch_id=branch_id,
+        created_by_id=user_id,
+        is_balanced=True,
+        total_debit=0,
+        total_credit=0,
+        status='posted',
+    )
+
+
+def test_generate_jv_number_unique_across_branches(app_ctx):
+    """JournalEntry.entry_number carries a GLOBAL unique index, so two branches
+    in the same month must not both mint ...-0001. RIC has two active branches
+    (CORP + EXTRA), so a per-branch sequence violates the index on the second
+    branch's first voucher."""
+    with app_ctx.app_context():
+        corp = Branch(name='Corp', code='CORP')
+        extra = Branch(name='Extra', code='EXTRA')
+        user = _mk_user()
+        db.session.add_all([corp, extra, user])
+        db.session.commit()
+
+        first = generate_jv_number(corp.id)
+        db.session.add(_mk_je(first, corp.id, user.id))
+        db.session.commit()
+
+        second = generate_jv_number(extra.id)
+        assert second != first, (
+            f'both branches minted {first!r} -- violates the global unique index'
+        )
+
+        # Must persist without an IntegrityError.
+        db.session.add(_mk_je(second, extra.id, user.id))
+        db.session.commit()
+
+        assert JournalEntry.query.count() == 2
+
+
 def test_generate_jv_number_ignores_je_prefix(app_ctx):
     """Old JE-prefixed entries do not affect JV sequence."""
     with app_ctx.app_context():
