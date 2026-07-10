@@ -91,7 +91,7 @@ with app.app_context():
             from app.products.models import Product
             from app.sales_orders.models import SalesOrder, SalesOrderItem
             for key in ('units_of_measure', 'products', 'sales_orders',
-                        'quotations', 'delivery_receipts', 'credit_memos'):
+                        'quotations', 'delivery_receipts', 'credit_memos', 'debit_memos'):
                 AppSettings.set_setting(f'module_enabled:{key}', '1')
             db.session.commit()
 
