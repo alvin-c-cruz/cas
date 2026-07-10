@@ -5,7 +5,6 @@ from decimal import Decimal
 import pytest
 
 from app import db
-from app.branches.models import Branch
 from app.accounts.models import Account
 from app.customers.models import Customer
 from app.sales_invoices.models import SalesInvoice
@@ -127,3 +126,35 @@ def test_empty_activity_opening_equals_closing(db_session, main_branch):
     assert r['rows'] == []
     assert r['opening_balance'] == Decimal('3000.00')
     assert r['closing_balance'] == Decimal('3000.00')
+
+
+def test_excludes_other_customer_and_branch(db_session, main_branch, branch_manila):
+    target = _cust(main_branch)
+    _si(main_branch, target, 'SI-MINE', date(2026, 7, 10), '1000.00')
+
+    # (a) a different customer, same branch, in-period SI -- must not leak in.
+    other_cust = Customer(code='C2', name='Other Co', is_active=True)
+    db.session.add(other_cust); db.session.commit()
+    _si(main_branch, other_cust, 'SI-OTHER-CUST', date(2026, 7, 11), '2000.00')
+
+    # (b) the target customer, but a DIFFERENT branch -- must not leak in.
+    _si(branch_manila, target, 'SI-OTHER-BR', date(2026, 7, 12), '3000.00')
+
+    r = build_statement_of_account(target.id, main_branch.id, JULY)
+    numbers = [row['doc_number'] for row in r['rows']]
+    assert numbers == ['SI-MINE']
+    assert r['closing_balance'] == Decimal('1000.00')
+
+
+def test_same_date_events_ordered_deterministically(db_session, main_branch):
+    c = _cust(main_branch)
+    si = _si(main_branch, c, 'SI-0001', date(2026, 7, 15), '5000.00')
+    _crv_pay(main_branch, c, 'CR-0001', date(2026, 7, 15), si, '2000.00')
+
+    r = build_statement_of_account(c.id, main_branch.id, JULY)
+    kinds = [row['kind'] for row in r['rows']]
+    assert kinds == ['invoice', 'payment']
+
+    bals = [row['running_balance'] for row in r['rows']]
+    opening = r['opening_balance']
+    assert bals == [opening + Decimal('5000.00'), opening + Decimal('5000.00') - Decimal('2000.00')]
