@@ -1245,6 +1245,9 @@ def cancel(id):
     except ValueError:
         flash('Invalid reversal date.', 'error')
         return redirect(url_for('accounts_payable.view', id=id))
+    # The reversal JE posts on reversal_date, so that period must be open.
+    if not validate_transaction_date_with_flash(reversal_date, 'Reversal'):
+        return redirect(url_for('accounts_payable.view', id=id))
 
     try:
         _create_reversal_je(ap, reversal_date, current_user.id, label='Cancel')

@@ -155,3 +155,25 @@ def test_post_blocked_when_memo_date_in_closed_period(client, db_session, admin_
     assert memo.status == 'draft', 'a memo dated in a closed period must not post'
     assert memo.journal_entry_id is None
     assert inv.balance == Decimal('1120.00')          # SI untouched
+
+
+def test_void_blocked_when_current_period_closed(client, db_session, admin_user, main_branch):
+    """Void reverses via a JE dated TODAY, so a closed current month must block it."""
+    from app.periods.models import AccountingPeriod
+    from app.utils import ph_now
+
+    si, li = _setup(client, admin_user, main_branch)
+    mid, sid = _draft_memo(main_branch, si, li, credit='560'), si.id
+    client.post(f'/credit-memos/{mid}/post', follow_redirects=True)
+
+    now = ph_now()
+    db.session.add(AccountingPeriod(year=now.year, month=now.month, status='closed'))
+    db.session.commit()
+
+    resp = client.post(f'/credit-memos/{mid}/void',
+                       data={'void_reason': 'Wrong invoice picked'}, follow_redirects=True)
+    assert resp.status_code == 200
+    memo = db.session.get(SalesMemo, mid)
+    inv = db.session.get(SalesInvoice, sid)
+    assert memo.status == 'posted', 'void must be blocked while the current period is closed'
+    assert inv.balance == Decimal('560.00'), 'SI balance unchanged (no reversal happened)'

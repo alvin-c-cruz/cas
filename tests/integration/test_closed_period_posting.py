@@ -546,3 +546,171 @@ class TestJVPostClosedPeriod:
         client.post(f'/journal-entries/{je.id}/post', follow_redirects=True)
         db_session.refresh(je)
         assert je.status == 'posted'
+
+
+# ── FIX 7/8: cancel with a reversal_date in a closed period (AP / CDV / CRV) ──
+#
+# SI/AP/CDV/CRV cancel leaves the original JE posted and books a NEW reversing JE
+# dated `reversal_date` -- so that date's period must be open. SI validated it; AP,
+# CDV and CRV parsed the date and validated nothing, so a reversal could post GL
+# into a closed period. The document itself is dated in an OPEN period here (2099),
+# so the reversal_date guard is the only thing under test.
+#
+# JV cancel is deliberately NOT in this set: it posts no reversal JE (it flips the
+# entry itself to cancelled, removing GL from the ORIGINAL period), so it validates
+# entry_date, not a reversal_date. See TestJVCancelClosedPeriod (FIX 5).
+
+def _posted_doc_je(db_session, branch_id, user, code='10310'):
+    acct = Account(code=code, name='Cancel JE Acct', account_type='Asset',
+                   normal_balance='debit', is_active=True)
+    db_session.add(acct)
+    db_session.flush()
+    je = JournalEntry(
+        entry_number='JE-CX-' + code, entry_date=date(2099, 3, 1),
+        description='Doc JE', entry_type='adjustment', branch_id=branch_id,
+        created_by_id=user.id, status='posted', is_balanced=True,
+        total_debit=Decimal('1000.00'), total_credit=Decimal('1000.00'))
+    db_session.add(je)
+    db_session.flush()
+    db_session.add_all([
+        JournalEntryLine(entry_id=je.id, line_number=1, account_id=acct.id,
+                         debit_amount=Decimal('1000.00'), credit_amount=Decimal('0.00')),
+        JournalEntryLine(entry_id=je.id, line_number=2, account_id=acct.id,
+                         debit_amount=Decimal('0.00'), credit_amount=Decimal('1000.00')),
+    ])
+    db_session.flush()
+    return je
+
+
+class TestAPCancelClosedPeriod:
+
+    def _posted_ap(self, db_session, branch_id, vendor, user):
+        from app.accounts_payable.models import AccountsPayable
+        je = _posted_doc_je(db_session, branch_id, user, code='10311')
+        ap = AccountsPayable(
+            branch_id=branch_id, ap_number='AP-CX-0001', ap_date=date(2099, 3, 1),
+            due_date=date(2099, 3, 31), payee_type='vendor', payee_id=vendor.id,
+            vendor_id=vendor.id, vendor_name=vendor.name, status='posted',
+            subtotal=Decimal('1000.00'), vat_amount=Decimal('0.00'),
+            total_before_wt=Decimal('1000.00'), withholding_tax_amount=Decimal('0.00'),
+            total_amount=Decimal('1000.00'), amount_paid=Decimal('0.00'),
+            balance=Decimal('1000.00'), journal_entry_id=je.id, created_by_id=user.id)
+        db_session.add(ap)
+        db_session.commit()
+        return ap
+
+    def test_cancel_blocked_when_reversal_date_in_closed_period(
+            self, client, db_session, admin_user, main_branch):
+        from app.vendors.models import Vendor
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        _close_period(db_session)
+        v = Vendor(code='VCX', name='Vendor CX', is_active=True)
+        db_session.add(v)
+        db_session.commit()
+        ap = self._posted_ap(db_session, main_branch.id, v, admin_user)
+
+        before = JournalEntry.query.count()
+        resp = client.post(f'/accounts-payable/{ap.id}/cancel', data={
+            'cancel_reason': 'Valid reason that is long enough',
+            'reversal_date': CLOSED_DATE.isoformat(),
+        }, follow_redirects=False)
+        assert resp.status_code == 302
+
+        db_session.refresh(ap)
+        assert ap.status == 'posted'
+        assert JournalEntry.query.count() == before, 'no reversal JE may be created'
+
+    def test_cancel_allowed_when_reversal_date_open(
+            self, client, db_session, admin_user, main_branch):
+        from app.vendors.models import Vendor
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        _close_period(db_session)
+        v = Vendor(code='VCX2', name='Vendor CX2', is_active=True)
+        db_session.add(v)
+        db_session.commit()
+        ap = self._posted_ap(db_session, main_branch.id, v, admin_user)
+
+        client.post(f'/accounts-payable/{ap.id}/cancel', data={
+            'cancel_reason': 'Valid reason that is long enough',
+            'reversal_date': date(2099, 6, 1).isoformat(),
+        }, follow_redirects=True)
+        db_session.refresh(ap)
+        assert ap.status == 'cancelled'
+
+
+class TestCDVCancelClosedPeriod:
+
+    def _posted_cdv(self, db_session, branch_id, vendor, cash, user):
+        from app.cash_disbursements.models import CashDisbursementVoucher
+        je = _posted_doc_je(db_session, branch_id, user, code='10312')
+        cdv = CashDisbursementVoucher(
+            branch_id=branch_id, cdv_number='CD-CX-0001', cdv_date=date(2099, 3, 1),
+            vendor_id=vendor.id, vendor_name=vendor.name, payment_method='cash',
+            cash_account_id=cash.id, status='posted',
+            total_ap_applied=Decimal('0.00'), total_expense=Decimal('1000.00'),
+            total_vat=Decimal('0.00'), total_wt=Decimal('0.00'),
+            total_amount=Decimal('1000.00'), journal_entry_id=je.id)
+        db_session.add(cdv)
+        db_session.commit()
+        return cdv
+
+    def test_cancel_blocked_when_reversal_date_in_closed_period(
+            self, client, db_session, admin_user, main_branch):
+        from app.vendors.models import Vendor
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        _close_period(db_session)
+        v = Vendor(code='VCDX', name='Vendor CDX', is_active=True)
+        cash = _make_cash_account(db_session)
+        db_session.add(v)
+        db_session.commit()
+        cdv = self._posted_cdv(db_session, main_branch.id, v, cash, admin_user)
+
+        before = JournalEntry.query.count()
+        resp = client.post(f'/cash-disbursements/{cdv.id}/cancel', data={
+            'cancel_reason': 'Valid reason that is long enough',
+            'reversal_date': CLOSED_DATE.isoformat(),
+        }, follow_redirects=False)
+        assert resp.status_code == 302
+
+        db_session.refresh(cdv)
+        assert cdv.status == 'posted'
+        assert JournalEntry.query.count() == before
+
+
+class TestCRVCancelClosedPeriod:
+
+    def _posted_crv(self, db_session, branch_id, customer, cash, user):
+        crv = CashReceiptVoucher(
+            branch_id=branch_id, crv_number='CR-CX-0001', crv_date=date(2099, 3, 1),
+            customer_id=customer.id, customer_name=customer.name, payment_method='cash',
+            cash_account_id=cash.id, status='posted',
+            total_ar_applied=Decimal('0.00'), total_revenue=Decimal('1000.00'),
+            total_vat=Decimal('0.00'), total_wt=Decimal('0.00'),
+            total_amount=Decimal('1000.00'),
+            journal_entry_id=_posted_doc_je(db_session, branch_id, user, code='10313').id)
+        db_session.add(crv)
+        db_session.commit()
+        return crv
+
+    def test_cancel_blocked_when_reversal_date_in_closed_period(
+            self, client, db_session, admin_user, main_branch):
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        _close_period(db_session)
+        customer = _make_customer(db_session)
+        cash = _make_cash_account(db_session)
+        crv = self._posted_crv(db_session, main_branch.id, customer, cash, admin_user)
+
+        before = JournalEntry.query.count()
+        resp = client.post(f'/cash-receipts/{crv.id}/cancel', data={
+            'cancel_reason': 'Valid reason that is long enough',
+            'reversal_date': CLOSED_DATE.isoformat(),
+        }, follow_redirects=False)
+        assert resp.status_code == 302
+
+        db_session.refresh(crv)
+        assert crv.status == 'posted'
+        assert JournalEntry.query.count() == before

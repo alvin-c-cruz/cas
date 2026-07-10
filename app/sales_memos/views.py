@@ -340,6 +340,12 @@ def _void_impl(id, memo_type):
         flash(f'This {meta["title"]} has collections applied and cannot be voided. '
               'Cancel the related cash receipt(s) first.', 'error')
         return redirect(view_url)
+    # The void reverses via a JE dated TODAY (reverse_memo_je uses ph_now().date()),
+    # so if the current month is closed -- a real state after legacy replay -- the
+    # reversal must not post into it. Only matters for a posted memo.
+    if memo.status == 'posted' and not validate_transaction_date_with_flash(
+            ph_now().date(), 'Reversal'):
+        return redirect(view_url)
     try:
         if memo.status == 'posted':
             reverse_memo_je(memo, current_user.id)
