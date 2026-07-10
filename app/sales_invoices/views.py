@@ -650,6 +650,7 @@ def billable_drs():
                 'product_name': product.name if product else None,
                 'quantity': float(li.delivered_quantity) if li.delivered_quantity is not None else 0.0,
                 'unit_price': float(soi.unit_price) if soi and soi.unit_price is not None else None,
+                'uom_id': (soi.unit_of_measure_id if soi else None),
                 'uom_display': (soi.unit_of_measure.code if soi and soi.unit_of_measure else None),
                 'vat_category': soi.vat_category if soi else None,
                 'vat_rate': float(soi.vat_rate) if soi and soi.vat_rate is not None else 0.0,
