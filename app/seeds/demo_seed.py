@@ -609,22 +609,13 @@ def build_cdv_expense(doc_date, vendor_obj, vendor_spec, gross_amount, refs, adm
 
 
 def _generate_jv_number(doc_date, branch_id):
-    """Generate JV-YYYY-MM-NNNN using doc_date (not current date) for historical seeding."""
-    from app.journal_entries.models import JournalEntry
-    prefix = f'JV-{doc_date.year}-{doc_date.month:02d}-'
-    latest = JournalEntry.query.filter(
-        JournalEntry.entry_number.like(f'{prefix}%'),
-        JournalEntry.branch_id == branch_id
-    ).order_by(JournalEntry.entry_number.desc()).first()
-    if latest:
-        try:
-            last_num = int(latest.entry_number.split('-')[-1])
-            next_num = last_num + 1
-        except (ValueError, IndexError):
-            next_num = 1
-    else:
-        next_num = 1
-    return f'{prefix}{next_num:04d}'
+    """JV-YYYY-MM-NNNN keyed to doc_date (not today) for historical seeding.
+
+    Company-wide sequence -- `entry_number` is globally unique, so a per-branch
+    sequence collides across branches.
+    """
+    from app.journal_entries.utils import next_sequence_number
+    return next_sequence_number(f'JV-{doc_date.year}-{doc_date.month:02d}-')
 
 
 def build_jv(doc_date, lines, refs, admin_id, branch_id, *,

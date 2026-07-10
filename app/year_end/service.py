@@ -48,19 +48,14 @@ def nominal_balances(year, branch_id):
 
 
 def closing_entry_number(branch_id, year):
-    """Next JV number keyed to the close date (Dec of `year`), per branch: JV-{year}-12-NNNN."""
-    prefix = f'JV-{year}-12-'
-    latest = JournalEntry.query.filter(
-        JournalEntry.entry_number.like(f'{prefix}%'),
-        JournalEntry.branch_id == branch_id,
-    ).order_by(JournalEntry.entry_number.desc()).first()
-    nxt = 1
-    if latest:
-        try:
-            nxt = int(latest.entry_number.split('-')[-1]) + 1
-        except (ValueError, IndexError):
-            nxt = 1
-    return f'{prefix}{nxt:04d}'
+    """Next JV number keyed to the close date (Dec of `year`): JV-{year}-12-NNNN.
+
+    Company-wide sequence -- closing runs once per branch, and a per-branch
+    sequence would mint the same number for each and violate the global unique
+    index on `entry_number`.
+    """
+    from app.journal_entries.utils import next_sequence_number
+    return next_sequence_number(f'JV-{year}-12-')
 
 
 def latest_closed_year(branch_id):
