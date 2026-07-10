@@ -162,6 +162,31 @@ def _output_vat_buckets(crv):
     return ordered
 
 
+def _crv_posted_wt(crv):
+    """The WHT amount actually booked to Creditable WHT Receivable (10212).
+
+    Under `wt_override` that is the header `crv.total_wt` — a pure override may carry
+    no line-level WHT at all, and `total_amount` is already computed from the header
+    value (models.py::calculate_totals). Otherwise it is the summed line WHT from
+    positive revenue lines only (negative lines never carry WHT).
+
+    Reconciling ONLY on override keeps the non-override path byte-identical, and it is
+    what lets fixtures that never call `calculate_totals()` leave `total_wt` unset.
+
+    CRV books a single 10212 leg, mirroring Sales Invoice — `WithholdingTax.receivable_account`
+    is not consumed by any posting path. Without this, the cash residual plug silently
+    absorbed (override - line_sum) and both legs were misstated.
+    """
+    if crv.wt_override:
+        return Decimal(str(crv.total_wt or 0))
+    return sum(
+        (Decimal(str(rl.wt_amount or 0))
+         for rl in crv.revenue_lines
+         if Decimal(str(rl.line_total or 0)) > 0),
+        Decimal('0.00'),
+    )
+
+
 def _post_crv_je(crv, user_id):
     """Create the receipt JE: Cr AR + Cr/Dr Revenue (sign-aware) + Cr/Dr Output VAT; Dr/Cr WHT Recv + Dr/Cr Cash."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
@@ -175,12 +200,8 @@ def _post_crv_je(crv, user_id):
         raise ValueError("Cash/Bank account not set on the receipt.")
 
     wt_account = None
-    # WHT: sum from positive revenue lines only (negative lines have no WHT)
-    total_wt = sum(
-        Decimal(str(rl.wt_amount or 0))
-        for rl in crv.revenue_lines
-        if Decimal(str(rl.line_total or 0)) > 0
-    )
+    # WHT: the header value under override, else the positive-line sum.
+    total_wt = _crv_posted_wt(crv)
     if total_wt != Decimal('0.00'):
         wt_account = accts['wt']
         if not wt_account:
@@ -430,12 +451,10 @@ def _build_crv_je_preview(crv):
             entries.append({'code': vat_acct.code, 'name': vat_acct.name,
                             'debit': abs(vat_amt), 'credit': Decimal('0.00')})
 
-    # WHT Receivable — positive lines only
-    total_wt = sum(
-        Decimal(str(rl.wt_amount or 0))
-        for rl in crv.revenue_lines
-        if Decimal(str(rl.line_total or 0)) > 0
-    )
+    # WHT Receivable — header value under override, else the positive-line sum.
+    # Must agree with _post_crv_je or the preview shows the user a different JE
+    # than the one that will be booked.
+    total_wt = _crv_posted_wt(crv)
     if total_wt != Decimal('0.00') and accts['wt']:
         if total_wt > Decimal('0.00'):
             entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
