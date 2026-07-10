@@ -418,3 +418,131 @@ class TestJVCancelClosedPeriod:
 
         resp = client.post(f'/journal-entries/{je.id}/cancel', follow_redirects=True)
         assert b'already cancelled' in resp.data.lower()
+
+
+# ── FIX 6: post into a closed period must be blocked (AP + JV + sales memos) ──
+#
+# SI/CDV/CRV re-validate the period at post; AP, JV and sales-memos did not. A
+# draft created before a period closes could be posted after -- landing posted GL
+# into a closed period. Assert at the books level too: the linked draft JE must not
+# be promoted either.
+
+class TestAPPostClosedPeriod:
+
+    def _make_draft_ap_with_je(self, db_session, branch_id, vendor, user, ap_date):
+        from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+        expense = Account(code='5001', name='Expense', account_type='Expense',
+                          normal_balance='debit', is_active=True)
+        db_session.add(expense)
+        db_session.flush()
+        je = JournalEntry(
+            entry_number='JE-APCP-0001', entry_date=ap_date, description='AP JE',
+            entry_type='purchase', branch_id=branch_id, created_by_id=user.id,
+            status='draft', is_balanced=True,
+            total_debit=Decimal('1000.00'), total_credit=Decimal('1000.00'))
+        db_session.add(je)
+        db_session.flush()
+        db_session.add_all([
+            JournalEntryLine(entry_id=je.id, line_number=1, account_id=expense.id,
+                             debit_amount=Decimal('1000.00'), credit_amount=Decimal('0.00')),
+            JournalEntryLine(entry_id=je.id, line_number=2, account_id=expense.id,
+                             debit_amount=Decimal('0.00'), credit_amount=Decimal('1000.00')),
+        ])
+        ap = AccountsPayable(
+            branch_id=branch_id, ap_number='AP-CP-0001', ap_date=ap_date,
+            due_date=ap_date, payee_type='vendor', payee_id=vendor.id,
+            vendor_id=vendor.id, vendor_name=vendor.name, status='draft',
+            subtotal=Decimal('1000.00'), vat_amount=Decimal('0.00'),
+            total_before_wt=Decimal('1000.00'), withholding_tax_amount=Decimal('0.00'),
+            total_amount=Decimal('1000.00'), amount_paid=Decimal('0.00'),
+            balance=Decimal('1000.00'), journal_entry_id=je.id, created_by_id=user.id)
+        db_session.add(ap)
+        db_session.flush()
+        db_session.add(AccountsPayableItem(
+            ap_id=ap.id, line_number=1, description='Service', amount=Decimal('1000.00'),
+            line_total=Decimal('1000.00'), vat_amount=Decimal('0.00'),
+            account_id=expense.id))
+        db_session.commit()
+        return ap, je
+
+    def test_ap_post_blocked_when_ap_date_in_closed_period(
+            self, client, db_session, admin_user, main_branch):
+        from app.vendors.models import Vendor
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        _close_period(db_session)
+        v = Vendor(code='VCP', name='Vendor CP', is_active=True)
+        db_session.add(v)
+        db_session.commit()
+        ap, je = self._make_draft_ap_with_je(db_session, main_branch.id, v, admin_user,
+                                             CLOSED_DATE)
+
+        resp = client.post(f'/accounts-payable/{ap.id}/post', follow_redirects=False)
+        assert resp.status_code == 302
+
+        db_session.refresh(ap)
+        db_session.refresh(je)
+        assert ap.status == 'draft'
+        assert je.status == 'draft', 'the linked JE must not be promoted either'
+
+    def test_ap_post_allowed_when_period_open(
+            self, client, db_session, admin_user, main_branch):
+        from app.vendors.models import Vendor
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        v = Vendor(code='VOP', name='Vendor OP', is_active=True)
+        db_session.add(v)
+        db_session.commit()
+        ap, je = self._make_draft_ap_with_je(db_session, main_branch.id, v, admin_user,
+                                             date(2099, 1, 15))
+
+        client.post(f'/accounts-payable/{ap.id}/post', follow_redirects=True)
+        db_session.refresh(ap)
+        assert ap.status == 'posted'
+
+
+class TestJVPostClosedPeriod:
+
+    def _make_draft_je(self, db_session, branch_id, user, entry_date):
+        acct = Account(code='10305', name='JV Post Acct', account_type='Asset',
+                       normal_balance='debit', is_active=True)
+        db_session.add(acct)
+        db_session.flush()
+        je = JournalEntry(
+            entry_number='JV-POST-0001', entry_date=entry_date, description='Draft JV',
+            entry_type='adjustment', branch_id=branch_id, created_by_id=user.id,
+            status='draft', is_balanced=True,
+            total_debit=Decimal('300.00'), total_credit=Decimal('300.00'))
+        db_session.add(je)
+        db_session.flush()
+        db_session.add_all([
+            JournalEntryLine(entry_id=je.id, line_number=1, account_id=acct.id,
+                             debit_amount=Decimal('300.00'), credit_amount=Decimal('0.00')),
+            JournalEntryLine(entry_id=je.id, line_number=2, account_id=acct.id,
+                             debit_amount=Decimal('0.00'), credit_amount=Decimal('300.00')),
+        ])
+        db_session.commit()
+        return je
+
+    def test_jv_post_blocked_when_entry_date_in_closed_period(
+            self, client, db_session, admin_user, main_branch):
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        _close_period(db_session)
+        je = self._make_draft_je(db_session, main_branch.id, admin_user, CLOSED_DATE)
+
+        resp = client.post(f'/journal-entries/{je.id}/post', follow_redirects=False)
+        assert resp.status_code == 302
+        db_session.refresh(je)
+        assert je.status == 'draft'
+        assert je.posted_at is None
+
+    def test_jv_post_allowed_when_period_open(
+            self, client, db_session, admin_user, main_branch):
+        _login_admin(client)
+        _set_branch(client, main_branch.id)
+        je = self._make_draft_je(db_session, main_branch.id, admin_user, date(2099, 6, 1))
+
+        client.post(f'/journal-entries/{je.id}/post', follow_redirects=True)
+        db_session.refresh(je)
+        assert je.status == 'posted'

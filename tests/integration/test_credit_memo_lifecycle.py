@@ -132,3 +132,26 @@ def test_cannot_post_twice(client, db_session, admin_user, main_branch):
     assert inv.balance == Decimal('560.00')          # not reduced twice
     from app.journal_entries.models import JournalEntry
     assert JournalEntry.query.filter_by(reference='CM-1', entry_type='sale').count() == 1
+
+
+def test_post_blocked_when_memo_date_in_closed_period(client, db_session, admin_user, main_branch):
+    """A memo posts real GL, so a memo dated in a closed period must not post.
+
+    This blueprint validated the period nowhere (create or post) before R3.
+    """
+    from app.periods.models import AccountingPeriod
+
+    si, li = _setup(client, admin_user, main_branch)
+    # memo_date is 2026-07-10 (see _draft_memo); close that month.
+    db.session.add(AccountingPeriod(year=2026, month=7, status='closed'))
+    db.session.commit()
+
+    mid, sid = _draft_memo(main_branch, si, li, credit='560'), si.id
+    resp = client.post(f'/credit-memos/{mid}/post', follow_redirects=True)
+    assert resp.status_code == 200
+
+    memo = db.session.get(SalesMemo, mid)
+    inv = db.session.get(SalesInvoice, sid)
+    assert memo.status == 'draft', 'a memo dated in a closed period must not post'
+    assert memo.journal_entry_id is None
+    assert inv.balance == Decimal('1120.00')          # SI untouched

@@ -25,6 +25,7 @@ from app.sales_orders.models import copy_salesperson
 from app.audit.utils import log_create, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
+from app.periods.utils import validate_transaction_date_with_flash
 from app.sales_memos.je import post_memo_je, reverse_memo_je
 
 sales_memos_bp = Blueprint('sales_memos', __name__, template_folder='templates')
@@ -284,6 +285,11 @@ def _post_impl(id, memo_type):
         return redirect(view_url)
     if memo.status != 'draft':
         flash(f'Only a draft {meta["title"]} can be posted.', 'error')
+        return redirect(view_url)
+    # Memos post real GL via post_memo_je, so -- like every other posting document --
+    # a memo dated in a closed period must not be posted. (This blueprint validated
+    # the period nowhere, at create or post.)
+    if not validate_transaction_date_with_flash(memo.memo_date, meta['title']):
         return redirect(view_url)
     try:
         memo.status = 'posted'

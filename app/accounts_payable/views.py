@@ -1167,6 +1167,11 @@ def post(id):
         flash('Only draft APVs can be posted.', 'error')
         return redirect(url_for('accounts_payable.view', id=id))
 
+    # Re-validate the period at post: a draft dated before a close could otherwise be
+    # posted after, landing posted GL into a closed period. SI/CDV/CRV all re-check here.
+    if not validate_transaction_date_with_flash(ap.ap_date, 'AP Voucher'):
+        return redirect(url_for('accounts_payable.view', id=id))
+
     needs_invoice = ap.vat_amount > 0 or ap.withholding_tax_amount > 0
     if needs_invoice:
         missing = []

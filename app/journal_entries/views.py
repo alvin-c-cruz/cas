@@ -230,6 +230,11 @@ def post(id):
         flash('Cannot post unbalanced journal entry!', 'error')
         return redirect(url_for('journal_entries.view', id=id))
 
+    # Re-validate the period at post, like create does -- a draft dated before a close
+    # must not be posted into the closed period after the fact.
+    if not validate_transaction_date_with_flash(entry.entry_date, 'journal entry'):
+        return redirect(url_for('journal_entries.view', id=id))
+
     try:
         entry.status = 'posted'
         entry.posted_by_id = current_user.id
