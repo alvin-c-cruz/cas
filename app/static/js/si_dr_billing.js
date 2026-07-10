@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var customerSel = document.getElementById('customer_id_display');
+  var customerSel = document.getElementById('customer_id');
   var section = document.getElementById('drBillingSection');
   var listEl = document.getElementById('drBillingList');
   var emptyEl = document.getElementById('drBillingEmpty');

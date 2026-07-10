@@ -144,6 +144,26 @@ with app.app_context():
                 si.line_items.append(si_item)
                 db.session.add(si); db.session.commit()
 
+            # DR->SI billing fixture: give P001 a revenue account (so a pulled SI line has one)
+            # and seed a DELIVERED, unbilled DR from SO-E2E-0001 for the SI form's picker.
+            from app.accounts.models import Account
+            from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
+            rev = Account.query.filter(Account.account_type.in_(['Income', 'Revenue'])).first()
+            if rev and p001 and p001.default_account_id is None:
+                p001.default_account_id = rev.id
+                db.session.commit()
+            so = SalesOrder.query.filter_by(so_number='SO-E2E-0001').first()
+            if (branch and c001 and so
+                    and not DeliveryReceipt.query.filter_by(dr_number='DR-E2E-0001').first()):
+                dr = DeliveryReceipt(
+                    dr_number='DR-E2E-0001', branch_id=branch.id, delivery_date=today,
+                    sales_order_id=so.id, customer_id=c001.id, customer_name=c001.name,
+                    status='delivered')
+                dr.line_items.append(DeliveryReceiptItem(
+                    line_number=1, sales_order_item_id=so.line_items[0].id,
+                    product_id=p001.id, delivered_quantity=Decimal('10')))
+                db.session.add(dr); db.session.commit()
+
 if __name__ == '__main__':
     port = int(os.environ.get('E2E_PORT', '5099'))
     # threaded=True so Playwright's sequential actions never block; reloader off for a clean child.
