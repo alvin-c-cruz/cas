@@ -71,9 +71,13 @@ class TestVatLinesContract:
         assert vat_lines(date(2026, 1, 1), date(2026, 3, 31), 'purchases') == []
 
     def test_returns_vatline_namedtuples(self, db_session):
+        # Task 9: SLS/SLP templates render an address column, so VatLine grew
+        # partner_address (sourced from the header, '' for CRV/CDV whose
+        # headers carry no address column) -- not a re-derivation, a real
+        # interface addition needed by the report rewrite.
         assert VatLine._fields == (
             'side', 'source', 'doc_id', 'doc_no', 'doc_date',
-            'partner_id', 'partner_name', 'partner_tin',
+            'partner_id', 'partner_name', 'partner_tin', 'partner_address',
             'nature', 'base', 'vat_amount',
         )
 

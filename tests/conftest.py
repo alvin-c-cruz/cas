@@ -456,6 +456,66 @@ def posted_si_no_category(db_session, main_branch, revenue_account, vl_customer)
 
 
 @pytest.fixture
+def posted_si_zero_rated(db_session, main_branch, revenue_account, vl_customer):
+    """One posted Sales Invoice, one V0/zero_export line -- R-08 Task 9:
+    proves a zero-rated sale lands in zero_rated_sales, not vatable_sales."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-VL-ZERO-0001',
+        invoice_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='posted',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Export sale',
+        amount=Decimal('5000.00'), vat_rate=Decimal('0.00'),
+        vat_category='V0', vat_nature='zero_export',
+        line_total=Decimal('5000.00'), vat_amount=Decimal('0.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
+def posted_si_exempt(db_session, main_branch, revenue_account, vl_customer):
+    """One posted Sales Invoice, one VEX/exempt line -- R-08 Task 9: proves an
+    exempt sale lands in vat_exempt_sales."""
+    from datetime import date
+    from decimal import Decimal
+    from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+    inv = SalesInvoice(
+        branch_id=main_branch.id,
+        invoice_number='SI-VL-EXEMPT-0001',
+        invoice_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        customer_id=vl_customer.id,
+        customer_name=vl_customer.name,
+        customer_tin=vl_customer.tin,
+        status='posted',
+    )
+    item = SalesInvoiceItem(
+        line_number=1, description='Exempt sale',
+        amount=Decimal('3000.00'), vat_rate=Decimal('0.00'),
+        vat_category='VEX', vat_nature='exempt',
+        line_total=Decimal('3000.00'), vat_amount=Decimal('0.00'),
+        account_id=revenue_account.id,
+    )
+    inv.line_items.append(item)
+    db_session.add(inv)
+    db_session.commit()
+    return inv
+
+
+@pytest.fixture
 def posted_si_on_mar_31(db_session, main_branch, revenue_account, vl_customer):
     """One posted Sales Invoice dated the LAST day of the quarter -- proves the
     date range's upper bound is inclusive."""
@@ -571,6 +631,70 @@ def posted_cdv_v12sv(db_session, main_branch, cash_account, revenue_account, vl_
     db_session.add(cdv)
     db_session.commit()
     return cdv
+
+
+@pytest.fixture
+def posted_ap_capital_goods(db_session, main_branch, revenue_account, vl_vendor):
+    """One posted Accounts Payable bill, one V12CG/capital_goods line -- R-08
+    Task 9: proves a capital-goods purchase lands in the capital_goods bucket."""
+    from datetime import date
+    from decimal import Decimal
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    bill = AccountsPayable(
+        branch_id=main_branch.id,
+        ap_number='AP-VL-CG-0001',
+        ap_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        payee_type='vendor', payee_id=vl_vendor.id,
+        vendor_id=vl_vendor.id,
+        vendor_name=vl_vendor.name,
+        vendor_tin=vl_vendor.tin,
+        vendor_invoice_number='INV-CG-0001',
+        status='posted',
+    )
+    item = AccountsPayableItem(
+        line_number=1, description='Office equipment',
+        amount=Decimal('11200.00'), vat_rate=Decimal('12.00'),
+        vat_category='V12CG', vat_nature='capital_goods',
+        line_total=Decimal('11200.00'), vat_amount=Decimal('1200.00'),
+        account_id=revenue_account.id,
+    )
+    bill.line_items.append(item)
+    db_session.add(bill)
+    db_session.commit()
+    return bill
+
+
+@pytest.fixture
+def posted_ap_no_category(db_session, main_branch, revenue_account, vl_vendor):
+    """One posted Accounts Payable bill whose line has NULL vat_nature
+    (unclassified) -- R-08 Task 9: must not be folded into vatable_purchases."""
+    from datetime import date
+    from decimal import Decimal
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    bill = AccountsPayable(
+        branch_id=main_branch.id,
+        ap_number='AP-VL-NOCAT-0001',
+        ap_date=date(2026, 2, 15),
+        due_date=date(2026, 3, 17),
+        payee_type='vendor', payee_id=vl_vendor.id,
+        vendor_id=vl_vendor.id,
+        vendor_name=vl_vendor.name,
+        vendor_tin=vl_vendor.tin,
+        vendor_invoice_number='INV-NOCAT-0001',
+        status='posted',
+    )
+    item = AccountsPayableItem(
+        line_number=1, description='Unclassified purchase',
+        amount=Decimal('1000.00'), vat_rate=Decimal('0.00'),
+        vat_category=None, vat_nature=None,
+        line_total=Decimal('1000.00'), vat_amount=Decimal('0.00'),
+        account_id=revenue_account.id,
+    )
+    bill.line_items.append(item)
+    db_session.add(bill)
+    db_session.commit()
+    return bill
 
 
 # --- R-08 Task 7: wht_lines() fixtures -------------------------------------

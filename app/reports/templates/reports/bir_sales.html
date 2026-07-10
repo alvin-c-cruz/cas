@@ -7,6 +7,14 @@
 {% block content %}
 <div class="card"><div class="card-body">
   {{ bir_book_header(company, 'SUMMARY LIST OF SALES', month_name ~ ' ' ~ year) }}
+  {% set unclassified = sales_data | rejectattr('customer_name', 'equalto', 'TOTAL') | sum(attribute='unclassified_sales') %}
+  {% if unclassified %}
+  <div class="alert alert-warning">
+    {{ '{:,.2f}'.format(unclassified) }} of sales could not be classified for BIR
+    reporting. Assign a BIR classification to the affected VAT categories.
+    Amounts are in Philippine pesos.
+  </div>
+  {% endif %}
   <table style="width:100%;border-collapse:collapse;font-size:12px;">
     <thead>
       <tr>
@@ -16,6 +24,8 @@
         <th style="text-align:right;">Vatable</th>
         <th style="text-align:right;">VAT-Exempt</th>
         <th style="text-align:right;">Zero-Rated</th>
+        <th style="text-align:right;">Government</th>
+        <th style="text-align:right;">Unclassified</th>
         <th style="text-align:right;">Output VAT</th>
         <th style="text-align:right;">Gross</th>
       </tr>
@@ -29,11 +39,13 @@
         <td style="text-align:right;">{{ '{:,.2f}'.format(r.vatable_sales) }}</td>
         <td style="text-align:right;">{{ '{:,.2f}'.format(r.vat_exempt_sales) }}</td>
         <td style="text-align:right;">{{ '{:,.2f}'.format(r.zero_rated_sales) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.government_sales) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.unclassified_sales) }}</td>
         <td style="text-align:right;">{{ '{:,.2f}'.format(r.vat_amount) }}</td>
         <td style="text-align:right;">{{ '{:,.2f}'.format(r.gross_sales) }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="8" style="color:var(--color-text-muted,#555);">No sales for {{ month_name }} {{ year }}.</td></tr>
+      <tr><td colspan="10" style="color:var(--color-text-muted,#555);">No sales for {{ month_name }} {{ year }}.</td></tr>
       {% endfor %}
     </tbody>
   </table>

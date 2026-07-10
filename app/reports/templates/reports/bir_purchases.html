@@ -7,6 +7,15 @@
 {% block content %}
 <div class="card"><div class="card-body">
   {{ bir_book_header(company, 'SUMMARY LIST OF PURCHASES', month_name ~ ' ' ~ year) }}
+  {% set unclassified = purchases_data | rejectattr('vendor_name', 'equalto', 'TOTAL') | sum(attribute='unclassified_purchases') %}
+  {% if unclassified %}
+  <div class="alert alert-warning">
+    {{ '{:,.2f}'.format(unclassified) }} of purchases could not be classified for BIR
+    reporting. Assign a BIR classification to the affected VAT categories.
+    Amounts are in Philippine pesos.
+  </div>
+  {% endif %}
+  <div style="overflow-x:auto;">
   <table style="width:100%;border-collapse:collapse;font-size:12px;">
     <thead>
       <tr>
@@ -14,9 +23,15 @@
         <th>Vendor</th>
         <th>Address</th>
         <th>Invoice #</th>
-        <th style="text-align:right;">Vatable</th>
-        <th style="text-align:right;">VAT-Exempt</th>
+        <th style="text-align:right;">Capital Goods</th>
+        <th style="text-align:right;">Domestic Goods</th>
+        <th style="text-align:right;">Domestic Services</th>
+        <th style="text-align:right;">Importation</th>
+        <th style="text-align:right;">Non-Resident Services</th>
+        <th style="text-align:right;">Exempt</th>
         <th style="text-align:right;">Zero-Rated</th>
+        <th style="text-align:right;">Not Qualified</th>
+        <th style="text-align:right;">Unclassified</th>
         <th style="text-align:right;">Input VAT</th>
         <th style="text-align:right;">Gross</th>
       </tr>
@@ -28,17 +43,24 @@
         <td>{{ r.vendor_name }}</td>
         <td>{{ r.vendor_address }}</td>
         <td>{{ r.vendor_invoice_number }}</td>
-        <td style="text-align:right;">{{ '{:,.2f}'.format(r.vatable_purchases) }}</td>
-        <td style="text-align:right;">{{ '{:,.2f}'.format(r.vat_exempt_purchases) }}</td>
-        <td style="text-align:right;">{{ '{:,.2f}'.format(r.zero_rated_purchases) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.capital_goods) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.domestic_goods) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.domestic_services) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.importation) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.nonresident_services) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.exempt) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.zero_rated) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.not_qualified) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.unclassified_purchases) }}</td>
         <td style="text-align:right;">{{ '{:,.2f}'.format(r.input_vat) }}</td>
         <td style="text-align:right;">{{ '{:,.2f}'.format(r.gross_purchases) }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="9" style="color:var(--color-text-muted,#555);">No purchases for {{ month_name }} {{ year }}.</td></tr>
+      <tr><td colspan="15" style="color:var(--color-text-muted,#555);">No purchases for {{ month_name }} {{ year }}.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   <p style="margin-top:10px;">
     <a class="btn btn-secondary btn-sm"
        href="{{ url_for('reports.bir_purchases_export_excel', year=year, month=month) }}">Export Excel</a>

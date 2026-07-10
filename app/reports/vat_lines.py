@@ -43,7 +43,7 @@ AP_STATUSES = ('posted', 'paid', 'partially_paid')
 
 VatLine = namedtuple('VatLine', [
     'side', 'source', 'doc_id', 'doc_no', 'doc_date',
-    'partner_id', 'partner_name', 'partner_tin',
+    'partner_id', 'partner_name', 'partner_tin', 'partner_address',
     'nature', 'base', 'vat_amount',
 ])
 
@@ -52,11 +52,12 @@ def _d(x):
     return Decimal(str(x or 0))
 
 
-def _emit(side, source, doc_id, doc_no, doc_date, pid, pname, ptin, line):
+def _emit(side, source, doc_id, doc_no, doc_date, pid, pname, ptin, paddr, line):
     vat = _d(line.vat_amount)
     return VatLine(
         side=side, source=source, doc_id=doc_id, doc_no=doc_no, doc_date=doc_date,
         partner_id=pid, partner_name=pname, partner_tin=ptin or '',
+        partner_address=paddr or '',
         nature=line.vat_nature or UNCLASSIFIED,
         base=_d(line.amount) - vat,
         vat_amount=vat,
@@ -77,7 +78,7 @@ def _sales(date_from, date_to, branch_id):
         for line in inv.line_items:
             out.append(_emit('sales', 'sales_invoice', inv.id, inv.invoice_number,
                              inv.invoice_date, inv.customer_id, inv.customer_name,
-                             inv.customer_tin, line))
+                             inv.customer_tin, inv.customer_address, line))
 
     q = db.session.query(CashReceiptVoucher).options(
         selectinload(CashReceiptVoucher.revenue_lines)).filter(
@@ -88,9 +89,11 @@ def _sales(date_from, date_to, branch_id):
         q = q.filter(CashReceiptVoucher.branch_id == branch_id)
     for crv in q.all():
         for line in crv.revenue_lines:
+            # CashReceiptVoucher has no customer_address column on its header
+            # (unlike SalesInvoice) -- '' rather than a per-row Customer query.
             out.append(_emit('sales', 'cash_receipt', crv.id, crv.crv_number,
                              crv.crv_date, crv.customer_id, crv.customer_name,
-                             crv.customer_tin, line))
+                             crv.customer_tin, '', line))
     return out
 
 
@@ -108,7 +111,8 @@ def _purchases(date_from, date_to, branch_id):
         for line in bill.line_items:
             out.append(_emit('purchases', 'accounts_payable', bill.id,
                              bill.vendor_invoice_number, bill.ap_date,
-                             bill.vendor_id, bill.vendor_name, bill.vendor_tin, line))
+                             bill.vendor_id, bill.vendor_name, bill.vendor_tin,
+                             bill.vendor_address, line))
 
     q = db.session.query(CashDisbursementVoucher).options(
         selectinload(CashDisbursementVoucher.expense_lines)).filter(
@@ -119,9 +123,11 @@ def _purchases(date_from, date_to, branch_id):
         q = q.filter(CashDisbursementVoucher.branch_id == branch_id)
     for cdv in q.all():
         for line in cdv.expense_lines:
+            # CashDisbursementVoucher has no vendor_address column on its header
+            # (unlike AccountsPayable) -- '' rather than a per-row Vendor query.
             out.append(_emit('purchases', 'cash_disbursement', cdv.id, cdv.cdv_number,
                              cdv.cdv_date, cdv.vendor_id, cdv.vendor_name,
-                             cdv.vendor_tin, line))
+                             cdv.vendor_tin, '', line))
     return out
 
 

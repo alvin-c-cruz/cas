@@ -8,171 +8,108 @@ Provides reports required for Philippine tax compliance:
 
 These reports follow BIR format requirements for Philippine businesses.
 """
-from datetime import date, datetime
+from calendar import monthrange
+from datetime import date
 from decimal import Decimal
-from sqlalchemy import func, extract
+from sqlalchemy import extract
 from sqlalchemy.orm import selectinload
-from app import db
-from app.sales_invoices.models import SalesInvoice
-from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
-from app.customers.models import Customer
-from app.vendors.models import Vendor
+from app.accounts_payable.models import AccountsPayable
+from app.reports.vat_lines import (
+    vat_lines, SALES_BUCKET_BY_NATURE, PURCHASE_BUCKET_BY_NATURE, UNCLASSIFIED,
+)
+
+_SALES_KEYS = {
+    'vatable': 'vatable_sales',
+    'zero_rated': 'zero_rated_sales',
+    'exempt': 'vat_exempt_sales',
+    'government': 'government_sales',
+    UNCLASSIFIED: 'unclassified_sales',
+}
+
+# One output key per real purchase nature (identity), plus a renamed
+# unclassified key matching the sales-side 'unclassified_sales' convention.
+_PURCHASE_KEYS = {b: b for b in PURCHASE_BUCKET_BY_NATURE.values() if b != UNCLASSIFIED}
+_PURCHASE_KEYS[UNCLASSIFIED] = 'unclassified_purchases'
+
+
+def _month_bounds(year, month):
+    return date(year, month, 1), date(year, month, monthrange(year, month)[1])
 
 
 def get_summary_list_of_sales(year, month, branch_id=None):
+    """Summary List of Sales (BIR Annex A), bucketed by real VAT nature.
+
+    Reads sales_invoice_items AND crv_revenue_lines via vat_lines(); a cash sale
+    booked through a CRV used to be invisible here. Lines whose nature is unknown
+    land in 'unclassified_sales' -- never silently folded into vatable.
     """
-    Generate Summary List of Sales (Annex A) - VAT Sales Report
+    date_from, date_to = _month_bounds(year, month)
+    rows = {}
+    for line in vat_lines(date_from, date_to, 'sales', branch_id=branch_id):
+        r = rows.setdefault(line.partner_id, {
+            'customer_name': line.partner_name,
+            'customer_tin': line.partner_tin,
+            'customer_address': line.partner_address,
+            'total_sales': Decimal('0.00'),
+            'vat_amount': Decimal('0.00'),
+            'gross_sales': Decimal('0.00'),
+            **{k: Decimal('0.00') for k in _SALES_KEYS.values()},
+        })
+        bucket = SALES_BUCKET_BY_NATURE.get(line.nature, UNCLASSIFIED)
+        r[_SALES_KEYS[bucket]] += line.base
+        r['total_sales'] += line.base
+        r['vat_amount'] += line.vat_amount
+        r['gross_sales'] += line.base + line.vat_amount
 
-    BIR requirement: Monthly summary of sales with VAT breakdown
-
-    Args:
-        year: Year (e.g., 2026)
-        month: Month (1-12)
-        branch_id: Branch to filter by (None = all branches)
-
-    Returns:
-        List of dicts with sales summary by customer
-    """
-    # Query posted sales invoices for the specified month
-    query = SalesInvoice.query.filter(
-        extract('year', SalesInvoice.invoice_date) == year,
-        extract('month', SalesInvoice.invoice_date) == month,
-        SalesInvoice.status.in_(['posted', 'paid', 'partially_paid'])
-    )
-    if branch_id:
-        query = query.filter(SalesInvoice.branch_id == branch_id)
-    invoices = query.all()
-
-    # Group by customer and calculate totals
-    customer_totals = {}
-
-    for invoice in invoices:
-        customer_key = invoice.customer_id
-
-        if customer_key not in customer_totals:
-            customer_totals[customer_key] = {
-                'customer_name': invoice.customer_name,
-                'customer_tin': invoice.customer_tin or '',
-                'customer_address': invoice.customer_address or '',
-                'total_sales': Decimal('0.00'),
-                'vatable_sales': Decimal('0.00'),
-                'vat_exempt_sales': Decimal('0.00'),
-                'zero_rated_sales': Decimal('0.00'),
-                'vat_amount': Decimal('0.00'),
-                'gross_sales': Decimal('0.00')
-            }
-
-        # Add to totals
-        customer_totals[customer_key]['total_sales'] += invoice.subtotal
-        customer_totals[customer_key]['vat_amount'] += invoice.vat_amount
-        customer_totals[customer_key]['gross_sales'] += invoice.total_amount
-
-        # For now, treat all sales as vatable (can be enhanced later)
-        customer_totals[customer_key]['vatable_sales'] += invoice.subtotal
-
-    # Convert to list and sort by customer name
-    summary = list(customer_totals.values())
-    summary.sort(key=lambda x: x['customer_name'])
-
-    # Add totals row
+    summary = sorted(rows.values(), key=lambda x: x['customer_name'])
     if summary:
-        totals = {
-            'customer_name': 'TOTAL',
-            'customer_tin': '',
-            'customer_address': '',
-            'total_sales': sum(s['total_sales'] for s in summary),
-            'vatable_sales': sum(s['vatable_sales'] for s in summary),
-            'vat_exempt_sales': sum(s['vat_exempt_sales'] for s in summary),
-            'zero_rated_sales': sum(s['zero_rated_sales'] for s in summary),
-            'vat_amount': sum(s['vat_amount'] for s in summary),
-            'gross_sales': sum(s['gross_sales'] for s in summary)
-        }
+        numeric = [k for k in summary[0] if isinstance(summary[0][k], Decimal)]
+        totals = {'customer_name': 'TOTAL', 'customer_tin': '', 'customer_address': ''}
+        totals.update({k: sum(s[k] for s in summary) for k in numeric})
         summary.append(totals)
-
     return summary
 
 
 def get_summary_list_of_purchases(year, month, branch_id=None):
+    """Summary List of Purchases (BIR Annex B), bucketed by real VAT nature.
+
+    Reads accounts_payable_items AND cdv_expense_lines via vat_lines(); a cash
+    purchase booked through a CDV used to be invisible here. Lines whose nature
+    is unknown land in 'unclassified_purchases' -- never silently folded into
+    a generic vatable bucket.
     """
-    Generate Summary List of Purchases (Annex B) - VAT Purchases Report
-
-    BIR requirement: Monthly summary of purchases with input VAT
-
-    Args:
-        year: Year (e.g., 2026)
-        month: Month (1-12)
-        branch_id: Branch to filter by (None = all branches)
-
-    Returns:
-        List of dicts with purchases summary by vendor
-    """
-    # Query posted purchase bills for the specified month
-    query = AccountsPayable.query.filter(
-        extract('year', AccountsPayable.ap_date) == year,
-        extract('month', AccountsPayable.ap_date) == month,
-        AccountsPayable.status.in_(['posted', 'paid', 'partially_paid'])
-    )
-    if branch_id:
-        query = query.filter(AccountsPayable.branch_id == branch_id)
-    bills = query.all()
-
-    # Group by vendor and calculate totals
-    vendor_totals = {}
-
-    for bill in bills:
-        vendor_key = bill.vendor_id
-
-        if vendor_key not in vendor_totals:
-            vendor_totals[vendor_key] = {
-                'vendor_name': bill.vendor_name,
-                'vendor_tin': bill.vendor_tin or '',
-                'vendor_address': bill.vendor_address or '',
-                'vendor_invoice_number': '',  # Multiple invoices, will show "Various"
-                'total_purchases': Decimal('0.00'),
-                'vatable_purchases': Decimal('0.00'),
-                'vat_exempt_purchases': Decimal('0.00'),
-                'zero_rated_purchases': Decimal('0.00'),
-                'input_vat': Decimal('0.00'),
-                'gross_purchases': Decimal('0.00')
-            }
-
-        # Add to totals
-        vendor_totals[vendor_key]['total_purchases'] += bill.subtotal
-        vendor_totals[vendor_key]['input_vat'] += bill.vat_amount
-        vendor_totals[vendor_key]['gross_purchases'] += bill.total_before_wt
-
-        # For now, treat all purchases as vatable (can be enhanced later)
-        vendor_totals[vendor_key]['vatable_purchases'] += bill.subtotal
-
-    # Mark vendors with multiple invoices
-    for vendor_key, totals in vendor_totals.items():
-        invoice_count = len([b for b in bills if b.vendor_id == vendor_key])
-        if invoice_count > 1:
-            totals['vendor_invoice_number'] = 'Various'
-        else:
-            bill = next(b for b in bills if b.vendor_id == vendor_key)
-            totals['vendor_invoice_number'] = bill.vendor_invoice_number or ''
-
-    # Convert to list and sort by vendor name
-    summary = list(vendor_totals.values())
-    summary.sort(key=lambda x: x['vendor_name'])
-
-    # Add totals row
-    if summary:
-        totals = {
-            'vendor_name': 'TOTAL',
-            'vendor_tin': '',
-            'vendor_address': '',
+    date_from, date_to = _month_bounds(year, month)
+    rows = {}
+    doc_nos = {}
+    for line in vat_lines(date_from, date_to, 'purchases', branch_id=branch_id):
+        r = rows.setdefault(line.partner_id, {
+            'vendor_name': line.partner_name,
+            'vendor_tin': line.partner_tin,
+            'vendor_address': line.partner_address,
             'vendor_invoice_number': '',
-            'total_purchases': sum(s['total_purchases'] for s in summary),
-            'vatable_purchases': sum(s['vatable_purchases'] for s in summary),
-            'vat_exempt_purchases': sum(s['vat_exempt_purchases'] for s in summary),
-            'zero_rated_purchases': sum(s['zero_rated_purchases'] for s in summary),
-            'input_vat': sum(s['input_vat'] for s in summary),
-            'gross_purchases': sum(s['gross_purchases'] for s in summary)
-        }
-        summary.append(totals)
+            'total_purchases': Decimal('0.00'),
+            'input_vat': Decimal('0.00'),
+            'gross_purchases': Decimal('0.00'),
+            **{k: Decimal('0.00') for k in _PURCHASE_KEYS.values()},
+        })
+        bucket = PURCHASE_BUCKET_BY_NATURE.get(line.nature, UNCLASSIFIED)
+        r[_PURCHASE_KEYS[bucket]] += line.base
+        r['total_purchases'] += line.base
+        r['input_vat'] += line.vat_amount
+        r['gross_purchases'] += line.base + line.vat_amount
+        doc_nos.setdefault(line.partner_id, set()).add(line.doc_no)
 
+    for partner_id, r in rows.items():
+        distinct = doc_nos[partner_id]
+        r['vendor_invoice_number'] = 'Various' if len(distinct) > 1 else next(iter(distinct))
+
+    summary = sorted(rows.values(), key=lambda x: x['vendor_name'])
+    if summary:
+        numeric = [k for k in summary[0] if isinstance(summary[0][k], Decimal)]
+        totals = {'vendor_name': 'TOTAL', 'vendor_tin': '', 'vendor_address': '',
+                  'vendor_invoice_number': ''}
+        totals.update({k: sum(s[k] for s in summary) for k in numeric})
+        summary.append(totals)
     return summary
 
 
