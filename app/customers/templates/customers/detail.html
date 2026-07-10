@@ -13,9 +13,13 @@
             {{ 'Active' if customer.is_active else 'Inactive' }}
         </span>
     </div>
-    {% if (current_user.has_full_access or current_user.role == 'accountant') %}
-    <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn btn-primary btn-sm">Edit Customer</a>
-    {% endif %}
+    <div style="display:flex; align-items:center; gap:8px;">
+        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+        <a href="{{ url_for('reports.statement_of_account', customer_id=customer.id) }}"
+           class="btn btn-secondary btn-sm">Statement</a>
+        <a href="{{ url_for('customers.edit', id=customer.id) }}" class="btn btn-primary btn-sm">Edit Customer</a>
+        {% endif %}
+    </div>
 </div>
 
 <!-- Tab bar -->
