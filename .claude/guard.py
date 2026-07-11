@@ -16,6 +16,7 @@ Usage:
 
 Changed files = (<base>)...HEAD  PLUS uncommitted working-tree changes.
 """
+import fnmatch
 import json
 import os
 import subprocess
@@ -60,6 +61,27 @@ def changed_files(base_ref):
     return sorted(set(files))
 
 
+# UI-touching = a real-browser surface pytest's test client can't fully exercise.
+# fnmatch '*' spans '/', so '*/templates/*' also matches 'app/<feature>/templates/x.html'.
+UI_PATTERNS = (
+    '*/templates/*',
+    '*/static/*.js',
+    '*/static/*.css',
+    '*/views.py',
+    '*/routes.py',
+)
+
+
+def ui_touching(files):
+    """Subset of changed paths that touch a UI surface (templates / JS / CSS / route files)."""
+    return [f for f in files if any(fnmatch.fnmatch(f, pat) for pat in UI_PATTERNS)]
+
+
+def current_branch():
+    res = _git(['rev-parse', '--abbrev-ref', 'HEAD'])
+    return res.stdout.strip() if res.returncode == 0 and res.stdout.strip() else 'HEAD'
+
+
 def affected_modules(files, mapping):
     blast = mapping.get('blast_radius', {})
     mods = set()
@@ -86,6 +108,12 @@ def main():
     files = changed_files(base_ref)
     mods = affected_modules(files, mapping)
     print(f'[guard] base={base_ref or "(none -- uncommitted only)"}')
+
+    ui_hits = ui_touching(files)
+    if ui_hits:
+        print(f'[guard] UI-touching changes detected ({len(ui_hits)} file(s)) -- '
+              f'run /ui-test <slug> --branch {current_branch()} before merging '
+              f'(browser-only defects pass pytest + this guard).')
 
     if is_stub:
         # Distinguish "map unpopulated" from a genuine "nothing changed" green.
