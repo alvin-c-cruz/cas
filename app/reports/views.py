@@ -599,6 +599,18 @@ def bir_vat_return():
                            quarter=quarter, company=get_company_identity())
 
 
+@reports_bp.route('/reports/bir/vat-return/print')
+@login_required
+@accountant_or_admin_required
+def bir_vat_return_print():
+    """Box-numbered 2550Q facsimile -- the file copy and the eBIRForms keying sheet."""
+    year = request.args.get('year', datetime.now().year, type=int)
+    quarter = request.args.get('quarter', (datetime.now().month - 1) // 3 + 1, type=int)
+    data = get_vat_return_summary(year, quarter)
+    return render_template('reports/bir_vat_return_print.html', data=data, year=year,
+                           quarter=quarter, company=get_company_identity())
+
+
 @reports_bp.route('/reports/bir/vat-return/export/excel')
 @login_required
 @accountant_or_admin_required

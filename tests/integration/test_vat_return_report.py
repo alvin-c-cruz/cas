@@ -83,3 +83,17 @@ def test_summary_reconciliation_gl_unavailable_on_error(db_session, main_branch)
     assert r['reconciliation']['output_gl'] is None
     assert r['reconciliation']['in_balance'] is False
     assert 'sales_schedule' in r
+
+
+def test_print_facsimile_renders_box_numbers_and_footnotes(
+        client, db_session, main_branch, cash_account, revenue_account, admin_user):
+    _posted_crv_regular(main_branch, cash_account, revenue_account)
+    client.post('/login', data={'username': 'admin', 'password': 'admin123'},
+                follow_redirects=True)
+    resp = client.get('/reports/bir/vat-return/print?year=2025&quarter=3')
+    assert resp.status_code == 200
+    for box in (b'12A', b'12D', b'18A', b'18G', b'23', b'26'):
+        assert box in resp.data, box
+    # inline footnotes (spec 5): item 23 zero, capital-goods not split
+    assert b'Creditable VAT Withheld' in resp.data
+    assert b'1,000,000' in resp.data

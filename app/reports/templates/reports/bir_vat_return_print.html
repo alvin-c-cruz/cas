@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% block title %}BIR Form 2550Q{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=2">
+{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  {{ bir_book_header(company, 'QUARTERLY VALUE-ADDED TAX RETURN (BIR FORM 2550Q)',
+     data.quarter_name ~ ' ' ~ year) }}
+
+  {% set rec = data.reconciliation %}
+  {% if not rec.in_balance %}
+  <div style="margin:10px 0;padding:8px 10px;border:1px solid var(--border);font-size:12px;">
+    Reconciliation notice: document lines do not tie to the general ledger.
+    Output -- books {{ '%.2f'|format(rec.output_gl) if rec.output_gl is not none else 'n/a' }},
+    documents {{ '%.2f'|format(rec.output_docs) }};
+    input -- books {{ '%.2f'|format(rec.input_gl) if rec.input_gl is not none else 'n/a' }},
+    documents {{ '%.2f'|format(rec.input_docs) }}.
+  </div>
+  {% endif %}
+
+  <h3>Part I -- Computation of Output Tax</h3>
+  <table class="bir-table" style="width:100%;font-size:13px;border-collapse:collapse;">
+    {% for r in data.sales_schedule.rows %}
+    <tr {% if r.unclassified %}style="color:var(--alert-error-text);"{% endif %}>
+        <td>{{ r.box }}</td><td>{{ r.label }}</td>
+        <td style="text-align:right;">{{ '%.2f'|format(r.base) }}</td>
+        <td style="text-align:right;">{{ '%.2f'|format(r.tax) }}</td></tr>
+    {% endfor %}
+    <tr style="font-weight:600;"><td>13</td><td>Total Output Tax</td>
+        <td></td><td style="text-align:right;">{{ '%.2f'|format(data.output_vat) }}</td></tr>
+  </table>
+
+  <h3>Part II -- Computation of Input Tax</h3>
+  <table class="bir-table" style="width:100%;font-size:13px;border-collapse:collapse;">
+    {% for r in data.input_schedule.rows %}
+    <tr {% if r.unclassified %}style="color:var(--alert-error-text);"{% endif %}>
+        <td>{{ r.box }}</td><td>{{ r.label }}</td>
+        <td style="text-align:right;">{{ '%.2f'|format(r.base) }}</td>
+        <td style="text-align:right;">{{ '%.2f'|format(r.tax) }}</td></tr>
+    {% endfor %}
+    <tr><td>19</td><td>Input Tax Carried Over from Previous Period</td>
+        <td></td><td style="text-align:right;">{{ '%.2f'|format(data.prior_carryover) }}</td></tr>
+    <tr style="font-weight:600;"><td>20</td><td>Total Available Input Tax</td>
+        <td></td><td style="text-align:right;">{{ '%.2f'|format(data.creditable) }}</td></tr>
+    <tr><td>23</td><td>Creditable VAT Withheld</td>
+        <td></td><td style="text-align:right;">0.00</td></tr>
+    <tr style="font-weight:700;"><td>26</td><td>VAT Payable / (Overpayment)</td>
+        <td></td><td style="text-align:right;">
+          {{ '%.2f'|format(data.net_payable if data.net_payable else data.new_carryover) }}
+          {% if not data.net_payable and data.new_carryover %}(carry-over){% endif %}</td></tr>
+  </table>
+
+  <div style="margin-top:14px;font-size:11px;color:var(--text-muted,inherit);">
+    <p>Item 23 (Creditable VAT Withheld) is 0.00 -- no creditable-VAT-withheld tracking exists (out of scope).</p>
+    <p>Items 18A/18B (Capital Goods) are combined and not split at 1,000,000 -- amortization is not implemented.</p>
+    {% if data.sales_schedule.unclassified_count or data.input_schedule.unclassified_count %}
+    <p>Unclassified lines are listed on their own row and included in the totals; classify them before filing.</p>
+    {% endif %}
+    <p>File via eBIRForms / eFPS. This facsimile is the file copy and the keying sheet.</p>
+  </div>
+
+  <a class="btn btn-secondary btn-sm no-print" style="margin-top:12px;" href="javascript:window.print()">Print</a>
+</div></div>
+{% endblock %}
