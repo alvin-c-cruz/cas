@@ -13,6 +13,7 @@ from app.products.models import Product
 from app.product_categories.models import ProductCategory
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 from app.sales_memos.models import SalesMemo, SalesMemoItem
+from app.reports.financial import generate_income_statement
 
 # Invoices are "on the books" once posted and through their paid lifecycle.
 _SI_ON_BOOKS = ('posted', 'partially_paid', 'paid')
@@ -73,3 +74,41 @@ def generate_sales_by_product_line(start_date, end_date, branch_id=None):
     rows.sort(key=lambda r: r['code'])
     return {'period_start': start_date, 'period_end': end_date, 'rows': rows,
             'unassigned': float(unassigned), 'total': float(total)}
+
+
+def _pct(net, total):
+    return round(net / total * 100, 2) if total else 0.0
+
+
+def build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=None):
+    mtd = generate_sales_by_product_line(mtd_start, as_of, branch_id)
+    ytd = generate_sales_by_product_line(ytd_start, as_of, branch_id)
+
+    mtd_by_id = {r['category_id']: r for r in mtd['rows']}
+    ytd_by_id = {r['category_id']: r for r in ytd['rows']}
+    meta = {r['category_id']: r for r in (*ytd['rows'], *mtd['rows'])}
+
+    rows = []
+    for cid in sorted(set(mtd_by_id) | set(ytd_by_id), key=lambda i: meta[i]['code']):
+        m = mtd_by_id.get(cid, {}).get('net', 0.0)
+        y = ytd_by_id.get(cid, {}).get('net', 0.0)
+        rows.append({'category_id': cid, 'code': meta[cid]['code'], 'name': meta[cid]['name'],
+                     'mtd': m, 'ytd': y,
+                     'mtd_pct': _pct(m, mtd['total']), 'ytd_pct': _pct(y, ytd['total'])})
+
+    unassigned = {'mtd': mtd['unassigned'], 'ytd': ytd['unassigned'],
+                  'mtd_pct': _pct(mtd['unassigned'], mtd['total']),
+                  'ytd_pct': _pct(ytd['unassigned'], ytd['total'])}
+    total = {'mtd': mtd['total'], 'ytd': ytd['total']}
+
+    is_mtd = generate_income_statement(mtd_start, as_of, branch_id=branch_id).get('net_sales', 0.0)
+    is_ytd = generate_income_statement(ytd_start, as_of, branch_id=branch_id).get('net_sales', 0.0)
+    var_mtd = round(is_mtd - total['mtd'], 2)
+    var_ytd = round(is_ytd - total['ytd'], 2)
+    reconciliation = {'is_net_sales_mtd': is_mtd, 'is_net_sales_ytd': is_ytd,
+                      'variance_mtd': var_mtd, 'variance_ytd': var_ytd,
+                      'reconciled': abs(var_mtd) < 0.01 and abs(var_ytd) < 0.01}
+
+    return {'as_of': as_of, 'mtd_start': mtd_start, 'ytd_start': ytd_start,
+            'rows': rows, 'unassigned': unassigned, 'total': total,
+            'reconciliation': reconciliation}
