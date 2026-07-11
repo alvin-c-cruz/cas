@@ -31,3 +31,19 @@ def test_no_print_template_has_a_redirecting_close_anchor():
                  for p in APP.glob('*/templates/**/print*.html')
                  if 'class="btn-close" href' in p.read_text(encoding='utf-8')]
     assert offenders == [], f'redirecting Close anchor(s) still present: {offenders}'
+
+
+# --- Task 2: journals-report Print links open a new tab ---------------------
+JOURNAL_PRINT_PAGES = [
+    'journals/templates/journals/ap_journal.html',
+    'journals/templates/journals/cd_journal.html',
+    'journals/templates/journals/cr_journal.html',
+    'journals/templates/journals/si_journal.html',
+    'journals/templates/journals/voucher.html',
+]
+
+
+def test_journal_report_print_links_open_new_tab():
+    for rel in JOURNAL_PRINT_PAGES:
+        src = _src(rel)
+        assert 'target="_blank"' in src, f'{rel}: Print link should open a new tab'

@@ -39,7 +39,7 @@
 <div class="card">
     <div class="card-header">
         <div class="cr-jrnl-actions" style="display:flex; gap:8px; justify-content:flex-end;">
-            <a id="crPrintLink" href="{{ url_for('journals.cr_journal_print', **request.args) }}" class="btn btn-secondary btn-sm">Print</a>
+            <a id="crPrintLink" href="{{ url_for('journals.cr_journal_print', **request.args) }}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Print</a>
             <a id="crExportLink" href="{{ url_for('journals.cr_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Download Excel</a>
         </div>
     </div>
