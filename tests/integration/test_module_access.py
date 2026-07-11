@@ -142,6 +142,27 @@ def test_customer_quick_add_subactions_exempt_for_staff(client, db_session, bran
     assert client.get('/customers/create').status_code == 200             # inline quick-add reachable
 
 
+def test_product_quick_add_exempt_and_allows_staff(client, db_session, branch):
+    """Owner directive 2026-07-11 (full parity with the customer quick-add): a quotation-delegated
+    staff WITHOUT the Products module must still inline-add a product from the quote line grid.
+    Two barriers must fall together — the module guard must EXEMPT products.create, and its role
+    guard (previously accountant/full-access only, stricter than customers.create) must admit a
+    staff delegate. Currently the role guard flash-redirects staff (302), so this is RED."""
+    from app.products.models import Product
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'quotations': True}, username='staffq1')
+    _login(client, staff, branch)
+    assert client.get('/products/create').status_code == 200             # reachable (exempt + role admits staff)
+    resp = client.post('/products/create',
+                       data={'code': 'P001', 'name': 'Widget', 'is_active': '1'},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['ok'] is True
+    assert body['product']['label'] == 'P001 — Widget'
+    assert Product.query.filter_by(code='P001').first() is not None
+
+
 def test_admin_reaches_ungranted_module(client, db_session, branch):
     admin = _make_user(db_session, branch, 'admin', books={}, username='admin1')
     _login(client, admin, branch)

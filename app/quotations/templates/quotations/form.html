@@ -125,12 +125,14 @@
 </div>
 
 {% include "customers/_quick_add_modal.html" %}
+{% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
 
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
 <script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
 <script src="{{ url_for('static', filename='customer-form-widgets.js') }}?v=3"></script>
 <script src="{{ url_for('static', filename='customer-quick-add.js') }}?v=2"></script>
+{% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
 <script>
 // ── Context data from server ─────────────────────────────────────────────────
 const vatCategories   = {{ vat_categories | tojson }};
@@ -161,6 +163,9 @@ const customerSel = document.getElementById('customer_id_display');
 if (customerSel) {
     initCustomerQuickAdd({ selectEl: customerSel });
 }
+
+// Inline "+ Add Product" quick-add for the line grid (BUG-QUOTE-DELEGATE-ADD-PRODUCT).
+if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
 
 function setCustomerDone(customerName, defaults) {
     const card   = document.getElementById('customerCard');
@@ -264,9 +269,10 @@ function addLineItem(existingItem) {
     row.id = `line-${id}`;
     row.innerHTML = `
         <td style="text-align:center; color:var(--text-2); font-size:12px; white-space:nowrap;" class="line-num-cell">${rowNum}</td>
-        <td><select class="form-control" onchange="onProductPick(${id}, this.value)">
+        <td><select class="form-control" id="prod-sel-${id}" onchange="onProductPick(${id}, this.value)">
               <option value="">— select product —</option>
               ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+              ${productMasterOn ? '<option value="__add_product__">+ Add Product…</option>' : ''}
             </select></td>
         <td><input type="number" step="0.0001" min="0" id="qty-${id}" class="form-control"
                    style="text-align:right;"
@@ -335,9 +341,40 @@ function updateDerivedAmount(id) {
     calculateTotals();
 }
 
+// Insert a newly quick-added product into every line's product <select>, before the
+// "+ Add Product…" sentinel. textContent (not innerHTML) so the code/name can't inject markup.
+function addProductOptionToAllLineSelects(p) {
+    document.querySelectorAll('select[id^="prod-sel-"]').forEach(sel => {
+        const opt = document.createElement('option');
+        opt.value = String(p.id);
+        opt.textContent = `${p.code} — ${p.name}`;
+        const sentinel = sel.querySelector('option[value="__add_product__"]');
+        if (sentinel) sel.insertBefore(opt, sentinel); else sel.appendChild(opt);
+    });
+}
+
 function onProductPick(id, productId) {
     const item = lineItems.find(i => i.id === id);
     if (!item) return;
+    if (productId === '__add_product__') {
+        // Bounce the select off the sentinel; the modal drives the real pick on success.
+        const selEl = document.getElementById(`prod-sel-${id}`);
+        if (selEl) selEl.value = item.product_id != null ? String(item.product_id) : '';
+        if (typeof openProductModal === 'function') {
+            openProductModal(id, function (p) {
+                if (!products.some(pp => String(pp.id) === String(p.id))) {
+                    products.push({ id: p.id, code: p.code, name: p.name,
+                                    default_uom_id: p.default_uom_id,
+                                    default_unit_price: p.unit_price });
+                    addProductOptionToAllLineSelects(p);
+                }
+                const sel = document.getElementById(`prod-sel-${id}`);
+                if (sel) sel.value = String(p.id);
+                onProductPick(id, String(p.id));
+            });
+        }
+        return;
+    }
     item.product_id = productId || null;
     const p = products.find(pp => String(pp.id) === String(productId));
     if (!p) return;

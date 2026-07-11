@@ -51,6 +51,23 @@ def test_create_draft_quote_persists(client, db_session, admin_user, main_branch
     assert q.customer_name and q.line_items[0].quantity == Decimal('2')
 
 
+def test_create_form_offers_product_quick_add_when_module_on(client, db_session, admin_user, main_branch):
+    """BUG-QUOTE-DELEGATE-ADD-PRODUCT: with the Products module on, the quote form must render the
+    product quick-add modal + script and the line grid's '+ Add Product' sentinel, so a quotation
+    delegate can inline-add a product. Browser-only surface — assert the RENDERED form (a
+    POST-contract test cannot see the template wiring). The server guard/exemption is covered by
+    tests/integration/test_module_access.py::test_product_quick_add_exempt_and_allows_staff."""
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    resp = client.get('/quotations/create')
+    assert resp.status_code == 200
+    body = resp.data
+    assert b'productQuickAddOverlay' in body     # modal partial included
+    assert b'product-quick-add.js' in body       # quick-add JS loaded
+    assert b'initProductQuickAdd' in body        # init call present
+    assert b'__add_product__' in body            # line-grid "+ Add Product" sentinel wired
+
+
 def test_create_quote_logs_audit_entry(client, db_session, admin_user, main_branch):
     from app.audit.models import AuditLog
     from app.quotations.models import Quotation

@@ -83,23 +83,39 @@ def test_list_products_renders(client, db_session, admin_user, main_branch,
     assert b'Products' in resp.data
 
 
-def test_staff_cannot_create_product(client, db_session, staff_user, main_branch,
-                                     products_module_enabled):
-    """Staff users must be blocked from creating products (module-level gate)."""
+def test_staff_can_create_product(client, db_session, staff_user, main_branch,
+                                  products_module_enabled):
+    """Owner directive 2026-07-11 (BUG-QUOTE-DELEGATE-ADD-PRODUCT, full parity with
+    customers.create): a staff delegate MAY create a product — previously blocked. products.create
+    is exempt from the module gate and its role guard now admits staff-or-above, so a quotation
+    delegate can inline-add a product without holding the Products module. (Edit stays locked —
+    see test_staff_cannot_edit_product; viewer stays blocked — see below.)"""
     staff_user.set_branches([main_branch])
     db_session.commit()
     _login(client, staff_user, main_branch)
     resp = client.post('/products/create',
-                       data={'code': 'BLK-1', 'name': 'Blocked Product', 'description': '',
+                       data={'code': 'STF-1', 'name': 'Staff Product', 'description': '',
                              'default_unit_of_measure_id': '', 'default_unit_price': '',
                              'default_account_id': '', 'is_active': '1'},
                        follow_redirects=True)
     assert resp.status_code == 200
-    # No row must have been inserted
-    assert Product.query.filter_by(code='BLK-1').first() is None
-    # Module-access block flash (before_request gate fires before the view)
-    text = html_mod.unescape(resp.data.decode())
-    assert 'do not have access to this module' in text.lower()
+    assert Product.query.filter_by(code='STF-1').first() is not None
+
+
+def test_viewer_cannot_create_product(client, db_session, viewer_user, main_branch,
+                                      products_module_enabled):
+    """The staff-or-above loosening must NOT reach viewer — the role guard still blocks it,
+    so the parity change did not over-open master-data creation."""
+    viewer_user.set_branches([main_branch])
+    db_session.commit()
+    _login(client, viewer_user, main_branch)
+    resp = client.post('/products/create',
+                       data={'code': 'VWR-1', 'name': 'Viewer Product', 'description': '',
+                             'default_unit_of_measure_id': '', 'default_unit_price': '',
+                             'default_account_id': '', 'is_active': '1'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    assert Product.query.filter_by(code='VWR-1').first() is None
 
 
 def test_staff_cannot_edit_product(client, db_session, staff_user, main_branch,

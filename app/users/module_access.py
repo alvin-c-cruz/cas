@@ -158,7 +158,8 @@ TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY
 # the Quotation/SI/SO customer quick-add + defaults, would break (the module guard would
 # redirect the XHR to the dashboard and leave the line-items grid locked).
 EXEMPT_ENDPOINTS = {'vendors.create', 'vendors.vendor_defaults', 'employees.create',
-                    'customers.create', 'customers.customer_defaults'}
+                    'customers.create', 'customers.customer_defaults',
+                    'products.create'}
 
 
 def module_key_for_endpoint(endpoint):
