@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Purchase Request {{ pr.pr_number }}{% endblock %}
+{% block content %}
+{% set can_write = current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+{% set can_approve = current_user.role == 'accountant' or current_user.has_full_access %}
+
+<div class="page-header">
+  <h1>Purchase Request {{ pr.pr_number }}</h1>
+  <div>
+    <a href="{{ url_for('purchase_requests.list_pr') }}" class="btn btn-secondary btn-sm">Back</a>
+    <a href="{{ url_for('purchase_requests.print_pr', id=pr.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    {% if can_write and pr.status == 'draft' %}
+    <a href="{{ url_for('purchase_requests.edit', id=pr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card"><div class="card-body">
+  <div class="detail-grid">
+    <div><strong>Status:</strong> <span class="badge">{{ pr.status }}</span></div>
+    <div><strong>Request Date:</strong> {{ pr.request_date.strftime('%b %d, %Y') if pr.request_date else '' }}</div>
+    {% if pr.purchase_order %}
+    <div><strong>Purchase Order:</strong>
+      <a href="{{ url_for('purchase_orders.view', id=pr.purchase_order_id) }}">{{ pr.purchase_order.po_number }}</a></div>
+    {% endif %}
+  </div>
+  {% if pr.reason %}<p><strong>Reason:</strong> {{ pr.reason }}</p>{% endif %}
+  {% if pr.reject_reason %}<p><strong>Rejected:</strong> {{ pr.reject_reason }}</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h3>Requested Items</h3>
+  <div class="table-responsive">
+    <table class="table">
+      <thead><tr><th>#</th><th>Item</th><th class="text-end">Qty</th><th>UoM</th></tr></thead>
+      <tbody>
+        {% for li in pr.line_items %}
+        <tr>
+          <td>{{ li.line_number }}</td>
+          <td>{{ li.product.name if li.product else li.description }}</td>
+          <td class="text-end">{{ '{:,.4f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
+          <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+
+{% if can_write or can_approve %}
+<div class="card"><div class="card-body">
+  {% if pr.status == 'draft' and can_write %}
+  <form method="POST" action="{{ url_for('purchase_requests.submit', id=pr.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-primary">Submit for approval</button>
+  </form>
+  {% endif %}
+  {% if pr.status == 'submitted' and can_approve %}
+  <form method="POST" action="{{ url_for('purchase_requests.approve', id=pr.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-primary">Approve</button>
+  </form>
+  <button type="button" class="btn btn-secondary" onclick="document.getElementById('rejectModal').style.display='flex'">Reject</button>
+  {% endif %}
+  {% if pr.status == 'approved' and can_approve %}
+  <form method="POST" action="{{ url_for('purchase_requests.convert', id=pr.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-primary">Convert to Purchase Order</button>
+  </form>
+  {% endif %}
+  {% if pr.status not in ['converted', 'cancelled', 'rejected'] and can_approve %}
+  <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel PR</button>
+  {% endif %}
+</div></div>
+
+{% for m in [('rejectModal','purchase_requests.reject','reject_reason','Reject Purchase Request'),
+             ('cancelModal','purchase_requests.cancel','cancel_reason','Cancel Purchase Request')] %}
+<div id="{{ m[0] }}" class="modal-overlay" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
+  <div class="card" style="max-width:480px;width:90%"><div class="card-body">
+    <h3>{{ m[3] }}</h3>
+    <form method="POST" action="{{ url_for(m[1], id=pr.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group">
+        <label>Reason (at least 10 characters)</label>
+        <textarea name="{{ m[2] }}" class="form-control" rows="3" required minlength="10"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-danger">Confirm</button>
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('{{ m[0] }}').style.display='none'">Close</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}
