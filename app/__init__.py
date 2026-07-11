@@ -226,6 +226,7 @@ def create_app(config_name=None):
     from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
     from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
+    from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
     from app.sales_memos.models import SalesMemo, SalesMemoItem
     from app.backup.models import BackupRun
     from app.employees.models import Employee  # noqa: F401
@@ -264,6 +265,7 @@ def create_app(config_name=None):
     from app.quotations.views import quotations_bp
     from app.purchase_orders.views import purchase_orders_bp
     from app.receiving_reports.views import receiving_reports_bp
+    from app.purchase_requests.views import purchase_requests_bp
     from app.sales_memos.views import sales_memos_bp
     from app.opening_balances.views import opening_balances_bp
 
@@ -299,6 +301,7 @@ def create_app(config_name=None):
     app.register_blueprint(delivery_receipts_bp)
     app.register_blueprint(purchase_orders_bp)
     app.register_blueprint(receiving_reports_bp)
+    app.register_blueprint(purchase_requests_bp)
     app.register_blueprint(sales_memos_bp)
     app.register_blueprint(opening_balances_bp)
 

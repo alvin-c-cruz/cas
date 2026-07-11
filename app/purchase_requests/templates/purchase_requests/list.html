@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Purchase Requests{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Purchase Requests</h1>
+</div>
+<div class="card"><div class="card-body">
+  {% if requests %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr><th>PR #</th><th>Date</th><th>Reason</th><th>Status</th><th>PO #</th></tr>
+      </thead>
+      <tbody>
+        {% for pr in requests %}
+        <tr>
+          <td><a href="{{ url_for('purchase_requests.view', id=pr.id) }}">{{ pr.pr_number }}</a></td>
+          <td>{{ pr.request_date.strftime('%b %d, %Y') if pr.request_date else '' }}</td>
+          <td>{{ (pr.reason or '')[:60] }}</td>
+          <td>{{ pr.status }}</td>
+          <td>{{ pr.purchase_order.po_number if pr.purchase_order else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>No purchase requests found.</p>
+  {% endif %}
+</div></div>
+{% endblock %}

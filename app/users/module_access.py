@@ -41,6 +41,11 @@ MODULE_REGISTRY = [
      'area': 'Sales', 'group': 'Documents',
      'endpoints': ('cash_receipts.', 'journals.cr_journal')},
     # ── Purchases Area (optional — per-company configurable) ───────────────
+    # Ordered along the Procure-to-Pay chain (PR -> PO -> RR -> Bill -> Pay).
+    {'key': 'purchase_requests', 'label': 'Purchase Requests', 'section': 'Transactions',
+     'area': 'Purchases', 'group': 'Documents',
+     'optional': True, 'depends_on': ['purchase_orders'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('purchase_requests.',)},
     {'key': 'purchase_orders', 'label': 'Purchase Orders', 'section': 'Transactions',
      'area': 'Purchases', 'group': 'Documents',
      'optional': True, 'depends_on': ['products'], 'default_enabled': False, 'per_user': True,
