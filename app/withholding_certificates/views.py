@@ -3,6 +3,7 @@
 CRUD only; branch-scoped and audit-logged. The SAWT and reconciliation that read
 this register live in service.py + the reports routes below.
 """
+from datetime import datetime
 from functools import wraps
 from flask import (Blueprint, render_template, redirect, url_for, flash, request)
 from flask_login import login_required, current_user
@@ -10,9 +11,13 @@ from flask_login import login_required, current_user
 from app import db
 from app.withholding_certificates.models import WithholdingCertificateReceived
 from app.withholding_certificates.forms import WithholdingCertificateReceivedForm
-from app.audit.utils import log_create, log_update, log_delete, model_to_dict, get_changes
+from app.withholding_certificates.service import get_sawt, reconcile_sawt
+from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.users.utils import get_accessible_branches
 from app.utils import ph_now
+from app.utils.bir_books import get_company_identity
+from app.utils.export import export_to_excel
+from app.reports.bir import get_quarter_name
 
 withholding_certificates_bp = Blueprint(
     'withholding_certificates', __name__, template_folder='templates')
@@ -128,3 +133,48 @@ def delete_certificate(cert_id):
     log_delete('withholding_certificates', cert_id, number, old)
     flash('Certificate deleted.', 'success')
     return redirect(url_for('withholding_certificates.list_certificates'))
+
+
+def _period_args():
+    year = request.args.get('year', datetime.now().year, type=int)
+    quarter = request.args.get('quarter', (datetime.now().month - 1) // 3 + 1, type=int)
+    return year, quarter
+
+
+@withholding_certificates_bp.route('/withholding-certificates/sawt')
+@login_required
+@accountant_or_admin_required
+def sawt():
+    """SAWT (Summary Alphalist of Withholding Taxes) -- rendered from the register."""
+    year, quarter = _period_args()
+    data = get_sawt(year, quarter)
+    return render_template('withholding_certificates/sawt.html', data=data, year=year,
+                           quarter=quarter, quarter_name=get_quarter_name(quarter),
+                           company=get_company_identity())
+
+
+@withholding_certificates_bp.route('/withholding-certificates/sawt/export/excel')
+@login_required
+@accountant_or_admin_required
+def sawt_export_excel():
+    year, quarter = _period_args()
+    data = get_sawt(year, quarter)
+    rows = [{'customer_tin': r['customer_tin'], 'customer_name': r['customer_name'],
+             'atc_code': r['atc_code'], 'income_payment': f"{r['income_payment']:.2f}",
+             'tax_withheld': f"{r['tax_withheld']:.2f}"} for r in data['rows']]
+    cols = ['customer_tin', 'customer_name', 'atc_code', 'income_payment', 'tax_withheld']
+    headers = ['TIN', 'Payor (Customer)', 'ATC', 'Income Payment', 'Tax Withheld']
+    return export_to_excel(rows, cols, headers, f'SAWT_{year}_Q{quarter}.xlsx',
+                           f'SAWT - {get_quarter_name(quarter)} {year}')
+
+
+@withholding_certificates_bp.route('/withholding-certificates/reconciliation')
+@login_required
+@accountant_or_admin_required
+def reconciliation():
+    """Diff booked payee WHT against the certificates-received register."""
+    year, quarter = _period_args()
+    data = reconcile_sawt(year, quarter)
+    return render_template('withholding_certificates/reconciliation.html', data=data,
+                           year=year, quarter=quarter, quarter_name=get_quarter_name(quarter),
+                           company=get_company_identity())

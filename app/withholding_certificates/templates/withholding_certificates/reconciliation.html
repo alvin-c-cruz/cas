@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% block title %}SAWT Reconciliation{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=2">
+{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  {{ bir_book_header(company, 'SAWT RECONCILIATION (REGISTER vs BOOKS)', quarter_name ~ ' ' ~ year) }}
+
+  <form method="get" style="margin:12px 0;display:flex;gap:8px;align-items:center;">
+    <label>Year <input type="number" name="year" value="{{ year }}" style="width:90px;"></label>
+    <label>Quarter
+      <select name="quarter">
+        {% for q in [1,2,3,4] %}
+        <option value="{{ q }}" {% if q == quarter %}selected{% endif %}>Q{{ q }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-secondary btn-sm">View</button>
+  </form>
+
+  <p style="font-size:12px;color:var(--color-text-muted,#555);">
+    What our sales say customers withheld (books) vs the certificates we hold (register). Amounts are in Philippine pesos.
+  </p>
+
+  <h3 style="margin-top:16px;">Booked, no certificate</h3>
+  <p style="font-size:12px;color:var(--color-text-muted,#555);">We recorded withholding but hold no 2307 &mdash; claiming it invites disallowance.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr><th>Customer</th><th>ATC</th><th style="text-align:right;">Booked Tax</th></tr></thead>
+    <tbody>
+      {% for r in data.booked_no_cert %}
+      <tr><td>{{ r.customer_name }}</td><td>{{ r.atc_code }}</td>
+          <td style="text-align:right;">{{ '{:,.2f}'.format(r.booked_tax) }}</td></tr>
+      {% else %}<tr><td colspan="3" style="color:var(--color-text-muted,#555);">None.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:16px;">Certificate, not booked</h3>
+  <p style="font-size:12px;color:var(--color-text-muted,#555);">A 2307 arrived for revenue we never recorded withholding on.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr><th>Customer</th><th>ATC</th><th style="text-align:right;">Certificate Tax</th></tr></thead>
+    <tbody>
+      {% for r in data.cert_not_booked %}
+      <tr><td>{{ r.customer_name }}</td><td>{{ r.atc_code }}</td>
+          <td style="text-align:right;">{{ '{:,.2f}'.format(r.cert_tax) }}</td></tr>
+      {% else %}<tr><td colspan="3" style="color:var(--color-text-muted,#555);">None.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:16px;">Amount mismatch</h3>
+  <p style="font-size:12px;color:var(--color-text-muted,#555);">Both exist; the figures differ.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr><th>Customer</th><th>ATC</th>
+      <th style="text-align:right;">Booked</th><th style="text-align:right;">Certificate</th>
+      <th style="text-align:right;">Delta</th></tr></thead>
+    <tbody>
+      {% for r in data.amount_mismatch %}
+      <tr><td>{{ r.customer_name }}</td><td>{{ r.atc_code }}</td>
+          <td style="text-align:right;">{{ '{:,.2f}'.format(r.booked_tax) }}</td>
+          <td style="text-align:right;">{{ '{:,.2f}'.format(r.cert_tax) }}</td>
+          <td style="text-align:right;">{{ '{:,.2f}'.format(r.delta) }}</td></tr>
+      {% else %}<tr><td colspan="5" style="color:var(--color-text-muted,#555);">None.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}
