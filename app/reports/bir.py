@@ -13,6 +13,7 @@ from datetime import date
 from decimal import Decimal
 from sqlalchemy import extract
 from sqlalchemy.orm import selectinload
+from app import db
 from app.accounts_payable.models import AccountsPayable
 from app.reports.vat_lines import (
     vat_lines, SALES_BUCKET_BY_NATURE, PURCHASE_BUCKET_BY_NATURE, UNCLASSIFIED,
@@ -125,98 +126,72 @@ def get_summary_list_of_purchases(year, month, branch_id=None):
     return summary
 
 
+_MONTH_ABBR = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+               7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
+
+
 def get_alphalist_of_payees(year, quarter, branch_id=None):
+    """BIR Alphalist / 1601-EQ QAP payees: creditable (expanded) WHT by vendor + ATC.
+
+    Folds wht_lines(side='payor', tax_type='expanded') so cash-disbursement vendors
+    are included (the old AP-only query missed them) and final tax is excluded by
+    construction. Income payment is net of VAT (the WHT base), not the VAT-inclusive
+    line total. Same dict contract + TOTAL row as before, so the Excel export is
+    unchanged.
     """
-    Generate Alphalist of Payees - Quarterly Withholding Tax Report
+    from app.reports.wht_lines import wht_lines
+    from app.vat_settlement.service import quarter_bounds
+    from app.vendors.models import Vendor
 
-    BIR requirement: Quarterly report of withholding tax payments
+    qstart, qend = quarter_bounds(year, quarter)
+    lines = [l for l in wht_lines(qstart, qend, 'payor', tax_type='expanded',
+                                  branch_id=branch_id)
+             if l.tax_withheld and l.tax_withheld > 0]
 
-    Args:
-        year: Year (e.g., 2026)
-        quarter: Quarter (1-4)
-        branch_id: Branch to filter by (None = all branches)
+    # WhtLine carries no address; join it once per vendor in the reporting layer.
+    ids = {l.partner_id for l in lines if l.partner_id}
+    addr = {}
+    if ids:
+        addr = {v.id: (v.address or '') for v in
+                db.session.query(Vendor).filter(Vendor.id.in_(ids)).all()}
 
-    Returns:
-        List of dicts with withholding tax summary by payee
-    """
-    # Calculate month range for quarter
-    start_month = (quarter - 1) * 3 + 1
-    end_month = start_month + 2
+    groups = {}
+    for l in lines:
+        g = groups.setdefault((l.partner_id, l.atc_code), {
+            'payee_name': l.partner_name, 'payee_tin': l.partner_tin,
+            'payee_address': addr.get(l.partner_id, ''),
+            'atc_code': l.atc_code, 'tax_rate': float(l.atc_rate),
+            'gross_income': Decimal('0.00'), 'tax_withheld': Decimal('0.00'),
+            '_months': set()})
+        g['gross_income'] += l.income_payment
+        g['tax_withheld'] += l.tax_withheld
+        g['_months'].add(l.doc_date.month)
 
-    # Query purchase bills with withholding tax
-    query = AccountsPayable.query.filter(
-        extract('year', AccountsPayable.ap_date) == year,
-        extract('month', AccountsPayable.ap_date) >= start_month,
-        extract('month', AccountsPayable.ap_date) <= end_month,
-        AccountsPayable.status.in_(['posted', 'paid', 'partially_paid']),
-        AccountsPayable.withholding_tax_amount > 0
-    )
-    if branch_id:
-        query = query.filter(AccountsPayable.branch_id == branch_id)
-    bills = query.options(selectinload(AccountsPayable.line_items)).all()
-
-    # Group by vendor (payee) and calculate totals
-    payee_totals = {}
-
-    from collections import defaultdict
-
-    for bill in bills:
-        wt_groups = defaultdict(list)
-        for item in bill.line_items:
-            if item.wt_id and item.wt_amount and item.wt_amount > 0:
-                wt_groups[item.wt_id].append(item)
-
-        for wt_id, items in wt_groups.items():
-            wt = items[0].withholding_tax
-            row_key = (bill.vendor_id, wt_id)
-
-            if row_key not in payee_totals:
-                payee_totals[row_key] = {
-                    'payee_name': bill.vendor_name,
-                    'payee_tin': bill.vendor_tin or '',
-                    'payee_address': bill.vendor_address or '',
-                    'atc_code': wt.code if wt else '',
-                    'tax_rate': float(wt.rate) if wt else 0.0,
-                    'gross_income': Decimal('0.00'),
-                    'tax_withheld': Decimal('0.00'),
-                    'month_paid': [],
-                }
-
-            payee_totals[row_key]['gross_income'] += sum(i.line_total for i in items)
-            payee_totals[row_key]['tax_withheld'] += sum(i.wt_amount for i in items)
-
-            month = bill.ap_date.month
-            if month not in payee_totals[row_key]['month_paid']:
-                payee_totals[row_key]['month_paid'].append(month)
-
-    # Convert month list to string
-    for payee_key, totals in payee_totals.items():
-        months = sorted(totals['month_paid'])
-        month_names = {
-            1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
-            7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
-        }
-        totals['month_paid'] = ', '.join([month_names[m] for m in months])
-
-    # Convert to list and sort alphabetically by payee name
-    summary = list(payee_totals.values())
+    summary = []
+    for g in groups.values():
+        g['month_paid'] = ', '.join(_MONTH_ABBR[m] for m in sorted(g.pop('_months')))
+        summary.append(g)
     summary.sort(key=lambda x: x['payee_name'])
 
-    # Add totals row
     if summary:
-        totals = {
-            'payee_name': 'TOTAL',
-            'payee_tin': '',
-            'payee_address': '',
-            'atc_code': '',
-            'tax_rate': '',
+        summary.append({
+            'payee_name': 'TOTAL', 'payee_tin': '', 'payee_address': '',
+            'atc_code': '', 'tax_rate': '',
             'gross_income': sum(s['gross_income'] for s in summary),
             'tax_withheld': sum(s['tax_withheld'] for s in summary),
-            'month_paid': ''
-        }
-        summary.append(totals)
-
+            'month_paid': ''})
     return summary
+
+
+def count_excluded_final_tax(year, quarter, side='payor', branch_id=None):
+    """Final-tax lines excluded from a creditable surface -- feeds the advisory banner."""
+    from app.reports.wht_lines import wht_lines
+    from app.vat_settlement.service import quarter_bounds
+    qstart, qend = quarter_bounds(year, quarter)
+    finals = [l for l in wht_lines(qstart, qend, side, tax_type='final', branch_id=branch_id)
+              if l.tax_withheld and l.tax_withheld > 0]
+    return {'count': len(finals),
+            'total': sum((l.tax_withheld for l in finals), Decimal('0.00'))}
 
 
 def get_month_name(month):
