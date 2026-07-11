@@ -22,6 +22,7 @@ from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.customers.views import build_customer_quick_add_form
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
+from app.posting.buckets import group_tax_buckets, reconcile_buckets_to_total
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
@@ -130,36 +131,32 @@ def _output_vat_buckets(crv):
     if Decimal(str(crv.total_vat)) == 0:
         return []
     categories = {c.code: c for c in SalesVATCategory.query.all()}
-    buckets = {}
-    for line in crv.revenue_lines:
-        # Skip non-positive lines (simplified design — negative lines have no VAT)
-        if Decimal(str(line.line_total)) <= Decimal('0'):
-            continue
-        vat_amt = Decimal(str(line.vat_amount or 0))
-        if vat_amt == 0:
-            continue
+
+    def _account_of(line):
         cat = categories.get(line.vat_category)
-        acct = cat.output_vat_account if cat else None
-        if acct is None:
-            label = cat.code if cat else (line.vat_category or 'unknown')
-            raise ValueError(
-                f"VAT category '{label}' has no Output Tax account configured. "
+        return cat.output_vat_account if cat else None
+
+    def _missing_account(line):
+        cat = categories.get(line.vat_category)
+        label = cat.code if cat else (line.vat_category or 'unknown')
+        return (f"VAT category '{label}' has no Output Tax account configured. "
                 "Set it in VAT Categories before posting.")
-        if acct.id not in buckets:
-            buckets[acct.id] = [acct, Decimal('0.00')]
-        buckets[acct.id][1] += vat_amt
-    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
-    total = sum((amt for _, amt in ordered), Decimal('0.00'))
-    if crv.vat_override and ordered:
-        override_diff = Decimal(str(crv.total_vat)) - total
-        if override_diff != Decimal('0.00'):
-            largest_id = max(ordered, key=lambda b: abs(b[1]))[0].id
-            ordered = [
-                (acct, amt + override_diff if acct.id == largest_id else amt)
-                for acct, amt in ordered
-            ]
-    ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
-    return ordered
+
+    buckets = group_tax_buckets(
+        crv.revenue_lines,
+        # Skip non-positive lines (simplified design -- negative lines have no VAT)
+        line_skip=lambda line: Decimal(str(line.line_total)) <= Decimal('0'),
+        amount_of=lambda line: line.vat_amount,
+        account_of=_account_of,
+        amount_predicate=lambda amt: amt != Decimal('0.00'),
+        on_missing_account=_missing_account,
+    )
+    # Reconcile only under an explicit VAT override; largest bucket by absolute
+    # value (sign-aware); no negative guard (mirrors CDV input VAT).
+    return reconcile_buckets_to_total(
+        buckets, crv.total_vat, only_if=crv.vat_override, largest_by='abs',
+        allow_negative=True,
+    )
 
 
 def _crv_posted_wt(crv):

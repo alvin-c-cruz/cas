@@ -17,6 +17,7 @@ from app.utils import ph_now
 from app.journal_entries.utils import generate_entry_number
 from app.accounts.models import Account
 from app.sales_memos import service
+from app.posting.sales_vat import output_vat_buckets
 
 
 def _account_by_code(code, label):
@@ -29,7 +30,6 @@ def _account_by_code(code, label):
 def post_memo_je(memo, user_id):
     """Build and return the memo's JournalEntry (draft or posted, matching memo.status)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
-    from app.sales_invoices.views import _output_vat_buckets  # lazy: avoid circular import
 
     if memo.memo_type not in ('credit', 'debit'):
         raise ValueError(f'Unknown memo_type {memo.memo_type!r}.')
@@ -84,7 +84,7 @@ def post_memo_je(memo, user_id):
         contra = service.resolve_memo_account(service.SALES_RETURNS_KEY, 'Sales Returns & Allowances')
         if net_revenue > 0:
             add(contra.id, f'Sales Returns: {memo.memo_number}', net_revenue, Decimal('0.00'))
-        for vat_acct, vat_amt in _output_vat_buckets(memo):
+        for vat_acct, vat_amt in output_vat_buckets(memo):
             if vat_amt <= 0:
                 continue
             add(vat_acct.id, f'Output VAT reversed: {memo.memo_number}', vat_amt, Decimal('0.00'))
@@ -109,7 +109,7 @@ def post_memo_je(memo, user_id):
             if net <= 0:
                 continue
             add(li.account_id, f'Additional charge: {memo.memo_number}', Decimal('0.00'), net)
-        for vat_acct, vat_amt in _output_vat_buckets(memo):
+        for vat_acct, vat_amt in output_vat_buckets(memo):
             if vat_amt <= 0:
                 continue
             add(vat_acct.id, f'Output VAT: {memo.memo_number}', Decimal('0.00'), vat_amt)

@@ -24,6 +24,7 @@ from app.utils.cache_helpers import get_active_units, get_active_products
 from app.settings import AppSettings
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
+from app.posting.buckets import group_tax_buckets, reconcile_buckets_to_total
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 import json
@@ -63,38 +64,34 @@ def _input_vat_buckets(ap):
         return []
 
     categories = {c.code: c for c in VATCategory.query.all()}
-    buckets = {}  # account_id -> [Account, Decimal]
-    for item in ap.line_items:
-        vat_amt = Decimal(str(item.vat_amount or 0))
-        if vat_amt <= 0:
-            continue
-        cat = categories.get(item.vat_category)
-        acct = cat.input_vat_account if cat else None
-        if acct is None:
-            label = cat.code if cat else (item.vat_category or 'unknown')
-            raise ValueError(
-                f"VAT category '{label}' has no Input Tax account configured. "
-                "Set it in VAT Categories.")
-        if acct.id not in buckets:
-            buckets[acct.id] = [acct, Decimal('0.00')]
-        buckets[acct.id][1] += vat_amt
 
-    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
-    total = sum((amt for _, amt in ordered), Decimal('0.00'))
-    override_diff = Decimal(str(ap.vat_amount)) - total
-    if override_diff != Decimal('0.00') and ordered:
-        largest_acct_id = max(ordered, key=lambda b: b[1])[0].id
-        ordered = [
-            (acct, amt + override_diff if acct.id == largest_acct_id else amt)
-            for acct, amt in ordered
-        ]
-    ordered = [(acct, amt) for acct, amt in ordered if amt != Decimal('0.00')]
-    if any(amt < Decimal('0.00') for _, amt in ordered):
-        raise ValueError(
+    def _account_of(item):
+        cat = categories.get(item.vat_category)
+        return cat.input_vat_account if cat else None
+
+    def _missing_account(item):
+        cat = categories.get(item.vat_category)
+        label = cat.code if cat else (item.vat_category or 'unknown')
+        return (f"VAT category '{label}' has no Input Tax account configured. "
+                "Set it in VAT Categories.")
+
+    buckets = group_tax_buckets(
+        ap.line_items,
+        amount_of=lambda item: item.vat_amount,
+        account_of=_account_of,
+        amount_predicate=lambda amt: amt > Decimal('0.00'),
+        on_missing_account=_missing_account,
+    )
+    # Reconcile the whole-bill VAT override into the largest bucket (by signed
+    # amount); raise if the override undershoots so far a bucket goes negative.
+    return reconcile_buckets_to_total(
+        buckets, ap.vat_amount, only_if=True, largest_by='amount',
+        allow_negative=False,
+        negative_error=(
             'VAT override is too far below the computed VAT to allocate '
             'across input tax accounts. Adjust the override or the line '
-            'VAT categories.')
-    return ordered
+            'VAT categories.'),
+    )
 
 
 def _wht_payable_buckets(ap, fallback_acct):
@@ -104,41 +101,34 @@ def _wht_payable_buckets(ap, fallback_acct):
     total_wt = Decimal(str(ap.withholding_tax_amount))
     if total_wt <= 0:
         return []
-    buckets = {}  # account_id -> [Account, Decimal]
-    for item in ap.line_items:
-        wt = Decimal(str(item.wt_amount or 0))
-        if wt <= 0:
-            continue
+
+    def _account_of(item):
         wtx = item.withholding_tax
-        acct = (wtx.payable_account if wtx and wtx.payable_account else fallback_acct)
-        if acct is None:
-            continue
-        if acct.id not in buckets:
-            buckets[acct.id] = [acct, Decimal('0.00')]
-        buckets[acct.id][1] += wt
-    ordered = [(b[0], b[1]) for b in sorted(buckets.values(), key=lambda b: b[0].code)]
-    diff = total_wt - sum((amt for _, amt in ordered), Decimal('0.00'))
-    if diff != Decimal('0.00'):
-        if ordered:
-            largest_id = max(ordered, key=lambda b: b[1])[0].id
-            ordered = [(a, amt + diff if a.id == largest_id else amt) for a, amt in ordered]
-        elif fallback_acct is not None:
-            # The bill carries WHT but no line contributes any (a pure bill-level
-            # override). Without this branch the buckets come back empty, no WHT-payable
-            # leg is booked, and _post_ap_je's residual absorber silently adds the amount
-            # to the first expense line -- expense overstated, WHT payable unrecorded,
-            # JE still balanced. Mirrors CDV's _cdv_wht_payable_buckets.
-            ordered = [(fallback_acct, diff)]
-        else:
-            raise ValueError(
-                "Withholding tax is non-zero but no line item carries WHT and no "
-                "Withholding Tax Payable - Expanded (20301) fallback account was found "
-                "in the COA. Adjust the withholding or configure the WHT Payable account.")
-    if any(amt < Decimal('0.00') for _, amt in ordered):
-        raise ValueError(
+        return wtx.payable_account if wtx and wtx.payable_account else fallback_acct
+
+    buckets = group_tax_buckets(
+        ap.line_items,
+        amount_of=lambda item: item.wt_amount,
+        account_of=_account_of,
+        amount_predicate=lambda amt: amt > Decimal('0.00'),
+        on_missing_account='skip',
+    )
+    # Reconcile to the bill-level WHT (override) into the largest bucket. The
+    # fallback branch handles a pure bill-level override where no line carries
+    # WHT: without it the WHT-payable leg is dropped and _post_ap_je's residual
+    # absorber silently overstates the first expense line while the JE still
+    # balances. Mirrors CDV's _cdv_wht_payable_buckets.
+    return reconcile_buckets_to_total(
+        buckets, total_wt, only_if=True, largest_by='amount',
+        fallback_account=fallback_acct, allow_negative=False,
+        negative_error=(
             'Withholding tax override is too far below the computed WHT to allocate '
-            'across payable accounts. Adjust the override or the line withholding.')
-    return [(a, amt) for a, amt in ordered if amt != Decimal('0.00')]
+            'across payable accounts. Adjust the override or the line withholding.'),
+        empty_error=(
+            "Withholding tax is non-zero but no line item carries WHT and no "
+            "Withholding Tax Payable - Expanded (20301) fallback account was found "
+            "in the COA. Adjust the withholding or configure the WHT Payable account."),
+    )
 
 
 def _build_je_preview(ap):
