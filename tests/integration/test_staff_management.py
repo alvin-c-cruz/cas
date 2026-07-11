@@ -149,3 +149,32 @@ def test_chief_accountant_cannot_edit_accountant(client, db_session, admin_user,
     _login(client, 'chief', 'chief123')
     resp = client.get(f'/staff-management/{accountant_user.id}/edit')
     assert resp.status_code == 403
+
+
+def test_chief_accountant_grid_renders_optional_modules(client, db_session, admin_user,
+                                                        chief_accountant_user, main_branch):
+    """BUG-STAFFMGMT-GRID-OMITS-OPTIONAL: the CA editor must RENDER the per_user
+    optional Sales-area checkboxes (Sales Orders / Delivery Receipts / Quotations),
+    not just honor them on save -- a human CA can only grant what the grid shows."""
+    target = _staff(db_session, main_branch, username='gridtgt')
+    _login(client, 'chief', 'chief123')
+    resp = client.get(f'/staff-management/{target.id}/edit')
+    assert resp.status_code == 200
+    assert b'name="book_sales_orders"' in resp.data
+    assert b'name="book_delivery_receipts"' in resp.data
+    assert b'name="book_quotations"' in resp.data
+
+
+def test_accountant_grid_hides_unheld_optional(client, db_session, admin_user,
+                                               accountant_user, main_branch):
+    """The grid ceiling is still own_keys: a plain accountant who does NOT hold
+    Quotations must not see book_quotations (guards against over-exposure), while
+    a module they DO hold is shown."""
+    accountant_user.set_book_permissions({'accounts_payable': True})
+    target = _staff(db_session, main_branch, username='scopetgt')
+    db_session.commit()
+    _login(client, 'accountant')
+    resp = client.get(f'/staff-management/{target.id}/edit')
+    assert resp.status_code == 200
+    assert b'name="book_accounts_payable"' in resp.data   # held -> shown
+    assert b'name="book_quotations"' not in resp.data      # not held -> hidden

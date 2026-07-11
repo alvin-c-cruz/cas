@@ -44,9 +44,13 @@ def edit_staff(id):
 
     own_branches = get_accessible_branches(current_user)
     own_keys = accountant_permission_keys(current_user)
-    # registry entries the accountant may toggle (their own held keys, non-optional)
-    editable_mods = [m for m in MODULE_REGISTRY
-                     if not m.get('optional') and m['key'] in own_keys]
+    # Registry entries the approver may toggle: their grantable ceiling (own_keys)
+    # already scopes this correctly -- a full-access CA holds every key (incl. the
+    # per_user optionals like sales_orders/delivery_receipts/quotations), a plain
+    # accountant only the keys they hold. Do NOT re-filter on `optional` here, or
+    # the grid hides the very Sales-area modules a CA needs to delegate
+    # (BUG-STAFFMGMT-GRID-OMITS-OPTIONAL); the save path already honors them.
+    editable_mods = [m for m in MODULE_REGISTRY if m['key'] in own_keys]
 
     form = StaffEditForm(obj=target)
     form.branch_ids.choices = [(b.id, b.name) for b in own_branches]
