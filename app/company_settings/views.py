@@ -176,10 +176,14 @@ def edit_settings():
         form.ap_billing_consolidate.data = (
             AppSettings.get_setting('ap_billing_consolidate', '0') == '1')
 
+    from app.users.module_access import MODULE_REGISTRY, module_enabled
+    optional_modules = [dict(m, enabled=module_enabled(m['key']))
+                        for m in MODULE_REGISTRY if m.get('optional')]
     return render_template(
         'company_settings/form.html',
         form=form,
-        logo_filename=_current_logo_filename()
+        logo_filename=_current_logo_filename(),
+        modules=optional_modules,
     )
 
 
@@ -187,10 +191,8 @@ def edit_settings():
 @login_required
 @admin_panel_required
 def modules():
-    from app.users.module_access import MODULE_REGISTRY, module_enabled
-    optional = [dict(m, enabled=module_enabled(m['key']))
-                for m in MODULE_REGISTRY if m.get('optional')]
-    return render_template('company_settings/modules.html', modules=optional)
+    # Retired: the modules table now lives in the Settings > Packages tab.
+    return redirect(url_for('company_settings.edit_settings'))
 
 
 @company_settings_bp.route('/modules/toggle', methods=['POST'])
@@ -206,7 +208,7 @@ def modules_toggle():
     ok, reason = can_toggle(key, enable, enabled_keys)
     if not ok:
         flash(f'Cannot change "{key}": {reason}.', 'error')
-        return redirect(url_for('company_settings.modules'))
+        return redirect(url_for('company_settings.edit_settings'))
     AppSettings.set_setting(f'module_enabled:{key}', '1' if enable else '0',
                             updated_by=current_user.username)
     clear_module_config_cache()
@@ -214,7 +216,7 @@ def modules_toggle():
               record_id=None, record_identifier=key,
               new_values={'enabled': enable})
     flash(f'Module "{key}" {"enabled" if enable else "disabled"}.', 'success')
-    return redirect(url_for('company_settings.modules'))
+    return redirect(url_for('company_settings.edit_settings'))
 
 
 @company_settings_bp.route('/logo/upload', methods=['POST'])

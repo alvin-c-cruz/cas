@@ -49,6 +49,8 @@ def gl_accounts(db_session):
                                     transaction_nature='regular',
                                     output_vat_account_id=accounts['output_vat'].id))
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     return accounts
 
 

@@ -108,6 +108,8 @@ def gl_accounts_wht(db_session):
                                rate=Decimal('12.00'), is_active=True,
                                input_vat_account_id=accounts[1].id))
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     return {a.code: a for a in accounts}
 
 

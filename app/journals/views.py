@@ -59,20 +59,20 @@ def _voucher_query(branch_id, status_filter, date_from, date_to):
 
 def _gl_account_ids():
     """Return (ap_id, wt_id, input_vat_ids) for column grouping."""
-    from app.accounts.models import Account
     from app.vat_categories.models import VATCategory
-    ap = Account.query.filter_by(code='20101').first()
-    wt = Account.query.filter_by(code='20301').first()
+    from app.posting.control_accounts import get_control_account
+    ap = get_control_account('ap_trade', required=False)
+    wt = get_control_account('wht_payable', required=False)
     vat_ids = {c.input_vat_account.id for c in VATCategory.query.all() if c.input_vat_account}
     return (ap.id if ap else None, wt.id if wt else None, vat_ids)
 
 
 def _si_gl_account_ids():
     """Return (ar_id, wht_recv_id, output_vat_ids) for SI column grouping."""
-    from app.accounts.models import Account
     from app.sales_vat_categories.models import SalesVATCategory
-    ar = Account.query.filter_by(code='10201').first()
-    wht_recv = Account.query.filter_by(code='10212').first()
+    from app.posting.control_accounts import get_control_account
+    ar = get_control_account('ar_trade', required=False)
+    wht_recv = get_control_account('creditable_wht', required=False)
     vat_ids = {c.output_vat_account.id for c in SalesVATCategory.query.all() if c.output_vat_account}
     return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
 
@@ -158,10 +158,10 @@ def _cd_entry_identity(entry, cdv_map):
 
 def _cr_gl_account_ids():
     """Return (ar_id, wht_recv_id, output_vat_ids) for CR column grouping."""
-    from app.accounts.models import Account
     from app.sales_vat_categories.models import SalesVATCategory
-    ar = Account.query.filter_by(code='10201').first()
-    wht_recv = Account.query.filter_by(code='10212').first()
+    from app.posting.control_accounts import get_control_account
+    ar = get_control_account('ar_trade', required=False)
+    wht_recv = get_control_account('creditable_wht', required=False)
     vat_ids = {c.output_vat_account.id for c in SalesVATCategory.query.all() if c.output_vat_account}
     return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
 

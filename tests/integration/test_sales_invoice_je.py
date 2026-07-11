@@ -63,6 +63,8 @@ class TestSIEditRecreatesJE:
                                    'Asset', 'debit')
         rev = get_or_create_account(db_session, 'SI-JE-REV1', 'SI JE Revenue',
                                     'Revenue', 'credit')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
 
         # Create invoice at 5000
         client.post('/sales-invoices/create', data={
@@ -129,6 +131,8 @@ class TestSIEditRecreatesJE:
                                'Asset', 'debit')
         rev = get_or_create_account(db_session, 'SI-JE-REV2', 'SI JE Revenue 2',
                                     'Revenue', 'credit')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         customer = make_customer(db_session, 'SIJEC-002')
 
         # Create at 5000

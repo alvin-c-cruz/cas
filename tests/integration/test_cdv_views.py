@@ -28,6 +28,8 @@ def setup_accounts(db_session):
     exp  = Account(code='60101', name='Office Supplies', account_type='Expense', normal_balance='debit', is_active=True)
     db_session.add_all([ap, wt, cash, exp])
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     return ap, wt, cash, exp
 
 

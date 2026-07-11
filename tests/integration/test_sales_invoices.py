@@ -162,6 +162,9 @@ def test_post_invoice_je_creates_balanced_entry(db_session, customer, revenue_ac
         db_session.add(vat_cat)
     db_session.flush()
 
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
+
     inv = SalesInvoice(
         branch_id=branch.id,
         invoice_number='SI-2026-JE01',
@@ -225,6 +228,9 @@ def test_post_invoice_je_line_order(db_session, customer, revenue_account, branc
         db_session.add(WithholdingTax(code='WC999', name='Test WHT', rate=Decimal('1.00'), is_active=True))
     db_session.flush()
     wt = WithholdingTax.query.filter_by(code='WC999').first()
+
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
 
     inv = SalesInvoice(branch_id=branch.id, invoice_number='SI-ORD-01',
                        invoice_date=date(2026, 6, 14), due_date=date(2026, 7, 14),
@@ -384,6 +390,8 @@ def test_create_invoice_with_notes_and_blank_line_description_saves(
         if not Account.query.filter_by(code=code).first():
             db_session.add(Account(code=code, name=name, account_type=typ, normal_balance=nb, is_active=True))
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
 
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch.id
@@ -488,6 +496,8 @@ def test_create_invoice_posts_to_books(client, db_session, accountant_user, cust
         db_session.add(Account(code='20201', name='Output VAT', account_type='Liability',
                                normal_balance='credit', is_active=True))
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
 
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch.id
@@ -703,6 +713,8 @@ def test_si_persists_salesperson_when_employees_enabled(client, db_session, acco
     if not Account.query.filter_by(code='10201').first():
         db_session.add(Account(code='10201', name='AR - Trade', account_type='Asset',
                                normal_balance='debit', is_active=True)); db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch.id
         sess['_user_id'] = str(accountant_user.id)
@@ -733,6 +745,8 @@ def test_si_print_shows_salesperson(client, db_session, accountant_user, custome
     if not Account.query.filter_by(code='10201').first():
         db_session.add(Account(code='10201', name='AR - Trade', account_type='Asset',
                                normal_balance='debit', is_active=True)); db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch.id
         sess['_user_id'] = str(accountant_user.id)
@@ -756,6 +770,8 @@ def test_si_print_shows_company_account_when_no_salesperson(client, db_session, 
     if not Account.query.filter_by(code='10201').first():
         db_session.add(Account(code='10201', name='AR - Trade', account_type='Asset',
                                normal_balance='debit', is_active=True)); db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = branch.id
         sess['_user_id'] = str(accountant_user.id)

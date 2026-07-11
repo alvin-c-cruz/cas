@@ -16,7 +16,10 @@ def _enable_preprinted(page, base):
     page.goto(base + '/settings')
     name = page.locator('#company_name')
     if (name.input_value() or '').strip() == '':
-        name.fill('E2E Co')                     # company_name is required to save
+        name.fill('E2E Co')                     # company_name is required to save (Company Profile tab, active by default)
+    # Print Form now lives in the "Documents & Print" tab (settings tabbed makeover) — the select
+    # is display:none until its tab is active, so activate it before select_option.
+    page.click('.tab[data-tab-group="settings"][data-tab="docprint"]')
     page.select_option('select[name="sv_print_form"]', 'preprinted')
     page.click('button:has-text("Save Settings")')
     page.wait_for_load_state('load')

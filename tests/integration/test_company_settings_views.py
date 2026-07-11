@@ -271,6 +271,63 @@ class TestCompanyLogo:
         assert resp.status_code == 404
 
 
+class TestSettingsTabs:
+    def test_settings_page_renders_six_tabs(self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/settings')
+        assert resp.status_code == 200
+        for tab in (b'data-tab="profile"', b'data-tab="accounting"', b'data-tab="docprint"',
+                    b'data-tab="admin"', b'data-tab="logo"', b'data-tab="packages"'):
+            assert tab in resp.data, tab
+        for panel in (b'id="settings-profile"', b'id="settings-accounting"',
+                      b'id="settings-docprint"', b'id="settings-admin"',
+                      b'id="settings-logo"', b'id="settings-packages"'):
+            assert panel in resp.data, panel
+
+    def test_settings_page_keeps_all_sections_and_save(self, client, db_session, admin_user, main_branch):
+        """Regroup must not drop any section heading, the single Save, or the logo card."""
+        login(client)
+        resp = client.get('/settings')
+        for label in (b'Company Identity', b'BIR Registration', b'Address', b'Company Officers',
+                      b'Accounting', b'Documents', b'Print Form', b'Administration',
+                      b'Save Settings', b'Logo'):
+            assert label in resp.data, label
+
+    def test_modules_button_removed_from_toolbar(self, client, db_session, admin_user, main_branch):
+        """Packages is a tab now; the standalone 'Modules / Package' nav button is gone."""
+        login(client)
+        resp = client.get('/settings')
+        assert b'Modules / Package' not in resp.data
+
+    def test_settings_page_has_tab_persistence_script(self, client, db_session, admin_user, main_branch):
+        """A settings-only script restores the active tab across the 3 forms' reloads."""
+        login(client)
+        resp = client.get('/settings')
+        assert b'cas.settingsTab' in resp.data          # sessionStorage key
+        assert b'sessionStorage' in resp.data
+
+    def test_logo_and_packages_panels_are_outside_the_settings_form(self, client, db_session, admin_user, main_branch):
+        """Logo (its own multipart form) and Packages (per-row toggle forms) MUST render after
+        the settings form's </form> — nesting a form inside a form is invalid HTML and is the
+        exact reason they are their own tabs. Guards the structural invariant."""
+        login(client)
+        body = client.get('/settings').get_data()
+        form_close = body.index(b'</form>')                # first </form> = the settings form
+        assert form_close < body.index(b'id="settings-logo"')
+        assert form_close < body.index(b'id="settings-packages"')
+
+    def test_all_six_tab_controls_are_type_button(self, client, db_session, admin_user, main_branch):
+        """Tab controls sit inside the settings <form>; a bare <button> defaults to type=submit
+        and would submit the form on every tab click. All six must be type="button"."""
+        import re
+        login(client)
+        body = client.get('/settings').get_data(as_text=True)
+        tabs = re.findall(r'<button[^>]*\bclass="tab[^"]*"[^>]*>', body)
+        assert len(tabs) == 6, f'expected 6 tab buttons, found {len(tabs)}'
+        for t in tabs:
+            assert 'type="button"' in t, f'tab button not type=button: {t}'
+
+
 class TestPrintAccessSettings:
     def test_sv_print_access_saved_when_posted(
             self, client, db_session, admin_user, main_branch):

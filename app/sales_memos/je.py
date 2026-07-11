@@ -3,8 +3,11 @@
 Phase 1: credit memo only. A credit memo REVERSES the returned portion of the SI:
     Dr  Sales Returns & Allowances (contra-revenue)   net revenue reversed (subtotal - VAT)
     Dr  Output VAT (per output-VAT-account bucket)     VAT reversed
-      Cr  Creditable WHT Receivable (10212)              WHT unwound
-      Cr  {AR 10201 | cash account | Customer Credits}   destination (= gross - WHT)
+      Cr  Creditable WHT (control account)               WHT unwound
+      Cr  {AR (control account) | cash account | Customer Credits}  destination (= gross - WHT)
+
+AR and Creditable WHT are resolved via ``app.posting.control_accounts.get_control_account``
+(settings-assigned), not hardcoded codes -- see BUG-POSTING-HARDCODED-CONTROL-ACCOUNTS.
 
 Follows the posted-JE-leg-vs-header invariant: the non-plug legs equal the memo header
 buckets by construction; the destination is the reconciled residual (only sub-centavo
@@ -15,16 +18,9 @@ from decimal import Decimal
 from app import db
 from app.utils import ph_now
 from app.journal_entries.utils import generate_entry_number
-from app.accounts.models import Account
 from app.sales_memos import service
 from app.posting.sales_vat import output_vat_buckets
-
-
-def _account_by_code(code, label):
-    a = Account.query.filter_by(code=code).first()
-    if a is None:
-        raise ValueError(f'{label} ({code}) not found in the Chart of Accounts.')
-    return a
+from app.posting.control_accounts import get_control_account
 
 
 def post_memo_je(memo, user_id):
@@ -42,7 +38,7 @@ def post_memo_je(memo, user_id):
 
     # Destination account (shared by both memo types).
     if memo.destination == 'ar':
-        dest = _account_by_code('10201', 'Accounts Receivable - Trade')
+        dest = get_control_account('ar_trade')
     elif memo.destination == 'cash_refund':
         dest = memo.cash_account
         if dest is None:
@@ -50,7 +46,7 @@ def post_memo_je(memo, user_id):
     else:  # customer_credit
         dest = service.resolve_memo_account(service.CUSTOMER_CREDITS_KEY, 'Customer Credits/Advances')
 
-    wt_account = _account_by_code('10212', 'Creditable Withholding Tax') if wht_total > 0 else None
+    wt_account = get_control_account('creditable_wht') if wht_total > 0 else None
 
     doc_label = 'Credit Memo' if memo.memo_type == 'credit' else 'Debit Note'
     je_status = 'posted' if memo.status == 'posted' else 'draft'

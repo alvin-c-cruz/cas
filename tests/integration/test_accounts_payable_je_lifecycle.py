@@ -37,6 +37,8 @@ def setup_gl(db_session):
                     is_active=True)
     db_session.add_all([expense, ap, vendor])
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     return expense, vendor
 
 

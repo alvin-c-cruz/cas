@@ -36,7 +36,11 @@ pytestmark = pytest.mark.integration
 
 
 def _all_rowversion_form_classes():
-    """Every (transitive) RowVersionFormMixin subclass currently imported."""
+    """Every (transitive) RowVersionFormMixin subclass currently imported that is
+    defined under app.* -- test-defined subclasses (e.g. a _VersionedForm in
+    tests.unit.test_concurrency) are excluded: they have no product form template
+    and are not this test's regression target (a real form template dropping its
+    hidden token), yet they leak into __subclasses__() under full-suite ordering."""
     seen = []
     stack = list(RowVersionFormMixin.__subclasses__())
     while stack:
@@ -44,7 +48,7 @@ def _all_rowversion_form_classes():
         if cls not in seen:
             seen.append(cls)
             stack.extend(cls.__subclasses__())
-    return seen
+    return [cls for cls in seen if cls.__module__.startswith('app.')]
 
 
 def test_every_rowversion_form_template_delivers_the_token(app):

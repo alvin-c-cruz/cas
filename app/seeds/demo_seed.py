@@ -210,6 +210,9 @@ def seed_demo_baseline():
             db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
         db.session.commit()
 
+    from app.posting.control_accounts import assign_default_control_accounts
+    assign_default_control_accounts(updated_by='seed')
+
     # VAT (input) categories wired to Input VAT accounts
     if VATCategory.query.count() == 0:
         vat_acct = {a.code: a.id for a in Account.query.filter(

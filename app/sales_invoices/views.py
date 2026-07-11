@@ -197,13 +197,6 @@ _EXPORT_HEADERS = [
 # JE helpers
 # ---------------------------------------------------------------------------
 
-def _get_gl_accounts():
-    """Return AR-Trade (10201) and Creditable WHT Receivable (10212) accounts."""
-    ar_acct = Account.query.filter_by(code='10201').first()
-    wt_acct = Account.query.filter_by(code='10212').first()
-    return {'ar': ar_acct, 'wt': wt_acct}
-
-
 def _output_vat_buckets(invoice):
     """Group output VAT amounts by SalesVATCategory.output_vat_account.
 
@@ -250,7 +243,9 @@ def _build_je_preview(invoice):
         ])
 
     # Draft preview: compute inline
-    accts = _get_gl_accounts()
+    from app.posting.control_accounts import get_control_account
+    ar_acct = get_control_account('ar_trade', required=False)
+    wt_acct = get_control_account('creditable_wht', required=False)
     entries = []
 
     # Credit revenue per line (net base)
@@ -283,13 +278,13 @@ def _build_je_preview(invoice):
 
     # Debit Creditable WHT Receivable
     wt_amount = Decimal(str(invoice.withholding_tax_amount))
-    if wt_amount > 0 and accts['wt']:
-        entries.append({'code': accts['wt'].code, 'name': accts['wt'].name,
+    if wt_amount > 0 and wt_acct:
+        entries.append({'code': wt_acct.code, 'name': wt_acct.name,
                         'debit': wt_amount, 'credit': Decimal('0.00')})
 
     # Debit Accounts Receivable
-    if accts['ar']:
-        entries.append({'code': accts['ar'].code, 'name': accts['ar'].name,
+    if ar_acct:
+        entries.append({'code': ar_acct.code, 'name': ar_acct.name,
                         'debit': Decimal(str(invoice.total_amount)),
                         'credit': Decimal('0.00')})
 
@@ -304,17 +299,12 @@ def _post_invoice_je(invoice, user_id):
     """Create the sales JE. Reverse of APV: Dr AR + Dr Creditable WHT; Cr Revenue + Cr Output VAT."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
-    accts = _get_gl_accounts()
-    ar_account = accts['ar']
-    if not ar_account:
-        raise ValueError("Accounts Receivable - Trade (10201) not found in COA.")
+    from app.posting.control_accounts import get_control_account
+    ar_account = get_control_account('ar_trade')  # raises ControlAccountError if unassigned
 
     wt_account = None
     if invoice.withholding_tax_amount and Decimal(str(invoice.withholding_tax_amount)) > 0:
-        wt_account = accts['wt']
-        if not wt_account:
-            raise ValueError("Creditable Withholding Tax (10212) not found in COA. "
-                             "Add this account before posting a sales invoice with WHT.")
+        wt_account = get_control_account('creditable_wht')
 
     je_status = 'posted' if invoice.status == 'posted' else 'draft'
     entry_number = generate_entry_number(invoice.branch_id)
@@ -981,10 +971,12 @@ def _vat_categories_for_form():
 
 
 def _gl_accounts_dict():
-    _accts = _get_gl_accounts()
+    from app.posting.control_accounts import get_control_account
+    ar_acct = get_control_account('ar_trade', required=False)
+    wt_acct = get_control_account('creditable_wht', required=False)
     return {
-        'ar': {'code': _accts['ar'].code, 'name': _accts['ar'].name} if _accts['ar'] else None,
-        'wt': {'code': _accts['wt'].code, 'name': _accts['wt'].name} if _accts['wt'] else None,
+        'ar': {'code': ar_acct.code, 'name': ar_acct.name} if ar_acct else None,
+        'wt': {'code': wt_acct.code, 'name': wt_acct.name} if wt_acct else None,
     }
 
 

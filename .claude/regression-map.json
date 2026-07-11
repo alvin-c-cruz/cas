@@ -53,6 +53,8 @@
     "app/sales_invoices/views.py":         ["sales_invoices", "credit_memos", "debit_memos"],
     "app/posting/buckets.py":              ["posting", "accounts_payable", "sales_invoices", "cash_disbursements", "cash_receipts", "credit_memos", "debit_memos"],
     "app/posting/__init__.py":             ["posting", "accounts_payable", "sales_invoices", "cash_disbursements", "cash_receipts", "credit_memos", "debit_memos"],
+    "app/posting/control_accounts.py":     ["sales_invoices", "cash_receipts", "accounts_payable", "cash_disbursements", "journals", "credit_memos", "debit_memos", "reports", "control_accounts"],
+    "app/control_accounts/views.py":       ["control_accounts"],
     "app/accounts_payable/views.py":       ["accounts_payable", "purchase_orders", "receiving_reports"],
     "app/purchase_billing.py":             ["accounts_payable", "purchase_orders", "receiving_reports"],
     "app/static/ap_po_billing.js":         ["accounts_payable"],
@@ -104,6 +106,7 @@
     "sales_vat_categories": { "marker": "sales_vat", "e2e": null },
     "customers":         { "marker": "customers", "e2e": null },
     "reports":           { "marker": "reports", "e2e": null },
+    "control_accounts":  { "marker": "control_accounts", "e2e": null },
     "journal_entries":   { "marker": "journal_entries", "e2e": null },
     "vat_settlement":    { "marker": "vat_settlement", "e2e": null },
     "purchase_orders":   { "marker": "purchase_orders", "e2e": null },
@@ -114,6 +117,7 @@
     "Only the JS/browser layer is e2e-covered (pytest renders HTML but never executes JS). accounts_payable (test_ap_smoke.py) and sales_invoices (test_si_smoke.py) have smoke suites; mirror to cash_disbursements as it gets verified, then set its 'e2e' path here.",
     "When you ADD a new shared file or a new module dependency, add it here in the SAME commit -- a stale map is a silent coverage hole.",
     "'vat_settlement' has no marker registered in pytest.ini yet (feat/vat-settlement is reviewed but not merged, R-08 memory project-vat-settlement) -- its map entries are forward-wired now so /guard doesn't need a second edit when that branch lands; until then `pytest -m vat_settlement` legitimately selects 0 tests.",
-    "R-02 purchase modules (purchase_orders/receiving_reports/purchase_requests, merged 2026-07-11) are FORWARD-WIRED like vat_settlement: their test files carry only `pytest.mark.integration`, not the module marker, and the markers are not in pytest.ini yet -- so `pytest -m purchase_orders` selects 0 until markers are added to pytest.ini + the tests/integration/test_purchase_*.py + tests/unit/test_*_model.py files. The blast_radius edges are live now so /guard already unions these modules; add the markers (+ e2e smokes, backlog #128) to make the module-suite selection real."
+    "R-02 purchase modules (purchase_orders/receiving_reports/purchase_requests, merged 2026-07-11) are FORWARD-WIRED like vat_settlement: their test files carry only `pytest.mark.integration`, not the module marker, and the markers are not in pytest.ini yet -- so `pytest -m purchase_orders` selects 0 until markers are added to pytest.ini + the tests/integration/test_purchase_*.py + tests/unit/test_*_model.py files. The blast_radius edges are live now so /guard already unions these modules; add the markers (+ e2e smokes, backlog #128) to make the module-suite selection real.",
+    "control_accounts (settings-assigned control accounts, BUG-POSTING-HARDCODED-CONTROL-ACCOUNTS, merged 2026-07-11): app/posting/control_accounts.py is the HIGH-blast resolver every posting engine + the memo JE builder + the BIR books report call -- its blast_radius edges are live, so a resolver change already unions and runs the sales_invoices/cash_receipts/accounts_payable/cash_disbursements/reports/credit_memos/debit_memos suites (which DO carry markers). The 'control_accounts' module marker itself is FORWARD-WIRED (its tests carry only pytest.mark.integration; the marker is not in pytest.ini yet) so `pytest -m control_accounts` selects 0 until added; no e2e smoke for the settings page yet (backlog)."
   ]
 }

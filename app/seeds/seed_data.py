@@ -147,6 +147,7 @@ def seed_chart_of_accounts():
         {'code': '10202', 'name': 'Allowance for Doubtful Accounts', 'type': 'Asset', 'parent': '10200', 'normal_balance': 'credit'},
         {'code': '10210', 'name': 'Other Receivables', 'type': 'Asset', 'parent': '10200', 'normal_balance': 'debit'},
         {'code': '10211', 'name': 'Advances to Employees', 'type': 'Asset', 'parent': '10200', 'normal_balance': 'debit'},
+        {'code': '10212', 'name': 'Creditable Withholding Tax', 'type': 'Asset', 'parent': '10200', 'normal_balance': 'debit'},
 
         # Inventory
         {'code': '10300', 'name': 'Inventory', 'type': 'Asset', 'parent': '10000', 'is_header': True},
@@ -594,6 +595,10 @@ def seed_all(force=False):
         seed_units_of_measure()
         results['units_of_measure'] = True
 
+        print("\n8. Assigning Control Accounts...")
+        from app.posting.control_accounts import assign_default_control_accounts
+        assign_default_control_accounts(updated_by='system')
+
         print("\n" + "="*60)
         print("SEEDING COMPLETE!")
         print("="*60)
@@ -840,6 +845,9 @@ def seed_minimal():
         _seed_vat_categories()
         _seed_sales_vat_categories()
         _seed_withholding_taxes()
+
+        from app.posting.control_accounts import assign_default_control_accounts
+        assign_default_control_accounts(updated_by='system')
 
         print("\n" + "="*60)
         print("MINIMAL SEEDING COMPLETE!")

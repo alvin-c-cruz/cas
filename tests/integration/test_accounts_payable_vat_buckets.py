@@ -45,6 +45,10 @@ def setup_world(db_session):
     db_session.add(vendor)
     db_session.commit()
     accts['vendor'] = vendor
+
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
+
     return accts
 
 

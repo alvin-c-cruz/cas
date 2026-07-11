@@ -66,6 +66,9 @@ class TestBillPencilOverride:
         db_session.add(vendor)
         db_session.commit()
 
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
+
         return {'ap': ap, 'vat_acct': vat_acct, 'wt_acct': wt_acct,
                 'exp': exp, 'vat_cat': vat_cat, 'wt': wt, 'vendor': vendor}
 

@@ -92,6 +92,8 @@ class TestCDVPosting:
         wht_pay = make_account(db_session, '20301', 'WHT Payable - Expanded',
                                account_type='Liability', classification='Current Liability',
                                normal_balance='Credit')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         return ap, wht_pay
 
     def test_pure_negative_section_b_cdv(self, db_session, admin_user, main_branch):
@@ -339,6 +341,8 @@ class TestCDVPosting:
         make_account(db_session, '20101', 'Accounts Payable - Trade',
                     account_type='Liability', classification='Current Liability',
                     normal_balance='Credit')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         cash = make_account(db_session, '1001', 'Cash on Hand',
                             account_type='Asset', classification='Current Asset',
                             normal_balance='Debit')
@@ -360,7 +364,7 @@ class TestCDVPosting:
         cdv.status = 'posted'
         db_session.flush()
 
-        with pytest.raises(ValueError, match='WHT Payable'):
+        with pytest.raises(ValueError, match='Withholding Tax Payable'):
             _post_cdv_je(cdv, admin_user.id)
 
     def test_post_cdv_je_override_wht_posts_correctly_with_real_account(self, db_session, admin_user, main_branch):

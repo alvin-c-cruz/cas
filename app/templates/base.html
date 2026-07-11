@@ -1166,6 +1166,10 @@
                         <span class="nav-icon">🧾</span>
                         <span class="nav-text">VAT Settlement</span>
                     </a>
+                    <a href="{{ url_for('control_accounts.index') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('control_accounts.') %}active{% endif %}">
+                        <span class="nav-icon">🎯</span>
+                        <span class="nav-text">Control Accounts</span>
+                    </a>
                     {% else %}
                     {# Standard single-endpoint nav link — exact url_for + icon from old hardcoded blocks #}
                     <a href="{{ url_for(_nav_ep[m.key]) }}" class="nav-item {{ active_class(m.key) }}">

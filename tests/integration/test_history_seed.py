@@ -30,6 +30,8 @@ def base_db(db_session):
     seed_chart_of_accounts()
     seed_vat_categories()
     seed_withholding_tax_codes()
+    from app.posting.control_accounts import assign_default_control_accounts
+    assign_default_control_accounts(updated_by='test')
     branch = Branch(code='MAIN', name='Main Office', is_active=True)
     db.session.add(branch)
     db.session.commit()

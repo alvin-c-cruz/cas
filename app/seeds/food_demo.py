@@ -165,6 +165,9 @@ def seed_food_baseline():
             db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
         db.session.commit()
 
+    from app.posting.control_accounts import assign_default_control_accounts
+    assign_default_control_accounts(updated_by='seed')
+
     if VATCategory.query.count() == 0:
         vat_acct = {a.code: a.id for a in Account.query.filter(
             Account.code.in_(['10501', '10502', '10503', '10504'])).all()}

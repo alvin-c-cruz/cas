@@ -109,6 +109,8 @@ def _build_si(branch, user, mode):
     _acct(CWT, 'Creditable Withholding Tax')
     out_vat = _acct(OUTPUT_VAT, 'Output VAT', 'Liability', 'Credit')
     revenue = _acct(REVENUE, 'Sales Revenue', 'Income', 'Credit')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db.session)
     db.session.add(SalesVATCategory(code='V12', name='VATable 12%', rate=Decimal('12.00'),
                                     transaction_nature='regular',
                                     output_vat_account_id=out_vat.id, is_active=True))
@@ -155,6 +157,8 @@ def _build_ap(branch, user, mode):
     _acct(WHT_PAYABLE, 'WHT Payable - Expanded', 'Liability', 'Credit')
     in_vat = _acct(INPUT_VAT, 'Input VAT')
     expense = _acct(EXPENSE, 'Operating Expense', 'Expense', 'Debit')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db.session)
     db.session.add(VATCategory(code='V12P', name='Input 12%', rate=Decimal('12.00'),
                                input_vat_account_id=in_vat.id, is_active=True))
     wht = WithholdingTax(code='WC158', name='WC158', rate=Decimal('10.00'), is_active=True)
@@ -203,6 +207,8 @@ def _build_cdv(branch, user, mode):
     in_vat = _acct(INPUT_VAT, 'Input VAT')
     cash = _acct(CASH, 'Cash on Hand')
     expense = _acct(EXPENSE, 'Operating Expense', 'Expense', 'Debit')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db.session)
     db.session.add(VATCategory(code='V12P', name='Input 12%', rate=Decimal('12.00'),
                                input_vat_account_id=in_vat.id, is_active=True))
     wht = WithholdingTax(code='WC158', name='WC158', rate=Decimal('10.00'), is_active=True)
@@ -248,6 +254,8 @@ def _build_crv(branch, user, mode):
     out_vat = _acct(OUTPUT_VAT, 'Output VAT', 'Liability', 'Credit')
     cash = _acct(CASH, 'Cash on Hand')
     revenue = _acct(REVENUE, 'Sales Revenue', 'Income', 'Credit')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db.session)
     db.session.add(SalesVATCategory(code='V12', name='VATable 12%', rate=Decimal('12.00'),
                                     transaction_nature='regular',
                                     output_vat_account_id=out_vat.id, is_active=True))

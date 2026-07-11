@@ -446,6 +446,8 @@ class TestDuplicateVendorInvoice:
         db_session.add(v1)
         db_session.add(v2)
         db_session.commit()
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         exp = Account.query.filter_by(code='69903').first()
         return v1, v2, exp
 

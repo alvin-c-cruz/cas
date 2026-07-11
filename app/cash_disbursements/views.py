@@ -99,9 +99,16 @@ def _get_cdv_or_404(id):
 
 
 def _get_gl_accounts():
+    """Return the AP-Trade and WHT-Payable control accounts for display/preview
+    use. Resolved via accountant-assigned settings (app.posting.control_accounts)
+    -- never raises; entries are None when unassigned or misconfigured. The
+    posting engine (_post_cdv_je) resolves these itself with required=True
+    instead of going through this helper. Mirrors accounts_payable's
+    _get_gl_accounts (feedback-cdv-crv-parity-mirror)."""
+    from app.posting.control_accounts import get_control_account
     return {
-        'ap': Account.query.filter_by(code='20101').first(),
-        'wt': Account.query.filter_by(code='20301').first(),
+        'ap': get_control_account('ap_trade', required=False),
+        'wt': get_control_account('wht_payable', required=False),
     }
 
 
@@ -290,19 +297,17 @@ def _cdv_wht_payable_buckets(cdv, fallback_acct):
             'across payable accounts. Adjust the override or the line withholding.'),
         empty_error=(
             "Withholding tax override is non-zero but no expense line carries WHT "
-            "and no WHT Payable - Expanded (20301) fallback account was found in the "
-            "COA. Adjust the override or configure the WHT Payable account."),
+            "and no Withholding Tax Payable control account was found in the COA. "
+            "Adjust the override or configure the WHT Payable account."),
     )
 
 
 def _post_cdv_je(cdv, user_id):
     """Create a draft or posted disbursement JE for a CDV (sign-aware for negative Section B)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.posting.control_accounts import get_control_account
 
-    _accts = _get_gl_accounts()
-    ap_account = _accts['ap']
-    if not ap_account:
-        raise ValueError("Accounts Payable - Trade (20101) not found in COA.")
+    ap_account = get_control_account('ap_trade')
 
     cash_account = cdv.cash_account
     if not cash_account:
@@ -320,8 +325,10 @@ def _post_cdv_je(cdv, user_id):
             if Decimal(str(el.line_total or 0)) > 0
         )
     )
-    if posted_wt != Decimal('0.00') and not _accts['wt']:
-        raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
+    # Resolved here (required) as the per-line fallback that _cdv_wht_payable_buckets()
+    # below uses when a line's ATC has no payable_account of its own. Mirrors AP's
+    # _post_ap_je (feedback-cdv-crv-parity-mirror).
+    wt_account = get_control_account('wht_payable') if posted_wt != Decimal('0.00') else None
 
     je_status = 'posted' if cdv.status == 'posted' else 'draft'
     entry_number = generate_entry_number(cdv.branch_id)
@@ -422,7 +429,7 @@ def _post_cdv_je(cdv, user_id):
         line_num += 1
 
     # WHT Payable — sign-aware, per ATC payable account
-    for wt_acct, wt_amt in _cdv_wht_payable_buckets(cdv, _accts['wt']):
+    for wt_acct, wt_amt in _cdv_wht_payable_buckets(cdv, wt_account):
         if wt_amt > Decimal('0.00'):
             wt_dr, wt_cr = Decimal('0.00'), wt_amt
         else:
