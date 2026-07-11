@@ -112,3 +112,16 @@ def build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=None):
     return {'as_of': as_of, 'mtd_start': mtd_start, 'ytd_start': ytd_start,
             'rows': rows, 'unassigned': unassigned, 'total': total,
             'reconciliation': reconciliation}
+
+
+def sales_by_product_line_rows(data):
+    """Flatten build_sales_by_product_line output to printable rows:
+    [{'label','mtd','ytd','kind'}] where kind in {'line','unassigned','total'}."""
+    rows = [{'label': r['name'], 'mtd': r['mtd'], 'ytd': r['ytd'], 'kind': 'line'}
+            for r in data['rows']]
+    u = data['unassigned']
+    if u['mtd'] or u['ytd']:
+        rows.append({'label': 'Unassigned', 'mtd': u['mtd'], 'ytd': u['ytd'], 'kind': 'unassigned'})
+    t = data['total']
+    rows.append({'label': 'Total Net Sales', 'mtd': t['mtd'], 'ytd': t['ytd'], 'kind': 'total'})
+    return rows

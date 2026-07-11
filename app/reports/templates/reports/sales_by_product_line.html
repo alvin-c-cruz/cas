@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Sales by Product Line{% endblock %}
+{% block page_title %}Sales by Product Line{% endblock %}
+{% block content %}
+<div class="content-header">
+    <form method="GET" class="filter-form">
+        <label for="as_of">As of</label>
+        <input type="date" id="as_of" name="as_of" value="{{ as_of.isoformat() }}">
+        <button type="submit" class="btn btn-secondary">Apply</button>
+    </form>
+    <div class="page-actions">
+        <a href="{{ url_for('reports.sales_by_product_line_print', as_of=as_of.isoformat()) }}"
+           class="btn btn-secondary" target="_blank">Print</a>
+        <a href="{{ url_for('reports.sales_by_product_line_export_excel', as_of=as_of.isoformat()) }}"
+           class="btn btn-secondary">Export Excel</a>
+    </div>
+</div>
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Product Line</th>
+                    <th class="num">{{ as_of.strftime('%b %Y') }}</th>
+                    <th class="num">%</th>
+                    <th class="num">YTD {{ as_of.year }}</th>
+                    <th class="num">%</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in data.rows %}
+                <tr>
+                    <td>{{ r.name }}</td>
+                    <td class="num">{{ '{:,.2f}'.format(r.mtd) }}</td>
+                    <td class="num">{{ '{:,.1f}'.format(r.mtd_pct) }}</td>
+                    <td class="num">{{ '{:,.2f}'.format(r.ytd) }}</td>
+                    <td class="num">{{ '{:,.1f}'.format(r.ytd_pct) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty-state-cell"><p>No sales in this period.</p></td></tr>
+                {% endfor %}
+                {% if data.unassigned.mtd or data.unassigned.ytd %}
+                <tr>
+                    <td><em>Unassigned</em></td>
+                    <td class="num">{{ '{:,.2f}'.format(data.unassigned.mtd) }}</td>
+                    <td class="num">{{ '{:,.1f}'.format(data.unassigned.mtd_pct) }}</td>
+                    <td class="num">{{ '{:,.2f}'.format(data.unassigned.ytd) }}</td>
+                    <td class="num">{{ '{:,.1f}'.format(data.unassigned.ytd_pct) }}</td>
+                </tr>
+                {% endif %}
+                <tr class="total-row">
+                    <td><strong>Total Net Sales</strong></td>
+                    <td class="num"><strong>{{ '{:,.2f}'.format(data.total.mtd) }}</strong></td>
+                    <td class="num"></td>
+                    <td class="num"><strong>{{ '{:,.2f}'.format(data.total.ytd) }}</strong></td>
+                    <td class="num"></td>
+                </tr>
+            </tbody>
+        </table>
+        <p class="reconciliation-note">
+            {% if data.reconciliation.reconciled %}
+            Reconciled to Income Statement Net Sales.
+            {% else %}
+            Variance vs Income Statement Net Sales &mdash;
+            {{ as_of.strftime('%b %Y') }}: {{ '{:,.2f}'.format(data.reconciliation.variance_mtd) }},
+            YTD: {{ '{:,.2f}'.format(data.reconciliation.variance_ytd) }}
+            (revenue not captured on a Sales Invoice or memo).
+            {% endif %}
+        </p>
+    </div>
+</div>
+{% endblock %}

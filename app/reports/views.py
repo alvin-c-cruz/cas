@@ -818,6 +818,43 @@ def _bs_company_branch(branch_id):
     return company, branch_name
 
 
+@reports_bp.route('/reports/sales-by-product-line')
+@login_required
+def sales_by_product_line():
+    from app.reports.product_line import build_sales_by_product_line
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    data = build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    return render_template('reports/sales_by_product_line.html',
+                           data=data, as_of=as_of, mtd_start=mtd_start, ytd_start=ytd_start)
+
+
+@reports_bp.route('/reports/sales-by-product-line/print')
+@login_required
+def sales_by_product_line_print():
+    from app.reports.product_line import build_sales_by_product_line, sales_by_product_line_rows
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    data = build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    company, branch_name = _bs_company_branch(branch_id)
+    return render_template('reports/sales_by_product_line_print.html',
+                           data=data, rows=sales_by_product_line_rows(data), as_of=as_of,
+                           company=company, branch_name=branch_name)
+
+
+@reports_bp.route('/reports/sales-by-product-line/export/excel')
+@login_required
+def sales_by_product_line_export_excel():
+    from app.reports.product_line import build_sales_by_product_line, sales_by_product_line_rows
+    from app.utils.export import export_to_excel
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    data = build_sales_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    rows = [{'line': r['label'], 'mtd': r['mtd'], 'ytd': r['ytd']}
+            for r in sales_by_product_line_rows(data)]
+    headers = ['Product Line', as_of.strftime('%b %Y'), f'YTD {as_of.year}']
+    filename = f'Sales_by_Product_Line_{as_of.isoformat()}.xlsx'
+    return export_to_excel(rows, ['line', 'mtd', 'ytd'], headers, filename,
+                           title='Sales by Product Line')
+
+
 @reports_bp.route('/reports/balance-sheet')
 @login_required
 def balance_sheet():

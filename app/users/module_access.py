@@ -113,6 +113,11 @@ MODULE_REGISTRY = [
     {'key': 'fiscal_year_close', 'label': 'Year-End Close', 'section': 'Financial Reports',
      'area': 'Accounting', 'group': 'Financial Statements',
      'endpoints': ('year_end.index', 'year_end.close', 'year_end.reopen')},
+    {'key': 'sales_by_product_line', 'label': 'Sales by Product Line', 'section': 'Financial Reports',
+     'area': 'Accounting', 'group': 'Financial Statements',
+     'optional': True, 'depends_on': ['products'], 'default_enabled': False,
+     'endpoints': ('reports.sales_by_product_line', 'reports.sales_by_product_line_print',
+                   'reports.sales_by_product_line_export_excel')},
     # ── Maintenance (master data; deny-by-default for staff) ─────────────────
     {'key': 'customers', 'label': 'Customers', 'section': 'Maintenance',
      'area': 'Sales', 'group': 'Masters',
