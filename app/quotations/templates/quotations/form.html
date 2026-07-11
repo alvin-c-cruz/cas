@@ -85,7 +85,6 @@
                             <th style="width: 7%;">UOM</th>
                             <th style="width: 10%; text-align: right;">Unit Price</th>
                             <th style="width: 12%; text-align: right;">Amount</th>
-                            <th style="width: 14%;">VT</th>
                             <th style="width: 5%;"></th>
                         </tr>
                     </thead>
@@ -100,14 +99,6 @@
                     <div>
                         <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Quotation Summary</div>
                         <div class="bill-summary-panel">
-                            <div class="bsr">
-                                <span class="bsr-label">Subtotal</span>
-                                <span id="subtotalDisplay" class="bsr-amt">0.00</span>
-                            </div>
-                            <div class="bsr">
-                                <span class="bsr-label">VAT</span>
-                                <span id="vatDisplay" class="bsr-amt">0.00</span>
-                            </div>
                             <div class="bsr bsr--total">
                                 <span class="bsr-label bsr-label--total">Total</span>
                                 <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
@@ -219,12 +210,7 @@ function addFirstCustomerLine() {
 
 function rebuildCustomerLineDefaults() {
     lineItems.forEach(item => {
-        const lc = lineChoices[item.id];
-        if (!lc) return;
-        if (currentCustomerVatCategory) {
-            lc.vat.setChoiceByValue(currentCustomerVatCategory);
-            item.vat_category = currentCustomerVatCategory;
-        }
+        if (currentCustomerVatCategory) item.vat_category = currentCustomerVatCategory;
     });
     calculateTotals();
 }
@@ -301,42 +287,15 @@ function addLineItem(existingItem) {
         <td><input type="text" id="amt-${id}" class="form-control" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right; font-family:var(--mono);"
                    onfocus="amtFocus(this)" onblur="amtBlur(this, ${id})"></td>
-        <td>
-            <select class="form-control vat-select">
-                <option value="">No VAT</option>
-                ${vatCategories.map(v => {
-                    const lbl = `${escHtml(v.code)} — ${escHtml(v.name)}`;
-                    return `<option value="${escHtml(v.code)}" ${item.vat_category === v.code ? 'selected' : ''}>${lbl}</option>`;
-                }).join('')}
-            </select>
-        </td>
         <td style="text-align:center;">
             <button type="button" class="li-btn-action" onclick="removeLineItem(${id})" title="Remove line">\u{1F5D1}</button>
         </td>
     `;
     document.getElementById('lineItemsBody').appendChild(row);
 
-    const newRow = document.getElementById(`line-${id}`);
-    const vatSel = newRow.querySelector('.vat-select');
-
-    const codeOnlyOpts = {
-        searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
-        allowHTML: false,
-        callbackOnCreateTemplates: function(tmpl) {
-            return {
-                item: function(cfg, data) {
-                    const cn = cfg.classNames;
-                    const code = (data.customProperties && data.customProperties.code) || data.value || '—';
-                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(code))}</div>`);
-                }
-            };
-        }
-    };
-
-    const vatC = new Choices(vatSel, codeOnlyOpts);
-    vatSel.addEventListener('change', () => { updateLineItem(id, 'vat_category', vatSel.value); calculateTotals(); });
-
-    lineChoices[id] = { vat: vatC };
+    // Per-line VAT category is hidden (owner: single header VAT-Treatment control);
+    // it stays on the item object (populated from the customer default) and is
+    // serialized on submit, so the Quote->SO handoff is unchanged.
     lineItems.push(item);
     refreshLineNumbers();
     updateDerivedAmount(id);
@@ -350,7 +309,6 @@ function updateLineItem(id, field, value) {
 }
 
 function removeLineItem(id) {
-    if (lineChoices[id]) { lineChoices[id].vat.destroy(); delete lineChoices[id]; }
     document.getElementById(`line-${id}`).remove();
     lineItems = lineItems.filter(i => i.id !== id);
     refreshLineNumbers();
@@ -424,8 +382,6 @@ function calculateTotals() {
         subtotalC = grossC; vatC = extractedVatC; totalC = grossC;
     }
 
-    document.getElementById('subtotalDisplay').textContent = fmt(subtotalC / 100);
-    document.getElementById('vatDisplay').textContent      = fmt(vatC / 100);
     document.getElementById('totalDisplay').textContent    = fmt(totalC / 100);
 
     validateForm();

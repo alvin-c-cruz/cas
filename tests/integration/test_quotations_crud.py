@@ -100,8 +100,11 @@ def test_print_renders_summary_and_has_no_peso_glyph(client, db_session, admin_u
     q = Quotation.query.filter_by(customer_id=c.id).first()
     body = client.get(f'/quotations/{q.id}/print').get_data(as_text=True)
     assert q.quotation_number in body and 'Widget' in body
-    assert 'VAT-Exclusive' in body           # treatment label
-    assert 'Subtotal' in body and 'VAT' in body and 'Total' in body
+    assert 'VAT-Exclusive' in body           # treatment label (header VAT control kept)
+    # Owner-directed 2026-07-11: the Subtotal + VAT breakdown rows are stripped from
+    # quotations; only the Total remains (BUG-QUOTE-SUBTOTAL-SHOWN).
+    assert 'Subtotal' not in body
+    assert 'Total' in body
     assert '2.0000' in body                   # quantity actually renders
     assert '₱' not in body                    # no peso glyph on the printout
 

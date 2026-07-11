@@ -27,11 +27,11 @@ def _pick_in_choices(page, scope_selector, text):
 
 
 def _totals(page):
+    # Owner-directed 2026-07-11: the Subtotal + VAT rows are stripped from quotations;
+    # only the Total is displayed (the header VAT treatment still drives its math).
     return page.evaluate(
         """() => ({
-            subtotal: document.getElementById('subtotalDisplay').textContent.trim(),
-            vat:      document.getElementById('vatDisplay').textContent.trim(),
-            total:    document.getElementById('totalDisplay').textContent.trim(),
+            total: document.getElementById('totalDisplay').textContent.trim(),
         })"""
     )
 
@@ -68,9 +68,8 @@ def test_customer_unlocks_and_product_autofills(logged_in_sales_page, sales_e2e_
     page.wait_for_function(
         "() => document.getElementById('amt-1') && document.getElementById('amt-1').value.replace(/,/g,'') === '200.00'"
     )
-    # Inclusive (default) treatment: total == subtotal == 200.00, VAT extracted (V0 -> 0).
+    # Inclusive (default) treatment: total == 200.00 (gross == total, VAT extracted).
     t = _totals(page)
-    assert t['subtotal'] == '200.00', t
     assert t['total'] == '200.00', t
     # Submit button enabled once a line has an amount > 0.
     assert page.locator('#submitBtn').is_enabled()
@@ -91,16 +90,15 @@ def test_vat_treatment_switches_totals_math(logged_in_sales_page, sales_e2e_serv
         "() => document.getElementById('amt-1') && document.getElementById('amt-1').value.replace(/,/g,'') === '200.00'"
     )
 
-    # Exclusive: subtotal 200 net, VAT = 200 x 12% = 24, total = 224.
+    # Exclusive adds 12% on top of the 200 net -> total = 224 (inclusive was 200).
+    # Verified via the Total (the only displayed figure now).
     treatment = page.locator('#vat_treatment')
     treatment.select_option('exclusive')
     treatment.dispatch_event('change')
     page.wait_for_function(
-        "() => document.getElementById('vatDisplay').textContent.trim() === '24.00'"
+        "() => document.getElementById('totalDisplay').textContent.trim() === '224.00'"
     )
     t = _totals(page)
-    assert t['subtotal'] == '200.00', t
-    assert t['vat'] == '24.00', t
     assert t['total'] == '224.00', t
 
 
