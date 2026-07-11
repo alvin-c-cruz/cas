@@ -14,6 +14,13 @@ modules, so endpoints are matched per-prefix rather than per-blueprint.
 MODULE_REGISTRY = [
     # ── Transactions (Phase 1) ─────────────────────────────────────────────
     # ── Sales Area (optional — per-company configurable) ───────────────────
+    # Ordered along the Order-to-Cash chain (Quotation -> SO -> DR -> SI -> CR),
+    # memos last as post-sale adjustments. build_sidebar preserves this order within
+    # the Sales/Documents group (owner request 2026-07-11: Quotations first).
+    {'key': 'quotations', 'label': 'Quotations', 'section': 'Transactions',
+     'area': 'Sales', 'group': 'Documents',
+     'optional': True, 'depends_on': ['sales_orders'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('quotations.',)},
     {'key': 'sales_orders', 'label': 'Sales Orders', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
      'optional': True, 'depends_on': ['products'], 'default_enabled': False, 'per_user': True,
@@ -22,10 +29,12 @@ MODULE_REGISTRY = [
      'area': 'Sales', 'group': 'Documents',
      'optional': True, 'depends_on': ['sales_orders'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('delivery_receipts.',)},
-    {'key': 'quotations', 'label': 'Quotations', 'section': 'Transactions',
+    {'key': 'accounts_receivable', 'label': 'Sales Invoices', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
-     'optional': True, 'depends_on': ['sales_orders'], 'default_enabled': False, 'per_user': True,
-     'endpoints': ('quotations.',)},
+     'endpoints': ('sales_invoices.', 'journals.si_journal')},
+    {'key': 'collections', 'label': 'Cash Receipts', 'section': 'Transactions',
+     'area': 'Sales', 'group': 'Documents',
+     'endpoints': ('cash_receipts.', 'journals.cr_journal')},
     {'key': 'credit_memos', 'label': 'Credit Memos', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
      'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
@@ -34,12 +43,6 @@ MODULE_REGISTRY = [
      'area': 'Sales', 'group': 'Documents',
      'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
      'endpoints': ('sales_memos.debit_',)},
-    {'key': 'accounts_receivable', 'label': 'Sales Invoices', 'section': 'Transactions',
-     'area': 'Sales', 'group': 'Documents',
-     'endpoints': ('sales_invoices.', 'journals.si_journal')},
-    {'key': 'collections', 'label': 'Cash Receipts', 'section': 'Transactions',
-     'area': 'Sales', 'group': 'Documents',
-     'endpoints': ('cash_receipts.', 'journals.cr_journal')},
     {'key': 'accounts_payable', 'label': 'Accounts Payable', 'section': 'Transactions',
      'area': 'Purchases', 'group': 'Documents',
      'endpoints': ('accounts_payable.', 'journals.ap_journal')},
