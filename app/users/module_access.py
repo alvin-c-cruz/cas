@@ -40,6 +40,11 @@ MODULE_REGISTRY = [
     {'key': 'collections', 'label': 'Cash Receipts', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
      'endpoints': ('cash_receipts.', 'journals.cr_journal')},
+    # ── Purchases Area (optional — per-company configurable) ───────────────
+    {'key': 'purchase_orders', 'label': 'Purchase Orders', 'section': 'Transactions',
+     'area': 'Purchases', 'group': 'Documents',
+     'optional': True, 'depends_on': ['products'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('purchase_orders.',)},
     {'key': 'accounts_payable', 'label': 'Accounts Payable', 'section': 'Transactions',
      'area': 'Purchases', 'group': 'Documents',
      'endpoints': ('accounts_payable.', 'journals.ap_journal')},

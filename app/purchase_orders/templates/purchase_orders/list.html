@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Purchase Orders{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Purchase Orders</h1>
+</div>
+<div class="card"><div class="card-body">
+  {% if orders %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr><th>PO #</th><th>Date</th><th>Vendor</th><th>Status</th><th class="text-end">Total</th></tr>
+      </thead>
+      <tbody>
+        {% for po in orders %}
+        <tr>
+          <td>{{ po.po_number }}</td>
+          <td>{{ po.order_date.strftime('%b %d, %Y') if po.order_date else '' }}</td>
+          <td>{{ po.vendor_name }}</td>
+          <td>{{ po.status }}</td>
+          <td class="text-end">{{ '{:,.2f}'.format(po.total_amount or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>No purchase orders found.</p>
+  {% endif %}
+</div></div>
+{% endblock %}
