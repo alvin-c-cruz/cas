@@ -757,6 +757,9 @@ def add_approved_email():
         # Permissions to stamp on the approved email — restricted to what the approver
         # may grant (a forged book_* outside editable_keys is dropped server-side).
         book_perms = {k: request.form.get('book_' + k) == '1' for k in editable_keys}
+        # Chief Accountant has full access -> book_permissions are never consulted; store none.
+        if position == 'chief_accountant':
+            book_perms = {}
 
         try:
             if current_user.has_full_access:

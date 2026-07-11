@@ -64,7 +64,7 @@
                the modules they hold (editable_mods is scoped per-approver in the view).
                The registrant is created with whatever is checked; leave blank to set later. #}
             {% if editable_mods %}
-            <div class="form-group">
+            <div class="form-group" id="access-permissions-group">
                 <label class="form-label">Access Permissions</label>
                 <div class="form-hint" style="margin-bottom: 12px;">Select the modules this person can access once registered. Leave blank to set them up later.</div>
                 <label class="checkbox-label" style="font-weight: 600; margin-bottom: 12px; display: inline-flex;">
@@ -127,6 +127,18 @@ document.addEventListener('DOMContentLoaded', function () {
     var selectAll = document.getElementById('book-select-all');
     if (!selectAll) return;
     var boxes = document.querySelectorAll('input[name^="book_"]');
+
+    // Hide the (inert) Access Permissions grid for Chief Accountant — full access
+    // means book_permissions are never consulted (BUG-CA-ACCESS-GRID-POINTLESS).
+    var positionSel = document.getElementById('position');
+    var permGroup = document.getElementById('access-permissions-group');
+    function syncPermVisibility() {
+        if (!positionSel || !permGroup) return;
+        var isCA = positionSel.value === 'chief_accountant';
+        permGroup.style.display = isCA ? 'none' : '';
+        if (isCA) { boxes.forEach(function (b) { b.checked = false; }); if (selectAll) selectAll.checked = false; }
+    }
+    if (positionSel) { positionSel.addEventListener('change', syncPermVisibility); syncPermVisibility(); }
     selectAll.addEventListener('change', function () {
         boxes.forEach(function (b) { b.checked = selectAll.checked; });
     });
