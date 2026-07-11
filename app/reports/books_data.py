@@ -2,7 +2,6 @@
 existing pure data-builder functions. Reads models + calls builders; modifies
 nothing under app/journals/ or the transaction modules."""
 from app.journal_entries.models import JournalEntry
-from app.accounts.models import Account
 from app.journals.ap_journal_data import resolve_period, build_columnar
 from app.journals.si_journal_data import build_columnar_si
 from app.journals.cr_journal_data import build_columnar_cr
@@ -33,8 +32,9 @@ def _gj_entries(branch_id, period):
 def _ap_cd_account_ids():
     """Return (ap_id, wt_id, input_vat_ids) — mirrors _gl_account_ids() in journals/views.py."""
     from app.vat_categories.models import VATCategory
-    ap = Account.query.filter_by(code='20101').first()
-    wt = Account.query.filter_by(code='20301').first()
+    from app.posting.control_accounts import get_control_account
+    ap = get_control_account('ap_trade', required=False)
+    wt = get_control_account('wht_payable', required=False)
     vat_ids = {c.input_vat_account.id for c in VATCategory.query.all() if c.input_vat_account}
     return (ap.id if ap else None, wt.id if wt else None, vat_ids)
 
@@ -42,8 +42,9 @@ def _ap_cd_account_ids():
 def _si_cr_account_ids():
     """Return (ar_id, wht_recv_id, output_vat_ids) — mirrors _si_gl_account_ids() in journals/views.py."""
     from app.sales_vat_categories.models import SalesVATCategory
-    ar = Account.query.filter_by(code='10201').first()
-    wht_recv = Account.query.filter_by(code='10212').first()
+    from app.posting.control_accounts import get_control_account
+    ar = get_control_account('ar_trade', required=False)
+    wht_recv = get_control_account('creditable_wht', required=False)
     vat_ids = {c.output_vat_account.id for c in SalesVATCategory.query.all() if c.output_vat_account}
     return (ar.id if ar else None, wht_recv.id if wht_recv else None, vat_ids)
 
