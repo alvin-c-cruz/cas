@@ -227,6 +227,7 @@ def create_app(config_name=None):
     from app.sales_memos.models import SalesMemo, SalesMemoItem
     from app.backup.models import BackupRun
     from app.employees.models import Employee  # noqa: F401
+    from app.withholding_certificates.models import WithholdingCertificateReceived  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
