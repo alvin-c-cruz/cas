@@ -258,6 +258,19 @@ def expense_account(db_session):
     return account
 
 
+def assign_control_accounts(session, ar='10201', ap='20101',
+                            creditable_wht='10212', wht_payable='20301'):
+    """Assign the 4 posting control-account settings (legacy codes by default).
+    Call AFTER building a test COA so the posting engines resolve their control
+    accounts. Pass custom codes to prove settings-driven resolution on a
+    non-legacy chart."""
+    from app.settings import AppSettings
+    AppSettings.set_setting('ar_trade_account_code', ar, updated_by='test')
+    AppSettings.set_setting('ap_trade_account_code', ap, updated_by='test')
+    AppSettings.set_setting('creditable_wht_account_code', creditable_wht, updated_by='test')
+    AppSettings.set_setting('wht_payable_account_code', wht_payable, updated_by='test')
+
+
 # Authentication Helpers
 
 @pytest.fixture
