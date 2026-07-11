@@ -210,6 +210,12 @@
             </label>
             <div class="form-hint">When on, the Sales Invoice's "Bill delivered DRs" picker can pull
                 several Delivery Receipts into one invoice. When off (default), one DR per invoice.</div>
+            <label class="checkbox-label" style="margin-top:12px;">
+                {{ form.ap_billing_consolidate() }}
+                <span>{{ form.ap_billing_consolidate.label.text }}</span>
+            </label>
+            <div class="form-hint">When on, the Bill's "Bill from Purchase Order / Receiving Report"
+                picker can pull several POs/RRs into one bill. When off (default), one PO or RR per bill.</div>
         </div>
     </div>
 

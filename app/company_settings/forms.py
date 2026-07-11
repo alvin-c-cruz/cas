@@ -152,3 +152,7 @@ class CompanySettingsForm(FlaskForm):
     si_dr_billing_consolidate = BooleanField(
         'Consolidate multiple Delivery Receipts into one Sales Invoice '
         '(off = one DR per invoice)')
+
+    ap_billing_consolidate = BooleanField(
+        'Consolidate multiple Purchase Orders / Receiving Reports into one Bill '
+        '(off = one PO or RR per bill)')

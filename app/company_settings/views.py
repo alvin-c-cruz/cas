@@ -134,6 +134,15 @@ def edit_settings():
                 old_values[_cb_key] = _cb_old
                 new_values[_cb_key] = _cb_new
 
+            # PO/RR->AP consolidated-billing flag (default OFF).
+            _apk = 'ap_billing_consolidate'
+            _ap_old = AppSettings.get_setting(_apk, '0')
+            _ap_new = '1' if form.ap_billing_consolidate.data else '0'
+            if _ap_old != _ap_new:
+                AppSettings.set_setting(_apk, _ap_new, updated_by=current_user.username)
+                old_values[_apk] = _ap_old
+                new_values[_apk] = _ap_new
+
             if new_values:
                 log_audit(
                     module='settings',
@@ -164,6 +173,8 @@ def edit_settings():
             AppSettings.get_setting('accountant_email_self_approval', '0') == '1')
         form.si_dr_billing_consolidate.data = (
             AppSettings.get_setting('si_dr_billing_consolidate', '0') == '1')
+        form.ap_billing_consolidate.data = (
+            AppSettings.get_setting('ap_billing_consolidate', '0') == '1')
 
     return render_template(
         'company_settings/form.html',
