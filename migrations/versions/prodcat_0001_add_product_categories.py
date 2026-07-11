@@ -1,14 +1,14 @@
 """add product_categories master table
 
 Revision ID: prodcat_0001
-Revises: be7db1227c52
+Revises: ca5f99361716
 Create Date: 2026-07-11
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = 'prodcat_0001'
-down_revision = 'be7db1227c52'
+down_revision = 'ca5f99361716'
 branch_labels = None
 depends_on = None
 
