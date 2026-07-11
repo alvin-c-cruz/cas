@@ -28,8 +28,8 @@ flask seed-minimal
 flask db migrate -m "describe change"
 flask db upgrade
 
-# Tests (config in pytest.ini; coverage on by default, HTML report -> htmlcov/)
-pytest                                   # full suite
+# Tests (config in pytest.ini; coverage is NOT in addopts -- run --cov explicitly for htmlcov/)
+pytest                                   # default run: everything EXCEPT e2e (addopts adds -m "not e2e")
 pytest tests/unit/test_user_model.py     # single file
 pytest tests/unit/test_user_model.py::TestUserModel::test_password_hashing  # single test
 pytest -m unit                           # by marker: unit, integration, auth, models, views, security, smoke, performance, slow
@@ -51,7 +51,7 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 
 **Approval workflow.** Sensitive entities (accounts, VAT categories, withholding tax) use a `*ChangeRequest` model (`change_type`, `change_data` as JSON via `get_change_data()`/`set_change_data()`, `status`, `requested_by`, `reviewed_by`, etc.). `can_auto_approve()` returns True only for the sole accountant; admins always go to pending. `can_be_approved_by(username)` blocks self-approval when other reviewers exist. States: `pending → approved | rejected`. **Rejections log `action='reject'`**, not the original change type.
 
-**Role-based access.** Roles: `admin`, `accountant`, `staff`, `viewer`. Enforcement is inline in views (`if current_user.role not in ['accountant', 'admin']: flash(...); redirect(...)`), plus the `admin_required` decorator in `app/users/views.py`. Templates gate write actions with the same role check; staff/viewer get read-only views with an explanatory flash.
+**Role-based access.** Five roles, in ascending privilege (`ROLE_LEVEL`, `app/utils/authz.py`): `viewer` < `staff` < `accountant` < `chief_accountant` < `admin`. `chief_accountant` is "admin minus the Admin panel". Enforcement is inline in views (`if current_user.role not in ['accountant', 'admin']: flash(...); redirect(...)`), plus the canonical decorators `admin_panel_required` (admin only) and `full_access_required` (admin or chief_accountant) in `app/utils/authz.py` — there is no `admin_required` decorator. Templates gate write actions with the same role check; staff/viewer get read-only views with an explanatory flash.
 
 **Time.** Always use Philippine Standard Time helpers from `app.utils` (`ph_now`, `ph_datetime`, `utc_to_pht`, `format_ph_datetime`) — never naive `datetime.now()`.
 
@@ -61,7 +61,7 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 
 **Branch session validation.** A `before_request` hook in `create_app` validates `session['selected_branch_id']` on every request: if the stored branch is inaccessible, it is cleared and the user is redirected to the branch picker (`users.select_branch`). If the user has exactly one accessible branch it is auto-selected. Exempt endpoints: `users.login`, `users.logout`, `users.register`, `users.select_branch`, `static`. This means any view that assumes a valid branch in session is already guarded — do not duplicate the check.
 
-**Branch access by role.** **Only admins** access all active branches. Accountants, staff, and viewers access only their explicitly assigned branches (many-to-many `User.branches`) — accountants were branch-scoped on 2026-06-27 (previously they saw all). Use `get_accessible_branches(current_user)` from `app/users/utils.py` whenever building branch selectors or scoping queries; never assume all branches are visible. A non-admin user must have ≥1 assigned branch (enforced in `UserForm`), or the `before_request` gate force-logs-them-out at the branch picker.
+**Branch access by role.** **Full-access users (admin OR chief_accountant, `user.has_full_access`)** access all active branches. Accountants, staff, and viewers access only their explicitly assigned branches (many-to-many `User.branches`) — accountants were branch-scoped on 2026-06-27 (previously they saw all). Use `get_accessible_branches(current_user)` from `app/users/utils.py` whenever building branch selectors or scoping queries; never assume all branches are visible. A non-admin user must have ≥1 assigned branch (enforced in `UserForm`), or the `before_request` gate force-logs-them-out at the branch picker.
 
 **VAT mechanics (Philippine BIR).** Line amounts in Sales Invoices and Accounts Payable are **VAT-inclusive** — VAT is *extracted* from the amount, not added on top. The `vat_amount` is derived from `subtotal` using the line's VAT category percentage. `vat_override` / `wt_override` flags allow manual adjustment when the auto-calc doesn't match a counterparty agreement.
 
@@ -107,7 +107,7 @@ Production target is PythonAnywhere via `wsgi.py` (set `PYTHONANYWHERE_USERNAME`
 
 ## Gotchas
 
-- Global error handlers are currently **disabled** in `create_app` (bottom of the file) to surface full tracebacks during testing — re-enable before production.
+- Global error handlers (404/403/500/`Exception`) are registered in `create_app` behind `if not app.debug:` — active in production, suppressed under dev/testing (DEBUG on) so tracebacks still surface; the 429 handler registers in all environments. `log_error_to_db` masks any form field whose name contains "password". The production handlers are exercised under `TestingErrorsConfig` (`tests/integration/test_error_handlers.py`); the plain `testing` config never reaches them.
 - `app/templates/base.html` has an inline `<style>` block that **duplicates** rules from `app/static/css/style.css` (with hardcoded values, not design tokens) and it loads **after** style.css — so its duplicates win the cascade and can silently override the real rule (this is what hid the dashboard hero gradient, fixed in `e7e1fde`). Before adding or editing a selector in that inline block, grep `style.css` for it and edit there using design tokens.
 - Static assets are linked with a **manual `?v=N` query string, not a content hash**. After editing any file under `app/static/`, grep all templates for its filename and **bump the `?v=N` on every `<link>`/`<script>`** that loads it (a shared asset is linked from multiple forms — bump them all). A file linked with no `?v=` caches indefinitely; add one. If a static-asset change "isn't showing" in the browser or Playwright, suspect the stale cache **before** re-editing already-correct code.
 - **SQLAlchemy 2.0 spellings (the suite is at 0 warnings — keep it there).** Use `db.session.get(Model, id)` (return-or-None) and `db.get_or_404(Model, id)` (return-or-abort-404). NEVER `Model.query.get(id)` / `Model.query.get_or_404(id)` — both emit `LegacyAPIWarning` and were fully swept out on 2026-06-27 (1719 → 0 warnings). Reintroducing either resurfaces the warning floor. When chasing any deprecation warning, grep **all** `.query.<legacy>(` sibling wrappers, not just the one named in the warning text (the internal `flask_sqlalchemy/query.py` frame hides the real caller).
