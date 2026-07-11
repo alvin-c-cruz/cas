@@ -1,4 +1,4 @@
-import json, pytest
+import json, re, pytest
 from datetime import date
 from decimal import Decimal
 from app import db
@@ -120,14 +120,48 @@ def test_edit_draft_updates_quantities(client, db_session, admin_user, main_bran
         'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '4'}])},
         follow_redirects=True)
     dr = DeliveryReceipt.query.first()
-    client.post(f'/delivery-receipts/{dr.id}/edit', data={
+    # Drive the REAL browser path: take row_version from the rendered edit form,
+    # not dr.row_version directly. Posting the DB value bypasses the template render
+    # and would pass even if the form omitted the token (BUG-DR-EDIT-FALSE-CONFLICT).
+    edit_page = client.get(f'/delivery-receipts/{dr.id}/edit')
+    m = re.search(rb'name="row_version"[^>]*value="(\d+)"', edit_page.data)
+    assert m, 'edit form did not render a row_version token'
+    resp = client.post(f'/delivery-receipts/{dr.id}/edit', data={
         'sales_order_id': so.id, 'delivery_date': '2026-07-10',
-        'row_version': dr.row_version,
+        'row_version': m.group(1).decode(),
         'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '6'}])},
         follow_redirects=True)
+    assert b'changed by another user' not in resp.data
     db_session.refresh(dr)
     assert dr.line_items[0].delivered_quantity == Decimal('6')
     assert dr.delivery_date == date(2026, 7, 10)
+
+
+def test_edit_form_renders_row_version_field(client, db_session, admin_user, main_branch):
+    """Regression (BUG-DR-EDIT-FALSE-CONFLICT): the edit form MUST emit the
+    `row_version` hidden input, or the lost-update guard false-conflicts every save.
+
+    The DR form renders csrf-only (`{{ form.csrf_token }}`, the BUG-DR-DUP-LINES fix),
+    which does NOT auto-emit `RowVersionFormMixin.row_version`. `submitted_version()`
+    reads the token from the raw POST body only, so a form that never renders the field
+    posts no token -> `claim_version(dr.id, None)` returns False -> "changed by another
+    user" on every real-browser draft-DR edit. pytest missed it because the edit tests
+    POST `row_version` directly, bypassing the template render."""
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09',
+        'lines': json.dumps([{'sales_order_item_id': so.line_items[0].id,
+                              'delivered_quantity': '4'}])},
+        follow_redirects=True)
+    dr = DeliveryReceipt.query.first()
+    resp = client.get(f'/delivery-receipts/{dr.id}/edit')
+    assert resp.status_code == 200
+    rv_count = resp.data.count(b'name="row_version"')
+    assert rv_count == 1, f'expected exactly one name="row_version" input, found {rv_count}'
+    # The lines-field-once invariant (BUG-DR-DUP-LINES) must still hold on the edit form.
+    assert resp.data.count(b'name="lines"') == 1
 
 
 def test_print_renders_lines_and_has_no_currency_glyph(client, db_session, admin_user, main_branch):

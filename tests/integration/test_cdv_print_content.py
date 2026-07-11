@@ -74,8 +74,10 @@ class TestCdvPrintContent:
         login(client)
         html = client.get(f'/cash-disbursements/{_posted_cdv.id}/print').data.decode()
         assert 'onclick="window.print()"' in html
-        assert f'href="/cash-disbursements/{_posted_cdv.id}"' in html   # Close -> view
-        assert '>Close</a>' in html
+        # Close now closes the tab (f9fc814 / BUG-PRINT-CLOSE-NEWTAB-PARITY), no longer a
+        # back-to-view anchor. Retargeted (not loosened) to the current markup.
+        assert 'onclick="window.close()"' in html   # Close -> closes the tab
+        assert '>Close</button>' in html
 
     def test_renders_company_name(self, client, db_session, admin_user, _posted_cdv):
         AppSettings.set_setting('company_name', 'Mabuhay Trading Inc.', 'system')

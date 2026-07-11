@@ -142,6 +142,46 @@ def test_customer_quick_add_subactions_exempt_for_staff(client, db_session, bran
     assert client.get('/customers/create').status_code == 200             # inline quick-add reachable
 
 
+def test_product_quick_add_exempt_and_allows_staff(client, db_session, branch):
+    """Owner directive 2026-07-11 (full parity with the customer quick-add): a quotation-delegated
+    staff WITHOUT the Products module must still inline-add a product from the quote line grid.
+    Two barriers must fall together — the module guard must EXEMPT products.create, and its role
+    guard (previously accountant/full-access only, stricter than customers.create) must admit a
+    staff delegate. Currently the role guard flash-redirects staff (302), so this is RED."""
+    from app.products.models import Product
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'quotations': True}, username='staffq1')
+    _login(client, staff, branch)
+    assert client.get('/products/create').status_code == 200             # reachable (exempt + role admits staff)
+    resp = client.post('/products/create',
+                       data={'code': 'P001', 'name': 'Widget', 'is_active': '1'},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['ok'] is True
+    assert body['product']['label'] == 'P001 — Widget'
+    assert Product.query.filter_by(code='P001').first() is not None
+
+
+def test_product_quick_add_free_rides_sales_invoices_delegate(client, db_session, branch):
+    """The products.create loosening (role guard + EXEMPT_ENDPOINTS) is GLOBAL, not
+    quotation-scoped, so it also enables Sales Invoices' already-shipped product quick-add for a
+    delegate holding ONLY the sales_invoices module (not products). This pins that deliberate
+    free-ride ([[feedback-ripple-effects]]) so a future guard-tightening can't silently re-break
+    the SI form. Pairs with test_viewer_cannot_create_product (the lower bound)."""
+    from app.products.models import Product
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'sales_invoices': True}, username='staffsi1')
+    _login(client, staff, branch)
+    assert client.get('/products/create').status_code == 200
+    resp = client.post('/products/create',
+                       data={'code': 'SIP1', 'name': 'SI Product', 'is_active': '1'},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 200
+    assert resp.get_json()['ok'] is True
+    assert Product.query.filter_by(code='SIP1').first() is not None
+
+
 def test_admin_reaches_ungranted_module(client, db_session, branch):
     admin = _make_user(db_session, branch, 'admin', books={}, username='admin1')
     _login(client, admin, branch)

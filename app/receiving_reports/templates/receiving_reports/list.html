@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Receiving Reports{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Receiving Reports</h1>
+  <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Purchase Orders</a>
+</div>
+<div class="card"><div class="card-body">
+  {% if receipts %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr><th>RR #</th><th>Date</th><th>Vendor</th><th>PO #</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for rr in receipts %}
+        <tr>
+          <td><a href="{{ url_for('receiving_reports.view', id=rr.id) }}">{{ rr.rr_number }}</a></td>
+          <td>{{ rr.receipt_date.strftime('%b %d, %Y') if rr.receipt_date else '' }}</td>
+          <td>{{ rr.vendor_name }}</td>
+          <td>{{ rr.purchase_order.po_number if rr.purchase_order else '' }}</td>
+          <td>{{ rr.status }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>No receiving reports found.</p>
+  {% endif %}
+</div></div>
+{% endblock %}

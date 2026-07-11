@@ -12,6 +12,9 @@
      rendered explicitly below (id="lines-json") for the JS to populate. Emitting both makes
      a duplicate name="lines" and Flask reads the empty first copy (BUG-DR-DUP-LINES). #}
   {{ form.csrf_token }}
+  {# Lost-update token -- MUST be posted; hidden_tag() is avoided here on purpose, so
+     render it explicitly or every draft-DR edit false-conflicts (BUG-DR-EDIT-FALSE-CONFLICT). #}
+  {{ form.row_version }}
 
   <div class="card"><div class="card-body">
     <div class="form-row">

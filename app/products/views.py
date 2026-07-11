@@ -37,7 +37,11 @@ def list():
 @products_bp.route('/products/create', methods=['GET', 'POST'])
 @login_required
 def create():
-    if not (current_user.role == 'accountant' or current_user.has_full_access):
+    # staff-or-above (mirrors customers.create): a quotation-delegated staff must be able to
+    # inline-add a product from the quote line grid without holding the Products module
+    # (BUG-QUOTE-DELEGATE-ADD-PRODUCT, owner directive 2026-07-11 full-parity with customers).
+    # viewer stays blocked. products.create is EXEMPT_ENDPOINTS so the module gate lets it through.
+    if current_user.role not in ('staff', 'accountant', 'chief_accountant', 'admin'):
         flash('You do not have permission to manage products.', 'error')
         return redirect(url_for('products.list'))
     form = ProductForm()

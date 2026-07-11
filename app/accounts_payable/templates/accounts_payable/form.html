@@ -63,6 +63,22 @@
                 </div>
             </div>
 
+            {# ── Bill from Purchase Order / Receiving Report (Phase 3; shown by ap_po_billing.js
+                once a vendor is chosen). Wholly gated: absent unless a purchases module is on,
+                so a client without them (e.g. Zhiyuan) sees the identical AP form. ── #}
+            {% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}
+            <div id="poBillingSection" class="card" style="display:none; margin-top:16px;">
+                <div class="card-body">
+                    <h3>Bill from Purchase Order / Receiving Report</h3>
+                    <p id="poBillingEmpty" class="form-hint" style="display:none;">No unbilled Purchase Orders or Receiving Reports for this vendor.</p>
+                    <div id="poBillingList"></div>
+                    <div id="poBillingLocked" class="form-hint" style="display:none; margin-top:6px;">Consolidation is off — bill one Purchase Order or Receiving Report per bill. Enable it in Company Settings to bill several at once.</div>
+                </div>
+            </div>
+            <input type="hidden" name="source_po_ids" id="sourcePoIds" value="[]">
+            <input type="hidden" name="source_rr_ids" id="sourceRrIds" value="[]">
+            {% endif %}
+
             <!-- ③ Line Items Locked Placeholder -->
             <div id="lineItemsLocked" class="line-items-locked{% if ap %} line-items-locked--hidden{% endif %}">
                 <div style="font-size: 28px; margin-bottom: 10px;">🔒</div>
@@ -337,6 +353,7 @@
 <script src="{{ url_for('static', filename='vendor-quick-add.js') }}?v=3"></script>
 {% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
 {% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
+{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=1"></script>{% endif %}
 <script>
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts = {{ all_accounts | tojson }};

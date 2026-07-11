@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Purchase Request {{ pr.pr_number }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111; margin: 24px; font-size: 12px; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+    td.num, th.num { text-align: right; }
+    .meta div { margin: 2px 0; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom:12px">
+    <button onclick="window.print()">Print</button>
+    <button onclick="window.close()">Close</button>
+  </div>
+  {% if company.name %}<div><strong>{{ company.name }}</strong></div>{% endif %}
+  {% if company.address %}<div>{{ company.address }}</div>{% endif %}
+
+  <h1>PURCHASE REQUEST</h1>
+  <div class="meta">
+    <div><strong>PR #:</strong> {{ pr.pr_number }}</div>
+    <div><strong>Date:</strong> {{ pr.request_date.strftime('%B %d, %Y') if pr.request_date else '' }}</div>
+    {% if pr.reason %}<div><strong>Reason:</strong> {{ pr.reason }}</div>{% endif %}
+  </div>
+
+  <table>
+    <thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th>UoM</th></tr></thead>
+    <tbody>
+      {% for li in pr.line_items %}
+      <tr>
+        <td>{{ li.line_number }}</td>
+        <td>{{ li.product.name if li.product else li.description }}</td>
+        <td class="num">{{ '{:,.4f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
+        <td>{{ li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="meta" style="margin-top:24px">Printed {{ printed_at.strftime('%b %d, %Y %I:%M %p') }}</div>
+</body>
+</html>

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Receiving Report {{ rr.rr_number }}{% endblock %}
+{% block content %}
+{% set can_write = current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+{% set can_approve = current_user.role == 'accountant' or current_user.has_full_access %}
+
+<div class="page-header">
+  <h1>Receiving Report {{ rr.rr_number }}</h1>
+  <div>
+    <a href="{{ url_for('receiving_reports.list_rr') }}" class="btn btn-secondary btn-sm">Back</a>
+    <a href="{{ url_for('receiving_reports.print_rr', id=rr.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    {% if can_write and rr.status == 'draft' %}
+    <a href="{{ url_for('receiving_reports.edit', id=rr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card"><div class="card-body">
+  <div class="detail-grid">
+    <div><strong>Vendor:</strong> {{ rr.vendor_name }}</div>
+    <div><strong>Status:</strong> <span class="badge">{{ rr.status }}</span></div>
+    <div><strong>Purchase Order:</strong>
+      {% if rr.purchase_order %}<a href="{{ url_for('purchase_orders.view', id=rr.purchase_order_id) }}">{{ rr.purchase_order.po_number }}</a>{% endif %}</div>
+    <div><strong>Receipt Date:</strong> {{ rr.receipt_date.strftime('%b %d, %Y') if rr.receipt_date else '' }}</div>
+  </div>
+  {% if rr.remarks %}<p><strong>Remarks:</strong> {{ rr.remarks }}</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h3>Received Items</h3>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr><th>#</th><th>Item</th><th class="text-end">Ordered</th><th class="text-end">Received</th></tr>
+      </thead>
+      <tbody>
+        {% for li in rr.line_items %}
+        {% set d = li.to_dict() %}
+        <tr>
+          <td>{{ li.line_number }}</td>
+          <td>{{ d.product_name or d.description or '' }}</td>
+          <td class="text-end">{{ '{:,.4f}'.format(d.ordered_quantity) if d.ordered_quantity is not none else '-' }}</td>
+          <td class="text-end">{{ '{:,.4f}'.format(li.received_quantity) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+
+{% if can_approve %}
+<div class="card"><div class="card-body">
+  {% if rr.status == 'draft' %}
+  <form method="POST" action="{{ url_for('receiving_reports.approve', id=rr.id) }}" style="display:inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-primary">Approve</button>
+  </form>
+  {% endif %}
+  {% if rr.status not in ['cancelled', 'billed'] %}
+  <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel RR</button>
+  {% endif %}
+</div></div>
+
+<div id="cancelModal" class="modal-overlay" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
+  <div class="card" style="max-width:480px;width:90%">
+    <div class="card-body">
+      <h3>Cancel Receiving Report</h3>
+      <form method="POST" action="{{ url_for('receiving_reports.cancel', id=rr.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+          <label>Reason (at least 10 characters)</label>
+          <textarea name="cancel_reason" class="form-control" rows="3" required minlength="10"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-danger">Confirm Cancel</button>
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">Close</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

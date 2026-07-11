@@ -1032,6 +1032,9 @@
               {%- elif key == 'debit_memos' and ep.startswith('sales_memos.debit_') -%}active
               {%- elif key == 'accounts_receivable' and ep.startswith('sales_invoices.') -%}active
               {%- elif key == 'collections' and ep.startswith('cash_receipts.') -%}active
+              {%- elif key == 'purchase_requests' and ep.startswith('purchase_requests.') -%}active
+              {%- elif key == 'purchase_orders' and ep.startswith('purchase_orders.') -%}active
+              {%- elif key == 'receiving_reports' and ep.startswith('receiving_reports.') -%}active
               {%- elif key == 'accounts_payable' and ep.startswith('accounts_payable.') -%}active
               {%- elif key == 'payments' and ep.startswith('cash_disbursements.') -%}active
               {%- elif key == 'journal_entries' and (ep == 'journals.voucher' or (ep.startswith('journal_entries.') and ep != 'journal_entries.list_entries')) -%}active
@@ -1067,6 +1070,9 @@
                 'debit_memos':        'sales_memos.debit_list',
                 'accounts_receivable':'sales_invoices.list_invoices',
                 'collections':        'cash_receipts.list_crvs',
+                'purchase_requests':  'purchase_requests.list_pr',
+                'purchase_orders':    'purchase_orders.list_po',
+                'receiving_reports':  'receiving_reports.list_rr',
                 'accounts_payable':   'accounts_payable.list_ap',
                 'payments':           'cash_disbursements.list_cdvs',
                 'journal_entries':    'journals.voucher',
@@ -1096,6 +1102,9 @@
                 'debit_memos':        '↪️',
                 'accounts_receivable':'📄',
                 'collections':        '💰',
+                'purchase_requests':  '📝',
+                'purchase_orders':    '🛒',
+                'receiving_reports':  '📥',
                 'accounts_payable':   '📋',
                 'payments':           '💸',
                 'journal_entries':    '📓',
@@ -1168,6 +1177,9 @@
                             {%- if m.key == 'debit_memos' %}<span class="nav-subtext">(Surcharge)</span>{% endif %}
                             {%- if m.key == 'accounts_receivable' %}<span class="nav-subtext">(Bill Client)</span>{% endif %}
                             {%- if m.key == 'collections' %}<span class="nav-subtext">(Collection)</span>{% endif %}
+                            {%- if m.key == 'purchase_requests' %}<span class="nav-subtext">(Requisition)</span>{% endif %}
+                            {%- if m.key == 'purchase_orders' %}<span class="nav-subtext">(Order to Vendor)</span>{% endif %}
+                            {%- if m.key == 'receiving_reports' %}<span class="nav-subtext">(Receive Goods)</span>{% endif %}
                             {%- if m.key == 'accounts_payable' %}<span class="nav-subtext">(Enter Bill)</span>{% endif %}
                             {%- if m.key == 'payments' %}<span class="nav-subtext">(Pay Bill)</span>{% endif %}
                         </span>
