@@ -1,4 +1,4 @@
-import json, pytest
+import json, re, pytest
 from datetime import date
 from decimal import Decimal
 from app import db
@@ -120,11 +120,18 @@ def test_edit_draft_updates_quantities(client, db_session, admin_user, main_bran
         'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '4'}])},
         follow_redirects=True)
     dr = DeliveryReceipt.query.first()
-    client.post(f'/delivery-receipts/{dr.id}/edit', data={
+    # Drive the REAL browser path: take row_version from the rendered edit form,
+    # not dr.row_version directly. Posting the DB value bypasses the template render
+    # and would pass even if the form omitted the token (BUG-DR-EDIT-FALSE-CONFLICT).
+    edit_page = client.get(f'/delivery-receipts/{dr.id}/edit')
+    m = re.search(rb'name="row_version"[^>]*value="(\d+)"', edit_page.data)
+    assert m, 'edit form did not render a row_version token'
+    resp = client.post(f'/delivery-receipts/{dr.id}/edit', data={
         'sales_order_id': so.id, 'delivery_date': '2026-07-10',
-        'row_version': dr.row_version,
+        'row_version': m.group(1).decode(),
         'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '6'}])},
         follow_redirects=True)
+    assert b'changed by another user' not in resp.data
     db_session.refresh(dr)
     assert dr.line_items[0].delivered_quantity == Decimal('6')
     assert dr.delivery_date == date(2026, 7, 10)
