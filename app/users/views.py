@@ -419,11 +419,17 @@ def edit_user(id):
                 user.set_password(form.password.data)
                 password_changed = True
 
-            # Update book permissions from form (driven by the module registry)
-            from app.users.module_access import MODULE_REGISTRY
+            # Update book permissions from form. Iterate all_permission_keys()
+            # (not optional OR per_user) -- the SAME grantable set the edit grid
+            # renders and that add_approved_email/edit_staff use. The old
+            # `not optional` filter dropped the per_user optionals (sales_orders,
+            # delivery_receipts, quotations, credit_memos, debit_memos), so a
+            # plain `not optional` build over the replacing set_book_permissions
+            # silently wiped them on every save. See BUG-EDITUSER-DROPS-OPTIONAL-PERMS.
+            from app.users.module_access import all_permission_keys
             book_permissions = {
-                m['key']: request.form.get('book_' + m['key']) == '1'
-                for m in MODULE_REGISTRY if not m.get('optional')
+                key: request.form.get('book_' + key) == '1'
+                for key in all_permission_keys()
             }
             user.set_book_permissions(book_permissions)
 
