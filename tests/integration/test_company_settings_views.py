@@ -299,6 +299,13 @@ class TestSettingsTabs:
         resp = client.get('/settings')
         assert b'Modules / Package' not in resp.data
 
+    def test_settings_page_has_tab_persistence_script(self, client, db_session, admin_user, main_branch):
+        """A settings-only script restores the active tab across the 3 forms' reloads."""
+        login(client)
+        resp = client.get('/settings')
+        assert b'cas.settingsTab' in resp.data          # sessionStorage key
+        assert b'sessionStorage' in resp.data
+
 
 class TestPrintAccessSettings:
     def test_sv_print_access_saved_when_posted(

@@ -310,4 +310,25 @@
     {% include "company_settings/_modules_table.html" %}
   </div></div>
 </div>
+
+<script>
+// Settings-only: remember the active tab across the Save / Logo / module-toggle reloads.
+(function () {
+  var GROUP = 'settings', KEY = 'cas.settingsTab';
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('.tab[data-tab-group="' + GROUP + '"][data-tab]');
+    if (t) { try { sessionStorage.setItem(KEY, t.dataset.tab); } catch (_) {} }
+  });
+  document.addEventListener('DOMContentLoaded', function () {
+    var saved; try { saved = sessionStorage.getItem(KEY); } catch (_) { saved = null; }
+    if (!saved) return;
+    var tab = document.querySelector('.tab[data-tab-group="' + GROUP + '"][data-tab="' + saved + '"]');
+    var panel = document.getElementById(GROUP + '-' + saved);
+    if (!tab || !panel) return;
+    document.querySelectorAll('[data-tab-group="' + GROUP + '"]').forEach(function (x) { x.classList.remove('active'); });
+    document.querySelectorAll('[data-tab-panel="' + GROUP + '"]').forEach(function (p) { p.classList.remove('active'); });
+    tab.classList.add('active'); panel.classList.add('active');
+  });
+})();
+</script>
 {% endblock %}
