@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_field %}
+
+{% block title %}{{ 'Edit Certificate' if certificate else 'Create Certificate' }}{% endblock %}
+{% block page_title %}{{ 'Edit Certificate' if certificate else 'Record Certificate Received' }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}?v=1">
+<div class="card"><div class="card-body">
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        <div class="form-row-2">
+            {{ render_field(form.branch_id, required=True) }}
+            {{ render_field(form.customer_id, required=True) }}
+        </div>
+        <div class="form-row-2">
+            {{ render_field(form.certificate_number, required=True) }}
+            {{ render_field(form.date_received, required=True) }}
+        </div>
+        <div class="form-row-2">
+            {{ render_field(form.period_from, required=True) }}
+            {{ render_field(form.period_to, required=True) }}
+        </div>
+        <div class="form-row-2">
+            {{ render_field(form.wt_id, required=True) }}
+            {{ render_field(form.income_payment, required=True) }}
+        </div>
+        <div class="form-row-2">
+            {{ render_field(form.tax_withheld, required=True) }}
+        </div>
+        <div class="form-group">
+            {{ render_field(form.notes) }}
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">{{ 'Update' if certificate else 'Create' }}</button>
+            <a href="{{ url_for('withholding_certificates.list_certificates') }}" class="btn btn-secondary">Back</a>
+        </div>
+    </form>
+</div></div>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}?v=1"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    ['branch_id', 'customer_id', 'wt_id'].forEach(function(id) {
+        const sel = document.getElementById(id);
+        if (sel && window.Choices) {
+            new Choices(sel, {searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false, searchResultLimit: 100});
+        }
+    });
+});
+</script>
+{% endblock %}

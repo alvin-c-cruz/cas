@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Withholding Certificates Received{% endblock %}
+{% block page_title %}Withholding Certificates Received (BIR 2307){% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <p style="color:var(--text-2);margin:0;">Register of creditable-tax certificates received from customers. The SAWT is filed from this register. Amounts are in Philippine pesos.</p>
+    <div class="page-actions" style="display:flex;gap:8px;">
+        <a href="{{ url_for('withholding_certificates.create_certificate') }}" class="btn btn-primary">+ Create Certificate</a>
+    </div>
+</div>
+
+<div class="card"><div class="card-body">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>CERT #</th><th>CUSTOMER</th><th>ATC</th><th>PERIOD</th>
+                <th>DATE RECEIVED</th><th style="text-align:right;">INCOME</th>
+                <th style="text-align:right;">TAX WITHHELD</th><th>BRANCH</th><th>ACTIONS</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in certificates %}
+            <tr>
+                <td><a href="{{ url_for('withholding_certificates.edit_certificate', cert_id=c.id) }}"><strong>{{ c.certificate_number }}</strong></a></td>
+                <td>{{ c.customer.name if c.customer else '—' }}</td>
+                <td>{{ c.withholding_tax.code if c.withholding_tax else '—' }}</td>
+                <td>{{ c.period_from.strftime('%Y-%m-%d') }} to {{ c.period_to.strftime('%Y-%m-%d') }}</td>
+                <td>{{ c.date_received.strftime('%Y-%m-%d') }}</td>
+                <td style="text-align:right;">{{ '{:,.2f}'.format(c.income_payment) }}</td>
+                <td style="text-align:right;">{{ '{:,.2f}'.format(c.tax_withheld) }}</td>
+                <td>{{ c.branch.code if c.branch else '—' }}</td>
+                <td>
+                    <div class="action-buttons" style="display:flex;gap:8px;align-items:center;">
+                        <a href="{{ url_for('withholding_certificates.edit_certificate', cert_id=c.id) }}" class="btn-action btn-action-edit">Edit</a>
+                        <button type="button" class="btn-action btn-action-delete"
+                                onclick="document.getElementById('delete-modal-{{ c.id }}').style.display='flex'">Delete</button>
+                    </div>
+                    <div id="delete-modal-{{ c.id }}"
+                         style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+                        <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2);">
+                            <h3 style="margin:0 0 12px 0;">Delete Certificate</h3>
+                            <p style="color:var(--text-2);margin-bottom:24px;">
+                                Delete certificate <strong>{{ c.certificate_number }}</strong>? This cannot be undone.
+                            </p>
+                            <div style="display:flex;gap:12px;justify-content:flex-end;">
+                                <button type="button" class="btn btn-secondary btn-sm"
+                                        onclick="document.getElementById('delete-modal-{{ c.id }}').style.display='none'">Cancel</button>
+                                <form method="POST" action="{{ url_for('withholding_certificates.delete_certificate', cert_id=c.id) }}" style="display:inline;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if not certificates %}
+    <div class="empty-state"><p>No certificates found.</p></div>
+    {% endif %}
+</div></div>
+{% endblock %}
