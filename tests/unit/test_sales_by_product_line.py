@@ -120,13 +120,31 @@ class TestSalesByProductLine:
         cust = _customer()
         bev = _category('BEV', 'Beverages')
         cola = _product('COLA', bev)
-        # draft — excluded
-        _si_line(_invoice(cust, date(2026, 5, 10), status='draft', number='D1'), cola, 112, 12)
-        # out of range — excluded
-        _si_line(_invoice(cust, date(2026, 4, 10), number='O1'), cola, 112, 12)
-        # other branch — excluded when filtering branch 1
+        # draft, branch 1, in-range date — excluded ONLY by the status filter
+        _si_line(_invoice(cust, date(2026, 5, 10), branch_id=1, status='draft', number='D1'), cola, 112, 12)
+        # posted, branch 1, out-of-range date — excluded ONLY by the date filter
+        _si_line(_invoice(cust, date(2026, 4, 10), branch_id=1, number='O1'), cola, 112, 12)
+        # posted, in-range date, other branch — excluded ONLY by the branch filter
         _si_line(_invoice(cust, date(2026, 5, 10), branch_id=2, number='B2'), cola, 112, 12)
         # in scope, branch 1
         _si_line(_invoice(cust, date(2026, 5, 10), branch_id=1, number='OK'), cola, 112, 12)
         out = generate_sales_by_product_line(date(2026, 5, 1), date(2026, 5, 31), branch_id=1)
         assert out['total'] == 100.0
+
+    def test_memo_status_and_date_filters(self, db_session):
+        cust = _customer()
+        bev = _category('BEV', 'Beverages')
+        cola = _product('COLA', bev)
+        inv = _invoice(cust, date(2026, 5, 10), branch_id=1, number='SI-1')
+        line = _si_line(inv, cola, 112, 12)  # +100
+        # posted, in-range credit memo, branch 1 — included (-20)
+        _memo(inv, line, cust, date(2026, 5, 12), 'credit', cola, 22.4, 2.4,
+              branch_id=1, status='posted', number='CM-OK')
+        # draft credit memo, branch 1, in-range date — excluded ONLY by the status filter
+        _memo(inv, line, cust, date(2026, 5, 13), 'credit', cola, 33.6, 3.6,
+              branch_id=1, status='draft', number='CM-DRAFT')
+        # posted credit memo, branch 1, out-of-range date — excluded ONLY by the date filter
+        _memo(inv, line, cust, date(2026, 4, 15), 'credit', cola, 44.8, 4.8,
+              branch_id=1, status='posted', number='CM-OOR')
+        out = generate_sales_by_product_line(date(2026, 5, 1), date(2026, 5, 31), branch_id=1)
+        assert out['total'] == 80.0
