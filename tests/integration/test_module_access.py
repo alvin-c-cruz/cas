@@ -163,6 +163,25 @@ def test_product_quick_add_exempt_and_allows_staff(client, db_session, branch):
     assert Product.query.filter_by(code='P001').first() is not None
 
 
+def test_product_quick_add_free_rides_sales_invoices_delegate(client, db_session, branch):
+    """The products.create loosening (role guard + EXEMPT_ENDPOINTS) is GLOBAL, not
+    quotation-scoped, so it also enables Sales Invoices' already-shipped product quick-add for a
+    delegate holding ONLY the sales_invoices module (not products). This pins that deliberate
+    free-ride ([[feedback-ripple-effects]]) so a future guard-tightening can't silently re-break
+    the SI form. Pairs with test_viewer_cannot_create_product (the lower bound)."""
+    from app.products.models import Product
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'sales_invoices': True}, username='staffsi1')
+    _login(client, staff, branch)
+    assert client.get('/products/create').status_code == 200
+    resp = client.post('/products/create',
+                       data={'code': 'SIP1', 'name': 'SI Product', 'is_active': '1'},
+                       headers={'X-Requested-With': 'XMLHttpRequest'})
+    assert resp.status_code == 200
+    assert resp.get_json()['ok'] is True
+    assert Product.query.filter_by(code='SIP1').first() is not None
+
+
 def test_admin_reaches_ungranted_module(client, db_session, branch):
     admin = _make_user(db_session, branch, 'admin', books={}, username='admin1')
     _login(client, admin, branch)
