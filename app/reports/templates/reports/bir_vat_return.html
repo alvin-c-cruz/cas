@@ -40,7 +40,52 @@
         <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(data.new_carryover) }}</td></tr>
   </table>
 
+  {% set rec = data.reconciliation %}
+  {% if not rec.in_balance %}
+  <div style="margin:12px 0;padding:10px 12px;border-left:4px solid var(--alert-error-text);">
+    <strong>Reconciliation:</strong> document lines do not tie to the general ledger for this quarter.
+    Output &mdash; books {{ '%.2f'|format(rec.output_gl) if rec.output_gl is not none else 'n/a' }},
+    documents {{ '%.2f'|format(rec.output_docs) }}.
+    Input &mdash; books {{ '%.2f'|format(rec.input_gl) if rec.input_gl is not none else 'n/a' }},
+    documents {{ '%.2f'|format(rec.input_docs) }}.
+    {% if rec.unclassified_count %} {{ rec.unclassified_count }} unclassified line(s) in the period.{% endif %}
+  </div>
+  {% endif %}
+
+  {% macro schedule_table(title, sched, tax_header) %}
+  <h3 style="margin:16px 0 6px;">{{ title }}</h3>
+  <table style="width:100%;max-width:620px;border-collapse:collapse;font-size:14px;">
+    <thead><tr style="border-bottom:1px solid var(--border);">
+      <th style="text-align:left;padding:6px 8px;">Box</th>
+      <th style="text-align:left;padding:6px 8px;">Description</th>
+      <th style="text-align:right;padding:6px 8px;">Amount</th>
+      <th style="text-align:right;padding:6px 8px;">{{ tax_header }}</th>
+    </tr></thead>
+    <tbody>
+    {% for r in sched.rows %}
+      <tr {% if r.unclassified %}style="color:var(--alert-error-text);"{% endif %}>
+        <td style="padding:6px 8px;">{{ r.box }}</td>
+        <td style="padding:6px 8px;">{{ r.label }}</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(r.base) }}</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(r.tax) }}</td>
+      </tr>
+    {% endfor %}
+      <tr style="border-top:2px solid var(--border);font-weight:600;">
+        <td colspan="2" style="padding:6px 8px;">Total</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(sched.total_base) }}</td>
+        <td style="padding:6px 8px;text-align:right;">{{ '%.2f'|format(sched.total_tax) }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% endmacro %}
+
+  {{ schedule_table('Part I - Computation of Output Tax', data.sales_schedule, 'Output Tax') }}
+  {{ schedule_table('Part II - Computation of Input Tax', data.input_schedule, 'Input Tax') }}
+
   <a class="btn btn-secondary btn-sm" style="margin-top:12px;"
      href="{{ url_for('reports.bir_vat_return_export_excel', year=year, quarter=quarter) }}">Export Excel</a>
+  <a class="btn btn-secondary btn-sm" style="margin-top:12px;"
+     href="{{ url_for('reports.bir_vat_return_print', year=year, quarter=quarter) }}"
+     target="_blank">Print 2550Q</a>
 </div></div>
 {% endblock %}

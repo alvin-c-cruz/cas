@@ -97,3 +97,27 @@ def test_print_facsimile_renders_box_numbers_and_footnotes(
     # inline footnotes (spec 5): item 23 zero, capital-goods not split
     assert b'Creditable VAT Withheld' in resp.data
     assert b'1,000,000' in resp.data
+
+
+def test_page_shows_schedules_and_reconciliation_banner(
+        client, db_session, main_branch, cash_account, revenue_account, admin_user):
+    _posted_crv_regular(main_branch, cash_account, revenue_account)
+    client.post('/login', data={'username': 'admin', 'password': 'admin123'},
+                follow_redirects=True)
+    resp = client.get('/reports/bir/vat-return?year=2025&quarter=3')
+    assert resp.status_code == 200
+    assert b'Vatable Sales' in resp.data          # Part I schedule row
+    assert b'12A' in resp.data                     # box number rendered
+    assert b'Capital Goods' in resp.data           # Part II schedule row
+
+
+def test_page_shows_out_of_balance_banner(client, db_session, main_branch, admin_user):
+    # raw-JE world posts output VAT with no document lines -> docs != GL
+    w = _vat_world(main_branch)
+    _je(main_branch.id, date(2025, 7, 10), [(w['ar'].id, 120000, 0), (w['out'].id, 0, 120000)])
+    db.session.commit()
+    client.post('/login', data={'username': 'admin', 'password': 'admin123'},
+                follow_redirects=True)
+    resp = client.get('/reports/bir/vat-return?year=2025&quarter=3')
+    assert resp.status_code == 200
+    assert b'do not tie to' in resp.data           # reconciliation banner fired
