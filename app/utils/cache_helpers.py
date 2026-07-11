@@ -136,6 +136,18 @@ def clear_uom_cache():
 
 
 @cache.memoize(timeout=3600)
+def get_active_product_categories():
+    """Get all active product categories (cached 1 hour)."""
+    from app.product_categories.models import ProductCategory
+    return ProductCategory.query.filter_by(is_active=True).order_by(ProductCategory.code).all()
+
+
+def clear_product_category_cache():
+    """Clear product-category cache after updates."""
+    cache.delete_memoized(get_active_product_categories)
+
+
+@cache.memoize(timeout=3600)
 def get_active_products():
     """Get all active products (cached 1 hour).
 
