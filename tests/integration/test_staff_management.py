@@ -118,3 +118,34 @@ def test_toggle_active_out_of_scope_forbidden(client, db_session, admin_user, ac
     resp = client.post(f'/staff-management/{outsider.id}/toggle-active',
                        follow_redirects=False)
     assert resp.status_code == 403
+
+
+def test_chief_accountant_can_reach_editor(client, db_session, admin_user,
+                                           chief_accountant_user, main_branch):
+    """A Chief Accountant may use the Staff Management editor. BUG-CA-CANNOT-EDIT."""
+    target = _staff(db_session, main_branch, username='catgt')
+    _login(client, 'chief', 'chief123')
+    resp = client.get(f'/staff-management/{target.id}/edit')
+    assert resp.status_code == 200
+
+
+def test_chief_accountant_can_grant_optional_module(client, db_session, admin_user,
+                                                    chief_accountant_user, main_branch):
+    """A CA's grantable ceiling is the whole grid, so they can grant Sales Orders."""
+    target = _staff(db_session, main_branch, username='cagr')
+    _login(client, 'chief', 'chief123')
+    resp = client.post(f'/staff-management/{target.id}/edit', data={
+        'role': 'staff', 'branch_ids': [str(main_branch.id)], 'is_active': 'y',
+        'book_sales_orders': '1',
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert db_session.get(User, target.id).get_book_permissions().get('sales_orders') is True
+
+
+def test_chief_accountant_cannot_edit_accountant(client, db_session, admin_user,
+                                                 chief_accountant_user, accountant_user, main_branch):
+    """Staff Management scope stays staff/viewer only -- editing an accountant is
+    still 403 (an accountant's perms remain admin-only via /users/edit)."""
+    _login(client, 'chief', 'chief123')
+    resp = client.get(f'/staff-management/{accountant_user.id}/edit')
+    assert resp.status_code == 403

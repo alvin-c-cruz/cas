@@ -20,8 +20,8 @@ staff_management_bp = Blueprint('staff_management', __name__,
 def accountant_required(f):
     @wraps(f)
     def wrapped(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role != 'accountant':
-            flash('Staff Management is for accountants.', 'error')
+        if not current_user.is_authenticated or current_user.role not in ('accountant', 'chief_accountant'):
+            flash('Staff Management is for accountants and chief accountants.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return wrapped
