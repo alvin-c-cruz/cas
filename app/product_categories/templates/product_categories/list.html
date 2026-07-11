@@ -3,6 +3,10 @@
 {% block page_title %}Product Categories{% endblock %}
 {% block content %}
 <div class="content-header">
+    <div>
+        <h1 class="page-heading">Product Categories</h1>
+        <p class="page-subheading">Manage product category codes</p>
+    </div>
     <div class="page-actions">
         {% if current_user.has_full_access or current_user.role == 'accountant' %}
         <a href="{{ url_for('product_categories.create') }}" class="btn btn-primary">+ Create Product Category</a>

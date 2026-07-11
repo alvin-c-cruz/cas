@@ -48,7 +48,7 @@
     <p class="reconciliation-note">Variance vs Income Statement Net Sales &mdash;
         {{ as_of.strftime('%b %Y') }}: {{ '{:,.2f}'.format(data.reconciliation.variance_mtd) }},
         YTD: {{ '{:,.2f}'.format(data.reconciliation.variance_ytd) }}
-        (revenue not captured on a Sales Invoice or memo).</p>
+        (may reflect revenue on manual journal entries, or memo/return postings classified outside Net Sales).</p>
     {% else %}
     <p class="reconciliation-note">Reconciled to Income Statement Net Sales.</p>
     {% endif %}

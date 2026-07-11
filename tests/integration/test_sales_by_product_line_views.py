@@ -64,6 +64,11 @@ class TestSalesByProductLineViews:
         resp = client.get('/reports/sales-by-product-line?as_of=2026-05-31')
         assert resp.status_code == 200
         assert b'Beverages' in resp.data
+        assert b'Total Net Sales' in resp.data
+        # No JE was posted for the seeded invoice, so IS net_sales (GL-derived) is 0
+        # while the product-line total is not -> variance branch renders.
+        assert b'Variance vs Income Statement Net Sales' in resp.data
+        assert b'may reflect revenue on manual journal entries' in resp.data
 
     def test_print_renders(self, client, db_session, main_branch, admin_user,
                             sales_by_product_line_module_enabled):
@@ -82,3 +87,17 @@ class TestSalesByProductLineViews:
         resp = client.get('/reports/sales-by-product-line/export/excel?as_of=2026-05-31')
         assert resp.status_code == 200
         assert 'spreadsheet' in resp.headers['Content-Type']
+
+    def test_404_when_module_disabled(self, client, db_session, main_branch, admin_user):
+        """Mirrors test_vat_settlement_module_gating.py::test_404_when_bir_reports_disabled --
+        do NOT use the sales_by_product_line_module_enabled fixture; explicitly disable
+        instead so the before_request module gate 404s the route."""
+        from app.settings import AppSettings
+        from app.utils.cache_helpers import clear_module_config_cache
+        AppSettings.set_setting('module_enabled:sales_by_product_line', '0')
+        db.session.commit()
+        clear_module_config_cache()
+        _login(client, admin_user)
+        _select_branch(client, main_branch.id)
+        resp = client.get('/reports/sales-by-product-line')
+        assert resp.status_code == 404
