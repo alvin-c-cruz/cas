@@ -1,32 +1,3 @@
 {% extends "base.html" %}
 {% block title %}Modules / Package - {{ company_name }}{% endblock %}
-{% block page_title %}Modules / Package{% endblock %}
-{% block content %}
-<div class="content-card"><div class="card-body">
-  <p class="text-muted">Enable or disable optional modules for this company. Disabling a module
-    hides it for everyone and retains its data; re-enabling restores it.</p>
-  <table class="data-table">
-    <thead><tr><th>Module</th><th>Section</th><th>Requires</th><th>Status</th><th>Action</th></tr></thead>
-    <tbody>
-    {% for m in modules %}
-      <tr>
-        <td>{{ m.label }}</td>
-        <td>{{ m.section }}</td>
-        <td>{{ m.depends_on | join(', ') if m.depends_on else '—' }}</td>
-        <td><span class="badge {{ 'badge-active' if m.enabled else 'badge-inactive' }}">
-            {{ 'Enabled' if m.enabled else 'Disabled' }}</span></td>
-        <td>
-          <form method="post" action="{{ url_for('company_settings.modules_toggle') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <input type="hidden" name="key" value="{{ m.key }}"/>
-            <input type="hidden" name="enable" value="{{ '0' if m.enabled else '1' }}"/>
-            <button type="submit" class="btn {{ 'btn-danger' if m.enabled else 'btn-primary' }}">
-              {{ 'Disable' if m.enabled else 'Enable' }}</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div></div>
-{% endblock %}
+{% block content %}<div class="content-card"><div class="card-body">{% include "company_settings/_modules_table.html" %}</div></div>{% endblock %}

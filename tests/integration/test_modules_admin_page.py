@@ -14,11 +14,21 @@ def test_page_admin_only(client, db_session, staff_user, main_branch):
     assert b'Modules' not in resp.data or b'Only administrators' in resp.data
 
 
-def test_admin_sees_bir_toggle(client, db_session, admin_user, main_branch):
+def test_settings_page_embeds_modules_table(client, db_session, admin_user, main_branch):
+    """Packages tab: the modules toggle table is folded into /settings."""
+    _login(client, 'admin', 'admin123')
+    resp = client.get('/settings')
+    assert resp.status_code == 200
+    assert b'BIR Reports' in resp.data          # a known optional module label
+    assert b'/settings/modules/toggle' in resp.data   # a per-row toggle form action
+
+
+def test_modules_page_redirects_to_settings(client, db_session, admin_user, main_branch):
+    """The standalone /modules page is retired -> redirects to the Packages tab."""
     _login(client, 'admin', 'admin123')
     resp = client.get('/settings/modules')
-    assert resp.status_code == 200
-    assert b'BIR Reports' in resp.data
+    assert resp.status_code == 302
+    assert resp.headers['Location'].endswith('/settings')
 
 
 def test_disable_persists_and_audits(client, db_session, admin_user, main_branch):
