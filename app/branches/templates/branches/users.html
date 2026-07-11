@@ -59,12 +59,7 @@
                     <td>{{ user.username }}</td>
                     <td>{{ user.email }}</td>
                     <td>
-                        <span class="badge badge-role-{{ user.role }}">
-                            {% if user.role == 'accountant' %}Accountant
-                            {% elif user.role == 'staff' %}Staff
-                            {% else %}{{ user.role|title }}
-                            {% endif %}
-                        </span>
+                        <span class="badge badge-role-{{ user.role }}">{{ user.role|role_label }}</span>
                     </td>
                     <td>
                         {% if user.is_active %}
@@ -115,12 +110,7 @@
                     <td>{{ user.username }}</td>
                     <td>{{ user.email }}</td>
                     <td>
-                        <span class="badge badge-role-{{ user.role }}">
-                            {% if user.role == 'accountant' %}Accountant
-                            {% elif user.role == 'staff' %}Staff
-                            {% else %}{{ user.role|title }}
-                            {% endif %}
-                        </span>
+                        <span class="badge badge-role-{{ user.role }}">{{ user.role|role_label }}</span>
                     </td>
                     <td>
                         {% if user.is_active %}

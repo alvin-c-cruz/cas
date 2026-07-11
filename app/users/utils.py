@@ -1,6 +1,24 @@
 from app.branches.models import Branch
 
 
+# Display labels for the five user roles. Single source of truth for the role
+# pill/label, replacing the if/elif blocks that were copy-pasted across the
+# user/branch/staff templates (BUG-USERLIST-CA-ROLE-BADGE).
+ROLE_LABELS = {
+    'admin': 'Administrator',
+    'chief_accountant': 'Chief Accountant',
+    'accountant': 'Accountant',
+    'staff': 'Staff',
+    'viewer': 'Viewer',
+}
+
+
+def role_label(role):
+    """Humanized display label for a user role. Unknown roles fall back to a
+    title-cased version of the raw key; empty/None -> ''."""
+    return ROLE_LABELS.get(role) or (role or '').replace('_', ' ').title()
+
+
 def get_accessible_branches(user):
     """Return active branches accessible to the given user.
 
