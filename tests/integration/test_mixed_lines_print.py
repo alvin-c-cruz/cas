@@ -132,6 +132,8 @@ def test_apv_mixed_lines_tie_and_print(client, db_session, accountant_user, main
 
 def test_cdv_mixed_lines_tie_and_print(client, db_session, accountant_user, main_branch, modules_on):
     gl = _gl(db_session); vend = _vendor(db_session)
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     _login(client, accountant_user, main_branch)
     resp = client.post('/cash-disbursements/create', data={
         'cdv_number': 'CD-MIX-0001', 'cdv_date': date.today().isoformat(),

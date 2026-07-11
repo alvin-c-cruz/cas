@@ -186,6 +186,8 @@ def test_apv_amount_only_line_posts(client, db_session, accountant_user, main_br
 
 def test_cdv_amount_only_line_posts(client, db_session, accountant_user, main_branch, modules_on):
     gl = _gl(db_session)
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     vend = _vendor(db_session)
     _login(client, accountant_user, main_branch)
 

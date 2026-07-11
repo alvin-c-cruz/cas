@@ -126,12 +126,15 @@ def cdv_payload(vendor, cash, exp, amount, row_version, cdv_number='CD-GUARD-000
 def voucher(client, db_session, admin_user, main_branch):
     """A freshly created draft CDV at row_version 1."""
     admin_login(client)
-    # CDV's JE assembly resolves AP Trade and WHT Payable by code, so both must
-    # exist or create() raises and the fixture silently yields nothing.
+    # CDV's JE assembly resolves AP Trade and WHT Payable via the accountant-
+    # assigned control-account settings, so both the accounts AND the settings
+    # must exist or create() raises and the fixture silently yields nothing.
     get_or_create_account(db_session, '20101', 'AP Trade', 'Liability')
     get_or_create_account(db_session, '20301', 'WHT Payable', 'Liability')
     cash = get_or_create_account(db_session, '10101', 'Cash on Hand', 'Asset')
     exp = get_or_create_account(db_session, '60101', 'Office Supplies', 'Expense')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     vendor = make_vendor(db_session, code='CDVG1')
 
     client.post('/cash-disbursements/create',
