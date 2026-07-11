@@ -306,6 +306,27 @@ class TestSettingsTabs:
         assert b'cas.settingsTab' in resp.data          # sessionStorage key
         assert b'sessionStorage' in resp.data
 
+    def test_logo_and_packages_panels_are_outside_the_settings_form(self, client, db_session, admin_user, main_branch):
+        """Logo (its own multipart form) and Packages (per-row toggle forms) MUST render after
+        the settings form's </form> — nesting a form inside a form is invalid HTML and is the
+        exact reason they are their own tabs. Guards the structural invariant."""
+        login(client)
+        body = client.get('/settings').get_data()
+        form_close = body.index(b'</form>')                # first </form> = the settings form
+        assert form_close < body.index(b'id="settings-logo"')
+        assert form_close < body.index(b'id="settings-packages"')
+
+    def test_all_six_tab_controls_are_type_button(self, client, db_session, admin_user, main_branch):
+        """Tab controls sit inside the settings <form>; a bare <button> defaults to type=submit
+        and would submit the form on every tab click. All six must be type="button"."""
+        import re
+        login(client)
+        body = client.get('/settings').get_data(as_text=True)
+        tabs = re.findall(r'<button[^>]*\bclass="tab[^"]*"[^>]*>', body)
+        assert len(tabs) == 6, f'expected 6 tab buttons, found {len(tabs)}'
+        for t in tabs:
+            assert 'type="button"' in t, f'tab button not type=button: {t}'
+
 
 class TestPrintAccessSettings:
     def test_sv_print_access_saved_when_posted(
