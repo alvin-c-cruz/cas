@@ -157,6 +157,8 @@ def _build_ap(branch, user, mode):
     _acct(WHT_PAYABLE, 'WHT Payable - Expanded', 'Liability', 'Credit')
     in_vat = _acct(INPUT_VAT, 'Input VAT')
     expense = _acct(EXPENSE, 'Operating Expense', 'Expense', 'Debit')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db.session)
     db.session.add(VATCategory(code='V12P', name='Input 12%', rate=Decimal('12.00'),
                                input_vat_account_id=in_vat.id, is_active=True))
     wht = WithholdingTax(code='WC158', name='WC158', rate=Decimal('10.00'), is_active=True)

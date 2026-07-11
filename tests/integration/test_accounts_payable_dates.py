@@ -34,6 +34,8 @@ def make_expense(db_session):
                  account_type='Liability', normal_balance='credit', is_active=True)
     db_session.add_all([a, ap])
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     return a
 
 

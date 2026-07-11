@@ -83,6 +83,8 @@ def _seed_je_accounts(db_session):
         return a
 
     goc('20101', 'Accounts Payable - Trade', 'Liability')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     vat_acct = goc('10501', 'Input VAT - Current', 'Asset')
     exp = goc('61001', 'Rent Expense', 'Expense')
     vat_cat = VATCategory.query.filter_by(code='VAT12').first()

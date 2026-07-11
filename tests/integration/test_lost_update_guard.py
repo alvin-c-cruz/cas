@@ -79,6 +79,8 @@ def bill(client, db_session, accountant_user, main_branch):
     vendor = make_vendor(db_session)
     get_or_create_account(db_session, '20101', 'Accounts Payable - Trade', 'Liability')
     exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
 
     client.post('/accounts-payable/create',
                 data=ap_payload(vendor, exp, 5000.00, row_version=None),

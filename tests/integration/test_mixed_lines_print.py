@@ -110,6 +110,8 @@ def _assert_print_blanks_amount_only_qty(client, url):
 
 def test_apv_mixed_lines_tie_and_print(client, db_session, accountant_user, main_branch, modules_on):
     gl = _gl(db_session); vend = _vendor(db_session)
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     _login(client, accountant_user, main_branch)
     resp = client.post('/accounts-payable/create', data={
         'ap_number': 'AP-MIX-0001', 'ap_date': date.today().isoformat(),

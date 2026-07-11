@@ -57,6 +57,8 @@ class TestBillCreatePostsJE:
         vendor = make_vendor(db_session)
 
         ap = get_or_create_account(db_session, '20101', 'Accounts Payable - Trade', 'Liability')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         vat_acct = get_or_create_account(db_session, '10501', 'Input VAT - Current', 'Asset')
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
@@ -100,6 +102,8 @@ class TestBillCreatePostsJE:
         vendor = make_vendor(db_session, code='JEV002')
 
         ap = get_or_create_account(db_session, '20101', 'Accounts Payable - Trade', 'Liability')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         vat_acct = get_or_create_account(db_session, '10501', 'Input VAT - Current', 'Asset')
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
@@ -155,6 +159,8 @@ class TestBillCreatePostsJE:
         vendor = make_vendor(db_session, code='JEV004')
 
         ap = get_or_create_account(db_session, '20101', 'Accounts Payable - Trade', 'Liability')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         vat_acct = get_or_create_account(db_session, '10501', 'Input VAT - Current', 'Asset')
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
@@ -206,6 +212,8 @@ class TestBillCreatePostsJE:
         login(client)
         vendor = make_vendor(db_session, code='JEV003')
         ap = get_or_create_account(db_session, '20101', 'Accounts Payable - Trade', 'Liability')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
         # Create the bill
@@ -270,6 +278,8 @@ class TestBillCreatePostsJE:
         login(client)
         vendor = make_vendor(db_session, code='JEV005')
         get_or_create_account(db_session, '20101', 'Accounts Payable - Trade', 'Liability')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         exp = get_or_create_account(db_session, '61001', 'Rent Expense', 'Expense')
 
         # Create the bill at 5000

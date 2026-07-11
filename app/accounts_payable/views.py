@@ -36,16 +36,19 @@ accounts_payable_bp = Blueprint('accounts_payable', __name__, template_folder='t
 
 
 def _get_gl_accounts():
-    """Return the AP and WHT GL accounts used for purchase bill journal entries.
+    """Return the AP-Trade and WHT-Payable control accounts for display/preview
+    use. Resolved via accountant-assigned settings (app.posting.control_accounts)
+    -- never raises; entries are None when unassigned or misconfigured. The
+    posting engine (_post_ap_je) resolves these itself with required=True
+    instead of going through this helper.
 
     Input VAT accounts are no longer fixed here — each VAT category carries
     its own input_vat_account (B-014); see _input_vat_buckets().
     """
-    ap_acct = Account.query.filter_by(code='20101').first()
-    wt_gl_acct = Account.query.filter_by(code='20301').first()
+    from app.posting.control_accounts import get_control_account
     return {
-        'ap': ap_acct,
-        'wt': wt_gl_acct,
+        'ap': get_control_account('ap_trade', required=False),
+        'wt': get_control_account('wht_payable', required=False),
     }
 
 
@@ -1272,22 +1275,16 @@ def cancel(id):
 def _post_ap_je(ap, user_id):
     """Create and immediately post a purchase JE for a bill. Raises ValueError if required accounts missing."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.posting.control_accounts import get_control_account
 
-    _accts = _get_gl_accounts()
-
-    ap_account = _accts['ap']
-    if not ap_account:
-        raise ValueError("Accounts Payable - Trade (20101) not found in COA.")
+    ap_account = get_control_account('ap_trade')
 
     wt_account = None
     if ap.withholding_tax_amount and ap.withholding_tax_amount > 0:
-        # Pre-check only: 20301 must exist as the WHT fallback account before
-        # we build the JE lines. _wht_payable_buckets() below re-reads
-        # _accts['wt'] itself (it needs it as the per-line fallback, not just
-        # for this existence check), so wt_account isn't referenced again.
-        wt_account = _accts['wt']
-        if not wt_account:
-            raise ValueError("WHT Payable - Expanded (20301) not found in COA.")
+        # Resolved here (required) as the per-line fallback that
+        # _wht_payable_buckets() below uses when a line's ATC has no
+        # payable_account of its own.
+        wt_account = get_control_account('wht_payable')
 
     # The JE mirrors the bill's lifecycle: created as a DRAFT while the bill
     # is a draft (so unposted vouchers never hit GL reports), promoted to
@@ -1348,7 +1345,7 @@ def _post_ap_je(ap, user_id):
         all_lines.append(vat_line)
         line_num += 1
 
-    for wt_acct, wt_amt in _wht_payable_buckets(ap, _accts['wt']):
+    for wt_acct, wt_amt in _wht_payable_buckets(ap, wt_account):
         wt_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
             account_id=wt_acct.id,

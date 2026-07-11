@@ -34,6 +34,8 @@ def _setup(db_session):
     vendor = Vendor(code='BKT01', name='Bucket Vendor', check_payee_name='Bucket Vendor', is_active=True)
     db_session.add(vendor)
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     return vendor, Account.query.filter_by(code='69903').first()
 
 

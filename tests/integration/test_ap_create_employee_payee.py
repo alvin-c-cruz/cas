@@ -16,6 +16,8 @@ def _seed_accounts():
         db.session.add(Account(code=code, name=name, account_type=typ,
                                normal_balance=bal, is_active=True))
     db.session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db.session)
     return Account.query.filter_by(code='69903').first()
 
 
