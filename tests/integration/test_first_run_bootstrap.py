@@ -89,3 +89,25 @@ def test_race_admin_appears_between_form_and_view_is_refused(client, db_session,
     assert resp.status_code in (301, 302)  # redirected back to register
     assert User.query.filter_by(username='admin').first() is None
     assert Branch.query.count() == 0
+
+
+FORBIDDEN_HINTS = [
+    b'no administrator exists',
+    b'initial system administrator',
+    b'first-run',
+    b'first run',
+    b'bootstrap',
+]
+
+
+def test_register_page_shows_no_bootstrap_indication(client, db_session):
+    # Empty DB (first-run active under the hood)
+    empty_body = client.get('/register').data.lower()
+    for hint in FORBIDDEN_HINTS:
+        assert hint not in empty_body, f'register page leaked bootstrap hint: {hint!r}'
+
+    # With an admin present (first-run closed)
+    _add_admin(db_session, username='root')
+    admin_body = client.get('/register').data.lower()
+    for hint in FORBIDDEN_HINTS:
+        assert hint not in admin_body, f'register page leaked bootstrap hint: {hint!r}'
