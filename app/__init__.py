@@ -260,6 +260,7 @@ def create_app(config_name=None):
     from app.vat_settlement.views import vat_settlement_bp
     from app.staff_management.views import staff_management_bp
     from app.units_of_measure.views import units_of_measure_bp
+    from app.product_categories.views import product_categories_bp
     from app.products.views import products_bp
     from app.sales_orders.views import sales_orders_bp
     from app.delivery_receipts.views import delivery_receipts_bp
@@ -296,6 +297,7 @@ def create_app(config_name=None):
     app.register_blueprint(vat_settlement_bp)
     app.register_blueprint(staff_management_bp)
     app.register_blueprint(units_of_measure_bp)
+    app.register_blueprint(product_categories_bp)
     app.register_blueprint(products_bp)
     app.register_blueprint(sales_orders_bp)
     app.register_blueprint(quotations_bp)
