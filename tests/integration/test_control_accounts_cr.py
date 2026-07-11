@@ -79,3 +79,54 @@ def test_create_crv_with_ar_trade_unassigned_shows_friendly_flash_not_500(
     assert 'Assign the Accounts Receivable control account' in body
     assert 'unexpected error' not in body.lower()
     assert CashReceiptVoucher.query.filter_by(crv_number='CR-UNASSIGNED-0001').first() is None
+
+
+def test_create_crv_generic_valueerror_surfaces_friendly_flash(
+        client, db_session, admin_user, main_branch, monkeypatch):
+    """BUG-CRV-NO-VALUEERROR: CRV create()/edit() must surface a generic
+    ValueError raised during posting as its OWN message (parity with CDV,
+    which catches `except ValueError`), not swallow it into the generic
+    'unexpected error' handler. The fix broadens CRV's `except
+    ControlAccountError` to `except ValueError`; this proves the non-control-
+    account ValueError case (ControlAccountError is already covered by the
+    unassigned-AR test above)."""
+    _login(client)
+    cash = _acct(db_session, '1001', 'Cash on Hand')
+    revenue = Account(code='4001', name='Service Revenue', account_type='Income',
+                      classification='Operating Revenue', normal_balance='Credit')
+    db_session.add(revenue); db_session.commit()
+    customer = Customer(code='CRVX02', name='Generic VE Customer', is_active=True)
+    db_session.add(customer); db_session.commit()
+    _acct(db_session, '1210', 'AR - Trade')
+    assign_control_accounts(db_session, ar='1210', ap='', creditable_wht='', wht_payable='')
+
+    # Force a plain (non-ControlAccountError) ValueError during posting.
+    import app.cash_receipts.views as crv_views
+
+    def _boom(crv, user_id):
+        raise ValueError('simulated allocation failure')
+    monkeypatch.setattr(crv_views, '_post_crv_je', _boom)
+
+    today = ph_now().date().isoformat()
+    resp = client.post('/cash-receipts/create', data={
+        'crv_number': 'CR-GENVE-0001',
+        'crv_date': today,
+        'customer_id': customer.id,
+        'payment_method': 'cash',
+        'cash_account_id': cash.id,
+        'notes': 'Generic ValueError parity test',
+        'ar_lines': json.dumps([]),
+        'revenue_lines': json.dumps([{
+            'description': 'Misc revenue', 'amount': 500, 'line_total': 500,
+            'vat_category': None, 'vat_rate': 0, 'vat_amount': 0,
+            'account_id': revenue.id,
+        }]),
+        'vat_override': '0', 'vat_override_value': '0',
+        'wt_override': '0', 'wt_override_value': '0',
+    }, follow_redirects=True)
+
+    assert resp.status_code == 200  # not a 500
+    body = resp.data.decode()
+    assert 'simulated allocation failure' in body      # friendly str(e) surfaced
+    assert 'unexpected error' not in body.lower()       # NOT the generic handler
+    assert CashReceiptVoucher.query.filter_by(crv_number='CR-GENVE-0001').first() is None

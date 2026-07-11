@@ -23,7 +23,6 @@ from app.periods.utils import validate_transaction_date_with_flash
 from app.customers.views import build_customer_quick_add_form
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.posting.buckets import group_tax_buckets, reconcile_buckets_to_total
-from app.posting.control_accounts import ControlAccountError
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
@@ -932,7 +931,7 @@ def create():
             db.session.rollback()
             flash(str(ce), 'error')
             return _render_form()
-        except ControlAccountError as e:
+        except ValueError as e:
             db.session.rollback()
             flash(str(e), 'error')
             return _render_form()
@@ -1074,7 +1073,7 @@ def edit(id):
             db.session.rollback()
             flash(str(ce), 'error')
             return _render_edit_form()
-        except ControlAccountError as e:
+        except ValueError as e:
             db.session.rollback()
             flash(str(e), 'error')
             return _render_edit_form()
