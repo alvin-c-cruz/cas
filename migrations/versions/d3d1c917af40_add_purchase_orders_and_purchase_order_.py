@@ -64,6 +64,7 @@ def upgrade():
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('purchase_order_id', sa.Integer(), sa.ForeignKey('purchase_orders.id'), nullable=False),
         sa.Column('line_number', sa.Integer(), nullable=False),
+        sa.Column('description', sa.String(length=255), nullable=True),
         sa.Column('amount', sa.Numeric(precision=15, scale=2), nullable=False, server_default='0'),
         sa.Column('quantity', sa.Numeric(precision=15, scale=4), nullable=True),
         sa.Column('unit_price', sa.Numeric(precision=15, scale=2), nullable=True),

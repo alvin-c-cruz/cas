@@ -98,6 +98,7 @@ class PurchaseOrderItem(db.Model):
     purchase_order_id = db.Column(db.Integer, db.ForeignKey('purchase_orders.id'),
                                   nullable=False, index=True)
     line_number = db.Column(db.Integer, nullable=False)
+    description = db.Column(db.String(255), nullable=True)   # free-text (service lines w/o a product)
     amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     quantity = db.Column(db.Numeric(15, 4), nullable=True)
     unit_price = db.Column(db.Numeric(15, 2), nullable=True)
@@ -134,6 +135,7 @@ class PurchaseOrderItem(db.Model):
     def to_dict(self):
         return {
             'id': self.id, 'line_number': self.line_number,
+            'description': self.description,
             'amount': float(self.amount) if self.amount is not None else 0.0,
             'quantity': float(self.quantity) if self.quantity is not None else None,
             'unit_price': float(self.unit_price) if self.unit_price is not None else None,

@@ -1,0 +1,90 @@
+import json
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
+
+@pytest.fixture(autouse=True)
+def po_enabled(db_session):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    for k in ('products', 'purchase_orders'):
+        AppSettings.set_setting(f'module_enabled:{k}', '1')
+    db_session.commit(); clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
+def _login(client, user, branch):
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.id); sess['_fresh'] = True
+        sess['selected_branch_id'] = branch.id
+
+
+def _create(client, vendor, po_number='PO-2026-07-0001', lines=None, vat_treatment='inclusive'):
+    if lines is None:
+        # a services line: free-text description, NO product
+        lines = [{'product_id': None, 'description': 'Site clearing subcontract',
+                  'quantity': None, 'unit_price': None, 'amount': '80000',
+                  'vat_category': 'V12', 'vat_rate': '12'}]
+    return client.post('/purchase-orders/create', data={
+        'po_number': po_number, 'order_date': '2026-07-11',
+        'vendor_id': str(vendor.id), 'vat_treatment': vat_treatment,
+        'payment_terms': 'Net 30', 'notes': 'test',
+        'line_items': json.dumps(lines),
+    }, follow_redirects=True)
+
+
+def test_create_draft_po_persists_and_audits(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    from app.audit.models import AuditLog
+    _login(client, accountant_user, main_branch)
+    resp = _create(client, vl_vendor)
+    assert resp.status_code == 200
+    po = PurchaseOrder.query.filter_by(po_number='PO-2026-07-0001').first()
+    assert po is not None
+    assert po.status == 'draft' and po.branch_id == main_branch.id
+    assert po.vendor_id == vl_vendor.id and po.vendor_name == vl_vendor.name
+    assert len(po.line_items) == 1
+    assert po.line_items[0].description == 'Site clearing subcontract'
+    assert po.line_items[0].product_id is None          # services line, no product
+    assert po.total_amount == 80000                      # inclusive
+    assert AuditLog.query.filter_by(module='purchase_orders', action='create',
+                                    record_id=po.id).count() == 1
+
+
+def test_create_posts_no_journal_entry(client, accountant_user, main_branch, vl_vendor, db_session):
+    """A PO is operational: it must NOT create any journal entry."""
+    from app.journal_entries.models import JournalEntry
+    before = JournalEntry.query.count()
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor)
+    assert JournalEntry.query.count() == before          # zero new JEs
+
+
+def test_line_requires_product_or_description(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    _login(client, accountant_user, main_branch)
+    # a non-empty line with neither product nor description -> rejected
+    bad = [{'product_id': None, 'description': '', 'quantity': '1',
+            'unit_price': '10', 'amount': '10', 'vat_category': 'V12', 'vat_rate': '12'}]
+    resp = _create(client, vl_vendor, po_number='PO-2026-07-0009', lines=bad)
+    assert resp.status_code == 200
+    assert PurchaseOrder.query.filter_by(po_number='PO-2026-07-0009').first() is None
+
+
+def test_duplicate_po_number_rejected(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor)
+    _create(client, vl_vendor)                            # same number again
+    assert PurchaseOrder.query.filter_by(po_number='PO-2026-07-0001').count() == 1
+
+
+def test_list_and_view_show_po(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor)
+    po = PurchaseOrder.query.first()
+    assert b'PO-2026-07-0001' in client.get('/purchase-orders').data
+    assert client.get(f'/purchase-orders/{po.id}').status_code == 200

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if po else 'Enter' }} Purchase Order{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ 'Edit' if po else 'Enter' }} Purchase Order</h1>
+  <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Back to list</a>
+</div>
+
+<form method="POST"
+      action="{{ url_for('purchase_orders.edit', id=po.id) if po else url_for('purchase_orders.create') }}">
+  {{ form.hidden_tag() }}
+  <input type="hidden" name="line_items" id="lineItemsJson" value="[]">
+
+  <div class="card"><div class="card-body">
+    <div class="form-grid">
+      <div class="form-group">{{ form.po_number.label }} {{ form.po_number(class="form-control") }}</div>
+      <div class="form-group">{{ form.order_date.label }} {{ form.order_date(class="form-control") }}</div>
+      <div class="form-group">{{ form.expected_date.label }} {{ form.expected_date(class="form-control") }}</div>
+      <div class="form-group">{{ form.vendor_id.label }} {{ form.vendor_id(class="form-control") }}</div>
+      <div class="form-group">{{ form.vat_treatment.label }} {{ form.vat_treatment(class="form-control") }}</div>
+      <div class="form-group">{{ form.payment_terms.label }} {{ form.payment_terms(class="form-control") }}</div>
+      <div class="form-group">{{ form.reference.label }} {{ form.reference(class="form-control") }}</div>
+    </div>
+    <div class="form-group">{{ form.notes.label }} {{ form.notes(class="form-control", rows=2) }}</div>
+  </div></div>
+
+  <div class="card"><div class="card-body">
+    <h3>Line Items</h3>
+    <p class="text-muted">Enter a product (goods) or a free-text description (services) on each line.</p>
+    <div class="table-responsive">
+      <table class="table" id="lineTable">
+        <thead>
+          <tr><th>Product</th><th>Description</th><th>Qty</th><th>Unit Price</th><th>VAT</th>
+              <th class="text-end">Amount</th><th></th></tr>
+        </thead>
+        <tbody id="lineBody"></tbody>
+      </table>
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" id="addLineBtn">+ Add line</button>
+  </div></div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ 'Update' if po else 'Save' }}</button>
+    <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+
+<script>
+  const PRODUCTS = {{ products | tojson }};
+  const VATCATS  = {{ vat_categories | tojson }};
+  const EXISTING = {{ line_items | tojson }};
+
+  function vatOptions(sel) {
+    let o = '<option value="">--</option>';
+    VATCATS.forEach(v => {
+      o += `<option value="${v.code}" data-rate="${v.rate || v.percentage || 0}"${v.code===sel?' selected':''}>${v.code}</option>`;
+    });
+    return o;
+  }
+  function productOptions(sel) {
+    let o = '<option value="">-- none --</option>';
+    PRODUCTS.forEach(p => {
+      o += `<option value="${p.id}"${p.id==sel?' selected':''}>${p.code} - ${p.name}</option>`;
+    });
+    return o;
+  }
+  function addRow(d) {
+    d = d || {};
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td><select class="form-control po-product">${productOptions(d.product_id)}</select></td>`
+    + `<td><input class="form-control po-desc" value="${(d.description||'').replace(/"/g,'&quot;')}"></td>`
+    + `<td><input class="form-control po-qty" type="number" step="0.0001" value="${d.quantity ?? ''}"></td>`
+    + `<td><input class="form-control po-price" type="number" step="0.01" value="${d.unit_price ?? ''}"></td>`
+    + `<td><select class="form-control po-vat">${vatOptions(d.vat_category)}</select></td>`
+    + `<td class="text-end po-amount">${(d.amount ?? 0)}</td>`
+    + `<td><button type="button" class="btn btn-sm btn-danger po-del">x</button></td>`;
+    document.getElementById('lineBody').appendChild(tr);
+    recalc(tr);
+  }
+  function recalc(tr) {
+    const q = parseFloat(tr.querySelector('.po-qty').value) || 0;
+    const p = parseFloat(tr.querySelector('.po-price').value) || 0;
+    if (q > 0 && p > 0) tr.querySelector('.po-amount').textContent = (q * p).toFixed(2);
+  }
+  document.addEventListener('input', e => { if (e.target.closest('#lineTable')) recalc(e.target.closest('tr')); });
+  document.addEventListener('click', e => {
+    if (e.target.classList.contains('po-del')) e.target.closest('tr').remove();
+  });
+  document.getElementById('addLineBtn').addEventListener('click', () => addRow());
+  document.querySelector('form').addEventListener('submit', () => {
+    const rows = [];
+    document.querySelectorAll('#lineBody tr').forEach(tr => {
+      const vatSel = tr.querySelector('.po-vat');
+      const rate = vatSel.selectedOptions[0] ? (vatSel.selectedOptions[0].dataset.rate || 0) : 0;
+      rows.push({
+        product_id: tr.querySelector('.po-product').value || null,
+        description: tr.querySelector('.po-desc').value || null,
+        quantity: tr.querySelector('.po-qty').value || null,
+        unit_price: tr.querySelector('.po-price').value || null,
+        amount: tr.querySelector('.po-amount').textContent || '0',
+        vat_category: vatSel.value || null,
+        vat_rate: rate,
+      });
+    });
+    document.getElementById('lineItemsJson').value = JSON.stringify(rows);
+  });
+  (EXISTING && EXISTING.length ? EXISTING : []).forEach(addRow);
+</script>
+{% endblock %}
