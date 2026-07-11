@@ -204,7 +204,6 @@
     if (fontSel) fontSel.style.display = editing ? '' : 'none';
     if (paperSel) paperSel.style.display = editing ? '' : 'none';
     if (dateSel) dateSel.style.display = editing ? '' : 'none';
-    if (jeModeSel) jeModeSel.style.display = editing ? '' : 'none';
     if (printBtn) printBtn.style.display = editing ? 'none' : '';  // no printing while designing
     if (fieldStrip) { buildFieldControls(); fieldStrip.classList.toggle('pp-show', editing); }
     if (colStrip) { buildColControls(); colStrip.classList.toggle('pp-show', editing); }
