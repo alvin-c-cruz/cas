@@ -63,6 +63,8 @@
     "app/sales_orders/models.py":          ["sales_orders", "delivery_receipts", "quotations", "credit_memos", "debit_memos"],
     "app/sales_orders/preprinted_layout.py": ["sales_orders"],
     "app/journal_entries/views.py":        ["journal_entries"],
+    "app/journal_entries/preprinted_layout.py": ["journal_entries"],
+    "app/static/js/jv_preprinted_designer.js": ["journal_entries"],
     "app/journal_entries/templates/journal_entries/form.html": ["journal_entries"],
     "app/accounts/models.py":              ["accounts_payable", "cash_disbursements", "sales_invoices"],
     "app/audit/utils.py":                  ["accounts_payable", "cash_disbursements", "sales_invoices", "vendors"],

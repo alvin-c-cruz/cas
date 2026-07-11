@@ -51,6 +51,7 @@ SETTINGS_KEYS = [
     'cr_print_form',
     'ap_print_form',
     'cd_print_form',
+    'jv_print_form',
 ]
 
 LOGO_SETTING_KEY = 'company_logo'

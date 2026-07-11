@@ -26,10 +26,11 @@
             </form>
             {% endif %}
 
-            {# Print: JV has no *_print_access setting -- always allowed #}
+            {% if jv_print_form != 'hidden' %}
             <a href="{{ url_for('journal_entries.print_entry', id=entry.id) }}"
                target="_blank"
                rel="noopener noreferrer" class="btn btn-secondary">Print</a>
+            {% endif %}
 
             <a href="{{ url_for('journal_entries.list_entries') }}" class="btn btn-secondary">← Back to List</a>
         </div>
@@ -106,10 +107,10 @@
                     <td>{{ line.account.name if line.account else 'N/A' }}</td>
                     <td>{{ line.description or '-' }}</td>
                     <td style="text-align: right; font-family: var(--mono);">
-                        {% if line.debit_amount > 0 %}₱{{ '{:,.2f}'.format(line.debit_amount) }}{% else %}-{% endif %}
+                        {% if line.debit_amount > 0 %}{{ '{:,.2f}'.format(line.debit_amount) }}{% else %}-{% endif %}
                     </td>
                     <td style="text-align: right; font-family: var(--mono);">
-                        {% if line.credit_amount > 0 %}₱{{ '{:,.2f}'.format(line.credit_amount) }}{% else %}-{% endif %}
+                        {% if line.credit_amount > 0 %}{{ '{:,.2f}'.format(line.credit_amount) }}{% else %}-{% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -118,10 +119,10 @@
                 <tr style="border-top: 2px solid var(--border); background: var(--bg);">
                     <td colspan="4" style="text-align: right; font-weight: 600; padding: 12px;">TOTALS:</td>
                     <td style="text-align: right; font-family: var(--mono); font-weight: 700; font-size: 15px; padding: 12px;">
-                        ₱{{ '{:,.2f}'.format(entry.total_debit) }}
+                        {{ '{:,.2f}'.format(entry.total_debit) }}
                     </td>
                     <td style="text-align: right; font-family: var(--mono); font-weight: 700; font-size: 15px; padding: 12px;">
-                        ₱{{ '{:,.2f}'.format(entry.total_credit) }}
+                        {{ '{:,.2f}'.format(entry.total_credit) }}
                     </td>
                 </tr>
                 <tr style="background: {% if entry.is_balanced %}#d1fae5{% else %}#fee2e2{% endif %};">
@@ -132,7 +133,7 @@
                     </td>
                     <td colspan="2" style="text-align: right; font-family: var(--mono); padding: 12px;">
                         <strong style="color: {% if entry.is_balanced %}var(--green){% else %}var(--red){% endif %};">
-                            Difference: ₱{{ '{:,.2f}'.format(entry.total_debit - entry.total_credit) }}
+                            Difference: {{ '{:,.2f}'.format(entry.total_debit - entry.total_credit) }}
                         </strong>
                     </td>
                 </tr>

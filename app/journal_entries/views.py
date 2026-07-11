@@ -1,7 +1,7 @@
 """
 Journal Entry views for manual GL adjustments.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort, jsonify
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -13,6 +13,7 @@ from app.utils import ph_now
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
 from app.settings import AppSettings
+from app.journal_entries.preprinted_layout import get_layout, save_layout
 from datetime import datetime, date
 from decimal import Decimal
 import json
@@ -197,14 +198,38 @@ def create():
 def view(id):
     """View journal entry details."""
     entry = _get_entry_or_404(id)
-    return render_template('journal_entries/detail.html', entry=entry)
+    return render_template('journal_entries/detail.html', entry=entry,
+                           jv_print_form=AppSettings.get_setting('jv_print_form', 'current'))
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>/print')
 @login_required
 def print_entry(id):
-    """Standalone print preview for a journal entry."""
+    """Print preview for a journal entry; layout chosen by the jv_print_form setting."""
     entry = _get_entry_or_404(id)
+    form_mode = AppSettings.get_setting('jv_print_form', 'current')
+
+    if form_mode == 'hidden':
+        flash('Printing is disabled for Journal Vouchers.', 'error')
+        return redirect(url_for('journal_entries.view', id=entry.id))
+
+    if form_mode == 'preprinted':
+        from app.journal_entries.preprinted_layout import (
+            FIELD_LABELS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
+            DATE_FORMATS, FONT_GROUPS, TEXT_KEYS)
+        date_labels = {'long': 'Long (25 December 2026)', 'medium': 'Medium (Dec 25, 2026)',
+                       'us': 'US (12/25/2026)', 'eu': 'EU (25/12/2026)', 'iso': 'ISO (2026-12-25)'}
+        return render_template(
+            'journal_entries/print_preprinted.html',
+            entry=entry,
+            lines=entry.lines.order_by(JournalEntryLine.line_number).all(),
+            layout=get_layout(entry.branch_id),
+            can_edit_layout=current_user.has_full_access,
+            field_labels=FIELD_LABELS, column_labels=COLUMN_LABELS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, date_labels=date_labels,
+            font_groups=FONT_GROUPS, signatory_ids=set(TEXT_KEYS),
+        )
 
     company = {
         'name': AppSettings.get_setting('company_name', ''),
@@ -213,6 +238,17 @@ def print_entry(id):
     }
     return render_template('journal_entries/print.html', entry=entry,
                            company=company, printed_at=ph_now())
+
+
+@journal_entries_bp.route('/journal-entries/print-layout', methods=['POST'])
+@login_required
+def save_jv_print_layout():
+    """Persist the JV pre-printed layout JSON (full-access only)."""
+    if not current_user.has_full_access:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    return jsonify(ok=True, layout=clean)
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>/post', methods=['POST'])
