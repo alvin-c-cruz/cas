@@ -779,6 +779,14 @@ def create():
 
             je = _post_ap_je(ap, current_user.id)
             ap.journal_entry_id = je.id
+
+            # Phase 3: bill any Purchase Orders / Receiving Reports pulled into this bill.
+            # Strict no-op when no source ids are posted (e.g. clients without the PO/RR
+            # modules), so the AP form + JE are unchanged for them. Raises on a stale source
+            # -> the enclosing try rolls the whole bill back.
+            from app.purchase_billing import _bill_purchase_sources
+            _bill_purchase_sources(ap, request.form.get('source_po_ids', '[]'),
+                                   request.form.get('source_rr_ids', '[]'))
             db.session.commit()
 
             log_create(
@@ -1245,6 +1253,8 @@ def cancel(id):
         ap.status = 'cancelled'
         ap.cancelled_at = ph_now()
         ap.cancel_reason = cancel_reason
+        from app.purchase_billing import _unbill_purchase_sources
+        _unbill_purchase_sources(ap)   # release any PO/RR this bill billed (no-op if none)
         db.session.commit()
 
         log_audit(
@@ -1504,6 +1514,8 @@ def void(id):
         ap.voided_at = ph_now()
         ap.voided_by_id = current_user.id
         ap.void_reason = void_reason
+        from app.purchase_billing import _unbill_purchase_sources
+        _unbill_purchase_sources(ap)   # release any PO/RR this bill billed (no-op if none)
         db.session.commit()
 
         # Delete attachment files from disk after successful DB commit
