@@ -132,10 +132,13 @@ GROUP_ORDER = ['Documents', 'Masters', 'Journals', 'Ledger', 'Financial Statemen
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY
                     if m['section'] == 'Transactions' and not m.get('optional')]
 
-# Vendor sub-actions reached FROM transaction forms (inline quick-add + autofill). These must
-# stay reachable for a staff user who has a transaction module but not the Vendors module —
-# otherwise the AP/CD quick-add and the AP vendor-defaults autofill would break.
-EXEMPT_ENDPOINTS = {'vendors.create', 'vendors.vendor_defaults', 'employees.create'}
+# Vendor/customer sub-actions reached FROM transaction forms (inline quick-add + autofill).
+# These must stay reachable for a staff user who has a transaction module but not the
+# Vendors/Customers master-data module — otherwise the AP/CD vendor quick-add + defaults, and
+# the Quotation/SI/SO customer quick-add + defaults, would break (the module guard would
+# redirect the XHR to the dashboard and leave the line-items grid locked).
+EXEMPT_ENDPOINTS = {'vendors.create', 'vendors.vendor_defaults', 'employees.create',
+                    'customers.create', 'customers.customer_defaults'}
 
 
 def module_key_for_endpoint(endpoint):

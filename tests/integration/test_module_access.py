@@ -125,6 +125,23 @@ def test_vendor_quick_add_subactions_exempt_for_staff(client, db_session, branch
     assert resp.status_code != 302   # NOT redirected away by the module guard
 
 
+def test_customer_quick_add_subactions_exempt_for_staff(client, db_session, branch):
+    """Staff with a sales-document book (e.g. accounts_receivable/quotations) but NOT the
+    Customers module must still reach the customer defaults autofill AND the inline quick-add
+    form used by the Quotation/SI/SO customer card — these customer sub-actions are exempt from
+    the module guard, mirroring the vendor exemption. Without the exemption the guard redirects
+    the XHR to the dashboard (HTTP 200 HTML, not JSON) and the line-items grid never unlocks."""
+    from app.customers.models import Customer
+    c = Customer(code='C001', name='Acme Corp', is_active=True)
+    db_session.add(c)
+    db_session.commit()
+    staff = _make_user(db_session, branch, 'staff',
+                       books={'accounts_receivable': True}, username='staffar1')
+    _login(client, staff, branch)
+    assert client.get(f'/customers/{c.id}/defaults').status_code == 200   # autofill reachable
+    assert client.get('/customers/create').status_code == 200             # inline quick-add reachable
+
+
 def test_admin_reaches_ungranted_module(client, db_session, branch):
     admin = _make_user(db_session, branch, 'admin', books={}, username='admin1')
     _login(client, admin, branch)
