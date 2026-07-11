@@ -59,3 +59,21 @@ def accountant_self_approval_enabled():
     (staff/viewer only). Reads the AppSettings policy flag; default off."""
     from app.settings import AppSettings
     return AppSettings.get_setting('accountant_email_self_approval', '0') == '1'
+
+
+# ── First-run admin bootstrap ────────────────────────────────────────────────
+# The reserved username whose first registration on an admin-less DB becomes the
+# system administrator. Exact, case-sensitive match (no normalization).
+FIRST_RUN_ADMIN_USERNAME = 'admin'
+
+
+def system_has_admin():
+    """True once at least one ACTIVE admin account exists.
+
+    Single source of truth for the one-time first-run admin bootstrap: the
+    whitelist bypass and the admin grant both gate on ``not system_has_admin()``,
+    so the bypass closes the instant this becomes True.
+    """
+    from app import db
+    from app.users.models import User
+    return db.session.query(User.id).filter_by(role='admin', is_active=True).first() is not None
