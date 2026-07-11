@@ -271,6 +271,35 @@ class TestCompanyLogo:
         assert resp.status_code == 404
 
 
+class TestSettingsTabs:
+    def test_settings_page_renders_six_tabs(self, client, db_session, admin_user, main_branch):
+        login(client)
+        resp = client.get('/settings')
+        assert resp.status_code == 200
+        for tab in (b'data-tab="profile"', b'data-tab="accounting"', b'data-tab="docprint"',
+                    b'data-tab="admin"', b'data-tab="logo"', b'data-tab="packages"'):
+            assert tab in resp.data, tab
+        for panel in (b'id="settings-profile"', b'id="settings-accounting"',
+                      b'id="settings-docprint"', b'id="settings-admin"',
+                      b'id="settings-logo"', b'id="settings-packages"'):
+            assert panel in resp.data, panel
+
+    def test_settings_page_keeps_all_sections_and_save(self, client, db_session, admin_user, main_branch):
+        """Regroup must not drop any section heading, the single Save, or the logo card."""
+        login(client)
+        resp = client.get('/settings')
+        for label in (b'Company Identity', b'BIR Registration', b'Address', b'Company Officers',
+                      b'Accounting', b'Documents', b'Print Form', b'Administration',
+                      b'Save Settings', b'Logo'):
+            assert label in resp.data, label
+
+    def test_modules_button_removed_from_toolbar(self, client, db_session, admin_user, main_branch):
+        """Packages is a tab now; the standalone 'Modules / Package' nav button is gone."""
+        login(client)
+        resp = client.get('/settings')
+        assert b'Modules / Package' not in resp.data
+
+
 class TestPrintAccessSettings:
     def test_sv_print_access_saved_when_posted(
             self, client, db_session, admin_user, main_branch):
