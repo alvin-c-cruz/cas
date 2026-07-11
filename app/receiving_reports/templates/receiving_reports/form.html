@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if rr else 'Enter' }} Receiving Report{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ 'Edit' if rr else 'Enter' }} Receiving Report</h1>
+  <a href="{{ url_for('receiving_reports.list_rr') }}" class="btn btn-secondary btn-sm">Back to list</a>
+</div>
+
+<form method="POST"
+      action="{{ url_for('receiving_reports.edit', id=rr.id) if rr else url_for('receiving_reports.create') }}">
+  {{ form.hidden_tag() }}
+  <input type="hidden" name="lines" id="rrLinesJson" value="[]">
+
+  <div class="card"><div class="card-body">
+    <div class="form-grid">
+      <div class="form-group">{{ form.purchase_order_id.label }} {{ form.purchase_order_id(class="form-control", id="poSelect") }}</div>
+      <div class="form-group">{{ form.receipt_date.label }} {{ form.receipt_date(class="form-control") }}</div>
+    </div>
+    <div class="form-group">{{ form.remarks.label }} {{ form.remarks(class="form-control", rows=2) }}</div>
+  </div></div>
+
+  <div class="card"><div class="card-body">
+    <h3>Received Items</h3>
+    <p class="text-muted">Enter the quantity actually received on each line (cannot exceed the open quantity).</p>
+    <div class="table-responsive">
+      <table class="table" id="rrGrid">
+        <thead>
+          <tr><th>Item</th><th>UoM</th><th class="text-end">Ordered</th>
+              <th class="text-end">Already Received</th><th class="text-end">Open</th>
+              <th class="text-end">Receive Now</th></tr>
+        </thead>
+        <tbody id="rrGridBody">
+          <tr><td colspan="6" class="text-muted">Select a Purchase Order to load its open lines.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div></div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ 'Update' if rr else 'Save' }}</button>
+    <a href="{{ url_for('receiving_reports.list_rr') }}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+
+<script>
+  const PO_LINES = {{ po_lines | tojson }};     // {po_id: [{purchase_order_item_id, product_name, uom, ordered, received, open}]}
+  const EXISTING = {{ existing | tojson }};      // {purchase_order_item_id: received_qty} (edit pre-fill)
+
+  function renderLines(poId) {
+    const body = document.getElementById('rrGridBody');
+    body.innerHTML = '';
+    const rows = PO_LINES[poId] || [];
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="6" class="text-muted">No open lines on this Purchase Order.</td></tr>';
+      return;
+    }
+    rows.forEach(r => {
+      const pre = EXISTING[r.purchase_order_item_id];
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${r.product_name || r.product_code || ''}</td>`
+      + `<td>${r.uom || ''}</td>`
+      + `<td class="text-end">${r.ordered}</td>`
+      + `<td class="text-end">${r.received}</td>`
+      + `<td class="text-end">${r.open}</td>`
+      + `<td class="text-end"><input type="number" step="0.0001" min="0" max="${r.open}"`
+      + ` class="form-control rr-recv" data-poi="${r.purchase_order_item_id}"`
+      + ` value="${pre != null ? pre : ''}" style="max-width:120px;display:inline-block"></td>`;
+      body.appendChild(tr);
+    });
+  }
+  const sel = document.getElementById('poSelect');
+  sel.addEventListener('change', () => renderLines(sel.value));
+
+  document.querySelector('form').addEventListener('submit', () => {
+    const lines = [];
+    document.querySelectorAll('.rr-recv').forEach(inp => {
+      const q = parseFloat(inp.value);
+      if (q > 0) lines.push({ purchase_order_item_id: parseInt(inp.dataset.poi, 10),
+                              received_quantity: inp.value });
+    });
+    document.getElementById('rrLinesJson').value = JSON.stringify(lines);
+  });
+
+  // Initial render (edit form or preselected PO)
+  if (sel.value) renderLines(sel.value);
+</script>
+{% endblock %}
