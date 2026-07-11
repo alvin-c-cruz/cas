@@ -151,6 +151,8 @@ def test_cdv_mixed_lines_tie_and_print(client, db_session, accountant_user, main
 
 def test_crv_mixed_lines_tie_and_print(client, db_session, accountant_user, main_branch, modules_on):
     gl = _gl(db_session); cust = _customer(db_session)
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     _login(client, accountant_user, main_branch)
     resp = client.post('/cash-receipts/create', data={
         'crv_number': 'CR-MIX-0001', 'crv_date': date.today().isoformat(),

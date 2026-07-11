@@ -148,6 +148,8 @@ class TestCRVPosting:
         wht_recv = make_account(db_session, '10212', 'Creditable WHT Receivable',
                                 account_type='Asset', classification='Current Asset',
                                 normal_balance='Debit')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         return ar, wht_recv
 
     def test_ar_only_crv_is_balanced(self, db_session, admin_user, main_branch):
@@ -721,6 +723,8 @@ class TestCRVWhtOverride:
         ar = make_account(db_session, '10201', 'Accounts Receivable - Trade')
         if with_wht_account:
             make_account(db_session, '10212', 'Creditable WHT Receivable')
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
         cash = make_account(db_session, '1001', 'Cash on Hand')
         revenue = make_account(db_session, '4001', 'Sales Revenue',
                                account_type='Income', classification='Operating Revenue',

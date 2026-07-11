@@ -250,6 +250,8 @@ def _build_crv(branch, user, mode):
     out_vat = _acct(OUTPUT_VAT, 'Output VAT', 'Liability', 'Credit')
     cash = _acct(CASH, 'Cash on Hand')
     revenue = _acct(REVENUE, 'Sales Revenue', 'Income', 'Credit')
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db.session)
     db.session.add(SalesVATCategory(code='V12', name='VATable 12%', rate=Decimal('12.00'),
                                     transaction_nature='regular',
                                     output_vat_account_id=out_vat.id, is_active=True))

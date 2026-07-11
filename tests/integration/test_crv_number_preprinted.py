@@ -28,6 +28,8 @@ def setup_accounts(db_session):
     rev  = Account(code='40101', name='Service Revenue', account_type='Income', normal_balance='credit', is_active=True)
     db_session.add_all([ar, wt, cash, rev])
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
     return ar, wt, cash, rev
 
 

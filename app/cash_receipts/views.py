@@ -93,10 +93,15 @@ def _get_crv_or_404(id):
 
 
 def _get_gl_accounts():
-    """Return AR-Trade (10201) and Creditable WHT Receivable (10212) accounts."""
+    """Return the AR-Trade and Creditable WHT Receivable control accounts for
+    display/preview use. Resolved via accountant-assigned settings
+    (app.posting.control_accounts) -- never raises; entries are None when
+    unassigned or misconfigured. The posting engine (_post_crv_je) resolves
+    these itself with required=True instead of going through this helper."""
+    from app.posting.control_accounts import get_control_account
     return {
-        'ar': Account.query.filter_by(code='10201').first(),
-        'wt': Account.query.filter_by(code='10212').first(),
+        'ar': get_control_account('ar_trade', required=False),
+        'wt': get_control_account('creditable_wht', required=False),
     }
 
 
@@ -187,11 +192,9 @@ def _crv_posted_wt(crv):
 def _post_crv_je(crv, user_id):
     """Create the receipt JE: Cr AR + Cr/Dr Revenue (sign-aware) + Cr/Dr Output VAT; Dr/Cr WHT Recv + Dr/Cr Cash."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.posting.control_accounts import get_control_account
 
-    accts = _get_gl_accounts()
-    ar_account = accts['ar']
-    if not ar_account:
-        raise ValueError("Accounts Receivable - Trade (10201) not found in COA.")
+    ar_account = get_control_account('ar_trade')
     cash_account = crv.cash_account
     if not cash_account:
         raise ValueError("Cash/Bank account not set on the receipt.")
@@ -200,9 +203,7 @@ def _post_crv_je(crv, user_id):
     # WHT: the header value under override, else the positive-line sum.
     total_wt = _crv_posted_wt(crv)
     if total_wt != Decimal('0.00'):
-        wt_account = accts['wt']
-        if not wt_account:
-            raise ValueError("Creditable Withholding Tax (10212) not found in COA.")
+        wt_account = get_control_account('creditable_wht')
 
     je_status = 'posted' if crv.status == 'posted' else 'draft'
     je = JournalEntry(
