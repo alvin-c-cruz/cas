@@ -50,6 +50,8 @@
     "app/static/js/sales_memos_form.js":   ["credit_memos", "debit_memos"],
     "app/sales_invoices/models.py":        ["sales_invoices", "credit_memos", "debit_memos"],
     "app/sales_invoices/views.py":         ["sales_invoices", "credit_memos", "debit_memos"],
+    "app/posting/buckets.py":              ["posting", "accounts_payable", "sales_invoices", "cash_disbursements", "cash_receipts", "credit_memos", "debit_memos"],
+    "app/posting/__init__.py":             ["posting", "accounts_payable", "sales_invoices", "cash_disbursements", "cash_receipts", "credit_memos", "debit_memos"],
     "app/accounts_payable/views.py":       ["accounts_payable"],
     "app/cash_disbursements/views.py":     ["cash_disbursements"],
     "app/cash_receipts/views.py":          ["cash_receipts"],
