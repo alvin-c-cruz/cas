@@ -42,6 +42,8 @@ def _ensure_gl_accounts(db_session):
             db_session.add(Account(code=code, name=name, account_type=typ,
                                    normal_balance=nb, is_active=True))
     db_session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
 
 
 def _login(client, user, branch):

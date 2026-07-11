@@ -104,6 +104,8 @@ class TestOutputVatBuckets:
         ovs = _acct(db_session, '20202', 'Output VAT - Services', 'Liability', 'credit')
         _vat_cat(db_session, 'SVG', ovg)
         _vat_cat(db_session, 'SVS', ovs)
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
 
         # 2240 incl @12% -> VAT 240 ; 1120 incl @12% -> VAT 120
         inv = _invoice(db_session, customer, branch, 'SI-BKT-01', [
@@ -177,6 +179,8 @@ class TestReversalMirrorsJE:
             wt = WithholdingTax(code='WC010', name='EWT 10%', rate=Decimal('10.00'), is_active=True)
             db_session.add(wt)
             db_session.flush()
+        from tests.conftest import assign_control_accounts
+        assign_control_accounts(db_session)
 
         inv = _invoice(db_session, customer, branch, 'SI-REV-01', [
             {'amount': 11200, 'vat_category': 'SV12', 'vat_rate': 12,

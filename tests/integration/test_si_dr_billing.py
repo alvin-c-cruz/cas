@@ -29,6 +29,8 @@ def _setup(db_session, branch):
                  classification='General', normal_balance='Debit')
     pc = UnitOfMeasure(code='PC', name='Piece', is_active=True)
     db.session.add_all([rev, ar, pc]); db.session.commit()
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db.session)
     p = Product(code='P001', name='Widget', is_active=True, default_unit_of_measure_id=pc.id,
                 default_unit_price=Decimal('100'), default_account_id=rev.id)
     c = Customer(code='C1', name='Acme', is_active=True)
