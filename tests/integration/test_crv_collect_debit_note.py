@@ -17,6 +17,8 @@ from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
 from app.sales_memos.models import SalesMemo
 from app.settings import AppSettings
 
+from tests.conftest import assign_control_accounts
+
 pytestmark = [pytest.mark.integration, pytest.mark.cash_receipts]
 
 
@@ -54,6 +56,7 @@ def _setup(client, admin_user, main_branch):
                            output_vat_account_id=coa['outvat'].id, is_active=True)
     db.session.add(vat); db.session.commit()
     AppSettings.set_setting('module_enabled:debit_memos', '1')
+    assign_control_accounts(db.session)
     from app.utils.cache_helpers import clear_module_config_cache
     db.session.commit(); clear_module_config_cache()
     c = Customer(code='C1', name='Acme', is_active=True)

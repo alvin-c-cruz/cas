@@ -13,6 +13,8 @@ from app.sales_memos.models import SalesMemo, SalesMemoItem
 from app.sales_memos import service
 from app.settings import AppSettings
 
+from tests.conftest import assign_control_accounts
+
 pytestmark = [pytest.mark.integration, pytest.mark.credit_memos]
 
 
@@ -53,6 +55,7 @@ def _setup(client, admin_user, main_branch, si_paid='0'):
     db.session.add(vat); db.session.commit()
     AppSettings.set_setting(service.SALES_RETURNS_KEY, '40103')
     AppSettings.set_setting(service.CUSTOMER_CREDITS_KEY, '20301')
+    assign_control_accounts(db.session)
     AppSettings.set_setting('module_enabled:credit_memos', '1')
     from app.utils.cache_helpers import clear_module_config_cache
     db.session.commit(); clear_module_config_cache()

@@ -14,6 +14,8 @@ from app.sales_memos.models import SalesMemo
 from app.sales_memos import service
 from app.settings import AppSettings
 
+from tests.conftest import assign_control_accounts
+
 pytestmark = [pytest.mark.integration, pytest.mark.credit_memos]
 
 
@@ -55,6 +57,7 @@ def _setup(client, admin_user, main_branch, enable=True):
     vat = SalesVATCategory(code='V12', name='VATABLE', rate=Decimal('12'),
                            output_vat_account_id=coa['outvat'].id, is_active=True)
     db.session.add(vat); db.session.commit()
+    assign_control_accounts(db.session)
     if enable:
         _enable('debit_memos')
     c = Customer(code='C1', name='Acme', is_active=True)

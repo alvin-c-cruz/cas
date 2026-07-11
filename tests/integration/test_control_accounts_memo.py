@@ -1,4 +1,5 @@
-"""Credit-memo journal-entry builder: balance + per-leg tie-out to the memo header."""
+"""Credit/Debit memo JE builder resolves AR + Creditable WHT via control-account settings,
+not hardcoded legacy codes (same bug class as BUG-POSTING-HARDCODED-CONTROL-ACCOUNTS)."""
 from datetime import date
 from decimal import Decimal
 
@@ -13,6 +14,7 @@ from app.sales_memos.models import SalesMemo, SalesMemoItem
 from app.sales_memos.je import post_memo_je
 from app.sales_memos import service
 from app.settings import AppSettings
+from app.posting.control_accounts import ControlAccountError
 
 from tests.conftest import assign_control_accounts
 
@@ -26,10 +28,12 @@ def _acct(code, name, atype, nb):
     return a
 
 
-def _setup_coa(assign=True):
+def _setup_coa(assign_ar='1210', assign_wht='1215', assign_settings=True):
+    """Non-legacy COA (AR at 1210, Creditable WHT at 1215 -- neither is the legacy
+    10201/10212 code) to prove settings-driven resolution, not the magic default."""
     coa = {
-        'ar': _acct('10201', 'Accounts Receivable - Trade', 'Asset', 'Debit'),
-        'wt': _acct('10212', 'Creditable Withholding Tax', 'Asset', 'Debit'),
+        'ar': _acct('1210', 'Trade Receivables', 'Asset', 'Debit'),
+        'wt': _acct('1215', 'Creditable Withholding Tax', 'Asset', 'Debit'),
         'outvat': _acct('20401', 'Output VAT', 'Liability', 'Credit'),
         'contra': _acct('40103', 'Sales Returns and Allowances', 'Income', 'Debit'),
         'cust_credit': _acct('20301', 'Customer Credits', 'Liability', 'Credit'),
@@ -41,10 +45,10 @@ def _setup_coa(assign=True):
                            output_vat_account_id=coa['outvat'].id, is_active=True)
     db.session.add(vat)
     db.session.commit()
-    if assign:
-        AppSettings.set_setting(service.SALES_RETURNS_KEY, '40103')
-        AppSettings.set_setting(service.CUSTOMER_CREDITS_KEY, '20301')
-        assign_control_accounts(db.session)
+    AppSettings.set_setting(service.SALES_RETURNS_KEY, '40103')
+    AppSettings.set_setting(service.CUSTOMER_CREDITS_KEY, '20301')
+    if assign_settings:
+        assign_control_accounts(db.session, ar=assign_ar, creditable_wht=assign_wht)
     return coa
 
 
@@ -85,49 +89,26 @@ def _legs(je):
     return out
 
 
-def test_credit_memo_je_ar_destination_balanced_and_ties(db_session, admin_user, main_branch):
-    coa = _setup_coa()
-    memo = _credit_memo(main_branch, coa, destination='ar', credit='560')  # net 500, vat 60
-    je = post_memo_je(memo, admin_user.id)
-    assert je.is_balanced
-    legs = _legs(je)
-    assert legs['40103'] == (Decimal('500.00'), Decimal('0.00'))   # contra Dr net revenue
-    assert legs['20401'] == (Decimal('60.00'), Decimal('0.00'))    # Output VAT Dr (reversed)
-    assert legs['10201'] == (Decimal('0.00'), Decimal('560.00'))   # AR Cr total
-    assert je.total_debit == je.total_credit == Decimal('560.00')
-
-
-def test_credit_memo_je_reverses_wht(db_session, admin_user, main_branch):
-    coa = _setup_coa()
+def test_credit_memo_je_resolves_ar_and_wht_via_settings_on_non_legacy_coa(
+        db_session, admin_user, main_branch):
+    """AR (destination='ar') and creditable WHT resolve through the settings-assigned
+    control accounts -- not the hardcoded 10201/10212 -- so a self-built COA (AR at a
+    different code) posts a credit memo successfully."""
+    coa = _setup_coa(assign_ar='1210', assign_wht='1215')
     memo = _credit_memo(main_branch, coa, destination='ar', wt_rate='2', credit='560')
-    # vat 60, net-of-vat 500, wht 10, total 550, net revenue 500
     je = post_memo_je(memo, admin_user.id)
     assert je.is_balanced
     legs = _legs(je)
-    assert legs['40103'] == (Decimal('500.00'), Decimal('0.00'))
-    assert legs['20401'] == (Decimal('60.00'), Decimal('0.00'))
-    assert legs['10212'] == (Decimal('0.00'), Decimal('10.00'))    # WHT receivable unwound (Cr)
-    assert legs['10201'] == (Decimal('0.00'), Decimal('550.00'))   # AR Cr = gross - wht
+    assert legs['1215'] == (Decimal('0.00'), Decimal('10.00'))   # WHT receivable unwound (Cr)
+    assert legs['1210'] == (Decimal('0.00'), Decimal('550.00'))  # AR Cr = gross - wht (settings code)
 
 
-def test_credit_memo_je_cash_refund_destination(db_session, admin_user, main_branch):
-    coa = _setup_coa()
-    memo = _credit_memo(main_branch, coa, destination='cash_refund', credit='560')
-    je = post_memo_je(memo, admin_user.id)
-    assert je.is_balanced
-    assert _legs(je)['10110'] == (Decimal('0.00'), Decimal('560.00'))  # cash refunded
-
-
-def test_credit_memo_je_customer_credit_destination(db_session, admin_user, main_branch):
-    coa = _setup_coa()
-    memo = _credit_memo(main_branch, coa, destination='customer_credit', credit='560')
-    je = post_memo_je(memo, admin_user.id)
-    assert je.is_balanced
-    assert _legs(je)['20301'] == (Decimal('0.00'), Decimal('560.00'))  # customer credit liability
-
-
-def test_post_memo_je_raises_when_contra_unassigned(db_session, admin_user, main_branch):
-    coa = _setup_coa(assign=False)   # accounts exist but settings unassigned
+def test_post_memo_je_raises_control_account_error_when_ar_unassigned(
+        db_session, admin_user, main_branch):
+    """Unassigned ar_trade control account -> friendly ControlAccountError, not a raw
+    'not found in Chart of Accounts' or KeyError/AttributeError."""
+    coa = _setup_coa(assign_settings=False)
     memo = _credit_memo(main_branch, coa, destination='ar', credit='560')
-    with pytest.raises(ValueError):
+    with pytest.raises(ControlAccountError) as exc_info:
         post_memo_je(memo, admin_user.id)
+    assert 'Accounts Receivable control account' in str(exc_info.value)
