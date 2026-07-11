@@ -9,6 +9,19 @@ from tests.integration.test_vat_settlement_compute import _vat_world, _je
 pytestmark = [pytest.mark.integration]
 
 
+@pytest.fixture(autouse=True)
+def _fresh_module_cache():
+    # bir_reports is default_enabled, but its enablement is read through an
+    # app-level SimpleCache that is NOT reset per test. A sibling test that
+    # disables the module (e.g. test_chief_accountant) can leave a stale '0'
+    # cached, 404-ing these gated routes. Clear before and after so every test
+    # in this file reads the module state fresh and leaks nothing onward.
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
 def test_vat_return_summary_payable(db_session, main_branch):
     w = _vat_world(main_branch)
     _je(main_branch.id, date(2025, 7, 10), [(w['ar'].id, 120000, 0), (w['out'].id, 0, 120000)])
