@@ -141,6 +141,9 @@ class CompanySettingsForm(FlaskForm):
     cd_print_form = SelectField(
         'CDV Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
     )
+    jv_print_form = SelectField(
+        'JV Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
+    )
 
     # Administration / policy
     accountant_email_self_approval = BooleanField(
