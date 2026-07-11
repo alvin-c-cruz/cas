@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}BIR Reports{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=2">
+{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  <h2 style="margin-bottom:4px;">BIR Compliance Reports</h2>
+  <p style="color:var(--color-text-muted,#555);margin-bottom:16px;">
+    Books, schedules, returns and certificates required for Philippine tax compliance.
+    File the official forms via eBIRForms / eFPS; these are the file copies and keying sheets.
+  </p>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;">
+    <a class="card" style="text-decoration:none;padding:14px;" href="{{ url_for('reports.bir_sales', year=current_year, month=current_month) }}">
+      <strong>Summary List of Sales</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Annex A &mdash; monthly VAT sales (SLS)</span>
+    </a>
+    <a class="card" style="text-decoration:none;padding:14px;" href="{{ url_for('reports.bir_purchases', year=current_year, month=current_month) }}">
+      <strong>Summary List of Purchases</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Annex B &mdash; monthly VAT purchases (SLP)</span>
+    </a>
+    <a class="card" style="text-decoration:none;padding:14px;" href="{{ url_for('reports.bir_vat_return', year=current_year, quarter=current_quarter) }}">
+      <strong>VAT Return 2550Q</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Quarterly value-added tax return</span>
+    </a>
+    <a class="card" style="text-decoration:none;padding:14px;" href="{{ url_for('reports.bir_alphalist', year=current_year, quarter=current_quarter) }}">
+      <strong>Alphalist of Payees (QAP)</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">1601-EQ quarterly alphalist</span>
+    </a>
+    <a class="card" style="text-decoration:none;padding:14px;" href="{{ url_for('reports.bir_2307_index', year=current_year, quarter=current_quarter) }}">
+      <strong>BIR 2307 Certificates</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Creditable tax withheld, issued to vendors</span>
+    </a>
+  </div>
+</div></div>
+{% endblock %}

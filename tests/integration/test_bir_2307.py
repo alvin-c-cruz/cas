@@ -88,3 +88,15 @@ def test_2307_builder_three_month_breakdown(db_session, main_branch, cash_accoun
     assert atc['m1'] == Decimal('10000.00')   # July income payment
     assert atc['m2'] == Decimal('20000.00')   # August
     assert atc['total_tax'] == Decimal('600.00')
+
+
+# --- Task 3: BIR reports landing -------------------------------------------
+
+def test_bir_index_renders_with_report_links(client, db_session, main_branch, admin_user):
+    _login(client)
+    resp = client.get('/reports/bir')
+    assert resp.status_code == 200
+    for link in (b'/reports/bir/sales', b'/reports/bir/purchases',
+                 b'/reports/bir/vat-return', b'/reports/bir/alphalist',
+                 b'/reports/bir/2307'):
+        assert link in resp.data, link

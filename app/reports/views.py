@@ -455,7 +455,6 @@ def general_ledger_print():
 @login_required
 @accountant_or_admin_required
 def bir_index():
-    return redirect(url_for('dashboard.under_development', feature='BIR Reports'))
     current_year = datetime.now().year
     current_month = datetime.now().month
     current_quarter = ((current_month - 1) // 3) + 1
@@ -463,7 +462,8 @@ def bir_index():
     return render_template('reports/bir_index.html',
                          current_year=current_year,
                          current_month=current_month,
-                         current_quarter=current_quarter)
+                         current_quarter=current_quarter,
+                         company=get_company_identity())
 
 
 @reports_bp.route('/reports/bir/sales')
