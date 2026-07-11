@@ -615,21 +615,33 @@ def bir_vat_return_print():
 @login_required
 @accountant_or_admin_required
 def bir_vat_return_export_excel():
-    """Export the net-VAT worksheet to Excel."""
+    """Export the 2550Q worksheet + Part I/II schedules to Excel."""
     year = request.args.get('year', datetime.now().year, type=int)
     quarter = request.args.get('quarter', (datetime.now().month - 1) // 3 + 1, type=int)
     data = get_vat_return_summary(year, quarter)
+
+    def _sched_rows(section, sched):
+        out = [{'section': section, 'line': r['label'],
+                'base': f"{r['base']:.2f}", 'tax': f"{r['tax']:.2f}"} for r in sched['rows']]
+        out.append({'section': section, 'line': 'Total',
+                    'base': f"{sched['total_base']:.2f}", 'tax': f"{sched['total_tax']:.2f}"})
+        return out
+
     rows = [
-        {'line': 'Output VAT', 'amount': data['output_vat']},
-        {'line': 'Less: Input VAT (this quarter)', 'amount': data['input_vat']},
-        {'line': 'Less: Excess Input Tax carried over', 'amount': data['prior_carryover']},
-        {'line': 'Total creditable', 'amount': data['creditable']},
-        {'line': 'VAT Payable', 'amount': data['net_payable']},
-        {'line': 'Excess Input Tax carried forward', 'amount': data['new_carryover']},
+        {'section': 'Summary', 'line': 'Output VAT', 'base': '', 'tax': f"{data['output_vat']:.2f}"},
+        {'section': 'Summary', 'line': 'Input VAT (this quarter)', 'base': '', 'tax': f"{data['input_vat']:.2f}"},
+        {'section': 'Summary', 'line': 'Excess Input Tax carried over', 'base': '', 'tax': f"{data['prior_carryover']:.2f}"},
+        {'section': 'Summary', 'line': 'Total creditable', 'base': '', 'tax': f"{data['creditable']:.2f}"},
+        {'section': 'Summary', 'line': 'VAT Payable', 'base': '', 'tax': f"{data['net_payable']:.2f}"},
+        {'section': 'Summary', 'line': 'Excess Input Tax carried forward', 'base': '', 'tax': f"{data['new_carryover']:.2f}"},
     ]
-    filename = f'VAT_Return_{year}_Q{quarter}.xlsx'
-    title = f'VAT Return Worksheet - {get_quarter_name(quarter)} {year}'
-    return export_to_excel(rows, ['line', 'amount'], ['Line', 'Amount'], filename, title)
+    rows += _sched_rows('Part I - Output Tax', data['sales_schedule'])
+    rows += _sched_rows('Part II - Input Tax', data['input_schedule'])
+
+    filename = f'VAT_Return_2550Q_{year}_Q{quarter}.xlsx'
+    title = f'VAT Return 2550Q - {get_quarter_name(quarter)} {year}'
+    return export_to_excel(rows, ['section', 'line', 'base', 'tax'],
+                           ['Section', 'Line', 'Amount', 'Tax'], filename, title)
 
 
 # ============================================================================

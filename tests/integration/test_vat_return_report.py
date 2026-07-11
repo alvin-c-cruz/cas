@@ -121,3 +121,19 @@ def test_page_shows_out_of_balance_banner(client, db_session, main_branch, admin
     resp = client.get('/reports/bir/vat-return?year=2025&quarter=3')
     assert resp.status_code == 200
     assert b'do not tie to' in resp.data           # reconciliation banner fired
+
+
+def test_excel_export_includes_schedule_rows(
+        client, db_session, main_branch, cash_account, revenue_account, admin_user):
+    import io
+    from openpyxl import load_workbook
+    _posted_crv_regular(main_branch, cash_account, revenue_account)
+    client.post('/login', data={'username': 'admin', 'password': 'admin123'},
+                follow_redirects=True)
+    resp = client.get('/reports/bir/vat-return/export/excel?year=2025&quarter=3')
+    assert resp.status_code == 200
+    wb = load_workbook(io.BytesIO(resp.data))
+    text = '\n'.join(str(c.value) for row in wb.active.iter_rows() for c in row if c.value)
+    assert 'Vatable Sales' in text          # a Part I schedule row is present
+    assert 'Capital Goods' in text          # a Part II schedule row is present
+    assert '1200.00' in text
