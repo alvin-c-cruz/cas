@@ -75,7 +75,7 @@
 
   <div class="print-bar screen-only">
     <button class="btn-print" onclick="window.print()">Print</button>
-    <a class="btn-close" href="{{ url_for('cash_receipts.view', id=crv.id) }}">Close</a>
+    <button type="button" class="btn-close" onclick="window.close()">Close</button>
   </div>
 
   <div class="doc-header">

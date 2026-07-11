@@ -74,7 +74,7 @@
 
   <div class="print-bar screen-only">
     <button class="btn-print" onclick="window.print()">Print</button>
-    <a class="btn-close" href="{{ url_for('accounts_payable.view', id=ap.id) }}">Close</a>
+    <button type="button" class="btn-close" onclick="window.close()">Close</button>
   </div>
 
   <div class="apv-header">

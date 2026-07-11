@@ -40,7 +40,7 @@
 <div class="card">
     <div class="card-header">
         <div class="ap-jrnl-actions" style="display:flex; gap:8px; justify-content:flex-end;">
-            <a id="apPrintLink" href="{{ url_for('journals.ap_journal_print', **request.args) }}" class="btn btn-secondary btn-sm">Print</a>
+            <a id="apPrintLink" href="{{ url_for('journals.ap_journal_print', **request.args) }}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Print</a>
             <a id="apExportLink" href="{{ url_for('journals.ap_journal_export', **request.args) }}" class="btn btn-primary btn-sm">Download Excel</a>
         </div>
     </div>
