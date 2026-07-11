@@ -1,4 +1,5 @@
 import json
+import calendar
 from flask import Blueprint, render_template, redirect, url_for, jsonify, request, session, flash
 from flask_login import login_required, current_user
 from app.dashboard.action_items_service import gather_draft_items, gather_approval_items
@@ -27,8 +28,11 @@ def index():
 @login_required
 def home():
     """Main dashboard page with real business metrics"""
-    # Get "as of" date from query parameter or default to today
-    today = ph_now().date()
+    # Get "as of" date from query parameter or default to end of the current
+    # month (the natural month-end reporting date), consistent with the EOM
+    # two-column IS/CF. BUG-DASHBOARD-ASOF-DEFAULT-EOM.
+    now = ph_now().date()
+    month_end = now.replace(day=calendar.monthrange(now.year, now.month)[1])
     as_of_date_str = request.args.get('as_of_date')
 
     if as_of_date_str:
@@ -36,9 +40,9 @@ def home():
             as_of_date = datetime.strptime(as_of_date_str, '%Y-%m-%d').date()
             # Allow any date - past, present, or future
         except ValueError:
-            as_of_date = today
+            as_of_date = month_end
     else:
-        as_of_date = today
+        as_of_date = month_end
 
     # Extract year and month from the as_of_date
     current_year = as_of_date.year
@@ -94,7 +98,7 @@ def home():
                          expense_breakdown=expense_breakdown,
                          current_month=as_of_date.strftime('%B %Y'),
                          as_of_date=as_of_date.strftime('%Y-%m-%d'),
-                         today=today.strftime('%Y-%m-%d'))
+                         month_end=month_end.strftime('%Y-%m-%d'))
 
 @dashboard_bp.route('/action-items')
 @login_required
