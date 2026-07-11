@@ -1,14 +1,20 @@
 """backfill control-account settings from legacy codes
 
 Revision ID: ca5f99361716
-Revises: d1e2f3a4b5c6
+Revises: be7db1227c52
 Create Date: 2026-07-11
+
+Re-parented from d1e2f3a4b5c6 to be7db1227c52 (2026-07-11) when merging
+feat/control-accounts into main resolved a concurrent migration-head collision
+with the R-02 Purchases migrations (purchase_orders/requests/receiving_reports),
+which also chained off d1e2f3a4b5c6. This backfill is data-only and
+order-independent of those, so running it after them is safe.
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = 'ca5f99361716'
-down_revision = 'd1e2f3a4b5c6'
+down_revision = 'be7db1227c52'
 branch_labels = None
 depends_on = None
 
