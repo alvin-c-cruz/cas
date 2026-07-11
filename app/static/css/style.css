@@ -1703,7 +1703,7 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
   width: 160px;
 }
 
-.dashboard-today-btn {
+.dashboard-monthend-btn {
   background: rgba(255, 255, 255, 0.25);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.3);
