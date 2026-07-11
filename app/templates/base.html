@@ -1134,15 +1134,13 @@
                     {% if m.key == 'bir_reports' %}
                     {# BIR Reports module gates 3 sub-links, not a single endpoint #}
                     <div class="nav-subgroup-label">BIR Reports</div>
-                    <a href="{{ url_for('reports.bir_index') }}" class="nav-item nav-item--soon {% if request.endpoint and request.endpoint.startswith('reports.bir') %}active{% endif %}">
+                    <a href="{{ url_for('reports.bir_index') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('reports.bir') %}active{% endif %}">
                         <span class="nav-icon">🏛</span>
                         <span class="nav-text">VAT Reports</span>
-                        <span class="nav-coming-soon">Soon</span>
                     </a>
-                    <a href="{{ url_for('reports.bir_alphalist') }}" class="nav-item nav-item--soon {% if request.endpoint == 'reports.bir_alphalist' %}active{% endif %}">
+                    <a href="{{ url_for('reports.bir_alphalist') }}" class="nav-item {% if request.endpoint == 'reports.bir_alphalist' %}active{% endif %}">
                         <span class="nav-icon">📋</span>
                         <span class="nav-text">Withholding Tax</span>
-                        <span class="nav-coming-soon">Soon</span>
                     </a>
                     <a href="{{ url_for('dashboard.under_development', feature='Annual ITR') }}" class="nav-item nav-item--soon {% if request.endpoint == 'dashboard.under_development' and request.args.get('feature') == 'Annual ITR' %}active{% endif %}">
                         <span class="nav-icon">📄</span>
