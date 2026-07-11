@@ -220,6 +220,7 @@ def create_app(config_name=None):
     from app.year_end.models import FiscalYearClose
     from app.vat_settlement.models import VatSettlement
     from app.units_of_measure.models import UnitOfMeasure
+    from app.product_categories.models import ProductCategory
     from app.products.models import Product
     from app.sales_orders.models import SalesOrder, SalesOrderItem
     from app.quotations.models import Quotation, QuotationItem
@@ -260,6 +261,7 @@ def create_app(config_name=None):
     from app.control_accounts.views import control_accounts_bp
     from app.staff_management.views import staff_management_bp
     from app.units_of_measure.views import units_of_measure_bp
+    from app.product_categories.views import product_categories_bp
     from app.products.views import products_bp
     from app.sales_orders.views import sales_orders_bp
     from app.delivery_receipts.views import delivery_receipts_bp
@@ -297,6 +299,7 @@ def create_app(config_name=None):
     app.register_blueprint(control_accounts_bp)
     app.register_blueprint(staff_management_bp)
     app.register_blueprint(units_of_measure_bp)
+    app.register_blueprint(product_categories_bp)
     app.register_blueprint(products_bp)
     app.register_blueprint(sales_orders_bp)
     app.register_blueprint(quotations_bp)

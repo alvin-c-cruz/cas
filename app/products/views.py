@@ -4,7 +4,8 @@ from flask_login import login_required, current_user
 from app import db
 from app.products.models import Product
 from app.products.forms import ProductForm
-from app.utils.cache_helpers import get_active_units, get_active_accounts, clear_product_cache
+from app.utils.cache_helpers import (get_active_units, get_active_accounts, clear_product_cache,
+                                     get_active_product_categories)
 from app.audit.utils import log_create, log_update
 
 products_bp = Blueprint('products', __name__, template_folder='templates')
@@ -19,6 +20,10 @@ def _populate_choices(form):
     )
     form.default_account_id.choices = (
         [('', '— None —')] + [(str(a.id), f'{a.code} — {a.name}') for a in accounts]
+    )
+    form.category_id.choices = (
+        [('', '— None —')] + [(str(c.id), f'{c.code} — {c.name}')
+                              for c in get_active_product_categories()]
     )
 
 
@@ -55,6 +60,7 @@ def create():
             default_unit_of_measure_id=_int_or_none(form.default_unit_of_measure_id.data),
             default_unit_price=form.default_unit_price.data,
             default_account_id=_int_or_none(form.default_account_id.data),
+            category_id=_int_or_none(form.category_id.data),
             is_active=(form.is_active.data == '1'),
             created_by_id=current_user.id,
         )
@@ -91,6 +97,7 @@ def edit(id):
         form.is_active.data = '1' if p.is_active else '0'
         form.default_unit_of_measure_id.data = str(p.default_unit_of_measure_id or '')
         form.default_account_id.data = str(p.default_account_id or '')
+        form.category_id.data = str(p.category_id or '')
     if form.validate_on_submit():
         old = p.to_dict()
         p.code = form.code.data.strip()
@@ -99,6 +106,7 @@ def edit(id):
         p.default_unit_of_measure_id = _int_or_none(form.default_unit_of_measure_id.data)
         p.default_unit_price = form.default_unit_price.data
         p.default_account_id = _int_or_none(form.default_account_id.data)
+        p.category_id = _int_or_none(form.category_id.data)
         p.is_active = (form.is_active.data == '1')
         db.session.commit()
         clear_product_cache()

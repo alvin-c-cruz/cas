@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Product Categories{% endblock %}
+{% block page_title %}Product Categories{% endblock %}
+{% block content %}
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Product Categories</h1>
+        <p class="page-subheading">Manage product category codes</p>
+    </div>
+    <div class="page-actions">
+        {% if current_user.has_full_access or current_user.role == 'accountant' %}
+        <a href="{{ url_for('product_categories.create') }}" class="btn btn-primary">+ Create Product Category</a>
+        {% endif %}
+    </div>
+</div>
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr><th>Code</th><th>Name</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for c in categories %}
+                <tr>
+                    <td>{{ c.code }}</td>
+                    <td>{{ c.name }}</td>
+                    <td>
+                        {% if c.is_active %}<span class="badge badge-active">Active</span>
+                        {% else %}<span class="badge badge-inactive">Inactive</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if current_user.has_full_access or current_user.role == 'accountant' %}
+                        <a href="{{ url_for('product_categories.edit', id=c.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="empty-state-cell"><p>No product categories found.</p></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

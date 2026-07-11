@@ -16,4 +16,5 @@ class ProductForm(FlaskForm):
     default_unit_price = DecimalField('Default Unit Price (₱, VAT-inclusive)', places=2,
                                       validators=[Optional(), NumberRange(min=0)])
     default_account_id = SelectField('Default Account', validators=[Optional()], default='')
+    category_id = SelectField('Category', validators=[Optional()], default='')
     is_active = SelectField('Status', choices=[('1', 'Active'), ('0', 'Inactive')])
