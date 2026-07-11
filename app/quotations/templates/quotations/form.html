@@ -388,7 +388,9 @@ function calculateTotals() {
 }
 
 // ── Form validation ─────────────────────────────────────────────────────────────
-// A quote may itemize freely: require at least one line with an amount > 0 (product optional).
+// Every line must reference a product (a QuotationItem has no description column, so
+// a product-less line identifies nothing) and carry an amount > 0. Mirrors the
+// server guard in _parse_and_attach_quote_lines (BUG-QUOTE-LINE-NO-PRODUCT-UOM).
 
 function validateForm() {
     const btn  = document.getElementById('submitBtn');
@@ -400,6 +402,7 @@ function validateForm() {
     if (lineItems.length === 0) { block('Add at least one line item.'); return; }
     for (let i = 0; i < lineItems.length; i++) {
         const item = lineItems[i];
+        if (!item.product_id) { block(`Line ${i + 1}: select a product.`); return; }
         if (!item.amount || item.amount <= 0) { block(`Line ${i + 1}: enter an amount greater than zero.`); return; }
     }
     allow();

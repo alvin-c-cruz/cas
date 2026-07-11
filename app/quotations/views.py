@@ -32,8 +32,10 @@ VALID_QUOTATION_STATUSES = {'draft', 'sent', 'accepted', 'rejected', 'cancelled'
 
 def _parse_and_attach_quote_lines(q, lines_json):
     """Parse the hidden-JSON line array and attach QuotationItem objects to *q*.
-    Mirrors sales_orders._parse_and_attach_so_lines, but a quote may itemize freely
-    (no product-required guard)."""
+    Mirrors sales_orders._parse_and_attach_so_lines, including its product-required
+    guard: a QuotationItem has no description column, so a product-less line would
+    identify nothing (BUG-QUOTE-LINE-NO-PRODUCT-UOM) and would propagate a null
+    product down the Quote->SO->DR chain on accept."""
     def _dec(v):
         try:
             return Decimal(str(v)) if v not in (None, '', 'null') else None
@@ -48,7 +50,7 @@ def _parse_and_attach_quote_lines(q, lines_json):
 
     items = json.loads(lines_json) if lines_json else []
     kept = 0
-    for d in items:
+    for idx, d in enumerate(items, start=1):
         vat_rate = _dec(d.get('vat_rate')) or Decimal('0.00')
         product_id = _int(d.get('product_id'))
         amount = Decimal(str(d.get('amount', '0') or '0'))
@@ -58,6 +60,8 @@ def _parse_and_attach_quote_lines(q, lines_json):
                     and qty is None and price is None)
         if is_empty:
             continue  # skip a blank trailing line
+        if product_id is None:
+            raise ValueError(f'Line {idx}: select a product.')
         kept += 1
         li = QuotationItem(
             line_number=kept,
