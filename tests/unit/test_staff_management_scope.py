@@ -94,3 +94,16 @@ def test_merge_permissions_rejects_foreign_key(db_session):
     result = merge_permissions(acct, target, ['accounts_payable', 'general_ledger'])
     assert result.get('accounts_payable') is True
     assert result.get('general_ledger') is not True
+
+
+def test_accountant_permission_keys_full_access_returns_all_keys(db_session):
+    """A full-access approver (admin or chief_accountant) has the whole grid as
+    their ceiling regardless of stored keys (they store none, relying on the
+    has_full_access short-circuit) -- else merge_permissions lets them grant
+    nothing. BUG-CA-CANNOT-EDIT."""
+    from app.users.module_access import all_permission_keys
+    a = _branch('A')
+    ca = _user('chief_accountant', [a], {})
+    admin = _user('admin', [a], {})
+    assert accountant_permission_keys(ca) == set(all_permission_keys())
+    assert accountant_permission_keys(admin) == set(all_permission_keys())

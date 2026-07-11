@@ -11,7 +11,15 @@ from app.users.module_access import all_permission_keys
 
 
 def accountant_permission_keys(accountant):
-    """Non-optional module keys the accountant currently holds (their ceiling)."""
+    """Module keys the approver may grant (their ceiling).
+
+    A full-access approver (admin or chief_accountant) has the entire grid as
+    their ceiling regardless of stored keys -- they typically store none, relying
+    on the has_full_access short-circuit, so reading raw stored keys would give
+    an empty ceiling and let them grant nothing. A plain accountant's ceiling is
+    exactly the keys they hold."""
+    if accountant.has_full_access:
+        return set(all_permission_keys())
     perms = accountant.get_book_permissions()
     return {k for k in all_permission_keys() if perms.get(k)}
 

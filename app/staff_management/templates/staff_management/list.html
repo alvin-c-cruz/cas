@@ -18,7 +18,7 @@
                 <tr>
                     <td><strong>{{ u.username }}</strong></td>
                     <td>{{ u.full_name }}</td>
-                    <td>{{ u.role|capitalize }}</td>
+                    <td>{{ u.role|role_label }}</td>
                     <td>{{ u.branches|map(attribute='name')|join(', ') }}</td>
                     <td>{% if u.is_active %}<span class="badge badge-active">Active</span>
                         {% else %}<span class="badge badge-inactive">Inactive</span>{% endif %}</td>

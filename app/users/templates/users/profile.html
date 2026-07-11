@@ -34,14 +34,7 @@
             <div class="profile-row">
                 <div class="profile-label">Role</div>
                 <div class="profile-value">
-                    <span class="badge badge-role-{{ user.role }}">
-                        {% if user.role == 'admin' %}Administrator
-                        {% elif user.role == 'accountant' %}Accountant
-                        {% elif user.role == 'staff' %}Staff
-                        {% elif user.role == 'viewer' %}Viewer
-                        {% else %}{{ user.role|title }}
-                        {% endif %}
-                    </span>
+                    <span class="badge badge-role-{{ user.role }}">{{ user.role|role_label }}</span>
                 </div>
             </div>
 
