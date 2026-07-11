@@ -248,9 +248,16 @@ def get_quarter_months(quarter):
 
 
 def get_vat_return_summary(year, quarter):
-    """Quarterly net-VAT worksheet (BIR 2550Q pre-cursor). Company-wide."""
+    """Quarterly BIR 2550Q data. Company-wide.
+
+    Totals come from the settlement engine (or its immutable snapshot once filed);
+    the Part I/II schedules are computed live from posted document lines; and a
+    doc-vs-GL reconciliation ties the two sides. The three schedule keys are
+    additive -- existing callers keep working on the totals they already read.
+    """
     from app.vat_settlement import service
     from app.vat_settlement.models import VatSettlement
+    from app.reports.vat_return import build_vat_return_schedules, reconcile_vat_return
     base = {'year': year, 'quarter': quarter, 'quarter_name': get_quarter_name(quarter)}
     settled = VatSettlement.query.filter_by(fiscal_year=year, quarter=quarter,
                                             status='settled').first()
@@ -258,18 +265,30 @@ def get_vat_return_summary(year, quarter):
         # Filed quarter: show the immutable snapshot. Re-deriving would trip the tie-out,
         # since the quarter-end settlement JE zeroes the balance side but not the movement side.
         creditable = settled.input_vat + settled.prior_carryover
-        return {**base, 'output_vat': settled.output_vat, 'input_vat': settled.input_vat,
-                'prior_carryover': settled.prior_carryover, 'creditable': creditable,
-                'net_payable': settled.net_payable, 'new_carryover': settled.new_carryover,
-                'settled': True}
-    try:
-        pos = service.compute_vat_position(year, quarter)
-    except ValueError as e:
-        z = Decimal('0.00')
-        return {**base, 'output_vat': z, 'input_vat': z, 'prior_carryover': z,
-                'creditable': z, 'net_payable': z, 'new_carryover': z, 'error': str(e)}
-    return {**base,
-            'output_vat': pos['output_vat'], 'input_vat': pos['input_vat'],
-            'prior_carryover': pos['prior_carryover'], 'creditable': pos['creditable'],
-            'net_payable': pos['net_payable'], 'new_carryover': pos['new_carryover'],
-            'settled': False}
+        result = {**base, 'output_vat': settled.output_vat, 'input_vat': settled.input_vat,
+                  'prior_carryover': settled.prior_carryover, 'creditable': creditable,
+                  'net_payable': settled.net_payable, 'new_carryover': settled.new_carryover,
+                  'settled': True}
+        output_gl, input_gl = settled.output_vat, settled.input_vat
+    else:
+        try:
+            pos = service.compute_vat_position(year, quarter)
+        except ValueError as e:
+            z = Decimal('0.00')
+            result = {**base, 'output_vat': z, 'input_vat': z, 'prior_carryover': z,
+                      'creditable': z, 'net_payable': z, 'new_carryover': z,
+                      'settled': False, 'error': str(e)}
+            output_gl = input_gl = None            # GL side unavailable, not zero
+        else:
+            result = {**base,
+                      'output_vat': pos['output_vat'], 'input_vat': pos['input_vat'],
+                      'prior_carryover': pos['prior_carryover'], 'creditable': pos['creditable'],
+                      'net_payable': pos['net_payable'], 'new_carryover': pos['new_carryover'],
+                      'settled': False}
+            output_gl, input_gl = pos['output_vat'], pos['input_vat']
+
+    schedules = build_vat_return_schedules(year, quarter)
+    result['sales_schedule'] = schedules['sales_schedule']
+    result['input_schedule'] = schedules['input_schedule']
+    result['reconciliation'] = reconcile_vat_return(output_gl, input_gl, schedules)
+    return result
