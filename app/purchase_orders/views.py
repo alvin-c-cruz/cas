@@ -7,7 +7,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, render_template, redirect, url_for, flash,
-                   request, session, abort, current_app)
+                   request, session, abort, current_app, jsonify)
 from flask_login import login_required, current_user
 
 from app import db
@@ -125,6 +125,19 @@ def list_po():
     orders = query.order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc()).all()
     return render_template('purchase_orders/list.html', orders=orders,
                            status_filter=status_filter, q=q_text)
+
+
+@purchase_orders_bp.route('/purchase-orders/billable')
+@login_required
+def billable_pos():
+    """JSON: approved, unbilled, RR-less POs for a vendor -- the services/direct billing path.
+    Auto-gated by the purchase_orders module (before_request), so it 404s when the module is off.
+    Data source for the AP form's billing picker."""
+    from app.purchase_billing import billable_pos_for, ap_billing_consolidate
+    branch_id = session.get('selected_branch_id')
+    vendor_id = request.args.get('vendor_id', type=int)
+    pos = billable_pos_for(branch_id, vendor_id) if vendor_id else []
+    return jsonify({'consolidate': ap_billing_consolidate(), 'pos': pos})
 
 
 @purchase_orders_bp.route('/purchase-orders/create', methods=['GET', 'POST'])

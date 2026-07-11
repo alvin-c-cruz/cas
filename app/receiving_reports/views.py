@@ -4,7 +4,8 @@ The open-qty grid caps received qty at each PO line's OPEN quantity (checked at 
 import json
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
+from flask import (Blueprint, render_template, redirect, url_for, flash,
+                   request, session, abort, jsonify)
 from flask_login import login_required, current_user
 
 from app import db
@@ -149,6 +150,18 @@ def list_rr():
                               ReceivingReport.id.desc()).all()
     return render_template('receiving_reports/list.html', receipts=receipts,
                            status_filter=status_filter)
+
+
+@receiving_reports_bp.route('/receiving-reports/billable')
+@login_required
+def billable_rrs():
+    """JSON: approved, unbilled RRs for a vendor -- the goods billing path. Auto-gated by the
+    receiving_reports module (before_request), so it 404s when the module is off."""
+    from app.purchase_billing import billable_rrs_for, ap_billing_consolidate
+    branch_id = session.get('selected_branch_id')
+    vendor_id = request.args.get('vendor_id', type=int)
+    rrs = billable_rrs_for(branch_id, vendor_id) if vendor_id else []
+    return jsonify({'consolidate': ap_billing_consolidate(), 'rrs': rrs})
 
 
 @receiving_reports_bp.route('/receiving-reports/create', methods=['GET', 'POST'])
