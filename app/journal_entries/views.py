@@ -198,7 +198,8 @@ def create():
 def view(id):
     """View journal entry details."""
     entry = _get_entry_or_404(id)
-    return render_template('journal_entries/detail.html', entry=entry)
+    return render_template('journal_entries/detail.html', entry=entry,
+                           jv_print_form=AppSettings.get_setting('jv_print_form', 'current'))
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>/print')

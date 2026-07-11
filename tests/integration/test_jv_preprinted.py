@@ -78,3 +78,21 @@ def test_save_layout_persists_for_admin(client, db_session, admin_user, main_bra
     resp = client.post('/journal-entries/print-layout', json={'paper': 'letter'})
     assert resp.status_code == 200
     assert resp.get_json()['ok'] is True
+
+
+def test_detail_button_hidden_when_setting_hidden(client, db_session, admin_user, main_branch):
+    AppSettings.set_setting('jv_print_form', 'hidden')
+    entry = _posted_jv(db_session, main_branch, admin_user)
+    _login(client, 'admin', 'admin123')
+    resp = client.get(f'/journal-entries/{entry.id}')
+    assert resp.status_code == 200
+    assert f'/journal-entries/{entry.id}/print'.encode() not in resp.data
+
+
+def test_detail_button_shown_when_setting_current(client, db_session, admin_user, main_branch):
+    AppSettings.set_setting('jv_print_form', 'current')
+    entry = _posted_jv(db_session, main_branch, admin_user)
+    _login(client, 'admin', 'admin123')
+    resp = client.get(f'/journal-entries/{entry.id}')
+    assert resp.status_code == 200
+    assert f'/journal-entries/{entry.id}/print'.encode() in resp.data
