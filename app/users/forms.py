@@ -42,15 +42,24 @@ class RegistrationForm(FlaskForm):
             raise ValidationError('Username already exists. Please choose a different one.')
 
     def validate_email(self, email):
-        """Check if email already exists and if it's pre-approved."""
+        """Check if email already exists and if it's pre-approved.
+
+        First-run exception: when no active admin exists yet AND the submitted
+        username is exactly 'admin', skip the pre-approval whitelist so the very
+        first operator can bootstrap the system administrator. The bypass closes
+        the instant an active admin exists (see app.users.utils.system_has_admin).
+        """
         # Check if email is already registered
         user = User.query.filter_by(email=email.data).first()
         if user:
             raise ValidationError('Email already registered. Please use a different one.')
 
-        # Check if email is pre-approved for registration
+        from app.users.utils import system_has_admin, FIRST_RUN_ADMIN_USERNAME
+        first_run = (not system_has_admin()) and (self.username.data or '') == FIRST_RUN_ADMIN_USERNAME
+
+        # Check if email is pre-approved for registration (skipped only in first-run)
         from app.users.approved_emails import ApprovedEmail
-        if not ApprovedEmail.is_email_approved(email.data):
+        if not first_run and not ApprovedEmail.is_email_approved(email.data):
             raise ValidationError('This email is not pre-approved for registration. Please contact the administrator to add your email to the approved list.')
 
 
