@@ -129,8 +129,8 @@ def _wht_payable_buckets(ap, fallback_acct):
             'across payable accounts. Adjust the override or the line withholding.'),
         empty_error=(
             "Withholding tax is non-zero but no line item carries WHT and no "
-            "Withholding Tax Payable - Expanded (20301) fallback account was found "
-            "in the COA. Adjust the withholding or configure the WHT Payable account."),
+            "Withholding Tax Payable control account was found in the COA. Adjust "
+            "the withholding or configure the WHT Payable account."),
     )
 
 

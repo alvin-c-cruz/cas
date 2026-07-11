@@ -297,8 +297,8 @@ def _cdv_wht_payable_buckets(cdv, fallback_acct):
             'across payable accounts. Adjust the override or the line withholding.'),
         empty_error=(
             "Withholding tax override is non-zero but no expense line carries WHT "
-            "and no WHT Payable - Expanded (20301) fallback account was found in the "
-            "COA. Adjust the override or configure the WHT Payable account."),
+            "and no Withholding Tax Payable control account was found in the COA. "
+            "Adjust the override or configure the WHT Payable account."),
     )
 
 
