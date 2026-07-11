@@ -124,6 +124,7 @@ MODULE_REGISTRY = [
                    'reports.bir_alphalist', 'reports.bir_alphalist_export_excel',
                    'reports.bir_2307_index', 'reports.bir_2307_print',
                    'reports.bir_vat_return', 'reports.bir_vat_return_export_excel',
+                   'withholding_certificates.',
                    'vat_settlement.')},
 ]
 

@@ -32,6 +32,14 @@
       <strong>BIR 2307 Certificates</strong><br>
       <span style="color:var(--color-text-muted,#555);font-size:13px;">Creditable tax withheld, issued to vendors</span>
     </a>
+    <a class="card" style="text-decoration:none;padding:14px;" href="{{ url_for('withholding_certificates.list_certificates') }}">
+      <strong>Certificates Received (2307)</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Register of 2307s received from customers</span>
+    </a>
+    <a class="card" style="text-decoration:none;padding:14px;" href="{{ url_for('withholding_certificates.sawt', year=current_year, quarter=current_quarter) }}">
+      <strong>SAWT</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Summary alphalist of withholding taxes + reconciliation</span>
+    </a>
   </div>
 </div></div>
 {% endblock %}

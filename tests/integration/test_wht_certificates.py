@@ -93,3 +93,17 @@ def test_list_renders_created_cert(client, db_session, main_branch, admin_user):
     assert resp.status_code == 200
     assert b'2307-0001' in resp.data
     assert b'Withholding Customer' in resp.data
+
+
+def test_register_is_gated_by_bir_reports_module(client, db_session, main_branch, admin_user):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    _login(client)
+    AppSettings.set_setting('module_enabled:bir_reports', '0', updated_by='t')
+    clear_module_config_cache()
+    try:
+        # module disabled at the instance level -> route appears not to exist (404)
+        assert client.get('/withholding-certificates').status_code == 404
+        assert client.get('/withholding-certificates/sawt').status_code == 404
+    finally:
+        clear_module_config_cache()  # don't leak the '0' into other tests
