@@ -62,26 +62,24 @@
 </div>
 
 <div class="card"><div class="card-body">
-  <dl class="detail-grid">
-    <dt>Status</dt>
-    <dd>
+  <div class="detail-grid">
+    <div><strong>Status:</strong>
       <span class="badge badge-{{ 'secondary' if dr.status == 'draft'
                                   else 'success' if dr.status in ('approved', 'delivered')
                                   else 'info' if dr.status == 'billed'
                                   else 'danger' }}">{{ dr.status|title }}</span>
-    </dd>
-    <dt>Delivery Date</dt><dd>{{ dr.delivery_date.strftime('%b %d, %Y') }}</dd>
-    <dt>Customer</dt><dd>{{ dr.customer_name }}</dd>
-    <dt>Sales Order</dt>
-    <dd>
+    </div>
+    <div><strong>Delivery Date:</strong> {{ dr.delivery_date.strftime('%b %d, %Y') }}</div>
+    <div><strong>Customer:</strong> {{ dr.customer_name }}</div>
+    <div><strong>Sales Order:</strong>
       {% if dr.sales_order %}
       <a href="{{ url_for('sales_orders.view', id=dr.sales_order_id) }}">{{ dr.sales_order.so_number }}</a>
       {% endif %}
-    </dd>
-    <dt>Salesperson</dt><dd>{{ dr.salesperson.full_name if dr.salesperson else 'Company Account' }}</dd>
-    {% if dr.remarks %}<dt>Remarks</dt><dd>{{ dr.remarks }}</dd>{% endif %}
-    {% if dr.status == 'cancelled' %}<dt>Cancelled</dt><dd>{{ dr.cancel_reason }}</dd>{% endif %}
-  </dl>
+    </div>
+    <div><strong>Salesperson:</strong> {{ dr.salesperson.full_name if dr.salesperson else 'Company Account' }}</div>
+    {% if dr.remarks %}<div><strong>Remarks:</strong> {{ dr.remarks }}</div>{% endif %}
+    {% if dr.status == 'cancelled' %}<div><strong>Cancelled:</strong> {{ dr.cancel_reason }}</div>{% endif %}
+  </div>
 </div></div>
 
 <div class="card"><div class="card-body">

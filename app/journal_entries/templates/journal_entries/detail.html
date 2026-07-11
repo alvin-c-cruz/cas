@@ -4,11 +4,12 @@
 {% block page_title %}Journal Entry - {{ entry.display_number }}{% endblock %}
 
 {% block content %}
+{% set may_manage = current_user.role == 'accountant' or current_user.has_full_access %}
 
 <div class="card">
     <div class="card-header">
         <div class="card-header-actions">
-            {% if entry.status == 'draft' %}
+            {% if entry.status == 'draft' and may_manage %}
             <form method="POST" action="{{ url_for('journal_entries.post', id=entry.id) }}" style="display: inline;" data-confirm="Post this journal entry? It will become final and cannot be edited.">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-success">
@@ -17,7 +18,7 @@
             </form>
             {% endif %}
 
-            {% if entry.status != 'cancelled' and entry.status != 'reversed' %}
+            {% if entry.status != 'cancelled' and entry.status != 'reversed' and may_manage %}
             <form method="POST" action="{{ url_for('journal_entries.cancel', id=entry.id) }}" style="display: inline;" data-confirm="Cancel this journal entry?">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-danger">
