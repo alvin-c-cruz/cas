@@ -1,0 +1,90 @@
+import pytest
+from datetime import date
+from decimal import Decimal
+
+from app import db
+from tests.unit.test_alphalist_wht_lines import _wt, _vendor, _posted_cdv_wht
+
+pytestmark = [pytest.mark.integration]
+
+
+@pytest.fixture(autouse=True)
+def _fresh_module_cache():
+    # bir_reports is default_enabled but read through an app-level cache not reset
+    # per test; a sibling test that disables it leaks a stale '0' and 404s these
+    # gated routes. Clear before and after so each test reads module state fresh.
+    from app.utils.cache_helpers import clear_module_config_cache
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
+def _login(client):
+    client.post('/login', data={'username': 'admin', 'password': 'admin123'},
+                follow_redirects=True)
+
+
+# --- Task 2: Alphalist / QAP page ------------------------------------------
+
+def test_alphalist_page_renders_with_cdv_payee(client, db_session, main_branch,
+                                               cash_account, revenue_account, admin_user):
+    wt = _wt('WC158', 2); v = _vendor('CDVP')
+    _posted_cdv_wht(main_branch, cash_account, revenue_account, v, wt, 10000, 200)
+    _login(client)
+    resp = client.get('/reports/bir/alphalist?year=2025&quarter=3')
+    assert resp.status_code == 200
+    assert b'Vendor CDVP' in resp.data
+
+
+def test_alphalist_shows_final_tax_advisory(client, db_session, main_branch,
+                                            cash_account, revenue_account, admin_user):
+    fwt = _wt('WI999', 15, tax_type='final'); v = _vendor('FIN')
+    _posted_cdv_wht(main_branch, cash_account, revenue_account, v, fwt, 10000, 1500)
+    _login(client)
+    resp = client.get('/reports/bir/alphalist?year=2025&quarter=3')
+    assert resp.status_code == 200
+    assert b'final-tax' in resp.data.lower()
+
+
+# --- Task 4: BIR 2307 issued -----------------------------------------------
+
+def test_2307_index_lists_vendor(client, db_session, main_branch, cash_account,
+                                 revenue_account, admin_user):
+    wt = _wt('WC158', 2); v = _vendor('CERT')
+    _posted_cdv_wht(main_branch, cash_account, revenue_account, v, wt, 10000, 200)
+    _login(client)
+    resp = client.get('/reports/bir/2307?year=2025&quarter=3')
+    assert resp.status_code == 200
+    assert b'Vendor CERT' in resp.data
+
+
+def test_2307_certificate_prints_for_vendor(client, db_session, main_branch, cash_account,
+                                            revenue_account, admin_user):
+    wt = _wt('WC158', 2); v = _vendor('CERT')
+    _posted_cdv_wht(main_branch, cash_account, revenue_account, v, wt, 10000, 200)
+    _login(client)
+    resp = client.get(f'/reports/bir/2307/print?year=2025&quarter=3&vendor_id={v.id}')
+    assert resp.status_code == 200
+    assert b'2307' in resp.data
+    assert b'Vendor CERT' in resp.data
+    assert b'WC158' in resp.data
+    assert b'200.00' in resp.data
+
+
+def test_2307_builder_three_month_breakdown(db_session, main_branch, cash_account, revenue_account):
+    from app.reports.bir import get_2307_certificates
+    wt = _wt('WC158', 2); v = _vendor('CERT')
+    # two CDVs in different months of Q3 (Jul, Aug)
+    _posted_cdv_wht(main_branch, cash_account, revenue_account, v, wt, 10000, 200,
+                    when=date(2025, 7, 5))
+    _posted_cdv_wht(main_branch, cash_account, revenue_account, v, wt, 20000, 400,
+                    when=date(2025, 8, 5))
+    certs = get_2307_certificates(2025, 3)
+    assert len(certs) == 1
+    cert = certs[0]
+    assert cert['vendor_name'] == 'Vendor CERT'
+    atc = cert['atc_rows'][0]
+    assert atc['atc_code'] == 'WC158'
+    assert atc['m1'] == Decimal('10000.00')   # July income payment
+    assert atc['m2'] == Decimal('20000.00')   # August
+    assert atc['total_tax'] == Decimal('600.00')

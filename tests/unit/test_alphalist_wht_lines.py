@@ -26,7 +26,8 @@ def _posted_cdv_wht(branch, cash_acct, exp_acct, vendor, wt, amount, wt_amount,
                     when=date(2025, 8, 10)):
     from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
     cdv = CashDisbursementVoucher(
-        branch_id=branch.id, cdv_number=f'CDV-{vendor.code}', cdv_date=when,
+        branch_id=branch.id,
+        cdv_number=f'CDV-{vendor.code}-{when.strftime("%Y%m%d")}', cdv_date=when,
         vendor_id=vendor.id, vendor_name=vendor.name, vendor_tin=vendor.tin,
         cash_account_id=cash_acct.id, status='posted')
     cdv.expense_lines.append(CDVExpenseLine(

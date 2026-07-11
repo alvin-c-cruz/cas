@@ -183,6 +183,54 @@ def get_alphalist_of_payees(year, quarter, branch_id=None):
     return summary
 
 
+def get_2307_certificates(year, quarter, branch_id=None):
+    """BIR 2307 (Certificate of Creditable Tax Withheld) issued to each vendor.
+
+    One entry per vendor; within it, one row per ATC with the quarter's three-month
+    income-payment breakdown (m1/m2/m3) and totals. Folds creditable (expanded) WHT
+    from wht_lines(side='payor'). Income payment is net of VAT (the WHT base).
+    """
+    from app.reports.wht_lines import wht_lines
+    from app.vat_settlement.service import quarter_bounds
+    from app.vendors.models import Vendor
+
+    qstart, qend = quarter_bounds(year, quarter)
+    lines = [l for l in wht_lines(qstart, qend, 'payor', tax_type='expanded',
+                                  branch_id=branch_id)
+             if l.tax_withheld and l.tax_withheld > 0]
+
+    ids = {l.partner_id for l in lines if l.partner_id}
+    addr = {}
+    if ids:
+        addr = {v.id: (v.address or '') for v in
+                db.session.query(Vendor).filter(Vendor.id.in_(ids)).all()}
+
+    # vendor_id -> {header + atc_code -> row}
+    vendors = {}
+    for l in lines:
+        v = vendors.setdefault(l.partner_id, {
+            'vendor_id': l.partner_id, 'vendor_name': l.partner_name,
+            'vendor_tin': l.partner_tin, 'vendor_address': addr.get(l.partner_id, ''),
+            '_atc': {}})
+        row = v['_atc'].setdefault(l.atc_code, {
+            'atc_code': l.atc_code, 'atc_rate': float(l.atc_rate),
+            'm1': Decimal('0.00'), 'm2': Decimal('0.00'), 'm3': Decimal('0.00'),
+            'total_income': Decimal('0.00'), 'total_tax': Decimal('0.00')})
+        slot = ('m1', 'm2', 'm3')[l.doc_date.month - qstart.month]
+        row[slot] += l.income_payment
+        row['total_income'] += l.income_payment
+        row['total_tax'] += l.tax_withheld
+
+    certs = []
+    for v in vendors.values():
+        v['atc_rows'] = sorted(v.pop('_atc').values(), key=lambda r: r['atc_code'])
+        v['total_income'] = sum((r['total_income'] for r in v['atc_rows']), Decimal('0.00'))
+        v['total_tax'] = sum((r['total_tax'] for r in v['atc_rows']), Decimal('0.00'))
+        certs.append(v)
+    certs.sort(key=lambda c: c['vendor_name'])
+    return certs
+
+
 def count_excluded_final_tax(year, quarter, side='payor', branch_id=None):
     """Final-tax lines excluded from a creditable surface -- feeds the advisory banner."""
     from app.reports.wht_lines import wht_lines

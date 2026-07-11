@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% block title %}Alphalist of Payees (QAP){% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=2">
+{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  {{ bir_book_header(company, 'ALPHALIST OF PAYEES (1601-EQ QAP)', quarter_name ~ ' ' ~ year) }}
+
+  <form method="get" style="margin:12px 0;display:flex;gap:8px;align-items:center;">
+    <label>Year <input type="number" name="year" value="{{ year }}" style="width:90px;"></label>
+    <label>Quarter
+      <select name="quarter">
+        {% for q in [1,2,3,4] %}
+        <option value="{{ q }}" {% if q == quarter %}selected{% endif %}>Q{{ q }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-secondary btn-sm">View</button>
+  </form>
+
+  {% if final_advisory and final_advisory.count %}
+  <div class="alert alert-warning">
+    {{ final_advisory.count }} final-tax line(s) ({{ '{:,.2f}'.format(final_advisory.total) }} withheld)
+    are excluded from this creditable alphalist &mdash; BIR 2306 / 1601-FQ are not implemented.
+    Amounts are in Philippine pesos.
+  </div>
+  {% endif %}
+
+  <div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead>
+      <tr>
+        <th>TIN</th>
+        <th>Payee</th>
+        <th>Address</th>
+        <th>ATC</th>
+        <th style="text-align:right;">Rate (%)</th>
+        <th style="text-align:right;">Gross Income</th>
+        <th style="text-align:right;">Tax Withheld</th>
+        <th>Month/s</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in payees_data %}
+      <tr{% if r.payee_name == 'TOTAL' %} style="font-weight:700;border-top:2px solid var(--color-text,#111);"{% endif %}>
+        <td>{{ r.payee_tin }}</td>
+        <td>{{ r.payee_name }}</td>
+        <td>{{ r.payee_address }}</td>
+        <td>{{ r.atc_code }}</td>
+        <td style="text-align:right;">{% if r.tax_rate != '' %}{{ '{:.2f}'.format(r.tax_rate) }}{% endif %}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.gross_income) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.tax_withheld) }}</td>
+        <td>{{ r.month_paid }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="color:var(--color-text-muted,#555);">No creditable withholding for {{ quarter_name }} {{ year }}.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-top:10px;">
+    <a class="btn btn-secondary btn-sm"
+       href="{{ url_for('reports.bir_alphalist_export_excel', year=year, quarter=quarter) }}">Export Excel</a>
+    <a class="btn btn-secondary btn-sm"
+       href="{{ url_for('reports.bir_2307_index', year=year, quarter=quarter) }}">BIR 2307 Certificates</a>
+  </p>
+</div></div>
+{% endblock %}

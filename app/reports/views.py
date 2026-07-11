@@ -2,7 +2,7 @@
 Reports views for financial reporting.
 Includes AR Aging, AP Aging, BIR compliance reports, and financial statements.
 """
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session, abort
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
@@ -17,6 +17,8 @@ from app.reports.bir import (
     get_summary_list_of_sales,
     get_summary_list_of_purchases,
     get_alphalist_of_payees,
+    count_excluded_final_tax,
+    get_2307_certificates,
     get_month_name,
     get_quarter_name,
     get_quarter_months,
@@ -552,18 +554,20 @@ def bir_purchases_export_excel():
 @login_required
 @accountant_or_admin_required
 def bir_alphalist():
-    return redirect(url_for('dashboard.under_development', feature='BIR Alphalist'))
     year = request.args.get('year', datetime.now().year, type=int)
     quarter = request.args.get('quarter', ((datetime.now().month - 1) // 3) + 1, type=int)
     current_branch_id = session.get('selected_branch_id')
     payees_data = get_alphalist_of_payees(year, quarter, branch_id=current_branch_id)
+    final_advisory = count_excluded_final_tax(year, quarter, 'payor', current_branch_id)
 
     return render_template('reports/bir_alphalist.html',
                          payees_data=payees_data,
                          year=year,
                          quarter=quarter,
                          quarter_name=get_quarter_name(quarter),
-                         quarter_months=get_quarter_months(quarter))
+                         quarter_months=get_quarter_months(quarter),
+                         final_advisory=final_advisory,
+                         company=get_company_identity())
 
 
 @reports_bp.route('/reports/bir/alphalist/export/excel')
@@ -585,6 +589,41 @@ def bir_alphalist_export_excel():
     title = f'Alphalist of Payees - {get_quarter_name(quarter)} {year}'
 
     return export_to_excel(payees_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/bir/2307')
+@login_required
+@accountant_or_admin_required
+def bir_2307_index():
+    """Quarter list of vendors we withheld creditable tax from, each with a 2307 to print."""
+    year = request.args.get('year', datetime.now().year, type=int)
+    quarter = request.args.get('quarter', ((datetime.now().month - 1) // 3) + 1, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    certificates = get_2307_certificates(year, quarter, branch_id=current_branch_id)
+    final_advisory = count_excluded_final_tax(year, quarter, 'payor', current_branch_id)
+    return render_template('reports/bir_2307_index.html', certificates=certificates,
+                           year=year, quarter=quarter,
+                           quarter_name=get_quarter_name(quarter),
+                           final_advisory=final_advisory,
+                           company=get_company_identity())
+
+
+@reports_bp.route('/reports/bir/2307/print')
+@login_required
+@accountant_or_admin_required
+def bir_2307_print():
+    """Box-style BIR 2307 facsimile for one vendor for the quarter."""
+    year = request.args.get('year', datetime.now().year, type=int)
+    quarter = request.args.get('quarter', ((datetime.now().month - 1) // 3) + 1, type=int)
+    vendor_id = request.args.get('vendor_id', type=int)
+    current_branch_id = session.get('selected_branch_id')
+    certificates = get_2307_certificates(year, quarter, branch_id=current_branch_id)
+    cert = next((c for c in certificates if c['vendor_id'] == vendor_id), None)
+    if cert is None:
+        abort(404)
+    return render_template('reports/bir_2307_print.html', cert=cert, year=year,
+                           quarter=quarter, quarter_name=get_quarter_name(quarter),
+                           company=get_company_identity())
 
 
 @reports_bp.route('/reports/bir/vat-return')

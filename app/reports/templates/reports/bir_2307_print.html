@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% block title %}BIR Form 2307{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=2">
+{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  {{ bir_book_header(company,
+     'BIR FORM 2307 - CERTIFICATE OF CREDITABLE TAX WITHHELD AT SOURCE',
+     quarter_name ~ ' ' ~ year) }}
+
+  <table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:12px;">
+    <tr>
+      <td style="width:50%;vertical-align:top;">
+        <strong>Payee (Income Recipient)</strong><br>
+        {{ cert.vendor_name }}<br>
+        TIN: {{ cert.vendor_tin }}<br>
+        {{ cert.vendor_address }}
+      </td>
+      <td style="width:50%;vertical-align:top;">
+        <strong>Payor (Withholding Agent)</strong><br>
+        {{ company.name }}<br>
+        TIN: {{ company.tin }}<br>
+        {{ company.address }}
+      </td>
+    </tr>
+  </table>
+
+  <table class="bir-table" style="width:100%;font-size:13px;border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th style="text-align:left;">ATC</th>
+        <th style="text-align:right;">Rate (%)</th>
+        <th style="text-align:right;">1st Month</th>
+        <th style="text-align:right;">2nd Month</th>
+        <th style="text-align:right;">3rd Month</th>
+        <th style="text-align:right;">Total Income</th>
+        <th style="text-align:right;">Tax Withheld</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in cert.atc_rows %}
+      <tr>
+        <td>{{ r.atc_code }}</td>
+        <td style="text-align:right;">{{ '{:.2f}'.format(r.atc_rate) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.m1) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.m2) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.m3) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.total_income) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(r.total_tax) }}</td>
+      </tr>
+      {% endfor %}
+      <tr style="font-weight:700;border-top:2px solid var(--color-text,#111);">
+        <td colspan="5">Total</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(cert.total_income) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(cert.total_tax) }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top:14px;font-size:11px;color:var(--color-text-muted,#555);">
+    Amounts are in Philippine pesos. Income payments are shown net of VAT (the withholding
+    base). This facsimile is the file copy; file the official BIR 2307 via eBIRForms.
+  </p>
+
+  <a class="btn btn-secondary btn-sm no-print" style="margin-top:12px;" href="javascript:window.print()">Print</a>
+</div></div>
+{% endblock %}

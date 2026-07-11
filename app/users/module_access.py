@@ -122,6 +122,7 @@ MODULE_REGISTRY = [
      'endpoints': ('reports.bir_index', 'reports.bir_sales', 'reports.bir_sales_export_excel',
                    'reports.bir_purchases', 'reports.bir_purchases_export_excel',
                    'reports.bir_alphalist', 'reports.bir_alphalist_export_excel',
+                   'reports.bir_2307_index', 'reports.bir_2307_print',
                    'reports.bir_vat_return', 'reports.bir_vat_return_export_excel',
                    'vat_settlement.')},
 ]

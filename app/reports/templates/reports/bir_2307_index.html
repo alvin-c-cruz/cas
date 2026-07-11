@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from 'reports/_bir_book_header.html' import bir_book_header %}
+{% block title %}BIR 2307 Certificates{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bir-books.css') }}?v=2">
+{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  {{ bir_book_header(company, 'BIR FORM 2307 - CERTIFICATES ISSUED', quarter_name ~ ' ' ~ year) }}
+
+  <form method="get" style="margin:12px 0;display:flex;gap:8px;align-items:center;">
+    <label>Year <input type="number" name="year" value="{{ year }}" style="width:90px;"></label>
+    <label>Quarter
+      <select name="quarter">
+        {% for q in [1,2,3,4] %}
+        <option value="{{ q }}" {% if q == quarter %}selected{% endif %}>Q{{ q }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn btn-secondary btn-sm">View</button>
+  </form>
+
+  {% if final_advisory and final_advisory.count %}
+  <div class="alert alert-warning">
+    {{ final_advisory.count }} final-tax line(s) ({{ '{:,.2f}'.format(final_advisory.total) }} withheld)
+    are excluded &mdash; BIR 2306 is not implemented. Amounts are in Philippine pesos.
+  </div>
+  {% endif %}
+
+  <div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr>
+        <th>Payee (Vendor)</th>
+        <th>TIN</th>
+        <th style="text-align:right;">Total Income</th>
+        <th style="text-align:right;">Total Tax Withheld</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in certificates %}
+      <tr>
+        <td>{{ c.vendor_name }}</td>
+        <td>{{ c.vendor_tin }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(c.total_income) }}</td>
+        <td style="text-align:right;">{{ '{:,.2f}'.format(c.total_tax) }}</td>
+        <td><a class="btn btn-secondary btn-sm" target="_blank"
+               href="{{ url_for('reports.bir_2307_print', year=year, quarter=quarter, vendor_id=c.vendor_id) }}">Print 2307</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="color:var(--color-text-muted,#555);">No creditable withholding for {{ quarter_name }} {{ year }}.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div></div>
+{% endblock %}
