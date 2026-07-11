@@ -273,6 +273,55 @@ def register():
     if form.validate_on_submit():
         try:
             from app.users.approved_emails import ApprovedEmail
+            from app.users.utils import system_has_admin, FIRST_RUN_ADMIN_USERNAME
+            from app.branches.models import Branch
+
+            admin_exists = system_has_admin()
+            is_admin_username = form.username.data == FIRST_RUN_ADMIN_USERNAME
+
+            if is_admin_username and admin_exists:
+                # Race: the form validated this as first-run (no admin then), but an
+                # admin exists now. Refuse rather than silently create a viewer.
+                flash('An administrator already exists. Please ask them to approve your account.', 'error')
+                return redirect(url_for('users.register'))
+
+            if not admin_exists and is_admin_username:
+                # ── First-run bootstrap ──────────────────────────────────────────
+                user = User(
+                    username=form.username.data,
+                    email=form.email.data,
+                    full_name=form.full_name.data,
+                    role='admin',
+                    is_active=True,
+                )
+                user.set_password(form.password.data)
+                db.session.add(user)
+                db.session.flush()  # assign user.id
+
+                # Create a default branch only if none exists, so the branch gate
+                # auto-selects it and the admin lands on a working dashboard.
+                if Branch.query.count() == 0:
+                    branch = Branch(code='MAIN', name='Main Office')
+                    db.session.add(branch)
+                    db.session.flush()
+                    user.set_branches([branch])
+                    log_audit(
+                        module='branch', action='create', record_id=branch.id,
+                        record_identifier=f'{branch.code} - {branch.name}',
+                        new_values={'code': branch.code, 'name': branch.name, 'is_active': branch.is_active},
+                        notes='Default branch created via first-run admin bootstrap'
+                    )
+
+                db.session.commit()
+
+                log_audit(
+                    module='user_registration', action='first_run_admin_bootstrap',
+                    record_id=user.id, record_identifier=f'{user.username} ({user.email})',
+                    notes='Initial system administrator created via first-run bootstrap (whitelist bypassed).'
+                )
+                flash('Registration successful! Your account is active — you can log in now.', 'success')
+                return redirect(url_for('users.login'))
+
             approved_email = ApprovedEmail.get_approved_email(form.email.data)
 
             # Feature B: a role-stamped approved email creates the user *active* with
