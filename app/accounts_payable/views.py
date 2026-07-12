@@ -17,7 +17,7 @@ from app.withholding_tax.models import WithholdingTax
 from app.common.vat_nature import resolve_purchase_nature
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
-from app.utils.concurrency import claim_version, conflict_message, submitted_version
+from app.utils.concurrency import claim_version, conflict_message, submitted_version, fresh_number_if_collision
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.utils.cache_helpers import get_active_units, get_active_products
@@ -739,10 +739,18 @@ def create():
                     flash(f"Vendor invoice number '{inv_num}' already exists for this vendor.", 'error')
                     return _render_form(request.form.get('line_items', ''))
 
-            # User-typed AP number (mirrors SI invoice_number); must be unique.
+            # User-typed AP number (mirrors SI invoice_number); must be unique. A
+            # collision can be a genuine race (another user's create landed first
+            # with the same suggested number) rather than a deliberate duplicate, so
+            # this refreshes the suggestion and asks the user to confirm rather than
+            # silently substituting it or just failing (BUG-DOCNUMBER-RACE-SILENT-
+            # DATA-LOSS -- see docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md).
             ap_num = (form.ap_number.data or '').strip()
-            if AccountsPayable.query.filter(AccountsPayable.ap_number == ap_num).first():
-                flash(f'AP number "{ap_num}" is already in use. Enter a unique AP number.', 'error')
+            fresh = fresh_number_if_collision(AccountsPayable, 'ap_number', ap_num, generate_ap_number)
+            if fresh:
+                form.ap_number.data = fresh
+                flash(f'AP number "{ap_num}" is already in use. A new number ({fresh}) has '
+                      f'been suggested below -- review and Save again.', 'error')
                 return _render_form(request.form.get('line_items', ''))
 
             ap = AccountsPayable(
