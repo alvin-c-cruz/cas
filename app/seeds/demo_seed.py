@@ -13,6 +13,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from app import db
 from app.accounts.models import Account
 from app.common.vat_nature import resolve_sales_nature, resolve_purchase_nature
+from app.seeds.statutory_2026 import seed_statutory_2026
 
 TWO = Decimal('0.01')
 
@@ -259,6 +260,9 @@ def seed_demo_baseline():
         pm += 1
         if pm > 12:
             pm, py = 1, py + 1
+
+    # Seed 2026 statutory payroll tables (SSS, PhilHealth, Pag-IBIG, TRAIN WHT)
+    seed_statutory_2026()
 
     return {'admin': admin, 'branch': branch}
 
