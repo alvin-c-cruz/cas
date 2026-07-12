@@ -80,7 +80,10 @@
                 </div>
             </div>
 
-            {# ── Bill delivered DRs (DR->SI billing); shown by JS once a customer is chosen ── #}
+            {# ── Bill delivered DRs (DR->SI billing); shown by JS once a customer is chosen.
+               Wholly gated: absent unless delivery_receipts is on, so a client without that
+               module (e.g. Zhiyuan) sees an identical SI form — mirrors AP's poBillingSection. ── #}
+            {% if module_enabled('delivery_receipts') %}
             <div id="drBillingSection" style="margin-top: 20px; display:none;">
               <div class="card"><div class="card-body">
                 <h3 style="font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); margin-bottom:10px;">Bill delivered Delivery Receipts</h3>
@@ -90,6 +93,7 @@
               </div></div>
             </div>
             <input type="hidden" name="source_dr_ids" id="sourceDrIds" value="[]">
+            {% endif %}
 
             <!-- ── Line Items Section (hidden on create, visible on edit) ── -->
             <div id="lineItemsSection" style="margin-top: 24px;{% if not invoice and not line_items %}display:none;{% endif %}">
@@ -1222,6 +1226,6 @@ initOverrides();
 </script>
 
 {# DR->SI billing picker: loads after the inline script so it can call addLineItem(). #}
-<script src="{{ url_for('static', filename='js/si_dr_billing.js') }}?v=1"></script>
+{% if module_enabled('delivery_receipts') %}<script src="{{ url_for('static', filename='js/si_dr_billing.js') }}?v=1"></script>{% endif %}
 
 {% endblock %}
