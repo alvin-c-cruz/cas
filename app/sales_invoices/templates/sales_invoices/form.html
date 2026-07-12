@@ -31,6 +31,8 @@
                     {{ render_field(form.customer_po_number) }}
                     {{ render_field(form.customer_po_date) }}
                     {{ render_field(form.reference) }}
+                    {{ render_field(form.ar_trade_account_id) }}
+                    {{ render_field(form.creditable_wht_account_id) }}
                     {% if module_enabled('employees') %}{{ render_field(form.salesperson_id) }}{% endif %}
                 </div>
 
@@ -371,6 +373,16 @@ const customerSel = document.getElementById('customer_id');
 if (customerSel) {
     initCustomerQuickAdd({ selectEl: customerSel });
 }
+
+// ── Choices.js: control-account overrides ────────────────────────────────
+['ar_trade_account_id', 'creditable_wht_account_id'].forEach(function (id) {
+    const sel = document.getElementById(id);
+    if (sel && typeof initSearchSelect === 'function' && !sel.closest('.choices')) {
+        initSearchSelect(sel);
+        sel.addEventListener('change', calculateTotals);
+    }
+});
+
 if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
 if (uomMasterOn    && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
 
@@ -963,11 +975,25 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
     // AR, Creditable WHT, Output VAT, Sales.
     const rows = [];
     const netReceivable = subtotal - wtUsed;
-    if (glAccounts && glAccounts.ar) {
-        rows.push({ code: glAccounts.ar.code, name: glAccounts.ar.name, debit: netReceivable, credit: 0 });
+    function selectedOrDefault(selectId, fallback) {
+        const sel = document.getElementById(selectId);
+        const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+        if (opt && opt.value) {
+            const idx = opt.textContent.indexOf(':');
+            return {
+                code: (idx >= 0 ? opt.textContent.slice(0, idx) : opt.textContent).trim(),
+                name: (idx >= 0 ? opt.textContent.slice(idx + 1) : '').trim(),
+            };
+        }
+        return fallback;
     }
-    if (wtUsed > 0 && glAccounts && glAccounts.wt) {
-        rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: wtUsed, credit: 0 });
+    const arAcct = selectedOrDefault('ar_trade_account_id', glAccounts && glAccounts.ar);
+    const wtAcct = selectedOrDefault('creditable_wht_account_id', glAccounts && glAccounts.wt);
+    if (arAcct) {
+        rows.push({ code: arAcct.code, name: arAcct.name, debit: netReceivable, credit: 0 });
+    }
+    if (wtUsed > 0 && wtAcct) {
+        rows.push({ code: wtAcct.code, name: wtAcct.name, debit: wtUsed, credit: 0 });
     }
     bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: 0, credit: b.amt }));
     // Consolidate revenue lines posting to the same account into one row
