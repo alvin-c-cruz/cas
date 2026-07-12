@@ -47,6 +47,7 @@ This suite covers two scopes that must NOT be conflated:
 | `vt_wt_crud_cycle.py` | Purchase VAT / Sales VAT / WHT full CRUD (needs the shared setup's COA) | 10/10 |
 | `customers_vendors_crud_cycle.py` | Customers + Vendors CRUD (direct-save; needs the shared setup's VAT categories) | 8/8 |
 | `ca_registers_and_edits_perms.py` | CA registers accountant+staff; edits staff perms, **not** accountant's (needs `uitest_ca` from the shared setup) | 10/10 |
+| `jv_entry_crud_post.py` | Journal Voucher: create (balanced draft) → read → post → cancel; all 3 print surfaces (current/preprinted/hidden); audit trail (needs accounts 1610/4110 from the shared setup) | 12/12 |
 
 **Partially CAS-scope (some checks depend on ERP-scope modules — those checks fail, the rest pass):**
 
@@ -103,13 +104,14 @@ Each item: **intent · acceptance · target spec · readiness**.
 - *Intent:* payment against an AP bill (or standalone expense), posts + settles balance.
 - *Target:* new `cash_disbursement_crud_post.py`.
 
-**T1.5 — Journal Voucher (JV) CRUD + posting.**
-- *Intent:* JV Entry create → post to the books. Not gated by any control-accounts issue (user-picked
-  accounts).
-- *Acceptance:* balanced JE created; number `JV-YYYY-MM-####`; create→post→**posted**; Dr==Cr and
-  each leg ties to what was entered; cancel path + closed-period guard behave; audit entry +
-  Action-Items badge move (rule #7).
-- *Target:* new `jv_entry_crud_post.py`.
+**T1.5 — Journal Voucher (JV) CRUD + posting. ✅ DONE 2026-07-12 — `jv_entry_crud_post.py`, 12/12.**
+- Covers create (balanced draft) → read → post → cancel, all 3 print surfaces, audit trail.
+- Gotcha found + documented in the spec: changing `jv_print_form` requires `company_name` (a
+  DIFFERENT tab on the same Company Settings form) to be non-empty, or the WHOLE multi-tab submit
+  silently fails validation, discarding the print-form change too.
+- Gotcha found + memory'd: rapid-fire scripted logins across many driver scripts can trip
+  Flask-Limiter's login rate limit (`10/min; 50/hour`) well before any account lockout would —
+  see memory `feedback-unblock-test-login-db-vs-restart`.
 
 **T1.6 — Print surfaces on the Core 5 (skill rule #9).**
 - *Intent:* cover all 3 print surfaces (printable form, pre-printed overlay, hidden/disabled button
