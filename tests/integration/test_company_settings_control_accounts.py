@@ -37,3 +37,23 @@ def test_staff_cannot_view_control_accounts(client, db_session, staff_user, main
     login(client, 'staff', 'staff123')
     resp = client.get('/settings/control-accounts', follow_redirects=True)
     assert b'Only Accountants and Administrators' in resp.data or resp.status_code in (302, 403)
+
+
+def test_control_accounts_url_resolves_to_new_blueprint(app):
+    """Verify that /settings/control-accounts resolves to the NEW company_settings
+    blueprint endpoints, not the OLD control_accounts blueprint endpoints.
+
+    This test pins the fact that company_settings_bp must be registered BEFORE
+    control_accounts_bp in app/__init__.py (line 294 vs 299), so Werkzeug routes
+    the URL to the new endpoints. If registration order is ever swapped, this test
+    will catch it."""
+    with app.app_context():
+        adapter = app.url_map.bind('localhost')
+
+        # GET should resolve to company_settings.control_accounts
+        endpoint, _ = adapter.match('/settings/control-accounts', method='GET')
+        assert endpoint == 'company_settings.control_accounts'
+
+        # POST should resolve to company_settings.save_control_accounts
+        endpoint, _ = adapter.match('/settings/control-accounts', method='POST')
+        assert endpoint == 'company_settings.save_control_accounts'
