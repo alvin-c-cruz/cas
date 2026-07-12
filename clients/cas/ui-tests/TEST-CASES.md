@@ -60,6 +60,7 @@ This suite covers two scopes that must NOT be conflated:
 | `concurrency_cd_concurrent_create.py` | Same probe, extended to Cash Disbursement | 3/3 — found + FIXED (surfaced) |
 | `concurrency_cr_concurrent_create.py` | Same probe, extended to Cash Receipt | 3/3 — found + FIXED (surfaced) |
 | `cash_receipt_crud_post.py` | Cash Receipt: create (standalone direct-revenue) → JE-leg tie-out (cash/revenue) → read → audit → post → all 3 print surfaces → cancel | 18/18 — was 16/18 (2 tripwires for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS`, route + button axes), both fixed 2026-07-12 |
+| `sidebar_accordion.py` | Sidebar accordion: only one `.nav-label-collapsible` section expanded at a time (admin: areas + admin + accounting-oversight); re-click collapses to zero-open; single `sidebar:expandedSection` localStorage key; stale saved name falls back to first area; active nav-item's section overrides a saved value. `staff` section type not separately covered (see spec docstring) — the JS is section-type-agnostic. | 13/13 |
 
 **Setup gap CLOSED 2026-07-12:** `_shared_setup_cas_scope.py` now builds Customer `CASCUST1`, Vendor
 `CASVEND1`, and WHT `WC010` itself (auto-approved, admin still sole full-access at that point — see
@@ -270,8 +271,12 @@ stress; deploy/backup paths; ERP scope (see the "Already covered — ERP scope" 
   committed + every loser gets the friendly re-render, not a raw exception — verified by
   inspecting actual response bodies, not just status codes). See
   `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md`.
-- 🔵 **FEAT-SIDEBAR-ACCORDION** (LOW) — OPEN. Sidebar sections should collapse each other (owner
-  request), currently independent toggle.
+- 🟢 **FEAT-SIDEBAR-ACCORDION** (LOW) — FIXED 2026-07-12. Replaced the N independent
+  `sidebar:<name>` localStorage keys with a single `sidebar:expandedSection` key; clicking a
+  section now force-collapses every other section (global, across area sections + Admin + Tax &
+  Oversight + Staff Management), and re-clicking the open section collapses it too (zero-open is
+  valid). Old per-section keys are left orphaned/unmigrated (accepted tradeoff). See
+  `sidebar_accordion.py` (13/13).
 - 🔵 **Backlog #156** — Products/UOM/Customers/Vendors codes should be per-client configurable;
   WHT/VAT/COA codes always mandatory. Design decision recorded, not scoped/built.
 - 🔵 Other UX/feature (non-blocking, prior session): `BUG-SETTINGS-NEEDS-TABS`,

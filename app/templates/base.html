@@ -1444,10 +1444,13 @@
                 });
             }
 
-            // Sidebar section collapse/expand functionality
-            // Each section has its own localStorage key: "sidebar:<sectionName>"
-            // Default state: collapsed. Active area is always forced expanded on load.
+            // Sidebar section accordion functionality
+            // Only one section is expanded at a time, sidebar-wide (area sections, Admin, Tax &
+            // Oversight, Staff Management all share the same accordion group). The single open
+            // section's name is stored in one localStorage key: "sidebar:expandedSection".
+            // Clicking the already-open section collapses it too (zero-open is valid).
             const collapsibleLabels = document.querySelectorAll('.nav-label-collapsible');
+            const EXPANDED_SECTION_KEY = 'sidebar:expandedSection';
 
             // Determine which section contains the active nav-item (server-rendered active class)
             function getActiveSectionName() {
@@ -1458,65 +1461,61 @@
                 return content.id.replace(/^section-/, '');
             }
 
-            var activeSectionName = getActiveSectionName();
-
-            // Apply initial state: restore per-section saved state; force-expand the active area
-            collapsibleLabels.forEach(function(label) {
-                var sectionName = label.getAttribute('data-section');
-                var content = document.getElementById('section-' + sectionName);
-                var storageKey = 'sidebar:' + sectionName;
-
-                if (sectionName === activeSectionName) {
-                    // Active area is always expanded on load, regardless of saved state
-                    label.classList.remove('collapsed');
-                    content.classList.remove('collapsed');
-                    localStorage.setItem(storageKey, 'expanded');
-                } else {
-                    // Restore saved state; default is collapsed
-                    var saved = localStorage.getItem(storageKey);
-                    if (saved === 'expanded') {
+            // Apply expanded/collapsed classes to every section; only `sectionName` (if any) is expanded
+            function applyExpandedSection(sectionName) {
+                collapsibleLabels.forEach(function(label) {
+                    var name = label.getAttribute('data-section');
+                    var content = document.getElementById('section-' + name);
+                    if (name === sectionName) {
                         label.classList.remove('collapsed');
-                        content.classList.remove('collapsed');
+                        if (content) { content.classList.remove('collapsed'); }
                     } else {
                         label.classList.add('collapsed');
-                        content.classList.add('collapsed');
+                        if (content) { content.classList.add('collapsed'); }
                     }
-                }
-            });
+                });
+            }
 
-            // Default-expand the first area when no active item exists and no saved state
-            if (!activeSectionName) {
-                var firstAreaLabel = document.querySelector('[data-section^="area-"]');
-                if (firstAreaLabel) {
-                    var firstAreaSection = firstAreaLabel.getAttribute('data-section');
-                    var firstAreaKey = 'sidebar:' + firstAreaSection;
-                    if (localStorage.getItem(firstAreaKey) === null) {
-                        var firstAreaContent = document.getElementById('section-' + firstAreaSection);
-                        firstAreaLabel.classList.remove('collapsed');
-                        if (firstAreaContent) { firstAreaContent.classList.remove('collapsed'); }
-                        localStorage.setItem(firstAreaKey, 'expanded');
+            // Single source of truth: persist which section is open, then render it
+            function setExpandedSection(sectionName) {
+                localStorage.setItem(EXPANDED_SECTION_KEY, sectionName || '');
+                applyExpandedSection(sectionName);
+            }
+
+            // Resolve initial state: active section wins, else a still-valid saved section,
+            // else the first area (existing default-expand-first-area fallback)
+            var activeSectionName = getActiveSectionName();
+            var resolvedSection = null;
+
+            if (activeSectionName) {
+                resolvedSection = activeSectionName;
+            } else {
+                var savedSection = localStorage.getItem(EXPANDED_SECTION_KEY);
+                var savedExists = savedSection && document.querySelector(
+                    '.nav-label-collapsible[data-section="' + savedSection + '"]'
+                );
+                if (savedExists) {
+                    resolvedSection = savedSection;
+                } else {
+                    var firstAreaLabel = document.querySelector('[data-section^="area-"]');
+                    if (firstAreaLabel) {
+                        resolvedSection = firstAreaLabel.getAttribute('data-section');
                     }
                 }
             }
 
-            // Add click handlers — independent toggle per section
+            setExpandedSection(resolvedSection);
+
+            // Add click handlers — expanding one section collapses every other;
+            // re-clicking the open section collapses it too (zero-open is valid)
             collapsibleLabels.forEach(function(label) {
                 label.addEventListener('click', function() {
                     var sectionName = this.getAttribute('data-section');
-                    var content = document.getElementById('section-' + sectionName);
-                    var storageKey = 'sidebar:' + sectionName;
-                    var isCurrentlyExpanded = !this.classList.contains('collapsed');
-
-                    if (isCurrentlyExpanded) {
-                        // Collapse this section
-                        this.classList.add('collapsed');
-                        content.classList.add('collapsed');
-                        localStorage.setItem(storageKey, 'collapsed');
+                    var current = localStorage.getItem(EXPANDED_SECTION_KEY);
+                    if (current === sectionName) {
+                        setExpandedSection('');
                     } else {
-                        // Expand this section
-                        this.classList.remove('collapsed');
-                        content.classList.remove('collapsed');
-                        localStorage.setItem(storageKey, 'expanded');
+                        setExpandedSection(sectionName);
                     }
                 });
             });
