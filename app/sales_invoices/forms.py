@@ -43,6 +43,14 @@ class SalesInvoiceForm(RowVersionFormMixin, FlaskForm):
 
     reference = StringField('Reference', validators=[Optional(), Length(max=100)])
 
+    ar_trade_account_id = SelectField('AR Trade Account', validators=[Optional()],
+                                      coerce=lambda v: int(v) if v not in (None, '') else None,
+                                      validate_choice=False)
+
+    creditable_wht_account_id = SelectField('Creditable WHT Account', validators=[Optional()],
+                                            coerce=lambda v: int(v) if v not in (None, '') else None,
+                                            validate_choice=False)
+
     salesperson_id = SelectField('Salesperson', coerce=int, validators=[Optional()],
                                  validate_choice=False)
 

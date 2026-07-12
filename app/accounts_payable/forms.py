@@ -52,6 +52,14 @@ class AccountsPayableForm(RowVersionFormMixin, FlaskForm):
         Optional()
     ], format='%Y-%m-%d')
 
+    ap_trade_account_id = SelectField('AP Trade Account', validators=[Optional()],
+                                      coerce=lambda v: int(v) if v not in (None, '') else None,
+                                      validate_choice=False)
+
+    wht_payable_account_id = SelectField('WHT Payable Account', validators=[Optional()],
+                                         coerce=lambda v: int(v) if v not in (None, '') else None,
+                                         validate_choice=False)
+
     payment_terms = SelectField('Payment Terms', choices=[
         ('Net 15', 'Net 15'),
         ('Net 30', 'Net 30'),

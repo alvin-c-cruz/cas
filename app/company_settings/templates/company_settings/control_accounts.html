@@ -1,3 +1,4 @@
+{# app/company_settings/templates/company_settings/control_accounts.html #}
 {% extends "base.html" %}
 {% block title %}Control Accounts - {{ company_name }}{% endblock %}
 {% block page_title %}Control Accounts{% endblock %}
@@ -8,10 +9,10 @@
 <div class="card">
   <div class="card-header">
     <div class="card-title">Control Accounts</div>
-    <div class="card-sub">Assign the GL accounts the posting engines debit/credit for AR, AP, and withholding tax</div>
+    <div class="card-sub">Assign the GL accounts the posting engines fall back to for AR, AP, and withholding tax when a document doesn't override them</div>
   </div>
   <div class="card-body">
-    <form method="post" action="{{ url_for('control_accounts.save') }}">
+    <form method="post" action="{{ url_for('company_settings.save_control_accounts') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <div class="form-row-2">
         {% for key, meta in control.items() %}

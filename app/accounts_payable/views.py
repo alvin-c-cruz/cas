@@ -190,7 +190,7 @@ def _build_je_preview(ap):
             'credit': Decimal('0.00'),
         })
 
-    for wt_acct, wt_amt in _wht_payable_buckets(ap, accts['wt']):
+    for wt_acct, wt_amt in _wht_payable_buckets(ap, ap.wht_payable_account or accts['wt']):
         entries.append({
             'code': wt_acct.code,
             'name': wt_acct.name,
@@ -198,10 +198,11 @@ def _build_je_preview(ap):
             'credit': wt_amt,
         })
 
-    if accts['ap']:
+    ap_acct_for_preview = ap.ap_trade_account or accts['ap']
+    if ap_acct_for_preview:
         entries.append({
-            'code': accts['ap'].code,
-            'name': accts['ap'].name,
+            'code': ap_acct_for_preview.code,
+            'name': ap_acct_for_preview.name,
             'debit': Decimal('0.00'),
             'credit': Decimal(str(ap.total_amount)),
         })
@@ -677,6 +678,13 @@ def create():
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
 
+    from app.posting.control_accounts import get_postable_accounts, get_control_account
+    postable = get_postable_accounts()
+    account_choices = [('', '-- Use company default --')] + [
+        (str(a.id), f'{a.code}: {a.name}') for a in postable]
+    form.ap_trade_account_id.choices = account_choices
+    form.wht_payable_account_id.choices = account_choices
+
     def _render_form(restore_lines=''):
         """Render the create form with full line-item context. `restore_lines`
         carries the submitted line_items JSON back so a failed POST keeps the
@@ -774,7 +782,9 @@ def create():
                 status='draft',
                 amount_paid=Decimal('0.00'),
                 balance=Decimal('0.00'),
-                created_by_id=current_user.id
+                created_by_id=current_user.id,
+                ap_trade_account_id=form.ap_trade_account_id.data,
+                wht_payable_account_id=form.wht_payable_account_id.data,
             )
 
             for line_item in _build_validated_ap_lines():
@@ -858,6 +868,10 @@ def create():
         form.ap_number.data = generate_ap_number()
         form.ap_date.data = ph_now().date()
         form.due_date.data = ph_now().date() + timedelta(days=30)
+        default_ap = get_control_account('ap_trade', required=False)
+        default_wt = get_control_account('wht_payable', required=False)
+        form.ap_trade_account_id.data = default_ap.id if default_ap else None
+        form.wht_payable_account_id.data = default_wt.id if default_wt else None
 
     # On a failed POST, carry the submitted line items back so they aren't lost.
     restore_lines = request.form.get('line_items', '') if request.method == 'POST' else ''
@@ -1011,6 +1025,13 @@ def edit(id):
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
 
+    from app.posting.control_accounts import get_postable_accounts, get_control_account
+    postable = get_postable_accounts()
+    account_choices = [('', '-- Use company default --')] + [
+        (str(a.id), f'{a.code}: {a.name}') for a in postable]
+    form.ap_trade_account_id.choices = account_choices
+    form.wht_payable_account_id.choices = account_choices
+
     def _render_edit_form(restore_lines=''):
         """Render the edit form with the complete context required by form.html.
 
@@ -1112,6 +1133,8 @@ def edit(id):
             ap.withholding_tax_rate = Decimal('0.00')
             ap.reference = form.reference.data
             ap.notes = form.notes.data
+            ap.ap_trade_account_id = form.ap_trade_account_id.data
+            ap.wht_payable_account_id = form.wht_payable_account_id.data
 
             # Build + validate the new lines BEFORE deleting the old ones, so an
             # invalid submission rejects without destroying the existing lines.
@@ -1317,14 +1340,14 @@ def _post_ap_je(ap, user_id):
     from app.journal_entries.models import JournalEntry, JournalEntryLine
     from app.posting.control_accounts import get_control_account
 
-    ap_account = get_control_account('ap_trade')
+    ap_account = ap.ap_trade_account or get_control_account('ap_trade')
 
     wt_account = None
     if ap.withholding_tax_amount and ap.withholding_tax_amount > 0:
         # Resolved here (required) as the per-line fallback that
         # _wht_payable_buckets() below uses when a line's ATC has no
         # payable_account of its own.
-        wt_account = get_control_account('wht_payable')
+        wt_account = ap.wht_payable_account or get_control_account('wht_payable')
 
     # The JE mirrors the bill's lifecycle: created as a DRAFT while the bill
     # is a draft (so unposted vouchers never hit GL reports), promoted to

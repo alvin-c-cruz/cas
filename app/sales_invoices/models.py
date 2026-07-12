@@ -76,6 +76,15 @@ class SalesInvoice(RowVersioned, db.Model):
     vat_override = db.Column(db.Boolean, default=False, nullable=False)
     wt_override = db.Column(db.Boolean, default=False, nullable=False)
 
+    # Per-transaction control-account overrides (2026-07-12 design). Nullable:
+    # optional while draft, pre-filled from the global AppSettings default on
+    # the create form, required to POST (posting engine falls back to
+    # get_control_account() when unset).
+    ar_trade_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
+    ar_trade_account = db.relationship('Account', foreign_keys=[ar_trade_account_id])
+    creditable_wht_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
+    creditable_wht_account = db.relationship('Account', foreign_keys=[creditable_wht_account_id])
+
     # Net receivable (subtotal - WHT)
     total_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
@@ -155,6 +164,12 @@ class SalesInvoice(RowVersioned, db.Model):
             'customer_po_number': self.customer_po_number,
             'payment_terms': self.payment_terms,
             'reference': self.reference,
+            'ar_trade_account_id': self.ar_trade_account_id,
+            'ar_trade_account_code': self.ar_trade_account.code if self.ar_trade_account else None,
+            'ar_trade_account_name': self.ar_trade_account.name if self.ar_trade_account else None,
+            'creditable_wht_account_id': self.creditable_wht_account_id,
+            'creditable_wht_account_code': self.creditable_wht_account.code if self.creditable_wht_account else None,
+            'creditable_wht_account_name': self.creditable_wht_account.name if self.creditable_wht_account else None,
             'subtotal': float(self.subtotal),
             'vat_amount': float(self.vat_amount),
             'total_before_wt': float(self.total_before_wt),

@@ -77,6 +77,15 @@ class AccountsPayable(RowVersioned, db.Model):
     vat_override = db.Column(db.Boolean, default=False, nullable=False)
     wt_override = db.Column(db.Boolean, default=False, nullable=False)
 
+    # Per-transaction control-account overrides (2026-07-12 design). Nullable:
+    # optional while draft, pre-filled from the global AppSettings default on
+    # the create form, required to POST (posting engine falls back to
+    # get_control_account() when unset).
+    ap_trade_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
+    ap_trade_account = db.relationship('Account', foreign_keys=[ap_trade_account_id])
+    wht_payable_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
+    wht_payable_account = db.relationship('Account', foreign_keys=[wht_payable_account_id])
+
     # Linked journal entry (posted on save; recreated on edit)
     journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
     journal_entry = db.relationship('JournalEntry', foreign_keys=[journal_entry_id])
@@ -174,6 +183,12 @@ class AccountsPayable(RowVersioned, db.Model):
             'vendor_invoice_number': self.vendor_invoice_number,
             'payment_terms': self.payment_terms,
             'reference': self.reference,
+            'ap_trade_account_id': self.ap_trade_account_id,
+            'ap_trade_account_code': self.ap_trade_account.code if self.ap_trade_account else None,
+            'ap_trade_account_name': self.ap_trade_account.name if self.ap_trade_account else None,
+            'wht_payable_account_id': self.wht_payable_account_id,
+            'wht_payable_account_code': self.wht_payable_account.code if self.wht_payable_account else None,
+            'wht_payable_account_name': self.wht_payable_account.name if self.wht_payable_account else None,
             'subtotal': float(self.subtotal),
             'vat_amount': float(self.vat_amount),
             'total_before_wt': float(self.total_before_wt),
