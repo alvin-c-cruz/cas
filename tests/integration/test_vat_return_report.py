@@ -10,13 +10,15 @@ pytestmark = [pytest.mark.integration]
 
 
 @pytest.fixture(autouse=True)
-def _fresh_module_cache():
-    # bir_reports is default_enabled, but its enablement is read through an
-    # app-level SimpleCache that is NOT reset per test. A sibling test that
-    # disables the module (e.g. test_chief_accountant) can leave a stale '0'
-    # cached, 404-ing these gated routes. Clear before and after so every test
-    # in this file reads the module state fresh and leaks nothing onward.
+def _fresh_module_cache(db_session):
+    # bir_reports now defaults OFF (registry flip, chore/bir-reports-default-off), and its
+    # enablement is read through an app-level SimpleCache that is NOT reset per test. A
+    # sibling test that disables the module (e.g. test_chief_accountant) can leave a stale
+    # '0' cached, 404-ing these gated routes. Explicitly enable it and clear the cache
+    # before/after so every test in this file reads the module state fresh as ON.
+    from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:bir_reports', '1', updated_by='test')
     clear_module_config_cache()
     yield
     clear_module_config_cache()

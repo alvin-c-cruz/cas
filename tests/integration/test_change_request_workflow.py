@@ -369,6 +369,12 @@ class TestWithholdingTaxLabels:
 
     def test_maintenance_nav_uses_expanded_label(self, client, db_session, two_reviewers):
         """Only the Maintenance nav item is renamed; the BIR-Reports one stays 'Withholding Tax'."""
+        from app.settings import AppSettings
+        from app.utils.cache_helpers import clear_module_config_cache
+        # bir_reports now defaults OFF (registry flip, chore/bir-reports-default-off); this
+        # test asserts the BIR-Reports sidebar nav item is present, so enable it explicitly.
+        AppSettings.set_setting('module_enabled:bir_reports', '1', updated_by='test')
+        clear_module_config_cache()
         login(client)
         resp = client.get('/withholding-tax/')
         assert b'<span class="nav-text">Withholding Tax Expanded</span>' in resp.data

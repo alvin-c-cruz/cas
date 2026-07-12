@@ -9,6 +9,17 @@ from app.settings import AppSettings
 pytestmark = [pytest.mark.integration]
 
 
+@pytest.fixture(autouse=True)
+def _bir_reports_enabled(db_session):
+    # bir_reports now defaults OFF (registry flip, chore/bir-reports-default-off); this
+    # file exercises the BIR SLS/SLP pages themselves, so enable the module explicitly.
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:bir_reports', '1', updated_by='test')
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
 def _login(client, user):
     with client.session_transaction() as sess:
         sess['_user_id'] = str(user.id)

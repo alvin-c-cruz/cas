@@ -9,11 +9,14 @@ pytestmark = [pytest.mark.integration]
 
 
 @pytest.fixture(autouse=True)
-def _fresh_module_cache():
-    # bir_reports is default_enabled but read through an app-level cache not reset
-    # per test; a sibling test that disables it leaks a stale '0' and 404s these
-    # gated routes. Clear before and after so each test reads module state fresh.
+def _fresh_module_cache(db_session):
+    # bir_reports now defaults OFF (registry flip, chore/bir-reports-default-off) and is
+    # read through an app-level cache not reset per test; a sibling test that disables it
+    # can also leak a stale '0'. Explicitly enable it and clear the cache before/after so
+    # each test in this file (which exercises the BIR pages themselves) reads it as ON.
+    from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:bir_reports', '1', updated_by='test')
     clear_module_config_cache()
     yield
     clear_module_config_cache()
