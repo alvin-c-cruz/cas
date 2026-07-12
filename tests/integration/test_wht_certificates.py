@@ -12,8 +12,13 @@ MODULE = 'withholding_certificates'
 
 
 @pytest.fixture(autouse=True)
-def _fresh_module_cache():
+def _fresh_module_cache(db_session):
+    # withholding_certificates is gated behind bir_reports, which now defaults OFF
+    # (registry flip, chore/bir-reports-default-off) -- explicitly enable it so this
+    # file's routes aren't 404'd. Matches the pattern in test_bir_2307.py.
+    from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:bir_reports', '1', updated_by='test')
     clear_module_config_cache(); yield; clear_module_config_cache()
 
 
