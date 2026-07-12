@@ -179,11 +179,13 @@ def edit_settings():
     from app.users.module_access import MODULE_REGISTRY, module_enabled
     optional_modules = [dict(m, enabled=module_enabled(m['key']))
                         for m in MODULE_REGISTRY if m.get('optional')]
+    module_states = {m['key']: m['enabled'] for m in optional_modules}
     return render_template(
         'company_settings/form.html',
         form=form,
         logo_filename=_current_logo_filename(),
         modules=optional_modules,
+        module_states=module_states,
     )
 
 
