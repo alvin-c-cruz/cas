@@ -271,11 +271,11 @@ stress; deploy/backup paths; ERP scope (see the "Already covered — ERP scope" 
   committed + every loser gets the friendly re-render, not a raw exception — verified by
   inspecting actual response bodies, not just status codes). See
   `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md`.
-- 🟢 **FEAT-SIDEBAR-ACCORDION** (LOW) — FIXED 2026-07-12. Replaced the N independent
-  `sidebar:<name>` localStorage keys with a single `sidebar:expandedSection` key; clicking a
-  section now force-collapses every other section (global, across area sections + Admin + Tax &
-  Oversight + Staff Management), and re-clicking the open section collapses it too (zero-open is
-  valid). Old per-section keys are left orphaned/unmigrated (accepted tradeoff). See
+- 🟢 **FEAT-SIDEBAR-ACCORDION** (LOW) — FIXED 2026-07-12 (commit `c1edaa4`). Replaced the N
+  independent `sidebar:<name>` localStorage keys with a single `sidebar:expandedSection` key;
+  clicking a section now force-collapses every other section (global, across area sections +
+  Admin + Tax & Oversight + Staff Management), and re-clicking the open section collapses it too
+  (zero-open is valid). Old per-section keys are left orphaned/unmigrated (accepted tradeoff). See
   `sidebar_accordion.py` (13/13).
 - 🔵 **Backlog #156** — Products/UOM/Customers/Vendors codes should be per-client configurable;
   WHT/VAT/COA codes always mandatory. Design decision recorded, not scoped/built.
