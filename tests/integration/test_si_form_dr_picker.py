@@ -4,6 +4,20 @@ import pytest
 pytestmark = [pytest.mark.integration]
 
 
+@pytest.fixture(autouse=True)
+def _enable_dr_module_by_default(db_session):
+    """Auto-enable delivery_receipts module for every test in this file (unless the test
+    explicitly overrides it via _set_modules). File-local autouse -- applies only to tests
+    in this module, unlike a root-conftest autouse fixture which would run for the whole
+    suite. Supports the test pattern where module_enabled('delivery_receipts') defaults to
+    True here so the pre-existing test doesn't need modification."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:delivery_receipts', '1')
+    db_session.commit()
+    clear_module_config_cache()
+
+
 def _login(client, user, branch):
     with client.session_transaction() as s:
         s['_user_id'] = str(user.id); s['_fresh'] = True; s['selected_branch_id'] = branch.id
