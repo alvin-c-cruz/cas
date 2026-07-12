@@ -323,6 +323,20 @@ def db_with_data(db_session, admin_user, main_branch, cash_account, revenue_acco
     }
 
 
+# SI form test fixtures
+@pytest.fixture(autouse=True)
+def _enable_dr_module_for_si_tests(request, db_session):
+    """Auto-enable delivery_receipts module for SI form tests (unless the test explicitly disables it).
+    This supports the test pattern where module_enabled('delivery_receipts') defaults to True
+    so existing tests don't need modification."""
+    if 'test_si_form' in request.node.nodeid or 'si_form_dr_picker' in request.node.nodeid:
+        from app.settings import AppSettings
+        from app.utils.cache_helpers import clear_module_config_cache
+        AppSettings.set_setting('module_enabled:delivery_receipts', '1')
+        db_session.commit()
+        clear_module_config_cache()
+
+
 # --- R-08 Task 6: vat_lines() fixtures -------------------------------------
 # One document with one line each, posted, dated 2026-02-15 (except
 # posted_si_on_mar_31). Reuse admin_user/main_branch/cash_account/revenue_account;
