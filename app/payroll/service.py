@@ -144,3 +144,43 @@ def effective_wht_bracket(frequency, taxable, as_of):
     if taxable < rows[0].lower_bound:
         return rows[0]   # below the lowest bracket's floor -> lowest bracket
     return rows[-1]   # above all brackets -> top open bracket (upper_bound is None)
+
+
+def compute_statutory(monthly_basis, as_of):
+    """Compute SSS, PhilHealth, and Pag-IBIG contributions for a monthly basis.
+
+    Pure function: reads the effective statutory tables via the effective_*/
+    sss_row_for lookups above and combines them into actual contribution
+    amounts (employee and employer shares). No DB writes.
+
+    Args:
+        monthly_basis: Decimal monthly compensation basis
+        as_of: date to look up effective statutory rates for
+
+    Returns:
+        dict with Decimal values (all _q2-quantized):
+        {sss_ee, sss_er, sss_ec, philhealth_ee, philhealth_er,
+         pagibig_ee, pagibig_er, sss_msc}
+    """
+    sss_tbl = effective_sss(as_of)
+    r = sss_row_for(sss_tbl, monthly_basis)
+
+    ph = effective_philhealth(as_of)
+    clamped = min(max(monthly_basis, ph.income_floor), ph.income_ceiling)
+    ph_total = _q2(clamped * ph.premium_rate)
+    ph_ee = _q2(ph_total * ph.ee_share)
+
+    pi = effective_pagibig(as_of)
+    base = min(monthly_basis, pi.mc_ceiling)
+    ee_rate = pi.lower_ee_rate if monthly_basis <= pi.bracket_threshold else pi.upper_ee_rate
+
+    return {
+        'sss_msc': r.msc,
+        'sss_ee': _q2(r.ee_amount + r.ee_wisp),
+        'sss_er': _q2(r.er_amount + r.er_wisp),
+        'sss_ec': _q2(r.ec_amount),
+        'philhealth_ee': ph_ee,
+        'philhealth_er': _q2(ph_total - ph_ee),
+        'pagibig_ee': _q2(base * ee_rate),
+        'pagibig_er': _q2(base * pi.er_rate),
+    }

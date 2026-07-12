@@ -128,8 +128,14 @@ def _seed_sss_2026():
         (Decimal('20500'), Decimal('20749.99'), Decimal('20750'), Decimal('933.75'), Decimal('726.25'), Decimal('103.75'), Decimal('103.75'), Decimal('20.75')),
         (Decimal('20750'), Decimal('20999.99'), Decimal('21000'), Decimal('945.00'), Decimal('735.00'), Decimal('105.00'), Decimal('105.00'), Decimal('21.00')),
         (Decimal('21000'), Decimal('29749.99'), Decimal('25000'), Decimal('1125.00'), Decimal('875.00'), Decimal('125.00'), Decimal('125.00'), Decimal('25.00')),
-        # The critical ₱30k bracket (test anchor point)
-        (Decimal('29750'), Decimal('39999.99'), Decimal('30000'), Decimal('1350.00'), Decimal('2650.00'), Decimal('150.00'), Decimal('650.00'), Decimal('30.00')),
+        # The critical ₱30k bracket (test anchor point). Regular MSC capped at
+        # 20,000 (EE 5% = 1000, ER 10% = 2000) + WISP on the 10,000 excess up
+        # to 30,000 (EE 5% = 500, ER 10% = 1000). Totals: EE 1500 (5%), ER 3000
+        # (10%) -- matches the published circular split. A prior version of
+        # this row had er_amount/er_wisp totaling 3300.00 (an 11% ER rate) --
+        # an arithmetic bug found while implementing compute_statutory's
+        # anchor test (Task 3); fixed here together with the seed.
+        (Decimal('29750'), Decimal('39999.99'), Decimal('30000'), Decimal('1000.00'), Decimal('2000.00'), Decimal('500.00'), Decimal('1000.00'), Decimal('30.00')),
         # Top open bracket
         (Decimal('40000'), None, Decimal('40000'), Decimal('1800.00'), Decimal('3200.00'), Decimal('200.00'), Decimal('800.00'), Decimal('40.00')),
     ]

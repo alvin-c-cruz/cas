@@ -137,6 +137,106 @@ def test_wht_bracket_for_salary(db_session):
     assert bracket_below.bracket_no == 1
 
 
+def test_statutory_anchors_30k(db_session):
+    """compute_statutory produces the correct SSS/PhilHealth/Pag-IBIG split at 30,000."""
+    seed_statutory_2026()
+    s = service.compute_statutory(Decimal('30000'), date(2026, 6, 30))
+    # Reference figures — confirm vs current circulars at build time:
+    assert s['sss_ee'] == Decimal('1500.00')
+    assert s['sss_er'] == Decimal('3000.00')
+    assert s['sss_ec'] == Decimal('30.00')
+    assert s['philhealth_ee'] == Decimal('750.00')   # 30000*0.05/2
+    assert s['philhealth_er'] == Decimal('750.00')
+    assert s['pagibig_ee'] == Decimal('200.00')       # min(30000,10000)*0.02
+    assert s['pagibig_er'] == Decimal('200.00')
+
+
+def test_statutory_returns_all_expected_keys(db_session):
+    """compute_statutory's dict has exactly the documented keys, all Decimal."""
+    seed_statutory_2026()
+    s = service.compute_statutory(Decimal('30000'), date(2026, 6, 30))
+    expected_keys = {
+        'sss_ee', 'sss_er', 'sss_ec', 'philhealth_ee', 'philhealth_er',
+        'pagibig_ee', 'pagibig_er', 'sss_msc',
+    }
+    assert set(s.keys()) == expected_keys
+    for v in s.values():
+        assert isinstance(v, Decimal)
+
+
+def test_philhealth_clamps(db_session):
+    """PhilHealth premium is clamped to [income_floor, income_ceiling] before the rate applies."""
+    seed_statutory_2026()
+    lo = service.compute_statutory(Decimal('8000'), date(2026, 6, 30))
+    assert lo['philhealth_ee'] == Decimal('250.00')   # floor 10000 -> 500 total /2
+    hi = service.compute_statutory(Decimal('120000'), date(2026, 6, 30))
+    assert hi['philhealth_ee'] == Decimal('2500.00')  # ceiling 100000 -> 5000 /2
+
+
+def test_philhealth_floor_boundary_exact(db_session):
+    """Monthly basis exactly AT the floor is NOT further reduced -- same result as clamped-from-below."""
+    seed_statutory_2026()
+    at_floor = service.compute_statutory(Decimal('10000'), date(2026, 6, 30))
+    assert at_floor['philhealth_ee'] == Decimal('250.00')
+    assert at_floor['philhealth_er'] == Decimal('250.00')
+
+    just_below = service.compute_statutory(Decimal('9999.99'), date(2026, 6, 30))
+    assert just_below['philhealth_ee'] == Decimal('250.00')
+    assert just_below['philhealth_er'] == Decimal('250.00')
+
+
+def test_philhealth_ceiling_boundary_exact(db_session):
+    """Monthly basis exactly AT the ceiling is NOT clamped down -- same result as clamped-from-above."""
+    seed_statutory_2026()
+    at_ceiling = service.compute_statutory(Decimal('100000'), date(2026, 6, 30))
+    assert at_ceiling['philhealth_ee'] == Decimal('2500.00')
+    assert at_ceiling['philhealth_er'] == Decimal('2500.00')
+
+    just_above = service.compute_statutory(Decimal('100000.01'), date(2026, 6, 30))
+    assert just_above['philhealth_ee'] == Decimal('2500.00')
+    assert just_above['philhealth_er'] == Decimal('2500.00')
+
+
+def test_pagibig_threshold_boundary_exact(db_session):
+    """Pag-IBIG rate selection at the bracket_threshold uses the LOWER rate (inclusive <=),
+    and one centavo above switches to the UPPER rate -- proves no off-by-one gap/overlap."""
+    seed_statutory_2026()
+    at_threshold = service.compute_statutory(Decimal('1500'), date(2026, 6, 30))
+    assert at_threshold['pagibig_ee'] == Decimal('15.00')   # 1500 * 1% (lower rate)
+    assert at_threshold['pagibig_er'] == Decimal('30.00')   # 1500 * 2% (er_rate, always upper)
+
+    just_above = service.compute_statutory(Decimal('1500.01'), date(2026, 6, 30))
+    assert just_above['pagibig_ee'] == Decimal('30.00')     # 1500.01 * 2% (upper rate) rounds to 30.00
+
+    just_below = service.compute_statutory(Decimal('1499.99'), date(2026, 6, 30))
+    assert just_below['pagibig_ee'] == Decimal('15.00')     # 1499.99 * 1% (lower rate) rounds to 15.00
+
+
+def test_pagibig_mc_ceiling_boundary(db_session):
+    """Pag-IBIG contribution base is capped at mc_ceiling; below it, the full salary is used."""
+    seed_statutory_2026()
+    below_ceiling = service.compute_statutory(Decimal('9000'), date(2026, 6, 30))
+    assert below_ceiling['pagibig_ee'] == Decimal('180.00')  # 9000 * 2% (unclamped)
+
+    at_ceiling = service.compute_statutory(Decimal('10000'), date(2026, 6, 30))
+    assert at_ceiling['pagibig_ee'] == Decimal('200.00')     # 10000 * 2% (base == ceiling, not yet clamped)
+
+    above_ceiling = service.compute_statutory(Decimal('10000.01'), date(2026, 6, 30))
+    assert above_ceiling['pagibig_ee'] == Decimal('200.00')  # base clamped down to 10000
+
+
+def test_sss_bracket_transition_via_compute_statutory(db_session):
+    """A one-centavo change across an SSS bracket boundary changes the computed contribution
+    -- proves compute_statutory composes sss_row_for's boundary logic correctly, not just
+    that sss_row_for itself is correct in isolation."""
+    seed_statutory_2026()
+    just_below = service.compute_statutory(Decimal('29749.99'), date(2026, 6, 30))
+    assert just_below['sss_ee'] == Decimal('1250.00')  # preceding bracket (comp_from 21000, msc 25000)
+
+    at_boundary = service.compute_statutory(Decimal('29750'), date(2026, 6, 30))
+    assert at_boundary['sss_ee'] == Decimal('1500.00')  # critical 30k-anchor bracket
+
+
 def test_effective_lookup_respects_effective_dates(db_session):
     """Lookups only return rows that are effective on the requested date."""
     from datetime import date, timedelta
