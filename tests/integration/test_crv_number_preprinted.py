@@ -71,7 +71,11 @@ class TestPrePrintedCrvNumber:
         assert crv is not None
         assert crv.crv_number == 'OR-5500123'
 
-    def test_create_rejects_duplicate_number(self, client, db_session, admin_user, main_branch):
+    def test_create_surfaces_a_fresh_suggestion_on_duplicate_number(
+            self, client, db_session, admin_user, main_branch):
+        """A duplicate is no longer a dead-end error (BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS
+        fix, see test_cr_number_race.py) -- the form re-renders with a freshly suggested
+        number instead, so the user can just Save again."""
         login(client)
         ar, wt, cash, rev = setup_accounts(db_session)
         customer = make_customer(db_session)
@@ -83,7 +87,7 @@ class TestPrePrintedCrvNumber:
         dupes = CashReceiptVoucher.query.filter_by(crv_number='OR-77').all()
         assert len(dupes) == 1
         assert resp.status_code == 200
-        assert b'already exists' in resp.data
+        assert b'was just taken' in resp.data
 
     def test_edit_persists_changed_number(self, client, db_session, admin_user, main_branch):
         login(client)
