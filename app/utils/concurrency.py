@@ -118,6 +118,32 @@ def claim_version(model, doc_id, submitted):
     return True
 
 
+def fresh_number_if_collision(model, number_attr, submitted_number, generate_number):
+    """Check whether `submitted_number` already exists on `model`. If so, return a freshly
+    generated candidate; the caller must refill the form field with it, flash an
+    explanation, and RE-RENDER the create form WITHOUT committing. Returns None when there
+    is no collision (proceed as normal).
+
+    Use this — NOT `commit_with_renumber_retry` — for document numbers that are
+    user-editable, pre-printed-serial-style fields (SI invoice_number, AP ap_number, CD
+    cdv_number, CR crv_number: each is documented in its own forms.py as "pre-filled with a
+    suggested default, but editable to match a physical pre-printed document"). Silently
+    swapping a collision on one of these could mask a genuine mistake — a user who
+    deliberately (re)typed a real duplicate physical serial deserves to find out, not have
+    it quietly renumbered out from under them. JV's entry_number has no such meaning (a
+    pure system sequence, nobody cares about a specific value) and uses the silent
+    `commit_with_renumber_retry` instead.
+
+    See docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md.
+    """
+    exists = db.session.query(
+        model.query.filter(getattr(model, number_attr) == submitted_number).exists()
+    ).scalar()
+    if not exists:
+        return None
+    return generate_number()
+
+
 def commit_with_renumber_retry(entity, number_attr, generate_number, max_attempts=3):
     """Commit `entity` (already `db.session.add()`-ed, with any cascaded children),
     retrying up to `max_attempts` times with a freshly generated number if the commit

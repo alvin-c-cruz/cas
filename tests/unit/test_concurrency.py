@@ -20,6 +20,7 @@ from app.utils.concurrency import (
     RowVersionFormMixin,
     claim_version,
     conflict_message,
+    fresh_number_if_collision,
     submitted_version,
 )
 
@@ -36,6 +37,15 @@ class _VersionedThing(RowVersioned, db.Model):
 
 class _VersionedForm(RowVersionFormMixin, Form):
     pass
+
+
+class _NumberedThing(db.Model):
+    """Throwaway model with a unique document-number-style column, exercising
+    fresh_number_if_collision in isolation (SI/AP/CD/CR's shape, not JV's)."""
+    __tablename__ = '_test_numbered_thing'
+
+    id = db.Column(db.Integer, primary_key=True)
+    number = db.Column(db.String(20), unique=True, nullable=False)
 
 
 def _make_thing(name='alpha'):
@@ -205,3 +215,24 @@ class TestRowVersionFormMixin:
         from wtforms.widgets import HiddenInput
         form = _VersionedForm(formdata=MultiDict({'row_version': '1'}))
         assert isinstance(form.row_version.widget, HiddenInput)
+
+
+class TestFreshNumberIfCollision:
+    """SI/AP/CD/CR's user-editable-serial variant: never silently substitute; the
+    caller re-renders with the fresh suggestion, it does not auto-commit."""
+
+    def test_no_collision_returns_none(self, db_session):
+        assert fresh_number_if_collision(
+            _NumberedThing, 'number', 'NEW-001', lambda: 'NEW-002'
+        ) is None
+
+    def test_collision_returns_a_fresh_number_without_touching_the_db(self, db_session):
+        db_session.add(_NumberedThing(number='DUP-001'))
+        db_session.commit()
+
+        fresh = fresh_number_if_collision(
+            _NumberedThing, 'number', 'DUP-001', lambda: 'DUP-002'
+        )
+
+        assert fresh == 'DUP-002'
+        assert _NumberedThing.query.count() == 1, 'must not insert or mutate anything'
