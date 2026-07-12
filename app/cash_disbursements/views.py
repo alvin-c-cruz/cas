@@ -17,7 +17,7 @@ from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products
-from app.utils.concurrency import claim_version, conflict_message, submitted_version
+from app.utils.concurrency import claim_version, conflict_message, submitted_version, fresh_number_if_collision
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.settings import AppSettings
@@ -860,9 +860,12 @@ def create():
         # Uniqueness check: the user-typed (or pre-filled) CD number must not
         # already be in use by any other CDV (regardless of status).
         cdv_number = (form.cdv_number.data or '').strip()
-        if CashDisbursementVoucher.query.filter_by(cdv_number=cdv_number).first():
-            flash(f'CD number "{cdv_number}" is already in use. '
-                  'Enter a unique CD number.', 'error')
+        fresh = fresh_number_if_collision(CashDisbursementVoucher, 'cdv_number',
+                                           cdv_number, generate_cdv_number)
+        if fresh is not None:
+            form.cdv_number.data = fresh
+            flash(f'CD number "{cdv_number}" is already in use. A new number '
+                  f'({fresh}) has been suggested below -- review and Save again.', 'error')
             return _render_form()
         try:
             vendor = db.session.get(Vendor, form.vendor_id.data)
