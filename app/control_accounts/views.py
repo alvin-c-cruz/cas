@@ -15,13 +15,8 @@ def _accountant_or_admin():
 
 
 def _postable_accounts():
-    """Active leaf (postable) accounts, ordered by code. A node is a group header
-    if it is top-level (no parent_id) OR has children; otherwise it is a leaf
-    (matches the derived-hierarchy rule used across CAS)."""
-    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
-    parent_ids = {a.parent_id for a in accounts if a.parent_id is not None}
-    return [a for a in accounts
-            if a.parent_id is not None and a.id not in parent_ids]
+    from app.posting.control_accounts import get_postable_accounts
+    return get_postable_accounts()
 
 
 def _postable_codes():

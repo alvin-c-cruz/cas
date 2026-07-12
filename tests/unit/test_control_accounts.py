@@ -3,6 +3,7 @@ from app.accounts.models import Account
 from app.settings import AppSettings
 from app.posting.control_accounts import (
     get_control_account, ControlAccountError, assign_default_control_accounts,
+    get_postable_accounts,
 )
 
 
@@ -49,3 +50,18 @@ class TestControlAccountResolver:
         AppSettings.set_setting('ar_trade_account_code', '1210', updated_by='t')
         assign_default_control_accounts()
         assert AppSettings.get_setting('ar_trade_account_code') == '1210'  # unchanged
+
+
+def test_get_postable_accounts_excludes_group_headers(db_session):
+    parent = Account(code='PA001', name='Parent Group', account_type='Asset',
+                     normal_balance='Debit')
+    db_session.add(parent)
+    db_session.commit()
+    child = Account(code='PA002', name='Child Leaf', account_type='Asset',
+                    normal_balance='Debit', parent_id=parent.id)
+    db_session.add(child)
+    db_session.commit()
+    postable = get_postable_accounts()
+    codes = {a.code for a in postable}
+    assert 'PA002' in codes
+    assert 'PA001' not in codes  # has children -> group header, not postable
