@@ -168,6 +168,9 @@ def list_accounts():
             'depth': depth,
             # parent/group = top-level (no parent) OR has children
             'is_header': node.id in has_children or node.parent_id is None,
+            # a header is only truly non-deletable when it ACTUALLY has children
+            # (a childless top-level account has nothing blocking a delete)
+            'has_children': node.id in has_children,
             # coarse bucket for the summary cards + filter tabs (COGS/Opex split)
             'summary_category': SUMMARY_CATEGORY.get(node.account_type, node.account_type),
         })
