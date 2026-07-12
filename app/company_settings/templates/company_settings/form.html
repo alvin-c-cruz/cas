@@ -204,28 +204,44 @@
         <div class="card-body">
             <div class="settings-grid-3">
                 {{ render_field(form.sv_print_form) }}
+                {% if module_states.sales_orders %}
                 {{ render_field(form.so_print_form) }}
+                {% endif %}
                 {{ render_field(form.cr_print_form) }}
                 {{ render_field(form.ap_print_form) }}
                 {{ render_field(form.cd_print_form) }}
                 {{ render_field(form.jv_print_form) }}
             </div>
+            {% if not module_states.sales_orders %}
+            <div class="form-hint">Enable the Sales Orders module in Packages to configure the
+                Sales Order print form.</div>
+            {% endif %}
             <div class="form-hint">Selects the print layout per document.
                 <strong>Pre-printed Form</strong> prints data-only onto a pre-printed form (designed
                 in the layout editor); <strong>Hidden</strong> turns printing off entirely — the
                 Print button is removed and the print link is disabled.</div>
+            {% if module_states.delivery_receipts %}
             <label class="checkbox-label" style="margin-top:12px;">
                 {{ form.si_dr_billing_consolidate() }}
                 <span>{{ form.si_dr_billing_consolidate.label.text }}</span>
             </label>
             <div class="form-hint">When on, the Sales Invoice's "Bill delivered DRs" picker can pull
                 several Delivery Receipts into one invoice. When off (default), one DR per invoice.</div>
+            {% else %}
+            <div class="form-hint" style="margin-top:12px;">Enable the Delivery Receipts module in
+                Packages to configure multi-DR billing.</div>
+            {% endif %}
+            {% if module_states.purchase_orders or module_states.receiving_reports %}
             <label class="checkbox-label" style="margin-top:12px;">
                 {{ form.ap_billing_consolidate() }}
                 <span>{{ form.ap_billing_consolidate.label.text }}</span>
             </label>
             <div class="form-hint">When on, the Bill's "Bill from Purchase Order / Receiving Report"
                 picker can pull several POs/RRs into one bill. When off (default), one PO or RR per bill.</div>
+            {% else %}
+            <div class="form-hint" style="margin-top:12px;">Enable the Purchase Orders or Receiving
+                Reports module in Packages to configure multi-PO/RR billing.</div>
+            {% endif %}
         </div>
     </div>
     </div>
