@@ -190,7 +190,7 @@ def _build_je_preview(ap):
             'credit': Decimal('0.00'),
         })
 
-    for wt_acct, wt_amt in _wht_payable_buckets(ap, accts['wt']):
+    for wt_acct, wt_amt in _wht_payable_buckets(ap, ap.wht_payable_account or accts['wt']):
         entries.append({
             'code': wt_acct.code,
             'name': wt_acct.name,
@@ -198,10 +198,11 @@ def _build_je_preview(ap):
             'credit': wt_amt,
         })
 
-    if accts['ap']:
+    ap_acct_for_preview = ap.ap_trade_account or accts['ap']
+    if ap_acct_for_preview:
         entries.append({
-            'code': accts['ap'].code,
-            'name': accts['ap'].name,
+            'code': ap_acct_for_preview.code,
+            'name': ap_acct_for_preview.name,
             'debit': Decimal('0.00'),
             'credit': Decimal(str(ap.total_amount)),
         })
@@ -1326,14 +1327,14 @@ def _post_ap_je(ap, user_id):
     from app.journal_entries.models import JournalEntry, JournalEntryLine
     from app.posting.control_accounts import get_control_account
 
-    ap_account = get_control_account('ap_trade')
+    ap_account = ap.ap_trade_account or get_control_account('ap_trade')
 
     wt_account = None
     if ap.withholding_tax_amount and ap.withholding_tax_amount > 0:
         # Resolved here (required) as the per-line fallback that
         # _wht_payable_buckets() below uses when a line's ATC has no
         # payable_account of its own.
-        wt_account = get_control_account('wht_payable')
+        wt_account = ap.wht_payable_account or get_control_account('wht_payable')
 
     # The JE mirrors the bill's lifecycle: created as a DRAFT while the bill
     # is a draft (so unposted vouchers never hit GL reports), promoted to
