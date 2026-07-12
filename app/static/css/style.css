@@ -1258,9 +1258,13 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 }
 
 .details-content {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 16px 24px;
+    /* Stacks its structurally distinct children (the fields grid, an
+       optional Notes block, the metadata footer) vertically -- switching
+       this to a grid layout would collapse .details-grid (the one real
+       field grid) into a single track via nested auto-fit. */
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
     margin-bottom: 20px;
 }
 
@@ -1331,7 +1335,6 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
     }
 
     .details-content {
-        grid-template-columns: 1fr;
         gap: 12px;
     }
 
