@@ -424,6 +424,50 @@ def change_requests():
     return render_template('vat_categories/change_requests.html', requests=requests_with_data)
 
 
+@vat_categories_bp.route('/change-requests/<int:id>/withdraw', methods=['POST'])
+@login_required
+def withdraw_change_request(id):
+    """Withdraw the requester's own still-pending change request.
+
+    Not an approval shortcut: retracting your own unreviewed ask is the
+    opposite of self-approving it. No admin_required gate beyond
+    authentication -- the requester-only check happens here, and only the
+    original requester may withdraw (mirrors the four-eyes intent without
+    weakening the rate-change review gate, which this route never touches).
+    """
+    change_request = db.get_or_404(VATCategoryChangeRequest, id)
+
+    if change_request.requested_by_id != current_user.id:
+        flash('You can only withdraw your own pending request.', 'error')
+        return redirect(url_for('vat_categories.change_requests'))
+
+    if change_request.status != 'pending':
+        flash('This request has already been processed.', 'error')
+        return redirect(url_for('vat_categories.change_requests'))
+
+    proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
+    record_identifier = (f'{change_request.vat_category.code} - {change_request.vat_category.name}'
+                        if change_request.vat_category
+                        else f"{proposed_data.get('code', 'N/A')} - {proposed_data.get('name', 'VAT Category')}")
+
+    change_request.status = 'withdrawn'
+    change_request.reviewed_by_id = current_user.id
+    change_request.reviewed_at = ph_now()
+    change_request.review_notes = 'Withdrawn by requester.'
+
+    log_audit(
+        module='vat_category',
+        action='withdraw',
+        record_id=change_request.id,
+        record_identifier=record_identifier,
+        notes='Withdrawn by requester.'
+    )
+
+    db.session.commit()
+    flash('Change request withdrawn.', 'success')
+    return redirect(url_for('vat_categories.change_requests'))
+
+
 @vat_categories_bp.route('/change-requests/<int:id>/review', methods=['GET', 'POST'])
 @login_required
 @admin_required('vat_categories.list_vat_categories', 'VAT Categories')

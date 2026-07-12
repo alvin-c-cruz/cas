@@ -404,6 +404,49 @@ def change_requests():
                          tax_type_labels=TAX_TYPE_LABELS)
 
 
+@withholding_tax_bp.route('/change-requests/<int:id>/withdraw', methods=['POST'])
+@login_required
+def withdraw_change_request(id):
+    """Withdraw the requester's own still-pending change request.
+
+    Not an approval shortcut: retracting your own unreviewed ask is the
+    opposite of self-approving it. No admin_required gate beyond
+    authentication -- the requester-only check happens here, and only the
+    original requester may withdraw.
+    """
+    change_request = db.get_or_404(WithholdingTaxChangeRequest, id)
+
+    if change_request.requested_by_id != current_user.id:
+        flash('You can only withdraw your own pending request.', 'error')
+        return redirect(url_for('withholding_tax.change_requests'))
+
+    if change_request.status != 'pending':
+        flash('This request has already been processed.', 'error')
+        return redirect(url_for('withholding_tax.change_requests'))
+
+    proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
+    record_identifier = (f'{change_request.withholding_tax.code} - {change_request.withholding_tax.name}'
+                        if change_request.withholding_tax
+                        else f"{proposed_data.get('code', 'N/A')} - {proposed_data.get('name', 'Withholding Tax')}")
+
+    change_request.status = 'withdrawn'
+    change_request.reviewed_by_id = current_user.id
+    change_request.reviewed_at = ph_now()
+    change_request.review_notes = 'Withdrawn by requester.'
+
+    log_audit(
+        module='withholding_tax',
+        action='withdraw',
+        record_id=change_request.id,
+        record_identifier=record_identifier,
+        notes='Withdrawn by requester.'
+    )
+
+    db.session.commit()
+    flash('Change request withdrawn.', 'success')
+    return redirect(url_for('withholding_tax.change_requests'))
+
+
 @withholding_tax_bp.route('/change-requests/<int:id>/review', methods=['GET', 'POST'])
 @login_required
 @admin_required('withholding_tax.list_withholding_tax', 'Withholding Tax')

@@ -61,6 +61,11 @@
                         <td>
                             {% if request.requested_by_id != current_user.id %}
                             <a href="{{ url_for('sales_vat_categories.review_change_request', id=request.id) }}" class="btn-action btn-action-edit">Review</a>
+                            {% elif request.status == 'pending' %}
+                            <form method="POST" action="{{ url_for('sales_vat_categories.withdraw_change_request', id=request.id) }}" style="display: inline;" data-confirm="Withdraw this pending change request?">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn-action btn-action-delete">Withdraw</button>
+                            </form>
                             {% else %}
                             <span style="color: #94a3b8; font-size: 13px;">Awaiting approval</span>
                             {% endif %}
