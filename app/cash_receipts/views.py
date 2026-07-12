@@ -1112,9 +1112,10 @@ def view(id):
     crv = _get_crv_or_404(id)
     je_entries = _build_crv_je_preview(crv)
     cr_print_access = AppSettings.get_setting('cr_print_access', 'posted_only')
+    cr_print_form = AppSettings.get_setting('cr_print_form', 'current')
     return render_template('cash_receipts/detail.html',
                            crv=crv, je_entries=je_entries, now=ph_now(),
-                           cr_print_access=cr_print_access)
+                           cr_print_access=cr_print_access, cr_print_form=cr_print_form)
 
 
 # ---------------------------------------------------------------------------
@@ -1269,6 +1270,16 @@ def print_crv(id):
     # 'hidden' turns CRV printing off entirely: refuse the route, not just the button.
     if cr_print_form == 'hidden':
         flash('Cash Receipt printing is not enabled.', 'error')
+        return redirect(url_for('cash_receipts.view', id=id))
+
+    # BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS: the detail-page button already gates on
+    # cr_print_access (posted_only/draft_and_posted) -- the route must refuse the
+    # same way, or a direct GET bypasses a hidden button entirely.
+    cr_print_access = AppSettings.get_setting('cr_print_access', 'posted_only')
+    status_ok = (crv.status == 'posted') if cr_print_access != 'draft_and_posted' \
+        else (crv.status not in ('voided', 'cancelled'))
+    if not status_ok:
+        flash('This receipt is not eligible for printing yet.', 'error')
         return redirect(url_for('cash_receipts.view', id=id))
 
     je_entries = _build_crv_je_preview(crv)

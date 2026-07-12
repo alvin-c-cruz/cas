@@ -20,6 +20,7 @@ from app.vendors.models import Vendor
 from app.accounts_payable.models import AccountsPayable
 from app.cash_disbursements.models import CashDisbursementVoucher
 from app.cash_receipts.models import CashReceiptVoucher
+from app.settings import AppSettings
 
 pytestmark = [pytest.mark.integration]
 
@@ -109,6 +110,10 @@ def _assert_print_blanks_amount_only_qty(client, url):
 
 
 def test_apv_mixed_lines_tie_and_print(client, db_session, accountant_user, main_branch, modules_on):
+    # This test prints a DRAFT bill -- widen apv_print_access so BUG-DOCPRINT-ACCESS-
+    # GATE-ROUTE-BYPASS's fix (route now enforces posted_only by default) doesn't
+    # block a print assertion that isn't about access control.
+    AppSettings.set_setting('apv_print_access', 'draft_and_posted', 'system')
     gl = _gl(db_session); vend = _vendor(db_session)
     from tests.conftest import assign_control_accounts
     assign_control_accounts(db_session)
@@ -131,6 +136,7 @@ def test_apv_mixed_lines_tie_and_print(client, db_session, accountant_user, main
 
 
 def test_cdv_mixed_lines_tie_and_print(client, db_session, accountant_user, main_branch, modules_on):
+    AppSettings.set_setting('cd_print_access', 'draft_and_posted', 'system')
     gl = _gl(db_session); vend = _vendor(db_session)
     from tests.conftest import assign_control_accounts
     assign_control_accounts(db_session)
@@ -154,6 +160,7 @@ def test_cdv_mixed_lines_tie_and_print(client, db_session, accountant_user, main
 
 
 def test_crv_mixed_lines_tie_and_print(client, db_session, accountant_user, main_branch, modules_on):
+    AppSettings.set_setting('cr_print_access', 'draft_and_posted', 'system')
     gl = _gl(db_session); cust = _customer(db_session)
     from tests.conftest import assign_control_accounts
     assign_control_accounts(db_session)

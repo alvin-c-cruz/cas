@@ -1335,6 +1335,17 @@ def print_invoice(id):
         flash('Sales Invoice printing is not enabled.', 'error')
         return redirect(url_for('sales_invoices.view', id=id))
 
+    # BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS: the detail-page button already gates on
+    # sv_print_access (posted_only/draft_and_posted) -- the route must refuse the same
+    # way, or a direct GET bypasses a hidden button entirely.
+    sv_print_access = AppSettings.get_setting('sv_print_access', 'posted_only')
+    status_ok = (invoice.status in ('posted', 'partially_paid', 'paid')) \
+        if sv_print_access != 'draft_and_posted' \
+        else (invoice.status not in ('voided', 'cancelled'))
+    if not status_ok:
+        flash('This invoice is not eligible for printing yet.', 'error')
+        return redirect(url_for('sales_invoices.view', id=id))
+
     # Consolidated JE (each account once), same source as the detail-view Entry
     # table — keeps view/print in sync.
     je_entries = _build_je_preview(invoice)

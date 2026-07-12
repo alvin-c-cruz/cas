@@ -73,8 +73,9 @@
       <span class="badge badge-{{ badge.get(crv.status, 'secondary') }}">{{ crv.status|title }}</span>
     </div>
     <div class="card-header-actions">
-      {% if (cr_print_access == 'posted_only' and crv.status == 'posted')
-         or (cr_print_access == 'draft_and_posted' and crv.status not in ('voided', 'cancelled')) %}
+      {% if cr_print_form != 'hidden'
+         and ((cr_print_access == 'posted_only' and crv.status == 'posted')
+         or (cr_print_access == 'draft_and_posted' and crv.status not in ('voided', 'cancelled'))) %}
       <a href="{{ url_for('cash_receipts.print_crv', id=crv.id) }}" target="_blank"
          rel="noopener noreferrer" class="btn btn-secondary">Print</a>
       {% endif %}

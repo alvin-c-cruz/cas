@@ -73,8 +73,9 @@
       <span class="badge badge-{{ badge.get(cdv.status, 'secondary') }}">{{ cdv.status|title }}</span>
     </div>
     <div class="card-header-actions">
-      {% if (cd_print_access == 'posted_only' and cdv.status == 'posted')
-         or (cd_print_access == 'draft_and_posted' and cdv.status not in ('voided', 'cancelled')) %}
+      {% if cd_print_form != 'hidden'
+         and ((cd_print_access == 'posted_only' and cdv.status == 'posted')
+         or (cd_print_access == 'draft_and_posted' and cdv.status not in ('voided', 'cancelled'))) %}
       <a href="{{ url_for('cash_disbursements.print_cdv', id=cdv.id) }}" target="_blank"
          rel="noopener noreferrer" class="btn btn-secondary">Print</a>
       {% endif %}

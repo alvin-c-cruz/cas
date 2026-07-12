@@ -1107,6 +1107,7 @@ def view(id):
     cdv = _get_cdv_or_404(id)
     je_entries = _build_cdv_je_preview(cdv)
     cd_print_access = AppSettings.get_setting('cd_print_access', 'posted_only')
+    cd_print_form = AppSettings.get_setting('cd_print_form', 'current')
 
     # "Print Check" gate (mirrors the print_check route so the button never dead-ends).
     cd_check_access = AppSettings.get_setting('cd_check_print_access', 'posted_only')
@@ -1121,7 +1122,8 @@ def view(id):
 
     return render_template('cash_disbursements/detail.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now(),
-                           cd_print_access=cd_print_access, check_printable=check_printable)
+                           cd_print_access=cd_print_access, cd_print_form=cd_print_form,
+                           check_printable=check_printable)
 
 
 def _apply_ap_payments(cdv):
@@ -1297,6 +1299,16 @@ def print_cdv(id):
     # 'hidden' turns CDV printing off entirely: refuse the route, not just the button.
     if cd_print_form == 'hidden':
         flash('Cash Disbursement printing is not enabled.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+
+    # BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS: the detail-page button already gates on
+    # cd_print_access (posted_only/draft_and_posted) -- the route must refuse the
+    # same way, or a direct GET bypasses a hidden button entirely.
+    cd_print_access = AppSettings.get_setting('cd_print_access', 'posted_only')
+    status_ok = (cdv.status == 'posted') if cd_print_access != 'draft_and_posted' \
+        else (cdv.status not in ('voided', 'cancelled'))
+    if not status_ok:
+        flash('This voucher is not eligible for printing yet.', 'error')
         return redirect(url_for('cash_disbursements.view', id=id))
 
     je_entries = _build_cdv_je_preview(cdv)

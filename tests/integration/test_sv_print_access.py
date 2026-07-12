@@ -59,3 +59,22 @@ class TestSvPrintAccessGate:
         assert resp.status_code == 200
         html = resp.data.decode()
         assert f'/sales-invoices/{_invoice.id}/print' in html
+
+    def test_route_itself_refuses_a_draft_under_posted_only(
+            self, client, db_session, admin_user, main_branch, _customer, _invoice):
+        """BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS: the button hides correctly (tests
+        above), but the ROUTE must refuse too -- a direct GET must not bypass the
+        same gate the button enforces."""
+        AppSettings.set_setting('sv_print_access', 'posted_only', 'system')
+        login(client)
+        resp = client.get(f'/sales-invoices/{_invoice.id}/print', follow_redirects=False)
+        assert resp.status_code in (302, 303)
+
+    def test_route_allows_once_posted(
+            self, client, db_session, admin_user, main_branch, _customer, _invoice):
+        AppSettings.set_setting('sv_print_access', 'posted_only', 'system')
+        _invoice.status = 'posted'
+        db_session.commit()
+        login(client)
+        resp = client.get(f'/sales-invoices/{_invoice.id}/print')
+        assert resp.status_code == 200

@@ -889,10 +889,12 @@ def view(id):
     ap = _get_ap_or_404(id)
     je_entries = _build_je_preview(ap)
     apv_print_access = AppSettings.get_setting('apv_print_access', 'posted_only')
+    apv_print_form = AppSettings.get_setting('ap_print_form', 'current')
     payments = _cdv_settlements(ap)
     return render_template('accounts_payable/detail.html', ap=ap,
                            je_entries=je_entries,
                            apv_print_access=apv_print_access,
+                           apv_print_form=apv_print_form,
                            payments=payments)
 
 
@@ -906,6 +908,17 @@ def print_ap(id):
     # 'hidden' turns APV printing off entirely: refuse the route, not just the button.
     if ap_print_form == 'hidden':
         flash('APV printing is not enabled.', 'error')
+        return redirect(url_for('accounts_payable.view', id=id))
+
+    # BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS: the detail-page button already gates on
+    # apv_print_access (posted_only/draft_and_posted) -- the route must refuse the
+    # same way, or a direct GET bypasses a hidden button entirely.
+    apv_print_access = AppSettings.get_setting('apv_print_access', 'posted_only')
+    status_ok = (ap.status in ('posted', 'partially_paid', 'paid')) \
+        if apv_print_access != 'draft_and_posted' \
+        else (ap.status not in ('voided', 'cancelled'))
+    if not status_ok:
+        flash('This AP voucher is not eligible for printing yet.', 'error')
         return redirect(url_for('accounts_payable.view', id=id))
 
     # Sort JE lines: non-VAT debits → VAT debits → credits, each by account code

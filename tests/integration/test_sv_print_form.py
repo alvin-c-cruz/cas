@@ -92,6 +92,9 @@ class TestSvPrintFormRoute:
 
     def test_current_allows_print_route(
             self, client, db_session, admin_user, main_branch, _customer, _invoice):
+        # Isolate the print_form axis from sv_print_access (separate axis, per this
+        # file's docstring) -- permissive access so a draft invoice can still print.
+        AppSettings.set_setting('sv_print_access', 'draft_and_posted', 'system')
         AppSettings.set_setting('sv_print_form', 'current', 'system')
         login(client)
         resp = client.get(f'/sales-invoices/{_invoice.id}/print')
@@ -100,6 +103,7 @@ class TestSvPrintFormRoute:
     def test_default_current_allows_print_route(
             self, client, db_session, admin_user, main_branch, _customer, _invoice):
         # unset -> 'current' -> route works
+        AppSettings.set_setting('sv_print_access', 'draft_and_posted', 'system')
         login(client)
         resp = client.get(f'/sales-invoices/{_invoice.id}/print')
         assert resp.status_code == 200
@@ -108,6 +112,7 @@ class TestSvPrintFormRoute:
 class TestSvPrintFormPreprinted:
     def test_preprinted_renders_preprinted_template(
             self, client, db_session, admin_user, main_branch, _customer, _invoice):
+        AppSettings.set_setting('sv_print_access', 'draft_and_posted', 'system')
         AppSettings.set_setting('sv_print_form', 'preprinted', 'system')
         login(client)
         resp = client.get(f'/sales-invoices/{_invoice.id}/print')
@@ -118,6 +123,7 @@ class TestSvPrintFormPreprinted:
 
     def test_current_renders_standard_template(
             self, client, db_session, admin_user, main_branch, _customer, _invoice):
+        AppSettings.set_setting('sv_print_access', 'draft_and_posted', 'system')
         AppSettings.set_setting('sv_print_form', 'current', 'system')
         login(client)
         resp = client.get(f'/sales-invoices/{_invoice.id}/print')
@@ -129,6 +135,7 @@ class TestSvPrintFormPreprinted:
 
 class TestPreprintedLayoutRender:
     def _prep(self, client):
+        AppSettings.set_setting('sv_print_access', 'draft_and_posted', 'system')
         AppSettings.set_setting('sv_print_form', 'preprinted', 'system')
         login(client)
 

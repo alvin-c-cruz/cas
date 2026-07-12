@@ -108,8 +108,9 @@
             {% endif %}
         </div>
         <div class="card-header-actions">
-            {% if (apv_print_access == 'posted_only' and ap.status in ('posted', 'partially_paid', 'paid'))
-               or (apv_print_access == 'draft_and_posted' and ap.status not in ('voided', 'cancelled')) %}
+            {% if apv_print_form != 'hidden'
+               and ((apv_print_access == 'posted_only' and ap.status in ('posted', 'partially_paid', 'paid'))
+               or (apv_print_access == 'draft_and_posted' and ap.status not in ('voided', 'cancelled'))) %}
             <a href="{{ url_for('accounts_payable.print_ap', id=ap.id) }}"
                target="_blank"
                rel="noopener noreferrer"

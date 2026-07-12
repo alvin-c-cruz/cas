@@ -737,6 +737,10 @@ def test_si_print_shows_salesperson(client, db_session, accountant_user, custome
     from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
     AppSettings.set_setting('module_enabled:employees', '1')
+    # Prints a DRAFT invoice -- widen sv_print_access so BUG-DOCPRINT-ACCESS-GATE-
+    # ROUTE-BYPASS's fix (route now enforces posted_only by default) doesn't block
+    # a print assertion that isn't about access control.
+    AppSettings.set_setting('sv_print_access', 'draft_and_posted', 'system')
     db_session.commit(); clear_module_config_cache()
     e = Employee(employee_no='E-PR', first_name='Ben', last_name='Tan',
                  branch_id=branch.id, is_active=True)
@@ -767,6 +771,11 @@ def test_si_print_shows_company_account_when_no_salesperson(client, db_session, 
     import json as _json
     from app.sales_invoices.models import SalesInvoice
     from app.accounts.models import Account
+    from app.settings import AppSettings
+    # Prints a DRAFT invoice -- widen sv_print_access so BUG-DOCPRINT-ACCESS-GATE-
+    # ROUTE-BYPASS's fix (route now enforces posted_only by default) doesn't block
+    # a print assertion that isn't about access control.
+    AppSettings.set_setting('sv_print_access', 'draft_and_posted', 'system')
     if not Account.query.filter_by(code='10201').first():
         db_session.add(Account(code='10201', name='AR - Trade', account_type='Asset',
                                normal_balance='debit', is_active=True)); db_session.commit()
