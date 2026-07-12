@@ -14,15 +14,11 @@ default `sv_print_access=posted_only` -> post -> print surface (a) printable for
 shown -> print surface (c) `sv_print_form=hidden` -> print surface (b) pre-printed overlay ->
 cancel (with the required `reversal_date` + >=10-char `cancel_reason`).
 
-KNOWN BUG TRIPWIRE (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS, `project-bug-tracker`, OPEN as of
-2026-07-12): the print BUTTON on the detail page correctly respects `sv_print_access` (hidden on
-a draft under `posted_only`), but the print ROUTE itself only checks `sv_print_form=='hidden'`
-and does NOT enforce `sv_print_access` at all -- a direct GET on a draft invoice's `/print`
-renders 200 anyway. The same gap exists in Accounts Payable, Cash Disbursements (main print),
-and Cash Receipts -- only Cash Disbursements' separate check-print route does this correctly.
-This spec's "direct GET respects posted_only" check is EXPECTED TO FAIL until that bug is fixed
--- flip it to a plain assertion (remove the tripwire framing) once BUG-DOCPRINT-ACCESS-GATE-
-ROUTE-BYPASS is resolved, per discipline #6.
+FIXED 2026-07-12 (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS): the print ROUTE now also enforces
+`sv_print_access`, matching the button's own gate (`app/sales_invoices/views.py::print_invoice`).
+Originally only checked `sv_print_form=='hidden'`; a direct GET on a draft invoice's `/print`
+rendered 200 anyway despite the button being correctly hidden. Same fix applied to Accounts
+Payable, Cash Disbursements, and Cash Receipts.
 """
 import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -150,13 +146,15 @@ with sync_playwright() as pw:
     print_link_visible = page.locator("a[href*='/print']").count() > 0
     check("print button HIDDEN on draft under posted_only (button gate)", not print_link_visible)
 
-    print("=== BUG TRIPWIRE (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS): does the ROUTE also honor posted_only, or only the button? ===")
-    resp = page.request.get(b + f"/sales-invoices/{si_id}/print")
-    route_rendered_anyway = resp.status == 200 and invoice_number in resp.text()
-    if route_rendered_anyway:
-        print("  >>> KNOWN BUG (still open): direct GET on a DRAFT invoice's /print rendered 200 despite sv_print_access=posted_only")
-    check("[TRIPWIRE -- expected to FAIL until BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS is fixed] direct GET respects posted_only the same as the button",
-          not route_rendered_anyway, "status=%s route_rendered_anyway=%s" % (resp.status, route_rendered_anyway))
+    print("=== ROUTE-LEVEL GATE (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS, FIXED 2026-07-12): does the ROUTE also honor posted_only? ===")
+    # max_redirects=0 is required: Playwright's page.request.get() follows redirects by
+    # default, which silently masked this exact bug during the fix's own live
+    # verification -- a 302 to the detail page was followed, landing on a 200 response
+    # that (naturally) still contains the invoice number, producing a false "still
+    # broken" reading. Check the redirect itself, not where it leads.
+    resp = page.request.get(b + f"/sales-invoices/{si_id}/print", max_redirects=0)
+    check("direct GET on a draft invoice is refused (redirect), matching the button gate",
+          resp.status in (301, 302, 303), "status=%s" % resp.status)
 
     print("=== POST ===")
     status = csrf_post(page, b, b + f"/sales-invoices/{si_id}/post")

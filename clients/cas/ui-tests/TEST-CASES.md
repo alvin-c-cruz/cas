@@ -53,13 +53,13 @@ This suite covers two scopes that must NOT be conflated:
 | `customers_vendors_crud_cycle.py` | Customers + Vendors CRUD (direct-save; needs the shared setup's VAT categories) | 8/8 |
 | `ca_registers_and_edits_perms.py` | CA registers accountant+staff; edits staff perms, **not** accountant's (needs `uitest_ca` from the shared setup) | 10/10 |
 | `jv_entry_crud_post.py` | Journal Voucher: create (balanced draft) → read → post → cancel; all 3 print surfaces (current/preprinted/hidden); audit trail (needs accounts 1610/4110 from the shared setup) | 12/12 |
-| `sales_invoice_crud_post.py` | Sales Invoice: create (VAT-inclusive + WHT) → verify VAT/WHT math + JE-leg tie-out (AR/Output-VAT/Sales/Creditable-WHT) → read → audit → post → all 3 print surfaces → cancel. Needs Customer `CASCUST1`, WHT `WC010`, account 1710 from the shared setup (folded in 2026-07-12). | 20/21 — the 1 fail is an intentional tripwire for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (open; see findings section) |
+| `sales_invoice_crud_post.py` | Sales Invoice: create (VAT-inclusive + WHT) → verify VAT/WHT math + JE-leg tie-out (AR/Output-VAT/Sales/Creditable-WHT) → read → audit → post → all 3 print surfaces → cancel. Needs Customer `CASCUST1`, WHT `WC010`, account 1710 from the shared setup (folded in 2026-07-12). | 21/21 — was 20/21 (tripwire for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS`), fixed 2026-07-12 |
 | `concurrency_jv_concurrent_create.py` | 3 concurrent `uitest_ca` sessions creating a new JV at once (owner-requested concurrency probe) | 2/2 — found + FIXED `BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS` for JV (silent retry) |
 | `concurrency_si_concurrent_create.py` | Same probe, extended to Sales Invoice | 3/3 — found + FIXED (surfaced: fresh number + flash, verified no raw exception) |
 | `concurrency_ap_concurrent_create.py` | Same probe, extended to Accounts Payable | 3/3 — found + FIXED (surfaced) |
 | `concurrency_cd_concurrent_create.py` | Same probe, extended to Cash Disbursement | 3/3 — found + FIXED (surfaced) |
 | `concurrency_cr_concurrent_create.py` | Same probe, extended to Cash Receipt | 3/3 — found + FIXED (surfaced) |
-| `cash_receipt_crud_post.py` | Cash Receipt: create (standalone direct-revenue) → JE-leg tie-out (cash/revenue) → read → audit → post → all 3 print surfaces → cancel | 16/18 — 2 intentional tripwires for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (route ignores print_access + a NEW button-side addendum: button ignores print_form; see findings section) |
+| `cash_receipt_crud_post.py` | Cash Receipt: create (standalone direct-revenue) → JE-leg tie-out (cash/revenue) → read → audit → post → all 3 print surfaces → cancel | 18/18 — was 16/18 (2 tripwires for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS`, route + button axes), both fixed 2026-07-12 |
 
 **Setup gap CLOSED 2026-07-12:** `_shared_setup_cas_scope.py` now builds Customer `CASCUST1`, Vendor
 `CASVEND1`, and WHT `WC010` itself (auto-approved, admin still sole full-access at that point — see
@@ -71,8 +71,9 @@ Fixed by moving CA registration out into its own script, `_register_ca.py`, posi
 `vt_wt_crud_cycle.py`/`customers_vendors_crud_cycle.py` and BEFORE `ca_registers_and_edits_perms.py`.
 **Verified full chain end-to-end on a fresh provision:** bootstrap (8/8) → shared setup → `vt_wt_
 crud_cycle.py` (10/10) → `customers_vendors_crud_cycle.py` (8/8) → `_register_ca.py` →
-`ca_registers_and_edits_perms.py` (10/10) → `sales_invoice_crud_post.py` (20/21, same known
-tripwire). Current run order for a fresh provision:
+`ca_registers_and_edits_perms.py` (10/10) → `sales_invoice_crud_post.py` (20/21 at the time,
+now 21/21 since `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` was fixed 2026-07-12). Current run
+order for a fresh provision:
 ```
 _shared_setup_cas_scope.py -> vt_wt_crud_cycle.py -> customers_vendors_crud_cycle.py ->
 _register_ca.py -> ca_registers_and_edits_perms.py -> sales_invoice_crud_post.py
@@ -113,28 +114,25 @@ Each item: **intent · acceptance · target spec · readiness**.
 
 ### Tier 1 — Ready now (do first; nothing blocks these — biggest gap: ZERO coverage of the Core 5 documents)
 
-**T1.1 — Sales Invoice (SI) CRUD + posting. ✅ DONE 2026-07-12 — `sales_invoice_crud_post.py`, 20/21.**
+**T1.1 — Sales Invoice (SI) CRUD + posting. ✅ DONE 2026-07-12 — `sales_invoice_crud_post.py`, 21/21.**
 - Covers create (VAT-inclusive, WHT-applied) → JE-leg tie-out to header (AR/Output-VAT/Sales/
   Creditable-WHT) → read → audit → all 3 print surfaces → post → cancel.
-- The 1 fail is an **intentional tripwire**, not a spec defect: it caught a real, previously-unknown
-  bug this session, `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (MEDIUM, OPEN) — the SI print detail
-  page correctly hides the Print button on a draft under `sv_print_access=posted_only`, but the
-  `/print` **route** itself only checks `sv_print_form` and does not enforce `sv_print_access` at
-  all, so a direct GET on a draft's print URL renders 200 anyway. Same gap exists in AP/CDV/CRV
-  print routes; `print_check` (CDV's separate check-print route) is the one correct sibling. Flip
-  this check to a plain assertion once the bug is fixed.
+- Originally 20/21 with an intentional tripwire that caught a real, previously-unknown bug,
+  `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` — the `/print` route only checked `sv_print_form`, not
+  `sv_print_access`, so a direct GET on a draft's print URL rendered 200 anyway. **Fixed 2026-07-12**
+  (route now enforces both, matching the button) — spec is 21/21 as of the fix.
 - Setup gap: depends on Customer `CASCUST1`, WHT `WC010`, and account 1710 not yet in the shared
   setup — see the gap note above the "Already covered" table.
 
 **T1.2 — Cash Receipt (CR) CRUD + posting. ✅ DONE 2026-07-12 (standalone-revenue only) —
-`cash_receipt_crud_post.py`, 16/18.**
+`cash_receipt_crud_post.py`, 18/18.**
 - Covers the standalone direct-revenue-line CR (create → JE-leg tie-out → read → audit → post →
   all 3 print surfaces → cancel). The AR-settlement-against-an-existing-SI flow is a distinct
   scenario, not yet covered — a separate future spec.
-- Found a NEW sibling bug while building this: CR's Print button ignores `cr_print_form` entirely
-  (only checks `cr_print_access`) — the inverse of the already-logged route-side gap. See findings
-  section; extends `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` to cover both button and route blind
-  spots for AP/CD/CR (SI remains the only document that gets both axes right in both places).
+- Originally 16/18: found a NEW sibling bug while building this (CR's Print button ignored
+  `cr_print_form` entirely, only checked `cr_print_access`) — the inverse of the route-side gap,
+  extending `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` to a button-side blind spot in AP/CD/CR too
+  (SI's button was already correct). **Both axes fixed 2026-07-12** — spec is 18/18 as of the fix.
 
 **T1.3 — Accounts Payable (AP) CRUD + posting.**
 - *Intent:* vendor bill create → post → JE (AP, Input-VAT, WHT-payable per bucket tie to header).
@@ -250,18 +248,16 @@ stress; deploy/backup paths; ERP scope (see the "Already covered — ERP scope" 
 - 🔵 **BUG-TAXMASTER-STALE-PENDING-BLOCKS-RETRY** (LOW-MED) — OPEN. A tax-master spec re-run after an
   environment change (e.g. CA registered) can leave a stale pending request blocking retries;
   workaround (withdraw) exists, no automated guard yet.
-- 🔴 **BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS** (MED) — OPEN, found 2026-07-12 via `sales_invoice_
-  crud_post.py`'s tripwire check, EXTENDED 2026-07-12 via `cash_receipt_crud_post.py` with a second
-  addendum. Two complementary blind spots across SI/APV/CDV/CRV:
-  (a) *route side* — `/print` routes enforce only `*_print_form` (current/preprinted/hidden), never
-  `*_print_access` (e.g. `posted_only`) — a direct GET on a draft document's print URL renders 200
-  even when the UI button is correctly hidden. `print_check` (CDV) is the one correct sibling
-  implementation to copy the pattern from.
-  (b) *button side, NEW* — AP/CD/CR's Print buttons check only `*_print_access`, never
-  `*_print_form` — setting `*_print_form=hidden` correctly blocks the route but the button still
-  shows (dead/misleading, not a data exposure). SI is the ONLY document whose button correctly
-  checks both axes; this was previously assumed true for AP/CD/CR too but never independently
-  verified until `cash_receipt_crud_post.py` caught it live.
+- 🟢 **BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS** (MED) — FULLY FIXED 2026-07-12 (commit `6ac0a23`).
+  Found via `sales_invoice_crud_post.py`'s tripwire, extended via `cash_receipt_crud_post.py` with
+  a second addendum. Two complementary blind spots across SI/APV/CDV/CRV, both now closed:
+  (a) *route side* — `/print` routes now enforce `*_print_access` (posted_only/draft_and_posted)
+  in addition to `*_print_form`, mirroring the button's own logic (and `print_check`'s already-
+  correct reference pattern).
+  (b) *button side* — AP/CD/CR's Print buttons now also check `*_print_form != 'hidden'` alongside
+  their existing `*_print_access` check, matching SI's button exactly.
+  Verified live: both graduated specs are now full green (`sales_invoice_crud_post.py` 21/21,
+  `cash_receipt_crud_post.py` 18/18). Full suite: 2681 passed, 1 pre-existing unrelated failure.
 - 🟢 **BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS** (MED) — FULLY FIXED 2026-07-12, all 5 documents.
   Found via the concurrency probe (owner-requested, then "extend"ed to the full Core 5, then
   further hardened after empirically re-testing against a genuine tight race). JV fixed via

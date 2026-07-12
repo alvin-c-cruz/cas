@@ -8,12 +8,11 @@ header (cash/AR leg + revenue leg) -> read -> audit -> print surface (c-1) butto
 draft -> post -> print surface (a) -> print surface (c-2) hidden setting -> print surface (b)
 pre-printed overlay -> cancel.
 
-TWO intentional tripwires (both BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS, confirmed to extend to
-CR while building this spec): (1) a direct GET on a draft CR's /print route renders 200 despite
-cr_print_access=posted_only (the ROUTE ignores print_access); (2) the Print button stays visible
-even when cr_print_form=hidden (the BUTTON ignores print_form -- a NEW addendum found here,
-since only SI's button was previously verified to check both axes). 16/18 passing is correct,
-not a regression -- flip both to plain assertions once the coordinated fix lands.
+FIXED 2026-07-12 (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS, both axes): (1) the print ROUTE now
+also enforces cr_print_access, not just cr_print_form (`app/cash_receipts/views.py::print_crv`);
+(2) the Print button now also enforces cr_print_form, not just cr_print_access
+(`cash_receipts/templates/cash_receipts/detail.html`) -- this button-side gap was a NEW addendum
+found while building this spec (only SI's button had previously been verified to check both axes).
 """
 import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -123,13 +122,14 @@ with sync_playwright() as pw:
     print_link_visible = page.locator("a[href*='/print']").count() > 0
     check("print button HIDDEN on draft under posted_only (button gate)", not print_link_visible)
 
-    print("=== BUG TRIPWIRE (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS): does the ROUTE also honor posted_only? ===")
-    resp = page.request.get(b + f"/cash-receipts/{crv_id}/print")
-    route_rendered_anyway = resp.status == 200 and crv_number in resp.text()
-    if route_rendered_anyway:
-        print("  >>> KNOWN BUG (still open): direct GET on a DRAFT CR's /print rendered 200 despite cr_print_access=posted_only")
-    check("[TRIPWIRE -- expected to FAIL until BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS is fixed] direct GET respects posted_only the same as the button",
-          not route_rendered_anyway, "status=%s route_rendered_anyway=%s" % (resp.status, route_rendered_anyway))
+    print("=== ROUTE-LEVEL GATE (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS, FIXED 2026-07-12): does the ROUTE also honor posted_only? ===")
+    # max_redirects=0 is required: Playwright's page.request.get() follows redirects by
+    # default, which would silently mask this check -- a 302 to the detail page gets
+    # followed, landing on a 200 response that (naturally) still contains the CR number,
+    # producing a false "still broken" reading. Check the redirect itself, not where it leads.
+    resp = page.request.get(b + f"/cash-receipts/{crv_id}/print", max_redirects=0)
+    check("direct GET on a draft CR is refused (redirect), matching the button gate",
+          resp.status in (301, 302, 303), "status=%s" % resp.status)
 
     print("=== POST ===")
     token = page.eval_on_selector("input[name='csrf_token']", "e=>e.value")
@@ -149,14 +149,10 @@ with sync_playwright() as pw:
     print("=== PRINT SURFACE (c-2): cr_print_form=hidden -> button gone + direct GET blocked ===")
     set_docprint_settings(page, b, cr_print_form="hidden")
     page.goto(b + f"/cash-receipts/{crv_id}", wait_until="networkidle")
-    button_still_shown = page.locator("a[href*='/print']").count() > 0
-    if button_still_shown:
-        print("  >>> KNOWN BUG (still open): CR's Print button ignores cr_print_form entirely -- "
-              "only checks cr_print_access. See BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS (button-side addendum).")
-    check("[TRIPWIRE -- expected to FAIL until the button-side addendum of BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS "
-          "is fixed] print button HIDDEN when cr_print_form=hidden", not button_still_shown)
+    check("print button HIDDEN when cr_print_form=hidden",
+          page.locator("a[href*='/print']").count() == 0)
     page.goto(b + f"/cash-receipts/{crv_id}/print", wait_until="networkidle")
-    check("direct GET /print redirects away when cr_print_form=hidden (the ROUTE gets this right)",
+    check("direct GET /print redirects away when cr_print_form=hidden",
           f"/cash-receipts/{crv_id}/print" not in page.url)
 
     print("=== PRINT SURFACE (b): pre-printed overlay ===")
