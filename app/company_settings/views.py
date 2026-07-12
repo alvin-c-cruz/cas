@@ -93,6 +93,52 @@ def _delete_logo_file(stored_filename):
         )
 
 
+def _accountant_or_full_access():
+    return current_user.role == 'accountant' or current_user.has_full_access
+
+
+# NOTE: this blueprint is registered with url_prefix='/settings' (see
+# app/__init__.py), so the route string below is '/control-accounts' --
+# it resolves to the full path '/settings/control-accounts', matching the
+# relocated page's URL (unchanged from the old standalone control_accounts_bp).
+@company_settings_bp.route('/control-accounts')
+@login_required
+def control_accounts():
+    if not _accountant_or_full_access():
+        flash('Only Accountants and Administrators can assign control accounts.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.posting.control_accounts import get_postable_accounts, CONTROL_ACCOUNTS
+    accounts = get_postable_accounts()
+    current = {key: AppSettings.get_setting(setting_key)
+               for key, (setting_key, _) in CONTROL_ACCOUNTS.items()}
+    return render_template('company_settings/control_accounts.html',
+                           accounts=accounts, control=CONTROL_ACCOUNTS, current=current)
+
+
+@company_settings_bp.route('/control-accounts', methods=['POST'])
+@login_required
+def save_control_accounts():
+    if not _accountant_or_full_access():
+        flash('Only Accountants and Administrators can perform this action.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.posting.control_accounts import get_postable_accounts, CONTROL_ACCOUNTS
+    postable_codes = {a.code for a in get_postable_accounts()}
+    submitted = {}
+    for key, (setting_key, label) in CONTROL_ACCOUNTS.items():
+        code = (request.form.get(setting_key) or '').strip()
+        if code and code not in postable_codes:
+            flash(f'Account {code} for {label} was not found or is not postable.', 'error')
+            return redirect(url_for('company_settings.control_accounts'))
+        submitted[setting_key] = code
+    for setting_key, code in submitted.items():
+        AppSettings.set_setting(setting_key, code, updated_by=current_user.username)
+    log_audit(module='control_accounts', action='assign_accounts',
+              record_id=None, record_identifier='control_accounts',
+              new_values=submitted, user_id=current_user.id)
+    flash('Control accounts saved.', 'success')
+    return redirect(url_for('company_settings.control_accounts'))
+
+
 @company_settings_bp.route('', methods=['GET', 'POST'])
 @login_required
 @admin_panel_required
