@@ -1,0 +1,224 @@
+{
+  "_note": "Build recipe, not a seed script. This DB has no seed/import CLI path allowed (no-seeding discipline, memory feedback-ui-mcp-testing-rules) -- replay these values through the actual UI forms in this order: 1) Company Settings (Company Profile + Accounting tabs), 2) Chart of Accounts (create the 5 top-level categories first, then the leaves with parent_code), 3) VAT Categories + Sales VAT Categories (need the COA to exist first, for the Input/Output Tax account pickers), 4) Withholding Tax codes (need the COA), 5) Settings > Control Accounts (need the COA). See clients/cas/ui-tests/fixtures/README.md.",
+  "credentials": {
+    "admin": {"password": "Bootstrap2026!", "note": "first-run bootstrap admin"},
+    "accountant1": {"password": "TestPass2026!"},
+    "staff1": {"password": "TestPass2026!"}
+  },
+  "company_settings": {
+    "company_name": "Sample Trading Corporation",
+    "trade_name": "Sample Trading Co.",
+    "company_tin": "123-456-789-000",
+    "tin_branch_code": "0000",
+    "rdo_code": "039",
+    "vat_registration_type": "VAT",
+    "company_address": "123 Sample Street, Barangay San Isidro, Makati City, Metro Manila",
+    "postal_code": "1200",
+    "phone": "(02) 8123-4567",
+    "email": "info@sampletrading.ph",
+    "fiscal_year_start": "01",
+    "officer_president": "Juan Dela Cruz",
+    "officer_treasurer": "Maria Santos",
+    "officer_secretary": "Pedro Reyes",
+    "apv_print_access": "posted_only",
+    "sv_print_access": "posted_only",
+    "sv_print_form": "current",
+    "so_print_form": "current",
+    "cd_print_access": "posted_only",
+    "cd_check_print_access": "posted_only",
+    "cr_print_access": "posted_only",
+    "cr_print_form": "current",
+    "ap_print_form": "current",
+    "cd_print_form": "current",
+    "jv_print_form": "current",
+    "company_logo": "b24e920f05264cc5815a9ee34e784fc5.png",
+    "accountant_email_self_approval": "1",
+    "ar_trade_account_code": "1020",
+    "ap_trade_account_code": "2010",
+    "creditable_wht_account_code": "1040",
+    "wht_payable_account_code": "2030"
+  },
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@example.com",
+      "full_name": "System Administrator",
+      "role": "admin",
+      "is_active": 1
+    },
+    {
+      "username": "accountant1",
+      "email": "accountant1@sampletrading.ph",
+      "full_name": "Ana Cruz",
+      "role": "accountant",
+      "is_active": 1
+    },
+    {
+      "username": "staff1",
+      "email": "staff1@sampletrading.ph",
+      "full_name": "Ben Santos",
+      "role": "staff",
+      "is_active": 1
+    }
+  ],
+  "chart_of_accounts": [
+    {
+      "code": "1000",
+      "name": "Cash and Cash Equivalents",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "1010",
+      "name": "Cash on Hand and in Bank",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": "1000"
+    },
+    {
+      "code": "1020",
+      "name": "Accounts Receivable - Trade",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": "1100"
+    },
+    {
+      "code": "1030",
+      "name": "Input Tax",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": "1200"
+    },
+    {
+      "code": "1040",
+      "name": "Creditable Withholding Tax",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": "1300"
+    },
+    {
+      "code": "1100",
+      "name": "Trade Receivables",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "1200",
+      "name": "Input VAT and Tax Credits",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "1300",
+      "name": "Creditable Withholding Tax and Overpayments",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "2000",
+      "name": "Accounts Payable",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "2010",
+      "name": "Accounts Payable - Trade",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": "2000"
+    },
+    {
+      "code": "2020",
+      "name": "Output Tax Payable",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": "2100"
+    },
+    {
+      "code": "2030",
+      "name": "Withholding Tax Payable",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": "2100"
+    },
+    {
+      "code": "2100",
+      "name": "Tax and Withholding Payables",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "3000",
+      "name": "Equity",
+      "account_type": "Equity",
+      "classification": null,
+      "parent_code": null
+    },
+    {
+      "code": "3010",
+      "name": "Owner's Capital",
+      "account_type": "Equity",
+      "classification": null,
+      "parent_code": "3000"
+    },
+    {
+      "code": "4000",
+      "name": "Income",
+      "account_type": "Revenue",
+      "classification": null,
+      "parent_code": null
+    },
+    {
+      "code": "4010",
+      "name": "Sales Revenue",
+      "account_type": "Revenue",
+      "classification": null,
+      "parent_code": "4000"
+    },
+    {
+      "code": "5000",
+      "name": "Expenses",
+      "account_type": "Administrative Expense",
+      "classification": null,
+      "parent_code": null
+    },
+    {
+      "code": "5010",
+      "name": "General and Administrative Expense",
+      "account_type": "Administrative Expense",
+      "classification": null,
+      "parent_code": "5000"
+    }
+  ],
+  "vat_categories": [
+    {
+      "code": "VAT12",
+      "name": "VAT 12%",
+      "rate": 12,
+      "transaction_nature": "domestic_goods"
+    }
+  ],
+  "sales_vat_categories": [
+    {
+      "code": "SVAT12",
+      "name": "Sales VAT 12%",
+      "rate": 12,
+      "transaction_nature": "regular"
+    }
+  ],
+  "withholding_tax_codes": [
+    {
+      "code": "WC160",
+      "name": "Income Payments to Suppliers - Goods",
+      "sales_name": "Withholding Tax on Sales - Goods",
+      "rate": 1,
+      "tax_type": "expanded"
+    }
+  ]
+}
