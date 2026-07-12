@@ -26,3 +26,18 @@ is planned for later -- don't extend this file for that; start a new one alongsi
 
 Note: `accountant_email_self_approval` was left ON in this snapshot from a prior test pass on the
 account it was captured from -- verify it matches what you want before replaying.
+
+## `cas_scope_regression_baseline.json` (2026-07-12)
+
+**Scope: the exact regression-suite fixture, not a general demo company.** Documents what
+`../_shared_setup_cas_scope.py` builds (a DIFFERENT, smaller COA than `master_data.json` above --
+different codes, purpose-built to match what `vt_wt_crud_cycle.py`, `customers_vendors_crud_cycle.py`,
+and `ca_registers_and_edits_perms.py` hardcode). This file is a **read-only reference snapshot** of
+that script's output, captured for documentation/debugging -- to actually build this state, RUN the
+script (it drives the UI); do not hand-replay this JSON. See `../TEST-CASES.md` for the required run
+order (the CA user must be registered last) and which specs need this baseline vs. the general
+`master_data.json` vs. neither (ERP-scope specs need a third, not-yet-built fixture set).
+
+Do not merge or confuse this with `master_data.json` -- they are two different COAs for two
+different purposes, built at two different sizes (13 vs 19 accounts) with overlapping but
+NOT-identical codes (e.g. `master_data.json`'s AR-Trade is `1020`; this one's is `1610`).

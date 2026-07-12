@@ -37,3 +37,15 @@ An empty DB has no users, so you build all state through the UI, starting with t
   → assert active admin + `MAIN` branch + working dashboard, and that the bypass is closed once an
   admin exists (BUG-NO-FIRSTRUN-ADMIN-BOOTSTRAP). Verify green on a fix-bearing `/ui-test cas` env
   before committing.
+
+## Scope: CAS vs ERP, and the shared setup (see `TEST-CASES.md` for full detail)
+
+Not every spec in this directory is independently runnable on a fresh empty-schema provision — most
+assume master data (a specific Chart of Accounts, VAT/WHT codes, enabled optional modules) that was
+built interactively when the spec was authored but never captured as setup code
+(`BUG-UITEST-SPECS-ASSUME-UNCAPTURED-SETUP`, `project-bug-tracker`). This is fixed for the
+**CAS-scope** specs only: run `_shared_setup_cas_scope.py` first (see its docstring for the required
+run order — the CA user must be registered LAST). The **ERP-scope** specs (Units of Measure,
+Products, Quotations, Sales Orders, Delivery Receipts) still need their own setup, planned as a
+separate later effort — see `fixtures/README.md` and `TEST-CASES.md`'s scope-split section before
+assuming any spec here "just works" from empty.

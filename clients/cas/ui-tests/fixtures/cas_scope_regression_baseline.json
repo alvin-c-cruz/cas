@@ -1,0 +1,135 @@
+{
+  "_note": "Snapshot of the CAS-scope regression baseline built by clients/cas/ui-tests/_shared_setup_cas_scope.py. Reference only -- replay via that script (UI-driven), do not import into a DB directly.",
+  "coa": [
+    {
+      "code": "1600",
+      "name": "Trade Receivables",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "1610",
+      "name": "Accounts Receivable - Trade",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": "1600"
+    },
+    {
+      "code": "1700",
+      "name": "Prepaid Tax",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "1710",
+      "name": "Creditable Withholding Tax",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": "1700"
+    },
+    {
+      "code": "1720",
+      "name": "Input Tax",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": "1700"
+    },
+    {
+      "code": "2100",
+      "name": "Accounts Payable",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "2110",
+      "name": "Accounts Payable - Trade",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": "2100"
+    },
+    {
+      "code": "2300",
+      "name": "Tax and Withholding Payables",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "2310",
+      "name": "Output Tax Payable",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": "2300"
+    },
+    {
+      "code": "2320",
+      "name": "Withholding Tax Payable",
+      "account_type": "Liability",
+      "classification": "Current",
+      "parent_code": "2300"
+    },
+    {
+      "code": "4100",
+      "name": "Income",
+      "account_type": "Revenue",
+      "classification": null,
+      "parent_code": null
+    },
+    {
+      "code": "4110",
+      "name": "Sales Revenue",
+      "account_type": "Revenue",
+      "classification": null,
+      "parent_code": "4100"
+    },
+    {
+      "code": "8801",
+      "name": "CA Test Acct 8801",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": null
+    },
+    {
+      "code": "9990",
+      "name": "Action Items Test 9990",
+      "account_type": "Asset",
+      "classification": "Current",
+      "parent_code": null
+    }
+  ],
+  "vat_categories": [
+    {
+      "code": "V12DG",
+      "name": "VAT 12% - Domestic Goods",
+      "rate": 12,
+      "transaction_nature": "domestic_goods"
+    }
+  ],
+  "sales_vat_categories": [
+    {
+      "code": "V12",
+      "name": "VATable Sales 12%",
+      "rate": 12,
+      "transaction_nature": "regular"
+    },
+    {
+      "code": "ZZS2",
+      "name": "Debug Sales VAT",
+      "rate": 12,
+      "transaction_nature": "regular"
+    }
+  ],
+  "control_accounts": {
+    "ar_trade_account_code": "1610",
+    "ap_trade_account_code": "2110",
+    "creditable_wht_account_code": "1710",
+    "wht_payable_account_code": "2320"
+  },
+  "users_built_by_setup": [
+    "uitest_setup_acct (accountant, temp COA-builder, not referenced by specs)",
+    "uitest_ca (chief_accountant, needed by ca_registers_and_edits_perms.py)"
+  ]
+}
