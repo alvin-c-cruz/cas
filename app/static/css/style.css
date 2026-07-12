@@ -628,6 +628,20 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
   position: sticky; bottom: 0; background: white;
 }
 
+/* Right-align the action-button row in these 3 confirmation modals only
+   (BUG-FEAT-MODAL-ACTIONS-CENTER). Scoped by each modal's unique id --
+   NOT by .modal-content or bare .form-actions -- because:
+     - .form-actions is reused by many in-page forms (vendors/form.html,
+       customers/form.html, macros.html, etc.) where base.html's default
+       left alignment at the bottom of a long form is intentional.
+     - backup-modal (app/backup/templates/backup/status.html) shares this
+       exact root cause but was explicitly deferred to a separate fix. */
+#approve-modal .form-actions,
+#reject-modal .form-actions,
+#delete-modal .form-actions {
+    justify-content: flex-end;
+}
+
 /* ─── Forms ─────────────────────────────────────────────────── */
 .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
