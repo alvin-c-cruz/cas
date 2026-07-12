@@ -54,7 +54,11 @@ This suite covers two scopes that must NOT be conflated:
 | `ca_registers_and_edits_perms.py` | CA registers accountant+staff; edits staff perms, **not** accountant's (needs `uitest_ca` from the shared setup) | 10/10 |
 | `jv_entry_crud_post.py` | Journal Voucher: create (balanced draft) → read → post → cancel; all 3 print surfaces (current/preprinted/hidden); audit trail (needs accounts 1610/4110 from the shared setup) | 12/12 |
 | `sales_invoice_crud_post.py` | Sales Invoice: create (VAT-inclusive + WHT) → verify VAT/WHT math + JE-leg tie-out (AR/Output-VAT/Sales/Creditable-WHT) → read → audit → post → all 3 print surfaces → cancel. Needs Customer `CASCUST1`, WHT `WC010`, account 1710 from the shared setup (folded in 2026-07-12). | 20/21 — the 1 fail is an intentional tripwire for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (open; see findings section) |
-| `concurrency_jv_concurrent_create.py` | 3 concurrent `uitest_ca` sessions creating a new JV at once (owner-requested concurrency probe) | 1/2 — found `BUG-JV-NUMBER-RACE-SILENT-DATA-LOSS` (open; see findings section) |
+| `concurrency_jv_concurrent_create.py` | 3 concurrent `uitest_ca` sessions creating a new JV at once (owner-requested concurrency probe) | 1/2 — found `BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS` (open; see findings section) |
+| `concurrency_si_concurrent_create.py` | Same probe, extended to Sales Invoice | 1/2 — same bug confirmed |
+| `concurrency_ap_concurrent_create.py` | Same probe, extended to Accounts Payable | 1/2 — same bug confirmed (pre-check doesn't close the race) |
+| `concurrency_cd_concurrent_create.py` | Same probe, extended to Cash Disbursement | 1/2 — same bug confirmed (pre-check doesn't close the race) |
+| `concurrency_cr_concurrent_create.py` | Same probe, extended to Cash Receipt | 1/2 — same bug confirmed (pre-check doesn't close the race) |
 
 **Setup gap CLOSED 2026-07-12:** `_shared_setup_cas_scope.py` now builds Customer `CASCUST1`, Vendor
 `CASVEND1`, and WHT `WC010` itself (auto-approved, admin still sole full-access at that point — see
@@ -170,22 +174,24 @@ Each item: **intent · acceptance · target spec · readiness**.
 - *Target:* fold into T1.7's `company_settings_crud.py`, or its own small spec.
 
 **T1.11 — Concurrency: N same-role users creating a new record in the same document at once.
-✅ DONE 2026-07-12 — `concurrency_jv_concurrent_create.py`, 1/2 (found a real bug).**
-- *Intent (owner-requested):* 2-5 simulated concurrent users, same document type, all creating a
-  NEW record at (near) the same instant — does the app hold up under a genuine race, or silently
-  lose work?
+✅ DONE 2026-07-12, extended to ALL 5 Core documents — 1/2 on each (found a real, widespread bug).**
+- *Intent (owner-requested, then explicitly "extend"ed to the rest of the Core 5):* 2-5 simulated
+  concurrent users, same document type, all creating a NEW record at (near) the same instant —
+  does the app hold up under a genuine race, or silently lose work?
 - *Technique:* Playwright opens N independent browser contexts (separate logins/cookies) to
   legitimately capture each session's cookies + CSRF token + pre-generated document number, then
   fires the actual concurrent POSTs via `requests.Session` + `threading.Barrier(N)` (Playwright's
   sync API isn't safe to drive across threads, so the timed collision itself uses plain HTTP, not
   Playwright objects).
-- *Result:* found `BUG-JV-NUMBER-RACE-SILENT-DATA-LOSS` (MEDIUM, OPEN) — 3 concurrent JV creates
-  all got the SAME pre-generated `entry_number`; only 1 of 3 committed, the other 2 silently lost
-  their work behind a generic error flash. DB integrity itself held (no duplicate number ever
-  committed) — this is data-loss-under-contention, not corruption. See
-  `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md`.
-- *Follow-up:* extend the same technique to Sales Invoice / AP / CD / CR once T1.2-T1.4 are built
-  — the same page-load-time number generation pattern may affect all of them (not yet verified).
+- *Result:* found `BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS` (MEDIUM, OPEN) — confirmed in **all 5**
+  Core documents (`concurrency_{jv,si,ap,cd,cr}_concurrent_create.py`): 3 concurrent creates on
+  each document all got the SAME pre-generated number; only 1 of 3 committed every single time,
+  the other 2 silently lost their work (generic error for JV/SI; a friendlier but equally-lossy
+  "number already in use" pre-check for AP/CD/CR — the pre-check narrows the window but doesn't
+  close it). DB integrity itself always held (no duplicate number ever committed) — this is
+  data-loss-under-contention, not corruption, across the board. See
+  `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md` (renamed internally to
+  BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS, filename kept for continuity).
 
 ### Tier 2 — Ledger & Reports (needs posted data from Tier 1)
 
@@ -221,12 +227,15 @@ stress; deploy/backup paths; ERP scope (see the "Already covered — ERP scope" 
   (current/preprinted/hidden), never `*_print_access` (e.g. `posted_only`) — a direct GET on a
   draft document's print URL renders 200 even when the UI button is correctly hidden. `print_check`
   (CDV) is the one correct sibling implementation to copy the pattern from.
-- 🔴 **BUG-JV-NUMBER-RACE-SILENT-DATA-LOSS** (MED) — OPEN, found 2026-07-12 via `concurrency_jv_
-  concurrent_create.py` (owner-requested concurrency probe). JV's `entry_number` is generated once
-  at page-load and trusted verbatim at submit with no re-check/lock; 3 concurrent creates all got
-  the same number, only 1 committed, the other 2 silently lost their work behind a generic error.
-  DB integrity itself held (no duplicate number ever committed). Not yet verified whether SI/AP/CD/
-  CR share the same vulnerability. See `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md`.
+- 🔴 **BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS** (MED) — OPEN, found 2026-07-12 via the concurrency
+  probe (owner-requested, then "extend"ed to the full Core 5). **Confirmed in all 5 documents**
+  (JV/SI/AP/CD/CR): each document's number is generated once at page-load and trusted verbatim at
+  submit with no re-check/lock; 3 concurrent creates on every document all got the same number,
+  only 1 of 3 committed every time, the other 2 silently lost their work (generic error for JV/SI;
+  a friendlier pre-check for AP/CD/CR that narrows but doesn't close the race). DB integrity itself
+  always held (no duplicate number ever committed). See
+  `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md` (BUG-DOCNUMBER-RACE-SILENT-
+  DATA-LOSS, filename kept from its original JV-only filing).
 - 🔵 **FEAT-SIDEBAR-ACCORDION** (LOW) — OPEN. Sidebar sections should collapse each other (owner
   request), currently independent toggle.
 - 🔵 **Backlog #156** — Products/UOM/Customers/Vendors codes should be per-client configurable;
