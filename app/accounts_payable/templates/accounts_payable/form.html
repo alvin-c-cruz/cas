@@ -26,6 +26,8 @@
                     {{ render_field(form.vendor_invoice_number) }}
                     {{ render_field(form.vendor_invoice_date) }}
                     {{ render_field(form.reference) }}
+                    {{ render_field(form.ap_trade_account_id) }}
+                    {{ render_field(form.wht_payable_account_id) }}
                 </div>
                 <!-- Right 2/3: vendor card -->
                 <div class="right-col">
@@ -375,6 +377,15 @@ let currentVendorLastAccountId = null;
 let paymentTermsChoices = null;
 let vatOverrideActive = false;
 let wtOverrideActive = false;
+
+// ── Choices.js: control-account overrides ────────────────────────────────
+['ap_trade_account_id', 'wht_payable_account_id'].forEach(function (id) {
+    const sel = document.getElementById(id);
+    if (sel && typeof initSearchSelect === 'function' && !sel.closest('.choices')) {
+        initSearchSelect(sel);
+        sel.addEventListener('change', calculateTotals);
+    }
+});
 
 // ── Helper functions ──────────────────────────────────────────────────────────
 
@@ -973,12 +984,26 @@ function renderJEPreview(subtotal, vatUsed, wtUsed) {
     }
 
     bucketList.forEach(b => rows.push({ code: b.code, name: b.name, debit: b.amt, credit: 0 }));
-    if (wtUsed > 0 && glAccounts && glAccounts.wt) {
-        rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: 0, credit: wtUsed });
-    }
     const netPayable = subtotal - wtUsed;
-    if (glAccounts && glAccounts.ap) {
-        rows.push({ code: glAccounts.ap.code, name: glAccounts.ap.name, debit: 0, credit: netPayable });
+    function selectedOrDefault(selectId, fallback) {
+        const sel = document.getElementById(selectId);
+        const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+        if (opt && opt.value) {
+            const idx = opt.textContent.indexOf(':');
+            return {
+                code: (idx >= 0 ? opt.textContent.slice(0, idx) : opt.textContent).trim(),
+                name: (idx >= 0 ? opt.textContent.slice(idx + 1) : '').trim(),
+            };
+        }
+        return fallback;
+    }
+    const wtAcct = selectedOrDefault('wht_payable_account_id', glAccounts && glAccounts.wt);
+    const apAcct = selectedOrDefault('ap_trade_account_id', glAccounts && glAccounts.ap);
+    if (wtUsed > 0 && wtAcct) {
+        rows.push({ code: wtAcct.code, name: wtAcct.name, debit: 0, credit: wtUsed });
+    }
+    if (apAcct) {
+        rows.push({ code: apAcct.code, name: apAcct.name, debit: 0, credit: netPayable });
     }
 
     const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
