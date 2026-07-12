@@ -127,14 +127,10 @@
                         </td>
                         <td class="account-classification">{{ account.classification or '—' }}</td>
                         <td>
-                            {% if not row.is_header %}
-                                {% if account.normal_balance == 'debit' %}
-                                <span class="balance-debit">Dr</span>
-                                {% else %}
-                                <span class="balance-credit">Cr</span>
-                                {% endif %}
+                            {% if account.normal_balance == 'debit' %}
+                            <span class="balance-debit">Dr</span>
                             {% else %}
-                            —
+                            <span class="balance-credit">Cr</span>
                             {% endif %}
                         </td>
                         <td style="text-align: center;">
@@ -142,7 +138,7 @@
                                 <a href="{{ url_for('accounts.view', id=account.id) }}" class="btn-icon" title="View">👁️</a>
                                 {% if (current_user.has_full_access or current_user.role == 'accountant') %}
                                 <a href="{{ url_for('accounts.edit', id=account.id) }}" class="btn-icon" title="Edit">✏️</a>
-                                {% if row.is_header %}
+                                {% if row.has_children %}
                                 <span class="btn-icon btn-icon-disabled" title="Remove all sub-accounts before deleting this group">🗑️</span>
                                 {% else %}
                                 <button type="button" class="btn-icon" title="Delete"
