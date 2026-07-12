@@ -230,7 +230,7 @@
                     <th style="width:20%">Description</th>
                     {% if module_enabled('products') %}<th style="width:16%">Product</th>{% endif %}
                     <th style="width:6%;text-align:right">Qty</th>
-                    <th style="width:6%">UOM</th>
+                    {% if module_enabled('units_of_measure') %}<th style="width:6%">UOM</th>{% endif %}
                     <th style="width:9%;text-align:right">UP</th>
                     <th style="width:9%;text-align:right">Amount</th>
                     <th style="width:9%">VT</th>
@@ -723,13 +723,12 @@ function addExpenseLine(existingItem) {
     expenseLines.push(item);
 
     const uomCell = uomMasterOn
-        ? `<select class="form-control uom-select" style="min-width:60px">
+        ? `<td><select class="form-control uom-select" style="min-width:60px">
                <option value="">—</option>
                <option value="__add_uom__">+ Add UOM</option>
                ${units.map(u => `<option value="${u.id}" data-custom-properties="${escHtml(JSON.stringify({name: u.name}))}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
-           </select>`
-        : `<input type="text" class="form-control uom-text-inp" style="min-width:50px" value="${escHtml(item.uom_text || '')}"
-                  onchange="updateExpense(${id}, 'uom_text', this.value)">`;
+           </select></td>`
+        : '';
     const productCell = productMasterOn
         ? `<td><select class="form-control prod-select">
                <option value="">—</option>
@@ -749,7 +748,7 @@ function addExpenseLine(existingItem) {
                    style="text-align:right;font-family:var(--mono);min-width:60px;border:none;background:transparent;"
                    value="${item.quantity != null ? amtFmt(item.quantity) : ''}"
                    onfocus="amtFocus(this)" onblur="expQtyBlur(this, ${id})"></td>
-        <td>${uomCell}</td>
+        ${uomCell}
         <td><input type="text" class="form-control" id="exp-up-${id}"
                    style="text-align:right;font-family:var(--mono);min-width:70px;border:none;background:transparent;"
                    value="${item.unit_price != null ? amtFmt(item.unit_price) : ''}"

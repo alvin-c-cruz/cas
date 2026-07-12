@@ -122,3 +122,58 @@ def test_crv_form_additive_description_and_product(client, db_session, accountan
     assert '>Description</th>' in html
     assert '>Product</th>' in html
     assert 'item.description = p.name' not in html
+
+
+# ---------------------------------------------------------------------------
+# UOM column hides when units_of_measure is disabled (FEAT-UOM-FALLBACK-HIDE-
+# WHEN-DISABLED, owner directive: "product and uom should not be appearing in
+# SI/CR/AP/CD if product and uom config is disabled"). Product already hides
+# this way (proven by the tests above); UOM instead degraded to a free-text
+# fallback column -- these tests pin the corrected, Product-mirroring behavior.
+#
+# No modules_on fixture here: units_of_measure/products default_enabled=False,
+# so a fresh test DB is already in the "disabled" state under test.
+# ---------------------------------------------------------------------------
+
+def test_si_form_hides_uom_column_when_disabled(client, db_session, accountant_user, main_branch):
+    _customer(db_session)
+    _login(client, accountant_user, main_branch)
+    resp = client.get('/sales-invoices/create')
+    assert resp.status_code == 200
+    html = resp.data.decode('utf-8', 'replace')
+    assert '>Description</th>' in html
+    assert '>UOM</th>' not in html
+    assert '>Product</th>' not in html
+
+
+def test_apv_form_hides_uom_column_when_disabled(client, db_session, accountant_user, main_branch):
+    _vendor(db_session)
+    _login(client, accountant_user, main_branch)
+    resp = client.get('/accounts-payable/create')
+    assert resp.status_code == 200
+    html = resp.data.decode('utf-8', 'replace')
+    assert '>Description</th>' in html
+    assert '>UOM</th>' not in html
+    assert '>Product</th>' not in html
+
+
+def test_cdv_form_hides_uom_column_when_disabled(client, db_session, accountant_user, main_branch):
+    _vendor(db_session)
+    _login(client, accountant_user, main_branch)
+    resp = client.get('/cash-disbursements/create')
+    assert resp.status_code == 200
+    html = resp.data.decode('utf-8', 'replace')
+    assert '>Description</th>' in html
+    assert '>UOM</th>' not in html
+    assert '>Product</th>' not in html
+
+
+def test_crv_form_hides_uom_column_when_disabled(client, db_session, accountant_user, main_branch):
+    _customer(db_session)
+    _login(client, accountant_user, main_branch)
+    resp = client.get('/cash-receipts/create')
+    assert resp.status_code == 200
+    html = resp.data.decode('utf-8', 'replace')
+    assert '>Description</th>' in html
+    assert '>UOM</th>' not in html
+    assert '>Product</th>' not in html
