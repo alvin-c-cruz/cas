@@ -184,3 +184,102 @@ def compute_statutory(monthly_basis, as_of):
         'pagibig_ee': _q2(base * ee_rate),
         'pagibig_er': _q2(base * pi.er_rate),
     }
+
+
+def compute_line(inputs):
+    """Compute a full payroll line: gross, statutory, taxable comp, WHT, net pay.
+
+    Pure function: dict-in/dict-out, no ORM objects as input, no DB writes
+    beyond the read-only statutory-table lookups made by compute_statutory/
+    effective_wht_bracket.
+
+    Args:
+        inputs: plain dict (no ORM) with keys:
+            pay_basis ('monthly'/'daily'), monthly_rate, daily_rate (daily
+            basis only -- defaults to monthly_rate if absent), days, hours,
+            ot_pay, holiday_pay, taxable_allowance, nontax_allowance, is_mwe,
+            pay_frequency ('monthly'/'semi_monthly'/'weekly'/'daily'),
+            period_end (date), semi_timing
+            ('second_cutoff'/'split_50_50'/'first_cutoff'), semi_period
+            (1 or 2 -- semi-monthly only, read by _semi_applies_statutory).
+
+    Returns:
+        dict with Decimal values (all _q2-quantized):
+        {basic_gross, gross_pay, statutory, taxable_comp, wht, wht_bracket_id,
+         net_pay, sss_msc}
+        'statutory' is the full dict returned by compute_statutory -- it is
+        ALWAYS fully computed regardless of semi-monthly timing (compute_statutory
+        has no notion of timing); only the EE amount folded into taxable_comp/
+        net_pay is conditionally suppressed via _semi_applies_statutory.
+
+    MWE (minimum-wage earner) employees are WHT-exempt (taxable_comp = 0) but
+    SSS/PhilHealth/Pag-IBIG still apply -- the MWE branch below only zeroes
+    taxable_comp/wht, never the statutory dict or the 'ee' amount folded into
+    net_pay.
+    """
+    freq = inputs['pay_frequency']
+    as_of = inputs['period_end']
+    rate = Decimal(inputs['monthly_rate'] or 0)
+    if inputs['pay_basis'] == 'monthly':
+        basic = rate if freq != 'semi_monthly' else _q2(rate / 2)
+        monthly_basis = rate
+    else:  # daily
+        daily_rate = Decimal(inputs.get('daily_rate', rate) or 0)
+        basic = _q2(daily_rate * Decimal(inputs['days'] or 0))
+        monthly_basis = _q2(daily_rate * 22)   # statutory basis proxy for daily
+
+    gross = _q2(basic + Decimal(inputs['ot_pay'] or 0) + Decimal(inputs['holiday_pay'] or 0)
+                + Decimal(inputs['taxable_allowance'] or 0) + Decimal(inputs['nontax_allowance'] or 0))
+
+    st = compute_statutory(monthly_basis, as_of)
+    apply_stat = _semi_applies_statutory(freq, inputs['semi_timing'], inputs)
+    ee = (st['sss_ee'] + st['philhealth_ee'] + st['pagibig_ee']) if apply_stat else Decimal('0.00')
+
+    if inputs['is_mwe']:
+        taxable = Decimal('0.00')
+    else:
+        taxable = _q2(gross - Decimal(inputs['nontax_allowance'] or 0) - ee)
+        taxable = max(taxable, Decimal('0.00'))
+
+    if inputs['is_mwe'] or taxable <= 0:
+        wht, bracket_id = Decimal('0.00'), None
+    else:
+        b = effective_wht_bracket(freq, taxable, as_of)
+        wht = _q2(b.base_tax + (taxable - b.lower_bound) * b.rate_on_excess)
+        bracket_id = b.id
+
+    net = _q2(gross - ee - wht)   # loans added in P3
+
+    return {
+        'basic_gross': basic,
+        'gross_pay': gross,
+        'statutory': st,
+        'taxable_comp': taxable,
+        'wht': wht,
+        'wht_bracket_id': bracket_id,
+        'net_pay': net,
+        'sss_msc': st['sss_msc'],
+    }
+
+
+def _semi_applies_statutory(freq, timing, inputs):
+    """Decide whether statutory (SSS/PhilHealth/Pag-IBIG) EE deductions apply
+    on THIS cutoff, per the payroll_semi_monthly_timing setting.
+
+    Non-semi-monthly frequencies always apply statutory (there's only one
+    cutoff per period). For semi-monthly:
+      - 'split_50_50': applies on BOTH cutoffs. This function only decides
+        whether it applies, not how much -- a caller relying on split_50_50
+        for a true 50/50 split is responsible for passing already-halved
+        inputs (e.g. a halved monthly_rate); otherwise the full EE amount is
+        folded in on each cutoff.
+      - 'first_cutoff' / 'second_cutoff': applies only on the matching
+        semi_period (1 or 2, from inputs['semi_period']).
+    """
+    if freq != 'semi_monthly':
+        return True
+    if timing == 'split_50_50':
+        return True   # half applied each cutoff -- caller passes halved amounts if desired
+    cutoff = inputs.get('semi_period')  # 1 or 2
+    return (timing == 'first_cutoff' and cutoff == 1) or \
+           (timing == 'second_cutoff' and cutoff == 2)
