@@ -13,7 +13,7 @@ from app.common.vat_nature import resolve_sales_nature
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
-from app.utils.concurrency import claim_version, conflict_message, submitted_version
+from app.utils.concurrency import claim_version, conflict_message, submitted_version, fresh_number_if_collision
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.utils.wt_labels import wt_label
@@ -878,9 +878,14 @@ def create():
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.crv_date.data, 'Cash Receipt Voucher'):
             return _render_form()
-        if CashReceiptVoucher.query.filter_by(crv_number=form.crv_number.data).first():
-            flash(f'CR Number "{form.crv_number.data}" already exists. '
-                  'Enter the number printed on the receipt.', 'error')
+        submitted_number = form.crv_number.data
+        fresh = fresh_number_if_collision(CashReceiptVoucher, 'crv_number',
+                                           submitted_number, generate_crv_number)
+        if fresh:
+            form.crv_number.data = fresh
+            flash(f'CR Number "{submitted_number}" was just taken by another entry -- '
+                  f'a new number ({fresh}) has been suggested below. Please review and '
+                  'Save again.', 'error')
             return _render_form()
         try:
             customer = db.session.get(Customer, form.customer_id.data)
