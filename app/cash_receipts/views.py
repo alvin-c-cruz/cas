@@ -13,7 +13,8 @@ from app.common.vat_nature import resolve_sales_nature
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
-from app.utils.concurrency import claim_version, conflict_message, submitted_version, fresh_number_if_collision
+from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
+                                    fresh_number_if_collision, flush_or_suggest_fresh_number)
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.utils.wt_labels import wt_label
@@ -916,7 +917,16 @@ def create():
                 return err
 
             db.session.add(crv)
-            db.session.flush()
+            # Backstop for the pre-check above: a genuinely simultaneous request can pass
+            # it before either has committed, so the real collision surfaces here instead.
+            fresh = flush_or_suggest_fresh_number(crv, CashReceiptVoucher, 'crv_number',
+                                                   generate_crv_number)
+            if fresh:
+                form.crv_number.data = fresh
+                flash(f'CR Number "{submitted_number}" was just taken by another entry '
+                      f'(concurrent submission) -- a new number ({fresh}) has been '
+                      f'suggested below. Please review and Save again.', 'error')
+                return _render_form()
 
             je = _post_crv_je(crv, current_user.id)
             crv.journal_entry_id = je.id

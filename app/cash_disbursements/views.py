@@ -17,7 +17,8 @@ from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products
-from app.utils.concurrency import claim_version, conflict_message, submitted_version, fresh_number_if_collision
+from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
+                                    fresh_number_if_collision, flush_or_suggest_fresh_number)
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.settings import AppSettings
@@ -901,7 +902,19 @@ def create():
                 return err
 
             db.session.add(cdv)
-            db.session.flush()
+            # Backstop for the pre-check above: a genuinely simultaneous request can pass
+            # it before either has committed, so the real collision surfaces here instead.
+            # (Only re-raises for cdv_number specifically -- CD's OTHER unique constraint,
+            # check_number-per-cash-account, is unrelated and must not be misdiagnosed as
+            # this numbering race; see flush_or_suggest_fresh_number's docstring.)
+            fresh = flush_or_suggest_fresh_number(cdv, CashDisbursementVoucher, 'cdv_number',
+                                                   generate_cdv_number)
+            if fresh:
+                form.cdv_number.data = fresh
+                flash(f'CD number "{cdv_number}" was just taken by another entry (concurrent '
+                      f'submission) -- a new number ({fresh}) has been suggested below. '
+                      f'Please review and Save again.', 'error')
+                return _render_form()
 
             je = _post_cdv_je(cdv, current_user.id)
             cdv.journal_entry_id = je.id

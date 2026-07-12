@@ -144,6 +144,43 @@ def fresh_number_if_collision(model, number_attr, submitted_number, generate_num
     return generate_number()
 
 
+def flush_or_suggest_fresh_number(entity, model, number_attr, generate_number):
+    """Attempt db.session.flush() for `entity` (already db.session.add()-ed). This is the
+    backstop for fresh_number_if_collision: that pre-check is still check-then-act, so a
+    genuinely simultaneous double-insert can slip past it and reach this flush() instead
+    (confirmed live via the browser-level concurrency probes — all N concurrent requests
+    can pass the SELECT-based pre-check before any of them has committed).
+
+    If flush() raises IntegrityError AND the error specifically names `model`'s
+    `number_attr` unique constraint, roll back and return a fresh candidate number for the
+    caller to refill the form field, flash, and re-render with — exactly like a
+    fresh_number_if_collision() hit (never silently substitute or retry-commit; SI/AP/CD/CR's
+    numbers are user-editable pre-printed-serial fields, unlike JV's pure sequence, which
+    uses the silent `commit_with_renumber_retry` instead).
+
+    Any OTHER IntegrityError (e.g. CD's unrelated check_number-per-cash-account partial
+    unique index) is re-raised unchanged, so it still reaches the view's existing generic
+    exception handler — this must NOT be mistaken for a numbering collision, or a genuine
+    duplicate-entry mistake gets silently discarded and confusingly "fixed" by renumbering
+    an unrelated field.
+
+    Returns None on a normal successful flush.
+
+    See docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    table_col = f'{model.__tablename__}.{number_attr}'
+    try:
+        db.session.flush()
+        return None
+    except IntegrityError as e:
+        db.session.rollback()
+        if table_col not in str(e.orig):
+            raise
+        return generate_number()
+
+
 def commit_with_renumber_retry(entity, number_attr, generate_number, max_attempts=3):
     """Commit `entity` (already `db.session.add()`-ed, with any cascaded children),
     retrying up to `max_attempts` times with a freshly generated number if the commit

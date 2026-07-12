@@ -20,6 +20,7 @@ from app.utils.concurrency import (
     RowVersionFormMixin,
     claim_version,
     conflict_message,
+    flush_or_suggest_fresh_number,
     fresh_number_if_collision,
     submitted_version,
 )
@@ -41,11 +42,17 @@ class _VersionedForm(RowVersionFormMixin, Form):
 
 class _NumberedThing(db.Model):
     """Throwaway model with a unique document-number-style column, exercising
-    fresh_number_if_collision in isolation (SI/AP/CD/CR's shape, not JV's)."""
+    fresh_number_if_collision in isolation (SI/AP/CD/CR's shape, not JV's).
+
+    `other_unique` mirrors CD's real second constraint (check_number per cash
+    account) -- an UNRELATED unique column on the same table, used to prove
+    flush_or_suggest_fresh_number does not misdiagnose a collision on it as a
+    numbering-race hit."""
     __tablename__ = '_test_numbered_thing'
 
     id = db.Column(db.Integer, primary_key=True)
     number = db.Column(db.String(20), unique=True, nullable=False)
+    other_unique = db.Column(db.String(20), unique=True, nullable=True)
 
 
 def _make_thing(name='alpha'):
@@ -236,3 +243,55 @@ class TestFreshNumberIfCollision:
 
         assert fresh == 'DUP-002'
         assert _NumberedThing.query.count() == 1, 'must not insert or mutate anything'
+
+
+class TestFlushOrSuggestFreshNumber:
+    """The backstop for fresh_number_if_collision: that pre-check is check-then-act,
+    so a genuinely simultaneous double-insert can slip past it and reach flush()
+    instead. This closes that window -- but must not misdiagnose an UNRELATED unique
+    constraint on the same table as a numbering collision (see CD's real
+    check_number-per-cash-account index)."""
+
+    def test_no_collision_flushes_normally_and_returns_none(self, db_session):
+        thing = _NumberedThing(number='FLUSH-001')
+        db.session.add(thing)
+
+        result = flush_or_suggest_fresh_number(
+            thing, _NumberedThing, 'number', lambda: 'FLUSH-002'
+        )
+
+        assert result is None
+        assert thing.id is not None, 'the flush must have actually happened'
+        assert _NumberedThing.query.filter_by(number='FLUSH-001').count() == 1
+
+    def test_genuine_number_collision_rolls_back_and_returns_fresh_number(self, db_session):
+        db.session.add(_NumberedThing(number='RACE-001'))
+        db.session.commit()
+
+        loser = _NumberedThing(number='RACE-001')  # the number a concurrent racer also saw
+        db.session.add(loser)
+        fresh = flush_or_suggest_fresh_number(
+            loser, _NumberedThing, 'number', lambda: 'RACE-002'
+        )
+
+        assert fresh == 'RACE-002'
+        assert _NumberedThing.query.filter_by(number='RACE-001').count() == 1, \
+            'the original winner must be untouched'
+        assert _NumberedThing.query.filter_by(number='RACE-002').count() == 0, \
+            'the helper only SUGGESTS the fresh number -- it must not insert under it itself'
+
+    def test_unrelated_constraint_violation_is_reraised_not_treated_as_a_numbering_race(self, db_session):
+        """CD's real shape: a second unique column on the same table. A collision on
+        THAT column must never be swallowed and reported as a numbering-race hit --
+        that would silently discard a real duplicate-entry mistake."""
+        db.session.add(_NumberedThing(number='OK-001', other_unique='SERIAL-A'))
+        db.session.commit()
+
+        colliding = _NumberedThing(number='OK-002', other_unique='SERIAL-A')
+        db.session.add(colliding)
+
+        from sqlalchemy.exc import IntegrityError
+        with pytest.raises(IntegrityError):
+            flush_or_suggest_fresh_number(
+                colliding, _NumberedThing, 'number', lambda: 'OK-003'
+            )

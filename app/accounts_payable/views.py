@@ -17,7 +17,8 @@ from app.withholding_tax.models import WithholdingTax
 from app.common.vat_nature import resolve_purchase_nature
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict, log_audit
 from app.utils import ph_now
-from app.utils.concurrency import claim_version, conflict_message, submitted_version, fresh_number_if_collision
+from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
+                                    fresh_number_if_collision, flush_or_suggest_fresh_number)
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.line_mode import validate_line_mode
 from app.utils.cache_helpers import get_active_units, get_active_products
@@ -786,7 +787,15 @@ def create():
                 return err
 
             db.session.add(ap)
-            db.session.flush()  # need ap.id before creating JE
+            # Backstop for the pre-check above: a genuinely simultaneous request can pass
+            # it before either has committed, so the real collision surfaces here instead.
+            fresh = flush_or_suggest_fresh_number(ap, AccountsPayable, 'ap_number', generate_ap_number)
+            if fresh:
+                form.ap_number.data = fresh
+                flash(f'AP number "{ap_num}" was just taken by another entry (concurrent '
+                      f'submission) -- a new number ({fresh}) has been suggested below. '
+                      f'Please review and Save again.', 'error')
+                return _render_form(request.form.get('line_items', ''))
 
             je = _post_ap_je(ap, current_user.id)
             ap.journal_entry_id = je.id
