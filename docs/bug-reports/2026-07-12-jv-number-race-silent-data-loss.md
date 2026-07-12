@@ -5,11 +5,32 @@ confirmed to affect all 5 Core documents, not just JV.)
 
 **Severity:** Medium (real, reproducible concurrency bug — confirmed in all 5 of
 JV/SI/AP/CD/CR, not a corner case)
-**Status:** OPEN
+**Status:** PARTIALLY FIXED — JV fixed 2026-07-12 (commit `d537d47`, local `main`, not
+pushed); SI/AP/CD/CR still OPEN
 **Discovered:** 2026-07-12, via `clients/cas/ui-tests/concurrency_jv_concurrent_create.py`
 (built in response to an owner request to test "2-3 users creating a new record in the
 same document at the same time"), then explicitly extended to Sales Invoice / Accounts
 Payable / Cash Disbursement / Cash Receipt per owner instruction ("extend").
+
+## JV fix (done)
+
+Added `commit_with_renumber_retry(entity, number_attr, generate_number, max_attempts=3)`
+to `app/utils/concurrency.py` — on an `IntegrityError` at commit, regenerates the number
+(inside `db.session.no_autoflush`, otherwise the generator's own query autoflushes the
+still-colliding pending entity and raises again immediately) and retries, bounded at 3
+attempts. Wired into `journal_entries/views.py::create()`.
+
+TDD: `tests/integration/test_jv_number_race.py` — pre-commits a JournalEntry under the
+number a fresh `generate_jv_number()` call would return, POSTs a create carrying that same
+stale number, asserts it still succeeds with a fresh distinct number. RED confirmed before
+the fix, GREEN after. Full suite: 2653 passed, 1 pre-existing unrelated failure
+(`test_sidebar_nav.py` — documented test-ordering cache leak, confirmed unaffected via
+stash + isolated rerun). Browser probe `concurrency_jv_concurrent_create.py` now asserts
+2/2 (was 1/2) against the isolated server restarted on the fixed code.
+
+SI/AP/CD/CR are unfixed — same root cause, same fix shape (the helper is reusable as-is;
+AP/CD/CR's existing pre-check would need a decision on whether to keep it as a fast-path
+alongside the retry, or drop it now that the retry makes it redundant).
 
 ## Summary
 
