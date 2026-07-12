@@ -21,11 +21,16 @@ This suite covers two scopes that must NOT be conflated:
 
 1. Provision: `/ui-test cas` (empty schema → register `admin` → build/reach state via the UI).
 2. **Run the CAS-scope shared setup FIRST:** `_shared_setup_cas_scope.py` builds the COA, VAT/
-   Sales-VAT categories, Control Accounts, and the `uitest_ca` CA user that several specs assume.
-   **Required run order** (the CA user must be registered LAST — see the script's own docstring for
-   why: registering it earlier breaks admin's sole-full-access auto-approve for VAT/WHT/Sales-VAT):
+   Sales-VAT categories, Control Accounts, WHT `WC010`, and Customer/Vendor `CASCUST1`/`CASVEND1`
+   that several specs assume — all auto-approved while admin is still sole full-access. CA
+   registration is a SEPARATE script, `_register_ca.py`, that must run LATER (see the shared
+   setup's own docstring for why: registering CA before `vt_wt_crud_cycle.py`/`customers_vendors_
+   crud_cycle.py` run breaks admin's sole-full-access auto-approve for those specs' own creates —
+   confirmed the hard way 2026-07-12, a genuine fresh-provision run hit 0/4 instead of 10/10).
+   **Required run order:**
    ```
-   _shared_setup_cas_scope.py  →  vt_wt_crud_cycle.py  →  customers_vendors_crud_cycle.py  →  ca_registers_and_edits_perms.py
+   _shared_setup_cas_scope.py  →  vt_wt_crud_cycle.py  →  customers_vendors_crud_cycle.py  →
+   _register_ca.py  →  ca_registers_and_edits_perms.py  →  sales_invoice_crud_post.py
    ```
    `first_run_admin_bootstrap.py` and `coa_crud_cycle.py` are self-contained and can run anytime
    (bootstrap must run before anything else, obviously — it creates `admin`).
@@ -48,15 +53,25 @@ This suite covers two scopes that must NOT be conflated:
 | `customers_vendors_crud_cycle.py` | Customers + Vendors CRUD (direct-save; needs the shared setup's VAT categories) | 8/8 |
 | `ca_registers_and_edits_perms.py` | CA registers accountant+staff; edits staff perms, **not** accountant's (needs `uitest_ca` from the shared setup) | 10/10 |
 | `jv_entry_crud_post.py` | Journal Voucher: create (balanced draft) → read → post → cancel; all 3 print surfaces (current/preprinted/hidden); audit trail (needs accounts 1610/4110 from the shared setup) | 12/12 |
-| `sales_invoice_crud_post.py` | Sales Invoice: create (VAT-inclusive + WHT) → verify VAT/WHT math + JE-leg tie-out (AR/Output-VAT/Sales/Creditable-WHT) → read → audit → post → all 3 print surfaces → cancel. Needs a Customer `CASCUST1`, WHT code `WC010`, and account 1710 (Creditable WHT) that are **NOT yet in `_shared_setup_cas_scope.py`** — see the gap note below the table. | 20/21 — the 1 fail is an intentional tripwire for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (open; see findings section) |
+| `sales_invoice_crud_post.py` | Sales Invoice: create (VAT-inclusive + WHT) → verify VAT/WHT math + JE-leg tie-out (AR/Output-VAT/Sales/Creditable-WHT) → read → audit → post → all 3 print surfaces → cancel. Needs Customer `CASCUST1`, WHT `WC010`, account 1710 from the shared setup (folded in 2026-07-12). | 20/21 — the 1 fail is an intentional tripwire for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (open; see findings section) |
+| `concurrency_jv_concurrent_create.py` | 3 concurrent `uitest_ca` sessions creating a new JV at once (owner-requested concurrency probe) | 1/2 — found `BUG-JV-NUMBER-RACE-SILENT-DATA-LOSS` (open; see findings section) |
 
-**Setup gap — `sales_invoice_crud_post.py` needs data the shared setup doesn't build yet:** a
-persistent Customer `CASCUST1` ("UI Test Trading Corp"), a WHT code `WC010` (1%, expanded,
-payable=2320/receivable=1710), and account 1710 (Creditable WHT). These were created via one-off
-scratchpad scripts this session and are **not yet folded into `_shared_setup_cas_scope.py`** — until
-they are, this spec is not truly standalone-runnable from a bare shared-setup provision. Close this
-gap (extend the shared setup, or document as an explicit prerequisite step) before relying on this
-spec in a Step-8 regression pass on a fresh environment.
+**Setup gap CLOSED 2026-07-12:** `_shared_setup_cas_scope.py` now builds Customer `CASCUST1`, Vendor
+`CASVEND1`, and WHT `WC010` itself (auto-approved, admin still sole full-access at that point — see
+the script's own docstring). **Real ordering bug found + fixed in the process:** an earlier version
+of the shared setup registered `uitest_ca` as its own last step, which broke `vt_wt_crud_cycle.py`
+(needs admin to still be sole full-access) the moment it ran afterward — confirmed via a genuine
+fresh-provision run (0/4, not the expected 10/10; `ZZV` went `pending` instead of auto-approving).
+Fixed by moving CA registration out into its own script, `_register_ca.py`, positioned AFTER
+`vt_wt_crud_cycle.py`/`customers_vendors_crud_cycle.py` and BEFORE `ca_registers_and_edits_perms.py`.
+**Verified full chain end-to-end on a fresh provision:** bootstrap (8/8) → shared setup → `vt_wt_
+crud_cycle.py` (10/10) → `customers_vendors_crud_cycle.py` (8/8) → `_register_ca.py` →
+`ca_registers_and_edits_perms.py` (10/10) → `sales_invoice_crud_post.py` (20/21, same known
+tripwire). Current run order for a fresh provision:
+```
+_shared_setup_cas_scope.py -> vt_wt_crud_cycle.py -> customers_vendors_crud_cycle.py ->
+_register_ca.py -> ca_registers_and_edits_perms.py -> sales_invoice_crud_post.py
+```
 
 **Partially CAS-scope (some checks depend on ERP-scope modules — those checks fail, the rest pass):**
 
@@ -154,6 +169,24 @@ Each item: **intent · acceptance · target spec · readiness**.
   `main` @ `140e45c`) needs a browser-level regression spec.
 - *Target:* fold into T1.7's `company_settings_crud.py`, or its own small spec.
 
+**T1.11 — Concurrency: N same-role users creating a new record in the same document at once.
+✅ DONE 2026-07-12 — `concurrency_jv_concurrent_create.py`, 1/2 (found a real bug).**
+- *Intent (owner-requested):* 2-5 simulated concurrent users, same document type, all creating a
+  NEW record at (near) the same instant — does the app hold up under a genuine race, or silently
+  lose work?
+- *Technique:* Playwright opens N independent browser contexts (separate logins/cookies) to
+  legitimately capture each session's cookies + CSRF token + pre-generated document number, then
+  fires the actual concurrent POSTs via `requests.Session` + `threading.Barrier(N)` (Playwright's
+  sync API isn't safe to drive across threads, so the timed collision itself uses plain HTTP, not
+  Playwright objects).
+- *Result:* found `BUG-JV-NUMBER-RACE-SILENT-DATA-LOSS` (MEDIUM, OPEN) — 3 concurrent JV creates
+  all got the SAME pre-generated `entry_number`; only 1 of 3 committed, the other 2 silently lost
+  their work behind a generic error flash. DB integrity itself held (no duplicate number ever
+  committed) — this is data-loss-under-contention, not corruption. See
+  `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md`.
+- *Follow-up:* extend the same technique to Sales Invoice / AP / CD / CR once T1.2-T1.4 are built
+  — the same page-load-time number generation pattern may affect all of them (not yet verified).
+
 ### Tier 2 — Ledger & Reports (needs posted data from Tier 1)
 
 **T2.1 — Ledger.** General Ledger, Trial Balance balances, Books of Accounts render on the posted
@@ -188,6 +221,12 @@ stress; deploy/backup paths; ERP scope (see the "Already covered — ERP scope" 
   (current/preprinted/hidden), never `*_print_access` (e.g. `posted_only`) — a direct GET on a
   draft document's print URL renders 200 even when the UI button is correctly hidden. `print_check`
   (CDV) is the one correct sibling implementation to copy the pattern from.
+- 🔴 **BUG-JV-NUMBER-RACE-SILENT-DATA-LOSS** (MED) — OPEN, found 2026-07-12 via `concurrency_jv_
+  concurrent_create.py` (owner-requested concurrency probe). JV's `entry_number` is generated once
+  at page-load and trusted verbatim at submit with no re-check/lock; 3 concurrent creates all got
+  the same number, only 1 committed, the other 2 silently lost their work behind a generic error.
+  DB integrity itself held (no duplicate number ever committed). Not yet verified whether SI/AP/CD/
+  CR share the same vulnerability. See `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md`.
 - 🔵 **FEAT-SIDEBAR-ACCORDION** (LOW) — OPEN. Sidebar sections should collapse each other (owner
   request), currently independent toggle.
 - 🔵 **Backlog #156** — Products/UOM/Customers/Vendors codes should be per-client configurable;

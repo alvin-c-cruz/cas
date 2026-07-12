@@ -21,7 +21,23 @@ Builds:
   - Purchase VAT category V12DG (12%, domestic_goods, input=1720)
   - Sales VAT category V12 "VATable Sales 12%" (12%, regular, output=2310)
   - Control Accounts: AR=1610, AP=2110, Creditable WHT=1710, WHT Payable=2320
-  - The chief_accountant user 'uitest_ca' (needed by ca_registers_and_edits_perms.py)
+  - WHT code WC010 (1%, expanded, payable=2320, receivable=1710) -- auto-approved
+    (admin still sole full-access at this point). Needed by sales_invoice_crud_post.py.
+  - Persistent Customer CASCUST1 "UI Test Trading Corp" (sales VAT V12) and Vendor
+    CASVEND1 "UI Test Supplier Corp" (purchase VAT V12DG) -- direct-save, no approval
+    step. CASCUST1 is needed by sales_invoice_crud_post.py; CASVEND1 is for the
+    upcoming AP/CD specs (T1.3/T1.4).
+
+  This script does NOT register 'uitest_ca' -- that is _register_ca.py, a separate
+  tiny step that must run LATER (see ordering below). An earlier version of this
+  script registered CA as its own last step, which looked safe (CA-dependent specs
+  ran afterward) but actually broke `vt_wt_crud_cycle.py`, which ALSO needs to run
+  after this script and assumes admin is still sole full-access -- confirmed via a
+  genuine fresh-provision run 2026-07-12: with uitest_ca already registered, that
+  spec's VAT-category create silently went 'pending' instead of auto-approving
+  (0/4, not the expected 10/10). Building WC010/Customer/Vendor auto-approved HERE
+  (before uitest_ca exists at all) sidesteps that trap entirely -- no pending/approve
+  dance needed for any of them.
 
 ORDERING CONSTRAINT (see BUG-TAXMASTER-RATECHANGE-STUCK-SOLE-ADMIN and the
 sole-full-access auto-approve rule in app/utils/admin_approval.py):
@@ -30,14 +46,15 @@ SOLE active full-access user for their VAT/Sales-VAT/WHT creates to auto-approve
 Once 'uitest_ca' exists, admin is no longer sole full-access, so those two specs'
 tax-master creates would go PENDING instead -- breaking their assertions AND
 leaving a stale pending request that blocks any retry (BUG-TAXMASTER-STALE-
-PENDING-BLOCKS-RETRY). This script therefore builds the COA + VAT/Sales-VAT +
-Control Accounts FIRST, and registers 'uitest_ca' LAST, after all of that is
-already committed. Required run order for the 3 specs on a fresh provision:
+PENDING-BLOCKS-RETRY). Required run order on a fresh provision:
 
-    1. this script (_shared_setup_cas_scope.py)
-    2. vt_wt_crud_cycle.py
-    3. customers_vendors_crud_cycle.py
-    4. ca_registers_and_edits_perms.py   (needs uitest_ca, built last above)
+    1. this script (_shared_setup_cas_scope.py)     -- admin still sole full-access
+    2. vt_wt_crud_cycle.py                           -- admin still sole full-access
+    3. customers_vendors_crud_cycle.py               -- admin still sole full-access
+    4. _register_ca.py                               -- registers uitest_ca LAST
+    5. ca_registers_and_edits_perms.py                -- needs uitest_ca (step 4)
+    6. sales_invoice_crud_post.py                     -- needs WC010 + CASCUST1 (this
+                                                          script) + uitest_ca (step 4)
 
 Scope note: this covers CAS-scope specs only. uom_products_crud_cycle.py,
 quotation_crud_lifecycle.py, quotation_flow_inline_customer.py,
@@ -180,23 +197,45 @@ with sync_playwright() as pw:
     page.wait_for_load_state("networkidle")
     print("  control accounts:", harness.flash_text(page))
 
-    print("=== 4. register CA (uitest_ca) LAST -- see ordering constraint above ===")
-    page.goto(b + "/approved-emails/add", wait_until="networkidle")
-    page.fill("#email", "uitest_ca@example.com")
-    page.select_option("#position", "chief_accountant")
+    print("=== 4. WHT code WC010 (admin still sole full-access -- auto-approved) ===")
+    page.goto(b + "/withholding-tax/create", wait_until="networkidle")
+    page.fill("#code", "WC010")
+    page.fill("#name", "Income Payments to Suppliers - Goods")
+    page.fill("#sales_name", "Withholding Tax on Sales - Goods")
+    page.fill("#rate", "1")
+    page.select_option("#tax_type", "expanded")
+    pick_choices(page, "payable_account_id", "2320")
+    pick_choices(page, "receivable_account_id", "1710")
     page.click("button[type=submit]")
     page.wait_for_load_state("networkidle")
-    print("  approved-email:", harness.flash_text(page))
+    print("  WC010 create:", harness.flash_text(page))
 
-    page.goto(b + "/logout", wait_until="networkidle")
-    page.goto(b + "/register", wait_until="networkidle")
-    page.fill("#username", "uitest_ca")
-    page.fill("#email", "uitest_ca@example.com")
-    page.fill("#full_name", "UI Test Chief Accountant")
-    page.fill("#password-field", TEST_PW)
-    page.fill("#confirm_password", TEST_PW)
+    print("=== 5. persistent Customer CASCUST1 + Vendor CASVEND1 (direct-save, no approval) ===")
+    page.goto(b + "/customers/create", wait_until="networkidle")
+    page.fill("input[name='code']", "CASCUST1")
+    page.fill("input[name='name']", "UI Test Trading Corp")
+    page.fill("input[name='tin']", "111-222-333-00000")
+    page.select_option("select[name='payment_terms']", "Net 30")
+    page.evaluate("""(a)=>{const[n,x]=a;const s=document.querySelector("select[name='"+n+"']");
+        for(const o of s.options){if(o.textContent.includes(x)){s.value=o.value;
+            s.dispatchEvent(new Event('change',{bubbles:true}));return o.value;}}return null;}""",
+        ["default_vat_category", "VATable Sales"])
+    page.eval_on_selector("select[name='is_active']", "e=>{e.value='1';e.dispatchEvent(new Event('change',{bubbles:true}));}")
     page.click("button[type=submit]")
     page.wait_for_load_state("networkidle")
-    print("  register:", harness.flash_text(page))
+    print("  CASCUST1:", harness.flash_text(page))
 
-    print("\nSetup complete. Run order: vt_wt_crud_cycle.py -> customers_vendors_crud_cycle.py -> ca_registers_and_edits_perms.py")
+    page.goto(b + "/vendors/create", wait_until="networkidle")
+    page.fill("input[name='code']", "CASVEND1")
+    page.fill("input[name='name']", "UI Test Supplier Corp")
+    page.fill("input[name='tin']", "444-555-666-00000")
+    page.select_option("select[name='payment_terms']", "Net 30")
+    pick_choices(page, "default_vat_category", "V12DG")
+    page.eval_on_selector("select[name='is_active']", "e=>{e.value='1';e.dispatchEvent(new Event('change',{bubbles:true}));}")
+    page.click("button[type=submit]")
+    page.wait_for_load_state("networkidle")
+    print("  CASVEND1:", harness.flash_text(page))
+
+    print("\nSetup complete (admin still sole full-access). Run order: vt_wt_crud_cycle.py -> "
+          "customers_vendors_crud_cycle.py -> _register_ca.py -> ca_registers_and_edits_perms.py -> "
+          "sales_invoice_crud_post.py")
