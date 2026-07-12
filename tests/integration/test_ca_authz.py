@@ -137,8 +137,10 @@ def test_ca_can_approve_pending_accountant_request(
 # ---------------------------------------------------------------------------
 
 _ADMIN_PANEL_GET = pytest.mark.parametrize('path', [
-    '/settings',            # company_settings edit
-    '/settings/modules',    # module catalog
+    '/settings',            # company_settings edit (module catalog is folded in as a tab,
+                            # see test_modules_admin_page.py — /settings/modules itself is
+                            # retired to a redirect for every role, so it no longer belongs
+                            # in this "admin reaches 200" positive-control list)
     '/branches',            # branches list
     '/branches/create',     # branch create form
     '/users',               # user CRUD list

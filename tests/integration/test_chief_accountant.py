@@ -205,9 +205,14 @@ _SYSADMIN_PATHS = pytest.mark.parametrize('path,page_marker', [
     ('/users', b'User Management'),
     ('/branches', b'Branch Management'),
     ('/settings', b'Company Settings'),
-    ('/settings/modules', b'Modules / Package'),
     ('/admin/errors', b'Error Logs'),
 ])
+# NOTE: '/settings/modules' dropped from this list (2026-07-12) — commit
+# d701344 retired it to an unconditional redirect (folded into the /settings
+# "Packages" tab), so it no longer renders a 200 for ANYONE, admin included.
+# Its own redirect-for-every-role behavior is covered by
+# tests/integration/test_modules_admin_page.py, and CA's inability to see the
+# embedded Packages tab is covered via the '/settings' case above.
 
 
 @_SYSADMIN_PATHS
@@ -237,13 +242,13 @@ def test_admin_reaches_sysadmin(client, db_session, admin_user,
     Primary signal: a direct 200 with follow_redirects=False. This is the
     robust guard — an over-blocked admin gets a 302 to the dashboard, so a
     direct 200 proves the admin actually landed on the management view
-    without needing a page-unique marker. Three of the five page_marker
+    without needing a page-unique marker. Three of the four page_marker
     strings ("User Management", "Branch Management", "Company Settings")
     ALSO appear in the always-rendered Admin sidebar nav on every admin
     page (including the dashboard), so a marker-only assertion would still
     pass even if the admin were wrongly redirected — a vacuous positive.
-    Only "Modules / Package" and "Error Logs" are genuinely page-unique
-    today; the marker is asserted there as an additional, non-primary check.
+    Only "Error Logs" is genuinely page-unique today; the marker is
+    asserted there as an additional, non-primary check.
     """
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
@@ -251,7 +256,7 @@ def test_admin_reaches_sysadmin(client, db_session, admin_user,
     assert resp.status_code == 200, (
         f'admin should reach {path}, got {resp.status_code}'
     )
-    if path in ('/settings/modules', '/admin/errors'):
+    if path == '/admin/errors':
         assert page_marker in resp.data, (
             f'Admin response for {path} should contain {page_marker!r}'
         )
@@ -293,7 +298,7 @@ def test_admin_sidebar_shows_sysadmin(client, db_session, admin_user, main_branc
 
 # ---------------------------------------------------------------------------
 # Task 8: End-to-end acceptance — CA full read-write in an unassigned branch;
-# CA blocked from all four system-administration areas.
+# CA blocked from the core system-administration areas.
 # ---------------------------------------------------------------------------
 
 def test_ca_full_readwrite_in_unassigned_branch(client, db_session, chief_accountant_user,
@@ -326,23 +331,28 @@ def test_ca_full_readwrite_in_unassigned_branch(client, db_session, chief_accoun
 # re-login can silently keep the denied user's session. Each function here logs
 # in exactly one user and issues no prior request.
 
-def test_ca_blocked_from_all_four_sysadmin_areas(client, db_session, chief_accountant_user,
-                                                 main_branch):
+# NOTE (2026-07-12): dropped '/settings/modules' from the loop below — commit
+# d701344 retired it to an unconditional redirect (folded into the /settings
+# "Packages" tab), so it's no longer a distinct sysadmin area to probe here;
+# '/settings' already covers it. Was "all_four"; now three core areas.
+
+def test_ca_blocked_from_core_sysadmin_areas(client, db_session, chief_accountant_user,
+                                             main_branch):
     _login(client, chief_accountant_user)
     _select_branch(client, main_branch.id)
-    for path in ['/users', '/branches', '/settings', '/settings/modules']:
+    for path in ['/users', '/branches', '/settings']:
         resp = client.get(path, follow_redirects=False)
         assert resp.status_code == 302, (
             f'CA should be refused (302) at {path}, got {resp.status_code}'
         )
 
 
-def test_admin_reaches_all_four_sysadmin_areas(client, db_session, admin_user, main_branch):
-    """Positive pair for test_ca_blocked_from_all_four_sysadmin_areas — guards
+def test_admin_reaches_core_sysadmin_areas(client, db_session, admin_user, main_branch):
+    """Positive pair for test_ca_blocked_from_core_sysadmin_areas — guards
     against a vacuous absence test."""
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
-    for path in ['/users', '/branches', '/settings', '/settings/modules']:
+    for path in ['/users', '/branches', '/settings']:
         resp = client.get(path, follow_redirects=False)
         assert resp.status_code == 200, (
             f'admin should reach {path}, got {resp.status_code}'
