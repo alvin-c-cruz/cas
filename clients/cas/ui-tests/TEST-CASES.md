@@ -54,11 +54,12 @@ This suite covers two scopes that must NOT be conflated:
 | `ca_registers_and_edits_perms.py` | CA registers accountant+staff; edits staff perms, **not** accountant's (needs `uitest_ca` from the shared setup) | 10/10 |
 | `jv_entry_crud_post.py` | Journal Voucher: create (balanced draft) → read → post → cancel; all 3 print surfaces (current/preprinted/hidden); audit trail (needs accounts 1610/4110 from the shared setup) | 12/12 |
 | `sales_invoice_crud_post.py` | Sales Invoice: create (VAT-inclusive + WHT) → verify VAT/WHT math + JE-leg tie-out (AR/Output-VAT/Sales/Creditable-WHT) → read → audit → post → all 3 print surfaces → cancel. Needs Customer `CASCUST1`, WHT `WC010`, account 1710 from the shared setup (folded in 2026-07-12). | 20/21 — the 1 fail is an intentional tripwire for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (open; see findings section) |
-| `concurrency_jv_concurrent_create.py` | 3 concurrent `uitest_ca` sessions creating a new JV at once (owner-requested concurrency probe) | 2/2 — found + FIXED `BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS` for JV (see findings section; SI/AP/CD/CR still open) |
-| `concurrency_si_concurrent_create.py` | Same probe, extended to Sales Invoice | 1/2 — same bug confirmed |
-| `concurrency_ap_concurrent_create.py` | Same probe, extended to Accounts Payable | 1/2 — same bug confirmed (pre-check doesn't close the race) |
-| `concurrency_cd_concurrent_create.py` | Same probe, extended to Cash Disbursement | 1/2 — same bug confirmed (pre-check doesn't close the race) |
-| `concurrency_cr_concurrent_create.py` | Same probe, extended to Cash Receipt | 1/2 — same bug confirmed (pre-check doesn't close the race) |
+| `concurrency_jv_concurrent_create.py` | 3 concurrent `uitest_ca` sessions creating a new JV at once (owner-requested concurrency probe) | 2/2 — found + FIXED `BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS` for JV (silent retry) |
+| `concurrency_si_concurrent_create.py` | Same probe, extended to Sales Invoice | 3/3 — found + FIXED (surfaced: fresh number + flash, verified no raw exception) |
+| `concurrency_ap_concurrent_create.py` | Same probe, extended to Accounts Payable | 3/3 — found + FIXED (surfaced) |
+| `concurrency_cd_concurrent_create.py` | Same probe, extended to Cash Disbursement | 3/3 — found + FIXED (surfaced) |
+| `concurrency_cr_concurrent_create.py` | Same probe, extended to Cash Receipt | 3/3 — found + FIXED (surfaced) |
+| `cash_receipt_crud_post.py` | Cash Receipt: create (standalone direct-revenue) → JE-leg tie-out (cash/revenue) → read → audit → post → all 3 print surfaces → cancel | 16/18 — 2 intentional tripwires for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (route ignores print_access + a NEW button-side addendum: button ignores print_form; see findings section) |
 
 **Setup gap CLOSED 2026-07-12:** `_shared_setup_cas_scope.py` now builds Customer `CASCUST1`, Vendor
 `CASVEND1`, and WHT `WC010` itself (auto-approved, admin still sole full-access at that point — see
@@ -125,9 +126,15 @@ Each item: **intent · acceptance · target spec · readiness**.
 - Setup gap: depends on Customer `CASCUST1`, WHT `WC010`, and account 1710 not yet in the shared
   setup — see the gap note above the "Already covered" table.
 
-**T1.2 — Cash Receipt (CR) CRUD + posting.**
-- *Intent:* collection against an SI (or standalone), posts + settles balance.
-- *Target:* new `cash_receipt_crud_post.py`.
+**T1.2 — Cash Receipt (CR) CRUD + posting. ✅ DONE 2026-07-12 (standalone-revenue only) —
+`cash_receipt_crud_post.py`, 16/18.**
+- Covers the standalone direct-revenue-line CR (create → JE-leg tie-out → read → audit → post →
+  all 3 print surfaces → cancel). The AR-settlement-against-an-existing-SI flow is a distinct
+  scenario, not yet covered — a separate future spec.
+- Found a NEW sibling bug while building this: CR's Print button ignores `cr_print_form` entirely
+  (only checks `cr_print_access`) — the inverse of the already-logged route-side gap. See findings
+  section; extends `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` to cover both button and route blind
+  spots for AP/CD/CR (SI remains the only document that gets both axes right in both places).
 
 **T1.3 — Accounts Payable (AP) CRUD + posting.**
 - *Intent:* vendor bill create → post → JE (AP, Input-VAT, WHT-payable per bucket tie to header).
@@ -174,7 +181,7 @@ Each item: **intent · acceptance · target spec · readiness**.
 - *Target:* fold into T1.7's `company_settings_crud.py`, or its own small spec.
 
 **T1.11 — Concurrency: N same-role users creating a new record in the same document at once.
-✅ DONE 2026-07-12, extended to ALL 5 Core documents — 1/2 on each (found a real, widespread bug).**
+✅ DONE 2026-07-12, extended to ALL 5 Core documents, ALL 5 FULLY FIXED AND VERIFIED.**
 - *Intent (owner-requested, then explicitly "extend"ed to the rest of the Core 5):* 2-5 simulated
   concurrent users, same document type, all creating a NEW record at (near) the same instant —
   does the app hold up under a genuine race, or silently lose work?
@@ -193,10 +200,26 @@ Each item: **intent · acceptance · target spec · readiness**.
   `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md` (renamed internally to
   BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS, filename kept for continuity).
 - *JV instance ✅ FIXED 2026-07-12 (commit `d537d47`):* `commit_with_renumber_retry()`
-  (`app/utils/concurrency.py`) retries the commit with a fresh number instead of failing.
-  TDD-backed (`tests/integration/test_jv_number_race.py`, RED→GREEN confirmed); full suite 2653
-  passed, 1 pre-existing unrelated failure. `concurrency_jv_concurrent_create.py` now 2/2.
-  **SI/AP/CD/CR remain unfixed** (still 1/2 each) — same fix shape, not yet applied.
+  (`app/utils/concurrency.py`) retries the commit with a fresh number instead of failing, silently
+  (JV's number is a pure system sequence, nobody cares about a specific value).
+  TDD-backed (`tests/integration/test_jv_number_race.py`, RED→GREEN confirmed).
+  `concurrency_jv_concurrent_create.py` now 2/2.
+- *SI/AP/CD/CR instances ✅ FIXED 2026-07-12 (commits `f7900f4` merge chain + `7dc761c`):*
+  `fresh_number_if_collision()` (surfaced pre-check: regenerate + re-render + explanatory flash,
+  never silently swap — these 4 numbers are user-editable pre-printed-serial fields, per each
+  document's own forms.py) plus `flush_or_suggest_fresh_number()` as a required backstop — the
+  pre-check alone is check-then-act and a genuinely simultaneous race can still slip past it to
+  the real `db.session.flush()`; confirmed live (raw `sqlite3.IntegrityError` leaking through)
+  before the backstop was added, confirmed CLOSED after (every losing response now shows the
+  friendly fresh-number re-render, verified by inspecting actual response bodies, not just status
+  codes). The backstop specifically checks the IntegrityError names the right column before
+  treating it as this bug — CD has an unrelated second unique constraint (check_number per cash
+  account) that must never be misdiagnosed. All 4 built via parallel subagents in isolated
+  worktrees, backstop applied centrally afterward. TDD-backed
+  (`tests/unit/test_concurrency.py::TestFlushOrSuggestFreshNumber` + each document's own
+  `test_{si,ap,cdv,cr}_number_race.py`). Full suite: 2662 passed, 1 pre-existing unrelated
+  failure. All 4 browser probes now 3/3 (integrity + "at least 1 committed" + "every loser got
+  the friendly re-render, not a raw exception").
 
 ### Tier 2 — Ledger & Reports (needs posted data from Tier 1)
 
@@ -228,20 +251,29 @@ stress; deploy/backup paths; ERP scope (see the "Already covered — ERP scope" 
   environment change (e.g. CA registered) can leave a stale pending request blocking retries;
   workaround (withdraw) exists, no automated guard yet.
 - 🔴 **BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS** (MED) — OPEN, found 2026-07-12 via `sales_invoice_
-  crud_post.py`'s tripwire check. SI/APV/CDV(main)/CRV `/print` routes enforce only `*_print_form`
-  (current/preprinted/hidden), never `*_print_access` (e.g. `posted_only`) — a direct GET on a
-  draft document's print URL renders 200 even when the UI button is correctly hidden. `print_check`
-  (CDV) is the one correct sibling implementation to copy the pattern from.
-- 🟡 **BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS** (MED) — PARTIALLY FIXED, found 2026-07-12 via the
-  concurrency probe (owner-requested, then "extend"ed to the full Core 5). **Confirmed in all 5
-  documents** (JV/SI/AP/CD/CR): each document's number is generated once at page-load and trusted
-  verbatim at submit with no re-check/lock; 3 concurrent creates on every document all got the same
-  number, only 1 of 3 committed every time, the other 2 silently lost their work (generic error for
-  JV/SI; a friendlier pre-check for AP/CD/CR that narrows but doesn't close the race). DB integrity
-  itself always held (no duplicate number ever committed). **JV instance FIXED** (commit `d537d47`,
-  `commit_with_renumber_retry()` in `app/utils/concurrency.py`); **SI/AP/CD/CR still OPEN**. See
-  `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md` (BUG-DOCNUMBER-RACE-SILENT-
-  DATA-LOSS, filename kept from its original JV-only filing).
+  crud_post.py`'s tripwire check, EXTENDED 2026-07-12 via `cash_receipt_crud_post.py` with a second
+  addendum. Two complementary blind spots across SI/APV/CDV/CRV:
+  (a) *route side* — `/print` routes enforce only `*_print_form` (current/preprinted/hidden), never
+  `*_print_access` (e.g. `posted_only`) — a direct GET on a draft document's print URL renders 200
+  even when the UI button is correctly hidden. `print_check` (CDV) is the one correct sibling
+  implementation to copy the pattern from.
+  (b) *button side, NEW* — AP/CD/CR's Print buttons check only `*_print_access`, never
+  `*_print_form` — setting `*_print_form=hidden` correctly blocks the route but the button still
+  shows (dead/misleading, not a data exposure). SI is the ONLY document whose button correctly
+  checks both axes; this was previously assumed true for AP/CD/CR too but never independently
+  verified until `cash_receipt_crud_post.py` caught it live.
+- 🟢 **BUG-DOCNUMBER-RACE-SILENT-DATA-LOSS** (MED) — FULLY FIXED 2026-07-12, all 5 documents.
+  Found via the concurrency probe (owner-requested, then "extend"ed to the full Core 5, then
+  further hardened after empirically re-testing against a genuine tight race). JV fixed via
+  silent `commit_with_renumber_retry()` (commit `d537d47`); SI/AP/CD/CR fixed via the surfaced
+  `fresh_number_if_collision()` pre-check PLUS the required `flush_or_suggest_fresh_number()`
+  backstop (commits in the `fix/{si,ap,cd,cr}-number-race` merge chain + `7dc761c` for the
+  backstop) — the pre-check alone left a real gap under genuine simultaneous requests (confirmed
+  live: the raw `sqlite3.IntegrityError` was leaking through before the backstop). All 5 browser
+  probes verified: JV 2/2 (silent, all succeed); SI/AP/CD/CR 3/3 each (integrity + at-least-1-
+  committed + every loser gets the friendly re-render, not a raw exception — verified by
+  inspecting actual response bodies, not just status codes). See
+  `docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md`.
 - 🔵 **FEAT-SIDEBAR-ACCORDION** (LOW) — OPEN. Sidebar sections should collapse each other (owner
   request), currently independent toggle.
 - 🔵 **Backlog #156** — Products/UOM/Customers/Vendors codes should be per-client configurable;

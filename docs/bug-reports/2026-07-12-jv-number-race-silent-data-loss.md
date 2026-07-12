@@ -5,12 +5,31 @@ confirmed to affect all 5 Core documents, not just JV.)
 
 **Severity:** Medium (real, reproducible concurrency bug — confirmed in all 5 of
 JV/SI/AP/CD/CR, not a corner case)
-**Status:** PARTIALLY FIXED — JV fixed 2026-07-12 (commit `d537d47`, local `main`, not
-pushed); SI/AP/CD/CR still OPEN
+**Status:** FULLY FIXED 2026-07-12, all 5 documents (local `main`, not pushed)
 **Discovered:** 2026-07-12, via `clients/cas/ui-tests/concurrency_jv_concurrent_create.py`
 (built in response to an owner request to test "2-3 users creating a new record in the
 same document at the same time"), then explicitly extended to Sales Invoice / Accounts
 Payable / Cash Disbursement / Cash Receipt per owner instruction ("extend").
+
+## SI/AP/CD/CR fix (done) — including a hardening pass after finding a residual gap
+
+The 4 parallel subagents' `fresh_number_if_collision()` pre-check (regenerate + re-render +
+explanatory flash on a detected collision) left a real gap: it is check-then-act, so a
+genuinely simultaneous double-request can pass the `SELECT` before either has committed,
+reaching the actual `db.session.flush()` uncaught. Confirmed live by re-running the browser
+probes against the merged subagent fixes and inspecting the actual HTTP response bodies of
+the "losing" requests: they still showed the raw `sqlite3.IntegrityError` message, not the
+friendly re-render.
+
+Closed by adding `flush_or_suggest_fresh_number()` (`app/utils/concurrency.py`) as a required
+backstop wrapping each view's `db.session.flush()` call. It checks the `IntegrityError`
+specifically names the document's number column before treating it as this bug — `Cash
+DisbursementVoucher` has an unrelated second unique constraint (`check_number` per
+`cash_account_id`) that must never be misdiagnosed as a numbering race and silently
+discarded. TDD-backed (`tests/unit/test_concurrency.py::TestFlushOrSuggestFreshNumber`,
+including the "unrelated constraint must re-raise" case). Re-verified live after the fix:
+every losing response now shows the fresh suggested number and explanatory flash, zero raw
+exceptions, across all 4 documents.
 
 ## JV fix (done)
 

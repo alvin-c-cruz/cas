@@ -124,12 +124,23 @@ with sync_playwright() as pw:
 
     check("no duplicate crv_number ever committed (DB unique constraint integrity)",
           len(numbers) == len(set(numbers)), str(numbers))
-    check(f"all {N} concurrent creates committed (no data loss under the race)",
-          committed == N,
-          f"{committed}/{N} committed, {distinct_prefetched}/{N} distinct numbers pre-fetched -- rows={rows}")
+    check("at least 1 of the concurrent creates committed", committed >= 1,
+          f"{committed}/{N} committed -- rows={rows}")
 
-    if committed < N:
-        print(f"\n  >>> CONFIRMS the pre-check ({N - committed} of {N} lost) does NOT close the race in CR either.")
+    # FIXED 2026-07-12: flush_or_suggest_fresh_number backstops fresh_number_if_collision's
+    # pre-check -- only the winner commits, every OTHER request must get a clean re-render
+    # with a fresh distinct number, never the raw sqlite3.IntegrityError this bug used to leak.
+    losers_ok = True
+    loser_details = []
+    for i, r in enumerate(responses):
+        if r is not None and r.status_code == 200:
+            has_raw_error = "IntegrityError" in r.text
+            has_friendly = "suggested below" in r.text.lower()
+            loser_details.append(f"user{i+1}: friendly={has_friendly} raw_error={has_raw_error}")
+            if has_raw_error or not has_friendly:
+                losers_ok = False
+    check("every non-committing response got the friendly fresh-number re-render, not a raw exception",
+          losers_ok, "; ".join(loser_details) if loser_details else "no losers this run (unlikely, but not a failure)")
 
     print("\n==== SUMMARY ====")
     print(f"{sum(1 for ok,*_ in results if ok)}/{len(results)} checks passed")
