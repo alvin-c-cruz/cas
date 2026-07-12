@@ -364,6 +364,10 @@ def test_taxable_comp_clamped_at_zero_when_statutory_exceeds_basic(db_session):
     assert line['taxable_comp'] == Decimal('0.00')
     assert line['wht'] == Decimal('0.00')
     assert line['wht_bracket_id'] is None
+    # Regression anchor: net_pay can go negative when statutory EE deductions
+    # on the full-month proxy exceed the actual basic pay. This is NOT clamped
+    # (that's deferred to P2); the engine just reports the true figure.
+    assert line['net_pay'] == Decimal('-910.00')
 
 
 def test_daily_basis_monthly_basis_proxy_ignores_actual_days(db_session):
