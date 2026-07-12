@@ -245,8 +245,8 @@ def _build_je_preview(invoice):
 
     # Draft preview: compute inline
     from app.posting.control_accounts import get_control_account
-    ar_acct = get_control_account('ar_trade', required=False)
-    wt_acct = get_control_account('creditable_wht', required=False)
+    ar_acct = invoice.ar_trade_account or get_control_account('ar_trade', required=False)
+    wt_acct = invoice.creditable_wht_account or get_control_account('creditable_wht', required=False)
     entries = []
 
     # Credit revenue per line (net base)
@@ -301,11 +301,11 @@ def _post_invoice_je(invoice, user_id):
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
     from app.posting.control_accounts import get_control_account
-    ar_account = get_control_account('ar_trade')  # raises ControlAccountError if unassigned
+    ar_account = invoice.ar_trade_account or get_control_account('ar_trade')  # raises ControlAccountError if unassigned
 
     wt_account = None
     if invoice.withholding_tax_amount and Decimal(str(invoice.withholding_tax_amount)) > 0:
-        wt_account = get_control_account('creditable_wht')
+        wt_account = invoice.creditable_wht_account or get_control_account('creditable_wht')
 
     je_status = 'posted' if invoice.status == 'posted' else 'draft'
     entry_number = generate_entry_number(invoice.branch_id)
