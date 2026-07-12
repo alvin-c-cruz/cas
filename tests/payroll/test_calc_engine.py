@@ -67,34 +67,74 @@ def test_seed_idempotent(db_session):
 
 
 def test_sss_row_for_bracket_lookup(db_session):
-    """sss_row_for finds the correct bracket for a salary."""
+    """sss_row_for finds the SPECIFIC correct bracket for a salary, not just a truthy row."""
     seed_statutory_2026()
     tbl = service.effective_sss(date(2026, 6, 30))
 
-    # Test various salary points
-    row_low = service.sss_row_for(tbl, Decimal('10000'))
-    assert row_low is not None
-
+    # Mid-range value: lands in the published ₱30k anchor bracket.
     row_mid = service.sss_row_for(tbl, Decimal('30000'))
-    assert row_mid is not None
+    assert row_mid.comp_from == Decimal('29750')
 
+    # Exactly at a bracket's lower boundary: must match that bracket, not the
+    # one below it.
+    row_boundary = service.sss_row_for(tbl, Decimal('29750'))
+    assert row_boundary.comp_from == Decimal('29750')
+
+    # One cent below that boundary: must match the PRECEDING bracket (proves
+    # the brackets are contiguous with no gap at the boundary).
+    row_just_below = service.sss_row_for(tbl, Decimal('29749.99'))
+    assert row_just_below.comp_from == Decimal('21000')
+
+    # Above all brackets: top open-ended bracket (comp_to is None).
     row_high = service.sss_row_for(tbl, Decimal('100000'))
-    assert row_high is not None
+    assert row_high.comp_from == Decimal('40000')
+    assert row_high.comp_to is None
+
+    # Below the lowest bracket's floor (lowest comp_from is 1000): must fall
+    # back to the LOWEST bracket, not the highest (regression for the
+    # rows[-1]-fallback bug).
+    row_below = service.sss_row_for(tbl, Decimal('500'))
+    assert row_below.comp_from == Decimal('1000')
 
 
 def test_wht_bracket_for_salary(db_session):
-    """WHT bracket lookup finds the correct bracket for a taxable amount."""
+    """WHT bracket lookup finds the SPECIFIC correct bracket, not just a truthy match."""
     seed_statutory_2026()
 
-    # Test various taxable amounts in monthly frequency
-    bracket_low = service.effective_wht_bracket('monthly', Decimal('5000'), date(2026, 6, 30))
-    assert bracket_low is not None
-
+    # Mid-range value: bracket 2 (15% rate).
     bracket_mid = service.effective_wht_bracket('monthly', Decimal('30000'), date(2026, 6, 30))
-    assert bracket_mid is not None
+    assert bracket_mid.bracket_no == 2
 
+    # Exactly at bracket 2's lower boundary (the design anchor: 20833): must
+    # match bracket 2, not bracket 1 or 3 -- this is the critical regression
+    # test for the off-by-one bug.
+    bracket_at_boundary = service.effective_wht_bracket('monthly', Decimal('20833'), date(2026, 6, 30))
+    assert bracket_at_boundary.bracket_no == 2
+
+    # One peso below that boundary: must match bracket 1 (proves brackets 1
+    # and 2 are contiguous with no gap).
+    bracket_just_below = service.effective_wht_bracket('monthly', Decimal('20832'), date(2026, 6, 30))
+    assert bracket_just_below.bracket_no == 1
+
+    # A fractional value that used to fall in the pre-fix gap (20833.01 -
+    # 20833.99): must now match bracket 2.
+    bracket_in_old_gap = service.effective_wht_bracket('monthly', Decimal('20833.50'), date(2026, 6, 30))
+    assert bracket_in_old_gap.bracket_no == 2
+
+    # Exactly at bracket 3's lower boundary (33333): must match bracket 3.
+    bracket_3_boundary = service.effective_wht_bracket('monthly', Decimal('33333'), date(2026, 6, 30))
+    assert bracket_3_boundary.bracket_no == 3
+
+    # Above all brackets: top open-ended bracket (bracket 4, 25%).
     bracket_high = service.effective_wht_bracket('monthly', Decimal('100000'), date(2026, 6, 30))
-    assert bracket_high is not None
+    assert bracket_high.bracket_no == 4
+    assert bracket_high.upper_bound is None
+
+    # Below the lowest bracket's floor (bracket 1's lower_bound is 0): must
+    # fall back to the LOWEST bracket, not the highest (regression for the
+    # rows[-1]-fallback bug).
+    bracket_below = service.effective_wht_bracket('monthly', Decimal('-100'), date(2026, 6, 30))
+    assert bracket_below.bracket_no == 1
 
 
 def test_effective_lookup_respects_effective_dates(db_session):

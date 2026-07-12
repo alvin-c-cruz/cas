@@ -203,11 +203,25 @@ def _seed_wht_2026():
     The TRAIN law publishes monthly brackets, which are then converted for other
     pay frequencies by pro-rating.
 
-    Monthly 2026 brackets (BIR-published):
-    - Bracket 1: 0 - 20833, base 0, rate 0%
-    - Bracket 2: 20834 - 33333, base 0, rate 15%
-    - Bracket 3: 33334 - 66666, base 1875, rate 20%
+    Monthly 2026 brackets (BIR-published thresholds: 20,833 / 33,333 / 66,667):
+    - Bracket 1: 0 - 20832, base 0, rate 0%
+    - Bracket 2: 20833 - 33332, base 0, rate 15%
+    - Bracket 3: 33333 - 66666, base 1875, rate 20%
     - Bracket 4: 66667+, base 8541.8, rate 25%
+
+    Brackets are contiguous with NO gap: every bracket's upper_bound is
+    exactly one CENT (0.01) less than the next bracket's lower_bound, so that
+    effective_wht_bracket's `taxable >= lower and taxable <= upper` predicate
+    matches every Decimal value (including fractional-peso taxable amounts)
+    with no fall-through -- the same non-overlapping, gapless ".99-style"
+    pattern already used for the SSS contribution table above. Lower bounds
+    anchor on the whole-peso official BIR thresholds (20,833 / 33,333 /
+    66,667 for monthly; matches the design anchor: bracket 2 = lower 20833 /
+    bracket 3 starts at 33333) or their pro-rated equivalents for the other
+    frequencies. An earlier draft of this fix used whole-peso ("minus 1")
+    upper bounds for monthly only -- that reintroduced a 99-cent gap at every
+    transition (e.g. 20832.01-20832.99 matched no bracket), so monthly now
+    uses the same cents-precision upper bounds as the other three frequencies.
 
     Semi-monthly = monthly / 2
     Weekly = monthly / 4.333 (52 weeks / 12 months)
@@ -222,32 +236,32 @@ def _seed_wht_2026():
         return
 
     # Define brackets per frequency: (frequency, bracket_no, lower, upper, base_tax, rate)
-    # Monthly brackets as published by BIR
-    # Bracket 1: 0-20833 @ 0% | Bracket 2: 20834-33333 @ 15% | Bracket 3: 33334-66666 @ 20% | Bracket 4: 66667+ @ 25%
+    # Monthly brackets as published by BIR (thresholds 20,833 / 33,333 / 66,667):
+    # Bracket 1: 0-20832 @ 0% | Bracket 2: 20833-33332 @ 15% | Bracket 3: 33333-66666 @ 20% | Bracket 4: 66667+ @ 25%
 
     brackets_data = [
-        # Monthly (published brackets)
-        ('monthly', 1, Decimal('0'), Decimal('20833'), Decimal('0'), Decimal('0.00')),
-        ('monthly', 2, Decimal('20834'), Decimal('33333'), Decimal('0'), Decimal('0.15')),
-        ('monthly', 3, Decimal('33334'), Decimal('66666'), Decimal('1875'), Decimal('0.20')),
+        # Monthly (published brackets; cents-precision contiguous, upper = next lower - 0.01)
+        ('monthly', 1, Decimal('0'), Decimal('20832.99'), Decimal('0'), Decimal('0.00')),
+        ('monthly', 2, Decimal('20833'), Decimal('33332.99'), Decimal('0'), Decimal('0.15')),
+        ('monthly', 3, Decimal('33333'), Decimal('66666.99'), Decimal('1875'), Decimal('0.20')),
         ('monthly', 4, Decimal('66667'), None, Decimal('8541.80'), Decimal('0.25')),
 
-        # Semi-monthly (monthly / 2)
-        ('semi_monthly', 1, Decimal('0'), Decimal('10416.50'), Decimal('0'), Decimal('0.00')),
-        ('semi_monthly', 2, Decimal('10417'), Decimal('16666.50'), Decimal('0'), Decimal('0.15')),
-        ('semi_monthly', 3, Decimal('16667'), Decimal('33333'), Decimal('937.50'), Decimal('0.20')),
+        # Semi-monthly (monthly / 2); cents-precision contiguous, upper = next lower - 0.01
+        ('semi_monthly', 1, Decimal('0'), Decimal('10416.99'), Decimal('0'), Decimal('0.00')),
+        ('semi_monthly', 2, Decimal('10417'), Decimal('16666.99'), Decimal('0'), Decimal('0.15')),
+        ('semi_monthly', 3, Decimal('16667'), Decimal('33333.99'), Decimal('937.50'), Decimal('0.20')),
         ('semi_monthly', 4, Decimal('33334'), None, Decimal('4270.90'), Decimal('0.25')),
 
-        # Weekly (monthly * 12 / 52 = monthly / 4.333)
-        ('weekly', 1, Decimal('0'), Decimal('4808.13'), Decimal('0'), Decimal('0.00')),
-        ('weekly', 2, Decimal('4809'), Decimal('7692.31'), Decimal('0'), Decimal('0.15')),
-        ('weekly', 3, Decimal('7693'), Decimal('15384.62'), Decimal('432.69'), Decimal('0.20')),
+        # Weekly (monthly * 12 / 52 = monthly / 4.333); cents-precision contiguous
+        ('weekly', 1, Decimal('0'), Decimal('4808.99'), Decimal('0'), Decimal('0.00')),
+        ('weekly', 2, Decimal('4809'), Decimal('7692.99'), Decimal('0'), Decimal('0.15')),
+        ('weekly', 3, Decimal('7693'), Decimal('15384.99'), Decimal('432.69'), Decimal('0.20')),
         ('weekly', 4, Decimal('15385'), None, Decimal('1971.11'), Decimal('0.25')),
 
-        # Daily (monthly * 12 / 260 = monthly / 20.833)
-        ('daily', 1, Decimal('0'), Decimal('1000'), Decimal('0'), Decimal('0.00')),
-        ('daily', 2, Decimal('1001'), Decimal('1600'), Decimal('0'), Decimal('0.15')),
-        ('daily', 3, Decimal('1601'), Decimal('3200'), Decimal('90'), Decimal('0.20')),
+        # Daily (monthly * 12 / 260 = monthly / 20.833); cents-precision contiguous
+        ('daily', 1, Decimal('0'), Decimal('1000.99'), Decimal('0'), Decimal('0.00')),
+        ('daily', 2, Decimal('1001'), Decimal('1600.99'), Decimal('0'), Decimal('0.15')),
+        ('daily', 3, Decimal('1601'), Decimal('3200.99'), Decimal('90'), Decimal('0.20')),
         ('daily', 4, Decimal('3201'), None, Decimal('410'), Decimal('0.25')),
     ]
 

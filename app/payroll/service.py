@@ -52,9 +52,11 @@ def effective_sss(as_of):
 def sss_row_for(tbl, monthly_comp):
     """Find the SSS contribution row matching a monthly compensation.
 
-    Searches the table's rows for the bracket containing monthly_comp.
-    If no bracket matches (e.g., salary is very low), returns the lowest bracket.
-    If monthly_comp exceeds all brackets, returns the top (open-ended) bracket.
+    Searches the table's rows (ordered ascending by comp_from) for the bracket
+    containing monthly_comp. If monthly_comp is BELOW the lowest bracket's floor
+    (comp_from), returns the lowest bracket (rows[0]). If monthly_comp is ABOVE
+    every bracket's range (i.e. above the top, open-ended bracket's floor),
+    returns the top bracket (rows[-1], comp_to is None).
 
     Args:
         tbl: SSSContributionTable
@@ -66,7 +68,9 @@ def sss_row_for(tbl, monthly_comp):
     for r in tbl.rows:
         if monthly_comp >= r.comp_from and (r.comp_to is None or monthly_comp <= r.comp_to):
             return r
-    return tbl.rows[-1]   # top open bracket (comp_to is None)
+    if monthly_comp < tbl.rows[0].comp_from:
+        return tbl.rows[0]   # below the lowest bracket's floor -> lowest bracket
+    return tbl.rows[-1]   # above all brackets -> top open bracket (comp_to is None)
 
 
 def effective_philhealth(as_of):
@@ -109,9 +113,11 @@ def effective_wht_bracket(frequency, taxable, as_of):
     """Fetch the compensation WHT bracket matching frequency and taxable amount.
 
     Searches the CompensationWHTBracket table for rows of the given frequency
-    effective on as_of, then finds the bracket containing taxable. If no bracket
-    matches (e.g., taxable is very low), returns the lowest bracket. If taxable
-    exceeds all brackets, returns the top (open-ended) bracket.
+    effective on as_of (ordered ascending by bracket_no), then finds the bracket
+    containing taxable. If taxable is BELOW the lowest bracket's floor
+    (lower_bound), returns the lowest bracket (rows[0]). If taxable is ABOVE
+    every bracket's range (i.e. above the top, open-ended bracket's floor),
+    returns the top bracket (rows[-1], upper_bound is None).
 
     Args:
         frequency: bracket frequency (e.g., 'daily', 'weekly', 'monthly')
@@ -135,4 +141,6 @@ def effective_wht_bracket(frequency, taxable, as_of):
     for b in rows:
         if taxable >= b.lower_bound and (b.upper_bound is None or taxable <= b.upper_bound):
             return b
-    return rows[-1]   # top open bracket (upper_bound is None)
+    if taxable < rows[0].lower_bound:
+        return rows[0]   # below the lowest bracket's floor -> lowest bracket
+    return rows[-1]   # above all brackets -> top open bracket (upper_bound is None)
