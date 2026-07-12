@@ -48,6 +48,15 @@ This suite covers two scopes that must NOT be conflated:
 | `customers_vendors_crud_cycle.py` | Customers + Vendors CRUD (direct-save; needs the shared setup's VAT categories) | 8/8 |
 | `ca_registers_and_edits_perms.py` | CA registers accountant+staff; edits staff perms, **not** accountant's (needs `uitest_ca` from the shared setup) | 10/10 |
 | `jv_entry_crud_post.py` | Journal Voucher: create (balanced draft) → read → post → cancel; all 3 print surfaces (current/preprinted/hidden); audit trail (needs accounts 1610/4110 from the shared setup) | 12/12 |
+| `sales_invoice_crud_post.py` | Sales Invoice: create (VAT-inclusive + WHT) → verify VAT/WHT math + JE-leg tie-out (AR/Output-VAT/Sales/Creditable-WHT) → read → audit → post → all 3 print surfaces → cancel. Needs a Customer `CASCUST1`, WHT code `WC010`, and account 1710 (Creditable WHT) that are **NOT yet in `_shared_setup_cas_scope.py`** — see the gap note below the table. | 20/21 — the 1 fail is an intentional tripwire for `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (open; see findings section) |
+
+**Setup gap — `sales_invoice_crud_post.py` needs data the shared setup doesn't build yet:** a
+persistent Customer `CASCUST1` ("UI Test Trading Corp"), a WHT code `WC010` (1%, expanded,
+payable=2320/receivable=1710), and account 1710 (Creditable WHT). These were created via one-off
+scratchpad scripts this session and are **not yet folded into `_shared_setup_cas_scope.py`** — until
+they are, this spec is not truly standalone-runnable from a bare shared-setup provision. Close this
+gap (extend the shared setup, or document as an explicit prerequisite step) before relying on this
+spec in a Step-8 regression pass on a fresh environment.
 
 **Partially CAS-scope (some checks depend on ERP-scope modules — those checks fail, the rest pass):**
 
@@ -84,13 +93,18 @@ Each item: **intent · acceptance · target spec · readiness**.
 
 ### Tier 1 — Ready now (do first; nothing blocks these — biggest gap: ZERO coverage of the Core 5 documents)
 
-**T1.1 — Sales Invoice (SI) CRUD + posting.**
-- *Intent:* SI create → post → JE; the actual heart of CAS. No spec exists yet.
-- *Acceptance:* create/edit/cancel lifecycle; posting produces a balanced JE with each non-plug leg
-  tying to the SI header (AR == total receivable, Output-VAT == doc VAT, Sales == subtotal — memory
-  `posted-je-leg-vs-source-header-invariant`); all 3 print surfaces (rule #9); audit + Action-Items
-  badge move on every write (rule #7).
-- *Target:* new `sales_invoice_crud_post.py`.
+**T1.1 — Sales Invoice (SI) CRUD + posting. ✅ DONE 2026-07-12 — `sales_invoice_crud_post.py`, 20/21.**
+- Covers create (VAT-inclusive, WHT-applied) → JE-leg tie-out to header (AR/Output-VAT/Sales/
+  Creditable-WHT) → read → audit → all 3 print surfaces → post → cancel.
+- The 1 fail is an **intentional tripwire**, not a spec defect: it caught a real, previously-unknown
+  bug this session, `BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS` (MEDIUM, OPEN) — the SI print detail
+  page correctly hides the Print button on a draft under `sv_print_access=posted_only`, but the
+  `/print` **route** itself only checks `sv_print_form` and does not enforce `sv_print_access` at
+  all, so a direct GET on a draft's print URL renders 200 anyway. Same gap exists in AP/CDV/CRV
+  print routes; `print_check` (CDV's separate check-print route) is the one correct sibling. Flip
+  this check to a plain assertion once the bug is fixed.
+- Setup gap: depends on Customer `CASCUST1`, WHT `WC010`, and account 1710 not yet in the shared
+  setup — see the gap note above the "Already covered" table.
 
 **T1.2 — Cash Receipt (CR) CRUD + posting.**
 - *Intent:* collection against an SI (or standalone), posts + settles balance.
@@ -169,6 +183,11 @@ stress; deploy/backup paths; ERP scope (see the "Already covered — ERP scope" 
 - 🔵 **BUG-TAXMASTER-STALE-PENDING-BLOCKS-RETRY** (LOW-MED) — OPEN. A tax-master spec re-run after an
   environment change (e.g. CA registered) can leave a stale pending request blocking retries;
   workaround (withdraw) exists, no automated guard yet.
+- 🔴 **BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS** (MED) — OPEN, found 2026-07-12 via `sales_invoice_
+  crud_post.py`'s tripwire check. SI/APV/CDV(main)/CRV `/print` routes enforce only `*_print_form`
+  (current/preprinted/hidden), never `*_print_access` (e.g. `posted_only`) — a direct GET on a
+  draft document's print URL renders 200 even when the UI button is correctly hidden. `print_check`
+  (CDV) is the one correct sibling implementation to copy the pattern from.
 - 🔵 **FEAT-SIDEBAR-ACCORDION** (LOW) — OPEN. Sidebar sections should collapse each other (owner
   request), currently independent toggle.
 - 🔵 **Backlog #156** — Products/UOM/Customers/Vendors codes should be per-client configurable;
