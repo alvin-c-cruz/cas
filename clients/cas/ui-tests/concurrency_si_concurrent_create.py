@@ -78,6 +78,12 @@ with sync_playwright() as pw:
         sessions.append({"session": sess, "number": number, "csrf": csrf, "desc": f"{TAG}-{i+1}"})
         print(f"  user {i+1}: pre-fetched invoice_number={number!r}")
 
+    # Scope this run's own rows by the number pre-fetched at open time -- guaranteed
+    # unique per invocation (the DB is persistent across repeated runs of this spec).
+    run_id = sessions[0]["number"]
+    for info in sessions:
+        info["desc"] = f"{info['desc']}-{run_id}"
+
     distinct_prefetched = len({info["number"] for info in sessions})
     print(f"  distinct invoice_numbers pre-fetched across {N} sessions: {distinct_prefetched}")
 
@@ -113,7 +119,7 @@ with sync_playwright() as pw:
         loc = r.headers.get("Location", "") if r is not None else ""
         print(f"  user {i+1} POST -> status={r.status_code if r is not None else 'ERR'} location={loc}")
 
-    rows = q(f"SELECT invoice_number, notes FROM sales_invoices WHERE notes LIKE '{TAG}-%' ORDER BY id")
+    rows = q(f"SELECT invoice_number, notes FROM sales_invoices WHERE notes LIKE '%-{run_id}' ORDER BY id")
     print("  DB rows committed:", rows)
     numbers = [row[0] for row in rows]
     committed = len(rows)

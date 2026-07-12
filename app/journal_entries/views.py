@@ -12,6 +12,7 @@ from app.audit.utils import log_create, log_update, log_delete, model_to_dict, l
 from app.utils import ph_now
 from app.periods.utils import validate_transaction_date_with_flash
 from app.journal_entries.utils import generate_entry_number, generate_jv_number
+from app.utils.concurrency import commit_with_renumber_retry
 from app.settings import AppSettings
 from app.journal_entries.preprinted_layout import get_layout, save_layout
 from datetime import datetime, date
@@ -152,7 +153,8 @@ def create():
             entry.calculate_totals()
 
             db.session.add(entry)
-            db.session.commit()
+            commit_with_renumber_retry(entry, 'entry_number',
+                                        lambda: generate_jv_number(current_branch_id))
 
             log_create(
                 module='journal_entry',

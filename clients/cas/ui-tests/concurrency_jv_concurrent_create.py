@@ -1,16 +1,16 @@
-"""Concurrency stress test: N=3 same-role (uitest_ca) sessions independently CREATE a NEW
-Journal Voucher at (near) the same instant, to stress JournalEntry.entry_number's
+"""Concurrency regression guard: N=3 same-role (uitest_ca) sessions independently CREATE a NEW
+Journal Voucher at (near) the same instant, exercising JournalEntry.entry_number's
 generation-at-page-load race.
 
-Why this scenario: `journal_entries/views.py::create()` generates the next `entry_number`
-on the GET that renders the create form (`generate_jv_number()`, called once per page load)
-and simply persists whatever the submitted form carries -- it does NOT regenerate or lock at
-POST time. `entry_number` carries a DB-level `unique=True` constraint. So if two users open
-the create page within the same window (before either has committed), BOTH forms show the
-SAME suggested number; whichever POST commits second hits the unique constraint, which the
-view's blanket `except Exception` catches -> rollback -> generic "An error occurred, please
-try again" flash. From the user's perspective: they filled out a whole JV and got a vague
-error, with no automatic renumber-and-retry -- their work is silently lost until they resubmit.
+FIXED 2026-07-12 -- `commit_with_renumber_retry()` (`app/utils/concurrency.py`), wired into
+`journal_entries/views.py::create()`. Originally: `generate_jv_number()` is called once on the
+GET that renders the create form, and the submitted number is persisted verbatim at POST with
+no re-check/lock. `entry_number` carries a DB-level `unique=True`. Two users opening the create
+page in the same window both saw the SAME suggested number; whichever POST committed second
+used to hit the unique constraint, caught by a blanket `except Exception` -> generic error ->
+silent data loss. The fix retries the commit with a freshly generated number (bounded, 3
+attempts) instead of failing -- this spec now expects and asserts 2/2 (all N concurrent creates
+succeed with distinct numbers). See docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md.
 
 Technique: Playwright's SYNC API is not safe to drive concurrently across threads sharing one
 browser/page object, and the shared harness.connect() always reuses ONE context (one login).
@@ -92,6 +92,13 @@ with sync_playwright() as pw:
         sessions.append({"session": sess, "entry_number": entry_number, "csrf": csrf, "desc": f"{TAG}-{i+1}"})
         print(f"  user {i+1}: pre-fetched entry_number={entry_number!r}")
 
+    # Scope this run's own rows by the number pre-fetched at open time -- guaranteed
+    # unique per invocation (the DB is persistent across repeated runs of this spec, so
+    # a fixed TAG alone would pick up stale rows from an earlier run's leftovers).
+    run_id = sessions[0]["entry_number"]
+    for info in sessions:
+        info["desc"] = f"{info['desc']}-{run_id}"
+
     distinct_numbers_prefetched = len({info["entry_number"] for info in sessions})
     print(f"  distinct entry_numbers pre-fetched across {N} sessions: {distinct_numbers_prefetched}")
 
@@ -127,7 +134,7 @@ with sync_playwright() as pw:
         loc = r.headers.get("Location", "") if r is not None else ""
         print(f"  user {i+1} POST -> status={r.status_code if r is not None else 'ERR'} location={loc}")
 
-    rows = q(f"SELECT entry_number, description FROM journal_entries WHERE description LIKE '{TAG}-%' ORDER BY id")
+    rows = q(f"SELECT entry_number, description FROM journal_entries WHERE description LIKE '%-{run_id}' ORDER BY id")
     print("  DB rows committed:", rows)
     numbers = [row[0] for row in rows]
     committed = len(rows)

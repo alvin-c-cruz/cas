@@ -118,6 +118,44 @@ def claim_version(model, doc_id, submitted):
     return True
 
 
+def commit_with_renumber_retry(entity, number_attr, generate_number, max_attempts=3):
+    """Commit `entity` (already `db.session.add()`-ed, with any cascaded children),
+    retrying up to `max_attempts` times with a freshly generated number if the commit
+    fails on a numbering collision.
+
+    The bug this closes: every document number (JV entry_number, SI invoice_number,
+    etc.) is generated once when the create form is rendered (a MAX/latest scan, not
+    a real sequence object) and trusted verbatim at submit. Two users who open the
+    form in the same window both see the same suggested number; whoever commits
+    second used to get a raw IntegrityError -> generic flash -> their whole submission
+    silently discarded. This retries with a fresh number instead of failing.
+
+    Raises the original IntegrityError if the collision isn't resolved within
+    max_attempts (kept rare on purpose -- if collisions are frequent, that is its own
+    bug worth surfacing, not silently retrying forever).
+
+    See docs/bug-reports/2026-07-12-jv-number-race-silent-data-loss.md.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            db.session.commit()
+            return
+        except IntegrityError:
+            db.session.rollback()
+            if attempt == max_attempts:
+                raise
+            # Compute the new number BEFORE re-adding `entity` to the session: the
+            # generator runs its own query, and if `entity` is already pending with
+            # its OLD (colliding) number, that query's autoflush re-attempts the
+            # doomed insert and raises again -- immediately, not on our next commit.
+            with db.session.no_autoflush:
+                new_number = generate_number()
+            db.session.add(entity)
+            setattr(entity, number_attr, new_number)
+
+
 def conflict_message(module, doc_id):
     """Name who changed the document out from under this editor, and when.
 
