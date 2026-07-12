@@ -146,7 +146,7 @@ MODULE_REGISTRY = [
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
      'area': 'Compliance', 'group': 'BIR',
-     'optional': True, 'depends_on': [], 'default_enabled': True,
+     'optional': True, 'depends_on': [], 'default_enabled': False,
      'endpoints': ('reports.bir_index', 'reports.bir_sales', 'reports.bir_sales_export_excel',
                    'reports.bir_purchases', 'reports.bir_purchases_export_excel',
                    'reports.bir_alphalist', 'reports.bir_alphalist_export_excel',

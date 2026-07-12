@@ -4,6 +4,22 @@ from app.users.module_access import all_permission_keys, default_all_permissions
 pytestmark = [pytest.mark.unit]
 
 
+def test_every_optional_module_defaults_disabled():
+    """Registry invariant: EVERY optional module must ship default_enabled=False.
+
+    bir_reports used to be the sole exception (default_enabled=True), which made a
+    brand-new/fresh install inconsistent -- BIR Reports visible while every other
+    optional module was hidden. Flipped 2026-07 (chore/bir-reports-default-off); a
+    live/already-deployed install is protected by a data-backfill migration that
+    inserts an explicit module_enabled:bir_reports='1' override when it detects
+    existing users (see app/migrations/versions). This test pins the registry
+    invariant so the drift can't silently reappear for bir_reports or any future
+    optional module."""
+    offenders = [m['key'] for m in MODULE_REGISTRY
+                 if m.get('optional') and m.get('default_enabled') is not False]
+    assert offenders == []
+
+
 def test_all_permission_keys_excludes_optional_except_per_user():
     keys = all_permission_keys()
     # optional-and-NOT-per_user modules are excluded (instance-gated only)

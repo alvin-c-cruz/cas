@@ -3,9 +3,12 @@ import pytest
 pytestmark = [pytest.mark.integration]
 
 
-def test_bir_defaults_enabled(db_session):
+def test_bir_defaults_disabled(db_session):
+    """bir_reports flipped to default_enabled=False (chore/bir-reports-default-off) so a
+    brand-new install is uniform with every other optional module -- see the migration
+    backfill (app/migrations/versions) for how already-deployed installs are protected."""
     from app.users.module_access import module_enabled
-    assert module_enabled('bir_reports') is True   # default_enabled=True, no setting
+    assert module_enabled('bir_reports') is False   # default_enabled=False, no setting
 
 
 def test_core_module_always_enabled(db_session):
@@ -13,16 +16,16 @@ def test_core_module_always_enabled(db_session):
     assert module_enabled('accounts_payable') is True   # not optional → always on
 
 
-def test_disabling_bir_hides_it_for_admin(db_session, admin_user):
+def test_enabling_bir_shows_it_for_admin(db_session, admin_user):
     from app.settings import AppSettings
     from app.users.module_access import can_access_module, module_enabled
     from app.utils.cache_helpers import clear_module_config_cache
 
-    assert can_access_module(admin_user, 'bir_reports') is True
-    AppSettings.set_setting('module_enabled:bir_reports', '0')
+    assert can_access_module(admin_user, 'bir_reports') is False  # default off, no setting
+    AppSettings.set_setting('module_enabled:bir_reports', '1')
     clear_module_config_cache()
-    assert module_enabled('bir_reports') is False
-    assert can_access_module(admin_user, 'bir_reports') is False   # disabled → off for ALL roles
+    assert module_enabled('bir_reports') is True
+    assert can_access_module(admin_user, 'bir_reports') is True   # enabled → on for admin
     assert can_access_module(admin_user, 'accounts_payable') is True   # core unaffected
 
 
