@@ -684,6 +684,13 @@ def create():
     from app.sales_orders.views import _salesperson_choices
     form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
 
+    from app.posting.control_accounts import get_postable_accounts, get_control_account
+    postable = get_postable_accounts()
+    account_choices = [('', '-- Use company default --')] + [
+        (str(a.id), f'{a.code}: {a.name}') for a in postable]
+    form.ar_trade_account_id.choices = account_choices
+    form.creditable_wht_account_id.choices = account_choices
+
     if form.validate_on_submit():
         if not validate_transaction_date_with_flash(form.invoice_date.data, 'Sales Invoice'):
             return render_template('sales_invoices/form.html', form=form, invoice=None,
@@ -763,6 +770,8 @@ def create():
                 payment_terms=form.payment_terms.data,
                 reference=form.reference.data,
                 notes=form.notes.data or '',
+                ar_trade_account_id=form.ar_trade_account_id.data,
+                creditable_wht_account_id=form.creditable_wht_account_id.data,
                 status='draft',
                 amount_paid=Decimal('0.00'),
                 balance=Decimal('0.00'),
@@ -827,6 +836,10 @@ def create():
         form.invoice_number.data = generate_invoice_number()
         form.invoice_date.data = ph_now().date()
         form.due_date.data = ph_now().date() + timedelta(days=30)
+        default_ar = get_control_account('ar_trade', required=False)
+        default_wt = get_control_account('creditable_wht', required=False)
+        form.ar_trade_account_id.data = default_ar.id if default_ar else None
+        form.creditable_wht_account_id.data = default_wt.id if default_wt else None
 
     return render_template('sales_invoices/form.html', form=form, invoice=None,
                            vat_categories=_vat_categories_for_form(),
@@ -857,6 +870,13 @@ def edit(id):
     form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
     from app.sales_orders.views import _salesperson_choices
     form.salesperson_id.choices = _salesperson_choices(session.get('selected_branch_id'))
+
+    from app.posting.control_accounts import get_postable_accounts
+    postable = get_postable_accounts()
+    account_choices = [('', '-- Use company default --')] + [
+        (str(a.id), f'{a.code}: {a.name}') for a in postable]
+    form.ar_trade_account_id.choices = account_choices
+    form.creditable_wht_account_id.choices = account_choices
 
     # On a failed POST, re-render with the user's SUBMITTED line items (preserve their edits);
     # on a GET, show the saved line items.
@@ -936,6 +956,8 @@ def edit(id):
             invoice.customer_po_date = form.customer_po_date.data or None
             invoice.payment_terms = form.payment_terms.data
             invoice.reference = form.reference.data
+            invoice.ar_trade_account_id = form.ar_trade_account_id.data
+            invoice.creditable_wht_account_id = form.creditable_wht_account_id.data
             invoice.salesperson_id = form.salesperson_id.data or None
             invoice.notes = form.notes.data or ''
 
