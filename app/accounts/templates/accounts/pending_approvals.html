@@ -43,7 +43,7 @@
                     </td>
                     <td><strong>{{ change_data.code }}</strong></td>
                     <td>{{ change_data.name }}</td>
-                    <td style="font-size: 13px; color: #64748b; max-width: 240px;">{{ request.request_reason or '—' }}</td>
+                    <td style="font-size: 13px; color: #64748b; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ request.request_reason or '' }}">{{ request.request_reason or '—' }}</td>
                     <td>{{ request.requested_by }}</td>
                     <td>{{ request.requested_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
                     <td>
