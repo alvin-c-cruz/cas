@@ -29,7 +29,7 @@ def _add_admin(db_session, username='root'):
 
 def test_first_run_admin_username_creates_active_admin_and_branch(client, db_session):
     resp = _register(client, 'admin')
-    assert resp.status_code in (301, 302)  # redirect to login on success
+    assert resp.status_code in (301, 302)  # redirect to dashboard (auto-login) on success
 
     admin = User.query.filter_by(username='admin').first()
     assert admin is not None
@@ -45,8 +45,8 @@ def test_first_run_admin_username_creates_active_admin_and_branch(client, db_ses
 
 
 def test_first_run_unblocks_the_app_end_to_end(client, db_session):
-    """After bootstrap the admin logs in and reaches the dashboard with the
-    branch auto-selected -- NOT force-logged-out (deadlock #2 is gone)."""
+    """After bootstrap the admin is auto-logged-in and reaches the dashboard
+    with the branch auto-selected."""
     _register(client, 'admin')
     branch = Branch.query.filter_by(code='MAIN').first()
 
@@ -54,6 +54,26 @@ def test_first_run_unblocks_the_app_end_to_end(client, db_session):
     resp = client.get('/dashboard', follow_redirects=True)
     assert resp.status_code == 200
     assert b'No branches available' not in resp.data
+    with client.session_transaction() as sess:
+        assert sess.get('selected_branch_id') == branch.id
+
+
+def test_first_run_bootstrap_auto_logs_in(client, db_session):
+    """Bootstrap now auto-logs-in the admin: no separate /login needed, lands on dashboard."""
+    resp = _register(client, 'admin')                       # follow_redirects=False
+    assert resp.status_code in (301, 302)
+    assert '/login' not in resp.headers['Location']          # NOT bounced to login
+    assert '/dashboard' in resp.headers['Location'] or resp.headers['Location'].endswith('/')
+
+    # Reachable immediately WITHOUT a separate login POST:
+    page = client.get('/dashboard', follow_redirects=True)
+    assert page.status_code == 200
+    assert b'No branches available' not in page.data
+
+    admin = User.query.filter_by(username='admin').first()
+    assert AuditLog.query.filter_by(action='login_success', record_id=admin.id).first() is not None
+
+    branch = Branch.query.filter_by(code='MAIN').first()
     with client.session_transaction() as sess:
         assert sess.get('selected_branch_id') == branch.id
 

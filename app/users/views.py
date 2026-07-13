@@ -319,8 +319,12 @@ def register():
                     record_id=user.id, record_identifier=f'{user.username} ({user.email})',
                     notes='Initial system administrator created via first-run bootstrap (whitelist bypassed).'
                 )
-                flash('Registration successful! Your account is active — you can log in now.', 'success')
-                return redirect(url_for('users.login'))
+                login_user(user)
+                log_audit(module='auth', action='login_success', record_id=user.id,
+                          record_identifier=user.username,
+                          notes='Auto-login after first-run admin bootstrap', user_id=user.id)
+                flash('Registration successful — you are now signed in as administrator.', 'success')
+                return redirect(url_for('dashboard.index'))
 
             approved_email = ApprovedEmail.get_approved_email(form.email.data)
 
