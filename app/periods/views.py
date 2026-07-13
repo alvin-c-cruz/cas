@@ -76,7 +76,8 @@ def view_period(year, month):
     ).count()
 
     # Check if trial balance is balanced (for this period end)
-    last_day_of_month = period_end - datetime.timedelta(days=1)
+    from datetime import timedelta
+    last_day_of_month = period_end - timedelta(days=1)
     trial_balance = generate_trial_balance(last_day_of_month.date() if hasattr(last_day_of_month, 'date') else last_day_of_month)
     is_balanced = trial_balance['is_balanced']
 
