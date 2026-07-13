@@ -354,11 +354,15 @@ def _post_cdv_je(cdv, user_id):
     line_num = 1
     all_lines = []
 
-    # AP lines: Dr AP (unchanged)
+    # AP lines: Dr AP -- each line inherits the account from the SPECIFIC bill
+    # it settles (its own ap_trade_account, set when that bill posted), not
+    # one shared account for the whole voucher. Falls back to the global
+    # default only if the bill predates the per-transaction field.
     for ap_line in cdv.ap_lines:
+        line_ap_account = ap_line.accounts_payable.ap_trade_account or ap_account
         je_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
-            account_id=ap_account.id,
+            account_id=line_ap_account.id,
             description=f'AP Payment: {ap_line.ap_number}',
             debit_amount=Decimal(str(ap_line.amount_applied)),
             credit_amount=Decimal('0.00')
