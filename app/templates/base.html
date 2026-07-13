@@ -1049,6 +1049,7 @@
               {%- elif key == 'cash_flow' and ep.startswith('reports.cash_flow') -%}active
               {%- elif key == 'trial_balance' and ep.startswith('reports.trial_balance') -%}active
               {%- elif key == 'sales_by_product_line' and ep.startswith('reports.sales_by_product_line') -%}active
+              {%- elif key == 'periods' and ep.startswith('periods.') -%}active
               {%- elif key == 'fiscal_year_close' and ep.startswith('year_end.') -%}active
               {%- elif key == 'customers' and ep.startswith('customers.') -%}active
               {%- elif key == 'vendors' and ep.startswith('vendors.') -%}active
@@ -1090,6 +1091,7 @@
                 'cash_flow':          'reports.cash_flow',
                 'trial_balance':      'reports.trial_balance',
                 'sales_by_product_line': 'reports.sales_by_product_line',
+                'periods':            'periods.list_periods',
                 'fiscal_year_close':  'year_end.index',
                 'customers':          'customers.list_customers',
                 'vendors':            'vendors.list_vendors',
@@ -1124,6 +1126,7 @@
                 'cash_flow':          '💸',
                 'trial_balance':      '⚖️',
                 'sales_by_product_line': '🏷️',
+                'periods':            '🗓️',
                 'fiscal_year_close':  '🔒',
                 'customers':          '👥',
                 'vendors':            '🏢',
