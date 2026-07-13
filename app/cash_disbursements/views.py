@@ -577,8 +577,9 @@ def _build_cdv_je_preview(cdv):
     accts = _get_gl_accounts()
     entries = []
     for ap_line in cdv.ap_lines:
-        if accts['ap']:
-            entries.append({'code': accts['ap'].code, 'name': accts['ap'].name,
+        line_ap_account = ap_line.accounts_payable.ap_trade_account or accts['ap']
+        if line_ap_account:
+            entries.append({'code': line_ap_account.code, 'name': line_ap_account.name,
                             'debit': Decimal(str(ap_line.amount_applied)), 'credit': Decimal('0.00')})
     # Expense lines: positive → Dr Expense (VAT-extracted); negative → Cr Expense (bare, no VAT)
     positive_auto_vat = sum(

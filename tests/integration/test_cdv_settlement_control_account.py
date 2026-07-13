@@ -77,3 +77,33 @@ def test_cdv_settling_two_bills_credits_each_bills_own_account(
     assert len(lines_a) == 1 and lines_a[0].debit_amount == Decimal('300.00')
     assert len(lines_b) == 1 and lines_b[0].debit_amount == Decimal('700.00')
     assert not any(l.account_id == global_ap.id for l in je.lines)
+
+
+def test_draft_cdv_preview_shows_each_bills_own_account(db_session, accountant_user, main_branch):
+    global_ap = _account('CDVS05', 'Global AP Trade 2', 'Liability', 'Credit')
+    bill_acct = _account('CDVS06', 'Bill Own Account', 'Liability', 'Credit')
+    cash_acct = _account('CDVS07', 'Cash on Hand 2', 'Asset', 'Debit')
+    assign_control_accounts(db_session, ap=global_ap.code)
+
+    vendor = Vendor(code='CDVSV2', name='Preview Test Vendor', is_active=True)
+    db.session.add(vendor); db.session.commit()
+    bill = _posted_bill(main_branch, vendor, 'CDVS-AP-C', Decimal('400.00'), bill_acct.id)
+
+    cdv = CashDisbursementVoucher(
+        branch_id=main_branch.id, cdv_number='CDVS-0002', cdv_date=date.today(),
+        vendor_id=vendor.id, vendor_name=vendor.name, payment_method='cash',
+        cash_account_id=cash_acct.id, notes='Preview test', status='draft',
+        total_ap_applied=Decimal('400.00'), total_amount=Decimal('400.00'),
+    )
+    db.session.add(cdv); db.session.flush()
+    db.session.add(CDVApLine(cdv_id=cdv.id, line_number=1, ap_id=bill.id,
+                             ap_number=bill.ap_number, original_balance=bill.balance,
+                             amount_applied=Decimal('400.00')))
+    db.session.commit()
+    db.session.refresh(cdv)
+
+    from app.cash_disbursements.views import _build_cdv_je_preview
+    preview = _build_cdv_je_preview(cdv)  # cdv.journal_entry is None -> inline preview path
+    codes = {row['code'] for row in preview}
+    assert bill_acct.code in codes
+    assert global_ap.code not in codes
