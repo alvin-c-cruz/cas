@@ -15,6 +15,23 @@ CONTROL_ACCOUNTS = {
     'ap_trade':       ('ap_trade_account_code',       'Accounts Payable control account'),
     'creditable_wht': ('creditable_wht_account_code', 'Creditable Withholding Tax control account'),
     'wht_payable':    ('wht_payable_account_code',    'Withholding Tax Payable control account'),
+
+    # Payroll v1 (R-06) control accounts. Fully accountant-assigned -- deliberately
+    # NOT added to DEFAULT_CONTROL_ACCOUNT_CODES below, so no seed script or
+    # migration ever auto-assigns them (mirrors app/vat_settlement/service.py's
+    # resolve_target_account: "Fail-closed: NO default code"). An accountant must
+    # assign each one in Company Settings -> Control Accounts before payroll can post.
+    'payroll_salaries_expense':      ('payroll_salaries_expense_account_code',      'Salaries Expense control account'),
+    'payroll_sss_er_expense':        ('payroll_sss_er_expense_account_code',        'SSS Employer Share Expense control account'),
+    'payroll_philhealth_er_expense': ('payroll_philhealth_er_expense_account_code', 'PhilHealth Employer Share Expense control account'),
+    'payroll_pagibig_er_expense':    ('payroll_pagibig_er_expense_account_code',    'Pag-IBIG Employer Share Expense control account'),
+    'payroll_wht_payable':           ('payroll_wht_payable_account_code',           'Withholding Tax on Compensation Payable control account'),
+    'payroll_sss_payable':           ('payroll_sss_payable_account_code',           'SSS Contributions Payable control account'),
+    'payroll_philhealth_payable':    ('payroll_philhealth_payable_account_code',    'PhilHealth Contributions Payable control account'),
+    'payroll_pagibig_payable':       ('payroll_pagibig_payable_account_code',       'Pag-IBIG Contributions Payable control account'),
+    'payroll_sss_loan_payable':      ('payroll_sss_loan_payable_account_code',      'SSS Salary/Calamity Loan Payable control account'),
+    'payroll_pagibig_loan_payable':  ('payroll_pagibig_loan_payable_account_code',  'Pag-IBIG Loan Payable control account'),
+    'payroll_accrued_salaries':      ('payroll_accrued_salaries_account_code',      'Accrued Salaries and Wages control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,
