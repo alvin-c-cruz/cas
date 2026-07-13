@@ -236,6 +236,7 @@ def create_app(config_name=None):
         SSSContributionTable, SSSContributionRow, PhilHealthRate,
         PagIbigRate, CompensationWHTBracket, StatutoryTableChangeRequest
     )  # noqa: F401
+    from app.payroll.models import PayrollRun, PayrollRunLine  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
