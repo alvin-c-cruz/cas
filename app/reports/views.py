@@ -10,6 +10,7 @@ from app.sales_invoices.models import SalesInvoice
 from app.customers.models import Customer
 from app.reports.statement_data import build_statement_of_account
 from app.accounts.models import Account
+from app.posting.control_accounts import get_postable_accounts
 from app.accounts_payable.models import AccountsPayable
 from app.cash_receipts.models import CashReceiptVoucher
 from app.cash_disbursements.models import CashDisbursementVoucher
@@ -43,6 +44,7 @@ from app.utils import ph_now, end_of_month
 from datetime import date, timedelta, datetime
 from decimal import Decimal
 from sqlalchemy import func
+import re
 
 reports_bp = Blueprint('reports', __name__, template_folder='templates')
 
@@ -55,8 +57,24 @@ _SOURCE_MAP = {
 }
 
 
+def _strip_redundant_doc_number(description, ref):
+    """Remove a document number already shown in the Source column from a
+    Particulars string (e.g. 'AR: SI-2026-01-0003 -- Test Customer Inc' ->
+    'AR: Test Customer Inc'), so the two GL columns don't repeat the same token."""
+    if not description or not ref or ref not in description:
+        return description
+    text = description.replace(ref, '')
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r':\s*[-—]', ':', text)         # "AR: --" -> "AR:"
+    text = re.sub(r'^\s*[:\-—]+\s*', '', text)    # leading stray punctuation
+    text = re.sub(r'\s*[:\-—]+\s*$', '', text)    # trailing stray punctuation
+    text = text.strip()
+    return text or description
+
+
 def _attach_source_links(ledger, branch_id):
-    """Mutate each line, adding line['source'] = {'url', 'label'}.
+    """Mutate each line, adding line['source'] = {'url', 'label'}, and strip any
+    document number the Particulars text repeats from the Source column.
 
     Resolves the four auto-posted transaction types to their source document by
     number (one IN-query per type); everything else links to the Journal Entry view.
@@ -87,9 +105,12 @@ def _attach_source_links(ledger, branch_id):
                 _model, _numcol, endpoint, prefix = mapped
                 line['source'] = {'url': url_for(endpoint, id=doc_id),
                                   'label': f'{prefix} {ref}'}
+                doc_number = ref
             else:
+                doc_number = line.get('display_number') or line['entry_number']
                 line['source'] = {'url': url_for('journal_entries.view', id=line['entry_id']),
-                                  'label': line.get('display_number') or line['entry_number']}
+                                  'label': doc_number}
+            line['description'] = _strip_redundant_doc_number(line.get('description'), doc_number)
 
 
 def accountant_or_admin_required(f):
@@ -402,7 +423,7 @@ def general_ledger():
     ledger = generate_general_ledger(start_date, end_date, branch_id, account_id=account_id)
     _attach_source_links(ledger, branch_id)
 
-    accounts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
+    accounts = get_postable_accounts()
     return render_template('reports/general_ledger.html',
                            ledger=ledger,
                            start_date=start_date,
