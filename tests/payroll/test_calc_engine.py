@@ -68,34 +68,39 @@ def test_seed_idempotent(db_session):
 
 
 def test_sss_row_for_bracket_lookup(db_session):
-    """sss_row_for finds the SPECIFIC correct bracket for a salary, not just a truthy row."""
+    """sss_row_for finds the SPECIFIC correct bracket for a salary, not just a truthy row.
+
+    Bracket values below reflect the corrected 2026 seed table (500-peso
+    increments, floor comp_from=0/MSC 5,000, top open bracket comp_from=30,000/
+    MSC 35,000 -- fixed under BUG-PAYROLL-SSS-SEED-ER-RATE-INCONSISTENT)."""
     seed_statutory_2026()
     tbl = service.effective_sss(date(2026, 6, 30))
 
-    # Mid-range value: lands in the published ₱30k anchor bracket.
-    row_mid = service.sss_row_for(tbl, Decimal('30000'))
-    assert row_mid.comp_from == Decimal('29750')
+    # Mid-range value: lands inside a normal 500-peso bracket.
+    row_mid = service.sss_row_for(tbl, Decimal('20750'))
+    assert row_mid.comp_from == Decimal('20500')
 
     # Exactly at a bracket's lower boundary: must match that bracket, not the
     # one below it.
-    row_boundary = service.sss_row_for(tbl, Decimal('29750'))
-    assert row_boundary.comp_from == Decimal('29750')
+    row_boundary = service.sss_row_for(tbl, Decimal('20500'))
+    assert row_boundary.comp_from == Decimal('20500')
 
     # One cent below that boundary: must match the PRECEDING bracket (proves
     # the brackets are contiguous with no gap at the boundary).
-    row_just_below = service.sss_row_for(tbl, Decimal('29749.99'))
-    assert row_just_below.comp_from == Decimal('21000')
+    row_just_below = service.sss_row_for(tbl, Decimal('20499.99'))
+    assert row_just_below.comp_from == Decimal('20000')
 
     # Above all brackets: top open-ended bracket (comp_to is None).
     row_high = service.sss_row_for(tbl, Decimal('100000'))
-    assert row_high.comp_from == Decimal('40000')
+    assert row_high.comp_from == Decimal('30000')
     assert row_high.comp_to is None
 
-    # Below the lowest bracket's floor (lowest comp_from is 1000): must fall
-    # back to the LOWEST bracket, not the highest (regression for the
-    # rows[-1]-fallback bug).
-    row_below = service.sss_row_for(tbl, Decimal('500'))
-    assert row_below.comp_from == Decimal('1000')
+    # Below the lowest bracket's floor (lowest comp_from is 0, the official
+    # SSS floor -- MSC 5,000 covers comp 0-499.99): must fall back to the
+    # LOWEST bracket, not the highest (regression for the rows[-1]-fallback
+    # bug). Only a negative compensation is actually below this floor.
+    row_below = service.sss_row_for(tbl, Decimal('-100'))
+    assert row_below.comp_from == Decimal('0')
 
 
 def test_wht_bracket_for_salary(db_session):
@@ -139,12 +144,19 @@ def test_wht_bracket_for_salary(db_session):
 
 
 def test_statutory_anchors_30k(db_session):
-    """compute_statutory produces the correct SSS/PhilHealth/Pag-IBIG split at 30,000."""
+    """compute_statutory produces the correct SSS/PhilHealth/Pag-IBIG split at 30,000.
+
+    Under the corrected 2026 seed (BUG-PAYROLL-SSS-SEED-ER-RATE-INCONSISTENT),
+    a monthly compensation of 30,000 lands in the top open bracket (comp_from
+    30,000, MSC 35,000 -- the ceiling), NOT the old table's msc=30,000 anchor
+    row (that anchor's own values are unchanged and pinned separately by
+    test_statutory_tables.py::test_sss_30k_anchor_unchanged_by_corrected_seed,
+    keyed by MSC rather than by this compensation amount)."""
     seed_statutory_2026()
     s = service.compute_statutory(Decimal('30000'), date(2026, 6, 30))
     # Reference figures — confirm vs current circulars at build time:
-    assert s['sss_ee'] == Decimal('1500.00')
-    assert s['sss_er'] == Decimal('3000.00')
+    assert s['sss_ee'] == Decimal('1750.00')   # msc 35000: 1000 regular + 750 WISP (5%)
+    assert s['sss_er'] == Decimal('3500.00')   # msc 35000: 2000 regular + 1500 WISP (10%)
     assert s['sss_ec'] == Decimal('30.00')
     assert s['philhealth_ee'] == Decimal('750.00')   # 30000*0.05/2
     assert s['philhealth_er'] == Decimal('750.00')
@@ -229,13 +241,14 @@ def test_pagibig_mc_ceiling_boundary(db_session):
 def test_sss_bracket_transition_via_compute_statutory(db_session):
     """A one-centavo change across an SSS bracket boundary changes the computed contribution
     -- proves compute_statutory composes sss_row_for's boundary logic correctly, not just
-    that sss_row_for itself is correct in isolation."""
+    that sss_row_for itself is correct in isolation. Boundary is the corrected seed's
+    30,000 bracket edge (comp_from 30,000 = the top open bracket, MSC 35,000 ceiling)."""
     seed_statutory_2026()
-    just_below = service.compute_statutory(Decimal('29749.99'), date(2026, 6, 30))
-    assert just_below['sss_ee'] == Decimal('1250.00')  # preceding bracket (comp_from 21000, msc 25000)
+    just_below = service.compute_statutory(Decimal('29999.99'), date(2026, 6, 30))
+    assert just_below['sss_ee'] == Decimal('1725.00')  # preceding bracket (comp_from 29500, msc 34500)
 
-    at_boundary = service.compute_statutory(Decimal('29750'), date(2026, 6, 30))
-    assert at_boundary['sss_ee'] == Decimal('1500.00')  # critical 30k-anchor bracket
+    at_boundary = service.compute_statutory(Decimal('30000'), date(2026, 6, 30))
+    assert at_boundary['sss_ee'] == Decimal('1750.00')  # top open bracket (msc 35000, the ceiling)
 
 
 def test_effective_lookup_respects_effective_dates(db_session):
@@ -280,15 +293,18 @@ def test_wht_monthly_anchor(db_session):
         line['gross_pay'] - line['statutory']['sss_ee']
         - line['statutory']['philhealth_ee'] - line['statutory']['pagibig_ee']
         - line['wht'])
-    # Pin the exact figures.
+    # Pin the exact figures. sss_ee is 1750.00 under the corrected 2026 seed
+    # (BUG-PAYROLL-SSS-SEED-ER-RATE-INCONSISTENT): 40000 lands in the top
+    # open bracket, msc 35000 -- 1000 regular (5% up to msc 20000) + 750 WISP
+    # (5% of the 15000 excess above 20000).
     assert line['basic_gross'] == Decimal('40000.00')
     assert line['gross_pay'] == Decimal('40000.00')
-    assert line['statutory']['sss_ee'] == Decimal('2000.00')
+    assert line['statutory']['sss_ee'] == Decimal('1750.00')
     assert line['statutory']['philhealth_ee'] == Decimal('1000.00')
     assert line['statutory']['pagibig_ee'] == Decimal('200.00')
-    assert line['taxable_comp'] == Decimal('36800.00')   # 40000 - 3200 EE statutory
-    assert line['wht'] == Decimal('2568.40')              # bracket 3: 1875 + (36800-33333)*0.20
-    assert line['net_pay'] == Decimal('34231.60')
+    assert line['taxable_comp'] == Decimal('37050.00')   # 40000 - 2950 EE statutory
+    assert line['wht'] == Decimal('2618.40')              # bracket 3: 1875 + (37050-33333)*0.20
+    assert line['net_pay'] == Decimal('34431.60')
 
 
 def test_mwe_is_wht_exempt(db_session):
@@ -309,14 +325,16 @@ def test_mwe_is_wht_exempt(db_session):
     assert line['taxable_comp'] == Decimal('0.00')
     assert line['wht'] == Decimal('0.00')
     assert line['wht_bracket_id'] is None
-    # MWE exemption must NOT zero out statutory deductions.
-    assert line['statutory']['sss_ee'] == Decimal('712.50')
+    # MWE exemption must NOT zero out statutory deductions. sss_ee is 950.00
+    # under the corrected 2026 seed (BUG-PAYROLL-SSS-SEED-ER-RATE-INCONSISTENT):
+    # monthly_basis proxy 645*22=14190 lands in the msc=19000 bracket (5% = 950.00).
+    assert line['statutory']['sss_ee'] == Decimal('950.00')
     assert line['statutory']['philhealth_ee'] == Decimal('354.75')
     assert line['statutory']['pagibig_ee'] == Decimal('200.00')
     assert line['net_pay'] == service._q2(
         line['gross_pay'] - line['statutory']['sss_ee']
         - line['statutory']['philhealth_ee'] - line['statutory']['pagibig_ee'])
-    assert line['net_pay'] == Decimal('12922.75')
+    assert line['net_pay'] == Decimal('12685.25')
 
 
 def test_compute_line_returns_all_expected_keys(db_session):
@@ -360,14 +378,17 @@ def test_taxable_comp_clamped_at_zero_when_statutory_exceeds_basic(db_session):
         is_mwe=False, pay_frequency='daily', period_end=date(2026, 6, 30),
         semi_timing='second_cutoff'))
     assert line['basic_gross'] == Decimal('1200.00')          # 1200 * 1 day
-    assert line['statutory']['sss_ee'] == Decimal('1250.00')  # off the 26400 full-month proxy
+    # sss_ee is 1550.00 under the corrected 2026 seed
+    # (BUG-PAYROLL-SSS-SEED-ER-RATE-INCONSISTENT): the 26400 full-month proxy
+    # lands in the msc=31000 bracket (1000 regular + 550 WISP, 5% of 31000).
+    assert line['statutory']['sss_ee'] == Decimal('1550.00')  # off the 26400 full-month proxy
     assert line['taxable_comp'] == Decimal('0.00')
     assert line['wht'] == Decimal('0.00')
     assert line['wht_bracket_id'] is None
     # Regression anchor: net_pay can go negative when statutory EE deductions
     # on the full-month proxy exceed the actual basic pay. This is NOT clamped
     # (that's deferred to P2); the engine just reports the true figure.
-    assert line['net_pay'] == Decimal('-910.00')
+    assert line['net_pay'] == Decimal('-1210.00')
 
 
 def test_daily_basis_monthly_basis_proxy_ignores_actual_days(db_session):
@@ -461,9 +482,11 @@ def test_semi_monthly_second_cutoff_timing(db_session):
     period2 = service.compute_line({**common, 'semi_period': 2})
 
     # statutory dict is identical both periods (same monthly_basis input).
+    # Values reflect the corrected 2026 seed (BUG-PAYROLL-SSS-SEED-ER-RATE-INCONSISTENT):
+    # monthly_basis 40000 lands in the top open bracket (msc 35000, the ceiling).
     assert period1['statutory'] == period2['statutory'] == {
-        'sss_msc': Decimal('40000'), 'sss_ec': Decimal('40.00'),
-        'sss_ee': Decimal('2000.00'), 'sss_er': Decimal('4000.00'),
+        'sss_msc': Decimal('35000'), 'sss_ec': Decimal('30.00'),
+        'sss_ee': Decimal('1750.00'), 'sss_er': Decimal('3500.00'),
         'philhealth_ee': Decimal('1000.00'), 'philhealth_er': Decimal('1000.00'),
         'pagibig_ee': Decimal('200.00'), 'pagibig_er': Decimal('200.00'),
     }
@@ -474,9 +497,9 @@ def test_semi_monthly_second_cutoff_timing(db_session):
     assert period1['net_pay'] == Decimal('18395.90')
 
     # Cutoff 2: statutory applied -- taxable/net reduced by the EE deduction.
-    assert period2['taxable_comp'] == Decimal('16800.00')   # 20000 - 3200 EE
-    assert period2['wht'] == Decimal('964.10')
-    assert period2['net_pay'] == Decimal('15835.90')
+    assert period2['taxable_comp'] == Decimal('17050.00')   # 20000 - 2950 EE
+    assert period2['wht'] == Decimal('1014.10')
+    assert period2['net_pay'] == Decimal('16035.90')
 
 
 def test_semi_monthly_first_cutoff_timing(db_session):
@@ -493,7 +516,7 @@ def test_semi_monthly_first_cutoff_timing(db_session):
     period1 = service.compute_line({**common, 'semi_period': 1})
     period2 = service.compute_line({**common, 'semi_period': 2})
 
-    assert period1['taxable_comp'] == Decimal('16800.00')   # statutory applied here
+    assert period1['taxable_comp'] == Decimal('17050.00')   # statutory applied here
     assert period2['taxable_comp'] == Decimal('20000.00')   # statutory NOT applied here
 
 
@@ -514,5 +537,5 @@ def test_semi_monthly_split_50_50_timing_applies_both_cutoffs(db_session):
     period1 = service.compute_line({**common, 'semi_period': 1})
     period2 = service.compute_line({**common, 'semi_period': 2})
 
-    assert period1['taxable_comp'] == Decimal('16800.00')
-    assert period2['taxable_comp'] == Decimal('16800.00')
+    assert period1['taxable_comp'] == Decimal('17050.00')
+    assert period2['taxable_comp'] == Decimal('17050.00')

@@ -6,10 +6,12 @@ from datetime import date
 from decimal import Decimal
 import pytest
 from app import db
+from app.payroll import service
 from app.payroll.tables_models import (
     SSSContributionTable, SSSContributionRow, PhilHealthRate,
     PagIbigRate, CompensationWHTBracket, StatutoryTableChangeRequest,
 )
+from app.seeds.statutory_2026 import seed_statutory_2026
 
 
 def test_sss_table_has_rows_and_effectivity(db_session):
@@ -150,3 +152,134 @@ def test_effective_to_nullable_for_active_rates(db_session):
     assert sss.effective_to is None
     assert ph.effective_to is None
     assert pagibig.effective_to is None
+
+
+# ---------------------------------------------------------------------------
+# BUG-PAYROLL-SSS-SEED-ER-RATE-INCONSISTENT -- corrected SSS 2026 seed table.
+#
+# The seed had three bugs: (1) wrong bracket granularity (250-peso increments
+# from MSC 1,250 instead of the real 500-peso increments from the official
+# MSC 5,000 floor), (2) er_amount+er_wisp summed to only ~4% of MSC on every
+# row except the already-fixed 30k anchor (real ER rate is a flat 10%, with
+# WISP applying only to the MSC portion above 20,000), and (3) ec_amount was
+# proportional (~0.1% of MSC) instead of the real flat 10.00/30.00 fee. This
+# section pins the corrected table via a helper that finds a seeded row by
+# its exact MSC value (rows are ordered by comp_from, so an MSC lookup is a
+# simple linear scan -- distinct from sss_row_for, which looks up by monthly
+# compensation).
+# ---------------------------------------------------------------------------
+
+def _row_by_msc(tbl, msc):
+    """Find the seeded SSSContributionRow with the given exact MSC value."""
+    for r in tbl.rows:
+        if r.msc == msc:
+            return r
+    raise AssertionError(f"No seeded SSS row with msc={msc}")
+
+
+def test_sss_wisp_boundary_ee_wisp_matches_corrected_seed(db_session):
+    """Spot-check at the WISP boundary (MSC 20,500): ee_wisp must be 25.00 --
+    this is the RED/GREEN anchor assertion for the bug fix. Against the
+    ORIGINAL buggy seed this row didn't exist at all (old granularity was
+    250-peso increments off a 1,250 floor, not 500-peso off a 5,000 floor),
+    so this assertion fails closed (AssertionError from _row_by_msc) against
+    the pre-fix seed and passes only once the corrected table is in place."""
+    seed_statutory_2026()
+    tbl = service.effective_sss(date(2026, 6, 30))
+    row = _row_by_msc(tbl, Decimal('20500'))
+    assert row.ee_wisp == Decimal('25.00')
+
+
+def test_sss_floor_row_matches_corrected_seed(db_session):
+    """Floor row (MSC 5,000): flat amounts, zero WISP, EC 10.00."""
+    seed_statutory_2026()
+    tbl = service.effective_sss(date(2026, 6, 30))
+    row = _row_by_msc(tbl, Decimal('5000'))
+    assert row.ee_amount == Decimal('250.00')
+    assert row.er_amount == Decimal('500.00')
+    assert row.ee_wisp == Decimal('0.00')
+    assert row.er_wisp == Decimal('0.00')
+    assert row.ec_amount == Decimal('10.00')
+
+
+def test_sss_ec_threshold_matches_corrected_seed(db_session):
+    """EC is a flat fee, not a percentage: 10.00 below MSC 15,000, 30.00 at
+    and above it."""
+    seed_statutory_2026()
+    tbl = service.effective_sss(date(2026, 6, 30))
+    assert _row_by_msc(tbl, Decimal('14500')).ec_amount == Decimal('10.00')
+    assert _row_by_msc(tbl, Decimal('15000')).ec_amount == Decimal('30.00')
+
+
+def test_sss_wisp_threshold_matches_corrected_seed(db_session):
+    """WISP is zero at and below MSC 20,000, and kicks in above it."""
+    seed_statutory_2026()
+    tbl = service.effective_sss(date(2026, 6, 30))
+    at_20000 = _row_by_msc(tbl, Decimal('20000'))
+    assert at_20000.ee_wisp == Decimal('0.00')
+    assert at_20000.er_wisp == Decimal('0.00')
+
+    at_20500 = _row_by_msc(tbl, Decimal('20500'))
+    assert at_20500.ee_wisp == Decimal('25.00')
+    assert at_20500.er_wisp == Decimal('50.00')
+
+
+def test_sss_30k_anchor_unchanged_by_corrected_seed(db_session):
+    """The MSC 30,000 row (Task 3's already-approved anchor) must be
+    UNCHANGED by this fix: regular EE/ER frozen at the MSC-20,000 level, WISP
+    computed on the 10,000 excess above 20,000."""
+    seed_statutory_2026()
+    tbl = service.effective_sss(date(2026, 6, 30))
+    row = _row_by_msc(tbl, Decimal('30000'))
+    assert row.ee_amount == Decimal('1000.00')
+    assert row.er_amount == Decimal('2000.00')
+    assert row.ee_wisp == Decimal('500.00')
+    assert row.er_wisp == Decimal('1000.00')
+    assert row.ec_amount == Decimal('30.00')
+
+
+def test_sss_ceiling_open_bracket_matches_corrected_seed(db_session):
+    """A compensation of 40,000 (above every bracket) resolves via
+    sss_row_for's open-bracket fallback to the MSC-35,000 ceiling row."""
+    seed_statutory_2026()
+    tbl = service.effective_sss(date(2026, 6, 30))
+    row = service.sss_row_for(tbl, Decimal('40000'))
+    assert row.comp_to is None
+    assert row.msc == Decimal('35000')
+    assert row.ee_amount + row.ee_wisp == Decimal('1750.00')
+    assert row.er_amount + row.er_wisp == Decimal('3500.00')
+
+
+def test_sss_every_row_ee_is_5pct_er_is_10pct_of_msc(db_session):
+    """Comprehensive invariant: for every seeded row, ee_amount+ee_wisp is
+    exactly 5% of msc and er_amount+er_wisp is exactly 10% of msc -- this is
+    the exact property that was broken before the fix (er totaled ~4%)."""
+    seed_statutory_2026()
+    tbl = service.effective_sss(date(2026, 6, 30))
+    assert len(tbl.rows) == 61
+    for row in tbl.rows:
+        expected_ee = (row.msc * Decimal('0.05')).quantize(Decimal('0.01'))
+        expected_er = (row.msc * Decimal('0.10')).quantize(Decimal('0.01'))
+        assert row.ee_amount + row.ee_wisp == expected_ee, (
+            f"msc={row.msc}: ee total {row.ee_amount + row.ee_wisp} != 5% ({expected_ee})")
+        assert row.er_amount + row.er_wisp == expected_er, (
+            f"msc={row.msc}: er total {row.er_amount + row.er_wisp} != 10% ({expected_er})")
+
+
+def test_sss_brackets_contiguous_no_gap_or_overlap(db_session):
+    """Rows sorted by comp_from: each row's comp_from equals the previous
+    row's comp_to + 0.01 (except the first row); the last row's comp_to is
+    None (open-ended top bracket)."""
+    seed_statutory_2026()
+    tbl = service.effective_sss(date(2026, 6, 30))
+    rows = list(tbl.rows)  # already ordered by comp_from (relationship order_by)
+
+    for i in range(1, len(rows)):
+        prev_row, row = rows[i - 1], rows[i]
+        assert prev_row.comp_to is not None, (
+            f"row {i - 1} (comp_from={prev_row.comp_from}) has comp_to=None but is not the last row")
+        assert row.comp_from == prev_row.comp_to + Decimal('0.01'), (
+            f"gap/overlap between row {i - 1} (comp_to={prev_row.comp_to}) "
+            f"and row {i} (comp_from={row.comp_from})")
+
+    assert rows[-1].comp_to is None
