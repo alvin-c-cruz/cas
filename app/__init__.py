@@ -275,7 +275,7 @@ def create_app(config_name=None):
     from app.purchase_requests.views import purchase_requests_bp
     from app.sales_memos.views import sales_memos_bp
     from app.opening_balances.views import opening_balances_bp
-    from app.payroll import payroll_bp
+    from app.payroll.views import payroll_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')

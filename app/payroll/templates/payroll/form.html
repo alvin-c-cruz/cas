@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_field %}
+
+{% block title %}{{ 'Edit Payroll Run' if run else 'New Payroll Run' }}{% endblock %}
+{% block page_title %}{{ 'Edit Payroll Run' if run else 'New Payroll Run' }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">
+            Run Header
+            <span class="badge badge-{{ run.status if run else 'draft' }}">
+                {{ (run.status if run else 'draft') | upper }}
+            </span>
+        </div>
+        <div class="card-sub">
+            Run Number: <strong>{{ suggested_run_number }}</strong>
+            {% if not run %}<span class="form-hint">(assigned on save)</span>{% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+
+            <div class="form-row-2">
+                {{ render_field(form.run_type, required=True) }}
+                {{ render_field(form.pay_frequency, required=True) }}
+            </div>
+            <div class="form-row-2">
+                {{ render_field(form.semi_period, required=True) }}
+            </div>
+            <div class="form-row-2">
+                {{ render_field(form.period_start, required=True) }}
+                {{ render_field(form.period_end, required=True) }}
+            </div>
+            <div class="form-row-2">
+                {{ render_field(form.pay_date, required=True) }}
+            </div>
+
+            <div class="card" style="margin-top:20px;">
+                <div class="card-header">
+                    <div class="card-title">Employee Lines</div>
+                    <div class="card-sub">{{ employees|length }} active employee(s) in this branch</div>
+                </div>
+                <div class="card-body card-body--flush">
+                {% if not employees %}
+                    <div class="empty-state" style="padding:24px;">
+                        No active employees found for this branch. Add employees before
+                        creating a payroll run.
+                    </div>
+                {% else %}
+                    <div class="table-scroll" style="overflow-x:auto;">
+                    <table class="data-table payroll-worksheet-table">
+                        <thead>
+                            <tr>
+                                <th class="col-name">Employee</th>
+                                <th>Basis</th>
+                                <th>Days / Hrs</th>
+                                <th>Basic</th>
+                                <th>OT Pay</th>
+                                <th>Holiday Pay</th>
+                                <th>Taxable Allow.</th>
+                                <th>Non-tax Allow.</th>
+                                <th>SSS EE</th>
+                                <th>PhilHealth EE</th>
+                                <th>Pag-IBIG EE</th>
+                                <th>WHT</th>
+                                <th>Loans</th>
+                                <th>Gross</th>
+                                <th>Net Pay</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for emp in employees %}
+                            {% set line = lines_by_employee.get(emp.id) %}
+                            <tr>
+                                <td class="col-name">
+                                    {{ emp.full_name }}
+                                    {% if emp.is_minimum_wage %}<span class="badge badge-active">MWE</span>{% endif %}
+                                </td>
+                                <td>{{ (emp.pay_basis or 'monthly') | capitalize }}</td>
+                                <td>
+                                    {% if emp.pay_basis == 'daily' %}
+                                        <input type="text" name="line_{{ emp.id }}_days"
+                                               value="{{ line.days if line else '0' }}" inputmode="decimal">
+                                    {% else %}
+                                        <span class="computed">&mdash; (fixed)</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if emp.pay_basis == 'daily' %}
+                                        <span class="computed">{{ '%.2f'|format(line.basic_gross) if line else '0.00' }}</span>
+                                    {% else %}
+                                        <input type="text" value="{{ '%.2f'|format(emp.basic_rate or 0) }}" disabled>
+                                    {% endif %}
+                                </td>
+                                <td><input type="text" name="line_{{ emp.id }}_ot_pay"
+                                           value="{{ line.ot_pay if line else '0' }}" inputmode="decimal"></td>
+                                <td><input type="text" name="line_{{ emp.id }}_holiday_pay"
+                                           value="{{ line.holiday_pay if line else '0' }}" inputmode="decimal"></td>
+                                <td><input type="text" name="line_{{ emp.id }}_taxable_allowance"
+                                           value="{{ line.taxable_allowance if line else '0' }}" inputmode="decimal"></td>
+                                <td><input type="text" name="line_{{ emp.id }}_nontax_allowance"
+                                           value="{{ line.nontax_allowance if line else '0' }}" inputmode="decimal"></td>
+                                <td class="computed">{{ '%.2f'|format(line.sss_ee) if line else '0.00' }}</td>
+                                <td class="computed">{{ '%.2f'|format(line.philhealth_ee) if line else '0.00' }}</td>
+                                <td class="computed">{{ '%.2f'|format(line.pagibig_ee) if line else '0.00' }}</td>
+                                <td class="computed">{{ '%.2f'|format(line.wht) if line else '0.00' }}</td>
+                                <td class="computed">{{ '%.2f'|format((line.sss_loan + line.pagibig_loan)) if line else '0.00' }}</td>
+                                <td class="computed">{{ '%.2f'|format(line.gross_pay) if line else '0.00' }}</td>
+                                <td class="computed net-pay">{{ '%.2f'|format(line.net_pay) if line else '0.00' }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td class="col-name">Totals ({{ employees|length }} employee(s))</td>
+                                <td colspan="6"></td>
+                                <td>{{ '%.2f'|format(run.total_sss_ee) if run else '0.00' }}</td>
+                                <td>{{ '%.2f'|format(run.total_philhealth_ee) if run else '0.00' }}</td>
+                                <td>{{ '%.2f'|format(run.total_pagibig_ee) if run else '0.00' }}</td>
+                                <td>{{ '%.2f'|format(run.total_wht) if run else '0.00' }}</td>
+                                <td>{{ '%.2f'|format((run.total_sss_loan + run.total_pagibig_loan)) if run else '0.00' }}</td>
+                                <td>{{ '%.2f'|format(run.total_gross) if run else '0.00' }}</td>
+                                <td class="net-pay">{{ '%.2f'|format(run.total_net_pay) if run else '0.00' }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    </div>
+                {% endif %}
+                </div>
+            </div>
+
+            <div class="form-actions" style="margin-top:20px;">
+                <button type="submit" class="btn btn-primary">{{ 'Update' if run else 'Save' }}</button>
+                <a href="{{ url_for('payroll.list_runs') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.payroll-worksheet-table { font-variant-numeric: tabular-nums; }
+.payroll-worksheet-table th, .payroll-worksheet-table td { text-align: right; white-space: nowrap; padding: 8px 10px; }
+.payroll-worksheet-table th.col-name, .payroll-worksheet-table td.col-name { text-align: left; }
+.payroll-worksheet-table input[type="text"] {
+    width: 90px; text-align: right; padding: 4px 6px; border: 1px solid var(--border);
+    border-radius: 4px; font-size: 12.5px; background: var(--card); color: var(--text);
+}
+.payroll-worksheet-table input[disabled] { background: var(--bg); color: var(--text-3); }
+.payroll-worksheet-table .computed { color: var(--text-2); }
+.payroll-worksheet-table .net-pay { font-weight: 700; color: var(--text); }
+</style>
+{% endblock %}

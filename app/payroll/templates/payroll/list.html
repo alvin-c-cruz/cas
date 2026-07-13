@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Payroll Runs{% endblock %}
+{% block page_title %}Payroll Runs{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Payroll Runs</div>
+        <a href="{{ url_for('payroll.new_run') }}" class="btn btn-primary btn-sm">+ Enter Payroll Run</a>
+    </div>
+    <div class="card-body card-body--flush">
+        {% if not runs %}
+            <div class="empty-state" style="padding:24px;">No payroll runs found.</div>
+        {% else %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Run Number</th>
+                    <th>Run Type</th>
+                    <th>Pay Frequency</th>
+                    <th>Period</th>
+                    <th>Pay Date</th>
+                    <th>Status</th>
+                    <th style="text-align:right;">Net Pay</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for run in runs %}
+                <tr>
+                    <td>{{ run.run_number }}</td>
+                    <td>{{ run.run_type | replace('_', ' ') | capitalize }}</td>
+                    <td>{{ run.pay_frequency | replace('_', ' ') | capitalize }}</td>
+                    <td>{{ run.period_start.strftime('%b %Y') }}</td>
+                    <td>{{ run.pay_date.strftime('%Y-%m-%d') }}</td>
+                    <td><span class="badge badge-{{ run.status }}">{{ run.status | upper }}</span></td>
+                    <td style="text-align:right;">{{ '%.2f'|format(run.total_net_pay) }}</td>
+                    <td>
+                        {% if run.status == 'draft' %}
+                        <a href="{{ url_for('payroll.edit_run', id=run.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

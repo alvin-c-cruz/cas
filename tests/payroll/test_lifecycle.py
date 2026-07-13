@@ -13,9 +13,11 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app import db
+from app.audit.models import AuditLog
 from app.employees.models import Employee
 from app.payroll.models import PayrollRun, PayrollRunLine
 from app.payroll import service
+from app.periods.models import AccountingPeriod
 from app.seeds.statutory_2026 import seed_statutory_2026
 
 pytestmark = [pytest.mark.integration]
@@ -233,3 +235,144 @@ class TestCalculateTotals:
         db_session.commit()
 
         assert db.session.get(PayrollRunLine, line_id) is None
+
+
+class TestPayrollWorksheet:
+    """Task 8: the worksheet slice -- payroll.new_run / payroll.edit_run.
+
+    Covers the brief's Step 2 requirements: a draft POST with one monthly
+    employee persists a PayrollRun + 1 computed line matching
+    service.compute_line; staff can create/edit; posting into a closed
+    AccountingPeriod is blocked.
+    """
+
+    def test_staff_creates_draft_run_with_one_monthly_employee(
+            self, client, staff_user, main_branch, login_user, db_session):
+        seed_statutory_2026()
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+
+        emp = Employee(
+            employee_no='EMP-100', first_name='Ana', last_name='Reyes',
+            branch_id=main_branch.id, pay_basis='monthly', basic_rate=Decimal('30000.00'),
+            pay_frequency='monthly', is_minimum_wage=False, tax_status_code='S',
+        )
+        db_session.add(emp); db_session.commit()
+
+        login_user(client, 'staff', 'staff123')
+        resp = client.post('/payroll/runs/new', data={
+            'run_type': 'regular', 'pay_frequency': 'monthly', 'semi_period': '0',
+            'period_start': '2026-06-01', 'period_end': '2026-06-30', 'pay_date': '2026-07-05',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        run = PayrollRun.query.filter_by(branch_id=main_branch.id).first()
+        assert run is not None
+        # run_number reflects the ENTRY date (today), like CD/AP/JV numbering --
+        # not the payroll PERIOD being processed (2026-06 in this test).
+        from app.utils import ph_now
+        today = ph_now()
+        assert run.run_number.startswith(f'PR-{today.year}-{today.month:02d}-')
+        assert run.status == 'draft'
+        assert len(run.lines) == 1
+
+        line = run.lines[0]
+        assert line.employee_id == emp.id
+
+        expected = service.compute_line(dict(
+            pay_basis='monthly', monthly_rate=Decimal('30000.00'), daily_rate=Decimal('30000.00'),
+            days=0, hours=0, ot_pay=Decimal('0'), holiday_pay=Decimal('0'),
+            taxable_allowance=Decimal('0'), nontax_allowance=Decimal('0'), is_mwe=False,
+            pay_frequency='monthly', period_end=date(2026, 6, 30), semi_timing=None, semi_period=0,
+        ))
+        assert line.basic_gross == expected['basic_gross']
+        assert line.gross_pay == expected['gross_pay']
+        assert line.wht == expected['wht']
+        assert line.net_pay == expected['net_pay']
+
+        assert run.total_net_pay == line.net_pay
+        assert run.total_net_pay > Decimal('0.00')
+
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='create', record_id=run.id).count() == 1
+
+    def test_closed_period_blocks_new_run(
+            self, client, staff_user, main_branch, login_user, db_session):
+        seed_statutory_2026()
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+
+        emp = Employee(
+            employee_no='EMP-101', first_name='Ben', last_name='Cruz',
+            branch_id=main_branch.id, pay_basis='monthly', basic_rate=Decimal('20000.00'),
+            pay_frequency='monthly', tax_status_code='S',
+        )
+        db_session.add(emp); db_session.commit()
+
+        period = AccountingPeriod.get_or_create_period(2026, 6)
+        period.close_period(staff_user)
+
+        login_user(client, 'staff', 'staff123')
+        resp = client.post('/payroll/runs/new', data={
+            'run_type': 'regular', 'pay_frequency': 'monthly', 'semi_period': '0',
+            'period_start': '2026-06-01', 'period_end': '2026-06-30', 'pay_date': '2026-07-05',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'has been closed' in resp.data
+        assert PayrollRun.query.filter_by(branch_id=main_branch.id).count() == 0
+
+    def test_staff_edits_draft_run_and_totals_recompute(
+            self, client, staff_user, main_branch, login_user, db_session):
+        seed_statutory_2026()
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+
+        emp = Employee(
+            employee_no='EMP-102', first_name='Cora', last_name='Diaz',
+            branch_id=main_branch.id, pay_basis='daily', basic_rate=Decimal('750.00'),
+            pay_frequency='monthly', tax_status_code='S',
+        )
+        db_session.add(emp); db_session.commit()
+
+        login_user(client, 'staff', 'staff123')
+        client.post('/payroll/runs/new', data={
+            'run_type': 'regular', 'pay_frequency': 'monthly', 'semi_period': '0',
+            'period_start': '2026-06-01', 'period_end': '2026-06-30', 'pay_date': '2026-07-05',
+            f'line_{emp.id}_days': '10',
+        }, follow_redirects=True)
+
+        run = PayrollRun.query.filter_by(branch_id=main_branch.id).first()
+        assert run is not None
+        first_gross = run.lines[0].gross_pay
+        assert run.lines[0].days == Decimal('10.00')
+
+        resp = client.post(f'/payroll/runs/{run.id}/edit', data={
+            'row_version': str(run.row_version),
+            'run_type': 'regular', 'pay_frequency': 'monthly', 'semi_period': '0',
+            'period_start': '2026-06-01', 'period_end': '2026-06-30', 'pay_date': '2026-07-05',
+            f'line_{emp.id}_days': '22',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert len(run2.lines) == 1
+        assert run2.lines[0].days == Decimal('22.00')
+        assert run2.lines[0].gross_pay > first_gross
+        assert run2.total_net_pay == run2.lines[0].net_pay
+
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='update', record_id=run.id).count() == 1
+
+    def test_viewer_cannot_create_draft_run(
+            self, client, viewer_user, main_branch, login_user, db_session):
+        viewer_user.branches.append(main_branch)
+        db_session.commit()
+
+        login_user(client, 'viewer', 'viewer123')
+        resp = client.post('/payroll/runs/new', data={
+            'run_type': 'regular', 'pay_frequency': 'monthly', 'semi_period': '0',
+            'period_start': '2026-06-01', 'period_end': '2026-06-30', 'pay_date': '2026-07-05',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert PayrollRun.query.count() == 0
