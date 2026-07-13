@@ -404,10 +404,15 @@ def _build_crv_je_preview(crv):
     accts = _get_gl_accounts()
     entries = []
 
-    # Credit: AR per applied invoice (unchanged)
+    # Credit: AR per applied invoice/memo -- invoice settlements inherit the
+    # settled SalesInvoice's own account; memo settlements use the global default.
     for ar_line in crv.ar_lines:
-        if accts['ar']:
-            entries.append({'code': accts['ar'].code, 'name': accts['ar'].name,
+        if ar_line.invoice_id:
+            line_ar_account = ar_line.sales_invoice.ar_trade_account or accts['ar']
+        else:
+            line_ar_account = accts['ar']
+        if line_ar_account:
+            entries.append({'code': line_ar_account.code, 'name': line_ar_account.name,
                             'debit': Decimal('0.00'),
                             'credit': Decimal(str(ar_line.amount_applied))})
 

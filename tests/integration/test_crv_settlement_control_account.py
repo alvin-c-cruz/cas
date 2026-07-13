@@ -111,3 +111,33 @@ def test_crv_settling_sales_memo_uses_global_default(db_session, accountant_user
 
     matching = [l for l in je.lines if l.account_id == global_ar.id]
     assert len(matching) == 1 and matching[0].credit_amount == Decimal('200.00')
+
+
+def test_draft_crv_preview_shows_invoices_own_account(db_session, accountant_user, main_branch):
+    global_ar = _account('CRVS06', 'Global AR Trade 3', 'Asset', 'Debit')
+    invoice_acct = _account('CRVS07', 'Invoice Own AR Trade 2', 'Asset', 'Debit')
+    cash_acct = _account('CRVS08', 'Cash on Hand 3', 'Asset', 'Debit')
+    assign_control_accounts(db_session, ar=global_ar.code)
+
+    customer = Customer(code='CRVSC3', name='Preview Test Customer', is_active=True)
+    db.session.add(customer); db.session.commit()
+    invoice = _posted_invoice(main_branch, customer, 'CRVS-SI-B', Decimal('300.00'), invoice_acct.id)
+
+    crv = CashReceiptVoucher(
+        branch_id=main_branch.id, crv_number='CRVS-0003', crv_date=date.today(),
+        customer_id=customer.id, customer_name=customer.name, payment_method='cash',
+        cash_account_id=cash_acct.id, notes='Preview test', status='draft',
+        total_ar_applied=Decimal('300.00'), total_amount=Decimal('300.00'),
+    )
+    db.session.add(crv); db.session.flush()
+    db.session.add(CRVArLine(crv_id=crv.id, line_number=1, invoice_id=invoice.id,
+                             invoice_number=invoice.invoice_number,
+                             original_balance=invoice.balance, amount_applied=Decimal('300.00')))
+    db.session.commit()
+    db.session.refresh(crv)
+
+    from app.cash_receipts.views import _build_crv_je_preview
+    preview = _build_crv_je_preview(crv)
+    codes = {row['code'] for row in preview}
+    assert invoice_acct.code in codes
+    assert global_ar.code not in codes
