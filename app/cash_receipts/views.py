@@ -228,10 +228,17 @@ def _post_crv_je(crv, user_id):
     line_num = 1
     all_lines = []
 
-    # Credit: AR per applied invoice
+    # Credit: AR per applied invoice/memo. An invoice settlement inherits the
+    # SPECIFIC SalesInvoice's own AR-Trade account (set when that invoice
+    # posted); a Sales Memo (debit-note) settlement has no per-transaction
+    # field in this codebase, so it always uses the global default.
     for ar_line in crv.ar_lines:
+        if ar_line.invoice_id:
+            line_ar_account = ar_line.sales_invoice.ar_trade_account or ar_account
+        else:
+            line_ar_account = ar_account
         jl = JournalEntryLine(
-            entry_id=je.id, line_number=line_num, account_id=ar_account.id,
+            entry_id=je.id, line_number=line_num, account_id=line_ar_account.id,
             description=f'AR Collection: {ar_line.invoice_number}',
             debit_amount=Decimal('0.00'),
             credit_amount=Decimal(str(ar_line.amount_applied)))
