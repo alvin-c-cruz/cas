@@ -10,6 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from app.payroll.tables_models import (
     SSSContributionTable, SSSContributionRow, PhilHealthRate,
     PagIbigRate, CompensationWHTBracket)
+from app.posting.control_accounts import get_control_account, ControlAccountError   # noqa: F401 (re-exported)
 
 
 def _q2(x):
@@ -283,3 +284,144 @@ def _semi_applies_statutory(freq, timing, inputs):
     cutoff = inputs.get('semi_period')  # 1 or 2
     return (timing == 'first_cutoff' and cutoff == 1) or \
            (timing == 'second_cutoff' and cutoff == 2)
+
+
+def post_payroll_je(run):
+    """Build the balanced payroll accrual JE from a PayrollRun's header
+    total_* buckets.
+
+    Every non-plug leg is written straight from a header bucket, resolving
+    its GL account via get_control_account(key) -- never a hardcoded code
+    (fail-closed: raises ControlAccountError, a ValueError subclass, if a key
+    is unassigned or its assigned code has no matching account). WISP is
+    already folded into total_sss_ee/total_sss_er by compute_statutory, so no
+    separate WISP leg exists.
+
+    The 20501 (Accrued Salaries and Wages) credit leg is the GUARDED plug:
+    computed as SUM(Dr) - SUM(Cr) of every other leg and asserted equal to
+    run.total_net_pay BEFORE being written -- it must never silently absorb a
+    per-bucket error (posted-je-leg-vs-source-header-invariant). Raises
+    ValueError if the plug doesn't tie to net pay, or if the resulting entry
+    isn't balanced.
+
+    Args:
+        run: PayrollRun with calculate_totals() already applied (its
+            total_* columns populated).
+
+    Returns:
+        JournalEntry (flushed but not committed -- caller commits).
+
+    Raises:
+        ControlAccountError: a required payroll_* control account key is
+            unassigned or misassigned.
+        ValueError: the computed plug doesn't equal run.total_net_pay, or the
+            entry doesn't balance.
+    """
+    from app import db
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.journal_entries.utils import generate_entry_number
+
+    je_status = 'posted' if run.status == 'posted' else 'draft'
+    je = JournalEntry(
+        entry_number=generate_entry_number(run.branch_id),
+        entry_date=run.pay_date,
+        description=f'Payroll Accrual — {run.run_number}',
+        reference=run.run_number,
+        entry_type='payroll_accrual',
+        branch_id=run.branch_id,
+        created_by_id=run.created_by_id,
+        status=je_status,
+        posted_by_id=run.posted_by_id if je_status == 'posted' else None,
+        posted_at=run.posted_at if je_status == 'posted' else None,
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00'),
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    line_num = 1
+    all_lines = []
+
+    def _add_line(key, description, amount, side):
+        nonlocal line_num
+        amount = _q2(amount)
+        if amount == Decimal('0.00'):
+            return   # nothing to post for this bucket (e.g. loans, P3 not yet wired)
+        account = get_control_account(key)
+        dr = amount if side == 'debit' else Decimal('0.00')
+        cr = amount if side == 'credit' else Decimal('0.00')
+        je_line = JournalEntryLine(
+            entry_id=je.id, line_number=line_num, account_id=account.id,
+            description=description, debit_amount=dr, credit_amount=cr,
+        )
+        db.session.add(je_line)
+        all_lines.append(je_line)
+        line_num += 1
+
+    # Debit legs: employer-side expense
+    _add_line('payroll_salaries_expense',
+              f'Salaries Expense — {run.run_number}',
+              run.total_gross, 'debit')
+    _add_line('payroll_sss_er_expense',
+              f'SSS Employer Share — {run.run_number}',
+              run.total_sss_er + run.total_sss_ec, 'debit')
+    _add_line('payroll_philhealth_er_expense',
+              f'PhilHealth Employer Share — {run.run_number}',
+              run.total_philhealth_er, 'debit')
+    _add_line('payroll_pagibig_er_expense',
+              f'Pag-IBIG Employer Share — {run.run_number}',
+              run.total_pagibig_er, 'debit')
+
+    # Credit legs: payables (EE + ER combined where both share one control account)
+    _add_line('payroll_wht_payable',
+              f'Withholding Tax on Compensation Payable — {run.run_number}',
+              run.total_wht, 'credit')
+    _add_line('payroll_sss_payable',
+              f'SSS Contributions Payable — {run.run_number}',
+              run.total_sss_ee + run.total_sss_er + run.total_sss_ec, 'credit')
+    _add_line('payroll_philhealth_payable',
+              f'PhilHealth Contributions Payable — {run.run_number}',
+              run.total_philhealth_ee + run.total_philhealth_er, 'credit')
+    _add_line('payroll_pagibig_payable',
+              f'Pag-IBIG Contributions Payable — {run.run_number}',
+              run.total_pagibig_ee + run.total_pagibig_er, 'credit')
+    _add_line('payroll_sss_loan_payable',
+              f'SSS Loan Payable — {run.run_number}',
+              run.total_sss_loan, 'credit')
+    _add_line('payroll_pagibig_loan_payable',
+              f'Pag-IBIG Loan Payable — {run.run_number}',
+              run.total_pagibig_loan, 'credit')
+
+    # Guarded plug: net pay MUST equal Dr - Cr of every other leg above --
+    # never absorbed silently. Assert BEFORE writing the 20501 line.
+    sum_dr = sum((l.debit_amount for l in all_lines), Decimal('0.00'))
+    sum_cr = sum((l.credit_amount for l in all_lines), Decimal('0.00'))
+    plug = _q2(sum_dr - sum_cr)
+    expected_net_pay = _q2(run.total_net_pay)
+    if plug != expected_net_pay:
+        raise ValueError(
+            f"Payroll accrual plug ({plug}) does not equal run.total_net_pay "
+            f"({expected_net_pay}) for run {run.run_number} -- the Accrued "
+            f"Salaries leg was NOT posted. This means the header buckets "
+            f"don't reconcile to net pay; check the run's totals before "
+            f"posting."
+        )
+
+    accrued_account = get_control_account('payroll_accrued_salaries')
+    plug_line = JournalEntryLine(
+        entry_id=je.id, line_number=line_num, account_id=accrued_account.id,
+        description=f'Accrued Salaries and Wages — {run.run_number}',
+        debit_amount=Decimal('0.00'), credit_amount=plug,
+    )
+    db.session.add(plug_line)
+    all_lines.append(plug_line)
+
+    db.session.flush()
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(
+            f"Payroll JE is not balanced (debit={je.total_debit}, "
+            f"credit={je.total_credit}) for run {run.run_number}."
+        )
+    return je
