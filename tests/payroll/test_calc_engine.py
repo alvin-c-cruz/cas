@@ -466,11 +466,16 @@ def test_wht_bracket_contiguous_no_gap_via_compute_line(db_session):
 
 
 def test_semi_monthly_second_cutoff_timing(db_session):
-    """Default 'second_cutoff' timing: statutory EE deductions apply ONLY on the
+    """Default 'second_cutoff' timing: statutory contributions apply ONLY on the
     2nd semi-monthly cutoff; WHT still computes every cutoff on that cutoff's
-    own taxable. The 'statutory' dict itself is always the full computed
-    contribution regardless of period (compute_statutory doesn't know about
-    timing) -- only the amount folded into taxable_comp/net_pay differs."""
+    own taxable. FIX (bug: 1st-cutoff runs could not post -- the stored
+    'statutory' dict didn't follow the timing gate, so the JE's non-plug legs
+    disagreed with net_pay): the 'statutory' dict itself is now SCALED by the
+    same timing decision that gates the EE amount folded into taxable_comp/
+    net_pay -- scale=0 on the cutoff where statutory doesn't apply (every
+    monetary key zeroed), scale=1 on the cutoff where it does (full amount,
+    unchanged). 'sss_msc' is never scaled (informational bracket reference,
+    not a monetary contribution)."""
     seed_statutory_2026()
     common = dict(
         pay_basis='monthly', monthly_rate=Decimal('40000'), days=0, hours=0,
@@ -482,10 +487,18 @@ def test_semi_monthly_second_cutoff_timing(db_session):
     period1 = service.compute_line({**common, 'semi_period': 1})
     period2 = service.compute_line({**common, 'semi_period': 2})
 
-    # statutory dict is identical both periods (same monthly_basis input).
+    # Cutoff 1: statutory does NOT apply -- every monetary key in the stored
+    # dict is zeroed (scale=0); sss_msc stays the full-month reference value.
+    assert period1['statutory'] == {
+        'sss_msc': Decimal('35000'), 'sss_ec': Decimal('0.00'),
+        'sss_ee': Decimal('0.00'), 'sss_er': Decimal('0.00'),
+        'philhealth_ee': Decimal('0.00'), 'philhealth_er': Decimal('0.00'),
+        'pagibig_ee': Decimal('0.00'), 'pagibig_er': Decimal('0.00'),
+    }
+    # Cutoff 2: statutory DOES apply -- full computed contribution (scale=1).
     # Values reflect the corrected 2026 seed (BUG-PAYROLL-SSS-SEED-ER-RATE-INCONSISTENT):
     # monthly_basis 40000 lands in the top open bracket (msc 35000, the ceiling).
-    assert period1['statutory'] == period2['statutory'] == {
+    assert period2['statutory'] == {
         'sss_msc': Decimal('35000'), 'sss_ec': Decimal('30.00'),
         'sss_ee': Decimal('1750.00'), 'sss_er': Decimal('3500.00'),
         'philhealth_ee': Decimal('1000.00'), 'philhealth_er': Decimal('1000.00'),
@@ -505,7 +518,11 @@ def test_semi_monthly_second_cutoff_timing(db_session):
 
 def test_semi_monthly_first_cutoff_timing(db_session):
     """'first_cutoff' timing: statutory applies ONLY on the 1st cutoff -- the
-    mirror image of second_cutoff."""
+    mirror image of second_cutoff. FIX: the stored 'statutory' dict now
+    follows the same scale (full on cutoff 1, zeroed on cutoff 2) -- cutoff 2
+    was the broken one under the old bug (apply_stat=False there, but the
+    stored dict stayed full-month, so a 1st-cutoff-timing run's 2nd cutoff
+    could not post)."""
     seed_statutory_2026()
     common = dict(
         pay_basis='monthly', monthly_rate=Decimal('40000'), days=0, hours=0,
@@ -520,13 +537,28 @@ def test_semi_monthly_first_cutoff_timing(db_session):
     assert period1['taxable_comp'] == Decimal('17050.00')   # statutory applied here
     assert period2['taxable_comp'] == Decimal('20000.00')   # statutory NOT applied here
 
+    # Stored dict follows the same gate as taxable_comp.
+    assert period1['statutory']['sss_ee'] == Decimal('1750.00')
+    assert period1['statutory']['philhealth_ee'] == Decimal('1000.00')
+    assert period1['statutory']['pagibig_ee'] == Decimal('200.00')
+    assert period2['statutory']['sss_ee'] == Decimal('0.00')
+    assert period2['statutory']['philhealth_ee'] == Decimal('0.00')
+    assert period2['statutory']['pagibig_ee'] == Decimal('0.00')
+    # sss_msc is never scaled -- stays the full-month reference on both cutoffs.
+    assert period1['statutory']['sss_msc'] == period2['statutory']['sss_msc'] == Decimal('35000')
+
 
 def test_semi_monthly_split_50_50_timing_applies_both_cutoffs(db_session):
-    """'split_50_50' timing: statutory applies on BOTH cutoffs. Per the design
-    note in _semi_applies_statutory, this flag only decides WHETHER statutory
-    applies -- it does not itself halve the amount, so a full EE deduction is
-    folded in on each cutoff unless the caller passes already-halved inputs
-    (e.g. a halved monthly_rate) for a true 50/50 split."""
+    """'split_50_50' timing: statutory applies on BOTH cutoffs, each getting
+    HALF of the full-month contribution (scale=0.5) -- so the two cutoffs SUM
+    to the correct full-month total instead of double-booking it. FIX (bug:
+    the old code applied the full EE amount on BOTH cutoffs, double-deducting
+    the employee and double-booking the ER/EC expense and payables across the
+    month): each monetary key in the 'statutory' dict is now
+    _q2(full_value * Decimal('0.5')) on every cutoff -- the computed MONTHLY
+    result is split in half, not the input basis (SSS/Pag-IBIG bracket lookups
+    are non-linear, so halving the input could land a different bracket than
+    halving the output)."""
     seed_statutory_2026()
     common = dict(
         pay_basis='monthly', monthly_rate=Decimal('40000'), days=0, hours=0,
@@ -538,5 +570,25 @@ def test_semi_monthly_split_50_50_timing_applies_both_cutoffs(db_session):
     period1 = service.compute_line({**common, 'semi_period': 1})
     period2 = service.compute_line({**common, 'semi_period': 2})
 
-    assert period1['taxable_comp'] == Decimal('17050.00')
-    assert period2['taxable_comp'] == Decimal('17050.00')
+    # Each cutoff's stored statutory dict is exactly half the full-month value.
+    expected_half = {
+        'sss_msc': Decimal('35000'),   # never scaled -- full-month reference
+        'sss_ec': Decimal('15.00'), 'sss_ee': Decimal('875.00'), 'sss_er': Decimal('1750.00'),
+        'philhealth_ee': Decimal('500.00'), 'philhealth_er': Decimal('500.00'),
+        'pagibig_ee': Decimal('100.00'), 'pagibig_er': Decimal('100.00'),
+    }
+    assert period1['statutory'] == expected_half
+    assert period2['statutory'] == expected_half
+
+    # Corrected: each cutoff's EE deduction is HALF the full month's, not the
+    # full amount (old bug value was 17050.00 on both -- a full deduction
+    # twice). 20000 - (875 + 500 + 100) = 18525.00 on each cutoff.
+    assert period1['taxable_comp'] == Decimal('18525.00')
+    assert period2['taxable_comp'] == Decimal('18525.00')
+
+    # The two cutoffs' stored EE/ER/EC amounts SUM to the correct full-month
+    # total -- the actual proof this is no longer double-booked.
+    for key in ('sss_ee', 'sss_er', 'sss_ec', 'philhealth_ee', 'philhealth_er',
+                'pagibig_ee', 'pagibig_er'):
+        summed = period1['statutory'][key] + period2['statutory'][key]
+        assert summed == expected_half[key] * 2

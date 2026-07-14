@@ -222,10 +222,18 @@ def compute_line(inputs):
         dict with Decimal values (all _q2-quantized):
         {basic_gross, gross_pay, statutory, taxable_comp, wht, wht_bracket_id,
          net_pay, sss_msc, sss_loan, pagibig_loan}
-        'statutory' is the full dict returned by compute_statutory -- it is
-        ALWAYS fully computed regardless of semi-monthly timing (compute_statutory
-        has no notion of timing); only the EE amount folded into taxable_comp/
-        net_pay is conditionally suppressed via _semi_applies_statutory.
+        'statutory' is compute_statutory's full-month dict, SCALED by
+        _semi_applies_statutory's per-cutoff fraction (0, 1, or 0.5) before
+        being returned -- every monetary key (sss_ee, sss_er, sss_ec,
+        philhealth_ee, philhealth_er, pagibig_ee, pagibig_er) is scaled and
+        re-quantized via _q2; 'sss_msc' is NEVER scaled (it's an informational
+        bracket reference, not a monetary contribution) and always reflects
+        the full-month lookup. This keeps the STORED statutory dict (which
+        PayrollRunLine.calculate_amounts() writes verbatim onto sss_ee/
+        philhealth_ee/etc, and which PayrollRun.calculate_totals()/
+        post_payroll_je's non-plug legs are built from) consistent with the
+        'ee' amount folded into taxable_comp/net_pay below -- both now derive
+        from the SAME scaled dict, so a semi-monthly run's JE always ties.
         'sss_loan'/'pagibig_loan' are each min(amortization, balance), clamped
         at 0.00 -- a loan in its final month may owe less than a full
         scheduled amortization (balance < amortization), and a fully paid-off
@@ -251,9 +259,10 @@ def compute_line(inputs):
     gross = _q2(basic + Decimal(inputs['ot_pay'] or 0) + Decimal(inputs['holiday_pay'] or 0)
                 + Decimal(inputs['taxable_allowance'] or 0) + Decimal(inputs['nontax_allowance'] or 0))
 
-    st = compute_statutory(monthly_basis, as_of)
-    apply_stat = _semi_applies_statutory(freq, inputs['semi_timing'], inputs)
-    ee = (st['sss_ee'] + st['philhealth_ee'] + st['pagibig_ee']) if apply_stat else Decimal('0.00')
+    st_full = compute_statutory(monthly_basis, as_of)
+    scale = _semi_applies_statutory(freq, inputs['semi_timing'], inputs)
+    st = _scale_statutory(st_full, scale)
+    ee = st['sss_ee'] + st['philhealth_ee'] + st['pagibig_ee']
 
     if inputs['is_mwe']:
         taxable = Decimal('0.00')
@@ -302,26 +311,57 @@ def _capped_loan_deduction(amortization, balance):
 
 
 def _semi_applies_statutory(freq, timing, inputs):
-    """Decide whether statutory (SSS/PhilHealth/Pag-IBIG) EE deductions apply
-    on THIS cutoff, per the payroll_semi_monthly_timing setting.
+    """Decide WHAT FRACTION of the full-month statutory (SSS/PhilHealth/
+    Pag-IBIG) contribution applies on THIS cutoff, per the
+    payroll_semi_monthly_timing setting. Returns a Decimal scale factor --
+    Decimal('0'), Decimal('1'), or Decimal('0.5') -- never a bool; the caller
+    (compute_line, via _scale_statutory) applies it uniformly to every
+    monetary key in compute_statutory's result.
 
-    Non-semi-monthly frequencies always apply statutory (there's only one
-    cutoff per period). For semi-monthly:
-      - 'split_50_50': applies on BOTH cutoffs. This function only decides
-        whether it applies, not how much -- a caller relying on split_50_50
-        for a true 50/50 split is responsible for passing already-halved
-        inputs (e.g. a halved monthly_rate); otherwise the full EE amount is
-        folded in on each cutoff.
-      - 'first_cutoff' / 'second_cutoff': applies only on the matching
-        semi_period (1 or 2, from inputs['semi_period']).
+    Non-semi-monthly frequencies always scale=1 (there's only one cutoff per
+    period). For semi-monthly:
+      - 'split_50_50': scale=0.5 on BOTH cutoffs -- the two cutoffs' scaled
+        contributions SUM to the correct full-month total. This splits the
+        computed MONTHLY result in half, not the input basis: SSS/Pag-IBIG
+        bracket lookups are non-linear, so halving the input could land in a
+        different bracket than halving the output.
+      - 'first_cutoff' / 'second_cutoff': scale=1 on the matching semi_period
+        (1 or 2, from inputs['semi_period']), scale=0 on the other.
     """
     if freq != 'semi_monthly':
-        return True
+        return Decimal('1')
     if timing == 'split_50_50':
-        return True   # half applied each cutoff -- caller passes halved amounts if desired
+        return Decimal('0.5')
     cutoff = inputs.get('semi_period')  # 1 or 2
-    return (timing == 'first_cutoff' and cutoff == 1) or \
-           (timing == 'second_cutoff' and cutoff == 2)
+    applies = (timing == 'first_cutoff' and cutoff == 1) or \
+              (timing == 'second_cutoff' and cutoff == 2)
+    return Decimal('1') if applies else Decimal('0')
+
+
+# Monetary keys in compute_statutory's result that scale with semi-monthly
+# cutoff timing. 'sss_msc' is deliberately excluded -- it's an informational
+# SSS bracket reference (the monthly salary credit used to look up the
+# bracket), not a contribution amount, and must always reflect the full-month
+# lookup regardless of cutoff.
+_STATUTORY_SCALABLE_KEYS = (
+    'sss_ee', 'sss_er', 'sss_ec', 'philhealth_ee', 'philhealth_er',
+    'pagibig_ee', 'pagibig_er',
+)
+
+
+def _scale_statutory(st_full, scale):
+    """Scale every monetary key in compute_statutory's result dict by `scale`
+    (a Decimal from _semi_applies_statutory: 0, 1, or 0.5), re-quantizing each
+    via _q2. 'sss_msc' passes through unscaled -- see _STATUTORY_SCALABLE_KEYS.
+
+    scale=1 returns values identical to st_full (just re-quantized, a no-op
+    since st_full is already _q2'd) -- non-semi-monthly frequencies and the
+    "applies" cutoff of first_cutoff/second_cutoff timing are unaffected by
+    this function's existence."""
+    scaled = dict(st_full)
+    for key in _STATUTORY_SCALABLE_KEYS:
+        scaled[key] = _q2(st_full[key] * scale)
+    return scaled
 
 
 def compute_thirteenth_month(employee, year):
