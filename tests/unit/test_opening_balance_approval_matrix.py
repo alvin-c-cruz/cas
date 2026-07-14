@@ -60,3 +60,14 @@ class TestOpeningBalanceApprovalMatrix:
         assert r.can_be_approved_by('bob') is False
         staff.is_active = False; db.session.commit()
         assert r.can_be_approved_by('bob') is False
+
+    def test_can_be_approved_by_rejects_deactivated_valid_role_reviewer(self, db_session):
+        # A valid-ROLE reviewer (accountant) who is DEACTIVATED must not approve. This
+        # uniquely exercises the is_active guard -- the wrong-role test above short-circuits
+        # on the role check before the inactive branch is ever reached.
+        _user('acc', 'accountant'); _user('ca', 'chief_accountant')
+        acc2 = _user('acc2', 'accountant')
+        r = _req('acc')  # peer present -> pending
+        assert r.can_be_approved_by('acc2') is True   # active accountant peer -> can approve
+        acc2.is_active = False; db.session.commit()
+        assert r.can_be_approved_by('acc2') is False   # deactivated -> blocked
