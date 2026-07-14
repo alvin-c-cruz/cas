@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_field %}
+
+{% block title %}{{ 'Edit Employee Loan' if loan else 'New Employee Loan' }}{% endblock %}
+{% block page_title %}{{ 'Edit Employee Loan' if loan else 'Enter Employee Loan' }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}?v=1">
+<div class="card"><div class="card-body">
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+
+        {% if loan %}
+            {# Employee/loan type are immutable once a loan exists -- create a new
+               loan instead of rebinding an existing one to a different employee or
+               type (a loan's identity is (employee, loan_type); PayrollRunLine's
+               sss_loan_id/pagibig_loan_id and the partial-unique-active-per-type
+               index both assume that identity never changes underneath them).
+               Still POSTed (as plain hidden inputs, not part of form.hidden_tag())
+               so the form round-trips the value EmployeeLoanForm.employee_id/
+               loan_type validate against. #}
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label class="form-label">Employee</label>
+                    <div class="form-control" style="background:var(--bg);color:var(--text-2);">{{ loan.employee.full_name if loan.employee else '—' }}</div>
+                    <input type="hidden" name="employee_id" value="{{ loan.employee_id }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Loan Type</label>
+                    <div class="form-control" style="background:var(--bg);color:var(--text-2);">{{ 'SSS' if loan.loan_type == 'sss' else 'Pag-IBIG' }}</div>
+                    <input type="hidden" name="loan_type" value="{{ loan.loan_type }}">
+                </div>
+            </div>
+            {# Conflict-check snapshot (Task 12 concurrency guard) -- the values
+               EmployeeLoan currently holds as of this GET. payroll.views._claim_loan_edit
+               re-checks these against the DB at submit time; if a payroll run posted
+               or cancelled against THIS loan (or another user saved an edit) in
+               between, none of these will match and the write is rejected with a
+               friendly "reload and try again" flash instead of silently clobbering it. #}
+            <input type="hidden" name="snap_status" value="{{ loan.status }}">
+            <input type="hidden" name="snap_principal" value="{{ '%.2f'|format(loan.principal) }}">
+            <input type="hidden" name="snap_amortization" value="{{ '%.2f'|format(loan.monthly_amortization) }}">
+            <input type="hidden" name="snap_balance" value="{{ '%.2f'|format(loan.balance) }}">
+        {% else %}
+            <div class="form-row-2">
+                {{ render_field(form.employee_id, required=True) }}
+                {{ render_field(form.loan_type, required=True) }}
+            </div>
+        {% endif %}
+
+        <div class="form-row-2">
+            {{ render_field(form.status, required=True) }}
+            {{ render_field(form.principal, required=True) }}
+        </div>
+        <div class="form-row-2">
+            {{ render_field(form.monthly_amortization, required=True) }}
+            {{ render_field(form.balance, required=True) }}
+        </div>
+        <small class="form-hint">
+            Current Balance is editable here for onboarding an employee's existing loan with a
+            partial balance already paid down elsewhere. Once payroll starts deducting, the
+            balance is managed automatically when a run is posted or cancelled -- avoid editing
+            it for an active loan except to correct a genuine data-entry mistake.
+        </small>
+
+        <div class="form-actions" style="margin-top:20px;">
+            <button type="submit" class="btn btn-primary">{{ 'Update' if loan else 'Save' }}</button>
+            <a href="{{ url_for('payroll.list_loans') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div></div>
+
+{% if not loan %}
+<script src="{{ url_for('static', filename='choices.min.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var sel = document.getElementById('employee_id');
+    if (sel && typeof initSearchSelect === 'function') {
+        initSearchSelect(sel);
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

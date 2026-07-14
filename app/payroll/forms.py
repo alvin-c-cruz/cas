@@ -15,8 +15,8 @@ right now" discipline CDV already applies to its AP-bill picks
 (re-scoped to branch+vendor at submit, not the client's payload).
 """
 from flask_wtf import FlaskForm
-from wtforms import SelectField, DateField
-from wtforms.validators import DataRequired
+from wtforms import SelectField, DateField, DecimalField
+from wtforms.validators import DataRequired, InputRequired, NumberRange
 
 from app.utils.concurrency import RowVersionFormMixin
 
@@ -43,3 +43,39 @@ class PayrollRunForm(RowVersionFormMixin, FlaskForm):
     period_start = DateField('Period Start', validators=[DataRequired()], format='%Y-%m-%d')
     period_end = DateField('Period End', validators=[DataRequired()], format='%Y-%m-%d')
     pay_date = DateField('Pay Date', validators=[DataRequired()], format='%Y-%m-%d')
+
+
+class EmployeeLoanForm(FlaskForm):
+    """Task 12: create/edit an EmployeeLoan. `employee_id`/`loan_type` are only
+    ever POSTed on create -- the edit route ignores them (an existing loan is
+    never rebound to a different employee or type; create a new loan instead).
+    They stay DataRequired/choice-validated on the form class itself because
+    the edit template still submits the CURRENT values for those two fields
+    (as plain, non-editable hidden inputs -- see loan_form.html), so validation
+    still needs a matching choice to accept the round-tripped value.
+
+    `principal`/`monthly_amortization`/`balance`/`status` are the fields this
+    editor actually writes. See payroll.views._claim_loan_edit's docstring for
+    how a stale write against `balance` (the one field also mutated by
+    service.apply_loan_balances/restore_loan_balances) is guarded without a
+    formal RowVersioned column -- the concurrency decision Task 12 was asked
+    to make explicitly for this new write surface.
+    """
+    employee_id = SelectField('Employee', coerce=int, validators=[
+        DataRequired(message='Employee is required.')])
+    loan_type = SelectField('Loan Type', validators=[DataRequired()], choices=[
+        ('sss', 'SSS'), ('pagibig', 'Pag-IBIG')])
+    status = SelectField('Status', validators=[DataRequired()], choices=[
+        ('active', 'Active'), ('paid', 'Paid'), ('cancelled', 'Cancelled')],
+        default='active')
+    # InputRequired, NOT DataRequired: DataRequired treats a falsy field.data
+    # (Decimal('0.00') is falsy) as "missing", which would wrongly reject a
+    # legitimate 0.00 balance (a fully paid-off loan) or 0.00 principal edge
+    # case. InputRequired checks that raw form input was submitted at all,
+    # independent of whether the parsed value happens to be zero.
+    principal = DecimalField('Principal', validators=[
+        InputRequired(message='Principal is required.'), NumberRange(min=0)], places=2)
+    monthly_amortization = DecimalField('Monthly Amortization', validators=[
+        InputRequired(message='Monthly amortization is required.'), NumberRange(min=0)], places=2)
+    balance = DecimalField('Current Balance', validators=[
+        InputRequired(message='Current balance is required.'), NumberRange(min=0)], places=2)

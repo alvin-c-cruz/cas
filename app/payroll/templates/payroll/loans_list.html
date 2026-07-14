@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Employee Loans{% endblock %}
+{% block page_title %}Employee Loans{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Employee Loans</div>
+        <a href="{{ url_for('payroll.new_loan') }}" class="btn btn-primary btn-sm">+ Enter Loan</a>
+    </div>
+    <div class="card-body card-body--flush">
+        {% if not loans %}
+            <div class="empty-state" style="padding:24px;">No employee loans found.</div>
+        {% else %}
+        <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Type</th>
+                    <th style="text-align:right;">Principal</th>
+                    <th style="text-align:right;">Amortization</th>
+                    <th>Balance</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for loan in loans %}
+                {# Integer floor-division on Decimals directly (not the round filter,
+                   which promotes to float and would render "41.0%" instead of "41%") #}
+                {% set paid_pct = ((100 * (loan.principal - loan.balance)) // loan.principal) if loan.principal else 100 %}
+                <tr>
+                    <td>{{ loan.employee.full_name if loan.employee else '—' }}</td>
+                    <td>{{ 'SSS' if loan.loan_type == 'sss' else 'Pag-IBIG' }}</td>
+                    <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(loan.principal) }}</td>
+                    <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(loan.monthly_amortization) }}</td>
+                    <td>
+                        <span class="progress-bar">
+                            <span class="progress-fill" style="width:{{ paid_pct }}%"></span>
+                        </span>
+                        <span class="mono">{{ '{:,.2f}'.format(loan.balance) }}</span>
+                    </td>
+                    <td><span class="badge badge-{{ loan.status }}">{{ loan.status | capitalize }}</span></td>
+                    <td>
+                        <div class="action-buttons" style="display:flex;gap:8px;align-items:center;">
+                            <a href="{{ url_for('payroll.edit_loan', id=loan.id) }}" class="btn-action btn-action-edit">Edit</a>
+                            <button type="button" class="btn-action btn-action-delete"
+                                    onclick="document.getElementById('delete-modal-{{ loan.id }}').style.display='flex'">Delete</button>
+                        </div>
+                        <div id="delete-modal-{{ loan.id }}"
+                             style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+                            <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;box-shadow:0 8px 24px rgba(0,0,0,0.2);">
+                                <h3 style="margin:0 0 12px 0;">Delete Loan</h3>
+                                <p style="color:var(--text-2);margin-bottom:24px;">
+                                    Delete the {{ 'SSS' if loan.loan_type == 'sss' else 'Pag-IBIG' }} loan for
+                                    <strong>{{ loan.employee.full_name if loan.employee else 'this employee' }}</strong>? This cannot be undone.
+                                </p>
+                                <div style="display:flex;gap:12px;justify-content:flex-end;">
+                                    <button type="button" class="btn btn-secondary btn-sm"
+                                            onclick="document.getElementById('delete-modal-{{ loan.id }}').style.display='none'">Cancel</button>
+                                    <form method="POST" action="{{ url_for('payroll.delete_loan', id=loan.id) }}" style="display:inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

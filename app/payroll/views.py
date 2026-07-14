@@ -12,17 +12,19 @@ from functools import wraps
 
 from flask import render_template, redirect, url_for, flash, request, session, abort, current_app
 from flask_login import login_required, current_user
+from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.employees.models import Employee
 from app.payroll import payroll_bp
-from app.payroll.models import PayrollRun, PayrollRunLine
-from app.payroll.forms import PayrollRunForm
+from app.payroll.models import PayrollRun, PayrollRunLine, EmployeeLoan
+from app.payroll.forms import PayrollRunForm, EmployeeLoanForm
 from app.payroll import service
 from app.periods.models import AccountingPeriod
 from app.settings import AppSettings
-from app.audit.utils import log_create, log_update, log_audit, model_to_dict
+from app.audit.utils import log_create, log_update, log_delete, log_audit, model_to_dict
 from app.errors.utils import log_exception
+from app.users.utils import get_accessible_branches
 from app.utils import ph_now
 from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
                                     commit_with_renumber_retry)
@@ -567,3 +569,285 @@ def cancel_run(id):
         flash('An unexpected error occurred while cancelling the payroll run. Please try '
               'again; if it persists, contact your administrator.', 'error')
     return redirect(url_for('payroll.view_run', id=id))
+
+
+# ---------------------------------------------------------------------------
+# Employee Loan editor (Task 12) -- CRUD for EmployeeLoan, the master record a
+# payroll line's calculate_amounts() (see models.py) looks up to deduct
+# min(monthly_amortization, balance). Branch-scoped through employee.branch_id
+# (EmployeeLoan has no branch_id of its own) against the CURRENT USER's full
+# set of ACCESSIBLE branches -- mirrors app/withholding_certificates/views.py's
+# _accessible_branch_ids() idiom, not payroll's own single-selected-branch
+# register() (the brief calls for "accessible branches", plural).
+# ---------------------------------------------------------------------------
+
+_LOAN_FIELDS = ['employee_id', 'loan_type', 'status', 'principal',
+                'monthly_amortization', 'balance']
+
+
+def _accessible_branch_ids():
+    return [b.id for b in get_accessible_branches(current_user)]
+
+
+def _loan_or_404(loan_id):
+    loan = db.get_or_404(EmployeeLoan, loan_id)
+    if not current_user.has_full_access and loan.employee.branch_id not in _accessible_branch_ids():
+        abort(404)
+    return loan
+
+
+def _set_loan_choices(form, current_employee=None):
+    """Employee picker choices: active employees in the current user's
+    accessible branches. `current_employee` (edit mode) is force-included even
+    if since deactivated or moved out of an accessible branch, so an existing
+    loan's employee_id round-trips through the hidden field on edit without
+    ever failing SelectField's "not a valid choice" validation."""
+    q = Employee.query.filter_by(is_active=True)
+    if not current_user.has_full_access:
+        q = q.filter(Employee.branch_id.in_(_accessible_branch_ids()))
+    employees = q.order_by(Employee.employee_no).all()
+    if current_employee is not None and current_employee.id not in {e.id for e in employees}:
+        employees = [current_employee] + employees
+    # ": " code-name separator -- matches this codebase's established
+    # Choices.js dropdown convention (feedback-dropdown-colon-separator), not
+    # an invented em-dash format.
+    form.employee_id.choices = [(e.id, f'{e.employee_no}: {e.full_name}') for e in employees]
+
+
+def _active_loan_conflict(employee_id, loan_type, exclude_loan_id=None):
+    """An existing ACTIVE loan of the same employee+type -- return it, or None.
+    Mirrors _duplicate_period_run's pre-check-before-insert idiom: the DB's
+    partial unique index (uq_employee_loan_active_per_type) remains the hard
+    backstop for a genuine race, but this turns the common case into a clean
+    flash instead of a raw IntegrityError reaching the user."""
+    q = EmployeeLoan.query.filter_by(
+        employee_id=employee_id, loan_type=loan_type, status='active')
+    if exclude_loan_id is not None:
+        q = q.filter(EmployeeLoan.id != exclude_loan_id)
+    return q.first()
+
+
+def _loan_snapshot_from_form():
+    """Read the loan_form.html edit template's snap_* hidden inputs (the
+    principal/monthly_amortization/balance/status values that were current
+    when the GET rendered the form) straight from the raw POST body -- same
+    "never trust form.<field>.data for a conflict check, read request.form
+    directly" discipline as concurrency.submitted_version(), and for the same
+    reason: WTForms falls back to the obj value for an absent/malformed field,
+    which would make a dropped snapshot silently pass as "unchanged".
+    Fails closed to None (caller treats that as a conflict, not a bypass)."""
+    def _dec(name):
+        raw = request.form.get(name)
+        if raw is None:
+            return None
+        try:
+            return Decimal(str(raw).strip())
+        except (InvalidOperation, ValueError):
+            return None
+
+    status = request.form.get('snap_status')
+    principal = _dec('snap_principal')
+    amortization = _dec('snap_amortization')
+    balance = _dec('snap_balance')
+    if not status or principal is None or amortization is None or balance is None:
+        return None
+    return {'status': status, 'principal': principal,
+            'monthly_amortization': amortization, 'balance': balance}
+
+
+def _claim_loan_edit(loan_id, snapshot, new_values):
+    """Atomically apply `new_values` to EmployeeLoan `loan_id`, but ONLY if its
+    status/principal/monthly_amortization/balance still match `snapshot` --
+    a single conditional SQL UPDATE (WHERE ... AND col = snapshot_val ...),
+    same "let the database be the arbiter, never read-then-compare in Python"
+    reasoning as concurrency.claim_version. Returns True (write applied) or
+    False (someone else changed one of these columns since the edit form's
+    GET -- caller re-renders with a fresh read + friendly flash).
+
+    THE CONCURRENCY DECISION (EmployeeLoan.__doc__'s open question, Task 12):
+    this task does NOT add RowVersioned to EmployeeLoan. A bare RowVersioned +
+    claim_version mirror of PayrollRun's edit_run would only guard THIS
+    route's own writes against ANOTHER concurrent call to this same route --
+    it would NOT catch a race against service.apply_loan_balances/
+    restore_loan_balances (post_run/cancel_run), because those functions
+    mutate `balance` via their own raw Core UPDATE (an atomic SQL-side
+    balance +/- amount) that does not touch a row_version counter, and this
+    task is explicitly barred from editing them. So a plain row_version guard
+    here would be theater for the exact race the docstring flags: an
+    accountant's edit-form submit racing a payroll post/cancel on the SAME
+    loan's `balance`.
+
+    Instead, this function guards the SPECIFIC columns both write paths
+    actually touch (principal/monthly_amortization/balance/status) via a
+    compare-and-swap keyed on the values this route itself read at GET time --
+    no schema change, no migration, and it closes BOTH races that matter:
+    two humans editing the same loan concurrently, AND this edit racing a
+    payroll post/cancel's atomic balance mutation (since `balance` is one of
+    the guarded columns, an intervening post/cancel changes it and the WHERE
+    clause below simply matches zero rows). The trade-off against a "real"
+    RowVersioned column: this is bespoke to this one route rather than the
+    codebase's shared claim_version primitive, and a THIRD future mutator of
+    these columns would need to be folded into the same WHERE-clause
+    discipline by hand rather than "just bump row_version". Judged
+    acceptable because EmployeeLoan currently has exactly two write paths
+    (this route, and apply_loan_balances/restore_loan_balances via `balance`
+    only) and this guard already covers both.
+    """
+    result = db.session.execute(
+        db.update(EmployeeLoan)
+        .where(EmployeeLoan.id == loan_id,
+               EmployeeLoan.status == snapshot['status'],
+               EmployeeLoan.principal == snapshot['principal'],
+               EmployeeLoan.monthly_amortization == snapshot['monthly_amortization'],
+               EmployeeLoan.balance == snapshot['balance'])
+        .values(**new_values, updated_at=ph_now())
+        .execution_options(synchronize_session=False)
+    )
+    return result.rowcount == 1
+
+
+@payroll_bp.route('/payroll/loans')
+@login_required
+def list_loans():
+    q = EmployeeLoan.query.join(Employee, EmployeeLoan.employee_id == Employee.id)
+    if not current_user.has_full_access:
+        q = q.filter(Employee.branch_id.in_(_accessible_branch_ids()))
+    loans = q.order_by(EmployeeLoan.id.desc()).all()
+    return render_template('payroll/loans_list.html', loans=loans)
+
+
+@payroll_bp.route('/payroll/loans/new', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def new_loan():
+    form = EmployeeLoanForm()
+    _set_loan_choices(form)
+
+    if form.validate_on_submit():
+        conflict = None
+        if form.status.data == 'active':
+            conflict = _active_loan_conflict(form.employee_id.data, form.loan_type.data)
+        if conflict:
+            emp = db.session.get(Employee, form.employee_id.data)
+            flash(f'{emp.full_name if emp else "This employee"} already has an active '
+                  f'{form.loan_type.data.upper()} loan. Edit that loan instead, or set it '
+                  f'to Paid/Cancelled before adding a new one.', 'error')
+            return render_template('payroll/loan_form.html', form=form, loan=None)
+
+        loan = EmployeeLoan(
+            employee_id=form.employee_id.data,
+            loan_type=form.loan_type.data,
+            status=form.status.data,
+            principal=form.principal.data,
+            monthly_amortization=form.monthly_amortization.data,
+            balance=form.balance.data,
+        )
+        try:
+            db.session.add(loan)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash('That employee already has an active loan of this type (added by another '
+                  'user just now). Please reload and try again.', 'error')
+            return render_template('payroll/loan_form.html', form=form, loan=None)
+
+        log_create(
+            module='employee_loan', record_id=loan.id,
+            record_identifier=f'{loan.employee.full_name} — {loan.loan_type.upper()}',
+            new_values=model_to_dict(loan, _LOAN_FIELDS),
+        )
+        flash('Loan recorded.', 'success')
+        return redirect(url_for('payroll.list_loans'))
+
+    return render_template('payroll/loan_form.html', form=form, loan=None)
+
+
+@payroll_bp.route('/payroll/loans/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@staff_or_above_required
+def edit_loan(id):
+    loan = _loan_or_404(id)
+    form = EmployeeLoanForm(obj=loan)
+    _set_loan_choices(form, current_employee=loan.employee)
+    if request.method == 'GET':
+        form.employee_id.data = loan.employee_id
+
+    if form.validate_on_submit():
+        snapshot = _loan_snapshot_from_form()
+        if snapshot is None:
+            flash('This page is missing conflict-check data; please reload and try again.',
+                  'error')
+            return render_template('payroll/loan_form.html', form=form, loan=loan)
+
+        if form.status.data == 'active':
+            conflict = _active_loan_conflict(loan.employee_id, loan.loan_type,
+                                             exclude_loan_id=loan.id)
+            if conflict:
+                flash(f'{loan.employee.full_name} already has another active '
+                      f'{loan.loan_type.upper()} loan. Only one active loan per type is '
+                      f'allowed.', 'error')
+                return render_template('payroll/loan_form.html', form=form, loan=loan)
+
+        old_values = model_to_dict(loan, _LOAN_FIELDS)
+        new_values = {
+            'status': form.status.data,
+            'principal': form.principal.data,
+            'monthly_amortization': form.monthly_amortization.data,
+            'balance': form.balance.data,
+        }
+        try:
+            applied = _claim_loan_edit(loan.id, snapshot, new_values)
+        except IntegrityError:
+            db.session.rollback()
+            flash(f'{loan.employee.full_name} already has another active '
+                  f'{loan.loan_type.upper()} loan (set by another user just now). Reload '
+                  f'and try again.', 'error')
+            return redirect(url_for('payroll.edit_loan', id=loan.id))
+
+        if not applied:
+            db.session.rollback()
+            flash('This loan was changed by another user or a payroll run since you opened '
+                  'this page (e.g. a run was posted or cancelled, changing the balance). '
+                  'Reload the page to see the current values and try again.', 'error')
+            return redirect(url_for('payroll.edit_loan', id=loan.id))
+
+        db.session.commit()
+        log_update(
+            module='employee_loan', record_id=loan.id,
+            record_identifier=f'{loan.employee.full_name} — {loan.loan_type.upper()}',
+            old_values=old_values,
+            new_values={k: str(v) for k, v in new_values.items()},
+        )
+        flash('Loan updated.', 'success')
+        return redirect(url_for('payroll.list_loans'))
+
+    return render_template('payroll/loan_form.html', form=form, loan=loan)
+
+
+@payroll_bp.route('/payroll/loans/<int:id>/delete', methods=['POST'])
+@login_required
+@staff_or_above_required
+def delete_loan(id):
+    """No-JS-popup delete (custom HTML modal on the list page). Blocked when
+    the loan has payroll history -- referenced by any PayrollRunLine's
+    sss_loan_id/pagibig_loan_id (plain Integer FKs, no ORM cascade -- SQLite
+    FK enforcement is off app-wide, so a delete here would otherwise leave a
+    dangling reference a later report/lookup silently treats as "no loan").
+    A loan with history should be set to Cancelled instead, never deleted."""
+    loan = _loan_or_404(id)
+    referenced = PayrollRunLine.query.filter(
+        db.or_(PayrollRunLine.sss_loan_id == loan.id, PayrollRunLine.pagibig_loan_id == loan.id)
+    ).first()
+    if referenced:
+        flash('This loan has payroll history (used on at least one payroll run) and cannot '
+              'be deleted. Set its status to Cancelled instead.', 'error')
+        return redirect(url_for('payroll.list_loans'))
+
+    old_values = model_to_dict(loan, _LOAN_FIELDS)
+    identifier = f'{loan.employee.full_name} — {loan.loan_type.upper()}'
+    db.session.delete(loan)
+    db.session.commit()
+    log_delete(module='employee_loan', record_id=id, record_identifier=identifier,
+              old_values=old_values)
+    flash('Loan deleted.', 'success')
+    return redirect(url_for('payroll.list_loans'))

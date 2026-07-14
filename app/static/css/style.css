@@ -444,6 +444,10 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
   border-bottom: 1px solid var(--border);
 }
 
+/* ─── Progress bar (e.g. loan payoff progress) ─────────────────── */
+.progress-bar { width: 90px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 8px; }
+.progress-fill { height: 100%; background: var(--blue); display: block; }
+
 /* ─── Badges ────────────────────────────────────────────────── */
 .badge {
   display: inline-flex; align-items: center;
