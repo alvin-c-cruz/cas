@@ -26,6 +26,23 @@ def app_ctx(db_session):
     yield db_session
 
 
+@pytest.fixture(autouse=True)
+def _payroll_module_enabled(db_session):
+    """Task 15 gates `payroll` behind MODULE_REGISTRY (optional, default_enabled=False).
+    The rest of this package's tests (test_lifecycle.py, test_loans_13th.py, ...) predate
+    that gating and drive payroll routes directly via `client`, so turn the package ON by
+    default for every test under tests/payroll/ -- mirrors how other optional-module test
+    suites (e.g. tests/integration/test_so_status.py) enable their module explicitly.
+    tests/payroll/test_module_gating.py overrides this back to OFF within its own OFF-state
+    tests (its assertion runs after this fixture's setup, so the explicit call wins)."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:payroll', '1')
+    clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
 # code -> (account_type, normal_balance) for the 11 payroll control accounts,
 # used only by posted_run_factory to stand up matching GL accounts.
 _PAYROLL_ACCOUNTS = {

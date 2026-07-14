@@ -150,6 +150,11 @@ def staff_user(db_session):
         'chart_of_accounts': True,
         'ap_aging': True,
         'ar_aging': True,
+        # payroll is optional+per_user (Task 15) -- grant it here too so the
+        # existing payroll suite (test_lifecycle.py, test_loans_13th.py), which
+        # logs in as staff and drives payroll routes directly, keeps working
+        # now that payroll is gated.
+        'payroll': True,
     })
     db_session.add(user)
     db_session.commit()
