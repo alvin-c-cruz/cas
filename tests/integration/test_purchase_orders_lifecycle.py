@@ -42,6 +42,55 @@ def test_approve_moves_draft_to_approved(client, accountant_user, main_branch, v
     assert po.status == 'approved' and po.approved_by_id == accountant_user.id
 
 
+def _make_draft_po_no_vendor(db_session, branch, number='PO-2026-07-0101'):
+    """Mirrors PurchaseRequest.convert()'s output: no vendor, zero-priced line."""
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    from datetime import date
+    po = PurchaseOrder(branch_id=branch.id, po_number=number, order_date=date(2026, 7, 11),
+                       vendor_id=None, vendor_name=None, status='draft',
+                       vat_treatment='inclusive')
+    po.line_items.append(PurchaseOrderItem(line_number=1, description='Miscellaneous consumable item',
+                                           quantity=5, unit_price=None, amount=0))
+    po.calculate_totals()
+    db_session.add(po); db_session.commit()
+    return po
+
+
+def test_approve_rejects_missing_vendor(client, accountant_user, main_branch, db_session):
+    """BUG-PO-APPROVE-NO-VENDOR-VALIDATION: a freshly-converted PO (vendor_id=None,
+    every line unit_price=None/amount=0) must not be approvable."""
+    _login(client, accountant_user, main_branch)
+    po = _make_draft_po_no_vendor(db_session, main_branch)
+    resp = client.post(f'/purchase-orders/{po.id}/approve', follow_redirects=True)
+    assert resp.status_code == 200
+    db_session.refresh(po)
+    assert po.status == 'draft'
+    assert po.approved_by_id is None
+    assert po.approved_at is None
+    assert b'vendor' in resp.data.lower()
+
+
+def test_approve_rejects_zero_price_lines(client, accountant_user, main_branch, vl_vendor, db_session):
+    """Vendor set, but no line has a nonzero price -- still not approvable."""
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    from datetime import date
+    _login(client, accountant_user, main_branch)
+    po = PurchaseOrder(branch_id=main_branch.id, po_number='PO-2026-07-0102',
+                       order_date=date(2026, 7, 11), vendor_id=vl_vendor.id,
+                       vendor_name=vl_vendor.name, status='draft', vat_treatment='inclusive')
+    po.line_items.append(PurchaseOrderItem(line_number=1, description='Miscellaneous consumable item',
+                                           quantity=5, unit_price=None, amount=0))
+    po.calculate_totals()
+    db_session.add(po); db_session.commit()
+
+    resp = client.post(f'/purchase-orders/{po.id}/approve', follow_redirects=True)
+    assert resp.status_code == 200
+    db_session.refresh(po)
+    assert po.status == 'draft'
+    assert po.approved_by_id is None
+    assert b'price' in resp.data.lower()
+
+
 def test_staff_cannot_approve(client, staff_user, main_branch, vl_vendor, db_session):
     from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
