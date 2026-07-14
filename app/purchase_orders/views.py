@@ -333,6 +333,12 @@ def approve(id):
     if po.status != 'draft':
         flash('Only draft Purchase Orders can be approved.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
+    if po.vendor_id is None:
+        flash('Set a vendor before approving this Purchase Order.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
+    if not any((li.unit_price or 0) > 0 and (li.amount or 0) > 0 for li in po.line_items):
+        flash('Set a unit price on at least one line before approving this Purchase Order.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
 
     old_values = model_to_dict(po, ['status'])
     po.status = 'approved'
