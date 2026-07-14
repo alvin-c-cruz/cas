@@ -6,6 +6,7 @@ optimistic-lock via claim_version/submitted_version, audit log on every
 write). This slice does NOT post a journal entry -- post_payroll_je (Task 7)
 is wired to a view in Task 10.
 """
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 
@@ -20,7 +21,7 @@ from app.payroll.forms import PayrollRunForm
 from app.payroll import service
 from app.periods.models import AccountingPeriod
 from app.settings import AppSettings
-from app.audit.utils import log_create, log_update, model_to_dict
+from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.concurrency import (claim_version, conflict_message, submitted_version,
@@ -29,14 +30,28 @@ from app.utils.concurrency import (claim_version, conflict_message, submitted_ve
 
 def staff_or_above_required(f):
     """Staff, Accountant, Chief Accountant, and Admin may create/edit a draft
-    worksheet. Only Accountant/Admin will reach the (not-yet-built) post route
-    -- Task 10."""
+    worksheet, or void it (mirrors CDV's staff_or_above_required)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('users.login'))
         if current_user.role not in ('staff', 'accountant', 'admin', 'chief_accountant'):
             flash('You do not have permission to perform this action.', 'error')
+            return redirect(url_for('dashboard.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def accountant_or_admin_required(f):
+    """Only Accountants and full-access users (Admin/Chief Accountant, via
+    has_full_access) may post or cancel a payroll run -- mirrors CDV's
+    accountant_or_admin_required exactly."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('users.login'))
+        if not (current_user.role == 'accountant' or current_user.has_full_access):
+            flash('Only Accountants and Administrators can perform this action.', 'error')
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
@@ -208,7 +223,7 @@ def register():
 def view_run(id):
     run = _get_run_or_404(id)
     preview = service.build_je_preview(run)
-    return render_template('payroll/detail.html', run=run, preview=preview)
+    return render_template('payroll/detail.html', run=run, preview=preview, now=ph_now())
 
 
 @payroll_bp.route('/payroll/runs/new', methods=['GET', 'POST'])
@@ -380,3 +395,154 @@ def edit_run(id):
                   'again; if it persists, contact your administrator.', 'error')
 
     return _render_edit_form()
+
+
+@payroll_bp.route('/payroll/runs/<int:id>/post', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def post_run(id):
+    """Post a draft payroll run: build the accrual JE (service.post_payroll_je)
+    and flip the run to 'posted'. Mirrors CDV's post() route, with two
+    payroll-specific additions the brief calls out: the period-lock check
+    (Task 8's _period_closed_with_flash, not CDV's date-based helper) and a
+    real claim_version optimistic-lock (CDV's own post() route does not need
+    one -- it has no editable fields between GET and POST -- but a payroll
+    run's draft can be edited right up to the post click, so the same
+    lost-update race edit_run() already guards against applies here too)."""
+    run = _get_run_or_404(id)
+    if run.status != 'draft':
+        flash('Only draft payroll runs can be posted.', 'error')
+        return redirect(url_for('payroll.view_run', id=id))
+    if not _period_closed_with_flash(run.period_year, run.period_month):
+        return redirect(url_for('payroll.view_run', id=id))
+    try:
+        if not claim_version(PayrollRun, run.id, submitted_version()):
+            db.session.rollback()
+            flash(conflict_message('payroll_run', run.id), 'error')
+            return redirect(url_for('payroll.view_run', id=id))
+
+        # post_payroll_je reads run.status/posted_by_id/posted_at to decide
+        # the JE's own status/actor/timestamp -- set them on the run FIRST.
+        run.status = 'posted'
+        run.posted_by_id = current_user.id
+        run.posted_at = ph_now()
+
+        je = service.post_payroll_je(run)
+        run.journal_entry_id = je.id
+        db.session.commit()
+
+        log_audit(
+            module='payroll_run', action='post',
+            record_id=run.id,
+            record_identifier=run.run_number,
+            notes=f'Posted by {current_user.username}'
+        )
+        flash(f'Payroll run "{run.run_number}" posted successfully!', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error posting payroll run', exc_info=True)
+        log_exception(e, severity='ERROR', module='payroll.post_run')
+        flash('An unexpected error occurred while posting the payroll run. Please try '
+              'again; if it persists, contact your administrator.', 'error')
+    return redirect(url_for('payroll.view_run', id=id))
+
+
+@payroll_bp.route('/payroll/runs/<int:id>/void', methods=['POST'])
+@login_required
+@staff_or_above_required
+def void_run(id):
+    """Void a draft payroll run. Mirrors CDV's void() route: defensively
+    deletes a linked JE if one exists (a draft run should never actually have
+    one in this codebase's flow -- post_payroll_je only ever runs from
+    post_run, which requires draft status in the first place -- but the
+    defensive delete costs nothing and mirrors CDV's own shape exactly)."""
+    run = _get_run_or_404(id)
+    if run.status != 'draft':
+        flash('Only draft payroll runs can be voided.', 'error')
+        return redirect(url_for('payroll.view_run', id=id))
+    void_reason = request.form.get('void_reason', '').strip()
+    if len(void_reason) < 10:
+        flash('Void reason must be at least 10 characters.', 'error')
+        return redirect(url_for('payroll.view_run', id=id))
+    try:
+        if run.journal_entry_id:
+            from app.journal_entries.models import JournalEntry as _JE
+            je_to_delete = db.session.get(_JE, run.journal_entry_id)
+            if je_to_delete:
+                db.session.delete(je_to_delete)
+            run.journal_entry_id = None
+            run.journal_entry = None
+        run.status = 'voided'
+        run.voided_at = ph_now()
+        run.voided_by_id = current_user.id
+        run.void_reason = void_reason
+        db.session.commit()
+        log_audit(
+            module='payroll_run', action='void',
+            record_id=run.id,
+            record_identifier=run.run_number,
+            notes=f'Voided by {current_user.username}. Reason: {void_reason}'
+        )
+        flash(f'Payroll run "{run.run_number}" voided.', 'warning')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error voiding payroll run', exc_info=True)
+        log_exception(e, severity='ERROR', module='payroll.void_run')
+        flash('An unexpected error occurred while voiding the payroll run. Please try '
+              'again; if it persists, contact your administrator.', 'error')
+    return redirect(url_for('payroll.view_run', id=id))
+
+
+@payroll_bp.route('/payroll/runs/<int:id>/cancel', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def cancel_run(id):
+    """Cancel a posted payroll run: post a Dr<->Cr swapped reversal JE
+    (service.build_payroll_reversal_je) dated `reversal_date`, then flip the
+    run to 'cancelled'. Mirrors CDV's cancel() route. The reversal's OWN
+    posting-date period must be open -- reused via the same payroll-specific
+    _period_closed_with_flash(year, month) check post_run uses (not CDV's
+    date-based validate_transaction_date_with_flash), so both lifecycle
+    writes share one period-lock idiom in this module."""
+    run = _get_run_or_404(id)
+    if run.status != 'posted':
+        flash('Only posted payroll runs can be cancelled.', 'error')
+        return redirect(url_for('payroll.view_run', id=id))
+    cancel_reason = request.form.get('cancel_reason', '').strip()
+    if len(cancel_reason) < 10:
+        flash('Cancellation reason must be at least 10 characters.', 'error')
+        return redirect(url_for('payroll.view_run', id=id))
+    reversal_date_str = request.form.get('reversal_date', '')
+    try:
+        reversal_date = date.fromisoformat(reversal_date_str)
+    except ValueError:
+        flash('Invalid reversal date.', 'error')
+        return redirect(url_for('payroll.view_run', id=id))
+    if not _period_closed_with_flash(reversal_date.year, reversal_date.month):
+        return redirect(url_for('payroll.view_run', id=id))
+    try:
+        service.build_payroll_reversal_je(run, reversal_date, current_user.id)
+        run.status = 'cancelled'
+        run.cancelled_at = ph_now()
+        run.cancel_reason = cancel_reason
+        db.session.commit()
+        log_audit(
+            module='payroll_run', action='cancel',
+            record_id=run.id,
+            record_identifier=run.run_number,
+            notes=f'Cancelled by {current_user.username}. Reason: {cancel_reason}'
+        )
+        flash(f'Payroll run "{run.run_number}" cancelled. Reversal JE created.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error('Error cancelling payroll run', exc_info=True)
+        log_exception(e, severity='ERROR', module='payroll.cancel_run')
+        flash('An unexpected error occurred while cancelling the payroll run. Please try '
+              'again; if it persists, contact your administrator.', 'error')
+    return redirect(url_for('payroll.view_run', id=id))

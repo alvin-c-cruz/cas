@@ -3,6 +3,69 @@
 {% block page_title %}Payroll Run {{ run.run_number }}{% endblock %}
 
 {% block content %}
+
+<!-- Post modal (draft only) -->
+{% if run.status == 'draft' %}
+<div id="postModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:440px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Post this payroll run?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">Posting will make the run final and create the accrual journal entry in the GL. Employee lines and the period can no longer be edited.</p>
+    <div style="display:flex;gap:12px;justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('postModal').style.display='none'">Cancel</button>
+      <form method="POST" action="{{ url_for('payroll.post_run', id=run.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="row_version" value="{{ run.row_version }}"/>
+        <button type="submit" class="btn btn-success">Post Run</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Void modal (draft only) -->
+<div id="voidModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:480px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Void this payroll run?</h3>
+    <p style="color:var(--text-2);margin-bottom:20px;"><strong>{{ run.run_number }}</strong> will be voided and the period freed for a fresh run. This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('payroll.void_run', id=run.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+        <textarea name="void_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('voidModal').style.display='none'">Keep Run</button>
+        <button type="submit" class="btn btn-danger">Void Run</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Cancel modal (posted only) -->
+{% if run.status == 'posted' %}
+<div id="cancelModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:480px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Cancel this payroll run?</h3>
+    <p style="color:var(--text-2);margin-bottom:20px;">Cancelling <strong>{{ run.run_number }}</strong> will create a reversal journal entry (every debit/credit swapped from the accrual). This cannot be undone.</p>
+    <form method="POST" action="{{ url_for('payroll.cancel_run', id=run.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
+        <textarea name="cancel_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
+      </div>
+      <div style="margin-bottom:24px;">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reversal Date <span style="color:var(--red);">*</span></label>
+        <input type="date" name="reversal_date" class="form-control" value="{{ now.strftime('%Y-%m-%d') }}" required style="width:100%;">
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">Keep Run</button>
+        <button type="submit" class="btn btn-danger">Cancel Run</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-header">
     <div style="display:flex;align-items:center;gap:12px;">
@@ -10,10 +73,17 @@
       <span class="badge badge-{{ run.status }}">{{ run.status | capitalize }}</span>
     </div>
     <div class="card-header-actions">
-      {% if run.status == 'draft' %}
-      <a href="{{ url_for('payroll.edit_run', id=run.id) }}" class="btn btn-secondary">Edit</a>
+      {% if (current_user.has_full_access or current_user.role == 'accountant') and run.status == 'draft' %}
+      <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post Run</button>
       {% endif %}
-      <a href="{{ url_for('payroll.register') }}" class="btn btn-secondary">Back</a>
+      {% if current_user.role in ['staff','accountant','admin','chief_accountant'] and run.status == 'draft' %}
+      <a href="{{ url_for('payroll.edit_run', id=run.id) }}" class="btn btn-secondary">Edit</a>
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void</button>
+      {% endif %}
+      {% if (current_user.has_full_access or current_user.role == 'accountant') and run.status == 'posted' %}
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Run</button>
+      {% endif %}
+      <a href="{{ url_for('payroll.register') }}" class="btn btn-secondary">← Back</a>
     </div>
   </div>
 
@@ -75,6 +145,23 @@
     </div>
 
     {% include "payroll/_je_preview.html" %}
+
+    <!-- Audit trail -->
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3);">
+      Created by {{ run.created_by.username if run.created_by else '—' }}
+      on {{ run.created_at.strftime('%b %d, %Y %H:%M') if run.created_at else '—' }}
+      {% if run.posted_by %}
+       &mdash; Posted by {{ run.posted_by.username }} on {{ run.posted_at.strftime('%b %d, %Y %H:%M') if run.posted_at else '—' }}
+      {% endif %}
+      {% if run.voided_by %}
+       &mdash; Voided by {{ run.voided_by.username }} on {{ run.voided_at.strftime('%b %d, %Y %H:%M') if run.voided_at else '—' }}
+       &mdash; <em>{{ run.void_reason }}</em>
+      {% endif %}
+      {% if run.cancel_reason %}
+       &mdash; Cancelled on {{ run.cancelled_at.strftime('%b %d, %Y %H:%M') if run.cancelled_at else '—' }}
+       &mdash; <em>{{ run.cancel_reason }}</em>
+      {% endif %}
+    </div>
 
   </div>
 </div>

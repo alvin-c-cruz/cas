@@ -17,12 +17,14 @@ from app import db
 from app.accounts.models import Account
 from app.audit.models import AuditLog
 from app.employees.models import Employee
+from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.payroll.models import PayrollRun, PayrollRunLine
 from app.payroll import service
 from app.periods.models import AccountingPeriod
 from app.posting.control_accounts import CONTROL_ACCOUNTS
 from app.seeds.statutory_2026 import seed_statutory_2026
 from app.settings import AppSettings
+from app.utils.concurrency import claim_version
 
 pytestmark = [pytest.mark.integration]
 
@@ -627,3 +629,387 @@ class TestRegisterAndDetailViews:
         accrued_row = _find_row(body, 'Accrued Salaries')
         accells = _cells(accrued_row)
         assert accells[0] == '20501'
+
+
+class TestLifecyclePostVoidCancel:
+    """Task 10: payroll.post_run / payroll.void_run / payroll.cancel_run.
+
+    Mirrors cash_disbursements/views.py's post/void/cancel shape (role gate,
+    status guard, reason-length guard, try/ValueError/Exception, commit,
+    log_audit, flash, redirect) with two payroll-specific additions:
+      - post_run uses claim_version (a real conditional-UPDATE optimistic
+        lock), not a bare status check -- a draft run's lines/period remain
+        editable right up to the post click, unlike a CDV.
+      - post_run and cancel_run both reuse the payroll-specific
+        AccountingPeriod.is_period_closed(year, month) check (Task 8's
+        _period_closed_with_flash), not CDV's date-based helper.
+    """
+
+    def _login_accountant(self, client, login_user, accountant_user, db_session, main_branch):
+        db_session.commit()
+        login_user(client, 'accountant', 'accountant123')
+
+    def _login_staff(self, client, login_user, staff_user, db_session, main_branch):
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+        login_user(client, 'staff', 'staff123')
+
+    # ---- Post ----
+
+    def test_accountant_posts_draft_run_sets_status_je_actor_timestamp(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        run = posted_run_factory()
+        self._login_accountant(client, login_user, accountant_user, db_session, main_branch)
+
+        resp = client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': str(run.row_version),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'posted'
+        assert run2.journal_entry_id is not None
+        assert run2.posted_by_id == accountant_user.id
+        assert run2.posted_at is not None
+
+        je = db.session.get(JournalEntry, run2.journal_entry_id)
+        assert je is not None
+        assert je.status == 'posted'
+        assert je.is_balanced is True
+        assert je.total_debit == je.total_credit
+        expected_debit_legs = (
+            run2.total_gross + run2.total_sss_er + run2.total_sss_ec
+            + run2.total_philhealth_er + run2.total_pagibig_er
+        )
+        assert je.total_debit == expected_debit_legs, \
+            'the debit side must tie exactly to the header expense buckets'
+        # The Accrued Salaries plug (credit leg) must tie to net pay -- the
+        # posted-je-leg-vs-source-header invariant post_payroll_je guards.
+        accrued_line = next(l for l in je.lines.all()
+                             if l.account and l.account.code == '20501')
+        assert accrued_line.credit_amount == run2.total_net_pay
+
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='post', record_id=run.id).count() == 1
+        audit = AuditLog.query.filter_by(
+            module='payroll_run', action='post', record_id=run.id).first()
+        assert audit.user_id == accountant_user.id
+        assert audit.record_identifier == run.run_number
+
+    def test_staff_cannot_post(
+            self, client, staff_user, main_branch, login_user, db_session, posted_run_factory):
+        run = posted_run_factory()
+        self._login_staff(client, login_user, staff_user, db_session, main_branch)
+
+        resp = client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': str(run.row_version),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'draft'
+        assert run2.journal_entry_id is None
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='post', record_id=run.id).count() == 0
+
+    def test_post_blocked_when_period_closed(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        run = posted_run_factory()
+        period = AccountingPeriod.get_or_create_period(run.period_year, run.period_month)
+        period.close_period(accountant_user)
+        self._login_accountant(client, login_user, accountant_user, db_session, main_branch)
+
+        resp = client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': str(run.row_version),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'has been closed' in resp.data
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'draft'
+        assert run2.journal_entry_id is None
+
+    def test_only_draft_can_be_posted(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        run = posted_run_factory()
+        run.status = 'posted'
+        db_session.commit()
+        self._login_accountant(client, login_user, accountant_user, db_session, main_branch)
+
+        resp = client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': str(run.row_version),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'Only draft payroll runs can be posted' in resp.data
+
+    # ---- claim_version race: the real thing this task adds over CDV ----
+
+    def test_stale_row_version_blocks_post_after_concurrent_edit(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        """Isolates the claim_version guard from the status guard: a concurrent
+        edit bumps row_version WITHOUT changing status (still 'draft'), so a
+        post submitted with the now-stale token must be rejected by
+        claim_version specifically -- the status check alone would NOT catch
+        this (status is still 'draft' throughout)."""
+        run = posted_run_factory()
+        stale_token = run.row_version
+        assert stale_token == 1
+
+        # Simulate a concurrent encoder's edit: a real conditional UPDATE that
+        # advances row_version to 2 while status stays 'draft' -- exactly what
+        # payroll.edit_run's own claim_version call does on a real edit.
+        assert claim_version(PayrollRun, run.id, stale_token) is True
+        db_session.commit()
+        db.session.expire_all()
+        run_after_edit = db.session.get(PayrollRun, run.id)
+        assert run_after_edit.row_version == 2
+        assert run_after_edit.status == 'draft'
+
+        self._login_accountant(client, login_user, accountant_user, db_session, main_branch)
+
+        # The post request still carries the STALE token (1) it read before
+        # the concurrent edit happened.
+        resp = client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': str(stale_token),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'NOT saved' in resp.data
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'draft', 'claim_version must have blocked the post'
+        assert run2.journal_entry_id is None
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='post', record_id=run.id).count() == 0
+        assert JournalEntry.query.filter_by(reference=run.run_number).count() == 0
+
+    def test_double_post_with_same_token_only_posts_once(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        """Two sequential submissions carrying the SAME row_version=1 token
+        (the classic double-click / two-tab race) -- exactly one succeeds."""
+        run = posted_run_factory()
+        self._login_accountant(client, login_user, accountant_user, db_session, main_branch)
+
+        resp1 = client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': '1',
+        }, follow_redirects=True)
+        resp2 = client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': '1',
+        }, follow_redirects=True)
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'posted'
+        assert JournalEntry.query.filter_by(reference=run.run_number).count() == 1, \
+            'only one JE may ever be created for this run, even under a repeated POST'
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='post', record_id=run.id).count() == 1
+
+    # ---- Void ----
+
+    def test_staff_voids_draft_run(
+            self, client, staff_user, main_branch, login_user, db_session, run_factory):
+        run = run_factory()
+        self._login_staff(client, login_user, staff_user, db_session, main_branch)
+
+        resp = client.post(f'/payroll/runs/{run.id}/void', data={
+            'void_reason': 'Wrong pay period entered by mistake',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'voided'
+        assert run2.voided_by_id == staff_user.id
+        assert run2.voided_at is not None
+        assert run2.void_reason == 'Wrong pay period entered by mistake'
+
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='void', record_id=run.id).count() == 1
+        audit = AuditLog.query.filter_by(
+            module='payroll_run', action='void', record_id=run.id).first()
+        assert audit.user_id == staff_user.id
+
+    def test_void_requires_minimum_reason_length(
+            self, client, staff_user, main_branch, login_user, db_session, run_factory):
+        run = run_factory()
+        self._login_staff(client, login_user, staff_user, db_session, main_branch)
+
+        resp = client.post(f'/payroll/runs/{run.id}/void', data={
+            'void_reason': 'too short',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'at least 10 characters' in resp.data
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'draft'
+
+    def test_only_draft_can_be_voided(
+            self, client, staff_user, main_branch, login_user, db_session, run_factory):
+        run = run_factory()
+        run.status = 'posted'
+        db_session.commit()
+        self._login_staff(client, login_user, staff_user, db_session, main_branch)
+
+        resp = client.post(f'/payroll/runs/{run.id}/void', data={
+            'void_reason': 'Attempting to void a posted run',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'Only draft payroll runs can be voided' in resp.data
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'posted'
+
+    def test_void_defensively_deletes_je_if_somehow_present(
+            self, client, staff_user, main_branch, login_user, db_session, run_factory):
+        """A draft run should never actually carry a JE in this codebase's flow
+        (post_payroll_je only ever runs from post_run, which requires draft
+        status in the first place) -- this proves the DEFENSIVE delete path
+        (mirroring CDV's void()) still works correctly if it somehow did."""
+        run = run_factory()
+        je = JournalEntry(
+            entry_number='JE-TEST-VOID-0001', entry_date=run.pay_date,
+            description='stray JE', entry_type='payroll_accrual',
+            branch_id=run.branch_id, status='draft',
+            is_balanced=True, total_debit=Decimal('0.00'), total_credit=Decimal('0.00'),
+        )
+        db_session.add(je)
+        db_session.commit()
+        run.journal_entry_id = je.id
+        db_session.commit()
+        je_id = je.id
+
+        self._login_staff(client, login_user, staff_user, db_session, main_branch)
+        resp = client.post(f'/payroll/runs/{run.id}/void', data={
+            'void_reason': 'Voiding a draft that somehow carries a stray JE',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'voided'
+        assert run2.journal_entry_id is None
+        assert db.session.get(JournalEntry, je_id) is None, 'the stray JE must be deleted'
+
+    # ---- Cancel ----
+
+    def _post_a_run(self, client, accountant_user, main_branch, login_user, db_session, run):
+        self._login_accountant(client, login_user, accountant_user, db_session, main_branch)
+        client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': str(run.row_version),
+        }, follow_redirects=True)
+        db.session.expire_all()
+        return db.session.get(PayrollRun, run.id)
+
+    def test_accountant_cancels_posted_run_with_swapped_reversal_je(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        run = posted_run_factory()
+        posted = self._post_a_run(client, accountant_user, main_branch, login_user, db_session, run)
+        assert posted.status == 'posted'
+        original_je = db.session.get(JournalEntry, posted.journal_entry_id)
+        original_lines = [(l.account_id, l.debit_amount, l.credit_amount)
+                           for l in original_je.lines.all()]
+
+        resp = client.post(f'/payroll/runs/{posted.id}/cancel', data={
+            'cancel_reason': 'Overstated OT hours, redoing the run',
+            'reversal_date': '2026-06-30',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, posted.id)
+        assert run2.status == 'cancelled'
+        assert run2.cancelled_at is not None
+        assert run2.cancel_reason == 'Overstated OT hours, redoing the run'
+        # The ORIGINAL accrual JE and its link are untouched (unlike void, cancel
+        # does not delete anything -- it reverses via a second, separate JE).
+        assert run2.journal_entry_id == original_je.id
+
+        reversal_je = JournalEntry.query.filter_by(
+            reference=f'CANCEL-{run2.run_number}').first()
+        assert reversal_je is not None
+        assert reversal_je.is_reversing is True
+        assert reversal_je.reversed_entry_id == original_je.id
+        assert reversal_je.status == 'posted'
+        assert reversal_je.entry_date == date(2026, 6, 30)
+        assert reversal_je.total_debit == reversal_je.total_credit
+        assert reversal_je.is_balanced is True
+
+        reversal_lines = [(l.account_id, l.debit_amount, l.credit_amount)
+                           for l in reversal_je.lines.all()]
+        # Every leg's debit/credit is swapped from the original, account-for-account.
+        assert sorted(reversal_lines) == sorted(
+            (acct_id, cr, dr) for acct_id, dr, cr in original_lines
+        )
+
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='cancel', record_id=posted.id).count() == 1
+        audit = AuditLog.query.filter_by(
+            module='payroll_run', action='cancel', record_id=posted.id).first()
+        assert audit.user_id == accountant_user.id
+
+    def test_cancel_blocked_when_reversal_period_closed(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        run = posted_run_factory()
+        posted = self._post_a_run(client, accountant_user, main_branch, login_user, db_session, run)
+        assert posted.status == 'posted'
+
+        period = AccountingPeriod.get_or_create_period(2026, 7)
+        period.close_period(accountant_user)
+
+        resp = client.post(f'/payroll/runs/{posted.id}/cancel', data={
+            'cancel_reason': 'Trying to reverse into a closed period',
+            'reversal_date': '2026-07-15',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'has been closed' in resp.data
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, posted.id)
+        assert run2.status == 'posted'
+        assert JournalEntry.query.filter_by(
+            reference=f'CANCEL-{run2.run_number}').count() == 0
+
+    def test_cancel_requires_minimum_reason_length(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        run = posted_run_factory()
+        posted = self._post_a_run(client, accountant_user, main_branch, login_user, db_session, run)
+
+        resp = client.post(f'/payroll/runs/{posted.id}/cancel', data={
+            'cancel_reason': 'too short',
+            'reversal_date': '2026-06-30',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'at least 10 characters' in resp.data
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, posted.id)
+        assert run2.status == 'posted'
+
+    def test_only_posted_can_be_cancelled(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        run = posted_run_factory()   # still draft -- never posted
+        self._login_accountant(client, login_user, accountant_user, db_session, main_branch)
+
+        resp = client.post(f'/payroll/runs/{run.id}/cancel', data={
+            'cancel_reason': 'Trying to cancel a draft run',
+            'reversal_date': '2026-06-30',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'Only posted payroll runs can be cancelled' in resp.data

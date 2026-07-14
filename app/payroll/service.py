@@ -521,3 +521,74 @@ def build_je_preview(run):
         'balanced': total_debit == total_credit,
         'net_pay_plug': plug,
     }
+
+
+def build_payroll_reversal_je(run, reversal_date, user_id):
+    """Post a Dr<->Cr swapped reversal of a payroll run's accrual JE (cancel).
+
+    Mirrors cash_disbursements._create_cdv_reversal_je: every leg from the
+    original accrual JE (run.journal_entry) is copied onto a NEW JournalEntry
+    with debit_amount and credit_amount swapped -- so an Expense-debit leg
+    becomes a credit and a Payable-credit leg becomes a debit, exactly undoing
+    the original accrual. The reversal is a General Journal entry (uses
+    generate_jv_number, like CDV's cancel reversal), posts immediately
+    (status='posted'), and is dated `reversal_date` -- the caller is
+    responsible for having already confirmed that date's accounting period is
+    open (mirrors CDV's cancel route checking the reversal date before calling
+    this).
+
+    Args:
+        run: PayrollRun -- expected 'posted' with a linked journal_entry.
+        reversal_date: date the reversal JE posts on.
+        user_id: acting user -- recorded as both created_by and posted_by
+            (the reversal posts immediately, same as CDV's cancel).
+
+    Returns:
+        JournalEntry (flushed but not committed -- caller commits).
+
+    Raises:
+        ValueError: run has no linked journal entry to reverse.
+    """
+    from app import db
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.journal_entries.utils import generate_jv_number
+    from app.utils import ph_now
+
+    source_je = run.journal_entry
+    if source_je is None:
+        raise ValueError(f'Payroll run {run.run_number} has no journal entry to reverse.')
+
+    entry_number = generate_jv_number(run.branch_id)
+    je = JournalEntry(
+        entry_number=entry_number,
+        entry_date=reversal_date,
+        description=f'Payroll Cancel — {run.run_number} (reversal)',
+        reference=f'CANCEL-{run.run_number}',
+        entry_type='reversal',
+        is_reversing=True,
+        reversed_entry_id=source_je.id,
+        branch_id=run.branch_id,
+        created_by_id=user_id,
+        status='posted',
+        posted_by_id=user_id,
+        posted_at=ph_now(),
+        is_balanced=False,
+        total_debit=Decimal('0.00'),
+        total_credit=Decimal('0.00'),
+    )
+    db.session.add(je)
+    db.session.flush()
+
+    for i, src in enumerate(source_je.lines.all(), start=1):
+        rev = JournalEntryLine(
+            entry_id=je.id, line_number=i,
+            account_id=src.account_id,
+            description=f'Cancel: {src.description}',
+            debit_amount=src.credit_amount,
+            credit_amount=src.debit_amount,
+        )
+        db.session.add(rev)
+
+    db.session.flush()
+    je.calculate_totals()
+    return je
