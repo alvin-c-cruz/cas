@@ -332,3 +332,70 @@ def request_change():
                   notes=f'Opening balance change requested by {current_user.username} (pending).')
         flash('Change request submitted for approval.', 'success')
     return redirect(url_for('opening_balances.index'))
+
+
+@opening_balances_bp.route('/opening-balances/pending-approvals')
+@login_required
+@accountant_or_admin_required
+def pending_approvals():
+    pending = OpeningBalanceChangeRequest.query.filter_by(status='pending').order_by(
+        OpeningBalanceChangeRequest.requested_at.desc()).all()
+    return render_template('opening_balances/pending_approvals.html', pending_requests=pending)
+
+
+@opening_balances_bp.route('/opening-balances/approve/<int:request_id>', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def approve_request(request_id):
+    req = db.get_or_404(OpeningBalanceChangeRequest, request_id)
+    if not req.can_be_approved_by(current_user.username):
+        flash('You cannot approve your own opening-balance change request.', 'error')
+        return redirect(url_for('opening_balances.pending_approvals'))
+    if req.status != 'pending':
+        flash('This request has already been processed.', 'error')
+        return redirect(url_for('opening_balances.pending_approvals'))
+
+    entry = get_opening_entry(req.branch_id)
+    if entry is None:                       # TOCTOU: entry vanished
+        flash('The opening balances entry no longer exists; request cannot be applied.', 'error')
+        return redirect(url_for('opening_balances.pending_approvals'))
+
+    try:
+        _apply_opening_change(entry, req)
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), 'error')
+        return redirect(url_for('opening_balances.pending_approvals'))
+    req.status = 'approved'
+    req.reviewed_by = current_user.username
+    req.reviewed_at = ph_now()
+    db.session.commit()
+    log_audit(module='opening_balances', action='update', record_id=entry.id,
+              record_identifier=f'{entry.entry_number} - Opening Balances',
+              notes=f'Opening balance change approved by {current_user.username}.')
+    flash('Opening-balance change approved and applied.', 'success')
+    return redirect(url_for('opening_balances.pending_approvals'))
+
+
+@opening_balances_bp.route('/opening-balances/reject/<int:request_id>', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def reject_request(request_id):
+    req = db.get_or_404(OpeningBalanceChangeRequest, request_id)
+    if not req.can_be_approved_by(current_user.username):
+        flash('You cannot reject your own opening-balance change request.', 'error')
+        return redirect(url_for('opening_balances.pending_approvals'))
+    if req.status != 'pending':
+        flash('This request has already been processed.', 'error')
+        return redirect(url_for('opening_balances.pending_approvals'))
+
+    req.status = 'rejected'
+    req.reviewed_by = current_user.username
+    req.reviewed_at = ph_now()
+    req.rejection_reason = request.form.get('rejection_reason', 'No reason provided')
+    db.session.commit()
+    log_audit(module='opening_balances', action='reject', record_id=req.id,
+              record_identifier=f'Opening balance change #{req.id}',
+              notes=f'Rejected by {current_user.username}: {req.rejection_reason}')
+    flash('Opening-balance change request rejected.', 'success')
+    return redirect(url_for('opening_balances.pending_approvals'))
