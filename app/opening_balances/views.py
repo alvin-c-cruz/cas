@@ -19,6 +19,7 @@ from app.opening_balances.utils import (
     opening_leaf_account_ids, LOCK_KEY,
 )
 from app.opening_balances.approval_models import OpeningBalanceChangeRequest
+from app.branches.models import Branch
 from app.utils.authz import full_access_required
 
 opening_balances_bp = Blueprint('opening_balances', __name__, template_folder='templates')
@@ -136,6 +137,7 @@ def index():
         locked=is_opening_locked(branch_id) if branch_id else False,
         can_edit=(current_user.role == 'accountant' or current_user.has_full_access),
         can_finalize=current_user.has_full_access,
+        has_pending=find_pending_ob_request(branch_id) is not None if branch_id else False,
     )
 
 
@@ -340,7 +342,11 @@ def request_change():
 def pending_approvals():
     pending = OpeningBalanceChangeRequest.query.filter_by(status='pending').order_by(
         OpeningBalanceChangeRequest.requested_at.desc()).all()
-    return render_template('opening_balances/pending_approvals.html', pending_requests=pending)
+    branch_ids = {r.branch_id for r in pending if r.branch_id is not None}
+    branch_names = {b.id: b.name for b in Branch.query.filter(Branch.id.in_(branch_ids)).all()} \
+        if branch_ids else {}
+    return render_template('opening_balances/pending_approvals.html',
+                           pending_requests=pending, branch_names=branch_names)
 
 
 @opening_balances_bp.route('/opening-balances/approve/<int:request_id>', methods=['POST'])

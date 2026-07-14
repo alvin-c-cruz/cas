@@ -16,6 +16,7 @@ from app.accounts.approval_models import AccountChangeRequest
 from app.vat_categories.models import VATCategoryChangeRequest
 from app.withholding_tax.models import WithholdingTaxChangeRequest
 from app.users.approved_emails import ApprovedEmail
+from app.opening_balances.approval_models import OpeningBalanceChangeRequest
 
 
 def _draft_sources():
@@ -107,6 +108,19 @@ def gather_approval_items(user):
             'reviewUrl': '/withholding-tax/change-requests/{}/review'.format(req.id),
         })
 
+    for req in OpeningBalanceChangeRequest.query.filter_by(status='pending').all():
+        cd = req.get_change_data()
+        desc = 'Cutover {} — {} line(s)'.format(
+            cd.get('cutover_date', '—'), len(cd.get('lines', [])))
+        items.append({
+            'type': 'Opening Balance', 'icon': '🏦',
+            'id': req.id, 'desc': desc,
+            'by': req.requested_by or '—',
+            'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
+            'state': 'Pending', 'reason': req.request_reason,
+            'reviewUrl': '/opening-balances/pending-approvals',
+        })
+
     # Pending approved-email requests
     for ae in ApprovedEmail.query.filter_by(status='pending').all():
         items.append({
@@ -134,6 +148,7 @@ def count_action_items(user, branch_id):
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()
         n += WithholdingTaxChangeRequest.query.filter_by(status='pending').count()
+        n += OpeningBalanceChangeRequest.query.filter_by(status='pending').count()
     if user.has_full_access:
         n += ApprovedEmail.query.filter_by(status='pending').count()
     return n

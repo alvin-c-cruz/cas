@@ -5,6 +5,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='opening_balances.css') }}?v=2">
 {# Save only edits drafts: a posted opening is read-only until re-opened (see save_draft guard). #}
 {% set editable = can_edit and not locked and (not entry or entry.status == 'draft') %}
+{# Once the period is closed (locked), editing goes through the governed
+   request-change path instead of the free-edit Save path. #}
+{% set request_mode = can_edit and locked %}
+{% set lines_editable = editable or request_mode %}
 
 {# One row of the opening-balances grid — used by the entry rows, the starter row,
    and the #ob-row-template that JS clones for "+ Add line". #}
@@ -35,6 +39,9 @@
   <header class="page-head">
     <h1>Opening Balances</h1>
     {% if locked %}<span class="badge badge-locked">Finalized — locked</span>{% endif %}
+    {% if can_edit %}
+      <a href="{{ url_for('opening_balances.pending_approvals') }}">Pending Approvals</a>
+    {% endif %}
   </header>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -43,12 +50,21 @@
     {% endfor %}
   {% endwith %}
 
-  <form method="post" action="{{ url_for('opening_balances.save_draft') }}" id="ob-form">
+  {% if request_mode and has_pending %}
+    <div class="flash flash-info">
+      A change request for this branch's opening balances is already pending approval.
+      <a href="{{ url_for('opening_balances.pending_approvals') }}">View pending approvals</a>.
+    </div>
+  {% endif %}
+
+  <form method="post"
+        action="{{ url_for('opening_balances.request_change') if request_mode else url_for('opening_balances.save_draft') }}"
+        id="ob-form">
     {{ form.hidden_tag() }}
     <label>Cutover Date
       <input type="date" name="cutover_date"
              value="{{ entry.entry_date.strftime('%Y-%m-%d') if entry else (form.cutover_date.data.strftime('%Y-%m-%d') if form.cutover_date.data else '') }}"
-             {{ 'disabled' if not editable else '' }}>
+             {{ 'disabled' if not lines_editable else '' }}>
     </label>
 
     <table class="ob-lines" id="ob-lines">
@@ -56,15 +72,15 @@
       <tbody>
         {% if entry %}
           {% for line in entry.lines %}
-            {{ ob_row(accounts, line=line, editable=editable) }}
+            {{ ob_row(accounts, line=line, editable=lines_editable) }}
           {% endfor %}
-        {% elif editable %}
+        {% elif lines_editable %}
           {{ ob_row(accounts, editable=True) }}
         {% endif %}
       </tbody>
     </table>
 
-    {% if editable %}
+    {% if lines_editable %}
       {# Cloned by "+ Add line" JS. Kept out of the tbody so the on-load upgrade skips it. #}
       <template id="ob-row-template">{{ ob_row(accounts, editable=True) }}</template>
       <button type="button" id="ob-add-row">+ Add line</button>
@@ -79,6 +95,10 @@
     {% if editable %}
       <div class="ob-actions">
         <button type="submit">{{ 'Update' if entry else 'Save' }}</button>
+      </div>
+    {% elif request_mode %}
+      <div class="ob-actions">
+        <button type="submit" {{ 'disabled' if has_pending else '' }}>Submit Change Request</button>
       </div>
     {% endif %}
   </form>

@@ -31,7 +31,7 @@
                 {% for request in pending_requests %}
                 {% set change_data = request.get_change_data() %}
                 <tr>
-                    <td>{{ request.branch_id }}</td>
+                    <td>{{ branch_names.get(request.branch_id, '—') }}</td>
                     <td>{{ change_data.cutover_date }}</td>
                     <td style="font-size: 13px; color: #64748b; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ request.request_reason or '' }}">{{ request.request_reason or '—' }}</td>
                     <td>{{ request.requested_by }}</td>
