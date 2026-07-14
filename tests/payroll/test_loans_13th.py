@@ -336,10 +336,12 @@ class TestLoanBalanceLifecycle:
         db.session.expire_all()
         loan_after_post = db.session.get(EmployeeLoan, loan.id)
         assert loan_after_post.balance == Decimal('0.00')
+        run_after_post = db.session.get(PayrollRun, run.id)
 
         resp = client.post(f'/payroll/runs/{run.id}/cancel', data={
             'cancel_reason': 'Testing exact loan-balance restore on cancel',
             'reversal_date': '2026-06-30',
+            'row_version': str(run_after_post.row_version),
         }, follow_redirects=True)
         assert resp.status_code == 200
 
@@ -369,6 +371,9 @@ class TestLoanBalanceLifecycle:
         loan_after_post = db.session.get(EmployeeLoan, loan.id)
         assert loan_after_post.balance == Decimal('3500.00')
 
+        run_after_post = db.session.get(PayrollRun, run.id)
+        run_row_version = run_after_post.row_version
+
         # Drift the loan's amortization AFTER post, before cancel.
         loan_after_post.monthly_amortization = Decimal('600.00')
         db.session.commit()
@@ -376,6 +381,7 @@ class TestLoanBalanceLifecycle:
         client.post(f'/payroll/runs/{run.id}/cancel', data={
             'cancel_reason': 'Proving the restore ignores a post-facto rate change',
             'reversal_date': '2026-06-30',
+            'row_version': str(run_row_version),
         }, follow_redirects=True)
 
         db.session.expire_all()
@@ -409,6 +415,7 @@ class TestLoanBalanceLifecycle:
 
         resp = client.post(f'/payroll/runs/{run.id}/void', data={
             'void_reason': 'Voiding a draft that has a loan-preview amount',
+            'row_version': str(run.row_version),
         }, follow_redirects=True)
         assert resp.status_code == 200
 

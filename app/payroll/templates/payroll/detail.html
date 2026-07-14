@@ -28,6 +28,7 @@
     <p style="color:var(--text-2);margin-bottom:20px;"><strong>{{ run.run_number }}</strong> will be voided and the period freed for a fresh run. This cannot be undone.</p>
     <form method="POST" action="{{ url_for('payroll.void_run', id=run.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="row_version" value="{{ run.row_version }}"/>
       <div style="margin-bottom:24px;">
         <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
         <textarea name="void_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>
@@ -49,6 +50,7 @@
     <p style="color:var(--text-2);margin-bottom:20px;">Cancelling <strong>{{ run.run_number }}</strong> will create a reversal journal entry (every debit/credit swapped from the accrual). This cannot be undone.</p>
     <form method="POST" action="{{ url_for('payroll.cancel_run', id=run.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="row_version" value="{{ run.row_version }}"/>
       <div style="margin-bottom:16px;">
         <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Reason <span style="color:var(--red);">*</span></label>
         <textarea name="cancel_reason" rows="3" class="form-control" placeholder="Minimum 10 characters" required minlength="10" style="width:100%;resize:vertical;"></textarea>

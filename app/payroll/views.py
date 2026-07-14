@@ -832,6 +832,11 @@ def void_run(id):
         flash('Void reason must be at least 10 characters.', 'error')
         return redirect(url_for('payroll.view_run', id=id))
     try:
+        if not claim_version(PayrollRun, run.id, submitted_version()):
+            db.session.rollback()
+            flash(conflict_message('payroll_run', run.id), 'error')
+            return redirect(url_for('payroll.view_run', id=id))
+
         if run.journal_entry_id:
             from app.journal_entries.models import JournalEntry as _JE
             je_to_delete = db.session.get(_JE, run.journal_entry_id)
@@ -888,6 +893,11 @@ def cancel_run(id):
     if not _period_closed_with_flash(reversal_date.year, reversal_date.month):
         return redirect(url_for('payroll.view_run', id=id))
     try:
+        if not claim_version(PayrollRun, run.id, submitted_version()):
+            db.session.rollback()
+            flash(conflict_message('payroll_run', run.id), 'error')
+            return redirect(url_for('payroll.view_run', id=id))
+
         service.build_payroll_reversal_je(run, reversal_date, current_user.id)
         # Task 11: restore each line's referenced EmployeeLoan.balance by the
         # EXACT amount apply_loan_balances() decremented at post -- see

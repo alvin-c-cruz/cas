@@ -18,7 +18,7 @@ from app.accounts.models import Account
 from app.audit.models import AuditLog
 from app.employees.models import Employee
 from app.journal_entries.models import JournalEntry, JournalEntryLine
-from app.payroll.models import PayrollRun, PayrollRunLine
+from app.payroll.models import EmployeeLoan, PayrollRun, PayrollRunLine
 from app.payroll import service
 from app.periods.models import AccountingPeriod
 from app.posting.control_accounts import CONTROL_ACCOUNTS
@@ -824,6 +824,7 @@ class TestLifecyclePostVoidCancel:
 
         resp = client.post(f'/payroll/runs/{run.id}/void', data={
             'void_reason': 'Wrong pay period entered by mistake',
+            'row_version': str(run.row_version),
         }, follow_redirects=True)
         assert resp.status_code == 200
 
@@ -894,6 +895,7 @@ class TestLifecyclePostVoidCancel:
         self._login_staff(client, login_user, staff_user, db_session, main_branch)
         resp = client.post(f'/payroll/runs/{run.id}/void', data={
             'void_reason': 'Voiding a draft that somehow carries a stray JE',
+            'row_version': str(run.row_version),
         }, follow_redirects=True)
         assert resp.status_code == 200
 
@@ -926,6 +928,7 @@ class TestLifecyclePostVoidCancel:
         resp = client.post(f'/payroll/runs/{posted.id}/cancel', data={
             'cancel_reason': 'Overstated OT hours, redoing the run',
             'reversal_date': '2026-06-30',
+            'row_version': str(posted.row_version),
         }, follow_redirects=True)
         assert resp.status_code == 200
 
@@ -1013,3 +1016,160 @@ class TestLifecyclePostVoidCancel:
         }, follow_redirects=True)
         assert resp.status_code == 200
         assert b'Only posted payroll runs can be cancelled' in resp.data
+
+    # ---- claim_version race on void_run/cancel_run (Finding 1, whole-branch
+    # review) -- mirrors the post_run pair above exactly: the status guard
+    # alone (draft-only for void, posted-only for cancel) cannot catch two
+    # concurrent Cancel/Void clicks on the SAME run, because both requests
+    # pass the status check before either commits. ----
+
+    def test_stale_row_version_blocks_void_after_concurrent_edit(
+            self, client, staff_user, main_branch, login_user, db_session, run_factory):
+        """Isolates the claim_version guard from the status guard: a concurrent
+        edit bumps row_version WITHOUT changing status (still 'draft'), so a
+        void submitted with the now-stale token must be rejected by
+        claim_version specifically -- the status check alone would NOT catch
+        this (status is still 'draft' throughout)."""
+        run = run_factory()
+        stale_token = run.row_version
+        assert stale_token == 1
+
+        # Simulate a concurrent encoder's edit: a real conditional UPDATE that
+        # advances row_version to 2 while status stays 'draft'.
+        assert claim_version(PayrollRun, run.id, stale_token) is True
+        db_session.commit()
+        db.session.expire_all()
+        run_after_edit = db.session.get(PayrollRun, run.id)
+        assert run_after_edit.row_version == 2
+        assert run_after_edit.status == 'draft'
+
+        self._login_staff(client, login_user, staff_user, db_session, main_branch)
+
+        # The void request still carries the STALE token (1) it read before
+        # the concurrent edit happened.
+        resp = client.post(f'/payroll/runs/{run.id}/void', data={
+            'void_reason': 'Voiding with a stale row_version token',
+            'row_version': str(stale_token),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'NOT saved' in resp.data
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'draft', 'claim_version must have blocked the void'
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='void', record_id=run.id).count() == 0
+
+    def test_double_void_with_same_token_only_voids_once(
+            self, client, staff_user, main_branch, login_user, db_session, run_factory):
+        """Two sequential submissions carrying the SAME row_version=1 token
+        (the classic double-click / two-tab race) -- exactly one succeeds."""
+        run = run_factory()
+        self._login_staff(client, login_user, staff_user, db_session, main_branch)
+
+        resp1 = client.post(f'/payroll/runs/{run.id}/void', data={
+            'void_reason': 'First void attempt, same token',
+            'row_version': '1',
+        }, follow_redirects=True)
+        resp2 = client.post(f'/payroll/runs/{run.id}/void', data={
+            'void_reason': 'Second void attempt, same stale token',
+            'row_version': '1',
+        }, follow_redirects=True)
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, run.id)
+        assert run2.status == 'voided'
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='void', record_id=run.id).count() == 1
+
+    def test_stale_row_version_blocks_cancel_after_concurrent_edit(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        """Same isolation as the void test above, but for cancel_run -- and
+        additionally proves the two real side effects a concurrent double-cancel
+        would otherwise double-apply (build_payroll_reversal_je,
+        restore_loan_balances) never ran: no second reversal JE, and the loan
+        balance stays exactly where posting left it (not restored)."""
+        run = posted_run_factory()
+        emp_id = run.lines[0].employee_id
+        loan = EmployeeLoan(employee_id=emp_id, loan_type='sss', principal=Decimal('6000'),
+                             monthly_amortization=Decimal('500'), balance=Decimal('4000'),
+                             status='active')
+        db_session.add(loan)
+        db_session.commit()
+        run.lines[0].calculate_amounts()
+        run.calculate_totals()
+        db_session.commit()
+
+        posted = self._post_a_run(client, accountant_user, main_branch, login_user, db_session, run)
+        assert posted.status == 'posted'
+        original_je = db.session.get(JournalEntry, posted.journal_entry_id)
+
+        loan_after_post = db.session.get(EmployeeLoan, loan.id)
+        assert loan_after_post.balance == Decimal('3500.00')   # 4000 - 500 applied at post
+
+        stale_token = posted.row_version
+
+        # Simulate a concurrent encoder's edit: a real conditional UPDATE that
+        # advances row_version while status stays 'posted'.
+        assert claim_version(PayrollRun, posted.id, stale_token) is True
+        db_session.commit()
+        db.session.expire_all()
+        run_after_edit = db.session.get(PayrollRun, posted.id)
+        assert run_after_edit.row_version == stale_token + 1
+        assert run_after_edit.status == 'posted'
+
+        resp = client.post(f'/payroll/runs/{posted.id}/cancel', data={
+            'cancel_reason': 'Cancelling with a stale row_version token',
+            'reversal_date': '2026-06-30',
+            'row_version': str(stale_token),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'NOT saved' in resp.data
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, posted.id)
+        assert run2.status == 'posted', 'claim_version must have blocked the cancel'
+        assert run2.journal_entry_id == original_je.id
+        assert JournalEntry.query.filter_by(
+            reference=f'CANCEL-{run2.run_number}').count() == 0, 'no reversal JE may be created'
+        loan_after_rejected_cancel = db.session.get(EmployeeLoan, loan.id)
+        assert loan_after_rejected_cancel.balance == Decimal('3500.00'), \
+            'the rejected cancel must not restore the loan balance'
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='cancel', record_id=posted.id).count() == 0
+
+    def test_double_cancel_with_same_token_only_cancels_once(
+            self, client, accountant_user, main_branch, login_user, db_session,
+            posted_run_factory):
+        """Two sequential cancel submissions carrying the SAME row_version
+        token (the classic double-click / two-tab race) -- exactly one
+        succeeds, proving no double reversal JE / double loan-balance restore."""
+        run = posted_run_factory()
+        posted = self._post_a_run(client, accountant_user, main_branch, login_user, db_session, run)
+        assert posted.status == 'posted'
+        token = str(posted.row_version)
+
+        resp1 = client.post(f'/payroll/runs/{posted.id}/cancel', data={
+            'cancel_reason': 'First cancel attempt, same token',
+            'reversal_date': '2026-06-30',
+            'row_version': token,
+        }, follow_redirects=True)
+        resp2 = client.post(f'/payroll/runs/{posted.id}/cancel', data={
+            'cancel_reason': 'Second cancel attempt, same stale token',
+            'reversal_date': '2026-06-30',
+            'row_version': token,
+        }, follow_redirects=True)
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+
+        db.session.expire_all()
+        run2 = db.session.get(PayrollRun, posted.id)
+        assert run2.status == 'cancelled'
+        assert JournalEntry.query.filter_by(
+            reference=f'CANCEL-{run2.run_number}').count() == 1, \
+            'only one reversal JE may ever be created, even under a repeated POST'
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='cancel', record_id=posted.id).count() == 1
