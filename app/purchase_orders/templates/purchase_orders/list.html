@@ -3,6 +3,7 @@
 {% block content %}
 <div class="page-header">
   <h1>Purchase Orders</h1>
+  <a href="{{ url_for('purchase_orders.create') }}" class="btn btn-primary btn-sm">+ Enter Purchase Order</a>
 </div>
 <div class="card"><div class="card-body">
   {% if orders %}
@@ -14,7 +15,7 @@
       <tbody>
         {% for po in orders %}
         <tr>
-          <td>{{ po.po_number }}</td>
+          <td><a href="{{ url_for('purchase_orders.view', id=po.id) }}">{{ po.po_number }}</a></td>
           <td>{{ po.order_date.strftime('%b %d, %Y') if po.order_date else '' }}</td>
           <td>{{ po.vendor_name }}</td>
           <td>{{ po.status }}</td>
