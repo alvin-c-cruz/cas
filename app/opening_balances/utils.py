@@ -6,16 +6,10 @@ produce the leaf-only account picker data the screen needs.
 """
 from app.journal_entries.models import JournalEntry
 from app.accounts.models import Account
-from app.settings import AppSettings
 from app.periods.utils import is_period_closed
 
 OPENING_ENTRY_TYPE = 'opening_balance'
 ACTIVE_STATUSES = ('draft', 'posted')
-
-
-def LOCK_KEY(branch_id):
-    """AppSettings key holding the per-branch finalize lock flag ('1'/'0')."""
-    return f'opening_balance_finalized:{branch_id}'
 
 
 def get_opening_entry(branch_id):
@@ -28,13 +22,9 @@ def get_opening_entry(branch_id):
 
 
 def is_opening_locked(branch_id):
-    """Locked when finalized by an admin OR the opening entry sits in a closed period."""
-    if AppSettings.get_setting(LOCK_KEY(branch_id), '0') == '1':
-        return True
+    """Locked (governed) when the opening entry sits in a closed period."""
     entry = get_opening_entry(branch_id)
-    if entry and is_period_closed(entry.entry_date):
-        return True
-    return False
+    return bool(entry and is_period_closed(entry.entry_date))
 
 
 def opening_account_choices():

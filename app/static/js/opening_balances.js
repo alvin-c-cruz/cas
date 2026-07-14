@@ -81,10 +81,4 @@
     wireRow(row);
   });
   recalc();
-
-  var fOpen = document.getElementById('ob-finalize-open');
-  var fModal = document.getElementById('ob-finalize-modal');
-  var fCancel = document.getElementById('ob-finalize-cancel');
-  if (fOpen && fModal) { fOpen.addEventListener('click', function () { fModal.hidden = false; }); }
-  if (fCancel && fModal) { fCancel.addEventListener('click', function () { fModal.hidden = true; }); }
 })();

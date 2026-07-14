@@ -218,6 +218,7 @@ def test_post_into_closed_period_refused(client, db_session, admin_user, main_br
     db.session.commit()
     resp = client.post('/opening-balances/post', follow_redirects=True)
     assert get_opening_entry(main_branch.id).status == 'draft'
+    assert b'locked' in resp.data
 
 
 def test_post_with_no_period_row_succeeds_rvb4(client, db_session, admin_user, main_branch,
@@ -245,29 +246,15 @@ def test_branch_isolation(client, db_session, admin_user, main_branch, branch_ma
     assert get_opening_entry(branch_manila.id) is None
 
 
-def test_post_blocked_when_locked(client, db_session, admin_user, main_branch,
-                                  cash_account, revenue_account):
-    """A locked opening (finalized flag set) refuses a post — guard coverage (review finding)."""
-    from app.settings import AppSettings
-    from app.opening_balances.utils import LOCK_KEY
-    _make_postable(db_session, cash_account, revenue_account)
-    _login(client, admin_user)
-    _select_branch(client, main_branch.id)
-    _save_and_get(client, main_branch.id, '2026-01-01', [
-        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
-    ])
-    AppSettings.set_setting(LOCK_KEY(main_branch.id), '1', updated_by='admin')
-    resp = client.post('/opening-balances/post', follow_redirects=True)
-    assert get_opening_entry(main_branch.id).status == 'draft'  # lock blocked the post
-    assert b'locked' in resp.data
-
-
 # ---------------------------------------------------------------------------
 # Task 5: reopen tests
 # ---------------------------------------------------------------------------
 
-from app.settings import AppSettings
-from app.opening_balances.utils import LOCK_KEY
+def _close_period(year, month):
+    """Task 7: the manual finalize lock is gone -- these tests now lock the
+    opening entry the real way, by closing its accounting period."""
+    db.session.add(AccountingPeriod(year=year, month=month, status='closed'))
+    db.session.commit()
 
 
 def test_reopen_posted_entry_returns_to_draft(client, db_session, admin_user, main_branch,
@@ -287,8 +274,8 @@ def test_reopen_posted_entry_returns_to_draft(client, db_session, admin_user, ma
     assert entry.posted_at is None
 
 
-def test_reopen_refused_when_finalized(client, db_session, admin_user, main_branch,
-                                       cash_account, revenue_account):
+def test_reopen_refused_when_period_closed(client, db_session, admin_user, main_branch,
+                                           cash_account, revenue_account):
     _make_postable(db_session, cash_account, revenue_account)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
@@ -296,7 +283,7 @@ def test_reopen_refused_when_finalized(client, db_session, admin_user, main_bran
         (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
     ])
     client.post('/opening-balances/post')
-    AppSettings.set_setting(LOCK_KEY(main_branch.id), '1', updated_by='admin')
+    _close_period(2026, 1)
 
     resp = client.post('/opening-balances/reopen', follow_redirects=True)
     assert get_opening_entry(main_branch.id).status == 'posted'  # unchanged
@@ -304,11 +291,14 @@ def test_reopen_refused_when_finalized(client, db_session, admin_user, main_bran
 
 
 # ---------------------------------------------------------------------------
-# Task 6: finalize tests
+# Task 7: manual Finalize is removed -- period-close is the only lock left.
 # ---------------------------------------------------------------------------
 
-def test_finalize_locks_and_freezes_editing(client, db_session, admin_user, main_branch,
-                                            cash_account, revenue_account):
+def test_free_edit_save_refused_once_period_closed(client, db_session, admin_user, main_branch,
+                                                    cash_account, revenue_account):
+    """No admin Finalize action exists anymore -- once the opening entry's period
+    closes, the free-edit /save path is refused (the governed request-change path
+    in test_opening_balance_gating.py is the only way to edit it from here)."""
     _make_postable(db_session, cash_account, revenue_account)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
@@ -316,29 +306,13 @@ def test_finalize_locks_and_freezes_editing(client, db_session, admin_user, main
         (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
     ])
     client.post('/opening-balances/post')
-    client.post('/opening-balances/finalize', follow_redirects=True)
+    _close_period(2026, 1)
 
-    assert AppSettings.get_setting(LOCK_KEY(main_branch.id)) == '1'
-    # subsequent save is refused
     resp = client.post('/opening-balances/save', data=_save_payload('2026-01-01', [
         (cash_account.id, '5.00', '0'), (revenue_account.id, '0', '5.00'),
     ]), follow_redirects=True)
     assert b'locked' in resp.data
     assert float(get_opening_entry(main_branch.id).total_debit) == 1000.00  # unchanged
-
-
-def test_finalize_blocked_for_accountant(client, db_session, accountant_user, main_branch,
-                                         cash_account, revenue_account):
-    _make_postable(db_session, cash_account, revenue_account)
-    _login(client, accountant_user)
-    _select_branch(client, main_branch.id)
-    _save_and_get(client, main_branch.id, '2026-01-01', [
-        (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
-    ])
-    client.post('/opening-balances/post')
-    resp = client.post('/opening-balances/finalize', follow_redirects=True)
-    assert AppSettings.get_setting(LOCK_KEY(main_branch.id), '0') == '0'  # not finalized
-    assert b'administrator' in resp.data  # the role gate (not a missing route) refused it
 
 
 # ---------------------------------------------------------------------------
@@ -363,13 +337,14 @@ def test_index_renders_for_admin(client, db_session, admin_user, main_branch):
 
 def test_index_shows_locked_state(client, db_session, admin_user, main_branch,
                                   cash_account, revenue_account):
+    _make_postable(db_session, cash_account, revenue_account)
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
     _save_and_get(client, main_branch.id, '2026-01-01', [
         (cash_account.id, '1000.00', '0'), (revenue_account.id, '0', '1000.00'),
     ])
     client.post('/opening-balances/post')
-    AppSettings.set_setting(LOCK_KEY(main_branch.id), '1', updated_by='admin')
+    _close_period(2026, 1)
     resp = client.get('/opening-balances')
     assert resp.status_code == 200
     assert b'Finalized' in resp.data or b'locked' in resp.data.lower()

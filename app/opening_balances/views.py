@@ -11,16 +11,14 @@ from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journal_entries.utils import generate_jv_number
 from app.audit.utils import log_create, log_update, log_audit, model_to_dict
 from app.periods.utils import validate_transaction_date_with_flash
-from app.settings import AppSettings
 from app.utils import ph_now
 from app.opening_balances.forms import OpeningBalanceForm
 from app.opening_balances.utils import (
     get_opening_entry, is_opening_locked, opening_account_choices,
-    opening_leaf_account_ids, LOCK_KEY,
+    opening_leaf_account_ids,
 )
 from app.opening_balances.approval_models import OpeningBalanceChangeRequest
 from app.branches.models import Branch
-from app.utils.authz import full_access_required
 
 opening_balances_bp = Blueprint('opening_balances', __name__, template_folder='templates')
 
@@ -136,7 +134,6 @@ def index():
         accounts=opening_account_choices(),
         locked=is_opening_locked(branch_id) if branch_id else False,
         can_edit=(current_user.role == 'accountant' or current_user.has_full_access),
-        can_finalize=current_user.has_full_access,
         has_pending=find_pending_ob_request(branch_id) is not None if branch_id else False,
     )
 
@@ -252,24 +249,6 @@ def reopen():
               record_identifier=f'{entry.entry_number} - Opening Balances',
               notes='Re-opened posted opening balances for editing.')
     flash('Opening balances re-opened for editing.', 'success')
-    return redirect(url_for('opening_balances.index'))
-
-
-@opening_balances_bp.route('/opening-balances/finalize', methods=['POST'])
-@login_required
-@full_access_required
-def finalize():
-    branch_id = _branch_id()
-    entry = get_opening_entry(branch_id)
-    if entry is None or entry.status != 'posted':
-        flash('Post the opening balances before finalizing.', 'error')
-        return redirect(url_for('opening_balances.index'))
-
-    AppSettings.set_setting(LOCK_KEY(branch_id), '1', updated_by=current_user.username)
-    log_audit(module='opening_balances', action='finalize', record_id=entry.id,
-              record_identifier=f'{entry.entry_number} - Opening Balances',
-              notes='Finalized opening balances (locked).')
-    flash('Opening balances finalized and locked.', 'success')
     return redirect(url_for('opening_balances.index'))
 
 

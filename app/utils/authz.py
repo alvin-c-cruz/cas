@@ -8,8 +8,7 @@ The Chief Accountant (CA) role is defined as "admin minus the Admin panel":
 
     full_access_required  -> has_full_access (admin OR chief_accountant). The
         accounting-oversight surfaces the CA shares with admin: periods,
-        opening-balance finalize, tax maintenance, audit-log view, approved-email
-        management.
+        tax maintenance, audit-log view, approved-email management.
 
 Both predicates live on the User model (``User.is_admin`` / ``User.has_full_access``);
 these decorators are the single enforcement point so per-blueprint copies do not

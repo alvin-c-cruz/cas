@@ -2,12 +2,11 @@ import pytest
 from datetime import date
 from app import db
 from app.opening_balances.utils import (
-    LOCK_KEY, get_opening_entry, is_opening_locked,
+    get_opening_entry, is_opening_locked,
     opening_account_choices, opening_leaf_account_ids,
 )
 from app.journal_entries.models import JournalEntry
 from app.accounts.models import Account
-from app.settings import AppSettings
 from app.periods.models import AccountingPeriod
 
 pytestmark = [pytest.mark.unit]
@@ -25,10 +24,6 @@ def _opening_je(branch_id, status='draft', entry_date=date(2026, 1, 1)):
     return je
 
 
-def test_lock_key_embeds_branch_id():
-    assert LOCK_KEY(7) == 'opening_balance_finalized:7'
-
-
 def test_get_opening_entry_returns_only_active_for_branch(db_session, main_branch, branch_manila):
     _opening_je(main_branch.id, status='posted')
     assert get_opening_entry(main_branch.id) is not None
@@ -43,12 +38,6 @@ def test_get_opening_entry_ignores_cancelled(db_session, main_branch):
 def test_is_opening_locked_false_by_default(db_session, main_branch):
     _opening_je(main_branch.id, status='posted')
     assert is_opening_locked(main_branch.id) is False
-
-
-def test_is_opening_locked_true_when_finalized(db_session, main_branch):
-    _opening_je(main_branch.id, status='posted')
-    AppSettings.set_setting(LOCK_KEY(main_branch.id), '1', updated_by='admin')
-    assert is_opening_locked(main_branch.id) is True
 
 
 def test_is_opening_locked_true_when_period_closed(db_session, main_branch):

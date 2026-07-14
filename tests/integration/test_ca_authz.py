@@ -2,8 +2,8 @@
 
 Boundary under test (SI-P-72): CA == "admin minus the Admin panel".
 - Admin-only (is_admin): company settings, user CRUD, branches, backup, error logs.
-- CA-allowed (has_full_access): periods, opening-balance finalize, tax maintenance,
-  audit-log view, approved-email management.
+- CA-allowed (has_full_access): periods, tax maintenance, audit-log view,
+  approved-email management.
 
 Enforcement is consolidated onto two canonical decorators:
   app.utils.authz.admin_panel_required  (is_admin)
@@ -211,18 +211,6 @@ def test_ca_allowed_approved_emails_add(client, db_session, chief_accountant_use
     _select_branch(client, main_branch.id)
     resp = client.get(ADD_URL, follow_redirects=False)
     assert resp.status_code == 200
-
-
-def test_ca_allowed_opening_balance_finalize_reaches_view(
-        client, db_session, chief_accountant_user, main_branch):
-    """CA passes the full-access gate on finalize (POST-only). Without a posted
-    entry the view body complains it isn't posted yet — proving CA got INTO the
-    view rather than being refused by the role gate."""
-    _login(client, chief_accountant_user)
-    _select_branch(client, main_branch.id)
-    resp = client.post('/opening-balances/finalize', follow_redirects=True)
-    assert b'Only administrators and Chief Accountants can access this area' not in resp.data
-    assert b'Post the opening balances before finalizing' in resp.data
 
 
 # ---------------------------------------------------------------------------
