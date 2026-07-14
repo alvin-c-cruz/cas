@@ -6,6 +6,7 @@ pattern, tests/integration/test_cdv_check_serial.py). Exercised here via
 conftest's create_all() (which builds the model's __table_args__ index) --
 also verified against a real migrated cas.db copy, see task-6-report.md.
 """
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -13,14 +14,34 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app import db
+from app.accounts.models import Account
 from app.audit.models import AuditLog
 from app.employees.models import Employee
 from app.payroll.models import PayrollRun, PayrollRunLine
 from app.payroll import service
 from app.periods.models import AccountingPeriod
+from app.posting.control_accounts import CONTROL_ACCOUNTS
 from app.seeds.statutory_2026 import seed_statutory_2026
+from app.settings import AppSettings
 
 pytestmark = [pytest.mark.integration]
+
+
+def _cells(row_html):
+    """Visible text of each <td> in one <tr>...</tr> HTML fragment (nested
+    tags like <a>/<span> stripped) -- order-preserving, so a caller can pin
+    column ORDER, not just substring presence (render-assertions-miss-order-
+    and-attributes)."""
+    return [re.sub(r'<[^>]+>', '', c).strip()
+            for c in re.findall(r'<td[^>]*>(.*?)</td>', row_html, re.S)]
+
+
+def _find_row(body, needle):
+    """First <tr>...</tr> fragment containing `needle`."""
+    for row in re.findall(r'<tr[^>]*>.*?</tr>', body, re.S):
+        if needle in row:
+            return row
+    raise AssertionError(f'no <tr> found containing {needle!r}')
 
 
 def _run(db_session, branch, run_number='PR-2026-06-0001', run_type='regular',
@@ -376,3 +397,233 @@ class TestPayrollWorksheet:
         }, follow_redirects=True)
         assert resp.status_code == 200
         assert PayrollRun.query.count() == 0
+
+
+class TestRegisterAndDetailViews:
+    """Task 9: register + run detail + JE preview -- view-only (no lifecycle
+    transitions; a draft has no way to become posted/voided yet -- that's
+    Task 10). Assertions check column ORDER and key ATTRIBUTES (href, badge
+    class), not just substring presence, per render-assertions-miss-order-
+    and-attributes.
+    """
+
+    def _line_for(self, db_session, run, emp):
+        line = PayrollRunLine(
+            run_id=run.id, line_number=len(run.lines) + 1, employee_id=emp.id,
+            employee_name=emp.full_name, pay_basis=emp.pay_basis, rate=emp.basic_rate,
+            tax_status_code=emp.tax_status_code, is_mwe=emp.is_minimum_wage,
+            days=0, hours=0, ot_pay=Decimal('0'), holiday_pay=Decimal('0'),
+            taxable_allowance=Decimal('0'), nontax_allowance=Decimal('0'),
+        )
+        run.lines.append(line)
+        db_session.commit()
+        line.calculate_amounts()
+        return line
+
+    # ---- Register ----
+
+    def test_register_lists_run_with_correct_totals_and_column_order(
+            self, client, staff_user, main_branch, login_user, db_session):
+        seed_statutory_2026()
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+
+        emp = _employee(db_session, main_branch, employee_no='EMP-901', basic_rate=Decimal('40000'))
+        run = _run(db_session, main_branch, run_number='PR-2026-06-0001', status='draft')
+        db_session.commit()
+        self._line_for(db_session, run, emp)
+        run.calculate_totals()
+        db_session.commit()
+
+        login_user(client, 'staff', 'staff123')
+        resp = client.get('/payroll/runs')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+
+        row = _find_row(body, run.run_number)
+        cells = _cells(row)
+        # Run Number, Branch, Type, Frequency, Period, Pay Date, Status, Gross, Deductions, Net Pay
+        assert cells[0] == run.run_number
+        assert cells[1] == main_branch.name
+        assert cells[6] == 'Draft'
+        deductions = run.total_gross - run.total_net_pay
+        assert cells[7] == '{:,.2f}'.format(run.total_gross)
+        assert cells[8] == '{:,.2f}'.format(deductions)
+        assert cells[9] == '{:,.2f}'.format(run.total_net_pay)
+        # Attributes: the run number is a real link to the detail route, and
+        # the status cell carries the status-specific badge class.
+        assert f'/payroll/runs/{run.id}"' in row
+        assert 'badge-draft' in row
+
+    def test_register_totals_footer_excludes_voided_run(
+            self, client, staff_user, main_branch, login_user, db_session):
+        seed_statutory_2026()
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+
+        emp1 = _employee(db_session, main_branch, employee_no='EMP-902', basic_rate=Decimal('40000'))
+        run1 = _run(db_session, main_branch, run_number='PR-2026-06-0001', status='draft')
+        db_session.commit()
+        self._line_for(db_session, run1, emp1)
+        run1.calculate_totals()
+        db_session.commit()
+
+        run1.status = 'voided'   # frees the period slot (mirrors test_voiding_frees_the_period_slot)
+        db_session.commit()
+
+        emp2 = _employee(db_session, main_branch, employee_no='EMP-903', basic_rate=Decimal('25000'))
+        run2 = _run(db_session, main_branch, run_number='PR-2026-06-0002', status='draft')
+        db_session.commit()
+        self._line_for(db_session, run2, emp2)
+        run2.calculate_totals()
+        db_session.commit()
+
+        login_user(client, 'staff', 'staff123')
+        resp = client.get('/payroll/runs')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+
+        row1 = _find_row(body, run1.run_number)
+        cells1 = _cells(row1)
+        assert cells1[7] == '—'
+        assert cells1[8] == '—'
+        assert cells1[9] == '—'
+        assert 'badge-voided' in row1
+
+        footer_match = re.search(r'<tfoot>.*?</tfoot>', body, re.S)
+        assert footer_match, 'no <tfoot> found'
+        footer = footer_match.group(0)
+        assert 'Totals (1 non-voided run)' in footer
+        assert '{:,.2f}'.format(run2.total_gross) in footer
+        assert '{:,.2f}'.format(run2.total_gross - run2.total_net_pay) in footer
+        assert '{:,.2f}'.format(run2.total_net_pay) in footer
+        # The voided run's real (nonzero) totals must NOT leak into the footer sum.
+        assert '{:,.2f}'.format(run1.total_gross + run2.total_gross) not in footer
+
+    # ---- Detail: employee lines ----
+
+    def test_detail_shows_employee_lines_with_column_order(
+            self, client, staff_user, main_branch, login_user, db_session):
+        seed_statutory_2026()
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+
+        emp = _employee(db_session, main_branch, employee_no='EMP-904', basic_rate=Decimal('40000'))
+        run = _run(db_session, main_branch, run_number='PR-2026-06-0001', status='draft')
+        db_session.commit()
+        line = self._line_for(db_session, run, emp)
+        run.calculate_totals()
+        db_session.commit()
+
+        login_user(client, 'staff', 'staff123')
+        resp = client.get(f'/payroll/runs/{run.id}')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+
+        assert run.run_number in body
+        assert main_branch.name in body
+
+        row = _find_row(body, emp.full_name)
+        cells = _cells(row)
+        # Employee, Gross, SSS EE, PhilHealth EE, Pag-IBIG EE, WHT, Loans, Net Pay
+        assert cells[0] == emp.full_name
+        assert cells[1] == '{:,.2f}'.format(line.gross_pay)
+        assert cells[2] == '{:,.2f}'.format(line.sss_ee)
+        assert cells[3] == '{:,.2f}'.format(line.philhealth_ee)
+        assert cells[4] == '{:,.2f}'.format(line.pagibig_ee)
+        assert cells[5] == '{:,.2f}'.format(line.wht)
+        assert cells[6] == '{:,.2f}'.format(line.sss_loan + line.pagibig_loan)
+        assert cells[7] == '{:,.2f}'.format(line.net_pay)
+
+    # ---- Detail: JE preview ----
+
+    def test_detail_je_preview_ties_and_legs_match_header_buckets(
+            self, client, staff_user, main_branch, login_user, db_session, posted_run_factory):
+        run = posted_run_factory()
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+
+        preview = service.build_je_preview(run)
+        assert preview['total_debit'] == preview['total_credit']
+        assert preview['net_pay_plug'] == run.total_net_pay
+        assert preview['balanced'] is True
+
+        login_user(client, 'staff', 'staff123')
+        resp = client.get(f'/payroll/runs/{run.id}')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+
+        sal_row = _find_row(body, 'Salaries Expense')
+        cells = _cells(sal_row)
+        # Code, Account Title, Debit, Credit
+        assert cells[0] == '50210'
+        assert cells[1] == 'Salaries Expense'
+        assert cells[2] == '{:,.2f}'.format(run.total_gross)
+        assert cells[3] == '—'
+
+        wht_row = _find_row(body, 'Withholding Tax')
+        wcells = _cells(wht_row)
+        assert wcells[0] == '20302'
+        assert wcells[2] == '—'
+        assert wcells[3] == '{:,.2f}'.format(run.total_wht)
+
+        accrued_row = _find_row(body, 'Accrued Salaries')
+        acells = _cells(accrued_row)
+        assert acells[0] == '20501'
+        assert acells[2] == '—'
+        assert acells[3] == '{:,.2f}'.format(preview['net_pay_plug'])
+
+        # detail.html has 2 tables (Employee Lines, then the JE preview) --
+        # the JE preview's <tfoot> is the LAST one in the page.
+        tfoots = re.findall(r'<tfoot>.*?</tfoot>', body, re.S)
+        assert len(tfoots) == 2, f'expected 2 <tfoot> blocks, found {len(tfoots)}'
+        je_tfoot = tfoots[-1]
+        assert '{:,.2f}'.format(preview['total_debit']) in je_tfoot
+        assert '{:,.2f}'.format(preview['total_credit']) in je_tfoot
+
+    def test_detail_je_preview_unassigned_control_account_renders_placeholder_not_500(
+            self, client, staff_user, main_branch, login_user, db_session, run_factory):
+        run = run_factory()   # no control accounts assigned at all yet
+
+        # Assign every payroll_* control account EXCEPT payroll_pagibig_er_expense
+        # -- proves the assigned ones still render their real codes while the
+        # ONE unassigned key renders a friendly placeholder, never a 500.
+        to_assign = {
+            'payroll_salaries_expense':      ('50210', 'Salaries Expense', 'Expense', 'Debit'),
+            'payroll_sss_er_expense':        ('50212', 'SSS Employer Share Expense', 'Expense', 'Debit'),
+            'payroll_philhealth_er_expense': ('50213', 'PhilHealth Employer Share Expense', 'Expense', 'Debit'),
+            'payroll_wht_payable':           ('20302', 'Withholding Tax on Compensation Payable', 'Liability', 'Credit'),
+            'payroll_sss_payable':           ('20402', 'SSS Contributions Payable', 'Liability', 'Credit'),
+            'payroll_philhealth_payable':    ('20403', 'PhilHealth Contributions Payable', 'Liability', 'Credit'),
+            'payroll_pagibig_payable':       ('20404', 'Pag-IBIG Contributions Payable', 'Liability', 'Credit'),
+            'payroll_accrued_salaries':      ('20501', 'Accrued Salaries and Wages', 'Liability', 'Credit'),
+        }
+        for key, (code, name, atype, nb) in to_assign.items():
+            db_session.add(Account(code=code, name=name, account_type=atype,
+                                    classification=('Current Liability' if atype == 'Liability'
+                                                    else 'Operating Expense'),
+                                    normal_balance=nb))
+        db_session.commit()
+        for key, (code, *_rest) in to_assign.items():
+            setting_key, _label = CONTROL_ACCOUNTS[key]
+            AppSettings.set_setting(setting_key, code, updated_by='test')
+        db_session.commit()
+
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+
+        login_user(client, 'staff', 'staff123')
+        resp = client.get(f'/payroll/runs/{run.id}')
+        assert resp.status_code == 200   # never a 500, even with an unassigned control account
+        body = resp.get_data(as_text=True)
+
+        unassigned_row = _find_row(body, 'Pag-IBIG Employer Share Expense')
+        assert 'control account not assigned' in unassigned_row
+
+        assigned_row = _find_row(body, 'Salaries Expense')
+        acells = _cells(assigned_row)
+        assert acells[0] == '50210'
+
+        accrued_row = _find_row(body, 'Accrued Salaries')
+        accells = _cells(accrued_row)
+        assert accells[0] == '20501'

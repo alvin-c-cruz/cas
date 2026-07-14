@@ -17,6 +17,7 @@ from app.employees.models import Employee
 from app.payroll import payroll_bp
 from app.payroll.models import PayrollRun, PayrollRunLine
 from app.payroll.forms import PayrollRunForm
+from app.payroll import service
 from app.periods.models import AccountingPeriod
 from app.settings import AppSettings
 from app.audit.utils import log_create, log_update, model_to_dict
@@ -174,13 +175,40 @@ def _semi_timing_for(pay_frequency):
     return AppSettings.get_setting('payroll_semi_monthly_timing', 'second_cutoff')
 
 
+# A voided or cancelled run's monetary figures are excluded from the
+# register's totals footer AND rendered as a placeholder ('--') on the row
+# itself -- mirrors _duplicate_period_run's status.notin_(...) (both statuses
+# free the period slot, so neither is a "real" contributor to reported sums).
+_REGISTER_EXCLUDED_STATUSES = ('voided', 'cancelled')
+
+
 @payroll_bp.route('/payroll/runs')
 @login_required
-def list_runs():
+def register():
     branch_id = session.get('selected_branch_id')
     runs = (PayrollRun.query.filter_by(branch_id=branch_id)
             .order_by(PayrollRun.id.desc()).all())
-    return render_template('payroll/list.html', runs=runs)
+
+    countable = [r for r in runs if r.status not in _REGISTER_EXCLUDED_STATUSES]
+    totals_gross = sum((r.total_gross for r in countable), Decimal('0.00'))
+    totals_net_pay = sum((r.total_net_pay for r in countable), Decimal('0.00'))
+    totals = {
+        'count': len(countable),
+        'gross': totals_gross,
+        'net_pay': totals_net_pay,
+        'deductions': totals_gross - totals_net_pay,
+    }
+
+    return render_template('payroll/register.html', runs=runs, totals=totals,
+                           excluded_statuses=_REGISTER_EXCLUDED_STATUSES)
+
+
+@payroll_bp.route('/payroll/runs/<int:id>')
+@login_required
+def view_run(id):
+    run = _get_run_or_404(id)
+    preview = service.build_je_preview(run)
+    return render_template('payroll/detail.html', run=run, preview=preview)
 
 
 @payroll_bp.route('/payroll/runs/new', methods=['GET', 'POST'])
@@ -269,7 +297,7 @@ def edit_run(id):
     run = _get_run_or_404(id)
     if run.status != 'draft':
         flash('Only draft payroll runs can be edited.', 'error')
-        return redirect(url_for('payroll.list_runs'))
+        return redirect(url_for('payroll.register'))
 
     branch_id = session.get('selected_branch_id')
     employees = _branch_employees(branch_id)

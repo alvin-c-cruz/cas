@@ -425,3 +425,99 @@ def post_payroll_je(run):
             f"credit={je.total_credit}) for run {run.run_number}."
         )
     return je
+
+
+def build_je_preview(run):
+    """Read-only preview of the payroll accrual JE this run would produce if
+    post_payroll_je() ran right now, built from the run's CURRENT header
+    total_* buckets.
+
+    Mirrors post_payroll_je's leg-construction shape (same buckets, same
+    order) but is a pure read/render helper:
+      - never persists anything -- no JournalEntry/JournalEntryLine created,
+        no db.session writes at all;
+      - resolves every account via get_control_account(key, required=False),
+        so an unassigned control account yields a row with account=None
+        (the caller/template renders a friendly placeholder) instead of
+        raising ControlAccountError;
+      - never asserts/raises on the plug tying to run.total_net_pay -- this
+        is a preview, not a post. post_payroll_je() still enforces that
+        guard for real (Task 10's job to call it).
+
+    Args:
+        run: PayrollRun with calculate_totals() already applied (its
+            total_* columns populated).
+
+    Returns:
+        dict: {
+            'rows': [{'key', 'label', 'account' (Account|None), 'debit',
+                      'credit'}, ...],
+            'total_debit': Decimal, 'total_credit': Decimal,
+            'balanced': bool (total_debit == total_credit -- true by
+                construction here, since the plug is computed as their
+                difference before being appended),
+            'net_pay_plug': Decimal (the Accrued Salaries credit leg --
+                compare against run.total_net_pay to see whether the header
+                buckets currently reconcile to net pay).
+        }
+        Zero-amount buckets are omitted from 'rows' (mirrors post_payroll_je's
+        _add_line skip) except the final Accrued Salaries plug row, which
+        always appears.
+    """
+    rows = []
+
+    def _row(key, label, amount, side):
+        amount = _q2(amount)
+        if amount == Decimal('0.00'):
+            return   # nothing to preview for this bucket (e.g. loans, P3 not yet wired)
+        account = get_control_account(key, required=False)
+        rows.append({
+            'key': key, 'label': label, 'account': account,
+            'debit': amount if side == 'debit' else Decimal('0.00'),
+            'credit': amount if side == 'credit' else Decimal('0.00'),
+        })
+
+    # Debit legs: employer-side expense (same order as post_payroll_je)
+    _row('payroll_salaries_expense', 'Salaries Expense', run.total_gross, 'debit')
+    _row('payroll_sss_er_expense', 'SSS Employer Share Expense',
+         run.total_sss_er + run.total_sss_ec, 'debit')
+    _row('payroll_philhealth_er_expense', 'PhilHealth Employer Share Expense',
+         run.total_philhealth_er, 'debit')
+    _row('payroll_pagibig_er_expense', 'Pag-IBIG Employer Share Expense',
+         run.total_pagibig_er, 'debit')
+
+    # Credit legs: payables
+    _row('payroll_wht_payable', 'Withholding Tax on Compensation Payable',
+         run.total_wht, 'credit')
+    _row('payroll_sss_payable', 'SSS Contributions Payable',
+         run.total_sss_ee + run.total_sss_er + run.total_sss_ec, 'credit')
+    _row('payroll_philhealth_payable', 'PhilHealth Contributions Payable',
+         run.total_philhealth_ee + run.total_philhealth_er, 'credit')
+    _row('payroll_pagibig_payable', 'Pag-IBIG Contributions Payable',
+         run.total_pagibig_ee + run.total_pagibig_er, 'credit')
+    _row('payroll_sss_loan_payable', 'SSS Loan Payable', run.total_sss_loan, 'credit')
+    _row('payroll_pagibig_loan_payable', 'Pag-IBIG Loan Payable',
+         run.total_pagibig_loan, 'credit')
+
+    # Guarded-in-spirit-only plug: unlike post_payroll_je, this preview never
+    # raises if it doesn't tie to run.total_net_pay -- it just shows whatever
+    # the header buckets currently compute, so a caller (the detail view) can
+    # render a live preview of a still-editable draft.
+    sum_dr = sum((r['debit'] for r in rows), Decimal('0.00'))
+    sum_cr = sum((r['credit'] for r in rows), Decimal('0.00'))
+    plug = _q2(sum_dr - sum_cr)
+    accrued_account = get_control_account('payroll_accrued_salaries', required=False)
+    rows.append({
+        'key': 'payroll_accrued_salaries', 'label': 'Accrued Salaries and Wages',
+        'account': accrued_account, 'debit': Decimal('0.00'), 'credit': plug,
+    })
+
+    total_debit = sum((r['debit'] for r in rows), Decimal('0.00'))
+    total_credit = sum((r['credit'] for r in rows), Decimal('0.00'))
+    return {
+        'rows': rows,
+        'total_debit': total_debit,
+        'total_credit': total_credit,
+        'balanced': total_debit == total_credit,
+        'net_pay_plug': plug,
+    }

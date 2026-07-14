@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Payroll Run {{ run.run_number }}{% endblock %}
+{% block page_title %}Payroll Run {{ run.run_number }}{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:20px;font-weight:700;">{{ run.run_number }}</span>
+      <span class="badge badge-{{ run.status }}">{{ run.status | capitalize }}</span>
+    </div>
+    <div class="card-header-actions">
+      {% if run.status == 'draft' %}
+      <a href="{{ url_for('payroll.edit_run', id=run.id) }}" class="btn btn-secondary">Edit</a>
+      {% endif %}
+      <a href="{{ url_for('payroll.register') }}" class="btn btn-secondary">Back</a>
+    </div>
+  </div>
+
+  <div class="card-body">
+
+    <div class="detail-grid" style="margin-bottom:24px;">
+      <div><strong>Branch:</strong> {{ run.branch.name if run.branch else '—' }}</div>
+      <div><strong>Run Type:</strong> {{ run.run_type | replace('_', ' ') | capitalize }}</div>
+      <div><strong>Pay Frequency:</strong> {{ run.pay_frequency | replace('_', ' ') | capitalize }}</div>
+      <div><strong>Pay Date:</strong> {{ run.pay_date.strftime('%Y-%m-%d') }}</div>
+      <div><strong>Period Start:</strong> {{ run.period_start.strftime('%Y-%m-%d') }}</div>
+      <div><strong>Period End:</strong> {{ run.period_end.strftime('%Y-%m-%d') }}</div>
+      <div><strong>Created By:</strong> {{ run.created_by.username if run.created_by else '—' }}</div>
+      <div><strong>Status:</strong> {{ run.status | capitalize }}</div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Employee Lines</div>
+    <div class="table-wrap" style="margin-bottom:28px;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th style="text-align:right;">Gross</th>
+          <th style="text-align:right;">SSS EE</th>
+          <th style="text-align:right;">PhilHealth EE</th>
+          <th style="text-align:right;">Pag-IBIG EE</th>
+          <th style="text-align:right;">WHT</th>
+          <th style="text-align:right;">Loans</th>
+          <th style="text-align:right;">Net Pay</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for line in run.lines %}
+        <tr>
+          <td>{{ line.employee_name }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.gross_pay) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.sss_ee) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.philhealth_ee) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.pagibig_ee) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.wht) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.sss_loan + line.pagibig_loan) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.net_pay) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>Totals ({{ run.lines|length }} employee{{ 's' if run.lines|length != 1 else '' }})</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_gross) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_sss_ee) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_philhealth_ee) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_pagibig_ee) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_wht) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_sss_loan + run.total_pagibig_loan) }}</td>
+          <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_net_pay) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+
+    {% include "payroll/_je_preview.html" %}
+
+  </div>
+</div>
+{% endblock %}

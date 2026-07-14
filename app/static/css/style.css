@@ -453,6 +453,7 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .badge-posted   { background: #dcfce7; color: #15803d; }
 .badge-draft    { background: #f1f5f9; color: #475569; }
 .badge-void     { background: #fee2e2; color: #dc2626; }
+.badge-voided   { background: #fee2e2; color: #dc2626; }
 .badge-paid     { background: #dcfce7; color: #15803d; }
 .badge-open     { background: #dbeafe; color: #1d4ed8; }
 .badge-partial  { background: #fef3c7; color: #92400e; }
