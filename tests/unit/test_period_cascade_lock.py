@@ -39,3 +39,15 @@ class TestClosedThroughLock:
         _close(2026, 5)   # latest closed -> cutoff May 2026
         assert AccountingPeriod.is_period_closed(2026, 4) is True   # below cutoff, no row
         assert AccountingPeriod.is_period_closed(2026, 6) is False  # above cutoff
+
+    def test_reopening_latest_closed_recedes_the_cutoff(self, db_session):
+        # Close Jan + May (cutoff = May), then reopen May via the real reopen path ->
+        # the cutoff must recede to Jan on the very next query (stateless, no caching).
+        _close(2026, 1)
+        _close(2026, 5)
+        may = AccountingPeriod.query.filter_by(year=2026, month=5).first()
+        assert may.reopen_period() is True
+        assert AccountingPeriod.closed_through_ordinal() == 2026 * 12 + 1  # Jan, not May
+        assert AccountingPeriod.is_period_closed(2026, 5) is False  # the reopened month
+        assert AccountingPeriod.is_period_closed(2026, 4) is False  # was sealed under May, now open
+        assert AccountingPeriod.is_period_closed(2026, 1) is True   # Jan still the cutoff
