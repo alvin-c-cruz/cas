@@ -199,6 +199,7 @@ def create_app(config_name=None):
     # Import models for migrations (must be before migrate.init_app)
     from app.accounts.models import Account
     from app.accounts.approval_models import AccountChangeRequest
+    from app.opening_balances.approval_models import OpeningBalanceChangeRequest  # noqa: F401
     from app.users.models import User
     from app.users.approved_emails import ApprovedEmail
     from app.branches.models import Branch
