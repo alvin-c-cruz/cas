@@ -19,8 +19,11 @@ no-JS-popup delete (blocked when payroll history exists), and the
 _claim_loan_edit concurrency guard (see payroll.views for the design
 reasoning -- EmployeeLoan is NOT RowVersioned; see that module's docstring).
 
-Does NOT touch 13th-month (Task 13's job) despite this file's name matching
-the brief's prescribed filename (tests/payroll/test_loans_13th.py).
+Plus a sixth layer from Task 13 (13th-month, appended below): YTD basic
+aggregation from posted regular runs only (draft/voided/cancelled excluded),
+per-line override precedence, WHT computed only on the taxable excess over
+service.THIRTEENTH_MONTH_EXEMPTION (P90,000), and JE posting with zero
+statutory/loan legs.
 """
 import re
 from datetime import date
@@ -845,3 +848,321 @@ class TestLoanDelete:
         resp = client.post(f'/payroll/loans/{loan.id}/delete', follow_redirects=True)
         assert resp.status_code == 404
         assert db.session.get(EmployeeLoan, loan.id) is not None   # NOT deleted
+
+
+# ---------------------------------------------------------------------------
+# Layer 6: 13th-month run -- YTD aggregation, override precedence, WHT-on-
+# excess over THIRTEENTH_MONTH_EXEMPTION, and JE posting (Task 13).
+# ---------------------------------------------------------------------------
+
+def _posted_regular_run(db_session, branch, emp, run_number, basic_rate, month,
+                         status='posted'):
+    """A run_type='regular' run (default POSTED) with one line for `emp`,
+    basic_gross driven purely by basic_rate (monthly pay_basis, no OT/
+    allowances) -- used to build up an employee's YTD basic for
+    service.compute_thirteenth_month. `status` is overridable so callers can
+    build a draft/voided/cancelled run to prove those are EXCLUDED from the
+    aggregation."""
+    run = PayrollRun(
+        run_number=run_number, branch_id=branch.id, run_type='regular',
+        pay_frequency='monthly', period_year=2026, period_month=month, semi_period=0,
+        period_start=date(2026, month, 1), period_end=date(2026, month, 28),
+        pay_date=date(2026, month, 28), semi_timing='second_cutoff', status=status,
+    )
+    db_session.add(run)
+    db_session.flush()
+    line = PayrollRunLine(
+        run_id=run.id, line_number=1, employee_id=emp.id,
+        employee_name=emp.full_name, pay_basis='monthly', rate=basic_rate,
+        tax_status_code=emp.tax_status_code, is_mwe=False,
+        days=0, hours=0, ot_pay=Decimal('0'), holiday_pay=Decimal('0'),
+        taxable_allowance=Decimal('0'), nontax_allowance=Decimal('0'),
+    )
+    run.lines.append(line)
+    db_session.commit()
+    line.calculate_amounts()
+    run.calculate_totals()
+    db_session.commit()
+    return run
+
+
+def _thirteenth_month_run(db_session, branch, run_number='PR-2026-12-9001'):
+    run = PayrollRun(
+        run_number=run_number, branch_id=branch.id, run_type='13th_month',
+        pay_frequency='monthly', period_year=2026, period_month=12, semi_period=0,
+        period_start=date(2026, 12, 1), period_end=date(2026, 12, 31),
+        pay_date=date(2026, 12, 15), semi_timing='second_cutoff', status='draft',
+    )
+    db_session.add(run)
+    db_session.commit()
+    return run
+
+
+def _thirteenth_month_line(db_session, run, emp, override=False, manual_amount=None):
+    line = PayrollRunLine(
+        run_id=run.id, line_number=len(run.lines) + 1, employee_id=emp.id,
+        employee_name=emp.full_name, pay_basis=emp.pay_basis, rate=emp.basic_rate,
+        tax_status_code=emp.tax_status_code, is_mwe=emp.is_minimum_wage,
+        days=0, hours=0, ot_pay=Decimal('0'), holiday_pay=Decimal('0'),
+        taxable_allowance=Decimal('0'), nontax_allowance=Decimal('0'),
+        thirteenth_month_override=override,
+    )
+    if override:
+        line.thirteenth_month = manual_amount
+    run.lines.append(line)
+    db_session.commit()
+    return line
+
+
+class TestComputeThirteenthMonthAggregation:
+    """service.compute_thirteenth_month(employee, year): YTD basic from
+    POSTED run_type='regular' lines only, summed and / 12."""
+
+    def test_sums_posted_regular_basics_divided_by_12(self, db_session, main_branch):
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-1')
+        for m in range(1, 13):
+            _posted_regular_run(db_session, main_branch, emp, f'PR-2026-{m:02d}-9101',
+                                 Decimal('30000.00'), m)
+        result = service.compute_thirteenth_month(emp, 2026)
+        assert result == Decimal('30000.00')   # 12 * 30000 / 12
+
+    def test_partial_year_still_divides_by_12_not_months_worked(self, db_session, main_branch):
+        """Standard PH 13th-month formula divides by 12 regardless of how
+        many months were actually posted -- a mid-year hire with only 6
+        posted months gets HALF a month's worth, not a full month's."""
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-2')
+        for m in range(1, 7):
+            _posted_regular_run(db_session, main_branch, emp, f'PR-2026-{m:02d}-9102',
+                                 Decimal('24000.00'), m)
+        result = service.compute_thirteenth_month(emp, 2026)
+        assert result == Decimal('12000.00')   # 6 * 24000 / 12, NOT / 6
+
+    def test_excludes_draft_runs(self, db_session, main_branch):
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-3')
+        _posted_regular_run(db_session, main_branch, emp, 'PR-2026-01-9103',
+                             Decimal('30000.00'), 1)
+        _posted_regular_run(db_session, main_branch, emp, 'PR-2026-02-9103',
+                             Decimal('30000.00'), 2, status='draft')
+        result = service.compute_thirteenth_month(emp, 2026)
+        assert result == Decimal('2500.00')   # only the posted month counts: 30000/12
+
+    def test_excludes_voided_and_cancelled_runs(self, db_session, main_branch):
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-4')
+        _posted_regular_run(db_session, main_branch, emp, 'PR-2026-01-9104',
+                             Decimal('30000.00'), 1)
+        _posted_regular_run(db_session, main_branch, emp, 'PR-2026-02-9104',
+                             Decimal('30000.00'), 2, status='voided')
+        _posted_regular_run(db_session, main_branch, emp, 'PR-2026-03-9104',
+                             Decimal('30000.00'), 3, status='cancelled')
+        result = service.compute_thirteenth_month(emp, 2026)
+        assert result == Decimal('2500.00')   # only the posted month counts
+
+    def test_excludes_other_run_type(self, db_session, main_branch):
+        """A run_type='13th_month' run's own basic (there isn't really a
+        'basic_gross' concept for one, but prove the aggregation's run_type
+        filter alone keeps it out regardless) never feeds the average."""
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-5')
+        _posted_regular_run(db_session, main_branch, emp, 'PR-2026-01-9105',
+                             Decimal('30000.00'), 1)
+        other = _thirteenth_month_run(db_session, main_branch, 'PR-2026-12-9105')
+        other.status = 'posted'
+        oline = _thirteenth_month_line(db_session, other, emp, override=True,
+                                        manual_amount=Decimal('99999.00'))
+        db_session.commit()
+        result = service.compute_thirteenth_month(emp, 2026)
+        assert result == Decimal('2500.00')   # 99999 from the 13th-month run never counted
+
+    def test_excludes_other_year(self, db_session, main_branch):
+        """The 2026 statutory tables are effective_from 2026-01-01 with no
+        effective_to (open-ended), so a 2027 run is a valid, computable
+        'other year' to prove the period_year filter -- a 2025 run would
+        hit 'No SSS contribution table effective' instead, which tests a
+        different thing entirely."""
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-6')
+        run = PayrollRun(
+            run_number='PR-2027-12-9106', branch_id=main_branch.id, run_type='regular',
+            pay_frequency='monthly', period_year=2027, period_month=12, semi_period=0,
+            period_start=date(2027, 12, 1), period_end=date(2027, 12, 31),
+            pay_date=date(2027, 12, 31), semi_timing='second_cutoff', status='posted',
+        )
+        db_session.add(run)
+        db_session.flush()
+        line = PayrollRunLine(
+            run_id=run.id, line_number=1, employee_id=emp.id, employee_name=emp.full_name,
+            pay_basis='monthly', rate=Decimal('30000.00'), tax_status_code=emp.tax_status_code,
+            is_mwe=False, days=0, hours=0, ot_pay=Decimal('0'), holiday_pay=Decimal('0'),
+            taxable_allowance=Decimal('0'), nontax_allowance=Decimal('0'),
+        )
+        run.lines.append(line)
+        db_session.commit()
+        line.calculate_amounts()
+        run.calculate_totals()
+        db_session.commit()
+
+        result = service.compute_thirteenth_month(emp, 2026)   # asking for 2026, not 2027
+        assert result == Decimal('0.00')
+
+    def test_no_posted_runs_at_all_is_a_clean_zero(self, db_session, main_branch):
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-7')
+        result = service.compute_thirteenth_month(emp, 2026)
+        assert result == Decimal('0.00')
+
+
+class TestThirteenthMonthLineCalc:
+    """PayrollRunLine.calculate_amounts() for run_type='13th_month':
+    auto-aggregates via service.compute_thirteenth_month unless
+    thirteenth_month_override is set, in which case the pre-entered
+    self.thirteenth_month value wins."""
+
+    def test_auto_aggregates_when_not_overridden(self, db_session, main_branch):
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-8')
+        for m in range(1, 13):
+            _posted_regular_run(db_session, main_branch, emp, f'PR-2026-{m:02d}-9108',
+                                 Decimal('24000.00'), m)
+        run = _thirteenth_month_run(db_session, main_branch, 'PR-2026-12-9208')
+        line = _thirteenth_month_line(db_session, run, emp)
+        line.calculate_amounts()
+
+        assert line.thirteenth_month == Decimal('24000.00')
+        assert line.gross_pay == Decimal('24000.00')
+        assert line.basic_gross == Decimal('24000.00')
+
+    def test_override_wins_over_auto_aggregate(self, db_session, main_branch):
+        """MUTATION-PROOF for override precedence: the employee's posted-run
+        history would auto-aggregate to 24,000, but this line has
+        thirteenth_month_override=True with a manually-entered 50,000 already
+        sitting in self.thirteenth_month BEFORE calculate_amounts() runs. If
+        the implementation ignored the override flag, it would silently
+        overwrite 50,000 with the auto-computed 24,000 -- this pins the
+        override amount surviving the call."""
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-9')
+        for m in range(1, 13):
+            _posted_regular_run(db_session, main_branch, emp, f'PR-2026-{m:02d}-9109',
+                                 Decimal('24000.00'), m)
+        run = _thirteenth_month_run(db_session, main_branch, 'PR-2026-12-9209')
+        line = _thirteenth_month_line(db_session, run, emp, override=True,
+                                       manual_amount=Decimal('50000.00'))
+        line.calculate_amounts()
+
+        assert line.thirteenth_month == Decimal('50000.00')
+        assert line.gross_pay == Decimal('50000.00')
+
+    def test_no_statutory_or_loan_amounts_on_a_13th_month_line(self, db_session, main_branch):
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-10')
+        loan = EmployeeLoan(employee_id=emp.id, loan_type='sss', principal=Decimal('6000'),
+                             monthly_amortization=Decimal('500'), balance=Decimal('5000'),
+                             status='active')
+        db_session.add(loan)
+        db_session.commit()
+
+        run = _thirteenth_month_run(db_session, main_branch, 'PR-2026-12-9110')
+        line = _thirteenth_month_line(db_session, run, emp, override=True,
+                                       manual_amount=Decimal('50000.00'))
+        line.calculate_amounts()
+
+        assert line.sss_ee == Decimal('0.00')
+        assert line.sss_er == Decimal('0.00')
+        assert line.philhealth_ee == Decimal('0.00')
+        assert line.philhealth_er == Decimal('0.00')
+        assert line.pagibig_ee == Decimal('0.00')
+        assert line.pagibig_er == Decimal('0.00')
+        # an ACTIVE sss loan exists for this employee, but a 13th-month line
+        # must never draw against it.
+        assert line.sss_loan == Decimal('0.00')
+        assert line.sss_loan_id is None
+
+
+class TestThirteenthMonthWHTBoundary:
+    """WHT on a 13th-month line is computed only on the excess over
+    service.THIRTEENTH_MONTH_EXEMPTION (P90,000)."""
+
+    def test_at_exactly_90000_wht_is_zero(self, db_session, main_branch):
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-11')
+        run = _thirteenth_month_run(db_session, main_branch, 'PR-2026-12-9111')
+        line = _thirteenth_month_line(db_session, run, emp, override=True,
+                                       manual_amount=Decimal('90000.00'))
+        line.calculate_amounts()
+
+        assert line.taxable_comp == Decimal('0.00')
+        assert line.wht == Decimal('0.00')
+        assert line.net_pay == Decimal('90000.00')
+
+    def test_one_centavo_over_taxes_only_the_centavo(self, db_session, main_branch):
+        """MUTATION-PROOF for the >/>= boundary: 90,000.01 produces a
+        taxable_comp of EXACTLY 0.01 (amount minus the exemption), not
+        90,000.01 (the full amount) -- proving the implementation subtracts
+        the exemption before computing taxable rather than merely gating on
+        a threshold and then taxing the whole thing."""
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-12')
+        run = _thirteenth_month_run(db_session, main_branch, 'PR-2026-12-9112')
+        line = _thirteenth_month_line(db_session, run, emp, override=True,
+                                       manual_amount=Decimal('90000.01'))
+        line.calculate_amounts()
+
+        assert line.taxable_comp == Decimal('0.01')
+        assert line.wht == Decimal('0.00')   # still inside the 0%-rate bracket 1
+
+    def test_excess_over_90k_is_taxed_only_on_the_excess_not_the_full_amount(
+            self, db_session, main_branch):
+        """120,000 - 90,000 = 30,000 excess, which falls in the monthly
+        bracket 2 (20,833-33,332.99 @ 15%, base 0):
+        wht = 0 + (30000 - 20833) * 0.15 = 1,375.05.
+        MUTATION-PROOF: if the implementation taxed the FULL 120,000 instead
+        of just the excess, 120,000 falls in bracket 4 (66,667+ @ 25%, base
+        8,541.80) and would produce 21,875.05 -- a wildly different number.
+        Pinning the correct 1,375.05 value fails under that bug."""
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-13')
+        run = _thirteenth_month_run(db_session, main_branch, 'PR-2026-12-9113')
+        line = _thirteenth_month_line(db_session, run, emp, override=True,
+                                       manual_amount=Decimal('120000.00'))
+        line.calculate_amounts()
+
+        assert line.taxable_comp == Decimal('30000.00')
+        assert line.wht == Decimal('1375.05')
+        assert line.wht != Decimal('21875.05')   # what taxing the full amount would give
+        assert line.net_pay == Decimal('120000.00') - Decimal('1375.05')
+
+
+class TestThirteenthMonthPosting:
+    """post_payroll_je(run) for a run_type='13th_month' run: only Salaries
+    Expense (debit), WHT Payable (credit), and the Accrued Salaries plug
+    appear -- no SSS/PhilHealth/Pag-IBIG/loan legs, since compute_line's
+    generic _add_line skip-on-zero already handles it (verified, not
+    assumed) -- post_payroll_je itself needed NO changes for this task."""
+
+    def test_no_statutory_or_loan_legs_in_13th_month_je(
+            self, db_session, main_branch, posted_run_factory):
+        posted_run_factory()   # assigns all payroll_* control accounts
+        seed_statutory_2026()
+        emp = _employee(db_session, main_branch, employee_no='EMP-13-14')
+        run = _thirteenth_month_run(db_session, main_branch, 'PR-2026-12-9114')
+        line = _thirteenth_month_line(db_session, run, emp, override=True,
+                                       manual_amount=Decimal('120000.00'))
+        line.calculate_amounts()
+        run.calculate_totals()
+        db_session.commit()
+
+        je = service.post_payroll_je(run)
+        codes = {l.account.code for l in je.lines}
+        assert codes == {'50210', '20302', '20501'}
+
+        dr_sal = next(l for l in je.lines if l.account.code == '50210')
+        assert dr_sal.debit_amount == run.total_gross == Decimal('120000.00')
+        wht_line = next(l for l in je.lines if l.account.code == '20302')
+        assert wht_line.credit_amount == run.total_wht == Decimal('1375.05')
+        plug = next(l for l in je.lines if l.account.code == '20501')
+        assert plug.credit_amount == run.total_net_pay
+        assert je.is_balanced

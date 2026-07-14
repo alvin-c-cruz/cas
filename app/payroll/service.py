@@ -13,6 +13,15 @@ from app.payroll.tables_models import (
 from app.posting.control_accounts import get_control_account, ControlAccountError   # noqa: F401 (re-exported)
 
 
+# Task 13 (P3 13th-month): the statutory tax-exempt cap on 13th-month pay and
+# other benefits (NIRC Sec. 32(B)(7)(e), as amended by TRAIN; RR 11-2018).
+# Named constant, never a bare literal at any call site -- "editable-master-
+# data" in spirit (a policy threshold that could move to a settings-driven
+# value in a later task; this task only needs it centralized, not settings-
+# backed).
+THIRTEENTH_MONTH_EXEMPTION = Decimal('90000.00')
+
+
 def _q2(x):
     """Quantize a monetary value to 2 decimal places (ROUND_HALF_UP)."""
     return Decimal(x).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -315,6 +324,114 @@ def _semi_applies_statutory(freq, timing, inputs):
            (timing == 'second_cutoff' and cutoff == 2)
 
 
+def compute_thirteenth_month(employee, year):
+    """YTD basic-salary aggregation for the standard PH 13th-month formula:
+    total basic salary earned for the year, from this employee's POSTED
+    run_type='regular' PayrollRun lines only, summed and divided by 12.
+
+    Only POSTED regular runs count -- draft (not yet finalized), voided, and
+    cancelled runs are excluded (mirrors every other total_* aggregation in
+    this app treating 'posted' as the only authoritative state). A
+    run_type='13th_month' run (including the very run this computation feeds)
+    can never contribute to its own average: the run_type == 'regular' filter
+    excludes it unconditionally, regardless of that run's own status.
+
+    Args:
+        employee: Employee ORM object (only .id is read -- a fresh query,
+            not a cached/detached relationship, so this is safe to call from
+            request-scoped code).
+        year: int, the calendar year (PayrollRun.period_year) to aggregate.
+
+    Returns:
+        Decimal, _q2-quantized: sum(basic_gross across matching lines) / 12.
+        Decimal('0.00') if the employee has no posted regular runs that year
+        (a brand-new hire's first 13th-month run before any regular run has
+        posted) -- never raises.
+    """
+    from sqlalchemy import func
+    from app.payroll.models import PayrollRun, PayrollRunLine
+
+    total = (PayrollRunLine.query
+             .join(PayrollRun, PayrollRunLine.run_id == PayrollRun.id)
+             .filter(PayrollRunLine.employee_id == employee.id)
+             .filter(PayrollRun.run_type == 'regular')
+             .filter(PayrollRun.status == 'posted')
+             .filter(PayrollRun.period_year == year)
+             .with_entities(func.sum(PayrollRunLine.basic_gross))
+             .scalar())
+    total = Decimal(str(total)) if total is not None else Decimal('0.00')
+    return _q2(total / 12)
+
+
+def compute_thirteenth_month_line(amount, as_of):
+    """Pure calc for a run_type='13th_month' PayrollRunLine: no statutory
+    (SSS/PhilHealth/Pag-IBIG), no loan deductions -- WHT only on the taxable
+    excess over THIRTEENTH_MONTH_EXEMPTION.
+
+    WHT-on-excess design decision (a real judgment call, documented rather
+    than left ambiguous): PH tax law (NIRC Sec. 32(B)(7)(e) as amended by
+    TRAIN; RR 11-2018) exempts 13th-month pay and other benefits up to
+    P90,000; the excess over that cap is added to the employee's OTHER
+    taxable compensation for the year and taxed at the graduated ANNUAL
+    rates. This v1 processes a 13th-month run as its own standalone document
+    (not merged into a regular run's cumulative annualized WHT recompute --
+    that would be a much bigger feature), and the seeded
+    CompensationWHTBracket table has no 'annual' frequency at all -- only
+    daily/weekly/semi_monthly/monthly (see app/seeds/statutory_2026.py's
+    _seed_wht_2026), and the latter three are themselves pro-rated FROM the
+    published monthly brackets, not independently authoritative.
+
+    Given that schema, this function looks the excess up against the
+    'monthly' bracket table directly (effective_wht_bracket('monthly',
+    excess, as_of)) rather than daily/weekly/semi_monthly or attempting to
+    fabricate an annual table, because: (1) 'monthly' is the BIR-published,
+    non-prorated table the other three are derived FROM, making its
+    thresholds the least-lossy proxy for the annual graduated schedule
+    available in this schema; (2) a 13th-month payment is a single lump sum,
+    not a fractional pay period, so treating the excess as one "monthly"
+    taxable event (rather than arbitrarily splitting it across a fictitious
+    number of periods) keeps the mechanism simple, auditable, and easy to
+    explain to an accountant reviewing the run. This is a pragmatic v1
+    approximation of "merge into annual taxable income and re-tax the whole
+    year," not a literal reproduction of it -- flagged here for a future task
+    if exact annual-table reconciliation with the employee's full-year
+    taxable compensation is ever required.
+
+    Args:
+        amount: Decimal, the final 13th-month amount for this line --
+            already resolved by the caller as either the auto-aggregated
+            YTD-basic/12 value (compute_thirteenth_month) or a per-line
+            override; this function doesn't care which.
+        as_of: date, used only for effective_wht_bracket's effective-dated
+            lookup (typically the run's period_end).
+
+    Returns:
+        dict with Decimal values (all _q2-quantized):
+        {gross_pay, taxable_comp, wht, wht_bracket_id, net_pay}
+        taxable_comp is the excess over THIRTEENTH_MONTH_EXEMPTION only
+        (never the full amount) -- exactly at the cap, taxable_comp is
+        0.00 and wht is 0.00.
+    """
+    amount = _q2(Decimal(amount or 0))
+    taxable = _q2(max(amount - THIRTEENTH_MONTH_EXEMPTION, Decimal('0.00')))
+
+    if taxable <= 0:
+        wht, bracket_id = Decimal('0.00'), None
+    else:
+        b = effective_wht_bracket('monthly', taxable, as_of)
+        wht = _q2(b.base_tax + (taxable - b.lower_bound) * b.rate_on_excess)
+        bracket_id = b.id
+
+    net = _q2(amount - wht)
+    return {
+        'gross_pay': amount,
+        'taxable_comp': taxable,
+        'wht': wht,
+        'wht_bracket_id': bracket_id,
+        'net_pay': net,
+    }
+
+
 def post_payroll_je(run):
     """Build the balanced payroll accrual JE from a PayrollRun's header
     total_* buckets.
@@ -376,8 +493,10 @@ def post_payroll_je(run):
         nonlocal line_num
         amount = _q2(amount)
         if amount == Decimal('0.00'):
-            return   # nothing to post for this bucket (e.g. no employee has an
-                     # active loan this run, or 13th-month -- P3, not yet wired)
+            return   # nothing to post for this bucket -- e.g. no employee has an
+                     # active loan this run, or (Task 13) a 13th-month run's
+                     # zero statutory/loan buckets, which reuse this same
+                     # generic skip-on-zero rather than a separate code path
         account = get_control_account(key)
         dr = amount if side == 'debit' else Decimal('0.00')
         cr = amount if side == 'credit' else Decimal('0.00')
@@ -607,8 +726,9 @@ def build_je_preview(run):
     def _row(key, label, amount, side):
         amount = _q2(amount)
         if amount == Decimal('0.00'):
-            return   # nothing to preview for this bucket (e.g. no employee has an
-                     # active loan this run, or 13th-month -- P3, not yet wired)
+            return   # nothing to preview for this bucket -- e.g. no employee has
+                     # an active loan this run, or (Task 13) a 13th-month run's
+                     # zero statutory/loan buckets, same generic skip-on-zero
         account = get_control_account(key, required=False)
         rows.append({
             'key': key, 'label': label, 'account': account,

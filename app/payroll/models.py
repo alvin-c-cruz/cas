@@ -209,9 +209,19 @@ class PayrollRunLine(db.Model):
     # cause the reversal to drift from what was actually decremented.
     sss_loan = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     pagibig_loan = db.Column(db.Numeric(12, 2), default=0, nullable=False)
-    # P3 (13th-month) -- column lands now so this migration runs once; always
-    # 0 until Task 13 wires the actual aggregation.
+    # P3 (13th-month, Task 13): for a run_type='13th_month' line, this is
+    # EITHER the auto-aggregated YTD-basic/12 value (service.
+    # compute_thirteenth_month, written by calculate_amounts() whenever
+    # thirteenth_month_override is False) OR a manually-entered final amount
+    # that calculate_amounts() leaves untouched when thirteenth_month_override
+    # is True -- mirrors sales_invoices/accounts_payable's vat_override/
+    # wt_override convention: a bool flag sitting next to the single amount
+    # column it gates, not a separate shadow "manual value" column. Always
+    # 0.00 for a run_type='regular' line (calculate_amounts() never touches
+    # it on that path).
     thirteenth_month = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    thirteenth_month_override = db.Column(db.Boolean, default=False, nullable=False,
+                                          server_default='0')
 
     net_pay = db.Column(db.Numeric(12, 2), default=0, nullable=False)
 
@@ -223,6 +233,14 @@ class PayrollRunLine(db.Model):
         # (service.py has no dependency on models.py, but keeping the import local
         # here mirrors how other document models keep their service imports scoped).
         from app.payroll import service
+
+        # Task 13: a run_type='13th_month' line is a completely separate calc
+        # path -- no statutory, no loans, WHT only on the excess over
+        # service.THIRTEENTH_MONTH_EXEMPTION. Branch out before any of the
+        # regular-run (compute_line) machinery below runs.
+        if self.run.run_type == '13th_month':
+            self._calculate_thirteenth_month_amounts(service)
+            return
 
         # Task 11: look up the employee's ACTIVE loan of each type (at most one,
         # per the uq_employee_loan_active_per_type partial unique index) fresh on
@@ -276,6 +294,52 @@ class PayrollRunLine(db.Model):
         self.wht_bracket_id = result['wht_bracket_id']
         self.sss_loan = result['sss_loan']
         self.pagibig_loan = result['pagibig_loan']
+        self.net_pay = result['net_pay']
+
+    def _calculate_thirteenth_month_amounts(self, service):
+        """Task 13 calc path for a run_type='13th_month' line: no statutory,
+        no loans; WHT only on the excess over service.THIRTEENTH_MONTH_EXEMPTION
+        (see service.compute_thirteenth_month_line's docstring for the
+        WHT-on-excess design reasoning).
+
+        The final amount is either the auto-aggregated YTD-basic/12 value
+        (service.compute_thirteenth_month, written into self.thirteenth_month
+        here) or, when thirteenth_month_override is True, whatever value the
+        caller already placed in self.thirteenth_month BEFORE calling
+        calculate_amounts() -- that value is read back untouched, never
+        recomputed, exactly mirroring how vat_override/wt_override guard
+        vat_amount/withholding_tax_amount on SalesInvoice/AccountsPayableBill.
+
+        Every statutory and loan field is explicitly zeroed (not merely left
+        at its prior value) so a line that is EDITED from 'regular' inputs
+        into a 13th-month line (or re-saved) never carries forward stale
+        SSS/PhilHealth/Pag-IBIG/loan amounts from an earlier calculation.
+        """
+        if self.thirteenth_month_override:
+            amount = Decimal(self.thirteenth_month or 0)
+        else:
+            amount = service.compute_thirteenth_month(self.employee, self.run.period_year)
+            self.thirteenth_month = amount
+
+        result = service.compute_thirteenth_month_line(amount, self.run.period_end)
+
+        self.basic_gross = result['gross_pay']
+        self.gross_pay = result['gross_pay']
+        self.sss_msc = None
+        self.sss_ee = Decimal('0.00')
+        self.sss_er = Decimal('0.00')
+        self.sss_ec = Decimal('0.00')
+        self.philhealth_ee = Decimal('0.00')
+        self.philhealth_er = Decimal('0.00')
+        self.pagibig_ee = Decimal('0.00')
+        self.pagibig_er = Decimal('0.00')
+        self.taxable_comp = result['taxable_comp']
+        self.wht = result['wht']
+        self.wht_bracket_id = result['wht_bracket_id']
+        self.sss_loan_id = None
+        self.pagibig_loan_id = None
+        self.sss_loan = Decimal('0.00')
+        self.pagibig_loan = Decimal('0.00')
         self.net_pay = result['net_pay']
 
     def to_dict(self):
