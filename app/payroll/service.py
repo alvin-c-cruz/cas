@@ -498,19 +498,21 @@ def apply_loan_balances(run):
     """
     from app import db
     from app.payroll.models import EmployeeLoan
+    from app.utils import ph_now
 
+    now = ph_now()
     for line in run.lines:
         if line.sss_loan_id and line.sss_loan and line.sss_loan > 0:
             db.session.execute(
                 db.update(EmployeeLoan)
                 .where(EmployeeLoan.id == line.sss_loan_id)
-                .values(balance=EmployeeLoan.balance - line.sss_loan)
+                .values(balance=EmployeeLoan.balance - line.sss_loan, updated_at=now)
             )
         if line.pagibig_loan_id and line.pagibig_loan and line.pagibig_loan > 0:
             db.session.execute(
                 db.update(EmployeeLoan)
                 .where(EmployeeLoan.id == line.pagibig_loan_id)
-                .values(balance=EmployeeLoan.balance - line.pagibig_loan)
+                .values(balance=EmployeeLoan.balance - line.pagibig_loan, updated_at=now)
             )
 
 
@@ -545,19 +547,21 @@ def restore_loan_balances(run):
     """
     from app import db
     from app.payroll.models import EmployeeLoan
+    from app.utils import ph_now
 
+    now = ph_now()
     for line in run.lines:
         if line.sss_loan_id and line.sss_loan and line.sss_loan > 0:
             db.session.execute(
                 db.update(EmployeeLoan)
                 .where(EmployeeLoan.id == line.sss_loan_id)
-                .values(balance=EmployeeLoan.balance + line.sss_loan)
+                .values(balance=EmployeeLoan.balance + line.sss_loan, updated_at=now)
             )
         if line.pagibig_loan_id and line.pagibig_loan and line.pagibig_loan > 0:
             db.session.execute(
                 db.update(EmployeeLoan)
                 .where(EmployeeLoan.id == line.pagibig_loan_id)
-                .values(balance=EmployeeLoan.balance + line.pagibig_loan)
+                .values(balance=EmployeeLoan.balance + line.pagibig_loan, updated_at=now)
             )
 
 
