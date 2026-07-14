@@ -38,7 +38,7 @@
 <div class="page-opening-balances">
   <header class="page-head">
     <h1>Opening Balances</h1>
-    {% if locked %}<span class="badge badge-locked">Finalized — locked</span>{% endif %}
+    {% if locked %}<span class="badge badge-locked">Period closed — changes need approval</span>{% endif %}
     {% if can_edit %}
       <a href="{{ url_for('opening_balances.pending_approvals') }}">Pending Approvals</a>
     {% endif %}
