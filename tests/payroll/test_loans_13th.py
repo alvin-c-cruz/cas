@@ -1381,6 +1381,41 @@ class TestThirteenthMonthWorksheetUI:
         assert _checkbox_checked(row, f'line_{emp.id}_override') is True
         assert _input_disabled(row, f'line_{emp.id}_amount') is False   # override checked -- editable
 
+    def test_tampered_amount_without_override_key_is_ignored(
+            self, client, staff_user, main_branch, login_user, db_session):
+        """ADVERSARIAL: a disabled HTML input is never submitted by a real
+        browser, so 'line_<id>_override' being ABSENT from the POST is what a
+        genuine unchecked-checkbox submission looks like. This simulates a
+        tampered/malformed request that includes 'line_<id>_amount' anyway
+        (e.g. a stale form re-enabled via devtools, or a hand-crafted POST)
+        WITHOUT the override key present. The view must still ignore the
+        submitted amount and fall back to the auto-aggregate -- proving the
+        override gate reads key PRESENCE, not just the checkbox's rendered
+        state, and can't be bypassed by supplying the amount field alone."""
+        seed_statutory_2026()
+        self._login_staff(client, login_user, staff_user, main_branch, db_session)
+
+        emp = _employee(db_session, main_branch, employee_no='EMP-UI-13-5')
+        for m in range(1, 13):
+            _posted_regular_run(db_session, main_branch, emp, f'PR-2026-{m:02d}-9205',
+                                 Decimal('24000.00'), m)
+        expected_amount = service.compute_thirteenth_month(emp, 2026)
+        assert expected_amount == Decimal('24000.00')
+
+        resp = client.post('/payroll/runs/new', data={
+            'run_type': '13th_month', 'year': '2026', 'pay_date': '2026-12-15',
+            # 'line_<id>_override' deliberately OMITTED -- amount present anyway.
+            f'line_{emp.id}_amount': '999999.00',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        run = PayrollRun.query.filter_by(branch_id=main_branch.id, run_type='13th_month').first()
+        assert run is not None
+        line = run.lines[0]
+        assert line.thirteenth_month_override is False
+        assert line.thirteenth_month == expected_amount   # NOT the tampered 999999.00
+        assert line.gross_pay == expected_amount
+
     def test_regular_worksheet_still_renders_unaffected(
             self, client, staff_user, main_branch, login_user, db_session):
         """The run_type branch in new_run/edit_run must not disturb the
