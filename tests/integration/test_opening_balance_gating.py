@@ -152,12 +152,24 @@ class TestOpeningBalanceGating:
         AccountingPeriod.get_or_create_period(2026, 1).status = 'closed'
         db.session.commit()
 
+        # Snapshot the posted entry BEFORE the first (pending) request-change POST.
+        before = get_opening_entry(branch.id)
+        pre_debit, pre_credit, pre_date = (
+            before.total_debit, before.total_credit, before.entry_date)
+
         client.post('/opening-balances/request-change',
                     data=_post_line_form('2026-01-01', cash.id),
                     follow_redirects=True)
         assert OpeningBalanceChangeRequest.query.count() == 1
         first = OpeningBalanceChangeRequest.query.first()
         assert first.status == 'pending'  # two accountant/CA -> no auto-approve
+
+        # The pending branch must NOT mutate the posted entry -- only an approved
+        # request (auto or, in Task 5, an approver action) may rebuild it in place.
+        after = get_opening_entry(branch.id)
+        assert after.total_debit == pre_debit
+        assert after.total_credit == pre_credit
+        assert after.entry_date == pre_date
 
         # A second request while one is pending is refused, not queued.
         resp = client.post('/opening-balances/request-change',
@@ -166,3 +178,43 @@ class TestOpeningBalanceGating:
         assert resp.status_code == 200
         assert OpeningBalanceChangeRequest.query.count() == 1
         assert b'already a pending' in resp.data
+
+    def test_unbalanced_change_is_rejected_before_creating_request(
+            self, client, db_session, db_with_data, accountant_user):
+        """CRITICAL guard: a governed change with mismatched (or zero) debit/credit
+        totals must be rejected up-front -- no OpeningBalanceChangeRequest created,
+        and the already-posted opening entry's totals stay untouched. Without this,
+        the sole-accountant auto-approve path would silently rebuild the posted
+        entry into an unbalanced/empty state."""
+        cash = db_with_data['cash']
+        revenue = db_with_data['revenue']
+        branch = db_with_data['branch']
+        _make_postable(db_session, cash, revenue)
+
+        _login(client, accountant_user)
+        _select_branch(client, branch.id)
+
+        client.post('/opening-balances/save', data=_save_payload('2026-01-01', [
+            (cash.id, '1000.00', '0'), (revenue.id, '0', '1000.00'),
+        ]))
+        client.post('/opening-balances/post')
+
+        AccountingPeriod.get_or_create_period(2026, 1).status = 'closed'
+        db.session.commit()
+
+        before = get_opening_entry(branch.id)
+        pre_debit, pre_credit = before.total_debit, before.total_credit
+
+        # One debit line, no offsetting credit -- unbalanced.
+        resp = client.post('/opening-balances/request-change',
+                           data={'cutover_date': '2026-01-01',
+                                 'account_id': [str(cash.id)],
+                                 'debit': ['500.00'], 'credit': ['0']},
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'must be balanced' in resp.data
+        assert OpeningBalanceChangeRequest.query.count() == 0
+
+        after = get_opening_entry(branch.id)
+        assert after.total_debit == pre_debit
+        assert after.total_credit == pre_credit

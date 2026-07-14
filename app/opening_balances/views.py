@@ -108,14 +108,19 @@ def _snapshot(cutover_date, rows):
 
 def _apply_opening_change(entry, change_request):
     """Rebuild the (posted) opening entry from an approved request's snapshot and keep
-    it posted+balanced. Reuses _parse-style rows via _build_lines. Caller commits."""
+    it posted+balanced. Reuses _parse-style rows via _build_lines. Caller commits.
+
+    Defensive guard: _build_lines already recomputes totals, but a stored snapshot
+    (this protects the future approve-pending path re-applying it) could in principle
+    be unbalanced or empty -- raise rather than silently commit a bad apply."""
     data = change_request.get_change_data()
     rows = [{'account_id': int(l['account_id']),
              'debit': _to_decimal(l['debit']), 'credit': _to_decimal(l['credit'])}
             for l in data['lines']]
     entry.entry_date = _date.fromisoformat(data['cutover_date'])
     _build_lines(entry, rows)
-    entry.calculate_totals()
+    if not entry.is_balanced or entry.total_debit <= 0:
+        raise ValueError('Opening balance change would leave the entry unbalanced.')
 
 
 @opening_balances_bp.route('/opening-balances')
@@ -290,6 +295,13 @@ def request_change():
         flash(str(exc), 'error')
         return redirect(url_for('opening_balances.index'))
 
+    total_debit = sum((r['debit'] for r in rows), Decimal('0'))
+    total_credit = sum((r['credit'] for r in rows), Decimal('0'))
+    if total_debit != total_credit or total_debit <= 0:
+        flash('Opening balances must be balanced (total debits = total credits) '
+              'before submitting a change.', 'error')
+        return redirect(url_for('opening_balances.index'))
+
     req = OpeningBalanceChangeRequest(
         branch_id=branch_id, requested_by=current_user.username,
         requested_at=ph_now(), status='pending',
@@ -297,7 +309,12 @@ def request_change():
     req.set_change_data(_snapshot(form.cutover_date.data, rows))
 
     if req.auto_approves():
-        _apply_opening_change(entry, req)
+        try:
+            _apply_opening_change(entry, req)
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'error')
+            return redirect(url_for('opening_balances.index'))
         req.status = 'approved'
         req.reviewed_by = current_user.username
         req.reviewed_at = ph_now()
