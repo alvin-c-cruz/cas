@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from datetime import date as _date
 from functools import wraps
 
 from flask import (Blueprint, render_template, redirect, url_for, request,
@@ -17,6 +18,7 @@ from app.opening_balances.utils import (
     get_opening_entry, is_opening_locked, opening_account_choices,
     opening_leaf_account_ids, LOCK_KEY,
 )
+from app.opening_balances.approval_models import OpeningBalanceChangeRequest
 from app.utils.authz import full_access_required
 
 opening_balances_bp = Blueprint('opening_balances', __name__, template_folder='templates')
@@ -90,6 +92,29 @@ def _build_lines(entry, rows):
             debit_amount=row['debit'], credit_amount=row['credit'],
         ))
     db.session.flush()
+    entry.calculate_totals()
+
+
+def find_pending_ob_request(branch_id):
+    return OpeningBalanceChangeRequest.query.filter_by(
+        branch_id=branch_id, status='pending').first()
+
+
+def _snapshot(cutover_date, rows):
+    return {'cutover_date': cutover_date.isoformat(),
+            'lines': [{'account_id': r['account_id'],
+                       'debit': str(r['debit']), 'credit': str(r['credit'])} for r in rows]}
+
+
+def _apply_opening_change(entry, change_request):
+    """Rebuild the (posted) opening entry from an approved request's snapshot and keep
+    it posted+balanced. Reuses _parse-style rows via _build_lines. Caller commits."""
+    data = change_request.get_change_data()
+    rows = [{'account_id': int(l['account_id']),
+             'debit': _to_decimal(l['debit']), 'credit': _to_decimal(l['credit'])}
+            for l in data['lines']]
+    entry.entry_date = _date.fromisoformat(data['cutover_date'])
+    _build_lines(entry, rows)
     entry.calculate_totals()
 
 
@@ -238,4 +263,55 @@ def finalize():
               record_identifier=f'{entry.entry_number} - Opening Balances',
               notes='Finalized opening balances (locked).')
     flash('Opening balances finalized and locked.', 'success')
+    return redirect(url_for('opening_balances.index'))
+
+
+@opening_balances_bp.route('/opening-balances/request-change', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def request_change():
+    branch_id = _branch_id()
+    entry = get_opening_entry(branch_id)
+    if entry is None or not is_opening_locked(branch_id):
+        # Not in a closed period -> the normal free-edit save path applies.
+        flash('Opening balances are not under approval control yet; use Save.', 'error')
+        return redirect(url_for('opening_balances.index'))
+    if find_pending_ob_request(branch_id) is not None:
+        flash('There is already a pending opening-balance change request.', 'error')
+        return redirect(url_for('opening_balances.index'))
+
+    form = OpeningBalanceForm()
+    if not form.validate_on_submit():
+        flash('A valid cutover date is required.', 'error')
+        return redirect(url_for('opening_balances.index'))
+    try:
+        rows = _parse_lines(request.form)
+    except OpeningLineError as exc:
+        flash(str(exc), 'error')
+        return redirect(url_for('opening_balances.index'))
+
+    req = OpeningBalanceChangeRequest(
+        branch_id=branch_id, requested_by=current_user.username,
+        requested_at=ph_now(), status='pending',
+        request_reason=(request.form.get('request_reason') or None))
+    req.set_change_data(_snapshot(form.cutover_date.data, rows))
+
+    if req.auto_approves():
+        _apply_opening_change(entry, req)
+        req.status = 'approved'
+        req.reviewed_by = current_user.username
+        req.reviewed_at = ph_now()
+        db.session.add(req)
+        db.session.commit()
+        log_audit(module='opening_balances', action='update', record_id=entry.id,
+                  record_identifier=f'{entry.entry_number} - Opening Balances',
+                  notes=f'Opening balance change auto-approved ({current_user.username}).')
+        flash('Opening balances updated.', 'success')
+    else:
+        db.session.add(req)
+        db.session.commit()
+        log_audit(module='opening_balances', action='request', record_id=entry.id,
+                  record_identifier=f'{entry.entry_number} - Opening Balances',
+                  notes=f'Opening balance change requested by {current_user.username} (pending).')
+        flash('Change request submitted for approval.', 'success')
     return redirect(url_for('opening_balances.index'))
