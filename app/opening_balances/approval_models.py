@@ -53,3 +53,42 @@ class OpeningBalanceChangeRequest(db.Model):
             'rejection_reason': self.rejection_reason,
             'request_reason': self.request_reason,
         }
+
+    @staticmethod
+    def accountant_ca_count():
+        """Active users whose role is accountant or chief_accountant. Admin is NOT
+        counted here -- the owner's matrix keys off the accountant/CA population."""
+        from app.users.models import User
+        return User.query.filter(
+            User.role.in_(['accountant', 'chief_accountant']),
+            User.is_active == True,  # noqa: E712
+        ).count()
+
+    def auto_approves(self):
+        """True when this request applies immediately with no pending state:
+        - the requester is the SOLE active accountant/CA (count == 1), or
+        - there are ZERO accountants/CAs and the requester is an admin (solo-admin
+          escape hatch so a lone-admin instance isn't permanently locked out).
+        Everyone else -> pending (nobody self-approves, incl. admin, when a peer exists)."""
+        from app.users.models import User
+        requester = User.query.filter_by(username=self.requested_by).first()
+        if requester is None or not requester.is_active:
+            return False
+        count = self.accountant_ca_count()
+        if requester.role in ('accountant', 'chief_accountant') and count == 1:
+            return True
+        if count == 0 and requester.role == 'admin':
+            return True
+        return False
+
+    def can_be_approved_by(self, username):
+        """A pending request may be approved by any OTHER active accountant, CA, or
+        admin -- never the requester. (Diverges from AccountChangeRequest, where
+        full-access can self-approve.)"""
+        from app.users.models import User
+        reviewer = User.query.filter_by(username=username).first()
+        if reviewer is None or not reviewer.is_active:
+            return False
+        if reviewer.role not in ('accountant', 'chief_accountant', 'admin'):
+            return False
+        return username != self.requested_by
