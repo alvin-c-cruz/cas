@@ -347,7 +347,8 @@ def test_compute_line_returns_all_expected_keys(db_session):
         is_mwe=False, pay_frequency='monthly', period_end=date(2026, 6, 30),
         semi_timing='second_cutoff'))
     expected_keys = {'basic_gross', 'gross_pay', 'statutory', 'taxable_comp',
-                      'wht', 'wht_bracket_id', 'net_pay', 'sss_msc'}
+                      'wht', 'wht_bracket_id', 'net_pay', 'sss_msc',
+                      'sss_loan', 'pagibig_loan'}
     assert set(line.keys()) == expected_keys
     assert line['sss_msc'] == line['statutory']['sss_msc']
 

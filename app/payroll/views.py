@@ -429,6 +429,13 @@ def post_run(id):
 
         je = service.post_payroll_je(run)
         run.journal_entry_id = je.id
+        # Task 11: decrement each line's referenced EmployeeLoan.balance by the
+        # amount that line actually applied (already min(amortization, balance)
+        # capped by compute_line). Inside the SAME claim_version-locked
+        # transaction as everything else above -- see
+        # service.apply_loan_balances's docstring for the atomic-UPDATE
+        # reasoning and its documented concurrent-race gap.
+        service.apply_loan_balances(run)
         db.session.commit()
 
         log_audit(
@@ -463,6 +470,15 @@ def void_run(id):
     if run.status != 'draft':
         flash('Only draft payroll runs can be voided.', 'error')
         return redirect(url_for('payroll.view_run', id=id))
+    # Task 11: deliberately NOT calling service.restore_loan_balances(run)
+    # here. Unlike the defensive JE-delete just below (harmless because a
+    # draft never actually carries a real JE), a draft's lines DO carry
+    # computed sss_loan/pagibig_loan PREVIEW amounts (calculate_amounts()
+    # recomputes them on every draft save) even though apply_loan_balances()
+    # was never called for this run (it only ever runs from post_run, which
+    # requires draft status to even start). Calling restore here would
+    # incorrectly credit a loan balance that was never debited. See
+    # service.restore_loan_balances's docstring.
     void_reason = request.form.get('void_reason', '').strip()
     if len(void_reason) < 10:
         flash('Void reason must be at least 10 characters.', 'error')
@@ -525,6 +541,11 @@ def cancel_run(id):
         return redirect(url_for('payroll.view_run', id=id))
     try:
         service.build_payroll_reversal_je(run, reversal_date, current_user.id)
+        # Task 11: restore each line's referenced EmployeeLoan.balance by the
+        # EXACT amount apply_loan_balances() decremented at post -- see
+        # service.restore_loan_balances's docstring for why this must use the
+        # amount stored on the line, never a fresh recompute.
+        service.restore_loan_balances(run)
         run.status = 'cancelled'
         run.cancelled_at = ph_now()
         run.cancel_reason = cancel_reason

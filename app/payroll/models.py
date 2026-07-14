@@ -186,10 +186,31 @@ class PayrollRunLine(db.Model):
     wht = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     wht_bracket_id = db.Column(db.Integer, db.ForeignKey('compensation_wht_brackets.id'), nullable=True)
 
-    # P3 (loans/13th-month) -- columns land now so this migration runs once;
-    # always 0 until Tasks 11/13 wire the actual deduction/aggregation.
+    # Task 11: which specific EmployeeLoan record (if any) this line's
+    # sss_loan/pagibig_loan amount was drawn against. Recorded at
+    # calculate_amounts() time (whenever the employee's ACTIVE loan of that
+    # type is looked up), NOT just the amount -- a correct reversal on cancel
+    # needs to credit the EXACT loan record that was debited at post, not
+    # "whichever loan is currently active for this employee" (which could
+    # have changed between post and cancel). Plain nullable Integer, no
+    # inline FK (SQLite batch add_column can't carry one -- see CLAUDE.md's
+    # "Batch add_column cannot carry an inline sa.ForeignKey" gotcha); the
+    # ORM relationship below still gives FK-shaped joins.
+    sss_loan_id = db.Column(db.Integer, db.ForeignKey('employee_loans.id'), nullable=True)
+    pagibig_loan_id = db.Column(db.Integer, db.ForeignKey('employee_loans.id'), nullable=True)
+
+    # sss_loan/pagibig_loan: the amount ACTUALLY applied on this line, already
+    # capped at min(monthly_amortization, balance) by compute_line -- this is
+    # both what calculate_totals() sums into the run's total_sss_loan/
+    # total_pagibig_loan header buckets (post_payroll_je's 20405/20406 credit
+    # legs) AND the exact figure apply_loan_balances()/restore_loan_balances()
+    # decrement/restore against the referenced loan -- never recomputed fresh
+    # at post or cancel time, so a monthly_amortization edit in between can't
+    # cause the reversal to drift from what was actually decremented.
     sss_loan = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     pagibig_loan = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    # P3 (13th-month) -- column lands now so this migration runs once; always
+    # 0 until Task 13 wires the actual aggregation.
     thirteenth_month = db.Column(db.Numeric(12, 2), default=0, nullable=False)
 
     net_pay = db.Column(db.Numeric(12, 2), default=0, nullable=False)
@@ -202,6 +223,20 @@ class PayrollRunLine(db.Model):
         # (service.py has no dependency on models.py, but keeping the import local
         # here mirrors how other document models keep their service imports scoped).
         from app.payroll import service
+
+        # Task 11: look up the employee's ACTIVE loan of each type (at most one,
+        # per the uq_employee_loan_active_per_type partial unique index) fresh on
+        # every calculate_amounts() call -- this runs on every draft save/edit
+        # (create_run/edit_run POST), not just once, so it always reflects the
+        # loan's CURRENT balance, not a stale snapshot from an earlier edit. The
+        # FK is recorded now so a later post/cancel applies/restores against
+        # THIS specific loan record, not "whichever loan is active at that time".
+        sss_loan = EmployeeLoan.query.filter_by(
+            employee_id=self.employee_id, loan_type='sss', status='active').first()
+        pagibig_loan = EmployeeLoan.query.filter_by(
+            employee_id=self.employee_id, loan_type='pagibig', status='active').first()
+        self.sss_loan_id = sss_loan.id if sss_loan else None
+        self.pagibig_loan_id = pagibig_loan.id if pagibig_loan else None
 
         inputs = {
             'pay_basis': self.pay_basis,
@@ -218,6 +253,10 @@ class PayrollRunLine(db.Model):
             'period_end': self.run.period_end,
             'semi_timing': self.run.semi_timing,
             'semi_period': self.run.semi_period,
+            'sss_loan_amortization': sss_loan.monthly_amortization if sss_loan else 0,
+            'sss_loan_balance': sss_loan.balance if sss_loan else 0,
+            'pagibig_loan_amortization': pagibig_loan.monthly_amortization if pagibig_loan else 0,
+            'pagibig_loan_balance': pagibig_loan.balance if pagibig_loan else 0,
         }
         result = service.compute_line(inputs)
 
@@ -235,6 +274,8 @@ class PayrollRunLine(db.Model):
         self.taxable_comp = result['taxable_comp']
         self.wht = result['wht']
         self.wht_bracket_id = result['wht_bracket_id']
+        self.sss_loan = result['sss_loan']
+        self.pagibig_loan = result['pagibig_loan']
         self.net_pay = result['net_pay']
 
     def to_dict(self):
@@ -256,5 +297,79 @@ class PayrollRunLine(db.Model):
             'gross_pay': float(self.gross_pay),
             'taxable_comp': float(self.taxable_comp),
             'wht': float(self.wht),
+            'sss_loan': float(self.sss_loan),
+            'pagibig_loan': float(self.pagibig_loan),
             'net_pay': float(self.net_pay),
+        }
+
+
+class EmployeeLoan(db.Model):
+    """SSS/Pag-IBIG salary-loan amortization schedule for one employee.
+
+    Task 11 (R-06 Payroll v1, P3 slice): a payroll line's calculate_amounts()
+    looks up the employee's ACTIVE loan of each type (at most one per type,
+    enforced by the partial unique index below) and deducts
+    min(monthly_amortization, balance) via app.payroll.service.compute_line.
+    `balance` is mutated ONLY by the payroll-run lifecycle (post decrements it,
+    cancel restores it exactly -- see service.apply_loan_balances/
+    restore_loan_balances) -- never edited directly by this task (the loan
+    editor UI that lets an accountant create/adjust a loan record is Task 12's
+    job, out of scope here).
+
+    status: 'active' (eligible for auto-deduction), 'paid' (balance reached
+    zero -- informational; nothing in this task auto-transitions a loan into
+    this state, left for Task 12's editor to manage explicitly), 'cancelled'
+    (the loan was written off/voided outside payroll and must stop deducting
+    without needing its balance zeroed first). Only 'active' loans are picked
+    up by calculate_amounts()'s lookup.
+
+    NOT RowVersioned: every mutation to `balance` in this task's scope
+    (post_run/cancel_run) already runs inside PayrollRun's own claim_version-
+    locked transaction, and the balance write itself uses an atomic SQL-side
+    UPDATE (balance = balance +/- amount), not a Python read-modify-write --
+    see apply_loan_balances()'s docstring for why that closes the classic
+    lost-update race for THIS task's mutation paths. A future loan-editor UI
+    (Task 12) that lets a user directly edit principal/monthly_amortization/
+    balance would be a genuinely NEW concurrent-write surface this class
+    doesn't yet have, and should reconsider RowVersioned at that point.
+    """
+    __tablename__ = 'employee_loans'
+    __table_args__ = (
+        # At most one ACTIVE loan per (employee, loan_type) -- calculate_amounts()
+        # resolves "the" active loan via a plain filter_by(...).first(), and this
+        # partial unique index (mirrors payroll_runs' own period-uniqueness
+        # pattern) makes that lookup well-defined instead of silently picking an
+        # arbitrary row among several concurrently-active loans of the same type.
+        db.Index('uq_employee_loan_active_per_type', 'employee_id', 'loan_type',
+                 unique=True, sqlite_where=db.text("status = 'active'")),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False, index=True)
+    employee = db.relationship('Employee', foreign_keys=[employee_id])
+
+    loan_type = db.Column(db.String(20), nullable=False)   # 'sss' / 'pagibig'
+    principal = db.Column(db.Numeric(12, 2), nullable=False)
+    monthly_amortization = db.Column(db.Numeric(12, 2), nullable=False)
+    balance = db.Column(db.Numeric(12, 2), nullable=False)
+    status = db.Column(db.String(20), default='active', nullable=False, index=True)   # active/paid/cancelled
+
+    created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
+
+    def __repr__(self):
+        return f'<EmployeeLoan {self.loan_type} employee={self.employee_id} balance={self.balance}>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'employee_id': self.employee_id,
+            'loan_type': self.loan_type,
+            'principal': float(self.principal),
+            'monthly_amortization': float(self.monthly_amortization),
+            'balance': float(self.balance),
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

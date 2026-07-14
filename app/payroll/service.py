@@ -203,20 +203,30 @@ def compute_line(inputs):
             period_end (date), semi_timing
             ('second_cutoff'/'split_50_50'/'first_cutoff'), semi_period
             (1 or 2 -- semi-monthly only, read by _semi_applies_statutory).
+            sss_loan_amortization, sss_loan_balance, pagibig_loan_amortization,
+            pagibig_loan_balance (Task 11, all OPTIONAL -- default 0/absent
+            means "no active loan of that type", exactly like every caller
+            before Task 11 that never passes these keys at all; backward
+            compatible with every pre-Task-11 call site).
 
     Returns:
         dict with Decimal values (all _q2-quantized):
         {basic_gross, gross_pay, statutory, taxable_comp, wht, wht_bracket_id,
-         net_pay, sss_msc}
+         net_pay, sss_msc, sss_loan, pagibig_loan}
         'statutory' is the full dict returned by compute_statutory -- it is
         ALWAYS fully computed regardless of semi-monthly timing (compute_statutory
         has no notion of timing); only the EE amount folded into taxable_comp/
         net_pay is conditionally suppressed via _semi_applies_statutory.
+        'sss_loan'/'pagibig_loan' are each min(amortization, balance), clamped
+        at 0.00 -- a loan in its final month may owe less than a full
+        scheduled amortization (balance < amortization), and a fully paid-off
+        loan (balance=0) deducts exactly 0.00, never negative, never an error.
 
     MWE (minimum-wage earner) employees are WHT-exempt (taxable_comp = 0) but
     SSS/PhilHealth/Pag-IBIG still apply -- the MWE branch below only zeroes
     taxable_comp/wht, never the statutory dict or the 'ee' amount folded into
-    net_pay.
+    net_pay. Loan amortization is deducted from net_pay the same way for MWE
+    and non-MWE employees alike -- MWE exemption is a WHT-only concept.
     """
     freq = inputs['pay_frequency']
     as_of = inputs['period_end']
@@ -249,7 +259,12 @@ def compute_line(inputs):
         wht = _q2(b.base_tax + (taxable - b.lower_bound) * b.rate_on_excess)
         bracket_id = b.id
 
-    net = _q2(gross - ee - wht)   # loans added in P3
+    sss_loan = _capped_loan_deduction(
+        inputs.get('sss_loan_amortization', 0), inputs.get('sss_loan_balance', 0))
+    pagibig_loan = _capped_loan_deduction(
+        inputs.get('pagibig_loan_amortization', 0), inputs.get('pagibig_loan_balance', 0))
+
+    net = _q2(gross - ee - wht - sss_loan - pagibig_loan)
 
     return {
         'basic_gross': basic,
@@ -258,9 +273,23 @@ def compute_line(inputs):
         'taxable_comp': taxable,
         'wht': wht,
         'wht_bracket_id': bracket_id,
+        'sss_loan': sss_loan,
+        'pagibig_loan': pagibig_loan,
         'net_pay': net,
         'sss_msc': st['sss_msc'],
     }
+
+
+def _capped_loan_deduction(amortization, balance):
+    """min(amortization, balance), clamped at 0.00.
+
+    The clamp-at-0 matters for two edge cases: balance == 0 (fully paid off --
+    min(amortization, 0) is already 0, the clamp is redundant but explicit)
+    and a defensively-impossible negative balance (min() alone would return
+    the negative balance, which would INCREASE net pay -- never correct)."""
+    amortization = Decimal(amortization or 0)
+    balance = Decimal(balance or 0)
+    return max(Decimal('0.00'), _q2(min(amortization, balance)))
 
 
 def _semi_applies_statutory(freq, timing, inputs):
@@ -347,7 +376,8 @@ def post_payroll_je(run):
         nonlocal line_num
         amount = _q2(amount)
         if amount == Decimal('0.00'):
-            return   # nothing to post for this bucket (e.g. loans, P3 not yet wired)
+            return   # nothing to post for this bucket (e.g. no employee has an
+                     # active loan this run, or 13th-month -- P3, not yet wired)
         account = get_control_account(key)
         dr = amount if side == 'debit' else Decimal('0.00')
         cr = amount if side == 'credit' else Decimal('0.00')
@@ -427,6 +457,110 @@ def post_payroll_je(run):
     return je
 
 
+def apply_loan_balances(run):
+    """Decrement each EmployeeLoan referenced by `run`'s lines by the amount
+    already computed and stored on that line (line.sss_loan/pagibig_loan --
+    each already min(amortization, balance)-capped by compute_line as of the
+    line's last calculate_amounts() call).
+
+    Called exactly once, from payroll.views.post_run, INSIDE the transaction
+    already protected by that route's claim_version lock on the PayrollRun
+    itself (post_run claims the run's row_version before doing anything else).
+    Idempotency across repeated calls is NOT this function's job -- it is the
+    caller's single-call-per-post contract (mirrors post_payroll_je, which
+    likewise assumes it is called exactly once per post).
+
+    The decrement is a single SQL-side UPDATE (balance = balance - amount),
+    not a Python read/subtract/reassign -- this closes the classic lost-update
+    race for the arithmetic itself even without a per-loan optimistic lock:
+    SQLite serializes writers, so two concurrent UPDATEs against the SAME
+    EmployeeLoan row apply correctly one after another rather than one
+    clobbering the other's read.
+
+    KNOWN GAP, deliberately left open (see task-11-report.md): the AMOUNT
+    being applied here was capped against the loan's balance back at
+    calculate_amounts() time (whenever the draft was last saved/edited), not
+    re-verified against the loan's CURRENT balance at this post moment. Two
+    DIFFERENT payroll runs referencing the SAME employee's SAME loan, posted
+    concurrently, could each independently cap against a balance snapshot
+    that is already stale by the time this update runs -- the atomic UPDATE
+    prevents the WRITE from being lost, but not a logically-stale CAP computed
+    earlier by a different run. A single run's post/cancel cycle (the only
+    thing this task builds and tests) cannot hit this. Flagged for a later
+    task if it proves necessary in practice (e.g. a claim_version-style guard
+    on EmployeeLoan itself, or re-clamping against a freshly-read balance at
+    post time and re-syncing the run's total_sss_loan/total_pagibig_loan
+    header buckets + the already-guarded JE plug to match).
+
+    Args:
+        run: PayrollRun being posted, with its lines' sss_loan/pagibig_loan/
+            sss_loan_id/pagibig_loan_id already populated.
+    """
+    from app import db
+    from app.payroll.models import EmployeeLoan
+
+    for line in run.lines:
+        if line.sss_loan_id and line.sss_loan and line.sss_loan > 0:
+            db.session.execute(
+                db.update(EmployeeLoan)
+                .where(EmployeeLoan.id == line.sss_loan_id)
+                .values(balance=EmployeeLoan.balance - line.sss_loan)
+            )
+        if line.pagibig_loan_id and line.pagibig_loan and line.pagibig_loan > 0:
+            db.session.execute(
+                db.update(EmployeeLoan)
+                .where(EmployeeLoan.id == line.pagibig_loan_id)
+                .values(balance=EmployeeLoan.balance - line.pagibig_loan)
+            )
+
+
+def restore_loan_balances(run):
+    """Reverse apply_loan_balances(run): increments each referenced loan's
+    balance back by the EXACT amount stored on the line -- never recomputed
+    fresh. A loan's monthly_amortization could have been edited between post
+    and cancel; re-deriving the reversal amount from TODAY's rate/balance
+    would drift from what was actually decremented at post. Using the SAME
+    stored line.sss_loan/pagibig_loan value for both apply and restore is
+    what makes the round trip exact.
+
+    Called exactly once, from payroll.views.cancel_run (a posted run being
+    cancelled), inside the same transaction as the reversal JE. Also uses an
+    atomic SQL-side UPDATE, for the same lost-update-avoidance reason as
+    apply_loan_balances.
+
+    NOT called from void_run: void_run's precondition (run.status == 'draft')
+    makes it structurally impossible for a draft's loan balances to have ever
+    been decremented -- apply_loan_balances only ever runs from post_run,
+    which requires draft status to even begin (and flips it to 'posted' as
+    its very first write). A draft run's lines DO carry computed
+    sss_loan/pagibig_loan preview amounts (calculate_amounts() runs on every
+    draft save), so calling restore here would incorrectly CREDIT a balance
+    that was never debited -- unlike CDV's defensive JE-delete-if-present in
+    void_run (harmless because a draft never has a real JE), this is not a
+    safe no-op to add "just in case."
+
+    Args:
+        run: PayrollRun being cancelled, still carrying the lines/FKs/amounts
+            from when it was posted.
+    """
+    from app import db
+    from app.payroll.models import EmployeeLoan
+
+    for line in run.lines:
+        if line.sss_loan_id and line.sss_loan and line.sss_loan > 0:
+            db.session.execute(
+                db.update(EmployeeLoan)
+                .where(EmployeeLoan.id == line.sss_loan_id)
+                .values(balance=EmployeeLoan.balance + line.sss_loan)
+            )
+        if line.pagibig_loan_id and line.pagibig_loan and line.pagibig_loan > 0:
+            db.session.execute(
+                db.update(EmployeeLoan)
+                .where(EmployeeLoan.id == line.pagibig_loan_id)
+                .values(balance=EmployeeLoan.balance + line.pagibig_loan)
+            )
+
+
 def build_je_preview(run):
     """Read-only preview of the payroll accrual JE this run would produce if
     post_payroll_je() ran right now, built from the run's CURRENT header
@@ -469,7 +603,8 @@ def build_je_preview(run):
     def _row(key, label, amount, side):
         amount = _q2(amount)
         if amount == Decimal('0.00'):
-            return   # nothing to preview for this bucket (e.g. loans, P3 not yet wired)
+            return   # nothing to preview for this bucket (e.g. no employee has an
+                     # active loan this run, or 13th-month -- P3, not yet wired)
         account = get_control_account(key, required=False)
         rows.append({
             'key': key, 'label': label, 'account': account,
