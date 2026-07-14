@@ -18,7 +18,7 @@ from app import db
 from app.employees.models import Employee
 from app.payroll import payroll_bp
 from app.payroll.models import PayrollRun, PayrollRunLine, EmployeeLoan
-from app.payroll.forms import PayrollRunForm, EmployeeLoanForm
+from app.payroll.forms import PayrollRunForm, EmployeeLoanForm, ThirteenthMonthRunForm
 from app.payroll import service
 from app.periods.models import AccountingPeriod
 from app.settings import AppSettings
@@ -192,6 +192,333 @@ def _semi_timing_for(pay_frequency):
     return AppSettings.get_setting('payroll_semi_monthly_timing', 'second_cutoff')
 
 
+# ---------------------------------------------------------------------------
+# 13th-month worksheet (Task 14) -- a run_type='13th_month' PayrollRun has no
+# pay-period concept (see the approved mockup, scratch/mockups/payroll-13th-
+# month.html): no pay_frequency/period_start/period_end/semi_period picker,
+# just Year + Pay Date. Task 13 (models.py) already wired
+# PayrollRunLine.calculate_amounts() to branch on run.run_type and to honor
+# thirteenth_month_override -- everything below is purely the view/template
+# layer that feeds that contract; no calc-engine or model change needed here.
+# ---------------------------------------------------------------------------
+
+def _line_checked(employee_id, field):
+    """True iff a checkbox input `line_<employee_id>_<field>` was present in
+    the POST body. A disabled/unchecked HTML checkbox submits NOTHING, so
+    request.form.get(...) returning None (or any non-'on' value) both read as
+    unchecked -- there is no separate 'false' state a browser ever sends."""
+    return request.form.get(f'line_{employee_id}_{field}') is not None
+
+
+def _build_thirteenth_month_lines(run, employees):
+    """One PayrollRunLine per employee for a run_type='13th_month' run.
+    Mirrors _build_lines's identity-snapshot + append-to-run.lines shape, but
+    reads the Override checkbox + manual amount instead of days/OT/holiday/
+    allowance inputs (those have no meaning on a 13th-month line and are left
+    at their column defaults of 0).
+
+    The disabled-input/checkbox interaction: the worksheet template disables
+    the per-line amount <input> whenever its Override checkbox is unchecked,
+    and a disabled HTML input is never included in a form submission at all
+    (not even as an empty string) -- so when override is NOT checked, this
+    function never even looks at `line_<id>_amount`, exactly mirroring what
+    the browser actually sent. When override IS checked, the amount input was
+    enabled and its submitted value is read the same way any other worksheet
+    cell is: through _line_decimal (fails closed to 0, never negative -- a
+    13th-month amount has no meaning as negative). The amount is written onto
+    line.thirteenth_month BEFORE calculate_amounts() runs, so
+    PayrollRunLine._calculate_thirteenth_month_amounts() (Task 13) reads it
+    back untouched per its documented override-precedence contract; when not
+    overridden, thirteenth_month stays at its column default (0) and
+    calculate_amounts() auto-aggregates it fresh from
+    service.compute_thirteenth_month."""
+    for idx, emp in enumerate(employees, start=1):
+        override = _line_checked(emp.id, 'override')
+        line = PayrollRunLine(
+            line_number=idx,
+            employee_id=emp.id,
+            # Also bind the relationship object directly, not just the FK
+            # scalar: calculate_amounts() -> _calculate_thirteenth_month_
+            # amounts() reads self.employee (service.compute_thirteenth_month
+            # needs the ORM object), and it is called on this line BEFORE
+            # run/lines are ever added to a Session (mirrors the regular
+            # worksheet's own build-then-add-then-commit order) -- a lazy
+            # relationship load on a transient, session-less object silently
+            # resolves to None instead of issuing a query, which crashed with
+            # AttributeError on `employee.id` until this was added.
+            employee=emp,
+            employee_name=emp.full_name,
+            pay_basis=emp.pay_basis or 'monthly',
+            rate=emp.basic_rate or Decimal('0.00'),
+            tax_status_code=emp.tax_status_code,
+            is_mwe=bool(emp.is_minimum_wage),
+            thirteenth_month_override=override,
+        )
+        if override:
+            line.thirteenth_month = _line_decimal(emp.id, 'amount')
+        run.lines.append(line)
+
+
+def _thirteenth_month_preview(employees, year):
+    """Live per-employee 13th-month calc preview for the worksheet's
+    auto-fill display: the auto-aggregated YTD-basic/12 amount
+    (service.compute_thirteenth_month) run through the SAME pure WHT-on-
+    excess calc (service.compute_thirteenth_month_line) a saved line would
+    use -- computed fresh on every render, never cached or persisted until a
+    line is actually saved. This is what lets the worksheet show a live
+    auto-fill even on the very first GET of a brand-new run, before any
+    PayrollRunLine exists yet.
+
+    Returns {employee_id: {'amount', 'ytd_basic', 'taxable_comp', 'wht',
+    'net_pay'}}, all Decimal. 'ytd_basic' is the auto amount * 12 -- a
+    display-only reconstruction of the underlying YTD sum (not a second,
+    separately-queried figure), which exactly reproduces the true sum
+    whenever it divides evenly by 12 (true for every case this task's tests
+    build); documented here as a deliberate v1 simplification rather than
+    adding a second query path into service.py for a purely informational
+    column.
+    """
+    period_end = date(year, 12, 31)
+    preview = {}
+    for emp in employees:
+        amount = service.compute_thirteenth_month(emp, year)
+        calc = service.compute_thirteenth_month_line(amount, period_end)
+        preview[emp.id] = {
+            'amount': amount,
+            'ytd_basic': amount * 12,
+            'taxable_comp': calc['taxable_comp'],
+            'wht': calc['wht'],
+            'net_pay': calc['net_pay'],
+        }
+    return preview
+
+
+def _thirteenth_month_rows(employees, lines_by_employee, preview):
+    """Build the worksheet template's per-row display dict: each employee's
+    SAVED line values (from the last calculate_amounts() call) if one
+    already exists, else the live `preview` -- and the totals-footer dict.
+    Keeping this arithmetic in Python rather than Jinja mirrors register()'s
+    own totals-footer convention and keeps the sum-over-rows logic testable
+    independent of template markup."""
+    rows = []
+    for emp in employees:
+        line = lines_by_employee.get(emp.id)
+        p = preview.get(emp.id, {'amount': Decimal('0.00'), 'ytd_basic': Decimal('0.00'),
+                                  'taxable_comp': Decimal('0.00'), 'wht': Decimal('0.00'),
+                                  'net_pay': Decimal('0.00')})
+        is_override = bool(line.thirteenth_month_override) if line else False
+        amount = line.thirteenth_month if line else p['amount']
+        taxable_comp = line.taxable_comp if line else p['taxable_comp']
+        wht = line.wht if line else p['wht']
+        net_pay = line.net_pay if line else p['net_pay']
+        rows.append({
+            'employee': emp,
+            'ytd_basic': p['ytd_basic'],
+            'amount': amount,
+            'is_override': is_override,
+            'exempt': amount - taxable_comp,
+            'taxable_comp': taxable_comp,
+            'wht': wht,
+            'net_pay': net_pay,
+        })
+    totals = {
+        'count': len(rows),
+        'amount': sum((r['amount'] for r in rows), Decimal('0.00')),
+        'exempt': sum((r['exempt'] for r in rows), Decimal('0.00')),
+        'taxable_comp': sum((r['taxable_comp'] for r in rows), Decimal('0.00')),
+        'wht': sum((r['wht'] for r in rows), Decimal('0.00')),
+        'net_pay': sum((r['net_pay'] for r in rows), Decimal('0.00')),
+    }
+    return rows, totals
+
+
+def _new_thirteenth_month_run():
+    """The 13th-month branch of new_run() -- see that route's own top-of-
+    function run_type dispatch. Mirrors new_run's overall shape (validate ->
+    period-closed check -> no-employees check -> duplicate-period check ->
+    build+save -> log_create -> redirect) but against ThirteenthMonthRunForm
+    and _build_thirteenth_month_lines instead of PayrollRunForm/_build_lines.
+    period_month is always 12 and period_start/period_end span the full
+    calendar Year field (Jan 1 - Dec 31) -- there is no user-facing period
+    picker for this run type; both are derived here purely so the NOT NULL
+    period_start/period_end/period_year/period_month columns (shared with the
+    regular worksheet) are populated with something meaningful for a 13th-
+    month run's period-uniqueness index and period-closed check."""
+    form = ThirteenthMonthRunForm()
+    branch_id = session.get('selected_branch_id')
+    employees = _branch_employees(branch_id)
+    # FlaskForm only binds formdata from the POST body, never the query
+    # string, so a bare GET always falls back to the field's own default
+    # (ph_now().year) regardless of a ?year= param. Honor an explicit
+    # ?year= on GET (e.g. a future "New 13th-Month Run for <year>" link)
+    # so the initial preview can target a specific year, not just "today".
+    if request.method == 'GET':
+        requested_year = request.args.get('year', type=int)
+        if requested_year:
+            form.year.data = requested_year
+    year = form.year.data or ph_now().year
+    preview = _thirteenth_month_preview(employees, year)
+
+    def _render_form():
+        rows, totals = _thirteenth_month_rows(employees, {}, preview)
+        return render_template('payroll/form_13th_month.html', form=form, run=None,
+                               rows=rows, totals=totals,
+                               suggested_run_number=generate_payroll_run_number())
+
+    if form.validate_on_submit():
+        period_year = form.year.data
+        period_month = 12
+
+        if not _period_closed_with_flash(period_year, period_month):
+            return _render_form()
+
+        if not employees:
+            flash('This branch has no active employees to include in a payroll run.', 'error')
+            return _render_form()
+
+        dup = _duplicate_period_run(branch_id, '13th_month', 'monthly',
+                                     period_year, period_month, 0)
+        if dup:
+            flash(f'A 13th-month payroll run ({dup.run_number}) already exists for this '
+                  f'branch and year. Edit that draft instead, or void it first to free the '
+                  f'period.', 'error')
+            return _render_form()
+
+        try:
+            run = PayrollRun(
+                run_number=generate_payroll_run_number(),
+                branch_id=branch_id,
+                run_type='13th_month',
+                pay_frequency='monthly',
+                period_year=period_year,
+                period_month=period_month,
+                semi_period=0,
+                period_start=date(period_year, 1, 1),
+                period_end=date(period_year, 12, 31),
+                pay_date=form.pay_date.data,
+                semi_timing=None,
+                status='draft',
+                created_by_id=current_user.id,
+            )
+
+            _build_thirteenth_month_lines(run, employees)
+            for line in run.lines:
+                line.calculate_amounts()
+            run.calculate_totals()
+
+            db.session.add(run)
+            commit_with_renumber_retry(run, 'run_number', generate_payroll_run_number)
+
+            log_create(
+                module='payroll_run',
+                record_id=run.id,
+                record_identifier=run.run_number,
+                new_values=model_to_dict(run, ['run_number', 'run_type', 'period_year',
+                                                'total_gross', 'total_wht', 'total_net_pay',
+                                                'status'])
+            )
+            flash(f'13th-month payroll run "{run.run_number}" saved as draft.', 'success')
+            return redirect(url_for('payroll.edit_run', id=run.id))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error('Error creating 13th-month payroll run', exc_info=True)
+            log_exception(e, severity='ERROR', module='payroll.new_run')
+            flash('An unexpected error occurred while saving the payroll run. Please try '
+                  'again; if it persists, contact your administrator.', 'error')
+
+    return _render_form()
+
+
+def _edit_thirteenth_month_run(run):
+    """The 13th-month branch of edit_run() -- see that route's own top-of-
+    function run_type dispatch. Mirrors edit_run's shape (status guard ->
+    validate -> period-closed check -> no-employees check -> duplicate-
+    period check -> claim_version -> delete-and-rebuild lines -> commit) but
+    against ThirteenthMonthRunForm/_build_thirteenth_month_lines."""
+    if run.status != 'draft':
+        flash('Only draft payroll runs can be edited.', 'error')
+        return redirect(url_for('payroll.register'))
+
+    branch_id = session.get('selected_branch_id')
+    employees = _branch_employees(branch_id)
+    form = ThirteenthMonthRunForm(obj=run)
+    if request.method == 'GET':
+        form.year.data = run.period_year
+        form.pay_date.data = run.pay_date
+
+    year = form.year.data or run.period_year
+    preview = _thirteenth_month_preview(employees, year)
+
+    def _render_edit_form():
+        lines_by_employee = {l.employee_id: l for l in run.lines} if request.method == 'GET' else {}
+        rows, totals = _thirteenth_month_rows(employees, lines_by_employee, preview)
+        return render_template('payroll/form_13th_month.html', form=form, run=run,
+                               rows=rows, totals=totals, suggested_run_number=run.run_number)
+
+    if form.validate_on_submit():
+        period_year = form.year.data
+        period_month = 12
+
+        if not _period_closed_with_flash(period_year, period_month):
+            return _render_edit_form()
+
+        if not employees:
+            flash('This branch has no active employees to include in a payroll run.', 'error')
+            return _render_edit_form()
+
+        dup = _duplicate_period_run(branch_id, '13th_month', 'monthly',
+                                     period_year, period_month, 0, exclude_run_id=run.id)
+        if dup:
+            flash(f'A 13th-month payroll run ({dup.run_number}) already exists for this '
+                  f'branch and year.', 'error')
+            return _render_edit_form()
+
+        try:
+            if not claim_version(PayrollRun, run.id, submitted_version()):
+                db.session.rollback()
+                flash(conflict_message('payroll_run', run.id), 'error')
+                return _render_edit_form()
+
+            run.period_year = period_year
+            run.period_month = period_month
+            run.period_start = date(period_year, 1, 1)
+            run.period_end = date(period_year, 12, 31)
+            run.pay_date = form.pay_date.data
+
+            # Delete and rebuild the lines -- mirrors edit_run's own
+            # replace-all convention.
+            for old_line in list(run.lines):
+                db.session.delete(old_line)
+            run.lines = []
+            db.session.flush()
+
+            _build_thirteenth_month_lines(run, employees)
+            for line in run.lines:
+                line.calculate_amounts()
+            run.calculate_totals()
+
+            db.session.commit()
+
+            log_update(
+                module='payroll_run',
+                record_id=run.id,
+                record_identifier=run.run_number,
+                old_values={}, new_values={}
+            )
+            flash(f'13th-month payroll run "{run.run_number}" updated.', 'success')
+            return redirect(url_for('payroll.edit_run', id=run.id))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error('Error editing 13th-month payroll run', exc_info=True)
+            log_exception(e, severity='ERROR', module='payroll.edit_run')
+            flash('An unexpected error occurred while updating the payroll run. Please try '
+                  'again; if it persists, contact your administrator.', 'error')
+
+    return _render_edit_form()
+
+
 # A voided or cancelled run's monetary figures are excluded from the
 # register's totals footer AND rendered as a placeholder ('--') on the row
 # itself -- mirrors _duplicate_period_run's status.notin_(...) (both statuses
@@ -232,6 +559,19 @@ def view_run(id):
 @login_required
 @staff_or_above_required
 def new_run():
+    # Task 14: dispatch to the genuinely separate 13th-month worksheet
+    # path. On GET the choice comes from a query param (the register page's
+    # "+ Enter 13th-Month Run" link); on POST it comes from the submitted
+    # run_type field the 13th-month template itself carries as a fixed
+    # hidden value -- never a user-editable <select> on that form (see
+    # ThirteenthMonthRunForm's docstring). The plain regular-worksheet path
+    # below is completely untouched for run_type == 'regular' (the default
+    # when the param/field is absent), preserving Task 8/9's approved flow.
+    run_type = (request.form.get('run_type') if request.method == 'POST'
+                else request.args.get('run_type')) or 'regular'
+    if run_type == '13th_month':
+        return _new_thirteenth_month_run()
+
     form = PayrollRunForm()
     branch_id = session.get('selected_branch_id')
     employees = _branch_employees(branch_id)
@@ -312,6 +652,12 @@ def new_run():
 @staff_or_above_required
 def edit_run(id):
     run = _get_run_or_404(id)
+    # Task 14: dispatch on the run's OWN persisted run_type -- unlike
+    # new_run (where nothing is saved yet, so the choice comes from a
+    # query param/form field), an existing run's type is authoritative and
+    # immutable through this route.
+    if run.run_type == '13th_month':
+        return _edit_thirteenth_month_run(run)
     if run.status != 'draft':
         flash('Only draft payroll runs can be edited.', 'error')
         return redirect(url_for('payroll.register'))

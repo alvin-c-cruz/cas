@@ -15,9 +15,10 @@ right now" discipline CDV already applies to its AP-bill picks
 (re-scoped to branch+vendor at submit, not the client's payload).
 """
 from flask_wtf import FlaskForm
-from wtforms import SelectField, DateField, DecimalField
+from wtforms import SelectField, DateField, DecimalField, IntegerField
 from wtforms.validators import DataRequired, InputRequired, NumberRange
 
+from app.utils import ph_now
 from app.utils.concurrency import RowVersionFormMixin
 
 
@@ -42,6 +43,24 @@ class PayrollRunForm(RowVersionFormMixin, FlaskForm):
 
     period_start = DateField('Period Start', validators=[DataRequired()], format='%Y-%m-%d')
     period_end = DateField('Period End', validators=[DataRequired()], format='%Y-%m-%d')
+    pay_date = DateField('Pay Date', validators=[DataRequired()], format='%Y-%m-%d')
+
+
+class ThirteenthMonthRunForm(RowVersionFormMixin, FlaskForm):
+    """Task 14: run header for a run_type='13th_month' worksheet -- deliberately
+    NOT the same form as PayrollRunForm. A 13th-month run has no pay-period
+    concept (see the approved mockup, scratch/mockups/payroll-13th-month.html):
+    no pay_frequency/period_start/period_end/semi_period picker, just the
+    calendar Year (drives service.compute_thirteenth_month's YTD-basic lookup
+    and the run's period_year/period_month/period_start/period_end, all
+    derived by the view) and Pay Date. run_type itself is never a field here --
+    it is fixed '13th_month' at the view layer (mirrors the mockup's read-only
+    "Run Type: 13th Month" value, not a <select>), unlike PayrollRunForm where
+    run_type is a real user choice.
+    """
+    year = IntegerField('Year', validators=[
+        DataRequired(message='Year is required.'), NumberRange(min=2000, max=2100)],
+        default=lambda: ph_now().year)
     pay_date = DateField('Pay Date', validators=[DataRequired()], format='%Y-%m-%d')
 
 

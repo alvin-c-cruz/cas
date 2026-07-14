@@ -886,6 +886,45 @@ def _posted_regular_run(db_session, branch, emp, run_number, basic_rate, month,
     return run
 
 
+def _posted_regular_run_multi(db_session, branch, run_number, month, emp_rates):
+    """Same as _posted_regular_run, but ONE shared posted run for `month`
+    carrying a line per (employee, basic_rate) pair in `emp_rates`.
+
+    uq_payroll_run_period is keyed on (branch, run_type, pay_frequency,
+    period_year, period_month, semi_period) -- NOT employee -- so two
+    employees on the SAME branch cannot each have their own posted regular
+    run for the same month; a real branch payroll pays every employee off
+    ONE run per period. _posted_regular_run's one-run-per-employee shape only
+    works when each employee's runs never share a (branch, month) with
+    another employee's (as in every earlier aggregation test, which always
+    uses a fresh employee_no per test method); this helper is for the
+    worksheet UI tests, which need two employees' YTD history to coexist on
+    the same branch/month."""
+    run = PayrollRun(
+        run_number=run_number, branch_id=branch.id, run_type='regular',
+        pay_frequency='monthly', period_year=2026, period_month=month, semi_period=0,
+        period_start=date(2026, month, 1), period_end=date(2026, month, 28),
+        pay_date=date(2026, month, 28), semi_timing='second_cutoff', status='posted',
+    )
+    db_session.add(run)
+    db_session.flush()
+    for i, (emp, basic_rate) in enumerate(emp_rates, start=1):
+        line = PayrollRunLine(
+            run_id=run.id, line_number=i, employee_id=emp.id,
+            employee_name=emp.full_name, pay_basis='monthly', rate=basic_rate,
+            tax_status_code=emp.tax_status_code, is_mwe=False,
+            days=0, hours=0, ot_pay=Decimal('0'), holiday_pay=Decimal('0'),
+            taxable_allowance=Decimal('0'), nontax_allowance=Decimal('0'),
+        )
+        run.lines.append(line)
+    db_session.commit()
+    for line in run.lines:
+        line.calculate_amounts()
+    run.calculate_totals()
+    db_session.commit()
+    return run
+
+
 def _thirteenth_month_run(db_session, branch, run_number='PR-2026-12-9001'):
     run = PayrollRun(
         run_number=run_number, branch_id=branch.id, run_type='13th_month',
@@ -1166,3 +1205,191 @@ class TestThirteenthMonthPosting:
         plug = next(l for l in je.lines if l.account.code == '20501')
         assert plug.credit_amount == run.total_net_pay
         assert je.is_balanced
+
+
+# ---------------------------------------------------------------------------
+# Layer 7: the 13th-month worksheet UI (Task 14) -- payroll.new_run/edit_run
+# branch on run_type='13th_month' into a genuinely separate template + line-
+# building path (see the approved mockup, scratch/mockups/payroll-13th-
+# month.html): no period_start/period_end/semi_period picker, an
+# Employee/YTD-Basic(auto)/13th-Month-Amount/Override/Exempt/Taxable-
+# Excess/WHT/Net-Pay worksheet table. Task 13 (models.py) already wired
+# calculate_amounts()'s run_type branch and the override contract -- this
+# layer is purely the view/template that feeds it.
+# ---------------------------------------------------------------------------
+
+def _theads(html_block):
+    """Visible text of each <th> in an HTML fragment, tags stripped,
+    order-preserving -- the <th> analog of _cells (which only handles <td>)."""
+    return [re.sub(r'<[^>]+>', '', c).strip()
+            for c in re.findall(r'<th[^>]*>(.*?)</th>', html_block, re.S)]
+
+
+def _checkbox_checked(row_html, name):
+    """Whether the <input type="checkbox" name="{name}" ...> tag itself
+    carries a `checked` attribute. A naive `'checked' in row_html` substring
+    check is unsafe here -- the override checkbox's onchange handler calls
+    `this.checked` in plain JS, which would false-positive-match even when
+    the checkbox itself is unchecked. Isolate the ONE tag first."""
+    m = re.search(rf'<input[^>]*name="{re.escape(name)}"[^>]*>', row_html)
+    assert m, f'no checkbox named {name!r} found in row'
+    # A standalone `checked` attribute only -- NOT a substring hit inside the
+    # onchange handler's `this.checked` JS property access.
+    return re.search(r'(?<![\w.])checked(?=[\s>])', m.group(0)) is not None
+
+
+def _input_disabled(row_html, name):
+    """Whether the <input name="{name}" ...> tag itself carries a `disabled`
+    attribute. A naive `'disabled' in row_html` substring check is unsafe
+    here -- the amount input's sibling checkbox carries an onchange handler
+    that sets `.disabled = !this.checked` in plain JS, which contains the
+    literal word "disabled" too. Isolate the ONE tag first (mirrors
+    _checkbox_checked's same reasoning)."""
+    m = re.search(rf'<input[^>]*name="{re.escape(name)}"[^>]*>', row_html)
+    assert m, f'no input named {name!r} found in row'
+    return re.search(r'(?<![\w.])disabled(?=[\s>])', m.group(0)) is not None
+
+
+class TestThirteenthMonthWorksheetUI:
+    def _login_staff(self, client, login_user, staff_user, main_branch, db_session):
+        staff_user.branches.append(main_branch)
+        db_session.commit()
+        login_user(client, 'staff', 'staff123')
+
+    def test_worksheet_renders_columns_in_order_with_under_and_over_90k(
+            self, client, staff_user, main_branch, login_user, db_session):
+        """One employee's auto 13th-month amount lands UNDER the P90,000
+        exemption (fully exempt, 0 WHT); the other lands OVER it (excess
+        taxed). Pins column ORDER (Employee, YTD Basic (auto), 13th-Month
+        Amount, Override, Exempt, Taxable Excess, WHT, Net Pay) and the
+        auto-fill values/attributes, all from a live GET preview -- no run
+        has been saved yet."""
+        seed_statutory_2026()
+        self._login_staff(client, login_user, staff_user, main_branch, db_session)
+
+        emp_under = _employee(db_session, main_branch, employee_no='EMP-UI-13-1')
+        emp_over = _employee(db_session, main_branch, employee_no='EMP-UI-13-2')
+        for m in range(1, 13):
+            _posted_regular_run_multi(db_session, main_branch, f'PR-2026-{m:02d}-9201', m, [
+                (emp_under, Decimal('26500.00')), (emp_over, Decimal('120000.00')),
+            ])
+
+        resp = client.get('/payroll/runs/new?run_type=13th_month&year=2026')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+
+        thead_match = re.search(r'<thead>.*?</thead>', body, re.S)
+        assert thead_match, 'no worksheet <thead> found'
+        headers = _theads(thead_match.group(0))
+        assert headers == ['Employee', 'YTD Basic (auto)', '13th-Month Amount',
+                            'Override?', 'Exempt (up to 90,000)', 'Taxable Excess',
+                            'WHT', 'Net Pay']
+
+        # _employee() gives every employee the SAME full_name ("Rico
+        # Santos") -- find each row by its unique employee id (embedded in
+        # the amount input's name attribute) instead of the (colliding)
+        # display name.
+        row_under = _find_row(body, f'line_{emp_under.id}_amount')
+        cells = _cells(row_under)
+        assert cells[0] == emp_under.full_name
+        assert cells[1] == '318,000.00'   # YTD basic auto = 26,500 * 12
+        assert cells[4] == 'EXEMPT 26,500.00'
+        assert cells[5] == '0.00'         # taxable excess -- fully under the cap
+        assert cells[6] == '0.00'         # WHT
+        assert cells[7] == '26,500.00'    # net pay
+        assert 'value="26500.00"' in row_under
+        assert _input_disabled(row_under, f'line_{emp_under.id}_amount') is True
+        assert _checkbox_checked(row_under, f'line_{emp_under.id}_override') is False
+
+        row_over = _find_row(body, f'line_{emp_over.id}_amount')
+        cells2 = _cells(row_over)
+        assert cells2[1] == '1,440,000.00'   # YTD basic auto = 120,000 * 12
+        assert '90,000.00' in cells2[4]      # exempt capped at 90,000
+        assert cells2[5] == '30,000.00'      # taxable excess = 120,000 - 90,000
+        assert cells2[6] == '1,375.05'       # WHT on the excess
+        assert cells2[7] == '118,624.95'     # net pay
+        assert 'value="120000.00"' in row_over
+        assert _input_disabled(row_over, f'line_{emp_over.id}_amount') is True
+
+    def test_create_auto_fills_amount_from_compute_thirteenth_month(
+            self, client, staff_user, main_branch, login_user, db_session):
+        seed_statutory_2026()
+        self._login_staff(client, login_user, staff_user, main_branch, db_session)
+
+        emp = _employee(db_session, main_branch, employee_no='EMP-UI-13-3')
+        for m in range(1, 13):
+            _posted_regular_run(db_session, main_branch, emp, f'PR-2026-{m:02d}-9203',
+                                 Decimal('24000.00'), m)
+        expected_amount = service.compute_thirteenth_month(emp, 2026)
+        assert expected_amount == Decimal('24000.00')
+
+        resp = client.post('/payroll/runs/new', data={
+            'run_type': '13th_month', 'year': '2026', 'pay_date': '2026-12-15',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        run = PayrollRun.query.filter_by(branch_id=main_branch.id, run_type='13th_month').first()
+        assert run is not None
+        assert run.period_year == 2026
+        assert run.period_month == 12
+        assert len(run.lines) == 1
+        line = run.lines[0]
+        assert line.employee_id == emp.id
+        assert line.thirteenth_month_override is False
+        assert line.thirteenth_month == expected_amount   # genuinely called compute_thirteenth_month
+        assert line.gross_pay == expected_amount
+
+        assert AuditLog.query.filter_by(
+            module='payroll_run', action='create', record_id=run.id).count() == 1
+
+    def test_override_checkbox_with_custom_amount_survives_save_not_clobbered(
+            self, client, staff_user, main_branch, login_user, db_session):
+        """MUTATION-PROOF for the override contract at the view layer: the
+        employee's posted-run history would auto-aggregate to 24,000, but the
+        submitted line checks Override and types 50,000. If the view ignored
+        the checkbox (or the disabled-input POST semantics) and always wrote
+        the auto-aggregate, this would fail -- pins the override amount
+        surviving BOTH the initial save and a subsequent edit-page reload."""
+        seed_statutory_2026()
+        self._login_staff(client, login_user, staff_user, main_branch, db_session)
+
+        emp = _employee(db_session, main_branch, employee_no='EMP-UI-13-4')
+        for m in range(1, 13):
+            _posted_regular_run(db_session, main_branch, emp, f'PR-2026-{m:02d}-9204',
+                                 Decimal('24000.00'), m)
+
+        resp = client.post('/payroll/runs/new', data={
+            'run_type': '13th_month', 'year': '2026', 'pay_date': '2026-12-15',
+            f'line_{emp.id}_override': 'on', f'line_{emp.id}_amount': '50000.00',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        run = PayrollRun.query.filter_by(branch_id=main_branch.id, run_type='13th_month').first()
+        assert run is not None
+        line = run.lines[0]
+        assert line.thirteenth_month_override is True
+        assert line.thirteenth_month == Decimal('50000.00')   # NOT the 24,000 auto-aggregate
+        assert line.gross_pay == Decimal('50000.00')
+
+        # Round-trip through the edit page's GET render: the override amount
+        # and checked state must still be showing, not reset to the auto value.
+        resp2 = client.get(f'/payroll/runs/{run.id}/edit')
+        assert resp2.status_code == 200
+        body2 = resp2.data.decode()
+        row = _find_row(body2, emp.full_name)
+        assert 'value="50000.00"' in row
+        assert _checkbox_checked(row, f'line_{emp.id}_override') is True
+        assert _input_disabled(row, f'line_{emp.id}_amount') is False   # override checked -- editable
+
+    def test_regular_worksheet_still_renders_unaffected(
+            self, client, staff_user, main_branch, login_user, db_session):
+        """The run_type branch in new_run/edit_run must not disturb the
+        already-approved regular worksheet (Task 8/9): a plain regular-run
+        GET still renders form.html's own column set, not the 13th-month
+        table."""
+        self._login_staff(client, login_user, staff_user, main_branch, db_session)
+        resp = client.get('/payroll/runs/new')
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert 'Period Start' in body
+        assert 'YTD Basic (auto)' not in body

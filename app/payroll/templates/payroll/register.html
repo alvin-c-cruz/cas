@@ -9,6 +9,7 @@
         <div style="display:flex;gap:8px;">
             <a href="{{ url_for('payroll.list_loans') }}" class="btn btn-secondary btn-sm">Employee Loans</a>
             <a href="{{ url_for('payroll.new_run') }}" class="btn btn-primary btn-sm">+ Enter Payroll Run</a>
+            <a href="{{ url_for('payroll.new_run', run_type='13th_month') }}" class="btn btn-secondary btn-sm">+ Enter 13th-Month Run</a>
         </div>
     </div>
     <div class="card-body card-body--flush">
