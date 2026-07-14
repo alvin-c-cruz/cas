@@ -95,19 +95,24 @@ class AccountingPeriod(db.Model):
         return period
 
     @staticmethod
+    def closed_through_ordinal():
+        """The 'closed-through' cutoff as a comparable ordinal (year*12 + month),
+        or None if no period is closed. Every date on/before this cutoff is sealed."""
+        rows = AccountingPeriod.query.filter_by(status='closed').all()
+        if not rows:
+            return None
+        return max(r.year * 12 + r.month for r in rows)
+
+    @staticmethod
     def is_period_closed(year, month):
-        """
-        Check if a specific period is closed.
-
-        Args:
-            year: int - Year
-            month: int - Month (1-12)
-
-        Returns:
-            bool - True if period is closed, False otherwise
-        """
-        period = AccountingPeriod.query.filter_by(year=year, month=month).first()
-        return period.status == 'closed' if period else False
+        """Closed-through cascade: a (year, month) is closed iff its ordinal is on or
+        before the latest closed period's ordinal -- regardless of whether that month
+        has its own row (handles gaps: March closed seals Jan/Feb with no row needed).
+        Dates after the cutoff stay open."""
+        cutoff = AccountingPeriod.closed_through_ordinal()
+        if cutoff is None:
+            return False
+        return (year * 12 + month) <= cutoff
 
     def close_period(self, user, notes=None):
         """
