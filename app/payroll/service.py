@@ -261,7 +261,7 @@ def compute_line(inputs):
 
     st_full = compute_statutory(monthly_basis, as_of)
     scale = _semi_applies_statutory(freq, inputs['semi_timing'], inputs)
-    st = _scale_statutory(st_full, scale)
+    st = _scale_statutory(st_full, scale, inputs.get('semi_period'))
     ee = st['sss_ee'] + st['philhealth_ee'] + st['pagibig_ee']
 
     if inputs['is_mwe']:
@@ -349,7 +349,7 @@ _STATUTORY_SCALABLE_KEYS = (
 )
 
 
-def _scale_statutory(st_full, scale):
+def _scale_statutory(st_full, scale, cutoff=None):
     """Scale every monetary key in compute_statutory's result dict by `scale`
     (a Decimal from _semi_applies_statutory: 0, 1, or 0.5), re-quantizing each
     via _q2. 'sss_msc' passes through unscaled -- see _STATUTORY_SCALABLE_KEYS.
@@ -357,10 +357,36 @@ def _scale_statutory(st_full, scale):
     scale=1 returns values identical to st_full (just re-quantized, a no-op
     since st_full is already _q2'd) -- non-semi-monthly frequencies and the
     "applies" cutoff of first_cutoff/second_cutoff timing are unaffected by
-    this function's existence."""
+    this function's existence.
+
+    scale=0.5 (split_50_50 timing) uses REMAINDER-CARRY, not independent
+    per-cutoff rounding: cutoff 2 always computes _q2(full * 0.5); cutoff 1
+    receives the exact remainder full - <cutoff 2's half> (recomputed the
+    same way, not read from shared state -- both cutoffs are pure functions
+    of the same deterministic full/scale inputs, so this needs no cross-run
+    coordination). This guarantees the two cutoffs always sum to EXACTLY the
+    true full-month total, regardless of odd/even centavos.
+
+    Why: the old code (both cutoffs independently _q2(full * 0.5)) rounds the
+    IDENTICAL '.xx5' midpoint UP on both halves for any full-month value with
+    an ODD number of centavos (ROUND_HALF_UP), because both cutoffs compute
+    the same `full` and multiply by the same `0.5` -- so the two halves
+    silently summed to ONE CENTAVO MORE than the true full-month total (e.g.
+    full=1750.01 -> each cutoff independently rounds to 875.01 -> sums to
+    1750.02). This never fired with even-cent fixtures/rates, but is a real,
+    silent overstatement of the monthly SSS/PhilHealth/Pag-IBIG payable
+    liability whenever split_50_50 timing lands on an odd centavo (e.g. WISP/
+    EC components, percentage-rate PhilHealth premiums). `cutoff` (1 or 2,
+    from inputs['semi_period']) is read only for the scale=0.5 case; it is
+    ignored for scale=0 or scale=1, whose behavior is unchanged."""
     scaled = dict(st_full)
     for key in _STATUTORY_SCALABLE_KEYS:
-        scaled[key] = _q2(st_full[key] * scale)
+        if scale == Decimal('0.5'):
+            full = st_full[key]
+            half2 = _q2(full * scale)
+            scaled[key] = half2 if cutoff == 2 else _q2(full - half2)
+        else:
+            scaled[key] = _q2(st_full[key] * scale)
     return scaled
 
 

@@ -592,3 +592,63 @@ def test_semi_monthly_split_50_50_timing_applies_both_cutoffs(db_session):
                 'pagibig_ee', 'pagibig_er'):
         summed = period1['statutory'][key] + period2['statutory'][key]
         assert summed == expected_half[key] * 2
+
+
+def test_scale_statutory_split_50_50_odd_cent_remainder_carry_no_drift(db_session):
+    """FIX (1-centavo rounding drift): under the OLD independent-rounding
+    _scale_statutory (both cutoffs = _q2(full * 0.5)), an ODD-CENT full-month
+    value rounds the SAME '.xx5' midpoint UP on BOTH cutoffs (ROUND_HALF_UP),
+    so the two halves silently summed to ONE CENTAVO MORE than the true
+    full-month total -- e.g. full=1750.01: half = _q2(875.005) = 875.01 on
+    BOTH cutoffs -> summed = 1750.02, not 1750.01. This never fired with the
+    even-cent fixtures used elsewhere in this file (test_semi_monthly_
+    split_50_50_timing_applies_both_cutoffs uses monthly_rate=40000, whose
+    full-month sss_ee=1750.00 is even and happens to split evenly either way).
+
+    The fix (remainder-carry): cutoff 2 keeps the old formula unchanged
+    (_q2(full * 0.5)); cutoff 1 receives the EXACT remainder
+    (full - cutoff 2's half). This guarantees the two cutoffs always sum to
+    exactly the full-month total, for every key, regardless of odd/even
+    centavos -- proven directly against a hand-picked odd-cent st_full dict
+    (unit-style on _scale_statutory, per the task's own suggested approach),
+    independent of which real SSS/PhilHealth/Pag-IBIG rates happen to
+    produce an odd cent."""
+    st_full = {
+        'sss_msc': Decimal('35000'),
+        'sss_ee': Decimal('1750.01'), 'sss_er': Decimal('3500.01'), 'sss_ec': Decimal('30.01'),
+        'philhealth_ee': Decimal('1000.01'), 'philhealth_er': Decimal('1000.01'),
+        'pagibig_ee': Decimal('200.01'), 'pagibig_er': Decimal('200.01'),
+    }
+    scale = Decimal('0.5')
+
+    cutoff1 = service._scale_statutory(st_full, scale, cutoff=1)
+    cutoff2 = service._scale_statutory(st_full, scale, cutoff=2)
+
+    # Zero drift: every scalable key's two cutoffs sum to EXACTLY the
+    # full-month value -- the actual proof the odd-cent bug is fixed.
+    for key in service._STATUTORY_SCALABLE_KEYS:
+        assert cutoff1[key] + cutoff2[key] == st_full[key]
+
+    # sss_msc is never scaled -- unaffected by the fix, full-month reference
+    # on both cutoffs.
+    assert cutoff1['sss_msc'] == cutoff2['sss_msc'] == Decimal('35000')
+
+    # Cutoff 2's formula is UNCHANGED from before the fix: independent
+    # _q2(full * 0.5), rounding the .xx5 midpoint up.
+    assert cutoff2['sss_ee'] == Decimal('875.01')          # _q2(875.005) -> up
+    assert cutoff2['philhealth_ee'] == Decimal('500.01')   # _q2(500.005) -> up
+    assert cutoff2['pagibig_ee'] == Decimal('100.01')      # _q2(100.005) -> up
+
+    # Cutoff 1 gets the exact remainder, one centavo LESS than cutoff 2's
+    # independently-rounded half -- this is what eliminates the drift.
+    assert cutoff1['sss_ee'] == Decimal('875.00')          # 1750.01 - 875.01
+    assert cutoff1['philhealth_ee'] == Decimal('500.00')   # 1000.01 - 500.01
+    assert cutoff1['pagibig_ee'] == Decimal('100.00')      # 200.01 - 100.01
+
+    # Order-independence: computing cutoff 2 before cutoff 1 (or vice versa)
+    # cannot change either result -- both are pure functions of the same
+    # deterministic st_full/scale/cutoff inputs, no shared state involved.
+    cutoff2_again = service._scale_statutory(st_full, scale, cutoff=2)
+    cutoff1_again = service._scale_statutory(st_full, scale, cutoff=1)
+    assert cutoff1_again == cutoff1
+    assert cutoff2_again == cutoff2
