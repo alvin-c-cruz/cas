@@ -52,6 +52,7 @@ SETTINGS_KEYS = [
     'ap_print_form',
     'cd_print_form',
     'jv_print_form',
+    'payroll_semi_monthly_timing',
 ]
 
 LOGO_SETTING_KEY = 'company_logo'

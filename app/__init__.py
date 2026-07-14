@@ -233,6 +233,11 @@ def create_app(config_name=None):
     from app.backup.models import BackupRun
     from app.employees.models import Employee  # noqa: F401
     from app.withholding_certificates.models import WithholdingCertificateReceived  # noqa: F401
+    from app.payroll.tables_models import (
+        SSSContributionTable, SSSContributionRow, PhilHealthRate,
+        PagIbigRate, CompensationWHTBracket, StatutoryTableChangeRequest
+    )  # noqa: F401
+    from app.payroll.models import PayrollRun, PayrollRunLine, EmployeeLoan  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
@@ -271,6 +276,7 @@ def create_app(config_name=None):
     from app.purchase_requests.views import purchase_requests_bp
     from app.sales_memos.views import sales_memos_bp
     from app.opening_balances.views import opening_balances_bp
+    from app.payroll.views import payroll_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -308,6 +314,7 @@ def create_app(config_name=None):
     app.register_blueprint(purchase_requests_bp)
     app.register_blueprint(sales_memos_bp)
     app.register_blueprint(opening_balances_bp)
+    app.register_blueprint(payroll_bp)
 
     from app.backup.views import backup_bp
     app.register_blueprint(backup_bp)

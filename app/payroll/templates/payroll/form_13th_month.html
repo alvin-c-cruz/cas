@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_field %}
+
+{% block title %}{{ 'Edit 13th-Month Run' if run else 'New 13th-Month Run' }}{% endblock %}
+{% block page_title %}{{ 'Edit 13th-Month Run' if run else 'New 13th-Month Run' }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">
+            Run Header
+            <span class="badge badge-{{ run.status if run else 'draft' }}">
+                {{ (run.status if run else 'draft') | upper }}
+            </span>
+        </div>
+        <div class="card-sub">
+            Run Number: <strong>{{ suggested_run_number }}</strong>
+            {% if not run %}<span class="form-hint">(assigned on save)</span>{% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+            <input type="hidden" name="run_type" value="13th_month">
+
+            <div class="detail-grid" style="margin-bottom:20px;">
+                <div><strong>Branch:</strong> {{ current_branch.name if current_branch else '—' }}</div>
+                <div><strong>Run Type:</strong> 13th Month</div>
+            </div>
+
+            <div class="form-row-2">
+                {{ render_field(form.year, required=True) }}
+                {{ render_field(form.pay_date, required=True) }}
+            </div>
+
+            <div class="form-hint" style="margin-bottom:16px;">
+                YTD basic auto-fills as (sum of posted regular runs' basic &divide; 12) for the
+                selected Year &mdash; editable per line via Override. The first &#8369;90,000 of
+                13th-month pay is tax-exempt; only the excess is withheld.
+            </div>
+
+            <div class="card" style="margin-top:20px;">
+                <div class="card-header">
+                    <div class="card-title">Employee Lines</div>
+                    <div class="card-sub">{{ rows|length }} active employee(s) in this branch</div>
+                </div>
+                <div class="card-body card-body--flush">
+                {% if not rows %}
+                    <div class="empty-state" style="padding:24px;">
+                        No active employees found for this branch. Add employees before
+                        creating a payroll run.
+                    </div>
+                {% else %}
+                    <div class="table-scroll" style="overflow-x:auto;">
+                    <table class="data-table thirteenth-month-table">
+                        <thead>
+                            <tr>
+                                <th class="col-name">Employee</th>
+                                <th>YTD Basic (auto)</th>
+                                <th>13th-Month Amount</th>
+                                <th>Override?</th>
+                                <th>Exempt (up to 90,000)</th>
+                                <th>Taxable Excess</th>
+                                <th>WHT</th>
+                                <th>Net Pay</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in rows %}
+                            <tr>
+                                <td class="col-name">
+                                    {{ row.employee.full_name }}
+                                    {% if row.employee.is_minimum_wage %}<span class="badge badge-active">MWE</span>{% endif %}
+                                </td>
+                                <td class="computed mono">{{ '{:,.2f}'.format(row.ytd_basic) }}</td>
+                                <td class="mono">
+                                    <input type="text" id="thirteenth_amount_{{ row.employee.id }}"
+                                           name="line_{{ row.employee.id }}_amount"
+                                           value="{{ '%.2f'|format(row.amount) }}"
+                                           inputmode="decimal"
+                                           {% if not row.is_override %}disabled{% endif %}>
+                                </td>
+                                <td>
+                                    <label class="override-check">
+                                        <input type="checkbox" name="line_{{ row.employee.id }}_override"
+                                               {% if row.is_override %}checked{% endif %}
+                                               onchange="document.getElementById('thirteenth_amount_{{ row.employee.id }}').disabled = !this.checked;">
+                                        override
+                                    </label>
+                                </td>
+                                <td class="mono"><span class="badge badge-active">EXEMPT</span> {{ '{:,.2f}'.format(row.exempt) }}</td>
+                                <td class="computed mono">{{ '{:,.2f}'.format(row.taxable_comp) }}</td>
+                                <td class="computed mono">{{ '{:,.2f}'.format(row.wht) }}</td>
+                                <td class="computed mono net-pay">{{ '{:,.2f}'.format(row.net_pay) }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td class="col-name">Totals ({{ rows|length }} employee(s))</td>
+                                <td></td>
+                                <td>{{ '{:,.2f}'.format(totals.amount) }}</td>
+                                <td></td>
+                                <td>{{ '{:,.2f}'.format(totals.exempt) }}</td>
+                                <td>{{ '{:,.2f}'.format(totals.taxable_comp) }}</td>
+                                <td>{{ '{:,.2f}'.format(totals.wht) }}</td>
+                                <td class="net-pay">{{ '{:,.2f}'.format(totals.net_pay) }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    </div>
+                {% endif %}
+                </div>
+            </div>
+
+            <div class="form-actions" style="margin-top:20px;">
+                <button type="submit" class="btn btn-primary">{{ 'Update' if run else 'Save' }}</button>
+                <a href="{{ url_for('payroll.register') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.thirteenth-month-table { font-variant-numeric: tabular-nums; }
+.thirteenth-month-table th, .thirteenth-month-table td { text-align: right; white-space: nowrap; padding: 8px 10px; }
+.thirteenth-month-table th.col-name, .thirteenth-month-table td.col-name { text-align: left; }
+.thirteenth-month-table input[type="text"] {
+    width: 110px; text-align: right; padding: 4px 6px; border: 1px solid var(--border);
+    border-radius: 4px; font-size: 12.5px; background: var(--card); color: var(--text);
+}
+.thirteenth-month-table input[disabled] { background: var(--bg); color: var(--text-3); }
+.thirteenth-month-table .computed { color: var(--text-2); }
+.thirteenth-month-table .net-pay { font-weight: 700; color: var(--text); }
+.override-check { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); white-space: nowrap; }
+</style>
+{% endblock %}

@@ -66,6 +66,16 @@ MODULE_REGISTRY = [
     {'key': 'journal_entries', 'label': 'Journal Voucher', 'section': 'Transactions',
      'area': 'Accounting', 'group': 'Journals',
      'endpoints': ('journal_entries.', 'journals.voucher')},
+    # ── Payroll Area (optional — per-company configurable) ──────────────────
+    # Single blueprint (app/payroll/__init__.py: Blueprint('payroll', ...)) covers every
+    # payroll route (worksheet new/edit incl. 13th-month, register, detail/JE-preview,
+    # post/void/cancel, loan list/create/edit/delete) — every payroll endpoint is named
+    # 'payroll.<view>', so the one 'payroll.' prefix gates all of them, past and future
+    # (see module_key_for_endpoint's endpoint.startswith(pref) match below).
+    {'key': 'payroll', 'label': 'Payroll', 'section': 'Transactions',
+     'area': 'Payroll', 'group': 'Documents',
+     'optional': True, 'depends_on': ['employees'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('payroll.',)},
     # ── Ledger (Phase 2; deny-by-default for staff) — mirrors the sidebar's
     #    "Ledger" section, in the same order ──────────────────────────────────
     {'key': 'opening_balances', 'label': 'Opening Balances', 'section': 'Ledger',

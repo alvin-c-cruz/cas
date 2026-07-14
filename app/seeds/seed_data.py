@@ -18,6 +18,7 @@ from app.vat_categories.models import VATCategory
 from app.withholding_tax.models import WithholdingTax
 from app.settings import AppSettings
 from app.seeds.firm_coa import FIRM_COA
+from app.seeds.statutory_2026 import seed_statutory_2026
 from datetime import datetime
 import os
 import secrets
@@ -567,6 +568,7 @@ def seed_all(force=False):
         'withholding_tax_codes': False,
         'app_settings': False,
         'units_of_measure': False,
+        'statutory_tables': False,
     }
 
     try:
@@ -595,7 +597,11 @@ def seed_all(force=False):
         seed_units_of_measure()
         results['units_of_measure'] = True
 
-        print("\n8. Assigning Control Accounts...")
+        print("\n8. Seeding Statutory Payroll Tables (2026)...")
+        seed_statutory_2026()
+        results['statutory_tables'] = True
+
+        print("\n9. Assigning Control Accounts...")
         from app.posting.control_accounts import assign_default_control_accounts
         assign_default_control_accounts(updated_by='system')
 

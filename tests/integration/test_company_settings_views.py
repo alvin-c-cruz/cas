@@ -368,3 +368,74 @@ class TestPrintAccessSettings:
         login(client)
         resp = client.get('/settings')
         assert 'sv_print_form' in resp.data.decode()
+
+
+class TestPayrollSemiMonthlyTimingSetting:
+    """Finding 2 (whole-branch review): payroll_semi_monthly_timing was only
+    ever READ (app/payroll/views.py) -- nothing wrote it via the UI, so
+    'split_50_50' and 'first_cutoff' (both implemented and tested in the calc
+    engine) were unreachable without a direct DB edit. This wires a Company
+    Settings SelectField, following the exact apv_print_access/sv_print_access
+    pattern (plain SelectField, generic SETTINGS_KEYS read/write loop)."""
+
+    def _enable_payroll_module(self, db_session):
+        from app.utils.cache_helpers import clear_module_config_cache
+        AppSettings.set_setting('module_enabled:payroll', '1')
+        db_session.commit()
+        clear_module_config_cache()
+
+    def test_saved_when_posted_and_audited(
+            self, client, db_session, admin_user, main_branch):
+        self._enable_payroll_module(db_session)
+        login(client)
+        data = dict(VALID_FORM_DATA)
+        data['payroll_semi_monthly_timing'] = 'split_50_50'
+        resp = client.post('/settings', data=data, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'saved successfully' in resp.data
+
+        assert AppSettings.get_setting('payroll_semi_monthly_timing') == 'split_50_50'
+
+        entry = AuditLog.query.filter_by(
+            module='settings', action='update',
+            record_identifier='company_settings'
+        ).order_by(AuditLog.id.desc()).first()
+        assert entry is not None
+        new_values = json.loads(entry.new_values)
+        old_values = json.loads(entry.old_values)
+        assert new_values['payroll_semi_monthly_timing'] == 'split_50_50'
+        assert old_values['payroll_semi_monthly_timing'] is None   # was unset before
+
+    def test_get_rerender_shows_the_saved_value_selected(
+            self, client, db_session, admin_user, main_branch):
+        self._enable_payroll_module(db_session)
+        login(client)
+        data = dict(VALID_FORM_DATA)
+        data['payroll_semi_monthly_timing'] = 'first_cutoff'
+        client.post('/settings', data=data, follow_redirects=True)
+
+        resp = client.get('/settings')
+        html = resp.data.decode()
+        assert 'payroll_semi_monthly_timing' in html
+        # The saved option must render as the selected one, not just present
+        # anywhere in the <select>'s option list.
+        assert '<option selected value="first_cutoff">' in html
+
+    def test_hidden_when_payroll_module_disabled(
+            self, client, db_session, admin_user, main_branch):
+        from app.utils.cache_helpers import clear_module_config_cache
+        AppSettings.set_setting('module_enabled:payroll', '0')
+        db_session.commit()
+        clear_module_config_cache()
+        login(client)
+        resp = client.get('/settings')
+        body = resp.data
+        assert b'name="payroll_semi_monthly_timing"' not in body
+        assert b'Enable the Payroll module' in body
+
+    def test_shown_when_payroll_module_enabled(
+            self, client, db_session, admin_user, main_branch):
+        self._enable_payroll_module(db_session)
+        login(client)
+        resp = client.get('/settings')
+        assert b'name="payroll_semi_monthly_timing"' in resp.data

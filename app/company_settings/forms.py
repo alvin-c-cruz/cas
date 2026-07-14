@@ -31,6 +31,15 @@ PRINT_ACCESS_CHOICES = [
     ('draft_and_posted', 'Draft and posted'),
 ]
 
+# On which semi-monthly cutoff the statutory (SSS/PhilHealth/Pag-IBIG)
+# contributions are deducted -- see app/payroll/service.py's
+# _semi_applies_statutory docstring for the exact scaling each value drives.
+PAYROLL_SEMI_MONTHLY_TIMING_CHOICES = [
+    ('second_cutoff', 'Second cutoff only (deduct the full month on the 2nd cutoff)'),
+    ('first_cutoff',  'First cutoff only (deduct the full month on the 1st cutoff)'),
+    ('split_50_50',   'Split 50/50 across both cutoffs'),
+]
+
 # Which print form a Sales Invoice uses (separate axis from print ACCESS, which
 # gates by status). 'hidden' turns SI printing off entirely (button hidden AND
 # the /print route refuses). Room for a 'preprinted' option when that module is
@@ -156,3 +165,8 @@ class CompanySettingsForm(FlaskForm):
     ap_billing_consolidate = BooleanField(
         'Consolidate multiple Purchase Orders / Receiving Reports into one Bill '
         '(off = one PO or RR per bill)')
+
+    payroll_semi_monthly_timing = SelectField(
+        'Semi-Monthly Statutory Timing', choices=PAYROLL_SEMI_MONTHLY_TIMING_CHOICES,
+        default='second_cutoff'
+    )

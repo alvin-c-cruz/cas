@@ -257,6 +257,18 @@
             <div class="form-hint">When enabled, an accountant's registration-email request for a
                 Staff or Viewer is approved immediately (no admin review). Accountant-position
                 requests still require admin approval.</div>
+
+            {% if module_states.payroll %}
+            <div class="settings-grid-3" style="margin-top:16px;">
+                {{ render_field(form.payroll_semi_monthly_timing) }}
+            </div>
+            <div class="form-hint">For semi-monthly payroll, controls which cutoff deducts the
+                statutory (SSS/PhilHealth/Pag-IBIG) contributions: the second cutoff only (default),
+                the first cutoff only, or split evenly across both.</div>
+            {% else %}
+            <div class="form-hint" style="margin-top:16px;">Enable the Payroll module in
+                Packages to configure the semi-monthly statutory timing.</div>
+            {% endif %}
         </div>
     </div>
     </div>

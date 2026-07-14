@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Payroll Register{% endblock %}
+{% block page_title %}Payroll Register{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Payroll Register</div>
+        <div style="display:flex;gap:8px;">
+            <a href="{{ url_for('payroll.list_loans') }}" class="btn btn-secondary btn-sm">Employee Loans</a>
+            <a href="{{ url_for('payroll.new_run') }}" class="btn btn-primary btn-sm">+ Enter Payroll Run</a>
+            <a href="{{ url_for('payroll.new_run', run_type='13th_month') }}" class="btn btn-secondary btn-sm">+ Enter 13th-Month Run</a>
+        </div>
+    </div>
+    <div class="card-body card-body--flush">
+        {% if not runs %}
+            <div class="empty-state" style="padding:24px;">No payroll runs found.</div>
+        {% else %}
+        <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Run Number</th>
+                    <th>Branch</th>
+                    <th>Type</th>
+                    <th>Frequency</th>
+                    <th>Period</th>
+                    <th>Pay Date</th>
+                    <th>Status</th>
+                    <th style="text-align:right;">Gross</th>
+                    <th style="text-align:right;">Total Deductions</th>
+                    <th style="text-align:right;">Net Pay</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for run in runs %}
+                {% set period_label = run.period_start.strftime('%b %Y') %}
+                {% if run.pay_frequency == 'semi_monthly' and run.semi_period %}
+                    {% set period_label = period_label ~ ' (' ~ (run.semi_period|string) ~ (run.semi_period == 2 and 'nd' or 'st') ~ ')' %}
+                {% endif %}
+                <tr>
+                    <td class="mono"><a href="{{ url_for('payroll.view_run', id=run.id) }}">{{ run.run_number }}</a></td>
+                    <td>{{ run.branch.name if run.branch else '—' }}</td>
+                    <td>{{ run.run_type | replace('_', ' ') | capitalize }}</td>
+                    <td>{{ run.pay_frequency | replace('_', ' ') | capitalize }}</td>
+                    <td>{{ period_label }}</td>
+                    <td>{{ run.pay_date.strftime('%Y-%m-%d') }}</td>
+                    <td><span class="badge badge-{{ run.status }}">{{ run.status | capitalize }}</span></td>
+                    {% if run.status in excluded_statuses %}
+                    <td class="mono" style="text-align:right;">—</td>
+                    <td class="mono" style="text-align:right;">—</td>
+                    <td class="mono" style="text-align:right;">—</td>
+                    {% else %}
+                    <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_gross) }}</td>
+                    <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_gross - run.total_net_pay) }}</td>
+                    <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(run.total_net_pay) }}</td>
+                    {% endif %}
+                </tr>
+            {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="7">Totals ({{ totals.count }} non-voided run{{ 's' if totals.count != 1 else '' }})</td>
+                    <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(totals.gross) }}</td>
+                    <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(totals.deductions) }}</td>
+                    <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(totals.net_pay) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

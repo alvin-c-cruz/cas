@@ -41,7 +41,8 @@ class EmployeeForm(FlaskForm):
         ('', '— select —'), ('monthly', 'Monthly'), ('daily', 'Daily')])
     basic_rate = DecimalField('Basic Rate', validators=[Optional(), NumberRange(min=0)], places=2)
     pay_frequency = SelectField('Pay Frequency', validators=[Optional()], choices=[
-        ('', '— select —'), ('monthly', 'Monthly'), ('semi-monthly', 'Semi-monthly')])
+        ('', '— select —'), ('monthly', 'Monthly'), ('semi-monthly', 'Semi-monthly'),
+        ('weekly', 'Weekly')])
 
     # Optional identity link. Choices set in the view: [('', '— none —'), (user.id, label), ...]
     user_id = SelectField('Linked User (optional)', validators=[Optional()], coerce=lambda v: int(v) if v else None)
