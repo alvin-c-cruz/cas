@@ -355,7 +355,6 @@
 <script src="{{ url_for('static', filename='vendor-quick-add.js') }}?v=3"></script>
 {% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
 {% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
-{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=1"></script>{% endif %}
 <script>
 const vatCategories = {{ vat_categories | tojson }};
 const allAccounts = {{ all_accounts | tojson }};
@@ -1268,6 +1267,10 @@ if (_initKind === 'vendor' && _initId) {
 initItems();
 {% endif %}
 </script>
+
+{# ap_po_billing.js must load AFTER the block above (needs window.addLineItem to already exist --
+   see BUG-AP-PO-BILLING-SCRIPT-LOAD-ORDER, docs/bug-reports/2026-07-15-ap-po-billing-picker-script-order.md) #}
+{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=1"></script>{% endif %}
 
 <script>
 // ── Create-form attachment queue (held in browser until Save) ────────────────
