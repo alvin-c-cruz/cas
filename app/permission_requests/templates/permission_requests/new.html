@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Request Permission Change{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Request Permission Change</h1></div>
+<div class="card"><div class="card-body">
+  <form method="POST">
+    {{ form.csrf_token }}
+    <p>{{ form.request_reason.label }}</p>
+  </form>
+</div></div>
+{% endblock %}
