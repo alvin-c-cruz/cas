@@ -360,11 +360,11 @@ def cancel(id):
     if not (current_user.role == 'accountant' or current_user.has_full_access):
         flash('You do not have permission to cancel Purchase Orders.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
-    if po.status in ('cancelled', 'closed'):
-        flash('This Purchase Order has already been cancelled or closed.', 'error')
-        return redirect(url_for('purchase_orders.view', id=id))
     if po.accounts_payable_id is not None:
         flash('A billed Purchase Order cannot be cancelled. Void the bill first.', 'error')
+        return redirect(url_for('purchase_orders.view', id=id))
+    if po.status in ('cancelled', 'closed'):
+        flash('This Purchase Order has already been cancelled or closed.', 'error')
         return redirect(url_for('purchase_orders.view', id=id))
 
     cancel_reason = request.form.get('cancel_reason', '').strip()

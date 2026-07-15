@@ -114,6 +114,25 @@ def test_cancel_requires_reason(client, accountant_user, main_branch, vl_vendor,
     assert po.status == 'cancelled' and po.cancel_reason == 'vendor discontinued the item'
 
 
+def test_cancel_blocked_when_billed(client, accountant_user, main_branch, vl_vendor, db_session):
+    """Regression: a PO billed directly (status='closed', accounts_payable_id set -- the
+    only way 'closed' is ever reached, per app/purchase_billing.py::_bill_purchase_sources)
+    must be rejected with the BILLED-specific message, not the generic
+    "already cancelled or closed" one -- the check order in cancel() previously put the
+    generic status check first, making the billed message unreachable dead code."""
+    po = _make_draft_po(db_session, main_branch, vl_vendor)
+    po.status = 'closed'
+    po.accounts_payable_id = 999999  # no real AP row needed; cancel() only checks it's set
+    db_session.commit()
+    _login(client, accountant_user, main_branch)
+    resp = client.post(f'/purchase-orders/{po.id}/cancel',
+                        data={'cancel_reason': 'attempting cancel after bill'},
+                        follow_redirects=True)
+    assert b'A billed Purchase Order cannot be cancelled' in resp.data
+    db_session.refresh(po)
+    assert po.status == 'closed'   # unchanged -- cancel must not have gone through
+
+
 def test_edit_blocked_after_approve(client, accountant_user, main_branch, vl_vendor, db_session):
     _login(client, accountant_user, main_branch)
     po = _make_draft_po(db_session, main_branch, vl_vendor)
