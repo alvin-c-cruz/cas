@@ -57,6 +57,26 @@ def test_register_rate_limited_after_threshold(rl_client):
     assert 429 in codes, f"Expected a 429 on /register once the threshold is crossed, got {codes}"
 
 
+def test_login_rate_limit_does_not_lock_out_other_usernames_on_same_ip(rl_client):
+    """A user hammering their OWN login must not lock out colleagues on the same
+    office network (same test-client IP). BUG: with a pure per-IP key, one
+    careless user's repeated failed attempts throttles every other username
+    behind the same NAT/shared IP, even though each of THEM made zero attempts.
+    The throttle should be scoped per attempted username instead.
+    """
+    # 'flooder' trips their own per-minute threshold.
+    codes = [rl_client.post('/login', data={'username': 'flooder', 'password': 'wrongpass'}).status_code
+             for _ in range(13)]
+    assert 429 in codes, f"Expected 'flooder' to trip their own threshold, got {codes}"
+
+    # A DIFFERENT username, same simulated IP, first attempt -- must NOT be 429.
+    other = rl_client.post('/login', data={'username': 'coworker', 'password': 'wrongpass'})
+    assert other.status_code != 429, (
+        "A different username on the same IP was blocked by another user's rate limit -- "
+        "the whole office gets locked out because one user is slow/careless."
+    )
+
+
 def test_login_not_limited_when_disabled(client, db_session):
     """With rate limiting disabled (the testing default), many POSTs never 429.
 

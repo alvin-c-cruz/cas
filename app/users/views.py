@@ -4,6 +4,7 @@ from datetime import timezone, timedelta
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_user, logout_user, login_required, current_user
+from flask_limiter.util import get_remote_address
 from sqlalchemy import func
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -23,6 +24,22 @@ users_bp = Blueprint('users', __name__, template_folder='templates')
 # so the unknown-user path spends the same time hashing as the wrong-password
 # path and cannot be distinguished by response timing (BUG-SEC-06).
 _DUMMY_PASSWORD_HASH = generate_password_hash('cas-login-timing-equalizer')
+
+
+def _login_attempt_key():
+    """Rate-limit key for /login: the attempted username, not the caller's IP.
+
+    A pure per-IP key throttles everyone behind the same NAT/office network
+    together -- one user repeatedly mistyping their password locks out every
+    coworker on the same connection, even though each of them made zero
+    attempts. Scoping per attempted username means only that user's own retries
+    count against their own threshold; a different username on the same IP
+    gets its own quota. Falls back to the caller's IP when no username was
+    submitted (e.g. a bare GET or a malformed POST), so the limit still applies
+    to something.
+    """
+    username = (request.form.get('username') or '').strip().lower()
+    return username or get_remote_address()
 
 
 def _is_safe_url(target):
@@ -154,7 +171,7 @@ def _post_login_redirect(user, form):
 
 
 @users_bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit('10 per minute; 50 per hour', methods=['POST'])
+@limiter.limit('10 per minute; 50 per hour', methods=['POST'], key_func=_login_attempt_key)
 def login():
     """User login."""
     if current_user.is_authenticated:
