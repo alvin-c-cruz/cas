@@ -122,16 +122,20 @@ def gather_approval_items(user):
             'reviewUrl': '/opening-balances/pending-approvals',
         })
 
-    for req in PermissionChangeRequest.query.filter_by(status='pending').all():
-        items.append({
-            'type': 'Permission Request', 'icon': '🔑',
-            'id': req.id,
-            'desc': f'Grant {req.target_user.username}: {", ".join(req.get_requested_permissions().keys())}',
-            'by': req.requested_by.username if req.requested_by else '—',
-            'when': req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '—',
-            'state': 'Pending', 'reason': req.request_reason,
-            'reviewUrl': f'/permission-requests/{req.id}/review',
-        })
+    if user.is_admin:
+        # Permission Requests are admin-only by design (CA is the requester,
+        # never the reviewer -- this closes a segregation-of-duties gap, so
+        # a plain accountant or chief_accountant must not see these details).
+        for req in PermissionChangeRequest.query.filter_by(status='pending').all():
+            items.append({
+                'type': 'Permission Request', 'icon': '🔑',
+                'id': req.id,
+                'desc': f'Grant {req.target_user.username}: {", ".join(req.get_requested_permissions().keys())}',
+                'by': req.requested_by.username if req.requested_by else '—',
+                'when': req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '—',
+                'state': 'Pending', 'reason': req.request_reason,
+                'reviewUrl': f'/permission-requests/{req.id}/review',
+            })
 
     # Pending approved-email requests
     for ae in ApprovedEmail.query.filter_by(status='pending').all():
@@ -163,5 +167,8 @@ def count_action_items(user, branch_id):
         n += OpeningBalanceChangeRequest.query.filter_by(status='pending').count()
     if user.has_full_access:
         n += ApprovedEmail.query.filter_by(status='pending').count()
+    if user.is_admin:
+        # Admin-only by design: see gather_approval_items()'s Permission
+        # Request block for the rationale.
         n += PermissionChangeRequest.query.filter_by(status='pending').count()
     return n
