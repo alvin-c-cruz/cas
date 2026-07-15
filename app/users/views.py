@@ -597,6 +597,22 @@ def delete_user(id):
         flash(f'Cannot delete user "{user.username}": {attachment_count} purchase bill attachment(s) uploaded by this user exist.', 'error')
         return redirect(url_for('users.list_users'))
 
+    # Block deletion if user is referenced (as target, requester, or reviewer --
+    # regardless of status) on any Permission Change Request. Even a resolved
+    # request's audit trail should still point at a real user, historically.
+    from app.permission_requests.models import PermissionChangeRequest
+    from sqlalchemy import or_
+    permission_request_count = PermissionChangeRequest.query.filter(
+        or_(
+            PermissionChangeRequest.target_user_id == user.id,
+            PermissionChangeRequest.requested_by_id == user.id,
+            PermissionChangeRequest.reviewed_by_id == user.id,
+        )
+    ).count()
+    if permission_request_count > 0:
+        flash(f'Cannot delete user "{user.username}": {permission_request_count} permission change request(s) reference this user (as target, requester, or reviewer).', 'error')
+        return redirect(url_for('users.list_users'))
+
     # TEMPORARILY DISABLED ERROR HANDLING FOR DEBUGGING - See full stack trace
     # try:
     # Capture values before delete

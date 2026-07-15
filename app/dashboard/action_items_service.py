@@ -127,10 +127,11 @@ def gather_approval_items(user):
         # never the reviewer -- this closes a segregation-of-duties gap, so
         # a plain accountant or chief_accountant must not see these details).
         for req in PermissionChangeRequest.query.filter_by(status='pending').all():
+            target_username = req.target_user.username if req.target_user else '(deleted user)'
             items.append({
                 'type': 'Permission Request', 'icon': '🔑',
                 'id': req.id,
-                'desc': f'Grant {req.target_user.username}: {", ".join(req.get_requested_permissions().keys())}',
+                'desc': f'Grant {target_username}: {", ".join(req.get_requested_permissions().keys())}',
                 'by': req.requested_by.username if req.requested_by else '—',
                 'when': req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '—',
                 'state': 'Pending', 'reason': req.request_reason,

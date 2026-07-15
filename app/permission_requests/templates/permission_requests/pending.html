@@ -19,8 +19,8 @@
       <tbody>
         {% for req in pending_requests %}
         <tr>
-          <td>{{ req.target_user.username }}</td>
-          <td>{{ req.requested_by.username }}</td>
+          <td>{{ req.target_user.username if req.target_user else '(deleted user)' }}</td>
+          <td>{{ req.requested_by.username if req.requested_by else '(deleted user)' }}</td>
           <td>{{ req.get_requested_permissions().keys() | join(', ') }}</td>
           <td>{{ req.request_reason }}</td>
           <td>{{ req.created_at.strftime('%Y-%m-%d %I:%M %p') }}</td>

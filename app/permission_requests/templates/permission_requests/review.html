@@ -3,8 +3,8 @@
 {% block content %}
 <div class="page-header"><h1>Review Permission Request</h1></div>
 <div class="card"><div class="card-body">
-  <p><strong>Target:</strong> {{ change_request.target_user.username }} ({{ change_request.target_user.full_name }})</p>
-  <p><strong>Requested By:</strong> {{ change_request.requested_by.username }}</p>
+  <p><strong>Target:</strong> {{ change_request.target_user.username ~ ' (' ~ change_request.target_user.full_name ~ ')' if change_request.target_user else '(deleted user)' }}</p>
+  <p><strong>Requested By:</strong> {{ change_request.requested_by.username if change_request.requested_by else '(deleted user)' }}</p>
   <p><strong>Requested Permissions:</strong> {{ change_request.get_requested_permissions().keys() | join(', ') }}</p>
   <p><strong>Reason:</strong> {{ change_request.request_reason }}</p>
   <p><strong>Submitted:</strong> {{ change_request.created_at.strftime('%Y-%m-%d %I:%M %p') }}</p>
