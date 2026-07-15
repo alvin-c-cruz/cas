@@ -14,7 +14,12 @@
       <div class="checkbox-grid">
         {% for subfield in form.requested_keys %}
         <label class="checkbox-label">
-          {{ subfield() }} <span>{{ subfield.label.text }}</span>
+          {# required=false: WTForms' MultiCheckboxField/DataRequired flag otherwise propagates
+             `required` onto EVERY individual checkbox, so the browser's native HTML5
+             validation demands ALL options be checked before the form can submit at all --
+             the field-level DataRequired validator (server-side, "select at least one") is
+             the real guard and is untouched by this. #}
+          {{ subfield(required=false) }} <span>{{ subfield.label.text }}</span>
         </label>
         {% endfor %}
       </div>
