@@ -42,8 +42,17 @@ def get_account_by_code(code):
 
 @cache.memoize(timeout=3600)
 def get_vat_categories():
-    """Get all active VAT categories (cached for 1 hour)"""
-    return VATCategory.query.filter_by(is_active=True).order_by(VATCategory.code).all()
+    """Get all active VAT categories (cached for 1 hour).
+
+    joinedload(input_vat_account) is REQUIRED: these ORM objects are memoized and
+    outlive their request/session, and to_dict() reads input_vat_account.code/name.
+    Without eager-load, the detached read raises DetachedInstanceError -> HTTP 500 on
+    /purchase-orders/create and /purchase-orders/<id>/edit once the cache warms and a
+    VAT category has an input_vat_account assigned. See test_vat_cache.py.
+    """
+    return (VATCategory.query
+            .options(joinedload(VATCategory.input_vat_account))
+            .filter_by(is_active=True).order_by(VATCategory.code).all())
 
 
 @cache.memoize(timeout=3600)
