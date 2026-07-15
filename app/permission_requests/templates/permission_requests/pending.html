@@ -25,12 +25,7 @@
           <td>{{ req.request_reason }}</td>
           <td>{{ req.created_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
           <td>
-            {# Task 5 builds permission_requests.review_permission_request; url_for() would
-               raise a BuildError until that endpoint is registered, so this forward-reference
-               uses the literal path (matches action_items_service.py's reviewUrl) rather than
-               url_for(). Swap to url_for('permission_requests.review_permission_request', id=req.id)
-               once Task 5 lands. #}
-            <a href="/permission-requests/{{ req.id }}/review" class="btn-action btn-action-info">Review</a>
+            <a href="{{ url_for('permission_requests.review_permission_request', id=req.id) }}" class="btn-action btn-action-info">Review</a>
           </td>
         </tr>
         {% endfor %}

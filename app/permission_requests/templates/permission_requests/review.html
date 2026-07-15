@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Review Permission Request{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Review Permission Request</h1></div>
+<div class="card"><div class="card-body">
+  <p><strong>Target:</strong> {{ change_request.target_user.username }} ({{ change_request.target_user.full_name }})</p>
+  <p><strong>Requested By:</strong> {{ change_request.requested_by.username }}</p>
+  <p><strong>Requested Permissions:</strong> {{ change_request.get_requested_permissions().keys() | join(', ') }}</p>
+  <p><strong>Reason:</strong> {{ change_request.request_reason }}</p>
+  <p><strong>Submitted:</strong> {{ change_request.created_at.strftime('%Y-%m-%d %I:%M %p') }}</p>
+
+  <form method="POST">
+    {{ form.csrf_token }}
+    <div class="form-group">
+      {{ form.action.label }}
+      {{ form.action(class="form-control") }}
+    </div>
+    <div class="form-group">
+      {{ form.review_notes.label }}
+      {{ form.review_notes(class="form-control", rows=3) }}
+    </div>
+    <button type="submit" class="btn btn-primary">Submit Review</button>
+  </form>
+</div></div>
+{% endblock %}
