@@ -1219,6 +1219,10 @@
                         <span class="nav-icon">👤</span>
                         <span class="nav-text">User Management</span>
                     </a>
+                    <a href="{{ url_for('permission_requests.pending_permission_requests') }}" class="nav-item {% if request.endpoint and request.endpoint.startswith('permission_requests.') %}active{% endif %}">
+                        <span class="nav-icon">🔑</span>
+                        <span class="nav-text">Permission Requests</span>
+                    </a>
                     <a href="{{ url_for('users.list_approved_emails') }}" class="nav-item {% if request.endpoint == 'users.list_approved_emails' or request.endpoint == 'users.add_approved_email' %}active{% endif %}">
                         <span class="nav-icon">📧</span>
                         <span class="nav-text">Approved Emails</span>

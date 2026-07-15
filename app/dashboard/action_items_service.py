@@ -17,6 +17,7 @@ from app.vat_categories.models import VATCategoryChangeRequest
 from app.withholding_tax.models import WithholdingTaxChangeRequest
 from app.users.approved_emails import ApprovedEmail
 from app.opening_balances.approval_models import OpeningBalanceChangeRequest
+from app.permission_requests.models import PermissionChangeRequest
 
 
 def _draft_sources():
@@ -121,6 +122,17 @@ def gather_approval_items(user):
             'reviewUrl': '/opening-balances/pending-approvals',
         })
 
+    for req in PermissionChangeRequest.query.filter_by(status='pending').all():
+        items.append({
+            'type': 'Permission Request', 'icon': '🔑',
+            'id': req.id,
+            'desc': f'Grant {req.target_user.username}: {", ".join(req.get_requested_permissions().keys())}',
+            'by': req.requested_by.username if req.requested_by else '—',
+            'when': req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '—',
+            'state': 'Pending', 'reason': req.request_reason,
+            'reviewUrl': f'/permission-requests/{req.id}/review',
+        })
+
     # Pending approved-email requests
     for ae in ApprovedEmail.query.filter_by(status='pending').all():
         items.append({
@@ -151,4 +163,5 @@ def count_action_items(user, branch_id):
         n += OpeningBalanceChangeRequest.query.filter_by(status='pending').count()
     if user.has_full_access:
         n += ApprovedEmail.query.filter_by(status='pending').count()
+        n += PermissionChangeRequest.query.filter_by(status='pending').count()
     return n

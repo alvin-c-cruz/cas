@@ -10,6 +10,7 @@ from app.users.models import User
 from app.users.module_access import all_permission_keys
 from app.permission_requests.forms import PermissionRequestForm
 from app.permission_requests.models import PermissionChangeRequest
+from app.utils.authz import admin_panel_required
 
 permission_requests_bp = Blueprint('permission_requests', __name__, template_folder='templates')
 
@@ -82,3 +83,13 @@ def new_permission_request():
         return redirect(url_for('permission_requests.new_permission_request'))
 
     return render_template('permission_requests/new.html', form=form)
+
+
+@permission_requests_bp.route('/permission-requests/pending')
+@login_required
+@admin_panel_required
+def pending_permission_requests():
+    pending_requests = PermissionChangeRequest.query.filter_by(status='pending').order_by(
+        PermissionChangeRequest.created_at.desc()
+    ).all()
+    return render_template('permission_requests/pending.html', pending_requests=pending_requests)

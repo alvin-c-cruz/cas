@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Pending Permission Requests{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Pending Permission Requests</h1></div>
+<div class="card"><div class="card-body">
+  {% if pending_requests %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Target User</th>
+          <th>Requested By</th>
+          <th>Requested Permissions</th>
+          <th>Reason</th>
+          <th>Requested At</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for req in pending_requests %}
+        <tr>
+          <td>{{ req.target_user.username }}</td>
+          <td>{{ req.requested_by.username }}</td>
+          <td>{{ req.get_requested_permissions().keys() | join(', ') }}</td>
+          <td>{{ req.request_reason }}</td>
+          <td>{{ req.created_at.strftime('%Y-%m-%d %I:%M %p') }}</td>
+          <td>
+            {# Task 5 builds permission_requests.review_permission_request; url_for() would
+               raise a BuildError until that endpoint is registered, so this forward-reference
+               uses the literal path (matches action_items_service.py's reviewUrl) rather than
+               url_for(). Swap to url_for('permission_requests.review_permission_request', id=req.id)
+               once Task 5 lands. #}
+            <a href="/permission-requests/{{ req.id }}/review" class="btn-action btn-action-info">Review</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>No pending permission requests.</p>
+  {% endif %}
+</div></div>
+{% endblock %}
