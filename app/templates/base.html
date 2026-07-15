@@ -1268,6 +1268,22 @@
             </div>
             {% endif %}
 
+            {# Chief Accountant: Permission Requests (does not apply to admin -- admin edits users directly) #}
+            {% if current_user.is_authenticated and current_user.role == 'chief_accountant' %}
+            <div class="nav-section">
+                <div class="nav-label nav-label-collapsible" data-section="permission-requests">
+                    <span>Permission Requests</span>
+                    <span class="nav-label-arrow">▼</span>
+                </div>
+                <div class="nav-section-content" id="section-permission-requests">
+                    <a href="{{ url_for('permission_requests.new_permission_request') }}" class="nav-item {% if request.endpoint == 'permission_requests.new_permission_request' %}active{% endif %}">
+                        <span class="nav-icon">🔑</span>
+                        <span class="nav-text">Request Permission Change</span>
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
             {# Accountant: Staff Management + Approved Emails #}
             {% if current_user.is_authenticated and current_user.role == 'accountant' %}
             <div class="nav-section">
