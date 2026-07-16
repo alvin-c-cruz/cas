@@ -57,6 +57,10 @@
     + `<td><input class="form-control pr-uom" value="${(d.uom_text||d.uom_display||'').replace(/"/g,'&quot;')}"></td>`
     + `<td><button type="button" class="btn btn-sm btn-danger pr-del">x</button></td>`;
     document.getElementById('prBody').appendChild(tr);
+    const sel = tr.querySelector('.pr-product');
+    if (sel && typeof initSearchSelect === 'function') {
+      initSearchSelect(sel);
+    }
   }
   document.addEventListener('click', e => { if (e.target.classList.contains('pr-del')) e.target.closest('tr').remove(); });
   document.getElementById('addLineBtn').addEventListener('click', () => addRow());
@@ -74,4 +78,6 @@
   });
   (EXISTING && EXISTING.length ? EXISTING : []).forEach(addRow);
 </script>
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
 {% endblock %}
