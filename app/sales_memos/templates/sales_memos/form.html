@@ -55,14 +55,14 @@
   </div></div>
 
   <div class="card"><div class="card-body">
-    <h2 class="card-title">Lines to credit</h2>
+    <h2 class="card-title">{{ 'Lines to debit' if memo_type == 'debit' else 'Lines to credit' }}</h2>
     <div class="table-responsive">
       <table class="table" id="memo-lines">
         <thead>
           <tr>
             <th>Product</th><th>UOM</th><th>VT</th><th>WT</th>
             <th class="text-right">Invoice amount</th>
-            <th class="text-right">Credit amount</th>
+            <th class="text-right">{{ 'Debit amount' if memo_type == 'debit' else 'Credit amount' }}</th>
           </tr>
         </thead>
         <tbody></tbody>
