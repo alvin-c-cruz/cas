@@ -589,6 +589,12 @@ def open_invoices():
         SalesInvoice.status.in_(['posted', 'partially_paid']),
         SalesInvoice.balance > 0,
     ).order_by(SalesInvoice.invoice_date).all()
+    # Each invoice's own resolved AR-Trade account -- fallback to the global default
+    # mirrors the server-side resolution in the JE builders
+    # (BUG-CDCR-LIVE-PREVIEW-IGNORES-PER-LINE-ACCOUNT). The client-side live JE
+    # preview needs this to bucket settlement rows per-account instead of lumping
+    # every invoice into one row.
+    global_ar = _get_gl_accounts()['ar']
     items = [{
         'id': i.id,
         'type': 'invoice',
@@ -596,6 +602,8 @@ def open_invoices():
         'invoice_date': i.invoice_date.isoformat(),
         'due_date': i.due_date.isoformat() if i.due_date else None,
         'balance': float(i.balance),
+        'account_code': i.ar_trade_account.code if i.ar_trade_account else (global_ar.code if global_ar else None),
+        'account_name': i.ar_trade_account.name if i.ar_trade_account else (global_ar.name if global_ar else None),
     } for i in invs]
     # Phase 2b: a posted debit note is itself a collectible receivable — a CRV can
     # settle it just like an invoice. Union them in, tagged so the parser routes each
@@ -608,6 +616,10 @@ def open_invoices():
         SalesMemo.status == 'posted',
         SalesMemo.balance > 0,
     ).order_by(SalesMemo.memo_date).all()
+    # Sales Memos carry NO per-transaction AR-Trade override field (confirmed: spec
+    # decision 2/CR settlement fallback (memo)) -- a debit-note settlement ALWAYS
+    # resolves to the global default, regardless of any SI-level override elsewhere
+    # in the same voucher.
     items.extend({
         'id': m.id,
         'type': 'debit_note',
@@ -615,6 +627,8 @@ def open_invoices():
         'invoice_date': m.memo_date.isoformat() if m.memo_date else None,
         'due_date': None,
         'balance': float(m.balance),
+        'account_code': global_ar.code if global_ar else None,
+        'account_name': global_ar.name if global_ar else None,
     } for m in debit_notes)
     return jsonify(items)
 

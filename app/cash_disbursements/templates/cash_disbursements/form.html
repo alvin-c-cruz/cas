@@ -556,6 +556,8 @@ function addApLine(bill) {
         bill_date: bill.bill_date,
         original_balance: bill.balance,
         amount_applied: bill.balance,
+        account_code: bill.account_code || null,
+        account_name: bill.account_name || null,
     };
     apLines.push(line);
 
@@ -591,6 +593,8 @@ function restoreApLine(line) {
         bill_date:             line.bill_date || '',
         original_balance:      line.original_balance,
         amount_applied:        line.amount_applied,
+        account_code:          line.account_code || null,
+        account_name:          line.account_name || null,
     });
     const tbody = document.getElementById('apLinesBody');
     const tr = document.createElement('tr');
@@ -1058,8 +1062,23 @@ function renderCdvJEPreview(apApplied, vatUsed, wtUsed, total) {
 
     // Assemble rows: AP (Dr), Expense (sign-aware), Input VAT (sign-aware), WHT (sign-aware), Cash (sign-aware)
     const rows = [];
-    if (apApplied > 0 && glAccounts && glAccounts.ap)
-        rows.push({ code: glAccounts.ap.code, name: glAccounts.ap.name, debit: apApplied, credit: 0 });
+    // AP settlement lines bucketed by EACH LINE'S OWN inherited account (mirrors the
+    // server-side per-line resolution in _je_lines_for_display/_post_cdv_je) -- a CDV
+    // settling bills booked to different AP-Trade accounts must show one row per
+    // account, not one consolidated row on the global default
+    // (BUG-CDCR-LIVE-PREVIEW-IGNORES-PER-LINE-ACCOUNT).
+    const apBuckets = {};
+    apLines.forEach(l => {
+        const amt = l.amount_applied || 0;
+        if (amt <= 0) return;
+        const code = l.account_code || (glAccounts && glAccounts.ap && glAccounts.ap.code) || '??';
+        const name = l.account_name || (glAccounts && glAccounts.ap && glAccounts.ap.name) || 'No AP-Trade account configured';
+        if (!apBuckets[code]) apBuckets[code] = { code, name, amt: 0 };
+        apBuckets[code].amt += amt;
+    });
+    Object.values(apBuckets)
+        .sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
+        .forEach(b => rows.push({ code: b.code, name: b.name, debit: b.amt, credit: 0 }));
 
     expenseRows.forEach(r => rows.push(r));
 
@@ -1237,6 +1256,8 @@ apLines.push({
     bill_date:             '',
     original_balance:      {{ ap_line.original_balance }},
     amount_applied:        {{ ap_line.amount_applied }},
+    account_code:          {{ ap_line.account_code | tojson }},
+    account_name:          {{ ap_line.account_name | tojson }},
 });
 (function() {
     const tbody = document.getElementById('apLinesBody');

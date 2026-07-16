@@ -578,6 +578,8 @@ function addArLine(inv) {
         invoice_date: inv.invoice_date,
         original_balance: inv.balance,
         amount_applied: inv.balance,
+        account_code: inv.account_code || null,
+        account_name: inv.account_name || null,
     };
     arLines.push(line);
 
@@ -619,6 +621,8 @@ function restoreArLine(line) {
         invoice_date:     line.invoice_date || '',
         original_balance: line.original_balance,
         amount_applied:   line.amount_applied,
+        account_code:     line.account_code || null,
+        account_name:     line.account_name || null,
     });
     const tag = type === 'debit_note'
         ? ` <span class="badge badge-partial">Debit Note</span>` : '';
@@ -1047,8 +1051,24 @@ function renderCrvJEPreview(arApplied, vatUsed, wtUsed, total) {
         else            rows.push({ code: glAccounts.wt.code, name: glAccounts.wt.name, debit: 0, credit: Math.abs(wtUsed) });
     }
 
-    if (arApplied > 0 && glAccounts && glAccounts.ar)
-        rows.push({ code: glAccounts.ar.code, name: glAccounts.ar.name, debit: 0, credit: arApplied });
+    // AR settlement lines bucketed by EACH LINE'S OWN inherited account (mirrors the
+    // server-side per-line resolution in _je_lines_for_display/_post_crv_je) -- a CRV
+    // settling invoices booked to different AR-Trade accounts must show one row per
+    // account, not one consolidated row on the global default
+    // (BUG-CDCR-LIVE-PREVIEW-IGNORES-PER-LINE-ACCOUNT). A debit-note settlement
+    // carries no per-line account, so it falls back to the global default here too.
+    const arBuckets = {};
+    arLines.forEach(l => {
+        const amt = l.amount_applied || 0;
+        if (amt <= 0) return;
+        const code = l.account_code || (glAccounts && glAccounts.ar && glAccounts.ar.code) || '??';
+        const name = l.account_name || (glAccounts && glAccounts.ar && glAccounts.ar.name) || 'No AR-Trade account configured';
+        if (!arBuckets[code]) arBuckets[code] = { code, name, amt: 0 };
+        arBuckets[code].amt += amt;
+    });
+    Object.values(arBuckets)
+        .sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
+        .forEach(b => rows.push({ code: b.code, name: b.name, debit: 0, credit: b.amt }));
 
     // VAT buckets — sign-aware
     bucketList.forEach(b => {

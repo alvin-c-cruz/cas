@@ -215,12 +215,20 @@ def open_bills():
         AccountsPayable.status.in_(['posted', 'partially_paid']),
         AccountsPayable.balance > 0
     ).order_by(AccountsPayable.ap_date).all()
+    # Each bill's own resolved AP-Trade account -- fallback to the global default
+    # mirrors the server-side resolution in _je_lines_for_display/_post_cdv_je
+    # (BUG-CDCR-LIVE-PREVIEW-IGNORES-PER-LINE-ACCOUNT). The client-side live JE
+    # preview needs this to bucket settlement rows per-account instead of lumping
+    # every bill into one row.
+    global_ap = _get_gl_accounts()['ap']
     return jsonify([{
         'id': b.id,
         'bill_number': b.ap_number,
         'vendor_invoice_number': b.vendor_invoice_number or '',
         'bill_date': b.ap_date.isoformat(),
         'balance': float(b.balance),
+        'account_code': b.ap_trade_account.code if b.ap_trade_account else (global_ap.code if global_ap else None),
+        'account_name': b.ap_trade_account.name if b.ap_trade_account else (global_ap.name if global_ap else None),
     } for b in bills])
 
 

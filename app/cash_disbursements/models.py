@@ -133,12 +133,18 @@ class CDVApLine(db.Model):
         return f'<CDVApLine cdv={self.cdv_id} ap={self.ap_number}>'
 
     def to_dict(self):
+        # account_code/account_name: this line's OWN inherited AP-Trade account (falls
+        # back to None if unresolved -- the JS caller falls back to the global default,
+        # same as the open_bills() picker JSON; see BUG-CDCR-LIVE-PREVIEW-IGNORES-PER-LINE-ACCOUNT).
+        acct = self.accounts_payable.ap_trade_account if self.accounts_payable else None
         return {
             'id': self.id,
             'ap_id': self.ap_id,
             'ap_number': self.ap_number,
             'original_balance': float(self.original_balance),
             'amount_applied': float(self.amount_applied),
+            'account_code': acct.code if acct else None,
+            'account_name': acct.name if acct else None,
         }
 
 

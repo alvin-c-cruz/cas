@@ -127,6 +127,12 @@ class CRVArLine(db.Model):
         return f'<CRVArLine crv={self.crv_id} inv={self.invoice_number}>'
 
     def to_dict(self):
+        # account_code/account_name: this line's OWN inherited AR-Trade account when it
+        # settles a SalesInvoice (falls back to None -> the JS caller falls back to the
+        # global default). A sales-memo (debit-note) settlement has NO per-transaction
+        # override field, so it always carries None here too, same effect
+        # (see BUG-CDCR-LIVE-PREVIEW-IGNORES-PER-LINE-ACCOUNT).
+        acct = self.sales_invoice.ar_trade_account if self.sales_invoice else None
         return {
             'id': self.id,
             # Phase 2b: a line settles an invoice OR a debit note; `type` + `ref_id`
@@ -138,6 +144,8 @@ class CRVArLine(db.Model):
             'invoice_number': self.invoice_number,
             'original_balance': float(self.original_balance),
             'amount_applied': float(self.amount_applied),
+            'account_code': acct.code if acct else None,
+            'account_name': acct.name if acct else None,
         }
 
 
