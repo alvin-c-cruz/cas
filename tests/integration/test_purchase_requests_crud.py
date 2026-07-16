@@ -77,3 +77,14 @@ def test_detail_page_shows_created_by(client, accountant_user, main_branch, db_s
     resp = client.get(f'/purchase-requests/{pr.id}')
     assert b'Created by' in resp.data
     assert b'accountant' in resp.data
+
+
+def test_create_form_loads_search_select_for_product_picker(client, accountant_user, main_branch, db_session):
+    """BUG-PR-PRODUCT-PICKER-NOT-CHOICES: PR's product picker must use the shared Choices.js
+    search-select pattern, like every other product picker in the app."""
+    _login(client, accountant_user, main_branch)
+    resp = client.get('/purchase-requests/create')
+    assert resp.status_code == 200
+    assert b'search-select.js' in resp.data
+    assert b'choices.min.js' in resp.data
+    assert b'initSearchSelect' in resp.data
