@@ -26,6 +26,9 @@
   </div>
   {% if pr.reason %}<p><strong>Reason:</strong> {{ pr.reason }}</p>{% endif %}
   {% if pr.reject_reason %}<p><strong>Rejected:</strong> {{ pr.reject_reason }}</p>{% endif %}
+  <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">
+    Created by {{ created_by_user.username if created_by_user else '—' }} on {{ pr.created_at.strftime('%b %d, %Y %H:%M') if pr.created_at else '—' }}
+  </div>
 </div></div>
 
 <div class="card"><div class="card-body">

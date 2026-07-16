@@ -88,3 +88,13 @@ def test_list_and_view_show_po(client, accountant_user, main_branch, vl_vendor, 
     po = PurchaseOrder.query.first()
     assert b'PO-2026-07-0001' in client.get('/purchase-orders').data
     assert client.get(f'/purchase-orders/{po.id}').status_code == 200
+
+
+def test_detail_page_shows_created_by(client, accountant_user, main_branch, vl_vendor, db_session):
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor)
+    from app.purchase_orders.models import PurchaseOrder
+    po = PurchaseOrder.query.first()
+    resp = client.get(f'/purchase-orders/{po.id}')
+    assert b'Created by' in resp.data
+    assert b'accountant' in resp.data
