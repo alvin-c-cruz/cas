@@ -115,6 +115,7 @@
           <th style="text-align:right;">WHT</th>
           <th style="text-align:right;">Loans</th>
           <th style="text-align:right;">Net Pay</th>
+          {% if run.status == 'posted' and run.run_type == 'regular' %}<th></th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -128,6 +129,9 @@
           <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.wht) }}</td>
           <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.sss_loan + line.pagibig_loan) }}</td>
           <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.net_pay) }}</td>
+          {% if run.status == 'posted' and run.run_type == 'regular' %}
+          <td><a href="{{ url_for('payroll.payslip_view', id=run.id, line_id=line.id) }}" class="btn btn-secondary btn-sm" target="_blank">Payslip</a></td>
+          {% endif %}
         </tr>
       {% endfor %}
       </tbody>

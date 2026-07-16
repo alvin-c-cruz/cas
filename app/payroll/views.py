@@ -101,6 +101,32 @@ def _get_run_or_404(id):
     return run
 
 
+def _payslip_gate_or_redirect(run):
+    """Returns None if the run is eligible for payslip printing, else a redirect
+    Response the caller should return immediately. Mirrors sales_invoices'
+    print_invoice gating shape (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS pattern:
+    the route enforces this itself, not just a hidden button), plus an
+    unconditional run_type check that has no settings equivalent -- a
+    13th-month run's line shape (no statutory, no loans) doesn't fit this
+    template at all, regardless of any print-access setting."""
+    payslip_print_form = AppSettings.get_setting('payslip_print_form', 'current')
+    if payslip_print_form == 'hidden':
+        flash('Payslip printing is not enabled.', 'error')
+        return redirect(url_for('payroll.view_run', id=run.id))
+
+    if run.run_type != 'regular':
+        flash('Payslips are not yet available for 13th-month runs.', 'error')
+        return redirect(url_for('payroll.view_run', id=run.id))
+
+    payslip_print_access = AppSettings.get_setting('payslip_print_access', 'posted_only')
+    status_ok = (run.status == 'posted') if payslip_print_access != 'draft_and_posted' \
+        else (run.status not in ('voided', 'cancelled'))
+    if not status_ok:
+        flash('This payroll run is not eligible for payslip printing yet.', 'error')
+        return redirect(url_for('payroll.view_run', id=run.id))
+    return None
+
+
 def _branch_employees(branch_id):
     """Active employees for the current branch, in a stable display order.
     The single source of truth for "which employees belong on this worksheet"
@@ -553,6 +579,28 @@ def view_run(id):
     run = _get_run_or_404(id)
     preview = service.build_je_preview(run)
     return render_template('payroll/detail.html', run=run, preview=preview, now=ph_now())
+
+
+@payroll_bp.route('/payroll/runs/<int:id>/payslips/<int:line_id>')
+@login_required
+@accountant_or_admin_required
+def payslip_view(id, line_id):
+    run = _get_run_or_404(id)
+    gate = _payslip_gate_or_redirect(run)
+    if gate:
+        return gate
+    line = next((l for l in run.lines if l.id == line_id), None)
+    if line is None:
+        abort(404)
+
+    ytd = service.ytd_totals(line.employee_id, run)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    return render_template('payroll/payslip.html', run=run, line=line, ytd=ytd,
+                           company=company, printed_at=ph_now())
 
 
 @payroll_bp.route('/payroll/runs/new', methods=['GET', 'POST'])

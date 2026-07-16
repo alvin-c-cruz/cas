@@ -1,0 +1,65 @@
+{# Expects: run, line, ytd (dict from service.ytd_totals), company. One instance = one employee's slip. #}
+<div class="payslip-block">
+  <div class="ps-header">
+    <div class="company-name">{{ company.name | upper }}</div>
+    <div class="company-sub">
+      {{ company.address }}{% if company.address and company.tin %} &nbsp;·&nbsp; {% endif %}{% if company.tin %}TIN: {{ company.tin }}{% endif %}
+    </div>
+    <div class="doc-title">PAYSLIP</div>
+  </div>
+
+  <div class="info-row">
+    <table>
+      <tr><td class="label">Employee</td><td><strong>{{ line.employee_name }}</strong></td></tr>
+      <tr><td class="label">Position</td><td>{{ line.employee.position or '—' }}</td></tr>
+      <tr><td class="label">Date Hired</td><td>{{ line.employee.date_hired.strftime('%d %B %Y') if line.employee.date_hired else '—' }}</td></tr>
+      <tr><td class="label">TIN</td><td>{{ line.employee.tin or '—' }}</td></tr>
+    </table>
+    <table>
+      <tr><td class="label">Pay Period</td><td>{{ run.period_start.strftime('%d %b') }} – {{ run.period_end.strftime('%d %b %Y') }}</td></tr>
+      <tr><td class="label">Pay Date</td><td>{{ run.pay_date.strftime('%d %B %Y') }}</td></tr>
+      <tr><td class="label">SSS No.</td><td>{{ line.employee.sss_no or '—' }}</td></tr>
+      <tr><td class="label">PhilHealth No.</td><td>{{ line.employee.philhealth_no or '—' }}</td></tr>
+      <tr><td class="label">Pag-IBIG No.</td><td>{{ line.employee.pagibig_no or '—' }}</td></tr>
+    </table>
+  </div>
+
+  <div class="ps-cols">
+    <div class="ps-col">
+      <div class="section-label">EARNINGS (This Period)</div>
+      <table class="ps-table">
+        <tr><td>Basic Pay</td><td class="amount">{{ '{:,.2f}'.format(line.basic_gross) }}</td></tr>
+        {% if line.ot_pay %}<tr><td>Overtime/Holiday Pay</td><td class="amount">{{ '{:,.2f}'.format(line.ot_pay + line.holiday_pay) }}</td></tr>{% endif %}
+        {% if line.taxable_allowance %}<tr><td>Taxable Allowance</td><td class="amount">{{ '{:,.2f}'.format(line.taxable_allowance) }}</td></tr>{% endif %}
+        {% if line.nontax_allowance %}<tr><td>Non-taxable Allowance</td><td class="amount">{{ '{:,.2f}'.format(line.nontax_allowance) }}</td></tr>{% endif %}
+        <tr class="totals"><td>Gross Pay</td><td class="amount">{{ '{:,.2f}'.format(line.gross_pay) }}</td></tr>
+      </table>
+    </div>
+    <div class="ps-col">
+      <div class="section-label">DEDUCTIONS (This Period)</div>
+      <table class="ps-table">
+        <tr><td>SSS</td><td class="amount">{{ '{:,.2f}'.format(line.sss_ee) }}</td></tr>
+        <tr><td>PhilHealth</td><td class="amount">{{ '{:,.2f}'.format(line.philhealth_ee) }}</td></tr>
+        <tr><td>Pag-IBIG</td><td class="amount">{{ '{:,.2f}'.format(line.pagibig_ee) }}</td></tr>
+        <tr><td>Withholding Tax</td><td class="amount">{{ '{:,.2f}'.format(line.wht) }}</td></tr>
+        {% if line.sss_loan %}<tr><td>SSS Loan</td><td class="amount">{{ '{:,.2f}'.format(line.sss_loan) }}</td></tr>{% endif %}
+        {% if line.pagibig_loan %}<tr><td>Pag-IBIG Loan</td><td class="amount">{{ '{:,.2f}'.format(line.pagibig_loan) }}</td></tr>{% endif %}
+        <tr class="totals"><td>Total Deductions</td><td class="amount">{{ '{:,.2f}'.format(line.gross_pay - line.net_pay) }}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="ps-net">
+    <span class="netlabel">NET PAY</span>
+    <span class="netval">₱{{ '{:,.2f}'.format(line.net_pay) }}</span>
+  </div>
+
+  <div class="section-label" style="margin-top:10px;">YEAR-TO-DATE ({{ run.period_year }})</div>
+  <table class="ps-table ps-ytd">
+    <tr><td>Gross Pay</td><td class="amount">{{ '{:,.2f}'.format(ytd.gross_pay) }}</td></tr>
+    <tr><td>Taxable Compensation</td><td class="amount">{{ '{:,.2f}'.format(ytd.taxable_comp) }}</td></tr>
+    <tr><td>Withholding Tax</td><td class="amount">{{ '{:,.2f}'.format(ytd.wht) }}</td></tr>
+    <tr><td>SSS / PhilHealth / Pag-IBIG</td><td class="amount">{{ '{:,.2f}'.format(ytd.sss_ee + ytd.philhealth_ee + ytd.pagibig_ee) }}</td></tr>
+    <tr class="totals"><td>Net Pay</td><td class="amount">{{ '{:,.2f}'.format(ytd.net_pay) }}</td></tr>
+  </table>
+</div>
