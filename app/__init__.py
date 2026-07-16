@@ -231,6 +231,7 @@ def create_app(config_name=None):
     from app.receiving_reports.models import ReceivingReport, ReceivingReportItem
     from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem
     from app.sales_memos.models import SalesMemo, SalesMemoItem
+    from app.purchase_memos.models import PurchaseMemo, PurchaseMemoItem  # noqa: F401
     from app.backup.models import BackupRun
     from app.employees.models import Employee  # noqa: F401
     from app.withholding_certificates.models import WithholdingCertificateReceived  # noqa: F401
