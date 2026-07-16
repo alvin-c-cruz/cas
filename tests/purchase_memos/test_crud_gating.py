@@ -501,3 +501,30 @@ def test_settings_page_renders(client, db_session, admin_user, main_branch):
     resp = client.get('/purchase-memos/settings')
     assert resp.status_code == 200
     assert b'Purchase Memo Settings' in resp.data
+
+
+# -- sidebar visibility: module on/off -----------------------------------------
+
+def test_sidebar_shows_vendor_debit_memos_link_when_enabled(client, db_session,
+                                                             admin_user, main_branch):
+    _setup(client, admin_user, main_branch, enable=True)
+    _login(client, admin_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    resp = client.get('/dashboard')
+    assert resp.status_code == 200
+    assert b'Vendor Debit Memos' in resp.data
+    assert b'/vendor-debit-memos' in resp.data
+
+
+def test_sidebar_hides_vendor_debit_memos_link_when_disabled(client, db_session,
+                                                              admin_user, main_branch):
+    _setup(client, admin_user, main_branch, enable=False)
+    _login(client, admin_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    resp = client.get('/dashboard')
+    assert resp.status_code == 200
+    # When disabled, neither the link text nor the URL should appear in sidebar
+    assert b'Vendor Debit Memos' not in resp.data
+    assert b'/vendor-debit-memos' not in resp.data
