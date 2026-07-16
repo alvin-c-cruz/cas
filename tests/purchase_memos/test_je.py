@@ -36,6 +36,13 @@ def test_ap_destination_reduces_referenced_bill_balance(app_ctx, posted_ap_facto
     assert memo.accounts_payable.balance == before - Decimal('1120.00')
 
 
+def test_ap_destination_with_wht_reduces_bill_by_net_of_wht(app_ctx, posted_ap_factory):
+    memo = posted_ap_factory(destination='ap', subtotal='1000', vat='120', wht='10')
+    before = memo.accounts_payable.balance
+    post_purchase_memo_je(memo, user_id=1)
+    assert memo.accounts_payable.balance == before - Decimal('1110.00')
+
+
 def test_cash_and_vendor_credit_destinations(app_ctx, posted_ap_factory):
     m1 = posted_ap_factory(destination='cash_refund', subtotal='1000', vat='120', wht='0')
     before_balance = m1.accounts_payable.balance
