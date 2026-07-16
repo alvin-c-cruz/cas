@@ -102,6 +102,15 @@
       <div><strong>Status:</strong> {{ run.status | capitalize }}</div>
     </div>
 
+    {# Mirrors sales_invoices/detail.html's sv_print_form/sv_print_access
+       condition -- the link must be hidden under the SAME rules
+       _payslip_gate_or_redirect enforces server-side, plus the payslip-only
+       run_type check (SI has no equivalent) as an additional AND. #}
+    {% set payslip_link_visible = payslip_print_form != 'hidden'
+       and ((payslip_print_access == 'posted_only' and run.status == 'posted')
+       or (payslip_print_access == 'draft_and_posted' and run.status not in ('voided', 'cancelled')))
+       and run.run_type == 'regular' %}
+
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Employee Lines</div>
     <div class="table-wrap" style="margin-bottom:28px;">
     <table class="data-table">
@@ -115,7 +124,7 @@
           <th style="text-align:right;">WHT</th>
           <th style="text-align:right;">Loans</th>
           <th style="text-align:right;">Net Pay</th>
-          {% if run.status == 'posted' and run.run_type == 'regular' %}<th></th>{% endif %}
+          {% if payslip_link_visible %}<th></th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -129,7 +138,7 @@
           <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.wht) }}</td>
           <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.sss_loan + line.pagibig_loan) }}</td>
           <td class="mono" style="text-align:right;">{{ '{:,.2f}'.format(line.net_pay) }}</td>
-          {% if run.status == 'posted' and run.run_type == 'regular' %}
+          {% if payslip_link_visible %}
           <td><a href="{{ url_for('payroll.payslip_view', id=run.id, line_id=line.id) }}" class="btn btn-secondary btn-sm" target="_blank">Payslip</a></td>
           {% endif %}
         </tr>

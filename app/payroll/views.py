@@ -578,7 +578,17 @@ def register():
 def view_run(id):
     run = _get_run_or_404(id)
     preview = service.build_je_preview(run)
-    return render_template('payroll/detail.html', run=run, preview=preview, now=ph_now())
+    # Same settings + same defaults _payslip_gate_or_redirect reads -- the
+    # "Payslip" link's visibility must mirror the full route gate (not just
+    # status/run_type), or the link renders when the route itself would
+    # redirect the click away with a flash (BUG-DOCPRINT-ACCESS-GATE-ROUTE-BYPASS
+    # pattern, mirrored from sales_invoices/detail.html's sv_print_form/
+    # sv_print_access condition).
+    payslip_print_form = AppSettings.get_setting('payslip_print_form', 'current')
+    payslip_print_access = AppSettings.get_setting('payslip_print_access', 'posted_only')
+    return render_template('payroll/detail.html', run=run, preview=preview, now=ph_now(),
+                           payslip_print_form=payslip_print_form,
+                           payslip_print_access=payslip_print_access)
 
 
 @payroll_bp.route('/payroll/runs/<int:id>/payslips/<int:line_id>')
