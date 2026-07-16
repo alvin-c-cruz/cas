@@ -1211,7 +1211,7 @@ def view(id):
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
 @login_required
-@staff_or_above_required
+@accountant_or_admin_required
 def post(id):
     invoice = _get_invoice_or_404(id)
     if invoice.status != 'draft':
