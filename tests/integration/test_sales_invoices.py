@@ -794,3 +794,20 @@ def test_si_print_shows_company_account_when_no_salesperson(client, db_session, 
     si = SalesInvoice.query.filter_by(invoice_number='SI-CA-01').first()
     body = client.get(f'/sales-invoices/{si.id}/print').get_data(as_text=True)
     assert 'Company Account' in body
+
+
+def test_staff_cannot_post_invoice(client, db_session, staff_user, accountant_user, customer,
+                                    revenue_account, branch):
+    """BUG-SI-POST-BUTTON-ROLE-MISMATCH: SI must match AP/CR/CD -- posting is accountant/admin only."""
+    staff_user.add_branch(branch)
+    db_session.commit()
+    inv = _make_draft_invoice(db_session, customer, revenue_account, branch, accountant_user)
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch.id
+        sess['_user_id'] = str(staff_user.id)
+    resp = client.post(f'/sales-invoices/{inv.id}/post', data={'csrf_token': 'test'},
+                       follow_redirects=True)
+    assert resp.status_code == 200  # landed on dashboard after the redirect
+    assert b'Only Accountants and Administrators can perform this action.' in resp.data
+    db_session.refresh(inv)
+    assert inv.status == 'draft'  # unchanged -- the post was rejected
