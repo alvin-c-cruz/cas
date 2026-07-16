@@ -565,7 +565,8 @@ def create_app(config_name=None):
         admin) so that the route appears to not exist for this deployment package."""
         from flask import redirect, url_for, request, flash, abort
         from flask_login import current_user
-        from app.users.module_access import module_key_for_endpoint, can_access_module, module_enabled
+        from app.users.module_access import (module_key_for_endpoint, can_access_module,
+                                              module_enabled, can_access_billing_support_endpoint)
 
         if request.endpoint is None or not current_user.is_authenticated:
             return
@@ -573,7 +574,8 @@ def create_app(config_name=None):
         if key:
             if not module_enabled(key):
                 abort(404)   # module not part of this instance's package
-            if not can_access_module(current_user, key):
+            if not can_access_module(current_user, key) \
+               and not can_access_billing_support_endpoint(current_user, request.endpoint):
                 flash('You do not have access to this module.', 'error')
                 return redirect(url_for('dashboard.index'))
 

@@ -219,6 +219,25 @@ def can_access_module(user, key):
     return user.get_book_permissions().get(key, False)
 
 
+# Billing-support endpoints: these two JSON endpoints exist solely to feed the Accounts
+# Payable billing picker (AP's own create form calls them to list billable POs/RRs for a
+# vendor) -- they are not general views of the purchase_orders/receiving_reports modules.
+# A staff user scoped only to 'accounts_payable' (the intended least-privilege AP role) must
+# still reach them even without PO/RR module access. Additive: a user who already has the
+# endpoint's own module access still passes via the normal can_access_module() check in
+# enforce_module_access -- this is only a second, alternate path in, never a narrowing.
+BILLING_SUPPORT_ENDPOINTS = {
+    'purchase_orders.billable_pos': 'accounts_payable',
+    'receiving_reports.billable_rrs': 'accounts_payable',
+}
+
+
+def can_access_billing_support_endpoint(user, endpoint):
+    """True if *user* may reach a billing-support endpoint via its AP-scoped exception."""
+    alt_key = BILLING_SUPPORT_ENDPOINTS.get(endpoint)
+    return alt_key is not None and can_access_module(user, alt_key)
+
+
 def can_toggle(key, enable, enabled_keys, registry=MODULE_REGISTRY):
     """Validate a module toggle against dependencies. Returns (ok, reason)."""
     entry = next((m for m in registry if m['key'] == key), None)
