@@ -53,6 +53,8 @@ SETTINGS_KEYS = [
     'cd_print_form',
     'jv_print_form',
     'payroll_semi_monthly_timing',
+    'payslip_print_access',
+    'payslip_print_form',
 ]
 
 LOGO_SETTING_KEY = 'company_logo'

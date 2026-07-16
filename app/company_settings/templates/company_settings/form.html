@@ -195,6 +195,9 @@
                 {{ render_field(form.cd_print_access) }}
                 {{ render_field(form.cd_check_print_access) }}
                 {{ render_field(form.cr_print_access) }}
+                {% if module_states.payroll %}
+                {{ render_field(form.payslip_print_access) }}
+                {% endif %}
             </div>
         </div>
     </div>
@@ -211,6 +214,9 @@
                 {{ render_field(form.ap_print_form) }}
                 {{ render_field(form.cd_print_form) }}
                 {{ render_field(form.jv_print_form) }}
+                {% if module_states.payroll %}
+                {{ render_field(form.payslip_print_form) }}
+                {% endif %}
             </div>
             {% if not module_states.sales_orders %}
             <div class="form-hint">Enable the Sales Orders module in Packages to configure the

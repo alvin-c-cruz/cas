@@ -170,3 +170,10 @@ class CompanySettingsForm(FlaskForm):
         'Semi-Monthly Statutory Timing', choices=PAYROLL_SEMI_MONTHLY_TIMING_CHOICES,
         default='second_cutoff'
     )
+
+    payslip_print_access = SelectField(
+        'Payslip Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
+    )
+    payslip_print_form = SelectField(
+        'Payslip Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
+    )
