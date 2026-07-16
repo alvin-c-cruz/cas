@@ -29,6 +29,9 @@
   <p><strong>Destination:</strong> {{ dest_label.get(memo.destination, memo.destination) }}</p>
   {% if memo.reference %}<p><strong>Reference:</strong> {{ memo.reference }}</p>{% endif %}
   {% if memo.void_reason %}<p><strong>Void reason:</strong> {{ memo.void_reason }}</p>{% endif %}
+  <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">
+    Created by {{ created_by.username if created_by else '—' }} on {{ memo.created_at.strftime('%b %d, %Y %H:%M') if memo.created_at else '—' }}
+  </div>
 </div></div>
 
 <div class="card"><div class="card-body">

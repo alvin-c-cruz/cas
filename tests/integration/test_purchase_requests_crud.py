@@ -67,3 +67,13 @@ def test_list_and_view_show_pr(client, accountant_user, main_branch, db_session)
     pr = PurchaseRequest.query.first()
     assert bytes(pr.pr_number, 'utf-8') in client.get('/purchase-requests').data
     assert client.get(f'/purchase-requests/{pr.id}').status_code == 200
+
+
+def test_detail_page_shows_created_by(client, accountant_user, main_branch, db_session):
+    _login(client, accountant_user, main_branch)
+    _create(client)
+    from app.purchase_requests.models import PurchaseRequest
+    pr = PurchaseRequest.query.first()
+    resp = client.get(f'/purchase-requests/{pr.id}')
+    assert b'Created by' in resp.data
+    assert b'accountant' in resp.data
