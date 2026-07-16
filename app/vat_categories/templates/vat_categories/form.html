@@ -44,7 +44,7 @@
 
                 <div class="form-row-2">
                     <div class="form-group">
-                        {{ form.rate.label(class="form-label") }}<span class="required" aria-hidden="true">*</span>
+                        <label class="form-label" for="{{ form.rate.id }}">{{ form.rate.label.text }}<span class="required" aria-hidden="true">*</span></label>
                         <div class="rate-input-wrapper">
                             {{ form.rate(class="form-control rate-input", **{"data-rate-input": "true"}) }}
                             <span class="rate-preview" id="ratePreview">0.00%</span>
