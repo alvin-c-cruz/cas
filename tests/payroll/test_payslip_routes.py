@@ -201,3 +201,35 @@ class TestPayslipPrintAll:
         resp = client.get(f'/payroll/runs/{run.id}/payslips', follow_redirects=True)
         assert resp.status_code == 200
         assert b'not eligible for payslip printing' in resp.data
+
+    def test_print_all_button_shown_for_posted_regular_run_by_default(
+            self, client, posted_run_factory, login_user, accountant_user,
+            db_session, main_branch):
+        """detail.html's "Print All Payslips" button must itself read
+        payslip_link_visible correctly -- TestPayslipLinkMirrorsRouteGate's
+        two tests only prove the SHARED {% set %} variable's truth value via
+        the per-line "Payslip" link; they cannot catch a mutation isolated to
+        the button's own {% if %} (e.g. a typo'd variable name at that one
+        spot). This test exercises the button's own conditional directly."""
+        run = posted_run_factory()
+        run2 = self._post_run(client, run, login_user, accountant_user, db_session, main_branch)
+
+        resp = client.get(f'/payroll/runs/{run2.id}')
+        assert resp.status_code == 200
+        assert b'Print All Payslips' in resp.data
+
+    def test_print_all_button_hidden_when_print_form_hidden(
+            self, client, posted_run_factory, login_user, accountant_user,
+            db_session, main_branch):
+        """Negative counterpart -- with payslip_print_form='hidden', the
+        button must not render, proving the button's own {% if %} actually
+        reads payslip_link_visible rather than always rendering."""
+        from app.settings import AppSettings
+        run = posted_run_factory()
+        run2 = self._post_run(client, run, login_user, accountant_user, db_session, main_branch)
+        AppSettings.set_setting('payslip_print_form', 'hidden', updated_by='test')
+        db.session.commit()
+
+        resp = client.get(f'/payroll/runs/{run2.id}')
+        assert resp.status_code == 200
+        assert b'Print All Payslips' not in resp.data
