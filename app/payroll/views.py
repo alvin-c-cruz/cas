@@ -609,8 +609,45 @@ def payslip_view(id, line_id):
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
+    # 'preprinted' -> drag-positioned, data-only layout for physical pre-printed
+    # payslip stock (mirrors sales_invoices.print_invoice's sv_print_form branch);
+    # else the standard self-contained printable payslip.
+    payslip_print_form = AppSettings.get_setting('payslip_print_form', 'current')
+    if payslip_print_form == 'preprinted':
+        from app.payroll.preprinted_layout import (
+            get_layout, FIELD_LABELS, FONT_GROUPS, PAPER_SIZES, PAPER_LABELS,
+            DATE_FORMATS, TEXT_KEYS,
+        )
+        return render_template(
+            'payroll/payslip_print_preprinted.html', run=run, line=line, ytd=ytd,
+            company=company, printed_at=ph_now(),
+            layout=get_layout(run.branch_id), can_edit_layout=current_user.has_full_access,
+            field_labels=FIELD_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, signatory_ids=TEXT_KEYS,
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('payroll/payslip.html', run=run, line=line, ytd=ytd,
                            company=company, printed_at=ph_now())
+
+
+@payroll_bp.route('/payroll/payslip-print-layout', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def save_payslip_print_layout():
+    """Persist the payslip pre-printed layout JSON (full-access: admin or Chief
+    Accountant). Mirrors sales_invoices.save_print_layout's shape exactly: a JSON
+    POST from payslip_preprinted_designer.js (which reads resp.ok), guarded by
+    has_full_access -> 403, returning the sanitized layout as JSON. The layout is
+    per-branch; viewing the print page requires the selected branch to equal the
+    run's branch (_get_run_or_404), so the session branch is the run's branch."""
+    from app.payroll.preprinted_layout import save_layout
+    if not current_user.has_full_access:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    clean = save_layout(session.get('selected_branch_id'), data,
+                        updated_by=current_user.username)
+    from flask import jsonify
+    return jsonify(ok=True, layout=clean)
 
 
 @payroll_bp.route('/payroll/runs/<int:id>/payslips')

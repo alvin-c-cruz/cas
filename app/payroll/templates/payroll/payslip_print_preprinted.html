@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Payslip — {{ line.employee_name }} — Pre-printed</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/payslip_preprinted_designer.css') }}?v=1">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
+  /* Canvas size is paper-driven (set inline; JS updates it live on paper change). */
+  .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
+  .pp-el { position: absolute; white-space: nowrap; }
+  /* Empty value fields are invisible/zero-size; give them a grab target while editing. */
+  .pp-canvas.pp-editing .pp-el:empty::before { content: attr(data-el); color: #bbb; font-style: italic; }
+  /* Hidden fields: gone in view/print; shown greyed while editing so they can be restored. */
+  .pp-field-hidden { display: none; }
+  .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
+  /* Layout-only signature texts: dotted outline in edit mode; double-click to type. */
+  .pp-canvas.pp-editing .pp-text { outline: 1px dotted #1565c0; }
+  .pp-canvas.pp-editing .pp-text[contenteditable="true"] { outline: 2px solid #1565c0; cursor: text; background: #fff; }
+  /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins for CONTINUOUS stock
+     (the holes). Dropped for cut sheets (letter). Never printed. */
+  .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
+  body:not([data-paper="continuous"]) .pp-margin-guide { display: none; }
+  .pp-col-controls { max-width: 912px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+  .pp-col-controls.pp-show { display: flex; }
+  .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+  .pp-toolbar { max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .btn-print { background: #1565c0; color: #fff; }
+  .btn-close { background: #666; color: #fff; }
+  .btn-edit  { background: #2e7d32; color: #fff; }
+  @media print {
+    body { background: #fff; }
+    .screen-only { display: none !important; }
+    .pp-canvas { margin: 0; }
+  }
+</style>
+<style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
+</head>
+<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
+
+{% macro field(key, value, iso='') %}
+  {% set f = layout.fields[key] %}
+  <div class="pp-el{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}
+       style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
+{% endmacro %}
+
+{% macro field_extra(ex, value, iso='') %}
+  <div class="pp-el" data-el="{{ ex.key }}" data-label="{{ field_labels[ex.key] }}" data-extra="1"{% if iso %} data-date="{{ iso }}"{% endif %}
+       style="left:{{ ex.x }}px;top:{{ ex.y }}px;font-size:{{ ex.fontSize }}px;font-weight:{{ 'bold' if ex.bold else 'normal' }};">{{ value }}</div>
+{% endmacro %}
+
+<div class="pp-toolbar screen-only">
+  <button type="button" class="btn btn-print" onclick="window.print()">Print</button>
+  <button type="button" class="btn btn-close" onclick="window.close()">Close</button>
+  {% if can_edit_layout %}
+  <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
+  <select id="ppPaper" class="screen-only" style="display:none;">
+    {% for key, sz in paper_sizes.items() %}
+    <option value="{{ key }}" data-w="{{ sz.w }}" data-h="{{ sz.h }}" data-css="{{ sz.css }}" {{ 'selected' if key == layout.paper else '' }}>{{ paper_labels[key] }}</option>
+    {% endfor %}
+  </select>
+  <select id="ppFontFamily" class="screen-only" style="display:none;">
+    {% for group, fonts in font_groups %}
+    <optgroup label="{{ group }}">
+      {% for font in fonts %}
+      <option value="{{ font }}" {{ 'selected' if font == layout.page.fontFamily else '' }}>{{ font.split(',')[0].replace('"','') }}</option>
+      {% endfor %}
+    </optgroup>
+    {% endfor %}
+  </select>
+  <select id="ppDateFormat" class="screen-only" style="display:none;" title="Date format">
+    {% for key in date_formats %}
+    <option value="{{ key }}" {{ 'selected' if key == layout.dateFormat else '' }}>{{ date_labels[key] }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+</div>
+
+{% if can_edit_layout %}
+<div id="ppFieldControls" class="pp-col-controls screen-only"></div>
+{% endif %}
+
+<div class="pp-canvas" id="ppCanvas" style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
+  <div class="pp-margin-guide screen-only" style="left:48px;"></div>
+  <div class="pp-margin-guide screen-only" style="right:48px;"></div>
+  {# Values only — the pre-printed stock supplies every label/header. Field-name ->
+     source mapping mirrors payroll/_payslip_body.html (line.*, line.employee.*, run.*,
+     ytd.*). NOTE: the 'basic_pay' layout key maps to the model's line.basic_gross
+     column (the model has no 'basic_pay' attribute). #}
+  {% set date_fmt = date_formats[layout.dateFormat] %}
+  {% set field_values = {
+    'employee_name': line.employee_name,
+    'position': line.employee.position or '',
+    'date_hired': line.employee.date_hired.strftime(date_fmt) if line.employee.date_hired else '',
+    'tin': line.employee.tin or '',
+    'sss_no': line.employee.sss_no or '',
+    'philhealth_no': line.employee.philhealth_no or '',
+    'pagibig_no': line.employee.pagibig_no or '',
+    'pay_period': run.period_start.strftime('%d %b') ~ ' – ' ~ run.period_end.strftime('%d %b %Y'),
+    'pay_date': run.pay_date.strftime(date_fmt),
+    'basic_pay': '{:,.2f}'.format(line.basic_gross or 0),
+    'gross_pay': '{:,.2f}'.format(line.gross_pay or 0),
+    'sss_ee': '{:,.2f}'.format(line.sss_ee or 0),
+    'philhealth_ee': '{:,.2f}'.format(line.philhealth_ee or 0),
+    'pagibig_ee': '{:,.2f}'.format(line.pagibig_ee or 0),
+    'wht': '{:,.2f}'.format(line.wht or 0),
+    'sss_loan': '{:,.2f}'.format(line.sss_loan or 0),
+    'pagibig_loan': '{:,.2f}'.format(line.pagibig_loan or 0),
+    'net_pay': '{:,.2f}'.format(line.net_pay or 0),
+    'ytd_gross': '{:,.2f}'.format(ytd.gross_pay or 0),
+    'ytd_wht': '{:,.2f}'.format(ytd.wht or 0),
+    'ytd_net': '{:,.2f}'.format(ytd.net_pay or 0),
+  } %}
+  {% set field_isos = {
+    'date_hired': line.employee.date_hired.isoformat() if line.employee.date_hired else '',
+    'pay_date': run.pay_date.isoformat(),
+  } %}
+  {% for key in field_values %}{{ field(key, field_values[key], field_isos.get(key, '')) }}{% endfor %}
+  {# Duplicated copies #}
+  {% for ex in layout.extras %}{{ field_extra(ex, field_values[ex.key], field_isos.get(ex.key, '')) }}{% endfor %}
+  {# Layout-only editable signature texts (preparer / checker / approver) — not record data #}
+  {% for t in layout.texts %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"{{ ' data-signatory="1"' if t.id in signatory_ids else '' }} style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>{% endfor %}
+</div>
+
+{% if can_edit_layout %}
+<script src="{{ url_for('static', filename='js/payslip_preprinted_designer.js') }}?v=1"></script>
+{% endif %}
+</body>
+</html>
