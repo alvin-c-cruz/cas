@@ -314,18 +314,14 @@
           return;
         }
 
-        if (input.type === 'checkbox' || input.type === 'radio') {
-          // For checkboxes with the same name (like withholding_tax_ids), store as array
-          if (input.name === 'withholding_tax_ids') {
-            if (!this.originalValues[input.name]) {
-              this.originalValues[input.name] = [];
-            }
-            if (input.checked) {
-              this.originalValues[input.name].push(input.value);
-            }
-          } else {
-            this.originalValues[input.name] = input.checked;
-          }
+        if (input.tagName === 'SELECT' && input.multiple) {
+          // Multi-selects (native <select multiple>, incl. Choices-enhanced ones like
+          // withholding_tax_ids/branch_ids): input.value only reflects the first selected
+          // option, so store the full selected set instead.
+          this.originalValues[input.name] = Array.from(input.selectedOptions)
+            .map(o => o.value).sort();
+        } else if (input.type === 'checkbox' || input.type === 'radio') {
+          this.originalValues[input.name] = input.checked;
         } else {
           this.originalValues[input.name] = input.value;
         }
@@ -348,30 +344,21 @@
       const inputs = this.form.querySelectorAll('input, select, textarea');
       let hasChanges = false;
 
-      // Special handling for withholding_tax_ids checkboxes
-      const wtCheckboxes = this.form.querySelectorAll('input[name="withholding_tax_ids"]');
-      if (wtCheckboxes.length > 0) {
-        const currentWtIds = [];
-        wtCheckboxes.forEach(cb => {
-          if (cb.checked) {
-            currentWtIds.push(cb.value);
-          }
-        });
-
-        const originalWtIds = this.originalValues['withholding_tax_ids'] || [];
-        // Compare arrays
-        if (currentWtIds.length !== originalWtIds.length ||
-            !currentWtIds.every(id => originalWtIds.includes(id))) {
-          hasChanges = true;
-        }
-      }
-
       inputs.forEach(input => {
-        // Skip CSRF token, hidden fields, data-no-track inputs, and withholding_tax_ids (handled above)
+        // Skip CSRF token, hidden fields, and data-no-track inputs
         if (input.name === 'csrf_token' ||
             input.type === 'hidden' ||
-            input.hasAttribute('data-no-track') ||
-            input.name === 'withholding_tax_ids') {
+            input.hasAttribute('data-no-track')) {
+          return;
+        }
+
+        if (input.tagName === 'SELECT' && input.multiple) {
+          const currentIds = Array.from(input.selectedOptions).map(o => o.value).sort();
+          const originalIds = this.originalValues[input.name] || [];
+          if (currentIds.length !== originalIds.length ||
+              !currentIds.every((id, i) => id === originalIds[i])) {
+            hasChanges = true;
+          }
           return;
         }
 
