@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% set dest_label = {'ap': 'Accounts Payable',
+                     'cash_refund': 'Cash',
+                     'vendor_credit': 'Vendor credit balance'} %}
+{% block title %}Vendor Debit Memo {{ memo.memo_number }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Vendor Debit Memo {{ memo.memo_number }}</h1>
+  <div class="page-actions">
+    <a href="{{ url_for('purchase_memos.debit_list') }}" class="btn btn-secondary btn-sm">Back to list</a>
+    <a href="{{ url_for('purchase_memos.debit_print', id=memo.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    {% if memo.status == 'draft' and can_manage %}
+    <form method="POST" action="{{ url_for('purchase_memos.debit_post', id=memo.id) }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <button type="submit" class="btn btn-primary btn-sm">Post</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card"><div class="card-body">
+  <div class="form-row">
+    <div><strong>Status:</strong> {{ memo.status|capitalize }}</div>
+    <div><strong>Date:</strong> {{ memo.memo_date.strftime('%b %d, %Y') }}</div>
+    <div><strong>Against bill:</strong> {{ memo.original_ap_number }}</div>
+  </div>
+  <p><strong>Vendor:</strong> {{ memo.vendor_name }}{% if memo.vendor_tin %} (TIN {{ memo.vendor_tin }}){% endif %}</p>
+  <p><strong>Reason:</strong> {{ memo.reason }}</p>
+  <p><strong>Destination:</strong> {{ dest_label.get(memo.destination, memo.destination) }}</p>
+  {% if memo.reference %}<p><strong>Reference:</strong> {{ memo.reference }}</p>{% endif %}
+  {% if memo.void_reason %}<p><strong>Void reason:</strong> {{ memo.void_reason }}</p>{% endif %}
+  <div style="margin-top:24px; padding-top:24px; border-top:1px solid var(--border); font-size:12px; color:var(--text-3);">
+    Created by {{ created_by.username if created_by else '—' }} on {{ memo.created_at.strftime('%b %d, %Y %H:%M') if memo.created_at else '—' }}
+  </div>
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2 class="card-title">Lines</h2>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr><th>#</th><th>Product</th><th>VT</th><th>WT</th><th class="text-right">Amount</th></tr>
+      </thead>
+      <tbody>
+      {% for li in memo.line_items %}
+        <tr>
+          <td>{{ li.line_number }}</td>
+          <td>{% if li.product %}{{ li.product.code }}: {{ li.product.name }}{% else %}(item){% endif %}</td>
+          <td>{{ li.vat_category or '' }}</td>
+          <td>{% if li.wt_rate %}{{ li.wt_rate }}%{% endif %}</td>
+          <td class="text-right">{{ '%.2f'|format(li.amount) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr><td colspan="4" class="text-right"><strong>Subtotal</strong></td><td class="text-right">{{ '%.2f'|format(memo.subtotal) }}</td></tr>
+        <tr><td colspan="4" class="text-right">VAT</td><td class="text-right">{{ '%.2f'|format(memo.vat_amount) }}</td></tr>
+        {% if memo.withholding_tax_amount %}<tr><td colspan="4" class="text-right">Withholding Tax</td><td class="text-right">{{ '%.2f'|format(memo.withholding_tax_amount) }}</td></tr>{% endif %}
+        <tr><td colspan="4" class="text-right"><strong>Total</strong></td><td class="text-right"><strong>{{ '%.2f'|format(memo.total_amount) }}</strong></td></tr>
+      </tfoot>
+    </table>
+  </div>
+  <p class="form-hint">Amounts in PHP.</p>
+</div></div>
+
+{% if memo.status != 'voided' and can_manage %}
+<div class="card"><div class="card-body">
+  <h2 class="card-title">Void this memo</h2>
+  <form method="POST" action="{{ url_for('purchase_memos.debit_void', id=memo.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <div class="form-group">
+      <label class="form-label" for="void_reason">Reason (min 10 characters)</label>
+      <textarea id="void_reason" name="void_reason" class="form-control" rows="2" required minlength="10"></textarea>
+    </div>
+    <button type="submit" class="btn btn-danger btn-sm">Void Vendor Debit Memo</button>
+  </form>
+</div></div>
+{% endif %}
+{% endblock %}

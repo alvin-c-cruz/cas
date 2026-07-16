@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Purchase Memo Settings{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Purchase Memo Settings</h1>
+  <a href="{{ url_for('purchase_memos.debit_list') }}" class="btn btn-secondary btn-sm">Back</a>
+</div>
+
+<div class="card"><div class="card-body">
+  <h2 class="card-title">Assigned Accounts</h2>
+  <p>These accounts are used when a Vendor Debit Memo posts its journal entry. They are
+     per-instance and deliberately not seeded — assign them to your Chart of Accounts.</p>
+  {% if not accounts_assigned %}
+  <p class="form-error">Both accounts must be assigned before a memo can be posted.</p>
+  {% endif %}
+  <form method="POST" action="{{ url_for('purchase_memos.save_accounts') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <div class="form-group">
+      <label class="form-label" for="pra">Purchase Returns &amp; Allowances
+        <span class="form-hint">(contra-expense, credited by a vendor debit memo)</span></label>
+      <select id="pra" name="purchase_returns_allowances_account_code" class="form-control">
+        <option value="">— Not assigned —</option>
+        {% for a in accounts %}
+        <option value="{{ a.code }}" {% if a.code == returns_code %}selected{% endif %}>{{ a.code }} - {{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="vca">Vendor Credits
+        <span class="form-hint">(liability; holds a credit destined for a future bill)</span></label>
+      <select id="vca" name="vendor_credits_account_code" class="form-control">
+        <option value="">— Not assigned —</option>
+        {% for a in accounts %}
+        <option value="{{ a.code }}" {% if a.code == credits_code %}selected{% endif %}>{{ a.code }} - {{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

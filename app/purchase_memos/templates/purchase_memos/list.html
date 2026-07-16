@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Vendor Debit Memos{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Vendor Debit Memos</h1>
+  <div class="page-actions">
+    <a href="{{ url_for('purchase_memos.debit_create') }}" class="btn btn-primary btn-sm">+ Enter Vendor Debit Memo</a>
+    {% if can_configure %}
+    <a href="{{ url_for('purchase_memos.settings') }}" class="btn btn-secondary btn-sm">Settings</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card"><div class="card-body">
+  {% if memos %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Memo #</th><th>Date</th><th>Bill</th><th>Vendor</th>
+          <th class="text-right">Total</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for m in memos %}
+        <tr>
+          <td><a href="{{ url_for('purchase_memos.debit_view', id=m.id) }}">{{ m.memo_number }}</a></td>
+          <td>{{ m.memo_date.strftime('%b %d, %Y') }}</td>
+          <td>{{ m.original_ap_number }}</td>
+          <td>{{ m.vendor_name }}</td>
+          <td class="text-right">{{ '%.2f'|format(m.total_amount) }}</td>
+          <td>{{ m.status|capitalize }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p>No vendor debit memos found.</p>
+  {% endif %}
+</div></div>
+{% endblock %}

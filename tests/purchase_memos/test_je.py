@@ -29,18 +29,23 @@ def test_debit_memo_je_ties_and_inverts(app_ctx, posted_ap_factory):
     assert je.total_debit == je.total_credit == Decimal('1120.00')
 
 
-def test_ap_destination_reduces_referenced_bill_balance(app_ctx, posted_ap_factory):
+def test_je_builder_does_not_touch_referenced_bill_balance(app_ctx, posted_ap_factory):
+    """Adjudication 1 (Task 4): post_purchase_memo_je builds the JE ONLY -- the
+    AP-balance reduction moved to app/purchase_memos/views.py::_apply_memo_to_ap
+    (called from debit_post), mirroring sales_memos/je.py::post_memo_je, which
+    likewise never touches the AR balance. See tests/purchase_memos/test_crud_gating.py
+    for the view-layer reduction test (single reduction site, proven end-to-end)."""
     memo = posted_ap_factory(destination='ap', subtotal='1000', vat='120', wht='0')
     before = memo.accounts_payable.balance
     post_purchase_memo_je(memo, user_id=1)
-    assert memo.accounts_payable.balance == before - Decimal('1120.00')
+    assert memo.accounts_payable.balance == before   # unchanged by the JE builder
 
 
-def test_ap_destination_with_wht_reduces_bill_by_net_of_wht(app_ctx, posted_ap_factory):
+def test_je_builder_with_wht_still_does_not_touch_bill_balance(app_ctx, posted_ap_factory):
     memo = posted_ap_factory(destination='ap', subtotal='1000', vat='120', wht='10')
     before = memo.accounts_payable.balance
     post_purchase_memo_je(memo, user_id=1)
-    assert memo.accounts_payable.balance == before - Decimal('1110.00')
+    assert memo.accounts_payable.balance == before   # unchanged by the JE builder
 
 
 def test_cash_and_vendor_credit_destinations(app_ctx, posted_ap_factory):

@@ -277,6 +277,7 @@ def create_app(config_name=None):
     from app.receiving_reports.views import receiving_reports_bp
     from app.purchase_requests.views import purchase_requests_bp
     from app.sales_memos.views import sales_memos_bp
+    from app.purchase_memos.views import purchase_memos_bp
     from app.opening_balances.views import opening_balances_bp
     from app.payroll.views import payroll_bp
     from app.permission_requests.views import permission_requests_bp
@@ -316,6 +317,7 @@ def create_app(config_name=None):
     app.register_blueprint(receiving_reports_bp)
     app.register_blueprint(purchase_requests_bp)
     app.register_blueprint(sales_memos_bp)
+    app.register_blueprint(purchase_memos_bp)
     app.register_blueprint(opening_balances_bp)
     app.register_blueprint(payroll_bp)
     app.register_blueprint(permission_requests_bp)

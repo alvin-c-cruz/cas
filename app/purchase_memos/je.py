@@ -28,6 +28,15 @@ WHT debited; contra + VAT credited) mirrors the credit-memo branch. This is the
 Follows the posted-JE-leg-vs-header invariant: the non-plug legs equal the memo
 header buckets by construction; the destination is the reconciled residual (only
 sub-centavo VAT-bucket rounding ever lands there).
+
+Adjudication 1 (Task 4, binding): this module builds the JE ONLY -- it does NOT
+mutate the referenced AP bill's balance. That mirrors sales_memos/je.py::post_memo_je,
+which likewise leaves AR-balance mutation to the VIEW layer
+(sales_memos/views.py::_apply_memo_to_ar / _reverse_memo_from_ar). Task 3
+originally reduced the bill's balance here (gated behind is_balanced); that has
+been MOVED to app/purchase_memos/views.py::_apply_memo_to_ap /
+_reverse_memo_from_ap (called from debit_post / debit_void) to restore mirror
+parity -- there is exactly ONE reduction site now.
 """
 from decimal import Decimal
 
@@ -124,9 +133,35 @@ def post_purchase_memo_je(memo, user_id):
         raise ValueError(
             f'Debit Memo JE is not balanced (debit={je.total_debit}, credit={je.total_credit}).')
 
-    if memo.destination == 'ap':
-        bill = memo.accounts_payable
-        bill.amount_paid = Decimal(str(bill.amount_paid or 0)) + total
-        bill.balance = Decimal(str(bill.total_amount)) - bill.amount_paid
+    return je
 
+
+def reverse_purchase_memo_je(memo, user_id):
+    """Post a reversing JE (swap debit/credit of the memo's JE) when a posted memo is voided.
+    Returns the reversal JE, or None if the memo has no JE (a draft void). Mirror of
+    sales_memos.je.reverse_memo_je."""
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    src = memo.journal_entry
+    if src is None:
+        return None
+    je = JournalEntry(
+        entry_number=generate_entry_number(memo.branch_id),
+        entry_date=ph_now().date(),
+        description=f'Void Debit Memo {memo.memo_number} - {memo.vendor_name}',
+        reference=memo.memo_number, entry_type='reversal', branch_id=memo.branch_id,
+        created_by_id=user_id, status='posted', posted_by_id=user_id, posted_at=ph_now(),
+        is_balanced=False, total_debit=Decimal('0.00'), total_credit=Decimal('0.00'))
+    db.session.add(je)
+    db.session.flush()
+    n = 1
+    for l in (JournalEntryLine.query.filter_by(entry_id=src.id)
+              .order_by(JournalEntryLine.line_number).all()):
+        db.session.add(JournalEntryLine(
+            entry_id=je.id, line_number=n, account_id=l.account_id,
+            description=f'Reversal: {l.description}',
+            debit_amount=l.credit_amount, credit_amount=l.debit_amount))
+        n += 1
+    db.session.flush()
+    je.calculate_totals()
     return je
