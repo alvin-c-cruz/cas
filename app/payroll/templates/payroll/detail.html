@@ -68,6 +68,19 @@
 </div>
 {% endif %}
 
+{# Mirrors sales_invoices/detail.html's sv_print_form/sv_print_access
+   condition -- both the per-line "Payslip" links AND the "Print All
+   Payslips" button below must be hidden under the SAME rules
+   _payslip_gate_or_redirect enforces server-side, plus the payslip-only
+   run_type check (SI has no equivalent) as an additional AND. Computed
+   here (before card-header-actions) rather than down in card-body where
+   it was originally set, so both consumers can read it -- a template
+   {% set %} is only visible to markup that renders AFTER it. #}
+{% set payslip_link_visible = payslip_print_form != 'hidden'
+   and ((payslip_print_access == 'posted_only' and run.status == 'posted')
+   or (payslip_print_access == 'draft_and_posted' and run.status not in ('voided', 'cancelled')))
+   and run.run_type == 'regular' %}
+
 <div class="card">
   <div class="card-header">
     <div style="display:flex;align-items:center;gap:12px;">
@@ -85,6 +98,9 @@
       {% if (current_user.has_full_access or current_user.role == 'accountant') and run.status == 'posted' %}
       <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Run</button>
       {% endif %}
+      {% if payslip_link_visible %}
+      <a href="{{ url_for('payroll.payslip_print_all', id=run.id) }}" class="btn btn-secondary" target="_blank">Print All Payslips</a>
+      {% endif %}
       <a href="{{ url_for('payroll.register') }}" class="btn btn-secondary">← Back</a>
     </div>
   </div>
@@ -101,15 +117,6 @@
       <div><strong>Created By:</strong> {{ run.created_by.username if run.created_by else '—' }}</div>
       <div><strong>Status:</strong> {{ run.status | capitalize }}</div>
     </div>
-
-    {# Mirrors sales_invoices/detail.html's sv_print_form/sv_print_access
-       condition -- the link must be hidden under the SAME rules
-       _payslip_gate_or_redirect enforces server-side, plus the payslip-only
-       run_type check (SI has no equivalent) as an additional AND. #}
-    {% set payslip_link_visible = payslip_print_form != 'hidden'
-       and ((payslip_print_access == 'posted_only' and run.status == 'posted')
-       or (payslip_print_access == 'draft_and_posted' and run.status not in ('voided', 'cancelled')))
-       and run.run_type == 'regular' %}
 
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">Employee Lines</div>
     <div class="table-wrap" style="margin-bottom:28px;">

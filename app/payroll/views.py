@@ -613,6 +613,25 @@ def payslip_view(id, line_id):
                            company=company, printed_at=ph_now())
 
 
+@payroll_bp.route('/payroll/runs/<int:id>/payslips')
+@login_required
+@accountant_or_admin_required
+def payslip_print_all(id):
+    run = _get_run_or_404(id)
+    gate = _payslip_gate_or_redirect(run)
+    if gate:
+        return gate
+
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    slips = [(line, service.ytd_totals(line.employee_id, run)) for line in run.lines]
+    return render_template('payroll/payslip_print_all.html', run=run, slips=slips,
+                           company=company, printed_at=ph_now())
+
+
 @payroll_bp.route('/payroll/runs/new', methods=['GET', 'POST'])
 @login_required
 @staff_or_above_required

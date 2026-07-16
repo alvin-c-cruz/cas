@@ -172,3 +172,32 @@ class TestPayslipLinkMirrorsRouteGate:
         resp = client.get(f'/payroll/runs/{run2.id}')
         assert resp.status_code == 200
         assert b'>Payslip</a>' in resp.data
+
+
+class TestPayslipPrintAll:
+    def _post_run(self, client, run, login_user, accountant_user, db_session, main_branch):
+        login_user(client, 'accountant', 'accountant123')
+        resp = client.post(f'/payroll/runs/{run.id}/post', data={
+            'row_version': str(run.row_version),
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        db.session.expire_all()
+        return db.session.get(PayrollRun, run.id)
+
+    def test_print_all_shows_every_line(self, client, posted_run_factory, login_user,
+                                         accountant_user, db_session, main_branch):
+        run = posted_run_factory()
+        run2 = self._post_run(client, run, login_user, accountant_user, db_session, main_branch)
+        resp = client.get(f'/payroll/runs/{run2.id}/payslips')
+        assert resp.status_code == 200
+        for line in run2.lines:
+            assert line.employee_name.encode() in resp.data
+
+    def test_print_all_respects_same_gate_as_single(self, client, posted_run_factory,
+                                                      login_user, accountant_user,
+                                                      db_session, main_branch):
+        run = posted_run_factory()  # draft
+        login_user(client, 'accountant', 'accountant123')
+        resp = client.get(f'/payroll/runs/{run.id}/payslips', follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'not eligible for payslip printing' in resp.data
