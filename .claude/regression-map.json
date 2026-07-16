@@ -3,6 +3,7 @@
   "version": 1,
   "blast_radius": {
     "app/static/search-select.js":        ["accounts_payable", "cash_disbursements", "sales_invoices", "cash_receipts", "opening_balances"],
+    "app/static/js/cas-ui.js":            ["vendors", "accounts_payable", "cash_disbursements", "sales_invoices"],
     "app/static/vendor-quick-add.js":      ["accounts_payable", "cash_disbursements"],
     "app/static/vendor-form-widgets.js":   ["accounts_payable", "cash_disbursements", "sales_invoices"],
     "app/static/transaction-utils.js":     ["accounts_payable", "cash_disbursements", "sales_invoices", "cash_receipts", "opening_balances"],
