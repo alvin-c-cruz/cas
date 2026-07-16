@@ -14,6 +14,7 @@ import json
 
 from app.accounts.approval_models import AccountChangeRequest
 from app.vat_categories.models import VATCategoryChangeRequest
+from app.sales_vat_categories.models import SalesVATCategoryChangeRequest
 from app.withholding_tax.models import WithholdingTaxChangeRequest
 from app.users.approved_emails import ApprovedEmail
 from app.opening_balances.approval_models import OpeningBalanceChangeRequest
@@ -96,6 +97,19 @@ def gather_approval_items(user):
             'reviewUrl': '/vat-categories/change-requests/{}/review'.format(req.id),
         })
 
+    for req in SalesVATCategoryChangeRequest.query.filter_by(status='pending').all():
+        proposed = json.loads(req.proposed_data) if req.proposed_data else {}
+        desc = proposed.get('name', 'Sales VAT Category') if req.action == 'create' \
+            else '{} — {}'.format(proposed.get('name', 'Sales VAT Category'), req.action)
+        items.append({
+            'type': 'Sales VAT Category', 'icon': '📊',
+            'id': proposed.get('code', req.id), 'desc': desc,
+            'by': req.requested_by.username if req.requested_by else '—',
+            'when': req.requested_at.strftime('%Y-%m-%d %H:%M') if req.requested_at else '—',
+            'state': 'Pending', 'reason': req.request_reason,
+            'reviewUrl': '/sales-vat-categories/change-requests/{}/review'.format(req.id),
+        })
+
     for req in WithholdingTaxChangeRequest.query.filter_by(status='pending').all():
         proposed = json.loads(req.proposed_data) if req.proposed_data else {}
         desc = proposed.get('name', 'Withholding Tax') if req.action == 'create' \
@@ -164,6 +178,7 @@ def count_action_items(user, branch_id):
     if user.has_full_access or user.role == 'accountant':
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()
+        n += SalesVATCategoryChangeRequest.query.filter_by(status='pending').count()
         n += WithholdingTaxChangeRequest.query.filter_by(status='pending').count()
         n += OpeningBalanceChangeRequest.query.filter_by(status='pending').count()
     if user.has_full_access:
