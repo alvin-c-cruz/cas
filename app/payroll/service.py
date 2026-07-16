@@ -429,6 +429,56 @@ def compute_thirteenth_month(employee, year):
     return _q2(total / 12)
 
 
+def ytd_totals(employee_id, through_run):
+    """Year-to-date totals for the payslip's YTD block: sum of
+    basic_gross/gross_pay/taxable_comp/wht/sss_ee/philhealth_ee/pagibig_ee/net_pay
+    across every POSTED regular-run line for this employee in
+    through_run.period_year, up to and including through_run itself.
+
+    Ordered by (period_end, semi_period) rather than period_end alone --
+    semi-monthly can produce two runs landing in the same calendar month, so
+    period_end alone can't distinguish "cutoff 1" from "cutoff 2" of the same
+    month. A voided/cancelled run, a different employee's run, a prior-year
+    run, and any run_type='13th_month' run are all excluded -- same posted/
+    regular-only philosophy as compute_thirteenth_month above.
+
+    Args:
+        employee_id: int, Employee.id.
+        through_run: PayrollRun ORM object -- reads .period_year, .period_end,
+            .semi_period only.
+
+    Returns:
+        dict with 8 Decimal keys (each _q2-quantized): basic_gross, gross_pay,
+        taxable_comp, wht, sss_ee, philhealth_ee, pagibig_ee, net_pay.
+        All zero if the employee has no qualifying posted runs -- never raises.
+    """
+    from sqlalchemy import func, or_, and_
+    from app.payroll.models import PayrollRun, PayrollRunLine
+
+    fields = ('basic_gross', 'gross_pay', 'taxable_comp', 'wht',
+              'sss_ee', 'philhealth_ee', 'pagibig_ee', 'net_pay')
+    sums = {f: func.sum(getattr(PayrollRunLine, f)) for f in fields}
+
+    row = (PayrollRunLine.query
+           .join(PayrollRun, PayrollRunLine.run_id == PayrollRun.id)
+           .filter(PayrollRunLine.employee_id == employee_id)
+           .filter(PayrollRun.run_type == 'regular')
+           .filter(PayrollRun.status == 'posted')
+           .filter(PayrollRun.period_year == through_run.period_year)
+           .filter(or_(
+               PayrollRun.period_end < through_run.period_end,
+               and_(PayrollRun.period_end == through_run.period_end,
+                    PayrollRun.semi_period <= through_run.semi_period),
+           ))
+           .with_entities(*sums.values())
+           .first())
+
+    return {
+        f: _q2(Decimal(str(v))) if v is not None else Decimal('0.00')
+        for f, v in zip(fields, row)
+    }
+
+
 def compute_thirteenth_month_line(amount, as_of):
     """Pure calc for a run_type='13th_month' PayrollRunLine: no statutory
     (SSS/PhilHealth/Pag-IBIG), no loan deductions -- WHT only on the taxable
