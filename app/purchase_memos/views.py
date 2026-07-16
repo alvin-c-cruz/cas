@@ -128,6 +128,10 @@ def debit_ap_lines(ap_id):
     ap = db.session.get(AccountsPayable, ap_id)
     if not ap or ap.branch_id != branch_id or ap.status not in DEBITABLE_AP_STATUSES:
         return {'error': 'Bill not found or not eligible.'}, 404
+    if ap.payee_type != 'vendor':
+        # _eligible_aps already filters these out of the picker; this guards a
+        # tampered/crafted ap_id from reaching an employee-payee bill directly.
+        return {'error': 'A Vendor Debit Memo can only reference a vendor bill, not an employee bill.'}, 404
     lines = []
     for li in ap.line_items:
         d = li.to_dict()
@@ -160,6 +164,11 @@ def debit_create():
         ap = db.session.get(AccountsPayable, form.accounts_payable_id.data)
         if not ap or ap.branch_id != branch_id or ap.status not in DEBITABLE_AP_STATUSES:
             flash('Select a valid posted Accounts Payable bill.', 'error')
+            return _render_form(form)
+        if ap.payee_type != 'vendor':
+            # _eligible_aps already filters these out of the picker; this guards a
+            # tampered accounts_payable_id from reaching an employee-payee bill directly.
+            flash('A Vendor Debit Memo can only reference a vendor bill, not an employee bill.', 'error')
             return _render_form(form)
         if form.destination.data == 'cash_refund' and not form.cash_account_id.data:
             flash('Select a cash account.', 'error')

@@ -54,7 +54,7 @@ def _enable(*keys):
     db.session.commit(); clear_module_config_cache()
 
 
-def _setup(client, admin_user, main_branch, enable=True, bill_amount='1120'):
+def _setup(client, admin_user, main_branch, enable=True, bill_amount='1120', wt_rate=None):
     coa = {}
     for k, args in {
         'ap': ('20101', 'Accounts Payable - Trade', 'Liability', 'Credit'),
@@ -86,7 +86,8 @@ def _setup(client, admin_user, main_branch, enable=True, bill_amount='1120'):
                          vendor_name=v.name, vendor_tin=v.tin, status='posted',
                          subtotal=amount, total_amount=amount, balance=amount)
     li = AccountsPayableItem(line_number=1, description='Goods purchased', amount=amount,
-                             vat_category='V12', vat_rate=Decimal('12'), account_id=coa['exp'].id)
+                             vat_category='V12', vat_rate=Decimal('12'), account_id=coa['exp'].id,
+                             wt_rate=(Decimal(str(wt_rate)) if wt_rate is not None else None))
     li.calculate_amounts(); ap.line_items.append(li)
     db.session.add(ap); db.session.commit()
     _login(client, admin_user)
@@ -211,6 +212,35 @@ def test_post_accountant_flips_status_builds_je_and_reduces_ap_balance(
     assert bill.status == 'partially_paid'
     from app.audit.models import AuditLog
     assert AuditLog.query.filter_by(module='purchase_memos', action='post').first() is not None
+
+
+def test_post_reduces_ap_balance_by_net_of_wht_total_amount(
+        client, db_session, admin_user, main_branch):
+    """Review Finding 1 (Task 4): the ACTUAL reduction site (debit_post ->
+    _apply_memo_to_ap) must drop the bill's balance by the memo's NET-OF-WHT
+    total_amount, not the gross line sum. wt_rate=1% on a 1120-gross line gives
+    VAT=120.00 (1120 - 1120/1.12) and WHT=10.00 (1% of the 1000 net-of-VAT base,
+    per test_models.py::test_line_reversal_math), so total_amount = 1120 - 10 =
+    1110.00 -- distinct from the gross 1120.00, which is what an unproven
+    reduction site could wrongly subtract instead."""
+    ap, li = _setup(client, admin_user, main_branch, bill_amount='1120', wt_rate='1')
+    sid = ap.id
+    before_balance = ap.balance
+    assert before_balance == Decimal('1120.00')
+    _create_memo(client, ap, li, amount='1120')   # whole line, gross
+    memo = PurchaseMemo.query.filter_by(memo_type='debit').first()
+    assert memo.withholding_tax_amount == Decimal('10.00')
+    assert memo.total_amount == Decimal('1110.00')          # net-of-WHT, not 1120
+    resp = client.post(f'/vendor-debit-memos/{memo.id}/post', follow_redirects=True)
+    assert resp.status_code == 200
+    memo = db.session.get(PurchaseMemo, memo.id)
+    bill = db.session.get(AccountsPayable, sid)
+    assert memo.status == 'posted'
+    drop = before_balance - bill.balance
+    assert drop == Decimal('1110.00'), (
+        f'bill balance must drop by the net-of-WHT total_amount (1110.00), not the '
+        f'gross line sum (1120.00); actual drop was {drop}')
+    assert bill.balance == Decimal('10.00')
 
 
 def test_post_denied_for_staff(client, db_session, admin_user, staff_user, main_branch):
@@ -353,6 +383,57 @@ def test_void_requires_reason(client, db_session, admin_user, main_branch):
     assert resp.status_code == 200
     memo = db.session.get(PurchaseMemo, memo.id)
     assert memo.status == 'posted'   # blocked, min 10 chars
+
+
+# -- (f) employee-payee AP bills are excluded past the picker (Finding 2) --------
+
+def test_employee_payee_ap_excluded_from_picker_and_rejected(
+        client, db_session, admin_user, main_branch):
+    """Review Finding 2 (Task 4): AccountsPayable.payee_type can be 'employee'
+    (vendor_id NULL), but PurchaseMemo.vendor_id is NOT NULL -- only _eligible_aps
+    (the picker) filtered these out. A tampered accounts_payable_id posted to
+    debit_create, or a crafted debit_ap_lines request, must be rejected with a
+    clean, specific error -- not merely absent from the picker."""
+    from app.employees.models import Employee
+    ap, li = _setup(client, admin_user, main_branch)
+    emp = Employee(employee_no='EMP-0001', first_name='Alvin', last_name='Cruz',
+                   branch_id=main_branch.id)
+    db.session.add(emp); db.session.commit()
+    eap = AccountsPayable(
+        branch_id=main_branch.id, ap_number='AP-EMP-1',
+        ap_date=date(2026, 7, 1), due_date=date(2026, 7, 31),
+        payee_type='employee', payee_id=emp.id, vendor_id=None,
+        vendor_name=emp.full_name, status='posted',
+        subtotal=Decimal('1000'), total_amount=Decimal('1000'), balance=Decimal('1000'))
+    eli = AccountsPayableItem(line_number=1, description='Reimbursement',
+                              amount=Decimal('1000'), vat_rate=Decimal('0'),
+                              account_id=li.account_id)
+    eli.calculate_amounts(); eap.line_items.append(eli)
+    db.session.add(eap); db.session.commit()
+    eap_id, eli_id = eap.id, eli.id
+
+    # (a) absent from the create page's picker.
+    resp = client.get('/vendor-debit-memos/create')
+    assert resp.status_code == 200
+    assert b'AP-EMP-1' not in resp.data
+
+    # (b) a direct POST naming its id is rejected with the new specific message,
+    # not a generic "An error occurred" / silently-swallowed IntegrityError.
+    resp = client.post('/vendor-debit-memos/create', data={
+        'accounts_payable_id': eap_id, 'memo_date': '2026-07-10',
+        'reason': 'Tampered target bill', 'destination': 'ap',
+        'lines': json.dumps([{'accounts_payable_item_id': eli_id, 'amount': '1000'}]),
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert PurchaseMemo.query.filter_by(original_ap_number='AP-EMP-1').first() is None
+    assert b'can only reference a vendor bill, not an employee bill' in resp.data
+    assert b'An error occurred' not in resp.data
+
+    # (c) debit_ap_lines returns the clean JSON error, not a 200/500.
+    resp = client.get(f'/vendor-debit-memos/ap-lines/{eap_id}')
+    assert resp.status_code == 404
+    assert resp.get_json()['error'] == (
+        'A Vendor Debit Memo can only reference a vendor bill, not an employee bill.')
 
 
 # -- views: list / detail / print -------------------------------------------------
