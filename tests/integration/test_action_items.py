@@ -128,3 +128,35 @@ class TestActionItemsViewer:
         resp = client.get('/dashboard')
         assert resp.status_code == 200
         assert b'Action Items' in resp.data
+
+
+def make_pending_sales_vat_request(db_session, user, name):
+    from app.sales_vat_categories.models import SalesVATCategoryChangeRequest
+    req = SalesVATCategoryChangeRequest(
+        action='create', status='pending',
+        proposed_data=json.dumps({'code': 'SVCX', 'name': name}),
+        requested_by_id=user.id,
+    )
+    db_session.add(req)
+    db_session.commit()
+    return req
+
+
+class TestActionItemsSalesVATCategory:
+    def test_admin_sees_pending_sales_vat_category_request(self, client, db_session, admin_user, main_branch):
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        make_pending_sales_vat_request(db_session, admin_user, 'Sales VAT Approval Visible')
+        login(client, 'admin', 'admin123')
+        resp = client.get('/action-items')
+        assert resp.status_code == 200
+        assert b'Sales VAT Approval Visible' in resp.data
+
+    def test_badge_count_includes_pending_sales_vat_category_request(self, client, db_session, admin_user, main_branch):
+        from app.dashboard.action_items_service import count_action_items
+        admin_user.add_branch(main_branch)
+        db_session.commit()
+        before = count_action_items(admin_user, main_branch.id)
+        make_pending_sales_vat_request(db_session, admin_user, 'Sales VAT Badge Check')
+        after = count_action_items(admin_user, main_branch.id)
+        assert after == before + 1
