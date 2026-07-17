@@ -276,7 +276,7 @@ function addLineItem(existingItem) {
     const item = existingItem
         ? { ...existingItem, id }
         : { id, product_id: null, quantity: null, uom_id: null, uom_text: null,
-            unit_price: null, amount: 0.00, vat_category: '' };
+            unit_price: null, amount: 0.00, vat_category: currentCustomerVatCategory || '' };
 
     const rowNum = lineItems.length + 1;
     const row = document.createElement('tr');
