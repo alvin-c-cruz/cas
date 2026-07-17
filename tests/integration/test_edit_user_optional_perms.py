@@ -98,3 +98,14 @@ def test_edit_grid_renders_every_grantable_key(client, db_session, admin_user, s
     assert resp.status_code == 200
     for key in all_permission_keys():
         assert f'name="book_{key}"'.encode() in resp.data, f'missing checkbox for {key}'
+
+
+def test_grant_employees_module_persists(client, db_session, admin_user, staff_user, main_branch):
+    """Admin ticks Employees for a staff user -> it must be stored (same shape as sales_orders)."""
+    _login(client, 'admin', 'admin123')
+    resp = client.post(f'/users/{staff_user.id}/edit',
+                       data=_edit_payload(main_branch, book_employees='1'),
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    perms = db_session.get(User, staff_user.id).get_book_permissions()
+    assert perms.get('employees') is True

@@ -159,7 +159,7 @@ MODULE_REGISTRY = [
      'endpoints': ('products.',)},
     {'key': 'employees', 'label': 'Employees', 'section': 'Maintenance',
      'area': 'Payroll', 'group': 'Masters',
-     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
      'endpoints': ('employees.',)},
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
