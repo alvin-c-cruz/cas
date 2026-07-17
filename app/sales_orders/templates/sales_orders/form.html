@@ -93,24 +93,20 @@
                         </tr>
                     </thead>
                     <tbody id="lineItemsBody"></tbody>
+                    {# SO is a pre-sale order — only the total sales figure is shown (VAT/WHT
+                       belong on the invoice). Matches detail.html's <tfoot> pattern so the
+                       total's presentation is stable across create/edit and view. #}
+                    <tfoot>
+                        <tr>
+                            <td colspan="5" style="text-align:right; font-weight:700;">Total Sales</td>
+                            <td id="totalDisplay" style="text-align:right; font-family:var(--mono); font-weight:700;">0.00</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
                 </table>
 
                 <button type="button" class="btn btn-secondary" id="addLineBtn" onclick="addLineItem()" style="margin-top: 8px;">+ Add Line</button>
                 <input type="hidden" name="line_items" id="lineItemsData">
-
-                {# ── Bottom: Summary panel ── #}
-                <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Sales Order Summary</div>
-                        <div class="bill-summary-panel">
-                            {# SO is a pre-sale order — only the total sales figure is shown (VAT/WHT belong on the invoice). #}
-                            <div class="bsr bsr--total">
-                                <span class="bsr-label bsr-label--total">Total Sales</span>
-                                <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
-                            </div>
-                        </div>{# end .bill-summary-panel #}
-                    </div>
-                </div>
 
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
