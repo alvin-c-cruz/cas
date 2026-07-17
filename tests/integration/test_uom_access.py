@@ -8,10 +8,14 @@ def test_units_of_measure_registered_optional_maintenance():
     assert entry['optional'] is True
     assert entry['default_enabled'] is False
     assert entry['endpoints'] == ('units_of_measure.',)
+    assert entry.get('per_user') is True
 
 
-def test_units_of_measure_off_by_default_and_excluded_from_user_grid(db_session):
+def test_units_of_measure_off_by_default(db_session):
     # optional + default_enabled False → module_enabled False until an admin turns it on
     assert module_enabled('units_of_measure') is False
-    # optional modules are not part of the per-user permission grid
-    assert 'units_of_measure' not in all_permission_keys()
+
+
+def test_units_of_measure_is_per_user_grantable():
+    # optional-and-per_user modules ARE part of the per-user permission grid
+    assert 'units_of_measure' in all_permission_keys()

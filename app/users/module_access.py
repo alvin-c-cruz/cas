@@ -147,7 +147,7 @@ MODULE_REGISTRY = [
      'endpoints': ('vendors.',)},
     {'key': 'units_of_measure', 'label': 'Units of Measure', 'section': 'Maintenance',
      'area': 'Inventory', 'group': 'Masters',
-     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
      'endpoints': ('units_of_measure.',)},
     {'key': 'product_categories', 'label': 'Product Categories', 'section': 'Maintenance',
      'area': 'Inventory', 'group': 'Masters',

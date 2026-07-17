@@ -109,3 +109,14 @@ def test_grant_employees_module_persists(client, db_session, admin_user, staff_u
     assert resp.status_code == 200
     perms = db_session.get(User, staff_user.id).get_book_permissions()
     assert perms.get('employees') is True
+
+
+def test_grant_units_of_measure_module_persists(client, db_session, admin_user, staff_user, main_branch):
+    """Admin ticks Units of Measure for a staff user -> it must be stored."""
+    _login(client, 'admin', 'admin123')
+    resp = client.post(f'/users/{staff_user.id}/edit',
+                       data=_edit_payload(main_branch, book_units_of_measure='1'),
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    perms = db_session.get(User, staff_user.id).get_book_permissions()
+    assert perms.get('units_of_measure') is True
