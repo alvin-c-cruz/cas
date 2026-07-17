@@ -6,7 +6,7 @@
   <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Back to list</a>
 </div>
 
-<form method="POST"
+<form method="POST" id="poForm"
       action="{{ url_for('purchase_orders.edit', id=po.id) if po else url_for('purchase_orders.create') }}">
   {{ form.hidden_tag() }}
   <input type="hidden" name="line_items" id="lineItemsJson" value="[]">
@@ -88,7 +88,7 @@
     if (e.target.classList.contains('po-del')) e.target.closest('tr').remove();
   });
   document.getElementById('addLineBtn').addEventListener('click', () => addRow());
-  document.querySelector('form').addEventListener('submit', () => {
+  document.getElementById('poForm').addEventListener('submit', () => {
     const rows = [];
     document.querySelectorAll('#lineBody tr').forEach(tr => {
       const vatSel = tr.querySelector('.po-vat');
