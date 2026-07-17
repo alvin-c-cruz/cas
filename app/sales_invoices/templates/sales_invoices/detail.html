@@ -263,7 +263,7 @@
                             {% set ns.total_credit = ns.total_credit + entry.credit %}
                             <tr>
                                 <td style="color:var(--text-2); font-size:12px;">{{ entry.code }}</td>
-                                <td style="{{ 'padding-left:24px;' if entry.credit > 0 else '' }}">{{ entry.name }}</td>
+                                <td>{{ entry.name }}</td>
                                 <td style="text-align:right; font-family:var(--mono);">
                                     {% if entry.debit > 0 %}₱{{ '{:,.2f}'.format(entry.debit) }}{% else %}&#8212;{% endif %}
                                 </td>
