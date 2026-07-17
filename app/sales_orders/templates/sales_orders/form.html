@@ -414,8 +414,12 @@ function onProductPick(id, productId) {
     if (!p) return;
     if (p.default_uom_id != null) {
         item.uom_id = p.default_uom_id;
-        const uomEl = document.getElementById(`uom-sel-${id}`);
-        if (uomEl) uomEl.value = String(p.default_uom_id);
+        if (lineChoices[id] && lineChoices[id].uom) {
+            lineChoices[id].uom.setChoiceByValue(String(p.default_uom_id));
+        } else {
+            const uomEl = document.getElementById(`uom-sel-${id}`);
+            if (uomEl) uomEl.value = String(p.default_uom_id);
+        }
     }
     if (p.default_unit_price != null) {
         item.unit_price = p.default_unit_price;
