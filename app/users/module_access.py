@@ -155,7 +155,7 @@ MODULE_REGISTRY = [
      'endpoints': ('product_categories.',)},
     {'key': 'products', 'label': 'Products', 'section': 'Maintenance',
      'area': 'Inventory', 'group': 'Masters',
-     'optional': True, 'depends_on': ['units_of_measure'], 'default_enabled': False,
+     'optional': True, 'depends_on': ['units_of_measure'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('products.',)},
     {'key': 'employees', 'label': 'Employees', 'section': 'Maintenance',
      'area': 'Payroll', 'group': 'Masters',

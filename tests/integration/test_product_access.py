@@ -12,11 +12,15 @@ def test_products_registered_optional_depends_on_uom():
     assert entry['default_enabled'] is False
     assert entry['depends_on'] == ['units_of_measure']
     assert entry['endpoints'] == ('products.',)
-    assert 'products' not in all_permission_keys()
+    assert entry.get('per_user') is True
 
 
 def test_products_off_by_default(db_session):
     assert module_enabled('products') is False
+
+
+def test_products_is_per_user_grantable():
+    assert 'products' in all_permission_keys()
 
 
 def test_cannot_enable_products_without_uom():
