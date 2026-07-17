@@ -283,9 +283,9 @@ function addLineItem(existingItem) {
     row.id = `line-${id}`;
     row.innerHTML = `
         <td style="text-align:center; color:var(--text-2); font-size:12px; white-space:nowrap;" class="line-num-cell">${rowNum}</td>
-        <td><select class="form-control" required onchange="onProductPick(${id}, this.value)">
+        <td><select class="form-control" id="prod-sel-${id}" required onchange="onProductPick(${id}, this.value)">
               <option value="">— select product —</option>
-              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+              ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
             </select></td>
         <td><input type="number" step="0.0001" min="0" id="qty-${id}" class="form-control"
                    style="text-align:right;"
@@ -294,7 +294,7 @@ function addLineItem(existingItem) {
         ${uomMasterOn ? `
         <td><select class="form-control" id="uom-sel-${id}" onchange="updateLineItem(${id}, 'uom_id', this.value)">
               <option value="">—</option>
-              ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
+              ${units.map(u => `<option value="${u.id}" data-custom-properties="${escHtml(JSON.stringify({name: u.name}))}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
             </select></td>` : `
         <td><input type="text" maxlength="20" id="uom-txt-${id}" class="form-control"
                    value="${escHtml(item.uom_text != null ? item.uom_text : '')}"
@@ -342,7 +342,25 @@ function addLineItem(existingItem) {
     const vatC = new Choices(vatSel, codeOnlyOpts);
     vatSel.addEventListener('change', () => { updateLineItem(id, 'vat_category', vatSel.value); calculateTotals(); });
 
-    lineChoices[id] = { vat: vatC };
+    const nameOnlyOpts = {
+        searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
+        allowHTML: false,
+        callbackOnCreateTemplates: function(tmpl) {
+            return {
+                item: function(cfg, data) {
+                    const cn = cfg.classNames;
+                    const name = (data.customProperties && data.customProperties.name) || data.label || '—';
+                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(name))}</div>`);
+                }
+            };
+        }
+    };
+    const prodSelEl = newRow.querySelector(`#prod-sel-${id}`);
+    const uomSelEl  = newRow.querySelector(`#uom-sel-${id}`);
+    const prodC = prodSelEl ? new Choices(prodSelEl, nameOnlyOpts) : null;
+    const uomC  = uomSelEl  ? new Choices(uomSelEl, nameOnlyOpts)  : null;
+
+    lineChoices[id] = { vat: vatC, prod: prodC, uom: uomC };
     lineItems.push(item);
     refreshLineNumbers();
     updateDerivedAmount(id);
@@ -358,6 +376,8 @@ function updateLineItem(id, field, value) {
 function removeLineItem(id) {
     if (lineChoices[id]) {
         lineChoices[id].vat.destroy();
+        if (lineChoices[id].prod) lineChoices[id].prod.destroy();
+        if (lineChoices[id].uom)  lineChoices[id].uom.destroy();
         delete lineChoices[id];
     }
     document.getElementById(`line-${id}`).remove();
