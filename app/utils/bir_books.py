@@ -11,6 +11,9 @@ def get_company_identity():
         'tin_branch': g('tin_branch_code') or '',
         'rdo': g('rdo_code') or '',
         'address': g('company_address') or '',
+        'sss_employer_no': g('sss_employer_no') or '',
+        'philhealth_employer_no': g('philhealth_employer_no') or '',
+        'pagibig_employer_no': g('pagibig_employer_no') or '',
     }
 
 

@@ -171,6 +171,16 @@ class CompanySettingsForm(FlaskForm):
         default='second_cutoff'
     )
 
+    sss_employer_no = StringField('SSS Employer No.', validators=[
+        Optional(), Length(max=30, message='SSS Employer No. must be 30 characters or less.')
+    ])
+    philhealth_employer_no = StringField('PhilHealth Employer No.', validators=[
+        Optional(), Length(max=30, message='PhilHealth Employer No. must be 30 characters or less.')
+    ])
+    pagibig_employer_no = StringField('Pag-IBIG Employer No.', validators=[
+        Optional(), Length(max=30, message='Pag-IBIG Employer No. must be 30 characters or less.')
+    ])
+
     payslip_print_access = SelectField(
         'Payslip Print Access', choices=PRINT_ACCESS_CHOICES, default='posted_only'
     )
