@@ -138,6 +138,7 @@ FIRM_COA = [
     ('50300', 'Other Expenses',                          'Other Expense', None, 'debit', None),
     ('50301', 'Interest Expense',                        'Other Expense', None, 'debit', '50300'),
     ('50302', 'Loss on Disposal of Assets',              'Other Expense', None, 'debit', '50300'),
+    ('50303', 'Cash Short/Over',                          'Other Expense', None, 'debit', '50300'),
     # ===== INCOME TAX EXPENSE =====
     ('50400', 'Income Tax Expense',                      'Income Tax Expense', None, 'debit', None),
     ('50401', 'Income Tax Expense - Current',            'Income Tax Expense', None, 'debit', '50400'),

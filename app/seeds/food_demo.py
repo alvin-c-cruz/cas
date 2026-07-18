@@ -92,6 +92,7 @@ FOOD_COA = [
     ('70000', 'Other Expenses', 'Other Expense', None, 'debit', None),
     ('70101', 'Interest Expense', 'Other Expense', None, 'debit', '70000'),
     ('70102', 'Bank Charges', 'Other Expense', None, 'debit', '70000'),
+    ('70103', 'Cash Short/Over', 'Other Expense', None, 'debit', '70000'),
     ('80000', 'Income Tax Expense', 'Income Tax Expense', None, 'debit', None),
     ('80101', 'Income Tax Expense - Current', 'Income Tax Expense', None, 'debit', '80000'),
 ]

@@ -1,6 +1,7 @@
 """Canonical manufacturing Chart of Accounts for CAS (Philippine manufacturing corp).
 
-148 accounts (146 base + 2 inter-branch clearing accounts, R-04 slice 2) already
+149 accounts (146 base + 2 inter-branch clearing accounts, R-04 slice 2 + 1 Cash
+Short/Over control account, R-04 slice 4) already
 carrying the FS taxonomy used by the type-driven financial
 statements (account_type one of: Asset, Liability, Equity, Revenue, Contra-Revenue,
 Other Income, Cost of Goods Sold, Selling Expense, Administrative Expense, Other
@@ -17,7 +18,7 @@ older COA seed; remaining names follow standard PH-manufacturing convention.
 
 NOTE: as of the core-baseline rewrite, seed_minimal() no longer uses this module — it
 seeds the lean general-purpose BASELINE_COA (see seed_data.py), which is what
-/reset-database produces. This 148-account manufacturing COA is retained for the
+/reset-database produces. This 149-account manufacturing COA is retained for the
 demo/pitch datasets and its own type test (tests/unit/test_manufacturing_coa_types.py).
 """
 
@@ -178,6 +179,7 @@ MANUFACTURING_COA = [
     {'code': '50302', 'name': 'Bank Charges', 'type': 'Other Expense', 'classification': None, 'normal_balance': 'debit', 'parent': None},
     {'code': '50303', 'name': 'Foreign Exchange Loss', 'type': 'Other Expense', 'classification': None, 'normal_balance': 'debit', 'parent': None},
     {'code': '50304', 'name': 'Loss on Sale of Property and Equipment', 'type': 'Other Expense', 'classification': None, 'normal_balance': 'debit', 'parent': None},
+    {'code': '50305', 'name': 'Cash Short/Over', 'type': 'Other Expense', 'classification': None, 'normal_balance': 'debit', 'parent': None},
     # ===== INCOME TAX EXPENSE =====
     {'code': '50401', 'name': 'Income Tax Expense - Current', 'type': 'Income Tax Expense', 'classification': None, 'normal_balance': 'debit', 'parent': None},
     {'code': '50402', 'name': 'Income Tax Expense - Deferred', 'type': 'Income Tax Expense', 'classification': None, 'normal_balance': 'debit', 'parent': None},

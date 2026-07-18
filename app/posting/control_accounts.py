@@ -40,6 +40,12 @@ CONTROL_ACCOUNTS = {
     # INTER-BRANCH transfer can post; intra-branch transfers never touch these.
     'inter_branch_due_from': ('inter_branch_due_from_account_code', 'Inter-branch Due-from control account'),
     'inter_branch_due_to':   ('inter_branch_due_to_account_code',   'Inter-branch Due-to control account'),
+
+    # Petty Cash (R-04 slice 4). Fail-closed, no default code (same reasoning as
+    # the inter-branch clearing pair) -- but only ever RESOLVED when a nonzero
+    # shortage/overage actually exists on a given replenishment; an exact-tie
+    # replenishment must post fine while this stays unassigned.
+    'petty_cash_short_over': ('petty_cash_short_over_account_code', 'Cash Short/Over control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,

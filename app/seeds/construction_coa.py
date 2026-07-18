@@ -142,6 +142,7 @@ CONSTRUCTION_COA = [
     ('50301', 'Interest Expense',                             'Other Expense', None, 'debit', '50300'),
     ('50302', 'Bank Charges',                                 'Other Expense', None, 'debit', '50300'),
     ('50303', 'Loss on Disposal of Assets',                   'Other Expense', None, 'debit', '50300'),
+    ('50304', 'Cash Short/Over',                               'Other Expense', None, 'debit', '50300'),
     # ===== INCOME TAX EXPENSE =====
     ('50400', 'Income Tax Expense',                           'Income Tax Expense', None, 'debit', None),
     ('50401', 'Income Tax Expense - Current',                 'Income Tax Expense', None, 'debit', '50400'),

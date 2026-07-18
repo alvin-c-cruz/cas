@@ -115,6 +115,7 @@ CONSTRUCTION_COA = [
     {'code': '50300', 'name': 'Financial Expenses', 'type': 'Expense', 'parent': None, 'nb': 'debit'},
     {'code': '50301', 'name': 'Interest Expense', 'type': 'Expense', 'parent': '50300', 'nb': 'debit'},
     {'code': '50302', 'name': 'Bank Charges', 'type': 'Expense', 'parent': '50300', 'nb': 'debit'},
+    {'code': '50303', 'name': 'Cash Short/Over', 'type': 'Expense', 'parent': '50300', 'nb': 'debit'},
 ]
 
 
