@@ -261,6 +261,7 @@ def modules_toggle():
     if not ok:
         flash(f'Cannot change "{key}": {reason}.', 'error')
         return redirect(url_for('company_settings.edit_settings'))
+    was_off = key not in enabled_keys
     AppSettings.set_setting(f'module_enabled:{key}', '1' if enable else '0',
                             updated_by=current_user.username)
     clear_module_config_cache()
@@ -268,6 +269,14 @@ def modules_toggle():
               record_id=None, record_identifier=key,
               new_values={'enabled': enable})
     flash(f'Module "{key}" {"enabled" if enable else "disabled"}.', 'success')
+
+    if key == 'bank_accounts' and enable and was_off:
+        from app.bank_accounts.service import seed_bank_accounts_from_usage
+        flags = seed_bank_accounts_from_usage(created_by=current_user.username)
+        if flags:
+            flash(f'{len(flags)} cash account(s) are shared across branches — '
+                  f'assign each to its owning branch.', 'warning')
+
     return redirect(url_for('company_settings.edit_settings'))
 
 

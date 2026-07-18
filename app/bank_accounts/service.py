@@ -1,5 +1,6 @@
 """Service helpers for the Cash & Bank register (R-04 slice 1)."""
 from app.accounts.models import Account
+from app.bank_accounts.models import BankAccount
 from app.settings import AppSettings
 
 DEFAULT_CASH_BANK_PARENT_CODE = '10100'
@@ -52,3 +53,41 @@ def cash_bank_account_choices(branch_id):
                 .order_by(BankAccount.code).all())
         return [(b.account_id, f'{b.code} - {b.name}') for b in rows]
     return cash_bank_leaf_account_choices()
+
+
+def seed_bank_accounts_from_usage(created_by='system'):
+    """One BankAccount per distinct cash/bank GL account_id already used on a posted
+    JournalEntry, assigned to its max-usage branch. Shared-account (used by >1 branch)
+    cases are flagged for manual split, never silently guessed. Read-only on JE/voucher
+    tables -- creates BankAccount rows only."""
+    from collections import defaultdict
+    from app import db
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+
+    usage = defaultdict(int)          # (branch_id, account_id) -> line count
+    rows = (db.session.query(JournalEntry.branch_id, JournalEntryLine.account_id)
+            .join(JournalEntryLine, JournalEntryLine.entry_id == JournalEntry.id).all())
+    for branch_id, account_id in rows:
+        usage[(branch_id, account_id)] += 1
+
+    by_account = defaultdict(dict)    # account_id -> {branch_id: count}
+    for (branch_id, account_id), n in usage.items():
+        by_account[account_id][branch_id] = n
+
+    cash_bank_ids = {aid for aid, _ in cash_bank_leaf_account_choices()}
+    existing = {b.account_id for b in BankAccount.query.all()}
+
+    flags = []
+    for account_id, per_branch in by_account.items():
+        if account_id in existing or account_id not in cash_bank_ids:
+            continue
+        win_branch = max(per_branch, key=per_branch.get)
+        acct = db.session.get(Account, account_id)
+        db.session.add(BankAccount(branch_id=win_branch, account_id=account_id,
+                                   code=(acct.code or f'BA-{account_id}'), name=acct.name,
+                                   account_type='checking', opening_balance=0, created_by=created_by))
+        others = [bid for bid in per_branch if bid != win_branch]
+        if others:
+            flags.append({'account_id': account_id, 'code': acct.code, 'other_branch_ids': others})
+    db.session.commit()
+    return flags

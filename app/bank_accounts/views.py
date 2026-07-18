@@ -1,7 +1,7 @@
 """Cash & Bank register CRUD (R-04 slice 1). Branch-scoped label over one COA account."""
 from functools import wraps
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify
 from flask_login import login_required, current_user
 
 from app import db
@@ -83,6 +83,41 @@ def new_account():
         return redirect(url_for('bank_accounts.list_accounts'))
 
     return render_template('bank_accounts/form.html', form=form, bank_account=None)
+
+
+@bank_accounts_bp.route('/bank-accounts/quick-add', methods=['POST'])
+@login_required
+@staff_or_above_required
+def quick_add():
+    """Inline create (JSON in/out), mirroring the vendor/customer/product quick-add
+    endpoints -- so turning the module ON is never a hard setup gate, even before the
+    OFF->ON seeder or a manual create has run."""
+    form = BankAccountForm()
+    form.account_id.choices = _available_account_choices()
+
+    if form.validate_on_submit():
+        ba = BankAccount(
+            branch_id=session.get('selected_branch_id'),
+            code=form.code.data.strip(),
+            name=form.name.data.strip(),
+            account_id=form.account_id.data,
+            bank_name=form.bank_name.data,
+            account_number=form.account_number.data,
+            account_type=form.account_type.data,
+            opening_balance=form.opening_balance.data or 0,
+            opening_date=form.opening_date.data,
+            created_by=current_user.username,
+        )
+        db.session.add(ba)
+        db.session.commit()
+        log_create('bank_accounts', ba.id, ba.code, model_to_dict(ba, _FIELDS))
+        return jsonify(ok=True, bank_account={
+            'id': ba.id,
+            'label': f'{ba.code} - {ba.name}',
+        })
+
+    return jsonify(ok=False,
+                   errors={f: errs[0] for f, errs in form.errors.items()}), 422
 
 
 @bank_accounts_bp.route('/bank-accounts/<int:id>/edit', methods=['GET', 'POST'])
