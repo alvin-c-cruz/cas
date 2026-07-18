@@ -247,6 +247,7 @@ def create_app(config_name=None):
     from app.bank_transfers.models import BankTransfer  # noqa: F401
     from app.petty_cash.models import PettyCashFund, PettyCashVoucher, PettyCashReplenishment  # noqa: F401
     from app.bank_reconciliation.models import BankReconciliation, ReconciliationItem  # noqa: F401
+    from app.budgeting.models import BudgetLine  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
