@@ -20,7 +20,7 @@ depends_on = None
 
 def upgrade():
     op.create_table('bank_accounts',
-        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('id', sa.Integer(), nullable=False, primary_key=True),
         sa.Column('branch_id', sa.Integer(), sa.ForeignKey('branches.id'), nullable=False),
         sa.Column('code', sa.String(length=20), nullable=False),
         sa.Column('name', sa.String(length=200), nullable=False),
