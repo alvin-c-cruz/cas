@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_field %}
+{% block title %}Start Reconciliation — {{ bank_account.code }}{% endblock %}
+{% block page_title %}Start Reconciliation — {{ bank_account.code }}{% endblock %}
+{% block content %}
+
+<p class="page-sub">Beginning balance is carried from the prior completed reconciliation
+    (₱{{ '{:,.2f}'.format(beginning_balance) }}) and cannot be edited here.</p>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+            <div style="margin-bottom:14px;">
+                <label class="form-label">Beginning Balance</label>
+                <input class="form-control" value="₱{{ '{:,.2f}'.format(beginning_balance) }}" readonly>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 18px;">
+                {{ render_field(form.statement_date, required=True) }}
+                {{ render_field(form.statement_ending_balance, required=True) }}
+            </div>
+            <div class="form-actions" style="display:flex; gap:12px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{{ url_for('bank_reconciliation.register', bank_account_id=bank_account.id) }}" class="btn btn-secondary">Back</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

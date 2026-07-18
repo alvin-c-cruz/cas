@@ -229,6 +229,13 @@ MODULE_REGISTRY = [
      'area': 'Banking', 'group': 'Banking',
      'optional': True, 'depends_on': ['bank_accounts'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('petty_cash.',)},
+    # ── Bank Reconciliation (R-04 slice 3) — same per_user=True precedent as its
+    # Banking-area siblings; accountant+-only (no staff tier at all, unlike
+    # petty_cash's two-tier split) via the module's own inline role check.
+    {'key': 'bank_reconciliation', 'label': 'Bank Reconciliation', 'section': 'Transactions',
+     'area': 'Banking', 'group': 'Banking',
+     'optional': True, 'depends_on': ['bank_accounts'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('bank_reconciliation.',)},
 ]
 
 AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Banking', 'Accounting', 'Compliance', 'Payroll',
