@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Expense Allocation Rules{% endblock %}
+{% block page_title %}Expense Allocation Rules{% endblock %}
+{% block content %}
+<div class="content-header">
+    <div class="page-actions">
+        <a href="{{ url_for('expense_allocation_rules.create') }}" class="btn btn-primary">+ Create Rule</a>
+    </div>
+</div>
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr><th>Account</th><th>Basis</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for r in rules %}
+                <tr>
+                    <td>{{ r.account.code }} — {{ r.account.name }}</td>
+                    <td>{{ r.basis }}</td>
+                    <td><a href="{{ url_for('expense_allocation_rules.edit', id=r.id) }}" class="btn btn-secondary btn-sm">Edit</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="empty-state-cell"><p>No allocation rules found.</p></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

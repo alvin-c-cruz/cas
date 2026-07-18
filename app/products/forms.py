@@ -18,4 +18,6 @@ class ProductForm(FlaskForm):
                                       validators=[Optional(), NumberRange(min=0)])
     default_account_id = SelectField('Default Account', validators=[Optional()], default='')
     category_id = SelectField('Category', validators=[Optional()], default='')
+    standard_cost = DecimalField('Standard Cost (₱, planning figure)', places=4,
+                                 validators=[Optional(), NumberRange(min=0)])
     is_active = SelectField('Status', choices=[('1', 'Active'), ('0', 'Inactive')])

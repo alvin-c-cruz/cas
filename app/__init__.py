@@ -224,6 +224,7 @@ def create_app(config_name=None):
     from app.units_of_measure.models import UnitOfMeasure
     from app.product_categories.models import ProductCategory
     from app.products.models import Product
+    from app.expense_allocation_rules.models import ExpenseAllocationRule
     from app.sales_orders.models import SalesOrder, SalesOrderItem
     from app.quotations.models import Quotation, QuotationItem
     from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
@@ -277,6 +278,7 @@ def create_app(config_name=None):
     from app.units_of_measure.views import units_of_measure_bp
     from app.product_categories.views import product_categories_bp
     from app.products.views import products_bp
+    from app.expense_allocation_rules.views import expense_allocation_rules_bp
     from app.sales_orders.views import sales_orders_bp
     from app.delivery_receipts.views import delivery_receipts_bp
     from app.quotations.views import quotations_bp
@@ -324,6 +326,7 @@ def create_app(config_name=None):
     app.register_blueprint(units_of_measure_bp)
     app.register_blueprint(product_categories_bp)
     app.register_blueprint(products_bp)
+    app.register_blueprint(expense_allocation_rules_bp)
     app.register_blueprint(sales_orders_bp)
     app.register_blueprint(quotations_bp)
     app.register_blueprint(delivery_receipts_bp)
