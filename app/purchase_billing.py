@@ -89,6 +89,7 @@ def _po_line_payload(po):
     for li in po.line_items:
         product = li.product
         lines.append({
+            'po_item_id': li.id,
             'description': (li.description or (product.name if product else '')),
             'amount': float(li.amount) if li.amount is not None else 0.0,
             'product_id': li.product_id,
@@ -148,6 +149,8 @@ def billable_rrs_for(branch_id, vendor_id):
                     if (poi and poi.unit_price is not None and li.received_quantity is not None)
                     else 0.0)
             lines.append({
+                'rr_item_id': li.id,
+                'po_item_id': (poi.id if poi else None),
                 'description': (poi.description if poi else None) or (product.name if product else ''),
                 'amount': _amt,
                 'product_id': (product.id if product else None),

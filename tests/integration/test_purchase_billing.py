@@ -163,3 +163,25 @@ def test_billable_endpoints_404_when_module_off(client, admin_user, main_branch,
     _login(client, admin_user, main_branch)
     assert client.get('/purchase-orders/billable?vendor_id=1').status_code == 404
     assert client.get('/receiving-reports/billable?vendor_id=1').status_code == 404
+
+
+# -- variance-matching payload (R-02 Phase 6) -----------------------------------
+
+def test_billable_pos_payload_includes_po_item_id(client, accountant_user, main_branch, vl_vendor, db_session):
+    _login(client, accountant_user, main_branch)
+    po = _po(db_session, main_branch, vl_vendor, number='PO-VARIANCE-1')
+    resp = client.get(f'/purchase-orders/billable?vendor_id={vl_vendor.id}')
+    assert resp.status_code == 200
+    matched = next(p for p in resp.get_json()['pos'] if p['po_number'] == 'PO-VARIANCE-1')
+    assert matched['lines'][0]['po_item_id'] == po.line_items[0].id
+
+
+def test_billable_rrs_payload_includes_rr_and_po_item_ids(client, accountant_user, main_branch, vl_vendor, db_session):
+    _login(client, accountant_user, main_branch)
+    po = _po(db_session, main_branch, vl_vendor, number='PO-VARIANCE-2')
+    rr = _rr(db_session, main_branch, po, number='RR-VARIANCE-2')
+    resp = client.get(f'/receiving-reports/billable?vendor_id={vl_vendor.id}')
+    assert resp.status_code == 200
+    matched = next(r for r in resp.get_json()['rrs'] if r['rr_number'] == 'RR-VARIANCE-2')
+    assert matched['lines'][0]['rr_item_id'] == rr.line_items[0].id
+    assert matched['lines'][0]['po_item_id'] == po.line_items[0].id
