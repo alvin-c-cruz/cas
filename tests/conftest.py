@@ -49,6 +49,19 @@ def db_session(app, _db_schema):
     is defensive only -- this app runs with SQLite FK enforcement OFF
     app-wide (no PRAGMA foreign_keys=ON anywhere), so no delete can violate
     an FK constraint regardless of order. See memory sqlite-fk-off-delete-guard.
+
+    The rollback() before the delete loop is required, not defensive
+    styling: a test whose body triggers and swallows an IntegrityError
+    without its own rollback() (e.g. test_unique_username/test_unique_email
+    in test_user_model.py) leaves the session in SQLAlchemy 2.0's "pending
+    rollback" state, and a test that ends with dirty/stale ORM state (e.g. a
+    RowVersioned object whose in-memory row_version no longer matches the DB
+    -- see memory optimistic-lock-conditional-update) gets autoflushed by
+    the Core delete() statements below and raises StaleDataError. The old
+    drop_all()-based teardown never hit either case because dropping tables
+    doesn't touch session state at all; found empirically during Task 2's
+    tests/unit smoke check (24 new failures/errors) and confirmed reproducible
+    in isolation for both root causes.
     """
     with app.app_context():
         yield db.session
