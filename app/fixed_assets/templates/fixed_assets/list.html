@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Fixed Assets{% endblock %}
+{% block page_title %}Fixed Assets{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Fixed Assets</h1>
+  <div>
+    {% if current_user.role == 'accountant' or current_user.has_full_access %}
+    <a href="{{ url_for('fixed_assets.new_opening') }}" class="btn btn-secondary">+ Add Opening Asset</a>
+    <a href="{{ url_for('fixed_assets.category_list') }}" class="btn btn-secondary">Categories</a>
+    {% endif %}
+  </div>
+</div>
+<div class="card">
+  <div class="card-body">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Code</th><th>Name</th><th>Category</th><th>Branch</th>
+          <th>Acquisition Cost</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in assets %}
+        <tr>
+          <td><a href="{{ url_for('fixed_assets.view', id=a.id) }}">{{ a.code }}</a></td>
+          <td>{{ a.name }}</td>
+          <td>{{ a.category.name if a.category else '—' }}</td>
+          <td>{{ a.branch.name }}</td>
+          <td>{{ '%.2f'|format(a.acquisition_cost) }}</td>
+          <td><span class="badge {{ 'badge-success' if a.status == 'active' else 'badge-inactive' }}">{{ a.status|title }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No fixed assets found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

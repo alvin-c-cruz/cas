@@ -5,14 +5,14 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from app import db
 from app.accounts.models import Account
-from app.fixed_assets.models import AssetCategory
+from app.fixed_assets.models import AssetCategory, FixedAsset
 from app.fixed_assets.forms import AssetCategoryForm, FixedAssetForm
 from app.fixed_assets.services import (
     FixedAssetTagError, get_taggable_line, create_fixed_asset, leaf_accounts_by_type,
 )
 from app.utils.cache_helpers import clear_asset_category_cache, get_active_asset_categories
 from app.users.utils import get_accessible_branches
-from app.audit.utils import log_create, log_update
+from app.audit.utils import log_create, log_update, log_delete
 
 fixed_assets_bp = Blueprint('fixed_assets', __name__, template_folder='templates')
 
@@ -182,3 +182,78 @@ def tag(source_type, source_id, source_line_id):
     return render_template('fixed_assets/form.html', form=form,
                            title='Capitalize as Fixed Asset', asset=None, is_opening=False,
                            readonly_code=False, readonly_acquisition=True)
+
+
+# ---- List / detail / edit / delete -----------------------------------------
+
+@fixed_assets_bp.route('/fixed-assets')
+@login_required
+def list():
+    accessible_ids = [b.id for b in get_accessible_branches(current_user)]
+    assets = FixedAsset.query.filter(FixedAsset.branch_id.in_(accessible_ids)) \
+        .order_by(FixedAsset.code).all()
+    return render_template('fixed_assets/list.html', assets=assets)
+
+
+@fixed_assets_bp.route('/fixed-assets/<int:id>')
+@login_required
+def view(id):
+    asset = db.get_or_404(FixedAsset, id)
+    return render_template('fixed_assets/detail.html', asset=asset)
+
+
+@fixed_assets_bp.route('/fixed-assets/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+@accountant_or_admin_required
+def edit(id):
+    asset = db.get_or_404(FixedAsset, id)
+    form = FixedAssetForm(obj=asset)
+    _populate_common_choices(form)
+    # cost_account_id is immutable -- the picker only ever offers its current value.
+    form.cost_account_id.choices = [(asset.cost_account_id,
+                                     f'{asset.cost_account.code} — {asset.cost_account.name}')]
+    if request.method == 'GET':
+        form.category_id.data = str(asset.category_id) if asset.category_id else ''
+
+    if form.validate_on_submit():
+        old = asset.to_dict()
+        asset.code = form.code.data.strip()
+        asset.name = form.name.data.strip()
+        asset.branch_id = form.branch_id.data
+        asset.category_id = int(form.category_id.data) if form.category_id.data else None
+        asset.acquisition_date = form.acquisition_date.data
+        # cost_account_id intentionally NOT reassigned from form data -- immutable.
+        asset.accumulated_depreciation_account_id = form.accumulated_depreciation_account_id.data
+        asset.depreciation_expense_account_id = form.depreciation_expense_account_id.data
+        asset.depreciation_method = form.depreciation_method.data
+        asset.useful_life_months = form.useful_life_months.data
+        asset.declining_balance_rate = form.declining_balance_rate.data
+        asset.total_estimated_units = form.total_estimated_units.data
+        asset.salvage_value = form.salvage_value.data or 0
+        if asset.acquisition_source_type == 'opening':
+            asset.opening_accumulated_depreciation = form.opening_accumulated_depreciation.data or 0
+        db.session.commit()
+        log_update('fixed_assets', asset.id, asset.code, old, asset.to_dict())
+        flash('Fixed asset updated.', 'success')
+        return redirect(url_for('fixed_assets.view', id=asset.id))
+
+    return render_template('fixed_assets/form.html', form=form, title='Edit Fixed Asset',
+                           asset=asset, is_opening=(asset.acquisition_source_type == 'opening'),
+                           readonly_code=False, readonly_acquisition=True)
+
+
+@fixed_assets_bp.route('/fixed-assets/<int:id>/delete', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def delete(id):
+    """Slice 1 posts no JE for a FixedAsset, so deleting one is always safe --
+    it just removes the subledger row and frees its tagged line (if any) for
+    re-tagging. (Slices 2/3 will restrict this once depreciation/disposal exist.)"""
+    asset = db.get_or_404(FixedAsset, id)
+    old = asset.to_dict()
+    code = asset.code
+    db.session.delete(asset)
+    db.session.commit()
+    log_delete('fixed_assets', id, code, old)
+    flash(f'Fixed asset "{code}" deleted.', 'success')
+    return redirect(url_for('fixed_assets.list'))
