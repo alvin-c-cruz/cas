@@ -169,6 +169,15 @@ MODULE_REGISTRY = [
      'area': 'Inventory', 'group': 'Masters',
      'optional': True, 'depends_on': ['units_of_measure'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('products.',)},
+    # Inventory item fields (R-03 slice 1) -- gates track_inventory/costing_method/
+    # standard_cost/reorder_level on the Product form. No own routes/page (hence no
+    # area/group -- omitting them keeps it out of the sidebar tree, which only shows
+    # entries with both set), so it's checked directly via module_enabled('inventory')
+    # in products/form.html, the same pattern already used for module_enabled('employees')
+    # gating the salesperson_id field inside the Quotation/SO forms.
+    {'key': 'inventory', 'label': 'Inventory (Item Costing)', 'section': 'Maintenance',
+     'optional': True, 'depends_on': ['products'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ()},
     {'key': 'employees', 'label': 'Employees', 'section': 'Maintenance',
      'area': 'Payroll', 'group': 'Masters',
      'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
