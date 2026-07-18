@@ -166,6 +166,9 @@ class CompanySettingsForm(FlaskForm):
         'Consolidate multiple Purchase Orders / Receiving Reports into one Bill '
         '(off = one PO or RR per bill)')
 
+    job_order_slips_show_drafts = BooleanField(
+        'Show draft Sales Orders on the Job Order Slips list (off = confirmed/cancelled/closed only)')
+
     payroll_semi_monthly_timing = SelectField(
         'Semi-Monthly Statutory Timing', choices=PAYROLL_SEMI_MONTHLY_TIMING_CHOICES,
         default='second_cutoff'

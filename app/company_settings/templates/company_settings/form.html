@@ -238,6 +238,15 @@
                 <strong>Pre-printed Form</strong> prints data-only onto a pre-printed form (designed
                 in the layout editor); <strong>Hidden</strong> turns printing off entirely — the
                 Print button is removed and the print link is disabled.</div>
+            {% if module_states.sales_orders %}
+            <label class="checkbox-label" style="margin-top:12px;">
+                {{ form.job_order_slips_show_drafts() }}
+                <span>{{ form.job_order_slips_show_drafts.label.text }}</span>
+            </label>
+            <div class="form-hint">When on, the Job Order Slips list also shows draft (not yet
+                confirmed) Sales Orders. When off (default), only confirmed/cancelled/closed
+                orders appear there.</div>
+            {% endif %}
             {% if module_states.delivery_receipts %}
             <label class="checkbox-label" style="margin-top:12px;">
                 {{ form.si_dr_billing_consolidate() }}

@@ -196,6 +196,15 @@ def edit_settings():
                 old_values[_apk] = _ap_old
                 new_values[_apk] = _ap_new
 
+            # Job Order Slips: whether draft-status SOs appear on the list (default OFF).
+            _jok = 'job_order_slips_show_drafts'
+            _jo_old = AppSettings.get_setting(_jok, '0')
+            _jo_new = '1' if form.job_order_slips_show_drafts.data else '0'
+            if _jo_old != _jo_new:
+                AppSettings.set_setting(_jok, _jo_new, updated_by=current_user.username)
+                old_values[_jok] = _jo_old
+                new_values[_jok] = _jo_new
+
             if new_values:
                 log_audit(
                     module='settings',
@@ -228,6 +237,8 @@ def edit_settings():
             AppSettings.get_setting('si_dr_billing_consolidate', '0') == '1')
         form.ap_billing_consolidate.data = (
             AppSettings.get_setting('ap_billing_consolidate', '0') == '1')
+        form.job_order_slips_show_drafts.data = (
+            AppSettings.get_setting('job_order_slips_show_drafts', '0') == '1')
 
     from app.users.module_access import MODULE_REGISTRY, module_enabled
     optional_modules = [dict(m, enabled=module_enabled(m['key']))
