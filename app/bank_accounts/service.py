@@ -5,6 +5,12 @@ from app.settings import AppSettings
 
 DEFAULT_CASH_BANK_PARENT_CODE = '10100'
 
+# Mirrors app.bank_accounts.views._FIELDS -- kept as a separate constant (rather than
+# imported from views) to avoid a service->views circular import (views already imports
+# from service).
+_AUDIT_FIELDS = ['code', 'name', 'account_id', 'bank_name', 'account_number', 'account_type',
+                 'opening_balance', 'opening_date', 'is_active']
+
 
 def get_cash_bank_parent_code():
     return (AppSettings.get_setting('cash_bank_parent_account_code') or DEFAULT_CASH_BANK_PARENT_CODE).strip()
@@ -62,11 +68,14 @@ def seed_bank_accounts_from_usage(created_by='system'):
     tables -- creates BankAccount rows only."""
     from collections import defaultdict
     from app import db
+    from app.audit.utils import log_create, model_to_dict
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
     usage = defaultdict(int)          # (branch_id, account_id) -> line count
     rows = (db.session.query(JournalEntry.branch_id, JournalEntryLine.account_id)
-            .join(JournalEntryLine, JournalEntryLine.entry_id == JournalEntry.id).all())
+            .join(JournalEntryLine, JournalEntryLine.entry_id == JournalEntry.id)
+            .filter(JournalEntry.status == 'posted')
+            .all())
     for branch_id, account_id in rows:
         usage[(branch_id, account_id)] += 1
 
@@ -83,11 +92,14 @@ def seed_bank_accounts_from_usage(created_by='system'):
             continue
         win_branch = max(per_branch, key=per_branch.get)
         acct = db.session.get(Account, account_id)
-        db.session.add(BankAccount(branch_id=win_branch, account_id=account_id,
-                                   code=(acct.code or f'BA-{account_id}'), name=acct.name,
-                                   account_type='checking', opening_balance=0, created_by=created_by))
+        ba = BankAccount(branch_id=win_branch, account_id=account_id,
+                         code=(acct.code or f'BA-{account_id}'), name=acct.name,
+                         account_type='checking', opening_balance=0, created_by=created_by)
+        db.session.add(ba)
+        db.session.commit()
+        log_create('bank_accounts', ba.id, ba.code, model_to_dict(ba, _AUDIT_FIELDS),
+                  notes=f'Auto-seeded from posted journal-entry usage by {created_by}')
         others = [bid for bid in per_branch if bid != win_branch]
         if others:
             flags.append({'account_id': account_id, 'code': acct.code, 'other_branch_ids': others})
-    db.session.commit()
     return flags
