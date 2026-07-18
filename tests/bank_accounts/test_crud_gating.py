@@ -23,6 +23,42 @@ def test_routes_404_when_module_off(client, admin_user, db_session, main_branch)
     assert resp.status_code == 404
 
 
+def test_all_endpoints_404_when_module_off(client, accountant_user, db_session, main_branch, cash_account):
+    """Every bank_accounts route -- not just list -- is 404 when the module is off
+    (optional-module-gating-traps: a new route isn't hidden unless every one of its
+    endpoints is covered). Uses a real BankAccount id for edit/toggle so the 404 is
+    provably the module gate firing, not an ambiguous 'record not found'."""
+    _login(client, accountant_user, main_branch)
+
+    resp = client.get('/bank-accounts/')
+    assert resp.status_code == 404
+
+    resp = client.get('/bank-accounts/new')
+    assert resp.status_code == 404
+    resp = client.post('/bank-accounts/new', data={'code': 'X', 'name': 'X', 'account_id': cash_account.id})
+    assert resp.status_code == 404
+
+    resp = client.post('/bank-accounts/quick-add', data={'code': 'X', 'name': 'X', 'account_id': cash_account.id})
+    assert resp.status_code == 404
+
+    # Create a BankAccount directly (bypassing the gated route) so edit/toggle have a
+    # real id to target -- the gate must still block them even though the row exists.
+    from app.bank_accounts.models import BankAccount
+    ba = BankAccount(branch_id=main_branch.id, code='BA-OFF', name='Off Test',
+                      account_id=cash_account.id, account_type='checking',
+                      opening_balance=0, created_by='test')
+    db_session.add(ba)
+    db_session.commit()
+
+    resp = client.get(f'/bank-accounts/{ba.id}/edit')
+    assert resp.status_code == 404
+    resp = client.post(f'/bank-accounts/{ba.id}/edit', data={'code': 'BA-OFF', 'name': 'Off Test'})
+    assert resp.status_code == 404
+
+    resp = client.post(f'/bank-accounts/{ba.id}/toggle-active')
+    assert resp.status_code == 404
+
+
 def test_create_bank_account(client, accountant_user, db_session, main_branch, cash_account):
     _enable_bank_accounts(db_session)
     _login(client, accountant_user, main_branch)
