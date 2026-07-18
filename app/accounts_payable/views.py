@@ -366,6 +366,28 @@ def _build_validated_ap_lines():
         except ValueError as e:
             raise APVLineError(str(e))
 
+        # R-02 Phase 6: derive the variance snapshot SERVER-SIDE -- the hidden fields only
+        # say WHICH source line to re-read; matched_unit_price/matched_quantity are never
+        # taken from the POST body even if a client sends them.
+        source_po_item_id = _int_safe(item_data.get('source_po_item_id'))
+        source_rr_item_id = _int_safe(item_data.get('source_rr_item_id'))
+        matched_unit_price = None
+        matched_quantity = None
+        if source_rr_item_id:
+            from app.receiving_reports.models import ReceivingReportItem
+            rr_item = db.session.get(ReceivingReportItem, source_rr_item_id)
+            if rr_item:
+                source_po_item_id = source_po_item_id or rr_item.purchase_order_item_id
+                matched_quantity = rr_item.received_quantity
+                if rr_item.purchase_order_item:
+                    matched_unit_price = rr_item.purchase_order_item.unit_price
+        elif source_po_item_id:
+            from app.purchase_orders.models import PurchaseOrderItem
+            po_item = db.session.get(PurchaseOrderItem, source_po_item_id)
+            if po_item:
+                matched_unit_price = po_item.unit_price
+                matched_quantity = po_item.quantity
+
         line_item = AccountsPayableItem(
             line_number=idx,
             description=item_data.get('description', ''),
@@ -381,6 +403,10 @@ def _build_validated_ap_lines():
             account_id=account_id,
             wt_id=wt_id,
             wt_rate=wt_rate,
+            source_po_item_id=source_po_item_id,
+            source_rr_item_id=source_rr_item_id,
+            matched_unit_price=matched_unit_price,
+            matched_quantity=matched_quantity,
         )
         line_item.calculate_amounts()
         built.append(line_item)
