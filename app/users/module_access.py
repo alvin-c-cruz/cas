@@ -181,11 +181,27 @@ MODULE_REGISTRY = [
                    'reports.bir_vat_return_print',
                    'withholding_certificates.',
                    'vat_settlement.')},
+    # ── Banking (R-04 slice 1) — Cash & Bank register over existing COA accounts ──
+    # NOTE: per_user=True (deliberate deviation from the plan's literal snippet, which
+    # had per_user=False). With per_user=False this optional module is excluded from
+    # all_permission_keys()/default_all_permissions() -- a plain 'accountant' (not
+    # has_full_access) could then NEVER be granted it, same structural trap as
+    # bir_reports (admin/CA-only in practice). The task's own given test creates a
+    # bank account as accountant_user right after enabling the module at the instance
+    # level, which requires per_user=True so accountant_user's default_all_permissions()
+    # fixture grant includes this key -- matching the staff/accountant-reachable
+    # optional Transaction modules (sales_orders, purchase_requests, etc.), not the
+    # admin-only reports.
+    {'key': 'bank_accounts', 'label': 'Bank Accounts', 'section': 'Transactions',
+     'area': 'Banking', 'group': 'Banking',
+     'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('bank_accounts.',)},
 ]
 
-AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Accounting', 'Compliance', 'Payroll',
+AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Banking', 'Accounting', 'Compliance', 'Payroll',
               'Fixed Assets', 'Admin']
-GROUP_ORDER = ['Documents', 'Masters', 'Journals', 'Ledger', 'Financial Statements', 'Reports', 'BIR', 'Admin']
+GROUP_ORDER = ['Documents', 'Masters', 'Journals', 'Ledger', 'Financial Statements', 'Reports', 'BIR', 'Admin',
+               'Banking']
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY
                     if m['section'] == 'Transactions' and not m.get('optional')]

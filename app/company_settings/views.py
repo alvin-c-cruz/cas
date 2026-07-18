@@ -58,6 +58,7 @@ SETTINGS_KEYS = [
     'sss_employer_no',
     'philhealth_employer_no',
     'pagibig_employer_no',
+    'cash_bank_parent_account_code',
 ]
 
 LOGO_SETTING_KEY = 'company_logo'
@@ -263,6 +264,7 @@ def modules_toggle():
     if not ok:
         flash(f'Cannot change "{key}": {reason}.', 'error')
         return redirect(url_for('company_settings.edit_settings'))
+    was_off = key not in enabled_keys
     AppSettings.set_setting(f'module_enabled:{key}', '1' if enable else '0',
                             updated_by=current_user.username)
     clear_module_config_cache()
@@ -270,6 +272,25 @@ def modules_toggle():
               record_id=None, record_identifier=key,
               new_values={'enabled': enable})
     flash(f'Module "{key}" {"enabled" if enable else "disabled"}.', 'success')
+
+    if key == 'bank_accounts' and enable and was_off:
+        from app.bank_accounts.service import seed_bank_accounts_from_usage
+        try:
+            flags = seed_bank_accounts_from_usage(created_by=current_user.username)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.error(
+                'Error auto-seeding bank accounts on module enable', exc_info=True)
+            flash('Bank Accounts auto-seeding did not complete. The module is still '
+                  'enabled and it is safe to retry: turn "Bank Accounts" off then on '
+                  'again to pick up where it left off.', 'error')
+        else:
+            if flags:
+                flash(f'{len(flags)} cash account(s) are used by more than one branch — '
+                      f'to give each branch its own Bank Account, split them into '
+                      f'separate per-branch GL accounts in the Chart of Accounts, then '
+                      f'register each here.', 'warning')
+
     return redirect(url_for('company_settings.edit_settings'))
 
 

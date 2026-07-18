@@ -52,9 +52,10 @@ def test_seed_minimal_produces_core_baseline(db_session):
     assert {w.code for w in WithholdingTax.query.all()} == {
         'WC158', 'WI158', 'WC160', 'WI160', 'WC100', 'WI100', 'WC010', 'WI010'}
 
-    # 29 app settings (25 baseline + 4 control-account codes backfilled from the
-    # legacy anchors); identity blank-ish, company_name default present
-    assert AppSettings.query.count() == 29
+    # 30 app settings (25 baseline + 4 control-account codes backfilled from the
+    # legacy anchors + cash_bank_parent_account_code defaulted to 10100, which exists
+    # in this baseline COA); identity blank-ish, company_name default present
+    assert AppSettings.query.count() == 30
     assert AppSettings.get_setting('company_name') == 'Company Name'
     assert AppSettings.get_setting('company_tin') == ''
 

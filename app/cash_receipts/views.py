@@ -891,9 +891,9 @@ def create():
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.code).all()
     form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
     all_accounts = _get_all_accounts_for_select()
-    form.cash_account_id.choices = [(0, '-- Select Account --')] + [
-        (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
-    ]
+    from app.bank_accounts.service import cash_bank_account_choices
+    form.cash_account_id.choices = [(0, '-- Select Account --')] + cash_bank_account_choices(
+        session.get('selected_branch_id'))
 
     def _render_form():
         is_post = request.method == 'POST'
@@ -1007,9 +1007,8 @@ def edit(id):
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.code).all()
     form.customer_id.choices = [(c.id, f'{c.code} - {c.name}') for c in customers]
     all_accounts = _get_all_accounts_for_select()
-    form.cash_account_id.choices = [
-        (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
-    ]
+    from app.bank_accounts.service import cash_bank_account_choices
+    form.cash_account_id.choices = cash_bank_account_choices(session.get('selected_branch_id'))
 
     def _render_edit_form():
         """Render the edit form.

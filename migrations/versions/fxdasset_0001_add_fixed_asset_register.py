@@ -1,14 +1,20 @@
 """add fixed asset register (asset_categories + fixed_assets)
 
 Revision ID: fxdasset_0001
-Revises: 8242857b00da
+Revises: ec44eda6db34
 Create Date: 2026-07-18
+
+Re-chained 2026-07-18 from the original down_revision (8242857b00da) onto
+ec44eda6db34 -- main advanced past 8242857b00da while this branch was in
+flight (R-04 bank_accounts + AP variance-snapshot heads were merged), so
+8242857b00da is no longer a real head. See CLAUDE.md's migration
+head-collision note.
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = 'fxdasset_0001'
-down_revision = '8242857b00da'
+down_revision = 'ec44eda6db34'
 branch_labels = None
 depends_on = None
 

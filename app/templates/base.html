@@ -1059,6 +1059,7 @@
               {%- elif key == 'products' and ep.startswith('products.') -%}active
               {%- elif key == 'employees' and ep.startswith('employees.') -%}active
               {%- elif key == 'payroll' and ep.startswith('payroll.') -%}active
+              {%- elif key == 'bank_accounts' and ep.startswith('bank_accounts.') -%}active
               {%- endif -%}
             {%- endif -%}
             {%- endmacro %}
@@ -1103,7 +1104,8 @@
                 'products':           'products.list',
                 'employees':          'employees.list_employees',
                 'payroll':            'payroll.register',
-                'fixed_assets':       'fixed_assets.list'
+                'fixed_assets':       'fixed_assets.list',
+                'bank_accounts':      'bank_accounts.list_accounts'
             } %}
             {% set _nav_icon = {
                 'sales_orders':       '📦',
@@ -1141,7 +1143,8 @@
                 'products':           '📦',
                 'employees':          '🧑‍💼',
                 'payroll':            '💵',
-                'fixed_assets':       '🏭'
+                'fixed_assets':       '🏭',
+                'bank_accounts':      '🏦'
             } %}
 
             {% for area in build_sidebar(current_user) %}
