@@ -36,6 +36,34 @@
                 {{ render_field(form.default_unit_price) }}
             </div>
 
+            {% if module_enabled('inventory') %}
+            <div class="form-group">
+                <label class="form-label" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    {{ form.track_inventory(id='track_inventory', style="width:auto; margin:0;") }}
+                    {{ form.track_inventory.label.text }}
+                </label>
+                <small class="form-hint">Enable stock costing for this item. Requires a costing
+                    method and standard cost.</small>
+                {% if form.track_inventory.errors %}
+                <div class="field-errors">
+                    {% for error in form.track_inventory.errors %}
+                        <span class="error-message">{{ error }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div id="inventory-fields" class="form-row-2" style="display: none;">
+                {{ render_field(form.costing_method) }}
+                {{ render_field(form.standard_cost) }}
+            </div>
+            <div id="inventory-fields-2" class="form-group" style="display: none;">
+                {{ render_field(form.reorder_level) }}
+                <div class="form-hint">Optional reorder alert threshold, in the item's default
+                    unit of measure. Informational only for now.</div>
+            </div>
+            {% endif %}
+
             <div class="form-group">
                 {{ status_toggle(form.is_active, label_class='') }}
             </div>
@@ -49,5 +77,22 @@
         </form>
     </div>
 </div>
+
+{% if module_enabled('inventory') %}
+<script>
+(function () {
+    var cb = document.getElementById('track_inventory');
+    var panels = [document.getElementById('inventory-fields'),
+                  document.getElementById('inventory-fields-2')];
+    function sync() {
+        panels.forEach(function (p) { if (p) { p.style.display = cb.checked ? '' : 'none'; } });
+    }
+    if (cb) {
+        cb.addEventListener('change', sync);
+        sync();
+    }
+})();
+</script>
+{% endif %}
 
 {% endblock %}
