@@ -1133,10 +1133,17 @@ def view(id):
         and (cdv.total_amount or 0) > 0
     )
 
+    from app.fixed_assets.services import get_tag_for_line
+    fixed_asset_tags = {
+        line.id: get_tag_for_line('cdv', cdv.id, line.id) for line in cdv.expense_lines
+    }
+    fixed_asset_tags = {k: v for k, v in fixed_asset_tags.items() if v is not None}
+
     return render_template('cash_disbursements/detail.html',
                            cdv=cdv, je_entries=je_entries, now=ph_now(),
                            cd_print_access=cd_print_access, cd_print_form=cd_print_form,
-                           check_printable=check_printable)
+                           check_printable=check_printable,
+                           fixed_asset_tags=fixed_asset_tags)
 
 
 def _apply_ap_payments(cdv):
@@ -1264,6 +1271,15 @@ def cancel(id):
     if cdv.status != 'posted':
         flash('Only posted CDVs can be cancelled.', 'error')
         return redirect(url_for('cash_disbursements.view', id=id))
+
+    from app.fixed_assets.services import get_tags_for_document
+    tagged_assets = get_tags_for_document('cdv', cdv.id)
+    if tagged_assets:
+        codes = ', '.join(a.code for a in tagged_assets)
+        flash(f'Cannot cancel: linked to fixed asset(s) {codes}. Delete the fixed asset(s) '
+             f'first if you need to reverse this CDV.', 'error')
+        return redirect(url_for('cash_disbursements.view', id=id))
+
     cancel_reason = request.form.get('cancel_reason', '').strip()
     if len(cancel_reason) < 10:
         flash('Cancellation reason must be at least 10 characters.', 'error')
