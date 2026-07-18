@@ -166,6 +166,29 @@ def gather_approval_items(user):
     return items
 
 
+def gather_incoming_transfer_items(user, branch_id):
+    """Inter-branch transfers in_transit TO this branch, needing confirm/reject.
+    Audience mirrors gather_approval_items: full-access + accountant."""
+    if not user or not branch_id or not (user.has_full_access or user.role == 'accountant'):
+        return []
+    from app.bank_transfers.models import BankTransfer
+    items = []
+    transfers = (BankTransfer.query
+                .filter_by(status='in_transit', to_branch_id=branch_id)
+                .order_by(BankTransfer.id.desc()).all())
+    for t in transfers:
+        items.append({
+            'type': 'Bank Transfer', 'icon': '🏦',
+            'id': t.transfer_number,
+            'desc': f'Incoming transfer of {t.amount} awaiting confirmation.',
+            'by': t.from_bank_account.branch.name if t.from_bank_account and t.from_bank_account.branch else '—',
+            'when': t.initiated_at.strftime('%Y-%m-%d %H:%M') if t.initiated_at else '—',
+            'state': 'In Transit',
+            'editUrl': f'/bank-transfers/{t.id}',
+        })
+    return items
+
+
 def count_action_items(user, branch_id):
     """Badge count = drafts the user can see + approvals they can review.
     Uses COUNT queries (no object hydration) for the per-request badge."""
@@ -175,6 +198,7 @@ def count_action_items(user, branch_id):
     if branch_id:
         for _label, _icon, Model, _num, _edit in _draft_sources():
             n += _draft_query(Model, user, branch_id).count()
+        n += len(gather_incoming_transfer_items(user, branch_id))
     if user.has_full_access or user.role == 'accountant':
         n += AccountChangeRequest.query.filter_by(status='pending').count()
         n += VATCategoryChangeRequest.query.filter_by(status='pending').count()

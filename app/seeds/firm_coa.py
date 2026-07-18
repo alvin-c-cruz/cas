@@ -23,6 +23,7 @@ FIRM_COA = [
     ('10210', 'Advances to Employees',                      'Asset', 'Current', 'debit',  '10200'),
     ('10211', 'Advances to Officers',                       'Asset', 'Current', 'debit',  '10200'),
     ('10212', 'Creditable Withholding Tax',                 'Asset', 'Current', 'debit',  '10200'),   # MAGIC
+    ('10213', 'Inter-branch Due from',                      'Asset', 'Current', 'debit',  '10200'),
     ('10400', 'Prepaid Expenses and Other Current Assets',  'Asset', 'Current', 'debit',  None),
     ('10401', 'Prepaid Rent',                               'Asset', 'Current', 'debit',  '10400'),
     ('10402', 'Prepaid Insurance',                          'Asset', 'Current', 'debit',  '10400'),
@@ -57,6 +58,7 @@ FIRM_COA = [
     ('20102', 'Accounts Payable - Others',                 'Liability', 'Current', 'credit', '20100'),
     ('20103', 'Accrued Expenses',                          'Liability', 'Current', 'credit', '20100'),
     ('20104', 'Accrued Salaries and Wages',               'Liability', 'Current', 'credit', '20100'),
+    ('20111', 'Inter-branch Due to',                      'Liability', 'Current', 'credit', '20100'),
     ('20200', 'Output VAT',                                'Liability', 'Current', 'credit', None),
     ('20201', 'Output VAT - Sales',                        'Liability', 'Current', 'credit', '20200'),
     ('20202', 'VAT Payable',                               'Liability', 'Current', 'credit', '20200'),

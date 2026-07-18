@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Bank Transfers{% endblock %}
+{% block page_title %}Bank Transfers{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <p class="page-sub">Move money between your own bank/cash accounts — intra-branch posts immediately; inter-branch is a two-step initiate → confirm.</p>
+    <div class="page-actions" style="display: flex; gap: 8px;">
+        {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+        <a href="{{ url_for('bank_transfers.new_transfer') }}" class="btn btn-primary">
+            + Enter Bank Transfer
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+{# Draft/in-transit/completed/rejected+cancelled map onto this app's existing lifecycle
+   badge classes (style.css) rather than inventing badge-draft/-transit/-completed/-rejected
+   classes like the mockup sketched: draft=grey, in_transit=amber, completed=green,
+   rejected/cancelled=red. #}
+{% set badge_map = {'draft': 'draft', 'in_transit': 'partial', 'completed': 'posted',
+                    'rejected': 'cancelled', 'cancelled': 'cancelled'} %}
+{% set status_labels = {'draft': 'Draft', 'in_transit': 'In Transit', 'completed': 'Completed',
+                        'rejected': 'Rejected', 'cancelled': 'Cancelled'} %}
+
+<div class="card">
+    <div class="card-body card-body--flush">
+        <table class="data-table" id="bankTransfersTable">
+            <thead>
+                <tr>
+                    <th>TRANSFER #</th>
+                    <th>DATE</th>
+                    <th>FROM</th>
+                    <th>TO</th>
+                    <th>AMOUNT</th>
+                    <th>STATUS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bt in transfers %}
+                <tr>
+                    <td><a href="{{ url_for('bank_transfers.view_transfer', id=bt.id) }}" class="row-link"><strong>{{ bt.transfer_number }}</strong></a></td>
+                    <td>{{ bt.transfer_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ bt.from_bank_account.code }} <span class="branch-tag">{{ bt.from_bank_account.branch.name }}</span></td>
+                    <td>{{ bt.to_bank_account.code }} <span class="branch-tag">{{ bt.to_bank_account.branch.name }}</span></td>
+                    <td class="amount">₱{{ '{:,.2f}'.format(bt.amount) }}</td>
+                    <td><span class="badge badge-{{ badge_map.get(bt.status, 'draft') }}">{{ status_labels.get(bt.status, bt.status|title) }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if not transfers %}
+        <div class="empty-state">
+            <p>No bank transfers found.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 20px;
+}
+.page-sub { color: var(--text-2); font-size: 13px; margin: 0; }
+.branch-tag { font-size: 11px; color: var(--text-3); display: block; }
+.row-link { color: inherit; text-decoration: none; }
+.row-link:hover { color: var(--blue); text-decoration: underline; }
+.amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+</style>
+{% endblock %}

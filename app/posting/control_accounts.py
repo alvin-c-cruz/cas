@@ -32,6 +32,14 @@ CONTROL_ACCOUNTS = {
     'payroll_sss_loan_payable':      ('payroll_sss_loan_payable_account_code',      'SSS Salary/Calamity Loan Payable control account'),
     'payroll_pagibig_loan_payable':  ('payroll_pagibig_loan_payable_account_code',  'Pag-IBIG Loan Payable control account'),
     'payroll_accrued_salaries':      ('payroll_accrued_salaries_account_code',      'Accrued Salaries and Wages control account'),
+
+    # Bank Transfers (R-04 slice 2). Fully accountant-assigned -- deliberately NOT
+    # added to DEFAULT_CONTROL_ACCOUNT_CODES, so no seed/migration auto-assigns them
+    # from a guessed code (illustrative codes like 10215/20110 collide with existing
+    # seed rows on some charts). An accountant must assign both before any
+    # INTER-BRANCH transfer can post; intra-branch transfers never touch these.
+    'inter_branch_due_from': ('inter_branch_due_from_account_code', 'Inter-branch Due-from control account'),
+    'inter_branch_due_to':   ('inter_branch_due_to_account_code',   'Inter-branch Due-to control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,

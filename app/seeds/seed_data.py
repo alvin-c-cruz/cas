@@ -149,6 +149,7 @@ def seed_chart_of_accounts():
         {'code': '10210', 'name': 'Other Receivables', 'type': 'Asset', 'parent': '10200', 'normal_balance': 'debit'},
         {'code': '10211', 'name': 'Advances to Employees', 'type': 'Asset', 'parent': '10200', 'normal_balance': 'debit'},
         {'code': '10212', 'name': 'Creditable Withholding Tax', 'type': 'Asset', 'parent': '10200', 'normal_balance': 'debit'},
+        {'code': '10213', 'name': 'Inter-branch Due from', 'type': 'Asset', 'parent': '10200', 'normal_balance': 'debit'},
 
         # Inventory
         {'code': '10300', 'name': 'Inventory', 'type': 'Asset', 'parent': '10000', 'is_header': True},
@@ -193,6 +194,7 @@ def seed_chart_of_accounts():
         {'code': '20100', 'name': 'Accounts Payable', 'type': 'Liability', 'parent': '20000', 'is_header': True},
         {'code': '20101', 'name': 'Accounts Payable - Trade', 'type': 'Liability', 'parent': '20100', 'normal_balance': 'credit'},
         {'code': '20102', 'name': 'Accounts Payable - Others', 'type': 'Liability', 'parent': '20100', 'normal_balance': 'credit'},
+        {'code': '20111', 'name': 'Inter-branch Due to', 'type': 'Liability', 'parent': '20100', 'normal_balance': 'credit'},
 
         # Output VAT
         {'code': '20200', 'name': 'Output VAT', 'type': 'Liability', 'parent': '20000', 'is_header': True},
@@ -950,7 +952,7 @@ def seed_construction():
 def seed_manufacturing():
     """Seed a clean manufacturing-company instance (MANUFACTURING_COA + VAT/EWT incl. V0 zero-rated).
 
-    Same shape as seed_construction but with the 146-account MANUFACTURING_COA and a GENERIC
+    Same shape as seed_construction but with the 148-account MANUFACTURING_COA and a GENERIC
     identity (company_name='Manufacturing Company') -- rename in Company Settings per client, so
     no client name is coupled into shared code. Suited to manufacturers/exporters: RM/WIP/FG
     inventory accounts + the V0 VAT zero-rated (export) sales category. Refuses to run if the COA

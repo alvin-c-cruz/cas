@@ -1061,6 +1061,7 @@
               {%- elif key == 'employees' and ep.startswith('employees.') -%}active
               {%- elif key == 'payroll' and ep.startswith('payroll.') -%}active
               {%- elif key == 'bank_accounts' and ep.startswith('bank_accounts.') -%}active
+              {%- elif key == 'bank_transfers' and ep.startswith('bank_transfers.') -%}active
               {%- endif -%}
             {%- endif -%}
             {%- endmacro %}
@@ -1107,7 +1108,8 @@
                 'employees':          'employees.list_employees',
                 'payroll':            'payroll.register',
                 'fixed_assets':       'fixed_assets.list',
-                'bank_accounts':      'bank_accounts.list_accounts'
+                'bank_accounts':      'bank_accounts.list_accounts',
+                'bank_transfers':     'bank_transfers.list_transfers'
             } %}
             {% set _nav_icon = {
                 'job_order_slips':    '🧰',
@@ -1147,7 +1149,8 @@
                 'employees':          '🧑‍💼',
                 'payroll':            '💵',
                 'fixed_assets':       '🏭',
-                'bank_accounts':      '🏦'
+                'bank_accounts':      '🏦',
+                'bank_transfers':     '🔁'
             } %}
 
             {% for area in build_sidebar(current_user) %}

@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Bank Transfer {{ transfer.transfer_number }}{% endblock %}
+{% block page_title %}Bank Transfer — {{ transfer.transfer_number }}{% endblock %}
+
+{% block content %}
+
+{% set badge_map = {'draft': 'draft', 'in_transit': 'partial', 'completed': 'posted',
+                    'rejected': 'cancelled', 'cancelled': 'cancelled'} %}
+{% set status_labels = {'draft': 'Draft', 'in_transit': 'In Transit', 'completed': 'Completed',
+                        'rejected': 'Rejected', 'cancelled': 'Cancelled'} %}
+
+{# Reject modal (in_transit, receiving-branch accountant+ only) -- no-JS-popup HTML
+   modal confirm per this app's convention, mirroring cash_disbursements/detail.html's
+   cancelModal/voidModal (never confirm()/alert()). #}
+{% if can_reject %}
+<div id="rejectModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:460px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Reject this transfer?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">
+      <strong>{{ transfer.transfer_number }}</strong> will be rejected and a reversal journal
+      entry will reverse the sender leg. This cannot be undone.
+    </p>
+    <form method="POST" action="{{ url_for('bank_transfers.reject_transfer', id=transfer.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="row_version" value="{{ transfer.row_version }}"/>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('rejectModal').style.display='none'">Keep Transfer</button>
+        <button type="submit" class="btn btn-danger">Reject Transfer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{# Cancel modal (in_transit, sending-branch accountant+ only) #}
+{% if can_cancel %}
+<div id="cancelModal" style="display:none;position:fixed;inset:0;background:var(--backdrop);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--card);border-radius:8px;padding:32px;max-width:460px;width:90%;">
+    <h3 style="margin:0 0 12px 0;">Cancel this transfer?</h3>
+    <p style="color:var(--text-2);margin-bottom:24px;">
+      <strong>{{ transfer.transfer_number }}</strong> will be cancelled and a reversal journal
+      entry will reverse the sender leg. This cannot be undone.
+    </p>
+    <form method="POST" action="{{ url_for('bank_transfers.cancel_transfer', id=transfer.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" name="row_version" value="{{ transfer.row_version }}"/>
+      <div style="display:flex;gap:12px;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelModal').style.display='none'">Keep Transfer</button>
+        <button type="submit" class="btn btn-danger">Cancel Transfer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:20px;font-weight:700;">{{ transfer.transfer_number }}</span>
+      <span class="badge badge-{{ badge_map.get(transfer.status, 'draft') }}">{{ status_labels.get(transfer.status, transfer.status|title) }}</span>
+    </div>
+    <div class="card-header-actions">
+      {% if can_edit %}
+      <a href="{{ url_for('bank_transfers.edit_transfer', id=transfer.id) }}" class="btn btn-primary">Edit</a>
+      {% endif %}
+      {% if can_post %}
+      <form method="POST" action="{{ url_for('bank_transfers.post_transfer', id=transfer.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="row_version" value="{{ transfer.row_version }}"/>
+        <button type="submit" class="btn btn-success">Post</button>
+      </form>
+      {% endif %}
+      {% if can_initiate %}
+      <form method="POST" action="{{ url_for('bank_transfers.initiate_transfer', id=transfer.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="row_version" value="{{ transfer.row_version }}"/>
+        <button type="submit" class="btn btn-success">Initiate</button>
+      </form>
+      {% endif %}
+      {% if can_confirm %}
+      <form method="POST" action="{{ url_for('bank_transfers.confirm_transfer', id=transfer.id) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="row_version" value="{{ transfer.row_version }}"/>
+        <button type="submit" class="btn btn-success">Confirm</button>
+      </form>
+      {% endif %}
+      {% if can_reject %}
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('rejectModal').style.display='flex'">Reject</button>
+      {% endif %}
+      {% if can_cancel %}
+      <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel</button>
+      {% endif %}
+      <a href="{{ url_for('bank_transfers.list_transfers') }}" class="btn btn-secondary">← Back</a>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <!-- From -> To flow -->
+    <div class="bt-flow-row">
+      <div class="bt-flow-box">
+        <div class="bt-flow-label">From</div>
+        <div class="bt-flow-acct">{{ transfer.from_bank_account.code }} — {{ transfer.from_bank_account.name }}</div>
+        <div class="bt-flow-branch">{{ transfer.from_bank_account.branch.name }}</div>
+      </div>
+      <div class="bt-flow-arrow">→</div>
+      <div class="bt-flow-box">
+        <div class="bt-flow-label">To</div>
+        <div class="bt-flow-acct">{{ transfer.to_bank_account.code }} — {{ transfer.to_bank_account.name }}</div>
+        <div class="bt-flow-branch">{{ transfer.to_bank_account.branch.name }}</div>
+      </div>
+    </div>
+
+    <!-- Header info -->
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:480px;">
+      {% macro field(label, val) %}
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="color:var(--text-2);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">{{ label }}</span>
+        <span>{{ val }}</span>
+      </div>
+      {% endmacro %}
+      {{ field('Amount', '₱' ~ '{:,.2f}'.format(transfer.amount)) }}
+      {{ field('Transfer Date', transfer.transfer_date.strftime('%b %d, %Y')) }}
+      {{ field('Type', 'Inter-branch' if transfer.is_inter_branch else 'Intra-branch') }}
+      {{ field('Memo', transfer.memo or '—') }}
+      {% if transfer.initiated_at %}
+      {{ field('Initiated', transfer.initiated_at.strftime('%b %d, %Y') ~ (' by ' ~ initiated_by_name if initiated_by_name else '')) }}
+      {% endif %}
+      {% if transfer.confirmed_at %}
+      {{ field('Confirmed', transfer.confirmed_at.strftime('%b %d, %Y') ~ (' by ' ~ confirmed_by_name if confirmed_by_name else '')) }}
+      {% endif %}
+      {% if transfer.rejected_at %}
+      {{ field('Rejected', transfer.rejected_at.strftime('%b %d, %Y') ~ (' by ' ~ rejected_by_name if rejected_by_name else '')) }}
+      {% endif %}
+      {% if transfer.cancelled_at %}
+      {{ field('Cancelled', transfer.cancelled_at.strftime('%b %d, %Y') ~ (' by ' ~ cancelled_by_name if cancelled_by_name else '')) }}
+      {% endif %}
+    </div>
+
+    {% if je_sections %}
+    <div style="margin-top:24px;">
+      {% for section in je_sections %}
+      <div style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:10px;">{{ section.title }}</div>
+        <table class="table" style="font-size:13px;">
+          <thead>
+            <tr><th>Code</th><th>Account Title</th><th style="text-align:right;">Debit</th><th style="text-align:right;">Credit</th></tr>
+          </thead>
+          <tbody>
+            {% for e in section.entries %}
+            <tr>
+              <td style="color:var(--text-2);font-size:12px;">{{ e.code }}</td>
+              <td>{{ e.name }}</td>
+              <td style="text-align:right;font-family:var(--mono);">{% if e.debit > 0 %}{{ '{:,.2f}'.format(e.debit) }}{% else %}—{% endif %}</td>
+              <td style="text-align:right;font-family:var(--mono);">{% if e.credit > 0 %}{{ '{:,.2f}'.format(e.credit) }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if transfer.status == 'in_transit' and transfer.is_inter_branch %}
+    <p style="font-size:11.5px;color:var(--text-3);font-style:italic;margin-top:8px;">
+      {% if can_confirm or can_reject %}
+      Confirm or Reject this transfer as the receiving branch.
+      {% else %}
+      Awaiting confirmation at {{ transfer.to_bank_account.branch.name }} — read-only here except Cancel.
+      {% endif %}
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+.bt-flow-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; margin-bottom: 22px; }
+.bt-flow-box { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
+.bt-flow-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-3); margin-bottom: 4px; }
+.bt-flow-acct { font-weight: 700; font-size: 14px; }
+.bt-flow-branch { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.bt-flow-arrow { font-size: 22px; color: var(--text-3); text-align: center; }
+</style>
+{% endblock %}
