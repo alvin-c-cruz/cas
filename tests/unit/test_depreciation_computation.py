@@ -132,3 +132,62 @@ def test_daily_convention_does_not_prorate_a_later_period():
                        acquisition_date=date(2026, 1, 20))
     amount = compute_period_depreciation(asset, Decimal('83.33'), 2026, 2, convention='daily')
     assert amount == Decimal('1000.00')
+
+
+def test_proration_days_owned_override_takes_precedence_over_acquisition_month():
+    """An asset's acquisition month and a caller-supplied proration_days_owned can both
+    apply in theory (edge case: disposed same month it was acquired) -- the override wins."""
+    asset = _StubAsset(depreciation_method='straight_line', useful_life_months=12,
+                       salvage_value=Decimal('0'), acquisition_cost=Decimal('12000.00'),
+                       acquisition_date=date(2026, 1, 5))
+    # Without override: acquisition-month proration uses days_in_month - 5 + 1 = 27 days
+    without_override = compute_period_depreciation(asset, Decimal('0'), 2026, 1,
+                                                    convention='daily')
+    # With override: caller says only 10 days owned this period (e.g. disposed Jan 10,
+    # the SAME month it was acquired -- days_owned counted from month-start, not
+    # acquisition-day, since the caller here represents a disposal-month proration)
+    with_override = compute_period_depreciation(asset, Decimal('0'), 2026, 1,
+                                                 convention='daily', proration_days_owned=10)
+    expected = (Decimal('1000.00') * Decimal('10') / Decimal('31')).quantize(Decimal('0.01'))
+    assert with_override == expected
+    assert with_override != without_override
+
+
+def test_proration_days_owned_ignored_under_full_month_convention():
+    """The override only has an effect under convention='daily' -- full_month never
+    prorates, regardless of what proration_days_owned says."""
+    asset = _StubAsset(depreciation_method='straight_line', useful_life_months=12,
+                       salvage_value=Decimal('0'), acquisition_cost=Decimal('12000.00'),
+                       acquisition_date=date(2024, 1, 1))
+    amount = compute_period_depreciation(asset, Decimal('1000.00'), 2026, 6,
+                                         convention='full_month', proration_days_owned=5)
+    assert amount == Decimal('1000.00')  # full monthly amount, no proration
+
+
+def test_proration_days_owned_applies_in_a_non_acquisition_month():
+    """The whole point of this keyword: prorate a period that is NOT the asset's
+    acquisition month (a disposal month, arbitrarily far from acquisition)."""
+    asset = _StubAsset(depreciation_method='straight_line', useful_life_months=60,
+                       salvage_value=Decimal('0'), acquisition_cost=Decimal('60000.00'),
+                       acquisition_date=date(2020, 1, 1))
+    # June 2026 is nowhere near the Jan 2020 acquisition month -- without the override,
+    # 'daily' convention would NOT prorate this period at all (is_acquisition_month is False)
+    without_override = compute_period_depreciation(asset, Decimal('12000.00'), 2026, 6,
+                                                    convention='daily')
+    assert without_override == Decimal('1000.00')  # full month, no proration applied
+    # With the override (asset disposed June 15 -- 15 days owned out of 30 in June)
+    with_override = compute_period_depreciation(asset, Decimal('12000.00'), 2026, 6,
+                                                 convention='daily', proration_days_owned=15)
+    expected = (Decimal('1000.00') * Decimal('15') / Decimal('30')).quantize(Decimal('0.01'))
+    assert with_override == expected
+
+
+def test_omitting_proration_days_owned_preserves_existing_acquisition_month_behavior():
+    """Regression guard: every Slice-2 caller that never passes this new keyword must see
+    byte-identical results to before this task."""
+    asset = _StubAsset(depreciation_method='straight_line', useful_life_months=12,
+                       salvage_value=Decimal('0'), acquisition_cost=Decimal('12000.00'),
+                       acquisition_date=date(2026, 1, 20))
+    amount = compute_period_depreciation(asset, Decimal('0'), 2026, 1, convention='daily')
+    expected = (Decimal('1000.00') * Decimal('12') / Decimal('31')).quantize(Decimal('0.01'))
+    assert amount == expected

@@ -12,7 +12,8 @@ def get_depreciation_convention():
 
 
 def compute_period_depreciation(asset, prior_accumulated, period_year, period_month,
-                                convention='full_month', units_used=None):
+                                convention='full_month', units_used=None,
+                                proration_days_owned=None):
     """The pure per-method formula for one asset's one period.
 
     Args:
@@ -27,6 +28,13 @@ def compute_period_depreciation(asset, prior_accumulated, period_year, period_mo
             asset's own acquisition month only.
         units_used: Decimal, units-of-production only -- units consumed this
             period. Ignored for every other method.
+        proration_days_owned: Decimal/int, optional -- overrides the
+            function's own acquisition-month day-count when
+            convention='daily' (used by Slice 3's disposal-month catch-up,
+            whose proration runs the OPPOSITE direction: days from the 1st
+            of the month through the disposal date, not acquisition-day
+            through month-end). Ignored when None (default) -- every
+            pre-Slice-3 caller is unaffected.
 
     Returns:
         Decimal, quantized to 2 places -- 0.00 if the asset is already fully
@@ -56,12 +64,17 @@ def compute_period_depreciation(asset, prior_accumulated, period_year, period_mo
     else:
         raise ValueError(f'Unknown depreciation method: {asset.depreciation_method}')
 
-    is_acquisition_month = (period_year == asset.acquisition_date.year
-                            and period_month == asset.acquisition_date.month)
-    if is_acquisition_month and convention == 'daily':
+    if convention == 'daily':
         days_in_month = calendar.monthrange(period_year, period_month)[1]
-        days_owned = days_in_month - asset.acquisition_date.day + 1
-        amount = amount * Decimal(days_owned) / Decimal(days_in_month)
+        if proration_days_owned is not None:
+            days_owned = proration_days_owned
+            amount = amount * Decimal(days_owned) / Decimal(days_in_month)
+        else:
+            is_acquisition_month = (period_year == asset.acquisition_date.year
+                                    and period_month == asset.acquisition_date.month)
+            if is_acquisition_month:
+                days_owned = days_in_month - asset.acquisition_date.day + 1
+                amount = amount * Decimal(days_owned) / Decimal(days_in_month)
 
     amount = min(amount, remaining)
     return amount.quantize(Decimal('0.01'))
