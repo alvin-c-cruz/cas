@@ -22,9 +22,7 @@
     {% endfor %}
   {% endwith %}
 
-  {# budgeting.save is added in Task 4; this form posts to the fixed route path
-     directly until the endpoint exists, avoiding a BuildError in Task 3's tests. #}
-  <form method="post" action="/budgeting/save" id="budget-grid-form">
+  <form method="post" action="{{ url_for('budgeting.save') }}" id="budget-grid-form">
     {{ form.hidden_tag() }}
     <input type="hidden" name="fiscal_year" value="{{ fiscal_year }}">
     <div class="table-wrap">
