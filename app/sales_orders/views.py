@@ -470,6 +470,25 @@ def print_so(id):
                            company=company, printed_at=ph_now())
 
 
+@sales_orders_bp.route('/sales-orders/<int:id>/print-job-order')
+@login_required
+def print_job_order(id):
+    """Operations-facing Job Order Slip -- same SalesOrder record as print_so, no pricing,
+    uses each line's Product.job_order_name (falling back to Product.name) instead of the
+    name that prints on the DR/SI. Not gated by so_print_form -- that setting controls the
+    accounting SO print form only."""
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    company = {
+        'name': AppSettings.get_setting('company_name', ''),
+        'address': AppSettings.get_setting('company_address', ''),
+        'tin': AppSettings.get_setting('company_tin', ''),
+    }
+    return render_template('sales_orders/print_job_order.html', so=so,
+                           company=company, printed_at=ph_now())
+
+
 @sales_orders_bp.route('/sales-orders/print-layout', methods=['POST'])
 @login_required
 def save_print_layout():
