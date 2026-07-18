@@ -137,3 +137,33 @@ class TestPagibigRemittanceView:
         assert (b'do not have access' in resp.data.lower()
                 or resp.status_code in (302, 403, 404))
         _enable_payroll()
+
+
+class TestBir1601cView:
+    def test_view_renders_for_admin(self, client, db_session, login_user, admin_user,
+                                     run_factory):
+        _enable_payroll()
+        run = run_factory(run_number='PR-2026-06-0004')
+        run.status = 'posted'
+        db_session.commit()
+        login_user(client, 'admin', 'admin123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = run.branch_id
+        resp = client.get('/reports/payroll/bir-1601c?year=2026&month=6')
+        assert resp.status_code == 200
+        assert b'Juan Dela Cruz' in resp.data
+
+    def test_route_blocked_when_payroll_disabled(self, client, db_session, login_user,
+                                                   admin_user, main_branch):
+        _disable_payroll()
+        login_user(client, 'admin', 'admin123')
+        # A branch must exist and be selected first, or the branch-session
+        # before_request hook (which runs ahead of the module-access gate)
+        # redirects to the branch picker before the module gate is ever
+        # reached -- same trap noted in TestSssRemittanceView above.
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get('/reports/payroll/bir-1601c', follow_redirects=True)
+        assert (b'do not have access' in resp.data.lower()
+                or resp.status_code in (302, 403, 404))
+        _enable_payroll()

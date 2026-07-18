@@ -11,7 +11,7 @@ import pytest
 from app import db
 from app.payroll.models import PayrollRun
 from app.reports.payroll_remittances import (
-    get_sss_remittance, get_philhealth_remittance, get_pagibig_remittance,
+    get_sss_remittance, get_philhealth_remittance, get_pagibig_remittance, get_bir_1601c,
 )
 
 pytestmark = [pytest.mark.integration]
@@ -141,3 +141,36 @@ class TestPagibigRemittance:
         total_row = rows[-1]
         assert total_row['pagibig_ee'] == run.total_pagibig_ee
         assert total_row['pagibig_er'] == run.total_pagibig_er
+
+
+class TestBir1601c:
+    def test_single_posted_regular_run(self, db_session, run_factory):
+        run = run_factory(run_number='PR-2026-06-0004', basic_rate=Decimal('100000.00'))
+        _post(run)
+        rows = get_bir_1601c(2026, 6, branch_id=run.branch_id)
+        assert len(rows) == 2
+        emp_row = rows[0]
+        assert emp_row['tin'] == ''  # run_factory's Employee has no tin set by default
+        assert rows[-1]['employee_name'] == 'TOTAL'
+
+    def test_thirteenth_month_run_INCLUDED_unlike_other_three(self, db_session, run_factory):
+        """The one report where a 13th_month run's WHT counts -- 13th-month pay
+        above the statutory cap is taxable and withheld."""
+        reg_run = run_factory(run_number='PR-2026-06-0004', basic_rate=Decimal('100000.00'))
+        _post(reg_run)
+        thirteenth_run = run_factory(run_number='PR-2026-06-0005', basic_rate=Decimal('100000.00'),
+                                      employee=reg_run.lines[0].employee, run_type='13th_month')
+        thirteenth_run.status = 'posted'
+        db.session.commit()
+        rows = get_bir_1601c(2026, 6, branch_id=reg_run.branch_id)
+        # both runs share the same employee (run_factory always builds 'Juan Dela Cruz'),
+        # so exactly one employee row + TOTAL -- but WHT from BOTH runs is summed in
+        assert len(rows) == 2
+        expected_wht = reg_run.lines[0].wht + thirteenth_run.lines[0].wht
+        assert rows[0]['wht'] == expected_wht
+
+    def test_header_ties_to_run_totals(self, db_session, run_factory):
+        run = run_factory(run_number='PR-2026-06-0004', basic_rate=Decimal('100000.00'))
+        _post(run)
+        rows = get_bir_1601c(2026, 6, branch_id=run.branch_id)
+        assert rows[-1]['wht'] == run.total_wht

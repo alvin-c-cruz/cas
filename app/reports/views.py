@@ -26,7 +26,7 @@ from app.reports.bir import (
     get_vat_return_summary
 )
 from app.reports.payroll_remittances import (
-    get_sss_remittance, get_philhealth_remittance, get_pagibig_remittance,
+    get_sss_remittance, get_philhealth_remittance, get_pagibig_remittance, get_bir_1601c,
 )
 from app.reports.financial import (
     generate_trial_balance,
@@ -818,6 +818,41 @@ def pagibig_remittance_export_excel():
     title = f'Pag-IBIG Monthly Contribution Remittance Form - {get_month_name(month)} {year}'
 
     return export_to_excel(pagibig_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/payroll/bir-1601c')
+@login_required
+@accountant_or_admin_required
+def bir_1601c():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    wht_data = get_bir_1601c(year, month, branch_id=current_branch_id)
+
+    return render_template('reports/payroll_bir_1601c.html',
+                         wht_data=wht_data,
+                         year=year,
+                         month=month,
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
+
+
+@reports_bp.route('/reports/payroll/bir-1601c/export/excel')
+@login_required
+@accountant_or_admin_required
+def bir_1601c_export_excel():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    wht_data = get_bir_1601c(year, month, branch_id=current_branch_id)
+
+    columns = ['employee_no', 'employee_name', 'tin', 'taxable_comp', 'wht']
+    headers = ['Employee No.', 'Employee Name', 'TIN', 'Taxable Compensation', 'Tax Withheld']
+
+    filename = f'BIR_1601C_{year}_{month:02d}.xlsx'
+    title = f'BIR 1601-C - Monthly Remittance Return of Income Taxes Withheld on Compensation - {get_month_name(month)} {year}'
+
+    return export_to_excel(wht_data, columns, headers, filename, title)
 
 
 # ============================================================================

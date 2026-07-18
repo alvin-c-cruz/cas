@@ -108,3 +108,25 @@ def get_pagibig_remittance(year, month, branch_id=None):
             r['pagibig_er'] += line.pagibig_er
             r['total'] += line.pagibig_ee + line.pagibig_er
     return _finalize(rows)
+
+
+def get_bir_1601c(year, month, branch_id=None):
+    """BIR 1601-C: Monthly Remittance Return of Income Taxes Withheld on
+    Compensation. Unlike the other three reports, includes BOTH run_type
+    values -- 13th-month pay in excess of the statutory cap is taxable and
+    withheld, so its WHT must be remitted here even though it never
+    contributes to SSS/PhilHealth/Pag-IBIG."""
+    rows = {}
+    for run in _posted_runs(year, month, branch_id, ['regular', '13th_month']):
+        for line in run.lines:
+            emp = line.employee
+            r = rows.setdefault(line.employee_id, {
+                'employee_no': emp.employee_no if emp else '',
+                'employee_name': line.employee_name,
+                'tin': (emp.tin if emp else '') or '',
+                'taxable_comp': Decimal('0.00'),
+                'wht': Decimal('0.00'),
+            })
+            r['taxable_comp'] += line.taxable_comp
+            r['wht'] += line.wht
+    return _finalize(rows)
