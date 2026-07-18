@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% from "macros.html" import status_toggle %}
+
+{% block title %}{{ 'Edit Bank Account' if bank_account else 'Create Bank Account' }}{% endblock %}
+{% block page_title %}{{ 'Edit Bank Account — ' ~ bank_account.code if bank_account else 'Create Bank Account' }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+
+<div class="bank-account-form-container">
+    <p class="page-sub">
+        {% if bank_account %}
+        The GL account link is immutable after creation and shown read-only.
+        {% else %}
+        Registers a Cash &amp; Bank label over one GL account. The GL account cannot be changed once saved.
+        {% endif %}
+    </p>
+
+    <form method="POST" novalidate autocomplete="off">
+        {{ form.hidden_tag() }}
+
+        <div class="form-row-2">
+            <div class="form-group">
+                {{ form.code.label(class="form-label") }} <span class="required">*</span>
+                {{ form.code(class="form-control", placeholder="e.g. BA-BPI-001") }}
+                {% if form.code.errors %}{% for error in form.code.errors %}<div class="form-error">{{ error }}</div>{% endfor %}{% endif %}
+            </div>
+            <div class="form-group">
+                {{ form.name.label(class="form-label") }} <span class="required">*</span>
+                {{ form.name(class="form-control", placeholder="e.g. BPI Main") }}
+                {% if form.name.errors %}{% for error in form.name.errors %}<div class="form-error">{{ error }}</div>{% endfor %}{% endif %}
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">GL Cash/Bank Account {% if not bank_account %}<span class="required">*</span>{% endif %}</label>
+            {% if bank_account %}
+            <input class="form-control" value="{{ account_label }}" readonly>
+            <small class="form-hint">Immutable — one Bank Account per GL account. Deactivate and create a new record to re-map.</small>
+            {% else %}
+            {{ form.account_id(class="form-control") }}
+            <small class="form-hint">Only leaf accounts under the configured cash/bank parent are offered; accounts already claimed by another Bank Account are excluded.</small>
+            {% if form.account_id.errors %}{% for error in form.account_id.errors %}<div class="form-error">{{ error }}</div>{% endfor %}{% endif %}
+            {% endif %}
+        </div>
+
+        <div class="form-row-2">
+            <div class="form-group">
+                {{ form.bank_name.label(class="form-label") }}
+                {{ form.bank_name(class="form-control", placeholder="e.g. BPI (blank for Cash on Hand)") }}
+            </div>
+            <div class="form-group">
+                {{ form.account_number.label(class="form-label") }}
+                {{ form.account_number(class="form-control", placeholder="e.g. 1234-5678-90") }}
+            </div>
+        </div>
+
+        <div class="form-row-2">
+            <div class="form-group">
+                {{ form.account_type.label(class="form-label") }}
+                {{ form.account_type(class="form-control") }}
+            </div>
+            {% if bank_account %}
+            {{ status_toggle(form.is_active) }}
+            {% else %}
+            <div class="form-group"></div>
+            {% endif %}
+        </div>
+
+        <div class="form-row-2">
+            <div class="form-group">
+                {{ form.opening_balance.label(class="form-label") }}
+                {{ form.opening_balance(class="form-control") }}
+                <small class="form-hint">Bank-statement reference only — posts no journal entry. The book opening balance is set separately under Opening Balances.</small>
+            </div>
+            <div class="form-group">
+                {{ form.opening_date.label(class="form-label") }}
+                {{ form.opening_date(class="form-control") }}
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">{{ 'Update' if bank_account else 'Create' }}</button>
+            <a href="{{ url_for('bank_accounts.list_accounts') }}" class="btn btn-secondary">Back</a>
+        </div>
+    </form>
+</div>
+
+<style>
+.bank-account-form-container {
+    max-width: 900px;
+    padding: 18px;
+    background: var(--card);
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.page-sub { color: var(--text-2); font-size: 13px; margin: 0 0 18px; }
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.form-hint { font-size: 11px; color: var(--text-3); margin-top: 3px; display: block; }
+.required { color: #dc2626; }
+.form-error { color: #dc2626; font-size: 12px; margin-top: 4px; }
+.form-actions {
+    display: flex; gap: 12px; justify-content: flex-start;
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+</style>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sel = document.getElementById('account_id');
+    if (sel && typeof initSearchSelect === 'function') {
+        initSearchSelect(sel);
+    }
+});
+</script>
+{% endblock %}
