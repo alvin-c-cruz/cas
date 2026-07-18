@@ -106,3 +106,38 @@ def _units_sold_by_category(start_date, end_date, branch_id):
         SalesInvoiceItem.quantity.isnot(None),
     ).group_by(Product.category_id).all()
     return {cid: Decimal(str(q)) for cid, q in rows}
+
+
+def _allocation_shares(basis, revenue_by_cat, gross_profit_by_cat, units_by_cat, category_ids):
+    """{category_id: Decimal fraction of 1} for a basis, or {} -> the whole amount falls to
+    Unallocated (no rule / basis='none' / zero total basis in the period -- never divide
+    by zero, spec-locked explicit default)."""
+    if not basis or basis == 'none':
+        return {}
+    if basis == 'equal':
+        if not category_ids:
+            return {}
+        share = Decimal('1') / Decimal(len(category_ids))
+        return {cid: share for cid in category_ids}
+    source = {'revenue_share': revenue_by_cat, 'gross_profit_share': gross_profit_by_cat,
+             'units_sold': units_by_cat}.get(basis)
+    if source is None:
+        return {}
+    total = sum((source.get(cid, Decimal('0')) for cid in category_ids), Decimal('0'))
+    if total == 0:
+        return {}
+    return {cid: source.get(cid, Decimal('0')) / total for cid in category_ids}
+
+
+def _distribute(amount, shares):
+    """{category_id: Decimal, ..., UNALLOCATED: Decimal} splitting `amount` per `shares`
+    (fractions of 1); any residual (empty shares, or shares not summing to 1) falls to
+    Unallocated. Exact-tie invariant: sum(returned.values()) == amount always, by
+    construction (Unallocated soaks up whatever the explicit shares didn't claim)."""
+    out = {}
+    allocated = Decimal('0')
+    for cid, frac in shares.items():
+        out[cid] = amount * frac
+        allocated += out[cid]
+    out[UNALLOCATED] = amount - allocated
+    return out
