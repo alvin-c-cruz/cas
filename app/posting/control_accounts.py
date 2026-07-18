@@ -40,6 +40,13 @@ CONTROL_ACCOUNTS = {
     # INTER-BRANCH transfer can post; intra-branch transfers never touch these.
     'inter_branch_due_from': ('inter_branch_due_from_account_code', 'Inter-branch Due-from control account'),
     'inter_branch_due_to':   ('inter_branch_due_to_account_code',   'Inter-branch Due-to control account'),
+
+    # Fixed Asset Disposal (R-05 Slice 3). Fully accountant-assigned -- deliberately NOT
+    # added to DEFAULT_CONTROL_ACCOUNT_CODES, so no seed/migration auto-assigns it. An
+    # accountant must assign it in Company Settings -> Control Accounts before any
+    # disposal can post.
+    'gain_loss_on_disposal': ('gain_loss_on_disposal_account_code',
+                              'Gain/Loss on Disposal of Fixed Assets control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,
