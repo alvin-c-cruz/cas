@@ -10,7 +10,7 @@ import pytest
 
 from app import db
 from app.payroll.models import PayrollRun
-from app.reports.payroll_remittances import get_sss_remittance
+from app.reports.payroll_remittances import get_sss_remittance, get_philhealth_remittance
 
 pytestmark = [pytest.mark.integration]
 
@@ -83,3 +83,31 @@ class TestSssRemittance:
         assert total_row['sss_ee'] == run.total_sss_ee
         assert total_row['sss_er'] == run.total_sss_er
         assert total_row['sss_ec'] == run.total_sss_ec
+
+
+class TestPhilHealthRemittance:
+    def test_single_posted_run_one_employee(self, db_session, run_factory):
+        run = run_factory(run_number='PR-2026-06-0002')
+        _post(run)
+        rows = get_philhealth_remittance(2026, 6, branch_id=run.branch_id)
+        assert len(rows) == 2
+        emp_row = rows[0]
+        assert emp_row['philhealth_ee'] > 0
+        assert emp_row['philhealth_er'] > 0
+        assert rows[-1]['employee_name'] == 'TOTAL'
+
+    def test_thirteenth_month_run_excluded(self, db_session, run_factory):
+        run = run_factory(run_number='PR-2026-06-0002')
+        run.run_type = '13th_month'
+        run.status = 'posted'
+        db.session.commit()
+        rows = get_philhealth_remittance(2026, 6, branch_id=run.branch_id)
+        assert rows == []
+
+    def test_header_ties_to_run_totals(self, db_session, run_factory):
+        run = run_factory(run_number='PR-2026-06-0002')
+        _post(run)
+        rows = get_philhealth_remittance(2026, 6, branch_id=run.branch_id)
+        total_row = rows[-1]
+        assert total_row['philhealth_ee'] == run.total_philhealth_ee
+        assert total_row['philhealth_er'] == run.total_philhealth_er

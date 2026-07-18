@@ -25,7 +25,7 @@ from app.reports.bir import (
     get_quarter_months,
     get_vat_return_summary
 )
-from app.reports.payroll_remittances import get_sss_remittance
+from app.reports.payroll_remittances import get_sss_remittance, get_philhealth_remittance
 from app.reports.financial import (
     generate_trial_balance,
     generate_income_statement,
@@ -743,6 +743,43 @@ def sss_remittance_export_excel():
     title = f'SSS Contribution Collection List - {get_month_name(month)} {year}'
 
     return export_to_excel(sss_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/payroll/philhealth-remittance')
+@login_required
+@accountant_or_admin_required
+def philhealth_remittance():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    philhealth_data = get_philhealth_remittance(year, month, branch_id=current_branch_id)
+
+    return render_template('reports/payroll_philhealth_remittance.html',
+                         philhealth_data=philhealth_data,
+                         year=year,
+                         month=month,
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
+
+
+@reports_bp.route('/reports/payroll/philhealth-remittance/export/excel')
+@login_required
+@accountant_or_admin_required
+def philhealth_remittance_export_excel():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    philhealth_data = get_philhealth_remittance(year, month, branch_id=current_branch_id)
+
+    columns = ['employee_no', 'employee_name', 'philhealth_no', 'philhealth_ee',
+               'philhealth_er', 'total']
+    headers = ['Employee No.', 'Employee Name', 'PhilHealth No.', 'EE Premium',
+               'ER Premium', 'Total Premium']
+
+    filename = f'PhilHealth_Remittance_{year}_{month:02d}.xlsx'
+    title = f"PhilHealth Employer's Remittance Report - {get_month_name(month)} {year}"
+
+    return export_to_excel(philhealth_data, columns, headers, filename, title)
 
 
 # ============================================================================

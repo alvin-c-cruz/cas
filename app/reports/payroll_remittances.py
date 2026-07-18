@@ -68,3 +68,23 @@ def get_sss_remittance(year, month, branch_id=None):
             r['sss_ec'] += line.sss_ec
             r['total'] += line.sss_ee + line.sss_er + line.sss_ec
     return _finalize(rows)
+
+
+def get_philhealth_remittance(year, month, branch_id=None):
+    """PhilHealth Employer's Remittance Report: EE + ER premium per employee."""
+    rows = {}
+    for run in _posted_runs(year, month, branch_id, ['regular']):
+        for line in run.lines:
+            emp = line.employee
+            r = rows.setdefault(line.employee_id, {
+                'employee_no': emp.employee_no if emp else '',
+                'employee_name': line.employee_name,
+                'philhealth_no': (emp.philhealth_no if emp else '') or '',
+                'philhealth_ee': Decimal('0.00'),
+                'philhealth_er': Decimal('0.00'),
+                'total': Decimal('0.00'),
+            })
+            r['philhealth_ee'] += line.philhealth_ee
+            r['philhealth_er'] += line.philhealth_er
+            r['total'] += line.philhealth_ee + line.philhealth_er
+    return _finalize(rows)

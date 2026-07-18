@@ -59,9 +59,11 @@ class TestRegistryEntry:
         # alongside the 'payroll.' prefix rather than replacing it -- each
         # report route lives in the reports blueprint, so it needs its own
         # exact-match string here (module_key_for_endpoint has no prefix to
-        # match on 'reports.').
+        # match on 'reports.'). Task 3 (PhilHealth remittance) appends its
+        # own pair of endpoints the same way.
         assert entry['endpoints'] == (
-            'payroll.', 'reports.sss_remittance', 'reports.sss_remittance_export_excel')
+            'payroll.', 'reports.sss_remittance', 'reports.sss_remittance_export_excel',
+            'reports.philhealth_remittance', 'reports.philhealth_remittance_export_excel')
 
     def test_every_actual_payroll_endpoint_is_matched_by_the_registry_prefix(self, app):
         """Enumerate every route Flask actually registered under the payroll
