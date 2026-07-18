@@ -11,16 +11,20 @@ pytestmark = [pytest.mark.integration]
 
 @pytest.fixture(autouse=True)
 def _fixed_asset_disposal_module_enabled(db_session, accountant_user):
-    """fixed_asset_disposal is optional, default_enabled=False, not per_user --
-    module_enabled alone isn't enough for a non-full-access role; also grant the
-    book permission directly. Mirrors Slice 2's test_depreciation_run_views.py
-    fixture and Slice 1's test_fixed_assets_views.py precedent."""
+    """fixed_asset_disposal (and its own dependency fixed_assets, needed for
+    Task 7's detail-page tests) are optional, default_enabled=False, not
+    per_user -- module_enabled alone isn't enough for a non-full-access role;
+    also grant the book permission directly. Mirrors Slice 2's
+    test_depreciation_run_views.py fixture and Slice 1's
+    test_fixed_assets_views.py precedent."""
     from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:fixed_assets', '1')
     AppSettings.set_setting('module_enabled:fixed_asset_disposal', '1')
     db_session.commit()
     clear_module_config_cache()
     perms = accountant_user.get_book_permissions()
+    perms['fixed_assets'] = True
     perms['fixed_asset_disposal'] = True
     accountant_user.set_book_permissions(perms)
     db_session.commit()
@@ -94,3 +98,24 @@ def test_void_action_flips_disposal_status(db_session, main_branch, accountant_u
     assert resp.status_code == 200
     db_session.refresh(disposal)
     assert disposal.status == 'void'
+
+
+def test_active_asset_detail_page_shows_dispose_link(db_session, main_branch, accountant_user,
+                                                       client, login_user):
+    asset, *_ = _asset(db_session, main_branch)
+    login_user(client, 'accountant', 'accountant123')
+    resp = client.get(f'/fixed-assets/{asset.id}')
+    assert f'/fixed-asset-disposal/new/{asset.id}'.encode() in resp.data
+
+
+def test_disposed_asset_detail_page_hides_dispose_link(db_session, main_branch, accountant_user,
+                                                         client, login_user):
+    asset, *_ = _asset(db_session, main_branch)
+    _assign_gain_loss_account(db_session)
+    login_user(client, 'accountant', 'accountant123')
+    client.post(f'/fixed-asset-disposal/new/{asset.id}', data={
+        'disposal_date': '2026-06-30', 'disposal_type': 'scrap', 'proceeds_amount': '0',
+        'proceeds_account_id': '',
+    })
+    resp = client.get(f'/fixed-assets/{asset.id}')
+    assert f'/fixed-asset-disposal/new/{asset.id}'.encode() not in resp.data

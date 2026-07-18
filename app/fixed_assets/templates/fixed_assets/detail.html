@@ -7,6 +7,9 @@
   {% if current_user.role == 'accountant' or current_user.has_full_access %}
   <div>
     <a href="{{ url_for('fixed_assets.edit', id=asset.id) }}" class="btn btn-secondary">Edit</a>
+    {% if asset.status == 'active' %}
+    <a href="{{ url_for('fixed_asset_disposal.new_disposal', fixed_asset_id=asset.id) }}" class="btn btn-secondary">Dispose</a>
+    {% endif %}
     <button type="button" class="btn btn-danger"
             onclick="document.getElementById('delete-modal').style.display='flex'">Delete</button>
   </div>
