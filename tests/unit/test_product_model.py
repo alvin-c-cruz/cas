@@ -24,3 +24,16 @@ def test_product_code_unique(db_session):
     with pytest.raises(IntegrityError):
         db.session.commit()
     db.session.rollback()
+
+
+def test_product_job_order_name_optional_and_in_dict(db_session):
+    # Blank job_order_name is valid — falls back to `name` at display time (Task 3), not here.
+    p1 = Product(code='JON-1', name='Widget A', is_active=True)
+    db.session.add(p1); db.session.commit()
+    assert p1.job_order_name is None
+    assert p1.to_dict()['job_order_name'] is None
+
+    p2 = Product(code='JON-2', name='Widget B', job_order_name='WGT-B-PROD', is_active=True)
+    db.session.add(p2); db.session.commit()
+    assert p2.job_order_name == 'WGT-B-PROD'
+    assert p2.to_dict()['job_order_name'] == 'WGT-B-PROD'

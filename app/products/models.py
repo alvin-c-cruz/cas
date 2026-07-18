@@ -15,6 +15,7 @@ class Product(db.Model):
     code = db.Column(db.String(50), unique=True, nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    job_order_name = db.Column(db.String(200), nullable=True)
     default_unit_of_measure_id = db.Column(db.Integer, db.ForeignKey('units_of_measure.id'), nullable=True)
     default_unit_price = db.Column(db.Numeric(15, 2), nullable=True)   # VAT-inclusive
     default_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
@@ -35,6 +36,7 @@ class Product(db.Model):
         return {
             'id': self.id, 'code': self.code, 'name': self.name,
             'description': self.description,
+            'job_order_name': self.job_order_name,
             'default_uom_id': self.default_unit_of_measure_id,
             'default_uom_code': self.default_unit_of_measure.code if self.default_unit_of_measure else None,
             'default_unit_price': float(self.default_unit_price) if self.default_unit_price is not None else None,
