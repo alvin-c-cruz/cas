@@ -241,6 +241,7 @@ def create_app(config_name=None):
     )  # noqa: F401
     from app.payroll.models import PayrollRun, PayrollRunLine, EmployeeLoan  # noqa: F401
     from app.bank_accounts.models import BankAccount  # noqa: F401
+    from app.bank_transfers.models import BankTransfer  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
