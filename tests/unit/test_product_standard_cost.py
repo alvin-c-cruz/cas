@@ -33,3 +33,9 @@ def test_to_dict_standard_cost_none_when_unset(db_session):
     db.session.add(p)
     db.session.commit()
     assert p.to_dict()['standard_cost'] is None
+
+
+def test_form_has_standard_cost_field(db_session):
+    from app.products.forms import ProductForm
+    form = ProductForm()
+    assert hasattr(form, 'standard_cost')

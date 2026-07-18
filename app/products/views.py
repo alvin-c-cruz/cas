@@ -62,6 +62,7 @@ def create():
             default_unit_price=form.default_unit_price.data,
             default_account_id=_int_or_none(form.default_account_id.data),
             category_id=_int_or_none(form.category_id.data),
+            standard_cost=form.standard_cost.data,
             is_active=(form.is_active.data == '1'),
             created_by_id=current_user.id,
         )
@@ -109,6 +110,7 @@ def edit(id):
         p.default_unit_price = form.default_unit_price.data
         p.default_account_id = _int_or_none(form.default_account_id.data)
         p.category_id = _int_or_none(form.category_id.data)
+        p.standard_cost = form.standard_cost.data
         p.is_active = (form.is_active.data == '1')
         db.session.commit()
         clear_product_cache()
