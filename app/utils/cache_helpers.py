@@ -157,6 +157,18 @@ def clear_product_category_cache():
 
 
 @cache.memoize(timeout=3600)
+def get_active_asset_categories():
+    """Get all active asset categories (cached 1 hour)."""
+    from app.fixed_assets.models import AssetCategory
+    return AssetCategory.query.filter_by(is_active=True).order_by(AssetCategory.name).all()
+
+
+def clear_asset_category_cache():
+    """Clear asset-category cache after updates."""
+    cache.delete_memoized(get_active_asset_categories)
+
+
+@cache.memoize(timeout=3600)
 def get_active_products():
     """Get all active products (cached 1 hour).
 

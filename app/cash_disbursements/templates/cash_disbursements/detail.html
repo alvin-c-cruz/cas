@@ -177,6 +177,7 @@
             <th style="text-align:right;">Unit Price</th>
             <th style="text-align:right;">Amount (VAT-incl.)</th>
             <th>VAT</th><th>WHT</th><th>Account</th>
+            <th>Fixed Asset</th>
           </tr>
         </thead>
         <tbody>
@@ -202,6 +203,16 @@
               {% if exp.withholding_tax %}{{ exp.withholding_tax.code }} ({{ '{:.2f}'.format(exp.wt_rate) }}%){% else %}—{% endif %}
             </td>
             <td style="font-size:12px;color:var(--text-2);">{{ exp.account.code ~ ' : ' ~ exp.account.name if exp.account else '—' }}</td>
+            <td style="font-size:12px;">
+                {% if cdv.status == 'posted' %}
+                    {% set tag = fixed_asset_tags.get(exp.id) %}
+                    {% if tag %}
+                        <a href="{{ url_for('fixed_assets.view', id=tag.id) }}">{{ tag.code }}</a>
+                    {% elif current_user.role == 'accountant' or current_user.has_full_access %}
+                        <a href="{{ url_for('fixed_assets.tag', source_type='cdv', source_id=cdv.id, source_line_id=exp.id) }}">Capitalize as Fixed Asset</a>
+                    {% endif %}
+                {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

@@ -173,6 +173,10 @@ MODULE_REGISTRY = [
      'area': 'Payroll', 'group': 'Masters',
      'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
      'endpoints': ('employees.',)},
+    {'key': 'fixed_assets', 'label': 'Fixed Assets', 'section': 'Maintenance',
+     'area': 'Fixed Assets', 'group': 'Masters',
+     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'endpoints': ('fixed_assets.',)},
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
      'area': 'Compliance', 'group': 'BIR',
@@ -202,8 +206,10 @@ MODULE_REGISTRY = [
      'endpoints': ('bank_accounts.',)},
 ]
 
-AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Banking', 'Accounting', 'Compliance', 'Payroll', 'Admin']
-GROUP_ORDER = ['Documents', 'Masters', 'Journals', 'Ledger', 'Financial Statements', 'Reports', 'BIR', 'Admin', 'Banking']
+AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Banking', 'Accounting', 'Compliance', 'Payroll',
+              'Fixed Assets', 'Admin']
+GROUP_ORDER = ['Documents', 'Masters', 'Journals', 'Ledger', 'Financial Statements', 'Reports', 'BIR', 'Admin',
+               'Banking']
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY
                     if m['section'] == 'Transactions' and not m.get('optional')]

@@ -1,0 +1,121 @@
+{# Shared FixedAsset form -- reused by the opening-asset flow, the tag flow, and
+   edit (Tasks 6/7/8). Context flags (all optional, default False/None when the
+   calling view omits them):
+     - asset: the FixedAsset being edited, or None/omitted for create.
+     - is_opening: show the opening_accumulated_depreciation field.
+     - readonly_acquisition: acquisition_cost/cost_account_id come from the
+       tagged source line and must not be edited here.
+     - readonly_code: code is system-generated for this flow (e.g. tag flow)
+       and must not be edited here.
+   NOTE: readonly_code/readonly_acquisition/is_opening are coerced to real
+   booleans below -- passing a Jinja Undefined straight into WTForms'
+   readonly=/disabled= kwargs renders the attribute anyway (html_params only
+   drops a literal False), which would silently lock every field whenever a
+   caller omits a flag. #}
+{% extends "base.html" %}
+{% set readonly_code = readonly_code|default(false) %}
+{% set readonly_acquisition = readonly_acquisition|default(false) %}
+{% set is_opening = is_opening|default(false) %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <form method="POST">
+      {{ form.hidden_tag() }}
+      <div class="form-group">
+        {{ form.code.label }} {{ form.code(class_='form-control', readonly=readonly_code) }}
+        {% for e in form.code.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.name.label }} {{ form.name(class_='form-control') }}
+        {% for e in form.name.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.branch_id.label }} {{ form.branch_id(class_='form-control') }}
+        {% for e in form.branch_id.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.category_id.label }} {{ form.category_id(class_='form-control', id='category_id') }}
+      </div>
+
+      <fieldset>
+        <legend>Acquisition</legend>
+        <div class="form-group">
+          {{ form.acquisition_date.label }} {{ form.acquisition_date(class_='form-control') }}
+          {% for e in form.acquisition_date.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.acquisition_cost.label }}
+          {{ form.acquisition_cost(class_='form-control', readonly=readonly_acquisition) }}
+          {% for e in form.acquisition_cost.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.cost_account_id.label }}
+          {{ form.cost_account_id(class_='form-control', id='cost_account_id',
+                                  disabled=readonly_acquisition) }}
+          {% if readonly_acquisition %}
+          {# disabled selects don't POST -- resend the value as a hidden field #}
+          <input type="hidden" name="cost_account_id" value="{{ form.cost_account_id.data }}">
+          {% endif %}
+          {% for e in form.cost_account_id.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        {% if is_opening %}
+        <div class="form-group">
+          {{ form.opening_accumulated_depreciation.label }}
+          {{ form.opening_accumulated_depreciation(class_='form-control') }}
+          {% for e in form.opening_accumulated_depreciation.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </fieldset>
+
+      <fieldset>
+        <legend>Depreciation</legend>
+        <div class="form-group">
+          {{ form.accumulated_depreciation_account_id.label }}
+          {{ form.accumulated_depreciation_account_id(class_='form-control', id='accum_dep_account_id') }}
+          {% for e in form.accumulated_depreciation_account_id.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.depreciation_expense_account_id.label }}
+          {{ form.depreciation_expense_account_id(class_='form-control', id='dep_expense_account_id') }}
+          {% for e in form.depreciation_expense_account_id.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.depreciation_method.label }} {{ form.depreciation_method(class_='form-control') }}
+          {% for e in form.depreciation_method.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.useful_life_months.label }} {{ form.useful_life_months(class_='form-control') }}
+          {% for e in form.useful_life_months.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.declining_balance_rate.label }} {{ form.declining_balance_rate(class_='form-control') }}
+          {% for e in form.declining_balance_rate.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.total_estimated_units.label }} {{ form.total_estimated_units(class_='form-control') }}
+          {% for e in form.total_estimated_units.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-group">
+          {{ form.salvage_value.label }} {{ form.salvage_value(class_='form-control') }}
+          {% for e in form.salvage_value.errors %}<span class="field-error">{{ e }}</span>{% endfor %}
+        </div>
+      </fieldset>
+
+      <button type="submit" class="btn btn-primary">{{ 'Update' if asset else 'Create' }}</button>
+      <a href="{{ url_for('fixed_assets.list') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script src="{{ url_for('static', filename='search-select.js') }}?v=1"></script>
+<script>
+  initSearchSelect(document.getElementById('category_id'), {choicesOptions: {searchResultLimit: 50}});
+  {% if not readonly_acquisition %}
+  initSearchSelect(document.getElementById('cost_account_id'), {choicesOptions: {searchResultLimit: 50}});
+  {% endif %}
+  initSearchSelect(document.getElementById('accum_dep_account_id'), {choicesOptions: {searchResultLimit: 50}});
+  initSearchSelect(document.getElementById('dep_expense_account_id'), {choicesOptions: {searchResultLimit: 50}});
+</script>
+{% endblock %}

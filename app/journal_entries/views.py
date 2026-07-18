@@ -200,8 +200,16 @@ def create():
 def view(id):
     """View journal entry details."""
     entry = _get_entry_or_404(id)
+
+    from app.fixed_assets.services import get_tag_for_line
+    fixed_asset_tags = {
+        line.id: get_tag_for_line('jv', entry.id, line.id) for line in entry.lines
+    }
+    fixed_asset_tags = {k: v for k, v in fixed_asset_tags.items() if v is not None}
+
     return render_template('journal_entries/detail.html', entry=entry,
-                           jv_print_form=AppSettings.get_setting('jv_print_form', 'current'))
+                           jv_print_form=AppSettings.get_setting('jv_print_form', 'current'),
+                           fixed_asset_tags=fixed_asset_tags)
 
 
 @journal_entries_bp.route('/journal-entries/<int:id>/print')
@@ -308,6 +316,14 @@ def cancel(id):
 
     if entry.status == 'cancelled':
         flash('Journal entry is already cancelled.', 'error')
+        return redirect(url_for('journal_entries.view', id=id))
+
+    from app.fixed_assets.services import get_tags_for_document
+    tagged_assets = get_tags_for_document('jv', entry.id)
+    if tagged_assets:
+        codes = ', '.join(a.code for a in tagged_assets)
+        flash(f'Cannot cancel: linked to fixed asset(s) {codes}. Delete the fixed asset(s) '
+             f'first if you need to reverse this entry.', 'error')
         return redirect(url_for('journal_entries.view', id=id))
 
     # `create` guards its date; `cancel` never did. Cancelling is the ONLY in-app

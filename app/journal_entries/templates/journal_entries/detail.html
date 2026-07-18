@@ -98,6 +98,7 @@
                     <th>Description</th>
                     <th style="text-align: right;">Debit</th>
                     <th style="text-align: right;">Credit</th>
+                    <th>Fixed Asset</th>
                 </tr>
             </thead>
             <tbody>
@@ -113,6 +114,16 @@
                     <td style="text-align: right; font-family: var(--mono);">
                         {% if line.credit_amount > 0 %}{{ '{:,.2f}'.format(line.credit_amount) }}{% else %}-{% endif %}
                     </td>
+                    <td style="font-size: 12px;">
+                        {% if entry.status == 'posted' and line.debit_amount and line.debit_amount > 0 %}
+                            {% set tag = fixed_asset_tags.get(line.id) %}
+                            {% if tag %}
+                                <a href="{{ url_for('fixed_assets.view', id=tag.id) }}">{{ tag.code }}</a>
+                            {% elif current_user.role == 'accountant' or current_user.has_full_access %}
+                                <a href="{{ url_for('fixed_assets.tag', source_type='jv', source_id=entry.id, source_line_id=line.id) }}">Capitalize as Fixed Asset</a>
+                            {% endif %}
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -125,6 +136,7 @@
                     <td style="text-align: right; font-family: var(--mono); font-weight: 700; font-size: 15px; padding: 12px;">
                         {{ '{:,.2f}'.format(entry.total_credit) }}
                     </td>
+                    <td></td>
                 </tr>
                 <tr style="background: {% if entry.is_balanced %}#d1fae5{% else %}#fee2e2{% endif %};">
                     <td colspan="4" style="text-align: right; padding: 12px;">
@@ -137,6 +149,7 @@
                             Difference: {{ '{:,.2f}'.format(entry.total_debit - entry.total_credit) }}
                         </strong>
                     </td>
+                    <td></td>
                 </tr>
             </tfoot>
         </table>

@@ -931,11 +931,19 @@ def view(id):
     apv_print_access = AppSettings.get_setting('apv_print_access', 'posted_only')
     apv_print_form = AppSettings.get_setting('ap_print_form', 'current')
     payments = _cdv_settlements(ap)
+
+    from app.fixed_assets.services import get_tag_for_line
+    fixed_asset_tags = {
+        item.id: get_tag_for_line('ap_bill', ap.id, item.id) for item in ap.line_items
+    }
+    fixed_asset_tags = {k: v for k, v in fixed_asset_tags.items() if v is not None}
+
     return render_template('accounts_payable/detail.html', ap=ap,
                            je_entries=je_entries,
                            apv_print_access=apv_print_access,
                            apv_print_form=apv_print_form,
-                           payments=payments)
+                           payments=payments,
+                           fixed_asset_tags=fixed_asset_tags)
 
 
 @accounts_payable_bp.route('/accounts-payable/<int:id>/print')
@@ -1308,6 +1316,14 @@ def cancel(id):
 
     if ap.status != 'posted':
         flash('Only posted APVs can be cancelled.', 'error')
+        return redirect(url_for('accounts_payable.view', id=id))
+
+    from app.fixed_assets.services import get_tags_for_document
+    tagged_assets = get_tags_for_document('ap_bill', ap.id)
+    if tagged_assets:
+        codes = ', '.join(a.code for a in tagged_assets)
+        flash(f'Cannot cancel: linked to fixed asset(s) {codes}. Delete the fixed asset(s) '
+             f'first if you need to reverse this bill.', 'error')
         return redirect(url_for('accounts_payable.view', id=id))
 
     if ap.amount_paid > 0:
