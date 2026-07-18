@@ -537,7 +537,9 @@ function addLineItem(existingItem, firstDefaults) {
     row.innerHTML = `
         <td><input type="text" id="desc-${id}" class="form-control" value="${escHtml(item.description || '')}"
                    style="border:none; background:transparent; padding-left:0;"
-                   onchange="updateLineItem(${id}, 'description', this.value)"></td>
+                   onchange="updateLineItem(${id}, 'description', this.value)">
+            <div id="variance-${id}" style="display:none; font-size:11px; color:var(--alert-warning-text); margin-top:2px;"></div>
+        </td>
         ${productMasterOn ? `
         <td>
             <select class="form-control prod-select" id="prod-${id}">
@@ -593,6 +595,7 @@ function addLineItem(existingItem, firstDefaults) {
         <td><button type="button" class="li-btn-action" onclick="removeLineItem(${id})" title="Remove">🗑️</button></td>
     `;
     document.getElementById('lineItemsBody').appendChild(row);
+    checkVariance(id);
     const newRow = document.getElementById(`line-${id}`);
     const vatSel = newRow.querySelector('.vat-select');
     const whtSel = newRow.querySelector('.wht-select');
@@ -697,7 +700,37 @@ function updateLineItem(id, field, value) {
     if (!item) return;
     item[field] = value;
     if (['amount', 'vat_category'].includes(field)) revertVatOverride();
+    if (field === 'quantity' || field === 'unit_price') checkVariance(id);
     calculateTotals();
+}
+
+// R-02 Phase 6: live price/qty-vs-matched-PO/RR check for picker-sourced lines. Zero
+// tolerance -- any non-zero difference is shown. Purely visual; never blocks submit.
+function checkVariance(id) {
+    const item = lineItems.find(i => i.id === id);
+    const noteEl = document.getElementById(`variance-${id}`);
+    if (!item || !noteEl) return;
+    if (item.source_po_item_id == null && item.source_rr_item_id == null) {
+        noteEl.style.display = 'none';
+        noteEl.textContent = '';
+        return;
+    }
+    const notes = [];
+    if (item.matched_unit_price != null && item.unit_price != null &&
+        Number(item.unit_price).toFixed(2) !== Number(item.matched_unit_price).toFixed(2)) {
+        notes.push(`Ordered @ ₱${Number(item.matched_unit_price).toFixed(2)} — billing @ ₱${Number(item.unit_price).toFixed(2)}`);
+    }
+    if (item.matched_quantity != null && item.quantity != null &&
+        Number(item.quantity).toFixed(4) !== Number(item.matched_quantity).toFixed(4)) {
+        notes.push(`Matched qty ${Number(item.matched_quantity).toFixed(4)} — billing qty ${Number(item.quantity).toFixed(4)}`);
+    }
+    if (notes.length) {
+        noteEl.textContent = '⚠ ' + notes.join(' · ');
+        noteEl.style.display = '';
+    } else {
+        noteEl.style.display = 'none';
+        noteEl.textContent = '';
+    }
 }
 
 function removeLineItem(id) {
@@ -1036,6 +1069,8 @@ document.getElementById('billForm').addEventListener('submit', function () {
         account_id: item.account_id,
         wt_id: item.wt_id,
         wt_rate: item.wt_rate,
+        source_po_item_id: item.source_po_item_id || null,
+        source_rr_item_id: item.source_rr_item_id || null,
     })));
 });
 
