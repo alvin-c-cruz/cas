@@ -1,7 +1,10 @@
 """Book-item query + the reconciliation balance identity (R-04 slice 3)."""
 from decimal import Decimal
 from app import db
+from app.utils import ph_now
+from app.utils.concurrency import claim_version
 from app.journal_entries.models import JournalEntry, JournalEntryLine
+from app.journal_entries.utils import generate_entry_number
 from app.bank_reconciliation.models import ReconciliationItem
 
 
@@ -49,3 +52,68 @@ def reconciliation_summary(rec, ticked_line_ids):
         'outstanding_checks': outstanding_checks, 'adjusted_balance': adjusted_balance,
         'difference': difference,
     }
+
+
+def post_adjustment(rec, account_id, amount, direction, description, actor):
+    """Bank-only item (service charge, interest, error) -- posts an ordinary
+    balanced 2-line JE (bank leg + the chosen contra account) and auto-clears
+    the bank-side line in THIS reconciliation, since it's known to be on the
+    statement. `direction` is 'debit' or 'credit' as seen from the BANK leg
+    (e.g. a service charge is a credit to the bank -- money left the account).
+    entry_type='adjustment' -- the app's own generic ad-hoc-JE type (already the
+    JournalEntry model's default, already registered in VOUCHER_TYPES/
+    VOUCHER_ENTRY_TYPES), the same convention petty_cash's establish/adjust/
+    close JEs already use for a pure balance-adjusting event with no document
+    shape of its own."""
+    assert direction in ('debit', 'credit')
+    bank_debit = amount if direction == 'debit' else Decimal('0.00')
+    bank_credit = amount if direction == 'credit' else Decimal('0.00')
+    contra_debit = amount if direction == 'credit' else Decimal('0.00')
+    contra_credit = amount if direction == 'debit' else Decimal('0.00')
+
+    je = JournalEntry(entry_number=generate_entry_number(rec.bank_account.branch_id),
+                      entry_date=rec.statement_date, description=description,
+                      entry_type='adjustment', branch_id=rec.bank_account.branch_id,
+                      status='posted', posted_by_id=actor.id, posted_at=ph_now(),
+                      total_debit=amount, total_credit=amount, is_balanced=True)
+    je.lines.append(JournalEntryLine(line_number=1, account_id=rec.bank_account.account_id,
+                                     description=description,
+                                     debit_amount=bank_debit, credit_amount=bank_credit))
+    je.lines.append(JournalEntryLine(line_number=2, account_id=account_id, description=description,
+                                     debit_amount=contra_debit, credit_amount=contra_credit))
+    db.session.add(je); db.session.flush()
+    bank_line = je.lines[0]
+    db.session.add(ReconciliationItem(reconciliation_id=rec.id, je_line_id=bank_line.id))
+    return bank_line
+
+
+def complete_reconciliation(rec, ticked_line_ids, submitted_version, actor):
+    """Freeze the ReconciliationItem set + snapshot totals. Returns False (does
+    NOT raise) for either a lost optimistic-lock race or a nonzero difference --
+    both are normal, expected outcomes an accountant should see as a flash, not
+    a 500. `submitted_version` must be the token the CALLER actually saw (the
+    view passes `submitted_version()`, read from the raw POST body -- never
+    `rec.row_version` re-read fresh from the same in-memory object, which would
+    never be stale within one request and would defeat the guard)."""
+    summary = reconciliation_summary(rec, ticked_line_ids)
+    if summary['difference'] != Decimal('0.00'):
+        return False
+
+    if not claim_version(type(rec), rec.id, submitted_version):
+        return False
+
+    for line_id in ticked_line_ids:
+        already = ReconciliationItem.query.filter_by(reconciliation_id=rec.id, je_line_id=line_id).first()
+        if not already:
+            db.session.add(ReconciliationItem(reconciliation_id=rec.id, je_line_id=line_id))
+
+    rec.status = 'completed'
+    rec.book_balance = summary['book_balance']
+    rec.cleared_debits = summary['cleared_debits']
+    rec.cleared_credits = summary['cleared_credits']
+    rec.outstanding_deposits = summary['outstanding_deposits']
+    rec.outstanding_checks = summary['outstanding_checks']
+    rec.adjusted_balance = summary['adjusted_balance']
+    rec.reconciled_by_id = actor.id
+    rec.reconciled_at = ph_now()
+    return True
