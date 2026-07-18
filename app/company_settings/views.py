@@ -272,10 +272,19 @@ def modules_toggle():
 
     if key == 'bank_accounts' and enable and was_off:
         from app.bank_accounts.service import seed_bank_accounts_from_usage
-        flags = seed_bank_accounts_from_usage(created_by=current_user.username)
-        if flags:
-            flash(f'{len(flags)} cash account(s) are shared across branches — '
-                  f'assign each to its owning branch.', 'warning')
+        try:
+            flags = seed_bank_accounts_from_usage(created_by=current_user.username)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.error(
+                'Error auto-seeding bank accounts on module enable', exc_info=True)
+            flash('Bank Accounts auto-seeding did not complete. The module is still '
+                  'enabled and it is safe to retry: turn "Bank Accounts" off then on '
+                  'again to pick up where it left off.', 'error')
+        else:
+            if flags:
+                flash(f'{len(flags)} cash account(s) are shared across branches — '
+                      f'assign each to its owning branch.', 'warning')
 
     return redirect(url_for('company_settings.edit_settings'))
 

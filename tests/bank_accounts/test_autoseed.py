@@ -99,3 +99,36 @@ def test_seed_logs_audit_entry_for_seeded_bank_account(db_session, main_branch, 
     audit = AuditLog.query.filter_by(module='bank_accounts', action='create', record_id=ba.id).first()
     assert audit is not None
     assert audit.record_identifier == ba.code
+
+
+def test_toggle_on_survives_seeder_failure(client, db_session, admin_user, main_branch, login_user, monkeypatch):
+    """Guard on modules_toggle(): the module is already durably ON (AppSettings write
+    commits first) before the seeder runs, and the seeder now commits per-row -- so a
+    failure partway through must not 500 and must tell the admin the seed may be
+    incomplete and that a retry (off then on) is safe (the seeder recomputes what's
+    already registered on every call)."""
+    from app.settings import AppSettings
+    from app.bank_accounts import service
+    from app.utils.cache_helpers import clear_module_config_cache
+
+    def _boom(created_by='system'):
+        raise RuntimeError('simulated seeder failure')
+
+    monkeypatch.setattr(service, 'seed_bank_accounts_from_usage', _boom)
+
+    try:
+        login_user(client, 'admin', 'admin123')
+        resp = client.post('/settings/modules/toggle',
+                           data={'key': 'bank_accounts', 'enable': '1'},
+                           follow_redirects=True)
+
+        assert resp.status_code == 200                                             # no unhandled 500
+        assert AppSettings.get_setting('module_enabled:bank_accounts') == '1'      # module stays ON
+        assert b'did not complete' in resp.data                                    # incomplete-seed flash
+        assert b'safe to retry' in resp.data or b'retry' in resp.data.lower()
+    finally:
+        # module_enabled() is memoized on the session-scoped app cache, which outlives this
+        # test's db_session table drop/recreate -- clear it so a later test in the same run
+        # doesn't see a stale '1' for an AppSettings row that no longer exists (see the same
+        # guard in test_picker.py).
+        clear_module_config_cache()
