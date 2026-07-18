@@ -62,9 +62,9 @@ def create():
             default_unit_price=form.default_unit_price.data,
             default_account_id=_int_or_none(form.default_account_id.data),
             category_id=_int_or_none(form.category_id.data),
+            standard_cost=form.standard_cost.data,
             track_inventory=form.track_inventory.data,
             costing_method=(form.costing_method.data or None),
-            standard_cost=form.standard_cost.data,
             reorder_level=form.reorder_level.data,
             is_active=(form.is_active.data == '1'),
             created_by_id=current_user.id,
@@ -114,9 +114,9 @@ def edit(id):
         p.default_unit_price = form.default_unit_price.data
         p.default_account_id = _int_or_none(form.default_account_id.data)
         p.category_id = _int_or_none(form.category_id.data)
+        p.standard_cost = form.standard_cost.data
         p.track_inventory = form.track_inventory.data
         p.costing_method = (form.costing_method.data or None)
-        p.standard_cost = form.standard_cost.data
         p.reorder_level = form.reorder_level.data
         p.is_active = (form.is_active.data == '1')
         db.session.commit()

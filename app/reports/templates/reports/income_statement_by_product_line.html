@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Income Statement by Product Line{% endblock %}
+{% block page_title %}Income Statement by Product Line{% endblock %}
+{% block content %}
+<div class="content-header">
+    <form method="GET" class="filter-form">
+        <label for="as_of">As of</label>
+        <input type="date" id="as_of" name="as_of" value="{{ as_of.isoformat() }}">
+        <button type="submit" class="btn btn-secondary">Apply</button>
+    </form>
+    <div class="page-actions">
+        <a href="{{ url_for('reports.income_statement_by_product_line_print', as_of=as_of.isoformat()) }}"
+           class="btn btn-secondary" target="_blank">Print</a>
+        <a href="{{ url_for('reports.income_statement_by_product_line_export_excel', as_of=as_of.isoformat()) }}"
+           class="btn btn-secondary">Export Excel</a>
+    </div>
+</div>
+
+{% macro matrix(period_data, heading) %}
+<div class="card" style="margin-bottom: 20px;">
+    <div class="card-body is-by-pl-scroll">
+        <h3>{{ heading }}</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Caption</th>
+                    {% for c in data.columns %}
+                    <th class="num">{{ c.name }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in period_data.rows %}
+                <tr class="{{ 'total-row' if r.kind == 'subtotal' else '' }}">
+                    <td>{% if r.kind == 'subtotal' %}<strong>{{ r.label }}</strong>{% else %}{{ r.label }}{% endif %}</td>
+                    {% for c in data.columns %}
+                    <td class="num">
+                        {% if r.kind == 'subtotal' %}<strong>{% endif %}
+                        {{ '{:,.2f}'.format(r.by_column.get(c.category_id, 0.0)) }}
+                        {% if r.kind == 'subtotal' %}</strong>{% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endmacro %}
+
+{{ matrix(data.mtd, as_of.strftime('%b %Y') + ' (MTD)') }}
+{{ matrix(data.ytd, 'YTD ' ~ as_of.year) }}
+
+<p class="reconciliation-note">
+    {% set gp = data.mtd.reconciliation.gross_profit %}
+    {% if gp.ties %}
+    Reconciled to Income Statement Gross Profit.
+    {% else %}
+    Variance vs Income Statement Gross Profit (MTD) &mdash;
+    {{ '{:,.2f}'.format(gp.is_total - gp.matrix_total) }}.
+    {% endif %}
+</p>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.is-by-pl-scroll { overflow-x: auto; }
+</style>
+{% endblock %}

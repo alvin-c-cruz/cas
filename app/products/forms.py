@@ -22,11 +22,11 @@ class ProductForm(FlaskForm):
                                       validators=[Optional(), NumberRange(min=0)])
     default_account_id = SelectField('Default Account', validators=[Optional()], default='')
     category_id = SelectField('Category', validators=[Optional()], default='')
+    standard_cost = DecimalField('Standard Cost (₱)', places=2,
+                                 validators=[Optional(), NumberRange(min=0)])
     track_inventory = BooleanField('Track Inventory')
     costing_method = SelectField('Costing Method', choices=_COSTING_METHOD_CHOICES,
                                  validators=[Optional()], default='')
-    standard_cost = DecimalField('Standard Cost (₱)', places=2,
-                                 validators=[Optional(), NumberRange(min=0)])
     reorder_level = DecimalField('Reorder Level (Qty)', places=2,
                                  validators=[Optional(), NumberRange(min=0)])
     is_active = SelectField('Status', choices=[('1', 'Active'), ('0', 'Inactive')])

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='budgeting.css') }}?v=1">
+
+<div class="page-budgeting">
+  <header class="page-head">
+    <h1>Budget Entry</h1>
+    <form method="get" class="budgeting-year-picker">
+      <label>Fiscal Year
+        <select name="fiscal_year" onchange="this.form.submit()">
+          {% for y in range(fiscal_year - 2, fiscal_year + 4) %}
+            <option value="{{ y }}" {{ 'selected' if y == fiscal_year else '' }}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </form>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('budgeting.save') }}" id="budget-grid-form">
+    {{ form.hidden_tag() }}
+    <input type="hidden" name="fiscal_year" value="{{ fiscal_year }}">
+    <div class="table-wrap">
+      <table class="budget-grid">
+        <thead>
+          <tr>
+            <th class="budget-grid-account">Account</th>
+            {% for m in month_names %}<th class="num">{{ m[:3] }}</th>{% endfor %}
+            <th class="num">Annual Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in grid_rows %}
+            {% if row.is_header %}
+              <tr class="budget-grid-header">
+                <td style="padding-left: {{ row.depth * 16 }}px">{{ row.account.code }} &mdash; {{ row.account.name }}</td>
+                <td colspan="13"></td>
+              </tr>
+            {% else %}
+              <tr class="budget-grid-leaf">
+                <td style="padding-left: {{ row.depth * 16 }}px">{{ row.account.code }} &mdash; {{ row.account.name }}</td>
+                {% for m in range(1, 13) %}
+                  <td class="num">
+                    <input type="text" inputmode="decimal"
+                           name="amount_{{ row.account.id }}_{{ m }}"
+                           class="budget-cell"
+                           value="{{ '%.2f'|format(row.amounts[m-1]) if row.amounts[m-1] is not none else '' }}">
+                  </td>
+                {% endfor %}
+                <td class="num budget-row-total">{{ '%.2f'|format(row.annual_total) }}</td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="budgeting-actions">
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/budgeting.js') }}?v=1"></script>
+{% endblock %}

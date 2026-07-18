@@ -1051,12 +1051,14 @@
               {%- elif key == 'cash_flow' and ep.startswith('reports.cash_flow') -%}active
               {%- elif key == 'trial_balance' and ep.startswith('reports.trial_balance') -%}active
               {%- elif key == 'sales_by_product_line' and ep.startswith('reports.sales_by_product_line') -%}active
+              {%- elif key == 'income_statement_by_product_line' and ep.startswith('reports.income_statement_by_product_line') -%}active
               {%- elif key == 'periods' and ep.startswith('periods.') -%}active
               {%- elif key == 'fiscal_year_close' and ep.startswith('year_end.') -%}active
               {%- elif key == 'customers' and ep.startswith('customers.') -%}active
               {%- elif key == 'vendors' and ep.startswith('vendors.') -%}active
               {%- elif key == 'units_of_measure' and ep.startswith('units_of_measure.') -%}active
               {%- elif key == 'product_categories' and ep.startswith('product_categories.') -%}active
+              {%- elif key == 'expense_allocation_rules' and ep.startswith('expense_allocation_rules.') -%}active
               {%- elif key == 'products' and ep.startswith('products.') -%}active
               {%- elif key == 'employees' and ep.startswith('employees.') -%}active
               {%- elif key == 'payroll' and ep.startswith('payroll.') -%}active
@@ -1064,6 +1066,7 @@
               {%- elif key == 'bank_transfers' and ep.startswith('bank_transfers.') -%}active
               {%- elif key == 'petty_cash' and ep.startswith('petty_cash.') -%}active
               {%- elif key == 'bank_reconciliation' and ep.startswith('bank_reconciliation.') -%}active
+              {%- elif key == 'budgeting' and ep.startswith('budgeting.') -%}active
               {%- endif -%}
             {%- endif -%}
             {%- endmacro %}
@@ -1100,12 +1103,14 @@
                 'cash_flow':          'reports.cash_flow',
                 'trial_balance':      'reports.trial_balance',
                 'sales_by_product_line': 'reports.sales_by_product_line',
+                'income_statement_by_product_line': 'reports.income_statement_by_product_line',
                 'periods':            'periods.list_periods',
                 'fiscal_year_close':  'year_end.index',
                 'customers':          'customers.list_customers',
                 'vendors':            'vendors.list_vendors',
                 'units_of_measure':   'units_of_measure.list',
                 'product_categories': 'product_categories.list',
+                'expense_allocation_rules': 'expense_allocation_rules.list',
                 'products':           'products.list',
                 'employees':          'employees.list_employees',
                 'payroll':            'payroll.register',
@@ -1115,7 +1120,8 @@
                 'bank_accounts':      'bank_accounts.list_accounts',
                 'bank_transfers':     'bank_transfers.list_transfers',
                 'petty_cash':         'petty_cash.fund_list',
-                'bank_reconciliation': 'bank_reconciliation.pick_account'
+                'bank_reconciliation': 'bank_reconciliation.pick_account',
+                'budgeting':          'budgeting.grid'
             } %}
             {% set _nav_icon = {
                 'job_order_slips':    '🧰',
@@ -1145,12 +1151,14 @@
                 'cash_flow':          '💸',
                 'trial_balance':      '⚖️',
                 'sales_by_product_line': '🏷️',
+                'income_statement_by_product_line': '📊',
                 'periods':            '🗓️',
                 'fiscal_year_close':  '🔒',
                 'customers':          '👥',
                 'vendors':            '🏢',
                 'units_of_measure':   '📏',
                 'product_categories': '🏷️',
+                'expense_allocation_rules': '🧮',
                 'products':           '📦',
                 'employees':          '🧑‍💼',
                 'payroll':            '💵',
@@ -1160,7 +1168,8 @@
                 'bank_accounts':      '🏦',
                 'bank_transfers':     '🔁',
                 'petty_cash':         '👛',
-                'bank_reconciliation': '🧮'
+                'bank_reconciliation': '🧮',
+                'budgeting':          '📊'
             } %}
 
             {% for area in build_sidebar(current_user) %}

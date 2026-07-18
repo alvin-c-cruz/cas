@@ -121,6 +121,18 @@ MODULE_REGISTRY = [
      'area': 'Purchases', 'group': 'Reports',
      'endpoints': ('reports.ap_aging', 'reports.ap_aging_export_excel', 'reports.ap_aging_export_csv')},
     # ── Financial Reports — mirrors the sidebar's "Financial Reports" section ─
+    # income_statement_by_product_line MUST be listed before income_statement: its
+    # endpoint names all start with 'reports.income_statement', so
+    # module_key_for_endpoint's prefix match (endpoint.startswith(pref)) would otherwise
+    # resolve them to the plain (always-on) 'income_statement' entry first and silently
+    # bypass this module's own gate -- the shorter 'income_statement' prefix can never
+    # match the other way round, so this ordering has no effect on the plain report.
+    {'key': 'income_statement_by_product_line', 'label': 'Income Statement by Product Line',
+     'section': 'Financial Reports', 'area': 'Accounting', 'group': 'Financial Statements',
+     'optional': True, 'depends_on': ['products', 'product_categories'], 'default_enabled': False,
+     'endpoints': ('reports.income_statement_by_product_line',
+                   'reports.income_statement_by_product_line_print',
+                   'reports.income_statement_by_product_line_export_excel')},
     {'key': 'income_statement', 'label': 'Income Statement', 'section': 'Financial Reports',
      'area': 'Accounting', 'group': 'Financial Statements',
      'endpoints': ('reports.income_statement', 'reports.income_statement_export_excel',
@@ -150,6 +162,10 @@ MODULE_REGISTRY = [
      'optional': True, 'depends_on': ['products', 'product_categories'], 'default_enabled': False,
      'endpoints': ('reports.sales_by_product_line', 'reports.sales_by_product_line_print',
                    'reports.sales_by_product_line_export_excel')},
+    {'key': 'budgeting', 'label': 'Budget Entry', 'section': 'Financial Reports',
+     'area': 'Accounting', 'group': 'Financial Statements',
+     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'endpoints': ('budgeting.',)},
     # ── Maintenance (master data; deny-by-default for staff) ─────────────────
     {'key': 'customers', 'label': 'Customers', 'section': 'Maintenance',
      'area': 'Sales', 'group': 'Masters',
@@ -165,6 +181,10 @@ MODULE_REGISTRY = [
      'area': 'Inventory', 'group': 'Masters',
      'optional': True, 'depends_on': [], 'default_enabled': False,
      'endpoints': ('product_categories.',)},
+    {'key': 'expense_allocation_rules', 'label': 'Expense Allocation Rules', 'section': 'Maintenance',
+     'area': 'Accounting', 'group': 'Masters',
+     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'endpoints': ('expense_allocation_rules.',)},
     {'key': 'products', 'label': 'Products', 'section': 'Maintenance',
      'area': 'Inventory', 'group': 'Masters',
      'optional': True, 'depends_on': ['units_of_measure'], 'default_enabled': False, 'per_user': True,

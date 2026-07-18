@@ -36,6 +36,10 @@
                 {{ render_field(form.default_unit_price) }}
             </div>
 
+            <div class="form-row-2">
+                {{ render_field(form.standard_cost) }}
+            </div>
+
             {% if module_enabled('inventory') %}
             <div class="form-group">
                 <label class="form-label" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
@@ -43,7 +47,7 @@
                     {{ form.track_inventory.label.text }}
                 </label>
                 <small class="form-hint">Enable stock costing for this item. Requires a costing
-                    method and standard cost.</small>
+                    method and the standard cost above.</small>
                 {% if form.track_inventory.errors %}
                 <div class="field-errors">
                     {% for error in form.track_inventory.errors %}
@@ -53,9 +57,8 @@
                 {% endif %}
             </div>
 
-            <div id="inventory-fields" class="form-row-2" style="display: none;">
+            <div id="inventory-fields" class="form-group" style="display: none;">
                 {{ render_field(form.costing_method) }}
-                {{ render_field(form.standard_cost) }}
             </div>
             <div id="inventory-fields-2" class="form-group" style="display: none;">
                 {{ render_field(form.reorder_level) }}
