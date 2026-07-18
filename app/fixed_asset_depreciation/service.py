@@ -65,3 +65,50 @@ def compute_period_depreciation(asset, prior_accumulated, period_year, period_mo
 
     amount = min(amount, remaining)
     return amount.quantize(Decimal('0.01'))
+
+
+def compute_depreciation_preview(branch_id, period_year, period_month, units_used_by_asset=None):
+    """Compute this period's depreciation for every eligible FixedAsset in a
+    branch. Nothing is written to the DB -- pure computation for the preview
+    step (the new-run view) and reused verbatim by post_depreciation_run so
+    the posted amounts are guaranteed identical to what was previewed.
+
+    An asset not yet acquired as of the LAST day of this period is excluded
+    entirely (it doesn't exist in the books yet). A disposed asset never
+    matches the branch_id query below (status='active' filter) -- Slice 3
+    owns flipping that status. A fully-depreciated active asset IS included,
+    at a computed amount of 0.00 -- never silently hidden.
+    """
+    from datetime import date
+    from app.fixed_assets.models import FixedAsset
+
+    units_used_by_asset = units_used_by_asset or {}
+    convention = get_depreciation_convention()
+    period_end = date(period_year, period_month, calendar.monthrange(period_year, period_month)[1])
+
+    assets = FixedAsset.query.filter_by(branch_id=branch_id, status='active') \
+        .filter(FixedAsset.acquisition_date <= period_end) \
+        .order_by(FixedAsset.code).all()
+
+    rows = []
+    for asset in assets:
+        prior_accumulated = asset.accumulated_depreciation
+        units_used = (units_used_by_asset.get(asset.id)
+                     if asset.depreciation_method == 'units_of_production' else None)
+        amount = compute_period_depreciation(
+            asset, prior_accumulated, period_year, period_month,
+            convention=convention, units_used=units_used,
+        )
+        accumulated_after = prior_accumulated + amount
+        net_book_value_after = Decimal(str(asset.acquisition_cost)) - accumulated_after
+        rows.append({
+            'asset': asset,
+            'prior_accumulated': prior_accumulated,
+            'depreciation_amount': amount,
+            'accumulated_after': accumulated_after,
+            'net_book_value_after': net_book_value_after,
+            'units_used': units_used,
+            'needs_units_input': (asset.depreciation_method == 'units_of_production'
+                                  and not units_used),
+        })
+    return rows
