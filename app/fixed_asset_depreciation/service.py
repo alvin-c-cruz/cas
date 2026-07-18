@@ -112,3 +112,106 @@ def compute_depreciation_preview(branch_id, period_year, period_month, units_use
                                   and not units_used),
         })
     return rows
+
+
+def post_depreciation_run(branch_id, period_year, period_month, units_used_by_asset, user_id):
+    """Post a depreciation run: creates the DepreciationRun + DepreciationEntry
+    rows and (if any asset has a nonzero amount) one account-grouped JE.
+
+    Raises ValueError if a live (non-reversed) run already exists for this
+    (branch_id, period_year, period_month), if the period is closed, or if
+    the resulting JE doesn't balance.
+    """
+    from collections import defaultdict
+    from datetime import date
+    from app import db
+    from app.audit.utils import log_create
+    from app.fixed_asset_depreciation.models import DepreciationRun, DepreciationEntry
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.journal_entries.utils import generate_entry_number
+    from app.periods.utils import validate_transaction_date
+    from app.utils import ph_now
+
+    existing = DepreciationRun.query.filter_by(
+        branch_id=branch_id, period_year=period_year, period_month=period_month,
+    ).filter(DepreciationRun.status != 'reversed').first()
+    if existing:
+        raise ValueError(
+            f'A depreciation run already exists for this branch/period '
+            f'(status={existing.status}). Reverse it first to re-run.'
+        )
+
+    period_end = date(period_year, period_month, calendar.monthrange(period_year, period_month)[1])
+    is_valid, error_message = validate_transaction_date(period_end, 'depreciation run')
+    if not is_valid:
+        raise ValueError(error_message)
+
+    rows = compute_depreciation_preview(branch_id, period_year, period_month, units_used_by_asset)
+
+    run = DepreciationRun(branch_id=branch_id, period_year=period_year, period_month=period_month,
+                          status='posted', run_date=ph_now(), created_by_id=user_id)
+    db.session.add(run)
+    db.session.flush()
+
+    entries = []
+    for row in rows:
+        entry = DepreciationEntry(
+            run_id=run.id, fixed_asset_id=row['asset'].id,
+            depreciation_amount=row['depreciation_amount'],
+            accumulated_depreciation_after=row['accumulated_after'],
+            net_book_value_after=row['net_book_value_after'], units_used=row['units_used'],
+        )
+        db.session.add(entry)
+        entries.append((row, entry))
+    db.session.flush()
+
+    expense_totals = defaultdict(Decimal)
+    accum_totals = defaultdict(Decimal)
+    for row, entry in entries:
+        if entry.depreciation_amount == Decimal('0.00'):
+            continue
+        asset = row['asset']
+        expense_totals[asset.depreciation_expense_account_id] += entry.depreciation_amount
+        accum_totals[asset.accumulated_depreciation_account_id] += entry.depreciation_amount
+
+    if expense_totals:
+        je = JournalEntry(
+            entry_number=generate_entry_number(branch_id), entry_date=period_end,
+            description=f'Depreciation — {period_year}-{period_month:02d}',
+            entry_type='depreciation', branch_id=branch_id, created_by_id=user_id,
+            status='posted', posted_by_id=user_id, posted_at=ph_now(), is_balanced=False,
+            total_debit=Decimal('0.00'), total_credit=Decimal('0.00'),
+        )
+        db.session.add(je)
+        db.session.flush()
+
+        line_num = 1
+        for account_id, amount in expense_totals.items():
+            db.session.add(JournalEntryLine(
+                entry_id=je.id, line_number=line_num, account_id=account_id,
+                description=f'Depreciation Expense — {period_year}-{period_month:02d}',
+                debit_amount=amount, credit_amount=Decimal('0.00'),
+            ))
+            line_num += 1
+        for account_id, amount in accum_totals.items():
+            db.session.add(JournalEntryLine(
+                entry_id=je.id, line_number=line_num, account_id=account_id,
+                description=f'Accumulated Depreciation — {period_year}-{period_month:02d}',
+                debit_amount=Decimal('0.00'), credit_amount=amount,
+            ))
+            line_num += 1
+        db.session.flush()
+
+        je.calculate_totals()
+        if not je.is_balanced:
+            raise ValueError(
+                f'Depreciation JE is not balanced (debit={je.total_debit}, '
+                f'credit={je.total_credit}) for branch {branch_id} '
+                f'{period_year}-{period_month:02d}.'
+            )
+        run.journal_entry_id = je.id
+
+    db.session.commit()
+    log_create('fixed_asset_depreciation', run.id,
+              f'{branch_id}/{period_year}-{period_month:02d}', run.to_dict())
+    return run
