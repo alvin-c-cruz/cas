@@ -110,5 +110,8 @@ nul
 
 .analyze-page/
 
-# Stray SDD task report artifacts (Windows path-mangling) — never track
+# SDD scratch artifacts (task briefs/reports/diffs/progress ledger) — workspace-internal
+# tooling output, never product content; never track (Windows path-mangling can also
+# leave these outside the intended sdd/ dir, so keep both patterns)
 *task-*-report.md
+sdd/
