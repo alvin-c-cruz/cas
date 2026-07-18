@@ -10,6 +10,32 @@ from app.audit.models import AuditLog
 pytestmark = [pytest.mark.integration]
 
 
+@pytest.fixture(autouse=True)
+def _fixed_assets_module_enabled(db_session, accountant_user):
+    """Task 12 gated fixed_assets (optional, default_enabled=False, not per_user in the
+    registry) behind app.__init__'s before_request module-access hook. These Tasks 1-11
+    tests predate that gate and log in as accountant_user, whose book_permissions were
+    computed by default_all_permissions() -- which excludes fixed_assets since it's
+    optional-without-per_user -- so, mirroring product_categories_module_enabled /
+    test_vat_settlement_module_gating.py's pattern, turn the module on at the instance
+    level AND grant this accountant the book permission directly (module_enabled alone
+    isn't enough: can_access_module still checks book_permissions for a non-full-access
+    role). Clears the memoize cache on setup/teardown so this doesn't bleed into the
+    default-off assertions in test_fixed_assets_gating.py.
+    """
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:fixed_assets', '1')
+    db_session.commit()
+    clear_module_config_cache()
+    perms = accountant_user.get_book_permissions()
+    perms['fixed_assets'] = True
+    accountant_user.set_book_permissions(perms)
+    db_session.commit()
+    yield
+    clear_module_config_cache()
+
+
 def _accounts(db_session):
     # normal_balance is NOT NULL on Account -- the brief's fixture omitted it;
     # Asset and Expense accounts are both normally Debit-balance.

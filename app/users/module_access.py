@@ -165,6 +165,10 @@ MODULE_REGISTRY = [
      'area': 'Payroll', 'group': 'Masters',
      'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
      'endpoints': ('employees.',)},
+    {'key': 'fixed_assets', 'label': 'Fixed Assets', 'section': 'Maintenance',
+     'area': 'Fixed Assets', 'group': 'Masters',
+     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'endpoints': ('fixed_assets.',)},
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
      'area': 'Compliance', 'group': 'BIR',
@@ -179,7 +183,8 @@ MODULE_REGISTRY = [
                    'vat_settlement.')},
 ]
 
-AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Accounting', 'Compliance', 'Payroll', 'Admin']
+AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Accounting', 'Compliance', 'Payroll',
+              'Fixed Assets', 'Admin']
 GROUP_ORDER = ['Documents', 'Masters', 'Journals', 'Ledger', 'Financial Statements', 'Reports', 'BIR', 'Admin']
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY

@@ -2,7 +2,26 @@ from app.fixed_assets.models import AssetCategory
 from app.audit.models import AuditLog
 
 
+def _enable_fixed_assets_for(user, db_session):
+    """Task 12 gated fixed_assets (optional, default_enabled=False, not per_user in the
+    registry). These Tasks 1-11 tests predate that gate. Turn the module on at the
+    instance level AND grant this user the book permission directly -- module_enabled
+    alone isn't enough: can_access_module still checks book_permissions for a
+    non-full-access role (mirrors _fixed_assets_module_enabled in
+    test_fixed_assets_views.py)."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:fixed_assets', '1')
+    db_session.commit()
+    clear_module_config_cache()
+    perms = user.get_book_permissions()
+    perms['fixed_assets'] = True
+    user.set_book_permissions(perms)
+    db_session.commit()
+
+
 def test_create_asset_category(client, db_session, accountant_user, login_user):
+    _enable_fixed_assets_for(accountant_user, db_session)
     login_user(client, 'accountant', 'accountant123')
     resp = client.post('/fixed-assets/categories/create', data={
         'name': 'Office Equipment',
@@ -21,6 +40,9 @@ def test_create_asset_category(client, db_session, accountant_user, login_user):
 
 def test_staff_cannot_create_asset_category(client, db_session, staff_user, main_branch,
                                              login_user):
+    # Module access granted (so the module gate lets staff through) -- this test targets
+    # the view's OWN role decorator (accountant_or_admin_required), not the module gate.
+    _enable_fixed_assets_for(staff_user, db_session)
     staff_user.set_branches([main_branch])
     db_session.commit()
     login_user(client, 'staff', 'staff123')
@@ -32,6 +54,7 @@ def test_staff_cannot_create_asset_category(client, db_session, staff_user, main
 
 
 def test_edit_asset_category(client, db_session, accountant_user, login_user):
+    _enable_fixed_assets_for(accountant_user, db_session)
     cat = AssetCategory(name='Vehicles', default_useful_life_months=60)
     db_session.add(cat)
     db_session.commit()

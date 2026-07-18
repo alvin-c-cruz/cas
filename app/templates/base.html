@@ -1102,7 +1102,8 @@
                 'product_categories': 'product_categories.list',
                 'products':           'products.list',
                 'employees':          'employees.list_employees',
-                'payroll':            'payroll.register'
+                'payroll':            'payroll.register',
+                'fixed_assets':       'fixed_assets.list'
             } %}
             {% set _nav_icon = {
                 'sales_orders':       '📦',
@@ -1139,7 +1140,8 @@
                 'product_categories': '🏷️',
                 'products':           '📦',
                 'employees':          '🧑‍💼',
-                'payroll':            '💵'
+                'payroll':            '💵',
+                'fixed_assets':       '🏭'
             } %}
 
             {% for area in build_sidebar(current_user) %}
