@@ -206,4 +206,4 @@ def test_edit_product_updates_job_order_name(client, db_session, admin_user, mai
     audit = AuditLog.query.filter_by(module='products', action='update').order_by(
         AuditLog.id.desc()).first()
     assert audit is not None
-    assert 'job_order_name' in (audit.new_values or '')
+    assert 'WGT-D-PROD' in (audit.new_values or '')
