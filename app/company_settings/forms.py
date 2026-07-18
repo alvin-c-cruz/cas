@@ -177,3 +177,10 @@ class CompanySettingsForm(FlaskForm):
     payslip_print_form = SelectField(
         'Payslip Print Form', choices=SV_PRINT_FORM_CHOICES, default='current'
     )
+
+    # Bank Accounts
+    cash_bank_parent_account_code = StringField(
+        'Cash/Bank Parent Account Code',
+        validators=[Optional(), Length(max=20)],
+        render_kw={'placeholder': 'e.g., 10100'}
+    )

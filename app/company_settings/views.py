@@ -55,6 +55,7 @@ SETTINGS_KEYS = [
     'payroll_semi_monthly_timing',
     'payslip_print_access',
     'payslip_print_form',
+    'cash_bank_parent_account_code',
 ]
 
 LOGO_SETTING_KEY = 'company_logo'
