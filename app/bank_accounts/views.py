@@ -113,6 +113,7 @@ def quick_add():
         log_create('bank_accounts', ba.id, ba.code, model_to_dict(ba, _FIELDS))
         return jsonify(ok=True, bank_account={
             'id': ba.id,
+            'account_id': ba.account_id,
             'label': f'{ba.code} - {ba.name}',
         })
 

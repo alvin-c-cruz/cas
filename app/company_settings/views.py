@@ -283,8 +283,10 @@ def modules_toggle():
                   'again to pick up where it left off.', 'error')
         else:
             if flags:
-                flash(f'{len(flags)} cash account(s) are shared across branches — '
-                      f'assign each to its owning branch.', 'warning')
+                flash(f'{len(flags)} cash account(s) are used by more than one branch — '
+                      f'to give each branch its own Bank Account, split them into '
+                      f'separate per-branch GL accounts in the Chart of Accounts, then '
+                      f'register each here.', 'warning')
 
     return redirect(url_for('company_settings.edit_settings'))
 
