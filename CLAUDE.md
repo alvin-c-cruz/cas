@@ -78,6 +78,11 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 ## Project Conventions (non-negotiable)
 
 - **Always branch + worktree for code changes — never commit directly to `main`.** Cut a worktree from this repo (`git worktree add ../wt-<slug> -b <branch> main`, or from the outer workspace: `git -C projects/cas worktree add ../wt-<slug> -b <branch> main`), implement + review there, merge back to `main` (fast-forward when possible), then remove the worktree and delete the branch. This repo keeps its branch+worktree SDD workflow regardless of what the outer `erp-workspace` repo does (that one commits docs/tooling straight to `master`) — see `erp-workspace/CLAUDE.md`'s Git Branching Convention section and memory `git-branching-convention-per-repo`.
+  **Exception, existing practice made explicit:** a genuinely docs-only commit (a spec or plan
+  `.md` under `docs/superpowers/specs/` or `docs/superpowers/plans/`, touching nothing under
+  `app/`, `tests/`, or `.claude/`) may be committed directly to `main`, no branch — this has been
+  the actual practice repeatedly (`c1cc7483`/`de883c7a` 2026-07-11, `9ea8b496`/`a4fe54e6`
+  2026-07-18) and is now written down rather than only inferred from precedent.
 - **No JavaScript popups.** Never use `confirm()`, `alert()`, or `prompt()`. Build custom HTML modal forms with a `{{ csrf_token() }}` hidden input.
 - **Model changes require explicit user approval first.** Before editing any `models.py` or running a migration, describe the change (field name, type, nullable, default, migration impact) and get sign-off.
 - **Propose before seeding/bulk-writing.** Show proposed data for review before running anything that writes to the DB. Do not seed and ask forgiveness.
