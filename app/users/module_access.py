@@ -192,6 +192,18 @@ MODULE_REGISTRY = [
      'area': 'Banking', 'group': 'Banking',
      'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
      'endpoints': ('bank_accounts.',)},
+    # ── Bank Transfers (R-04 slice 2) — lifecycle over Bank Accounts ──────────
+    # NOTE: per_user=True (deliberate deviation from the task brief's literal snippet,
+    # which had per_user=False -- same trap as bank_accounts above: with per_user=False
+    # this optional module is excluded from all_permission_keys()/default_all_permissions(),
+    # so a plain 'accountant'/'staff' (not has_full_access) could NEVER be granted it,
+    # no matter what an admin does on the user-permission grid). per_user=True keeps it
+    # both instance-gated (module_enabled) and individually grantable, matching
+    # bank_accounts and the other staff/accountant-reachable optional Transaction modules.
+    {'key': 'bank_transfers', 'label': 'Bank Transfers', 'section': 'Transactions',
+     'area': 'Banking', 'group': 'Banking',
+     'optional': True, 'depends_on': ['bank_accounts'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('bank_transfers.',)},
 ]
 
 AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Banking', 'Accounting', 'Compliance', 'Payroll', 'Admin']

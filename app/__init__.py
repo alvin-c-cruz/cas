@@ -284,6 +284,7 @@ def create_app(config_name=None):
     from app.payroll.views import payroll_bp
     from app.permission_requests.views import permission_requests_bp
     from app.bank_accounts.views import bank_accounts_bp
+    from app.bank_transfers.views import bank_transfers_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -325,6 +326,7 @@ def create_app(config_name=None):
     app.register_blueprint(payroll_bp)
     app.register_blueprint(permission_requests_bp)
     app.register_blueprint(bank_accounts_bp)
+    app.register_blueprint(bank_transfers_bp)
 
     from app.backup.views import backup_bp
     app.register_blueprint(backup_bp)
