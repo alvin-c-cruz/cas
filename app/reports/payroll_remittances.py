@@ -88,3 +88,23 @@ def get_philhealth_remittance(year, month, branch_id=None):
             r['philhealth_er'] += line.philhealth_er
             r['total'] += line.philhealth_ee + line.philhealth_er
     return _finalize(rows)
+
+
+def get_pagibig_remittance(year, month, branch_id=None):
+    """Pag-IBIG Monthly Contribution Remittance Form: EE + ER share per employee."""
+    rows = {}
+    for run in _posted_runs(year, month, branch_id, ['regular']):
+        for line in run.lines:
+            emp = line.employee
+            r = rows.setdefault(line.employee_id, {
+                'employee_no': emp.employee_no if emp else '',
+                'employee_name': line.employee_name,
+                'pagibig_no': (emp.pagibig_no if emp else '') or '',
+                'pagibig_ee': Decimal('0.00'),
+                'pagibig_er': Decimal('0.00'),
+                'total': Decimal('0.00'),
+            })
+            r['pagibig_ee'] += line.pagibig_ee
+            r['pagibig_er'] += line.pagibig_er
+            r['total'] += line.pagibig_ee + line.pagibig_er
+    return _finalize(rows)

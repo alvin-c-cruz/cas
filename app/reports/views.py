@@ -25,7 +25,9 @@ from app.reports.bir import (
     get_quarter_months,
     get_vat_return_summary
 )
-from app.reports.payroll_remittances import get_sss_remittance, get_philhealth_remittance
+from app.reports.payroll_remittances import (
+    get_sss_remittance, get_philhealth_remittance, get_pagibig_remittance,
+)
 from app.reports.financial import (
     generate_trial_balance,
     generate_income_statement,
@@ -780,6 +782,42 @@ def philhealth_remittance_export_excel():
     title = f"PhilHealth Employer's Remittance Report - {get_month_name(month)} {year}"
 
     return export_to_excel(philhealth_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/payroll/pagibig-remittance')
+@login_required
+@accountant_or_admin_required
+def pagibig_remittance():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    pagibig_data = get_pagibig_remittance(year, month, branch_id=current_branch_id)
+
+    return render_template('reports/payroll_pagibig_remittance.html',
+                         pagibig_data=pagibig_data,
+                         year=year,
+                         month=month,
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
+
+
+@reports_bp.route('/reports/payroll/pagibig-remittance/export/excel')
+@login_required
+@accountant_or_admin_required
+def pagibig_remittance_export_excel():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    pagibig_data = get_pagibig_remittance(year, month, branch_id=current_branch_id)
+
+    columns = ['employee_no', 'employee_name', 'pagibig_no', 'pagibig_ee', 'pagibig_er', 'total']
+    headers = ['Employee No.', 'Employee Name', 'Pag-IBIG No.', 'EE Share', 'ER Share',
+               'Total Contribution']
+
+    filename = f'PagIBIG_Remittance_{year}_{month:02d}.xlsx'
+    title = f'Pag-IBIG Monthly Contribution Remittance Form - {get_month_name(month)} {year}'
+
+    return export_to_excel(pagibig_data, columns, headers, filename, title)
 
 
 # ============================================================================

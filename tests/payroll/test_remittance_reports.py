@@ -10,7 +10,9 @@ import pytest
 
 from app import db
 from app.payroll.models import PayrollRun
-from app.reports.payroll_remittances import get_sss_remittance, get_philhealth_remittance
+from app.reports.payroll_remittances import (
+    get_sss_remittance, get_philhealth_remittance, get_pagibig_remittance,
+)
 
 pytestmark = [pytest.mark.integration]
 
@@ -111,3 +113,31 @@ class TestPhilHealthRemittance:
         total_row = rows[-1]
         assert total_row['philhealth_ee'] == run.total_philhealth_ee
         assert total_row['philhealth_er'] == run.total_philhealth_er
+
+
+class TestPagibigRemittance:
+    def test_single_posted_run_one_employee(self, db_session, run_factory):
+        run = run_factory(run_number='PR-2026-06-0003')
+        _post(run)
+        rows = get_pagibig_remittance(2026, 6, branch_id=run.branch_id)
+        assert len(rows) == 2
+        emp_row = rows[0]
+        assert emp_row['pagibig_ee'] > 0
+        assert emp_row['pagibig_er'] > 0
+        assert rows[-1]['employee_name'] == 'TOTAL'
+
+    def test_thirteenth_month_run_excluded(self, db_session, run_factory):
+        run = run_factory(run_number='PR-2026-06-0003')
+        run.run_type = '13th_month'
+        run.status = 'posted'
+        db.session.commit()
+        rows = get_pagibig_remittance(2026, 6, branch_id=run.branch_id)
+        assert rows == []
+
+    def test_header_ties_to_run_totals(self, db_session, run_factory):
+        run = run_factory(run_number='PR-2026-06-0003')
+        _post(run)
+        rows = get_pagibig_remittance(2026, 6, branch_id=run.branch_id)
+        total_row = rows[-1]
+        assert total_row['pagibig_ee'] == run.total_pagibig_ee
+        assert total_row['pagibig_er'] == run.total_pagibig_er
