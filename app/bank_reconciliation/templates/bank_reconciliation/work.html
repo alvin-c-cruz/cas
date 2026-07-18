@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}{{ rec.bank_account.code }} — {{ rec.statement_date.strftime('%b %Y') }}{% endblock %}
+{% block page_title %}Bank Reconciliation — {{ rec.bank_account.code }}{% endblock %}
+{% block content %}
+
+<p class="page-sub">
+    Statement {{ rec.statement_date.strftime('%b %d, %Y') }} — tick every book item that appears on
+    the bank statement. The reconciliation can only be completed when the difference is ₱0.00.
+</p>
+
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-label">Beginning Balance</div>
+        <div class="stat-value">₱{{ '{:,.2f}'.format(rec.beginning_balance) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Cleared Debits</div>
+        <div class="stat-value" id="stat-cleared-debits">₱0.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Cleared Credits</div>
+        <div class="stat-value" id="stat-cleared-credits">₱0.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Book Balance (Adjusted)</div>
+        <div class="stat-value" id="stat-book-balance">₱0.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Difference</div>
+        <div class="stat-value" id="stat-difference">₱0.00</div>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('bank_reconciliation.complete', id=rec.id) }}" id="complete-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="row_version" value="{{ rec.row_version }}"/>
+    <input type="hidden" name="ticked_line_ids" id="ticked_line_ids"/>
+
+    <div class="card">
+        <div class="card-header"><span class="card-title">Book Items ({{ items | length }})</span></div>
+        <div class="card-body" style="padding:0;">
+            {% if items %}
+            <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width:34px;"><input type="checkbox" id="check-all"></th>
+                        <th>Date</th><th>Reference</th><th>Description</th>
+                        <th style="text-align:right;">Debit</th><th style="text-align:right;">Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in items %}
+                    <tr>
+                        <td><input type="checkbox" class="item-check" value="{{ line.id }}"
+                                  data-debit="{{ line.debit_amount }}" data-credit="{{ line.credit_amount }}"
+                                  {{ 'checked' if line.id in already_ticked else '' }}></td>
+                        <td>{{ line.entry.entry_date.strftime('%b %d, %Y') }}</td>
+                        <td style="font-family:var(--mono);">{{ line.entry.display_number }}</td>
+                        <td>{{ line.description or line.entry.description }}</td>
+                        <td style="text-align:right;font-family:var(--mono);">{% if line.debit_amount %}{{ '{:,.2f}'.format(line.debit_amount) }}{% else %}—{% endif %}</td>
+                        <td style="text-align:right;font-family:var(--mono);">{% if line.credit_amount %}{{ '{:,.2f}'.format(line.credit_amount) }}{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="empty-state"><p>No uncleared book items.</p></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="form-actions" style="display:flex; gap:12px; margin:20px 0;">
+        <button type="submit" class="btn btn-success">✓ Complete Reconciliation</button>
+        <a href="{{ url_for('bank_reconciliation.register', bank_account_id=rec.bank_account_id) }}" class="btn btn-secondary">Save &amp; Exit</a>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-header"><span class="card-title">Add Adjustment</span></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('bank_reconciliation.add_adjustment', id=rec.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="display:grid; grid-template-columns:2fr 1fr 2fr auto; gap:12px; align-items:end;">
+                <div class="form-group">
+                    {{ adj_form.account_id.label(class='form-label') }}
+                    {{ adj_form.account_id(class='form-control') }}
+                </div>
+                <div class="form-group">
+                    {{ adj_form.amount.label(class='form-label') }}
+                    {{ adj_form.amount(class='form-control') }}
+                </div>
+                <div class="form-group">
+                    {{ adj_form.direction.label(class='form-label') }}
+                    {{ adj_form.direction(class='form-control') }}
+                </div>
+                <button type="submit" class="btn btn-secondary">+ Post Adjustment</button>
+            </div>
+            <div style="margin-top:12px;">
+                {{ adj_form.description.label(class='form-label') }}
+                {{ adj_form.description(class='form-control') }}
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function() {
+    var beginningBalance = {{ rec.beginning_balance }};
+    var statementBalance = {{ rec.statement_ending_balance }};
+    var checkAll = document.getElementById('check-all');
+    var checks = Array.prototype.slice.call(document.querySelectorAll('.item-check'));
+    var hidden = document.getElementById('ticked_line_ids');
+
+    function fmt(n) { return '₱' + n.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+    function recalc() {
+        var checked = checks.filter(function(c) { return c.checked; });
+        var clearedDebits = checked.reduce(function(sum, c) { return sum + parseFloat(c.dataset.debit || '0'); }, 0);
+        var clearedCredits = checked.reduce(function(sum, c) { return sum + parseFloat(c.dataset.credit || '0'); }, 0);
+        var bookBalance = beginningBalance + clearedDebits - clearedCredits;
+        var difference = statementBalance - bookBalance;
+
+        hidden.value = checked.map(function(c) { return c.value; }).join(',');
+        document.getElementById('stat-cleared-debits').textContent = fmt(clearedDebits);
+        document.getElementById('stat-cleared-credits').textContent = fmt(clearedCredits);
+        document.getElementById('stat-book-balance').textContent = fmt(bookBalance);
+        var diffEl = document.getElementById('stat-difference');
+        diffEl.textContent = fmt(difference) + (Math.abs(difference) < 0.005 ? ' ✓' : '');
+        diffEl.style.color = Math.abs(difference) < 0.005 ? 'var(--green)' : 'var(--red)';
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', function() {
+            checks.forEach(function(c) { c.checked = checkAll.checked; });
+            recalc();
+        });
+    }
+    checks.forEach(function(c) { c.addEventListener('change', recalc); });
+    if (checkAll && checks.length) { checkAll.checked = checks.every(function(c) { return c.checked; }); }
+    recalc();
+})();
+</script>
+{% endblock %}

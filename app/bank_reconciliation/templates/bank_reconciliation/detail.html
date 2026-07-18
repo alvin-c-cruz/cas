@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ rec.bank_account.code }} — {{ rec.statement_date.strftime('%b %Y') }}{% endblock %}
+{% block page_title %}Bank Reconciliation — {{ rec.bank_account.code }}{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-header">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:18px; font-weight:700;">{{ rec.bank_account.code }} — {{ rec.statement_date.strftime('%b %d, %Y') }}</span>
+            <span class="badge badge-posted">Completed</span>
+        </div>
+        <div class="card-header-actions">
+            <a href="{{ url_for('bank_reconciliation.print_rec', id=rec.id) }}" class="btn btn-secondary" target="_blank">🖨️ Print</a>
+            <a href="{{ url_for('bank_reconciliation.register', bank_account_id=rec.bank_account_id) }}" class="btn btn-secondary">← Back to Register</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="page-sub" style="margin-bottom:16px;">
+            Reconciled by {{ rec.reconciled_by.username if rec.reconciled_by else '—' }}
+            {% if rec.reconciled_at %} on {{ rec.reconciled_at.strftime('%b %d, %Y %I:%M %p') }}{% endif %}
+        </p>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); margin-bottom:20px;">
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase;">Beginning Balance</div>
+                <div style="font-weight:600; font-family:var(--mono);">₱{{ '{:,.2f}'.format(rec.beginning_balance) }}</div>
+            </div>
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase;">Statement Ending Balance</div>
+                <div style="font-weight:600; font-family:var(--mono);">₱{{ '{:,.2f}'.format(rec.statement_ending_balance) }}</div>
+            </div>
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase;">Adjusted Book Balance</div>
+                <div style="font-weight:600; font-family:var(--mono); color:var(--blue); font-size:16px;">₱{{ '{:,.2f}'.format(rec.adjusted_balance) }}</div>
+            </div>
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase;">Cleared Debits</div>
+                <div style="font-weight:600; font-family:var(--mono);">₱{{ '{:,.2f}'.format(rec.cleared_debits) }}</div>
+            </div>
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase;">Cleared Credits</div>
+                <div style="font-weight:600; font-family:var(--mono);">₱{{ '{:,.2f}'.format(rec.cleared_credits) }}</div>
+            </div>
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase;">Outstanding Deposits / Checks</div>
+                <div style="font-weight:600; font-family:var(--mono);">₱{{ '{:,.2f}'.format(rec.outstanding_deposits) }} / ₱{{ '{:,.2f}'.format(rec.outstanding_checks) }}</div>
+            </div>
+        </div>
+
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); margin-bottom:10px;">
+            Cleared Items ({{ rec.items.count() }})
+        </div>
+        <div class="table-wrap">
+        <table class="table" style="font-size:13px;">
+            <thead>
+                <tr><th>Date</th><th>Reference</th><th>Description</th>
+                    <th style="text-align:right;">Debit</th><th style="text-align:right;">Credit</th></tr>
+            </thead>
+            <tbody>
+                {% for item in rec.items %}
+                {% set line = item.je_line %}
+                <tr>
+                    <td>{{ line.entry.entry_date.strftime('%b %d, %Y') }}</td>
+                    <td style="font-family:var(--mono);">{{ line.entry.display_number }}</td>
+                    <td>{{ line.description or line.entry.description }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">{% if line.debit_amount %}{{ '{:,.2f}'.format(line.debit_amount) }}{% else %}—{% endif %}</td>
+                    <td style="text-align:right;font-family:var(--mono);">{% if line.credit_amount %}{{ '{:,.2f}'.format(line.credit_amount) }}{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

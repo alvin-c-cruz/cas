@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Bank Reconciliation{% endblock %}
+{% block page_title %}Bank Reconciliation{% endblock %}
+{% block content %}
+
+<p class="page-sub">Pick a bank account to view or start a reconciliation.</p>
+
+<div class="card">
+    <div class="card-header"><span class="card-title">Bank Accounts</span></div>
+    <div class="card-body">
+        {% if accounts %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead><tr><th>Code</th><th>Name</th><th>GL Account</th></tr></thead>
+            <tbody>
+                {% for ba in accounts %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('bank_reconciliation.register', bank_account_id=ba.id) }}"
+                           style="font-weight:600;color:var(--blue);">{{ ba.code }}</a>
+                    </td>
+                    <td>{{ ba.name }}</td>
+                    <td style="font-family:var(--mono);">{{ ba.account.code }} — {{ ba.account.name }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state"><p>No active bank accounts found.</p></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

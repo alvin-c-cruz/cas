@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ bank_account.code }} — Bank Reconciliation{% endblock %}
+{% block page_title %}Bank Reconciliation — {{ bank_account.code }}{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">{{ bank_account.code }} — {{ bank_account.name }}</span>
+        <div class="card-header-actions">
+            <a href="{{ url_for('bank_reconciliation.new', bank_account_id=bank_account.id) }}" class="btn btn-green">➕ Start Reconciliation</a>
+            <a href="{{ url_for('bank_reconciliation.pick_account') }}" class="btn btn-secondary">← Back</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if recs %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Statement Date</th><th style="text-align:right;">Ending Balance</th>
+                    <th>Status</th><th>Reconciled By</th></tr>
+            </thead>
+            <tbody>
+                {% for rec in recs %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('bank_reconciliation.detail', id=rec.id) if rec.status == 'completed' else url_for('bank_reconciliation.work', id=rec.id) }}"
+                           style="font-weight:600;color:var(--blue);">{{ rec.statement_date.strftime('%b %d, %Y') }}</a>
+                    </td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(rec.statement_ending_balance) }}</td>
+                    <td><span class="badge badge-{{ 'posted' if rec.status == 'completed' else 'draft' }}">{{ rec.status | title }}</span></td>
+                    <td>{{ rec.reconciled_by.username if rec.reconciled_by else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state"><p>No reconciliations found.</p></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
