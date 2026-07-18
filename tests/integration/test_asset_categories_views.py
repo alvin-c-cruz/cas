@@ -46,3 +46,6 @@ def test_edit_asset_category(client, db_session, accountant_user, login_user):
     db_session.refresh(cat)
     assert cat.name == 'Transportation Equipment'
     assert cat.default_useful_life_months == 84
+    log = AuditLog.query.filter_by(module='asset_categories', action='update',
+                                    record_id=cat.id).first()
+    assert log is not None
