@@ -23,6 +23,7 @@ CONSTRUCTION_COA = [
     ('10210', 'Advances to Suppliers',                         'Asset', 'Current', 'debit',  '10200'),
     ('10211', 'Advances to Subcontractors',                    'Asset', 'Current', 'debit',  '10200'),
     ('10212', 'Creditable Withholding Tax',                    'Asset', 'Current', 'debit',  '10200'),   # MAGIC
+    ('10213', 'Inter-branch Due from',                         'Asset', 'Current', 'debit',  '10200'),
     ('10300', 'Construction in Progress',                      'Asset', 'Current', 'debit',  None),
     ('10301', 'Construction in Progress - Costs',              'Asset', 'Current', 'debit',  '10300'),
     ('10302', 'Costs and Estimated Earnings in Excess of Billings', 'Asset', 'Current', 'debit', '10300'),
@@ -64,6 +65,7 @@ CONSTRUCTION_COA = [
     ('20102', 'Subcontractors Payable',                        'Liability', 'Current', 'credit', '20100'),
     ('20103', 'Retention Payable',                             'Liability', 'Current', 'credit', '20100'),
     ('20104', 'Accrued Expenses',                              'Liability', 'Current', 'credit', '20100'),
+    ('20111', 'Inter-branch Due to',                           'Liability', 'Current', 'credit', '20100'),
     ('20200', 'Output VAT',                                    'Liability', 'Current', 'credit', None),
     ('20201', 'Output VAT - Sales',                            'Liability', 'Current', 'credit', '20200'),
     ('20202', 'VAT Payable',                                   'Liability', 'Current', 'credit', '20200'),
