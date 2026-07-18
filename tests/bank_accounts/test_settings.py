@@ -49,6 +49,56 @@ def test_leaf_choices_fail_soft_when_unassigned(db_session, cash_account, revenu
     assert revenue_account.id in ids              # falls back to ALL leaves
 
 
+def test_leaf_choices_excludes_inactive_accounts_when_parent_configured(db_session):
+    """Critical fix: _leaf_accounts(parent) must filter is_active=True.
+
+    When a parent account is configured, _leaf_accounts() walks the tree but was
+    NOT filtering is_active, inconsistent with the fail-soft branch which filters
+    to active leaves only. This test proves inactive descendants are excluded.
+    """
+    from app.bank_accounts import service
+    from app.accounts.models import Account
+
+    # Create a parent account (active, has children so is not itself a leaf)
+    parent = Account(
+        code='1010', name='Cash and Cash Equivalents',
+        account_type='Asset', classification='Current Asset',
+        normal_balance='Debit'
+    )
+    db_session.add(parent)
+    db_session.flush()
+
+    # Create an active child leaf
+    active_child = Account(
+        code='1011', name='Cash on Hand (Active)',
+        account_type='Asset', classification='Current Asset',
+        normal_balance='Debit', parent_id=parent.id, is_active=True
+    )
+    db_session.add(active_child)
+    db_session.flush()
+
+    # Create an inactive child leaf (should NOT appear in choices)
+    inactive_child = Account(
+        code='1012', name='Cash on Hand (Archived)',
+        account_type='Asset', classification='Current Asset',
+        normal_balance='Debit', parent_id=parent.id, is_active=False
+    )
+    db_session.add(inactive_child)
+    db_session.commit()
+
+    # Configure the parent as the cash_bank_parent_account_code
+    AppSettings.set_setting('cash_bank_parent_account_code', parent.code)
+    db_session.commit()
+
+    # Get the choices
+    ids = {aid for aid, _ in service.cash_bank_leaf_account_choices()}
+
+    # Active child should be included
+    assert active_child.id in ids, "Active child should be in choices"
+    # Inactive child should NOT be included
+    assert inactive_child.id not in ids, "Inactive child should NOT be in choices"
+
+
 class TestCashBankParentAccountCodeSettingsField:
     """Critical-finding fix: cash_bank_parent_account_code was added to
     CompanySettingsForm + SETTINGS_KEYS but never rendered on the Company

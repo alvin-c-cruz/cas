@@ -10,13 +10,20 @@ def get_cash_bank_parent_code():
 
 
 def _leaf_accounts(parent):
-    """Leaf (childless) descendants of `parent`, INCLUDING `parent` itself if it has no children."""
+    """Leaf (childless) descendants of `parent`, INCLUDING `parent` itself if it has no children.
+
+    Filters to is_active=True only — inactive accounts and their entire subtrees are pruned.
+    """
     if not parent.children:
-        return [parent]
+        # Parent has no children; return it only if it is active
+        return [parent] if parent.is_active else []
     out = []
     stack = list(parent.children)
     while stack:
         a = stack.pop()
+        # Skip inactive accounts and their subtrees entirely
+        if not a.is_active:
+            continue
         if a.children:
             stack.extend(a.children)
         else:
