@@ -254,6 +254,13 @@ class AccountsPayableItem(db.Model):
     wt_rate = db.Column(db.Numeric(5, 2), nullable=True)   # snapshot at AP creation time
     wt_amount = db.Column(db.Numeric(15, 2), default=Decimal('0.00'), server_default='0.00', nullable=False)
 
+    # 3-way price/quantity variance matching (R-02 Phase 6) — NULL for manually-typed
+    # lines and for any client with purchase_orders/receiving_reports off.
+    source_po_item_id = db.Column(db.Integer, nullable=True)
+    source_rr_item_id = db.Column(db.Integer, nullable=True)
+    matched_unit_price = db.Column(db.Numeric(15, 2), nullable=True)
+    matched_quantity = db.Column(db.Numeric(15, 4), nullable=True)
+
     def __repr__(self):
         return f'<AccountsPayableItem {self.ap_id}-{self.line_number}>'
 
@@ -276,6 +283,29 @@ class AccountsPayableItem(db.Model):
         net_of_vat = Decimal(str(self.amount)) - self.vat_amount
         wt_rate = Decimal(str(self.wt_rate)) if self.wt_rate else Decimal('0')
         self.wt_amount = (net_of_vat * wt_rate / Decimal('100')).quantize(Decimal('0.01'), rounding='ROUND_HALF_UP')
+
+    @property
+    def price_variance(self):
+        """Billed unit_price minus the matched PO/RR price, or None if this line has no
+        source snapshot or either value is missing. Zero tolerance: any non-zero
+        difference is reportable, however small."""
+        if self.matched_unit_price is None or self.unit_price is None:
+            return None
+        diff = Decimal(str(self.unit_price)) - Decimal(str(self.matched_unit_price))
+        return diff if diff != 0 else None
+
+    @property
+    def quantity_variance(self):
+        """Billed quantity minus the matched PO/RR quantity, or None if this line has no
+        source snapshot or either value is missing."""
+        if self.matched_quantity is None or self.quantity is None:
+            return None
+        diff = Decimal(str(self.quantity)) - Decimal(str(self.matched_quantity))
+        return diff if diff != 0 else None
+
+    @property
+    def has_variance(self):
+        return self.price_variance is not None or self.quantity_variance is not None
 
     def to_dict(self):
         """Convert line item to dictionary."""
