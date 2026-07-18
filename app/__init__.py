@@ -9,7 +9,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -651,6 +651,16 @@ def create_app(config_name=None):
             pass
         flash('Too many attempts from your network. Please wait a minute and try again.', 'error')
         return render_template('users/login.html', form=LoginForm()), 429
+
+    # CSRF error handler — registered in ALL environments (like the 429 handler
+    # above), not just production, so a dead/stale session fails gracefully
+    # instead of crashing with an unhandled 500 (BUG-PA-SESSION-UNEXPECTED-LOGOUT).
+    @app.errorhandler(CSRFError)
+    def csrf_error_handler(e):
+        from flask import redirect, url_for, flash, session
+        session.clear()
+        flash('Your session has expired. Please log in again.', 'info')
+        return redirect(url_for('users.login'))
 
     # Generic error handlers — friendly pages + DB error logging. Registered
     # only when DEBUG is off (production) so development and tests keep raw
