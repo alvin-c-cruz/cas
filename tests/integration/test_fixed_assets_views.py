@@ -68,6 +68,7 @@ from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
 
 
 def test_tag_ap_line_as_fixed_asset(client, db_session, accountant_user, main_branch, login_user):
+    _ensure_list_endpoint(client.application)
     cost, accum, exp = _accounts(db_session)
     ap = AccountsPayable(branch_id=main_branch.id, ap_number='AP-2026-01-0002',
                          ap_date=date(2026, 1, 20), due_date=date(2026, 2, 20),
