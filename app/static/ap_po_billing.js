@@ -43,6 +43,13 @@
         vat_category: ln.vat_category || '',
         account_id: ln.account_id || null,
         wt_id: null, wt_rate: null,
+        // R-02 Phase 6: which PO/RR line this was billed from, and its expected
+        // price/qty at injection time -- the live variance check compares against
+        // these; the server re-derives matched_* itself at submit, never trusting them.
+        source_po_item_id: ln.po_item_id || null,
+        source_rr_item_id: ln.rr_item_id || null,
+        matched_unit_price: ln.unit_price != null ? ln.unit_price : null,
+        matched_quantity: ln.quantity != null ? ln.quantity : null,
       });
     });
   }

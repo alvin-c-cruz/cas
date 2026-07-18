@@ -1270,7 +1270,7 @@ initItems();
 
 {# ap_po_billing.js must load AFTER the block above (needs window.addLineItem to already exist --
    see BUG-AP-PO-BILLING-SCRIPT-LOAD-ORDER, docs/bug-reports/2026-07-15-ap-po-billing-picker-script-order.md) #}
-{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=1"></script>{% endif %}
+{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=2"></script>{% endif %}
 
 <script>
 // ── Create-form attachment queue (held in browser until Save) ────────────────
