@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Job Order Slips{% endblock %}
+{% block page_title %}Job Order Slips{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        {% if orders %}
+        {% set badge_map = {'draft': 'draft', 'confirmed': 'posted', 'cancelled': 'cancelled', 'closed': 'paid'} %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>SO #</th>
+                    <th>Customer</th>
+                    <th>Order Date</th>
+                    <th>Expected Delivery</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td>{{ order.so_number }}</td>
+                    <td>{{ order.customer_name }}</td>
+                    <td>{{ order.order_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ order.expected_delivery_date.strftime('%b %d, %Y') if order.expected_delivery_date else '—' }}</td>
+                    <td>
+                        <span class="badge badge-{{ badge_map.get(order.status, 'draft') }}">
+                            {{ order.status|replace('_', ' ')|title }}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('sales_orders.print_job_order', id=order.id) }}"
+                           class="btn-action" target="_blank" rel="noopener">Print</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No sales orders found.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}

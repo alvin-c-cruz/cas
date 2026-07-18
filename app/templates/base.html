@@ -1025,7 +1025,8 @@
             {% macro active_class(key) -%}
             {%- set ep = request.endpoint -%}
             {%- if ep -%}
-              {%- if key == 'sales_orders' and ep.startswith('sales_orders.') -%}active
+              {%- if key == 'job_order_slips' and (ep.startswith('sales_orders.job_order_') or ep == 'sales_orders.print_job_order') -%}active
+              {%- elif key == 'sales_orders' and ep.startswith('sales_orders.') -%}active
               {%- elif key == 'quotations' and ep.startswith('quotations.') -%}active
               {%- elif key == 'delivery_receipts' and ep.startswith('delivery_receipts.') -%}active
               {%- elif key == 'credit_memos' and ep.startswith('sales_memos.credit_') -%}active
@@ -1069,6 +1070,7 @@
                NOTE: bir_reports is handled separately below (it gates 3 sub-links).
                When adding a new module to MODULE_REGISTRY, add its entry here too. #}
             {% set _nav_ep = {
+                'job_order_slips':    'sales_orders.job_order_list',
                 'sales_orders':       'sales_orders.list',
                 'quotations':         'quotations.list',
                 'delivery_receipts':  'delivery_receipts.list',
@@ -1107,6 +1109,7 @@
                 'bank_accounts':      'bank_accounts.list_accounts'
             } %}
             {% set _nav_icon = {
+                'job_order_slips':    '🧰',
                 'sales_orders':       '📦',
                 'quotations':         '📝',
                 'delivery_receipts':  '🚚',
@@ -1184,6 +1187,7 @@
                         <span class="nav-icon">{{ _nav_icon[m.key] }}</span>
                         <span class="nav-text">
                             {{ m.label }}
+                            {%- if m.key == 'job_order_slips' %}<span class="nav-subtext">(Production)</span>{% endif %}
                             {%- if m.key == 'sales_orders' %}<span class="nav-subtext">(Customer Order)</span>{% endif %}
                             {%- if m.key == 'quotations' %}<span class="nav-subtext">(Price Offer)</span>{% endif %}
                             {%- if m.key == 'delivery_receipts' %}<span class="nav-subtext">(Deliveries)</span>{% endif %}

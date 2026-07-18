@@ -13,10 +13,17 @@ pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
 @pytest.fixture(autouse=True)
 def sales_orders_module_enabled(db_session):
-    """Enable the optional sales_orders module for all SO tests."""
+    """Enable the optional sales_orders module for all SO tests.
+
+    Also enables job_order_slips: print_job_order's endpoint prefix is registered
+    under the job_order_slips module key (Task 5), not sales_orders, so the
+    company-level module_enabled() gate -- which applies to every role including
+    admin -- would otherwise 404 this file's print_job_order tests.
+    """
     from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
     AppSettings.set_setting('module_enabled:sales_orders', '1')
+    AppSettings.set_setting('module_enabled:job_order_slips', '1')
     db_session.commit()
     clear_module_config_cache()
     yield

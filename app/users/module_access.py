@@ -21,6 +21,14 @@ MODULE_REGISTRY = [
      'area': 'Sales', 'group': 'Documents',
      'optional': True, 'depends_on': ['sales_orders'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('quotations.',)},
+    # job_order_slips MUST be registered before sales_orders below: module_key_for_endpoint()
+    # matches the FIRST entry whose endpoint prefix fits, and sales_orders' own prefix
+    # ('sales_orders.') would otherwise swallow these two routes first. Own grantable
+    # permission -- an operations user can hold this without holding full sales_orders access.
+    {'key': 'job_order_slips', 'label': 'Job Order Slips', 'section': 'Transactions',
+     'area': 'Sales', 'group': 'Documents',
+     'optional': True, 'depends_on': ['sales_orders'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('sales_orders.job_order_', 'sales_orders.print_job_order')},
     {'key': 'sales_orders', 'label': 'Sales Orders', 'section': 'Transactions',
      'area': 'Sales', 'group': 'Documents',
      'optional': True, 'depends_on': ['products'], 'default_enabled': False, 'per_user': True,

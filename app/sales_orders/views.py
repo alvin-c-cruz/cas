@@ -489,6 +489,19 @@ def print_job_order(id):
                            company=company, printed_at=ph_now())
 
 
+@sales_orders_bp.route('/sales-orders/job-order-slips')
+@login_required
+def job_order_list():
+    """Operations-facing list of Sales Orders for printing Job Order Slips -- no pricing
+    columns. Draft-status SOs are hidden unless job_order_slips_show_drafts is on."""
+    branch_id = session.get('selected_branch_id')
+    query = SalesOrder.query.filter_by(branch_id=branch_id)
+    if AppSettings.get_setting('job_order_slips_show_drafts', '0') != '1':
+        query = query.filter(SalesOrder.status != 'draft')
+    orders = query.order_by(SalesOrder.order_date.desc(), SalesOrder.id.desc()).all()
+    return render_template('sales_orders/job_order_list.html', orders=orders)
+
+
 @sales_orders_bp.route('/sales-orders/print-layout', methods=['POST'])
 @login_required
 def save_print_layout():
