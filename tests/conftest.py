@@ -25,19 +25,39 @@ def app():
         yield app
 
 
-@pytest.fixture(scope='function')
-def db_session(app):
-    """Create a new database session for each test"""
-    with app.app_context():
-        # Create all tables
-        db.create_all()
+@pytest.fixture(scope='session')
+def _db_schema(app):
+    """Create the database schema once for the whole test session.
 
-        # Yield the session
+    Per-test isolation is handled by db_session below (delete all rows at
+    teardown) instead of rebuilding the schema per test -- rebuilding via
+    db.create_all()/db.drop_all() 3000+ times was the suite's dominant
+    runtime cost (measured 0.02-0.13s of pure schema churn per test).
+    """
+    with app.app_context():
+        db.create_all()
+        yield
+        db.drop_all()
+
+
+@pytest.fixture(scope='function')
+def db_session(app, _db_schema):
+    """Provide a clean database session for each test.
+
+    Schema is created once (see _db_schema); between tests every row is
+    deleted from every table instead of rebuilding the schema. Delete order
+    is defensive only -- this app runs with SQLite FK enforcement OFF
+    app-wide (no PRAGMA foreign_keys=ON anywhere), so no delete can violate
+    an FK constraint regardless of order. See memory sqlite-fk-off-delete-guard.
+    """
+    with app.app_context():
         yield db.session
 
-        # Cleanup after test
+        db.session.rollback()
+        for table in reversed(db.metadata.sorted_tables):
+            db.session.execute(table.delete())
+        db.session.commit()
         db.session.remove()
-        db.drop_all()
 
 
 @pytest.fixture
