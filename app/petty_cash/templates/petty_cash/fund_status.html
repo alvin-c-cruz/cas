@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ fund.code }} — Petty Cash{% endblock %}
+{% block page_title %}Petty Cash — {{ fund.code }}{% endblock %}
+{% block content %}
+
+{% if fund.status == 'active' %}
+<div id="closeModal" style="display:none; position:fixed; inset:0; background:var(--backdrop); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:460px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Close Petty Cash Fund {{ fund.code }}?</h3>
+        <p style="color:var(--text-2); margin-bottom:24px;">
+            This posts Dr Bank / Cr Petty Cash for the remaining float (₱{{ '{:,.2f}'.format(fund.float_amount) }})
+            and marks the fund Closed. Cannot be undone.
+        </p>
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="document.getElementById('closeModal').style.display='none'">Keep Fund</button>
+            <form method="POST" action="{{ url_for('petty_cash.fund_close', id=fund.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-danger">Close Fund</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:18px; font-weight:700;">{{ fund.code }} — {{ fund.name }}</span>
+            <span class="badge badge-{{ 'active' if fund.status == 'active' else 'inactive' }}">{{ fund.status | title }}</span>
+        </div>
+        <div class="card-header-actions">
+            {% if fund.status == 'active' %}
+            <a href="{{ url_for('petty_cash.voucher_new', fund_id=fund.id) }}" class="btn btn-primary">+ Record Voucher</a>
+            {% if current_user.role in ['accountant', 'admin', 'chief_accountant'] %}
+                {% if held_vouchers %}
+                <a href="{{ url_for('petty_cash.replenish_new', id=fund.id) }}" class="btn btn-success">Replenish</a>
+                {% endif %}
+                {% if held_vouchers %}
+                <button class="btn btn-danger" disabled title="{{ held_vouchers | length }} held voucher(s) must be replenished first">Close Fund</button>
+                {% else %}
+                <button type="button" class="btn btn-danger" onclick="document.getElementById('closeModal').style.display='flex'">Close Fund</button>
+                {% endif %}
+                <a href="{{ url_for('petty_cash.fund_edit', id=fund.id) }}" class="btn btn-secondary">Adjust</a>
+            {% endif %}
+            {% endif %}
+            <a href="{{ url_for('petty_cash.fund_list') }}" class="btn btn-secondary">← Back to List</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="page-sub" style="margin-bottom:16px;">
+            Custodian: {{ fund.custodian or '—' }} · GL Account {{ fund.account.code }} — {{ fund.account.name }}
+            {% if fund.funding_bank_account %} · Funding: {{ fund.funding_bank_account.code }}{% endif %}
+        </p>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; padding:14px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Float Amount</div>
+                <div style="font-weight:600; font-family:var(--mono);">₱{{ '{:,.2f}'.format(fund.float_amount) }}</div>
+            </div>
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Held Vouchers</div>
+                <div style="font-weight:600; font-family:var(--mono);">₱{{ '{:,.2f}'.format(held_total) }}</div>
+            </div>
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Expected Cash</div>
+                <div style="font-weight:600; font-family:var(--mono); color:var(--blue); font-size:16px;">₱{{ '{:,.2f}'.format(expected_cash) }}</div>
+            </div>
+            <div>
+                <div style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Established</div>
+                <div style="font-weight:600;">{{ fund.created_at.strftime('%b %d, %Y') }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><span class="card-title">Held Vouchers ({{ held_vouchers | length }})</span></div>
+    <div class="card-body">
+        {% if held_vouchers %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Voucher #</th><th>Date</th><th>Payee</th><th>Expense Account</th>
+                    <th style="text-align:right;">Amount</th><th>Receipt</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for v in held_vouchers %}
+                <tr>
+                    <td style="font-family:var(--mono);">{{ v.voucher_number }}</td>
+                    <td>{{ v.voucher_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ v.payee }}</td>
+                    <td>{{ v.expense_account.code }} — {{ v.expense_account.name }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(v.amount) }}</td>
+                    <td>{{ v.receipt_ref or '—' }}</td>
+                    <td>
+                        <a href="{{ url_for('petty_cash.voucher_edit', id=v.id) }}" class="btn-action" title="Edit">✏️</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state"><p>No held vouchers.</p></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

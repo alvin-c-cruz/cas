@@ -92,5 +92,6 @@ class PettyCashReplenishment(RowVersioned, db.Model):
 
     fund_ref = db.relationship('PettyCashFund', foreign_keys=[fund_id])
     journal_entry = db.relationship('JournalEntry')
+    posted_by = db.relationship('User', foreign_keys=[posted_by_id])
     vouchers_replenished = db.relationship('PettyCashVoucher', backref='replenishment',
                                            foreign_keys=[PettyCashVoucher.replenishment_id])
