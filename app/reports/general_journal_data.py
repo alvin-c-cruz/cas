@@ -5,7 +5,7 @@ from decimal import Decimal
 from io import BytesIO
 
 VOUCHER_ENTRY_TYPES = ('reversal', 'adjustment', 'closing', 'closing_reversal',
-                       'opening', 'opening_balance', 'reclassification')
+                       'opening', 'opening_balance', 'reclassification', 'transfer')
 
 
 def build_general_journal(entries):
