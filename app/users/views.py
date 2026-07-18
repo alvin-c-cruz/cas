@@ -190,6 +190,7 @@ def login():
         if guard_response is not None:
             return guard_response
         login_user(user, remember=form.remember_me.data)
+        session.permanent = True
         return _post_login_redirect(user, form)
 
     return render_template('users/login.html', form=form)

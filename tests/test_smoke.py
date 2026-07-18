@@ -115,6 +115,12 @@ class TestSecurityFeatures:
         else:
             assert app.config.get('WTF_CSRF_ENABLED', True) is True
 
+    def test_permanent_session_lifetime_is_twelve_hours(self, app):
+        """PERMANENT_SESSION_LIFETIME defaults to a 12-hour workday, not the old
+        1-hour value that was previously dead config (BUG-PA-SESSION-UNEXPECTED-LOGOUT)."""
+        from datetime import timedelta
+        assert app.config['PERMANENT_SESSION_LIFETIME'] == timedelta(hours=12)
+
     def test_session_cookie_security(self, app):
         """Test that session cookies are configured securely"""
         # HTTPOnly should be True
