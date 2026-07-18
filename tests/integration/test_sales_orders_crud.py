@@ -117,12 +117,16 @@ def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, ad
     assert '₱' not in html           # peso sign U+20B1
 
 
-def test_so_persists_salesperson_when_employees_enabled(client, db_session, admin_user, main_branch):
+def test_so_persists_salesperson_when_employees_enabled(client, db_session, admin_user, main_branch, request):
     from app.employees.models import Employee
     from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
     AppSettings.set_setting('module_enabled:employees', '1')
     db_session.commit(); clear_module_config_cache()
+    # Clear again at teardown -- see tests/unit/test_salesperson_field.py's
+    # sibling fix for why this cache leak matters (an uncleared '1' here
+    # can leak into any later test in the same run).
+    request.addfinalizer(clear_module_config_cache)
     e = Employee(employee_no='E-9', first_name='Rey', last_name='Santos',
                  branch_id=main_branch.id, is_active=True)
     db_session.add(e); db_session.commit()

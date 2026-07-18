@@ -697,7 +697,7 @@ def test_si_create_form_vat_context(client, db_session, accountant_user, branch)
     assert b'Create Customer' not in response.data
 
 
-def test_si_persists_salesperson_when_employees_enabled(client, db_session, accountant_user, customer, revenue_account, branch):
+def test_si_persists_salesperson_when_employees_enabled(client, db_session, accountant_user, customer, revenue_account, branch, request):
     """SI create persists salesperson_id (an Employee) when the Employees module is on."""
     import json as _json
     from app.employees.models import Employee
@@ -706,6 +706,10 @@ def test_si_persists_salesperson_when_employees_enabled(client, db_session, acco
     from app.utils.cache_helpers import clear_module_config_cache
     AppSettings.set_setting('module_enabled:employees', '1')
     db_session.commit(); clear_module_config_cache()
+    # Clear again at teardown -- see tests/unit/test_salesperson_field.py's
+    # sibling fix for why this cache leak matters (an uncleared '1' here
+    # can leak into any later test in the same run).
+    request.addfinalizer(clear_module_config_cache)
     e = Employee(employee_no='E-SI', first_name='Ana', last_name='Reyes',
                  branch_id=branch.id, is_active=True)
     db_session.add(e); db_session.commit()
@@ -729,7 +733,7 @@ def test_si_persists_salesperson_when_employees_enabled(client, db_session, acco
     assert si is not None and si.salesperson_id == e.id
 
 
-def test_si_print_shows_salesperson(client, db_session, accountant_user, customer, revenue_account, branch):
+def test_si_print_shows_salesperson(client, db_session, accountant_user, customer, revenue_account, branch, request):
     """The SI printout renders the salesperson full name when set."""
     import json as _json
     from app.employees.models import Employee
@@ -742,6 +746,10 @@ def test_si_print_shows_salesperson(client, db_session, accountant_user, custome
     # a print assertion that isn't about access control.
     AppSettings.set_setting('sv_print_access', 'draft_and_posted', 'system')
     db_session.commit(); clear_module_config_cache()
+    # Clear again at teardown -- see tests/unit/test_salesperson_field.py's
+    # sibling fix for why this cache leak matters (an uncleared '1' here
+    # can leak into any later test in the same run).
+    request.addfinalizer(clear_module_config_cache)
     e = Employee(employee_no='E-PR', first_name='Ben', last_name='Tan',
                  branch_id=branch.id, is_active=True)
     db_session.add(e); db_session.commit()
