@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Fixed Asset Disposals{% endblock %}
+{% block page_title %}Fixed Asset Disposals{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Fixed Asset Disposals</h1>
+</div>
+<div class="card">
+  <div class="card-body">
+    <table class="data-table">
+      <thead>
+        <tr><th>Asset</th><th>Type</th><th>Date</th><th>Gain/Loss</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for d in disposals %}
+        <tr>
+          <td><a href="{{ url_for('fixed_assets.view', id=d.fixed_asset_id) }}">{{ d.fixed_asset.code }}</a></td>
+          <td>{{ d.disposal_type|replace('_', ' ')|title }}</td>
+          <td>{{ d.disposal_date }}</td>
+          <td>{{ '%.2f'|format(d.gain_loss_amount) }}</td>
+          <td><span class="badge {{ 'badge-success' if d.status == 'posted' else 'badge-inactive' }}">{{ d.status|title }}</span></td>
+          <td>
+            {% if d.status == 'posted' and (current_user.role == 'accountant' or current_user.has_full_access) %}
+            <form method="POST" action="{{ url_for('fixed_asset_disposal.void_disposal', id=d.id) }}" style="display:inline">
+              {{ void_form.hidden_tag() }}
+              {{ void_form.void_date(value=now.strftime('%Y-%m-%d')) }}
+              <button type="submit" class="btn btn-secondary">Void</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No fixed asset disposals found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
