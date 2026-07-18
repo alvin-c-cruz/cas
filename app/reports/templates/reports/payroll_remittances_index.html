@@ -1,0 +1,36 @@
+{# app/reports/templates/reports/payroll_remittances_index.html #}
+{% extends "base.html" %}
+{% block title %}Gov't Remittance Reports{% endblock %}
+{% block content %}
+<div class="card"><div class="card-body">
+  <h2 style="margin-bottom:4px;">Gov't Remittance Reports</h2>
+  <p style="color:var(--color-text-muted,#555);margin-bottom:16px;">
+    Monthly SSS / PhilHealth / Pag-IBIG contribution and BIR withholding-tax remittance reports,
+    computed from posted payroll runs. File the official forms via each agency's own portal
+    (My.SSS / ePRS / Virtual Pag-IBIG / eBIRForms); these are the file copies and keying sheets.
+  </p>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;">
+    <a class="card" style="text-decoration:none;padding:14px;"
+       href="{{ url_for('reports.sss_remittance', year=current_year, month=current_month) }}">
+      <strong>SSS Remittance</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Contribution Collection List</span>
+    </a>
+    <a class="card" style="text-decoration:none;padding:14px;"
+       href="{{ url_for('reports.philhealth_remittance', year=current_year, month=current_month) }}">
+      <strong>PhilHealth Remittance</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Employer's Remittance Report</span>
+    </a>
+    <a class="card" style="text-decoration:none;padding:14px;"
+       href="{{ url_for('reports.pagibig_remittance', year=current_year, month=current_month) }}">
+      <strong>Pag-IBIG Remittance</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Monthly Contribution Remittance Form</span>
+    </a>
+    <a class="card" style="text-decoration:none;padding:14px;"
+       href="{{ url_for('reports.bir_1601c', year=current_year, month=current_month) }}">
+      <strong>BIR 1601-C</strong><br>
+      <span style="color:var(--color-text-muted,#555);font-size:13px;">Monthly WHT on Compensation</span>
+    </a>
+  </div>
+</div></div>
+{% endblock %}

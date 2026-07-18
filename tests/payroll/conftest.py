@@ -65,20 +65,35 @@ def run_factory(app_ctx, main_branch):
     """Builds a PayrollRun (+ 1 PayrollRunLine, fully computed via
     line.calculate_amounts()/run.calculate_totals()) with realistic values and
     NO control accounts assigned. Requires the 2026 statutory tables, seeded
-    once per call (seed_statutory_2026 guards against double-seeding)."""
-    def _make(run_number='PR-2026-06-0001', basic_rate=Decimal('40000.00')):
+    once per call (seed_statutory_2026 guards against double-seeding).
+
+    `employee`: pass an existing Employee (e.g. from a prior run_factory() call
+    in the same test) to build a SECOND run for that SAME employee instead of
+    creating a new one -- a fresh Employee every call would collide on the
+    hardcoded unique employee_no='EMP-001'. Mirrors posted_semi_run_factory's
+    reuse-one-employee-across-calls pattern below."""
+    def _make(run_number='PR-2026-06-0001', basic_rate=Decimal('40000.00'), employee=None,
+              run_type='regular'):
         seed_statutory_2026()
 
-        emp = Employee(
-            employee_no='EMP-001', first_name='Juan', last_name='Dela Cruz',
-            branch_id=main_branch.id, pay_basis='monthly', basic_rate=basic_rate,
-            pay_frequency='monthly', is_minimum_wage=False, tax_status_code='S',
-        )
-        db.session.add(emp)
-        db.session.commit()
+        if employee is not None:
+            emp = employee
+        else:
+            emp = Employee(
+                employee_no='EMP-001', first_name='Juan', last_name='Dela Cruz',
+                branch_id=main_branch.id, pay_basis='monthly', basic_rate=basic_rate,
+                pay_frequency='monthly', is_minimum_wage=False, tax_status_code='S',
+            )
+            db.session.add(emp)
+            db.session.commit()
 
+        # run_type is part of uq_payroll_run_period (branch_id, run_type,
+        # pay_frequency, period_year, period_month, semi_period) -- pass it in
+        # at creation (not mutated afterward) so a second run for the same
+        # period/employee (e.g. a 13th_month run alongside a regular one)
+        # doesn't collide with the first insert.
         run = PayrollRun(
-            run_number=run_number, branch_id=main_branch.id, run_type='regular',
+            run_number=run_number, branch_id=main_branch.id, run_type=run_type,
             pay_frequency='monthly', period_year=2026, period_month=6, semi_period=0,
             period_start=date(2026, 6, 1), period_end=date(2026, 6, 30),
             pay_date=date(2026, 7, 5), semi_timing='second_cutoff', status='draft',

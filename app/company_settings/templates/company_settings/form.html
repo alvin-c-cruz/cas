@@ -271,6 +271,14 @@
             <div class="form-hint">For semi-monthly payroll, controls which cutoff deducts the
                 statutory (SSS/PhilHealth/Pag-IBIG) contributions: the second cutoff only (default),
                 the first cutoff only, or split evenly across both.</div>
+
+            <div class="settings-grid-3" style="margin-top:16px;">
+                {{ render_field(form.sss_employer_no) }}
+                {{ render_field(form.philhealth_employer_no) }}
+                {{ render_field(form.pagibig_employer_no) }}
+            </div>
+            <div class="form-hint">Printed on the header of the SSS / PhilHealth / Pag-IBIG
+                government remittance reports.</div>
             {% else %}
             <div class="form-hint" style="margin-top:16px;">Enable the Payroll module in
                 Packages to configure the semi-monthly statutory timing.</div>

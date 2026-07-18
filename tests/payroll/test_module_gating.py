@@ -55,7 +55,19 @@ class TestRegistryEntry:
         assert entry.get('per_user') is True
         assert entry.get('depends_on') == ['employees']
         assert entry.get('default_enabled') is False
-        assert entry['endpoints'] == ('payroll.',)
+        # Task 2 (SSS remittance) onward: individual report endpoints ride
+        # alongside the 'payroll.' prefix rather than replacing it -- each
+        # report route lives in the reports blueprint, so it needs its own
+        # exact-match string here (module_key_for_endpoint has no prefix to
+        # match on 'reports.'). Task 3 (PhilHealth remittance), Task 4
+        # (Pag-IBIG remittance), Task 5 (BIR 1601-C), and Task 6 (the hub
+        # page) each append their own endpoint(s) the same way.
+        assert entry['endpoints'] == (
+            'payroll.', 'reports.payroll_remittances_index',
+            'reports.sss_remittance', 'reports.sss_remittance_export_excel',
+            'reports.philhealth_remittance', 'reports.philhealth_remittance_export_excel',
+            'reports.pagibig_remittance', 'reports.pagibig_remittance_export_excel',
+            'reports.bir_1601c', 'reports.bir_1601c_export_excel')
 
     def test_every_actual_payroll_endpoint_is_matched_by_the_registry_prefix(self, app):
         """Enumerate every route Flask actually registered under the payroll

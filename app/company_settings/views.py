@@ -55,6 +55,9 @@ SETTINGS_KEYS = [
     'payroll_semi_monthly_timing',
     'payslip_print_access',
     'payslip_print_form',
+    'sss_employer_no',
+    'philhealth_employer_no',
+    'pagibig_employer_no',
 ]
 
 LOGO_SETTING_KEY = 'company_logo'

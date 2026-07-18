@@ -25,6 +25,9 @@ from app.reports.bir import (
     get_quarter_months,
     get_vat_return_summary
 )
+from app.reports.payroll_remittances import (
+    get_sss_remittance, get_philhealth_remittance, get_pagibig_remittance, get_bir_1601c,
+)
 from app.reports.financial import (
     generate_trial_balance,
     generate_income_statement,
@@ -702,6 +705,166 @@ def bir_vat_return_export_excel():
     title = f'VAT Return 2550Q - {get_quarter_name(quarter)} {year}'
     return export_to_excel(rows, ['section', 'line', 'base', 'tax'],
                            ['Section', 'Line', 'Amount', 'Tax'], filename, title)
+
+
+# ============================================================================
+# PAYROLL GOVERNMENT REMITTANCE REPORTS
+# ============================================================================
+
+@reports_bp.route('/reports/payroll/sss-remittance')
+@login_required
+@accountant_or_admin_required
+def sss_remittance():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    sss_data = get_sss_remittance(year, month, branch_id=current_branch_id)
+
+    return render_template('reports/payroll_sss_remittance.html',
+                         sss_data=sss_data,
+                         year=year,
+                         month=month,
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
+
+
+@reports_bp.route('/reports/payroll/sss-remittance/export/excel')
+@login_required
+@accountant_or_admin_required
+def sss_remittance_export_excel():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    sss_data = get_sss_remittance(year, month, branch_id=current_branch_id)
+
+    columns = ['employee_no', 'employee_name', 'sss_no', 'sss_ee', 'sss_er', 'sss_ec', 'total']
+    headers = ['Employee No.', 'Employee Name', 'SSS No.', 'EE Share', 'ER Share',
+               'EC', 'Total Contribution']
+
+    filename = f'SSS_Remittance_{year}_{month:02d}.xlsx'
+    title = f'SSS Contribution Collection List - {get_month_name(month)} {year}'
+
+    return export_to_excel(sss_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/payroll/philhealth-remittance')
+@login_required
+@accountant_or_admin_required
+def philhealth_remittance():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    philhealth_data = get_philhealth_remittance(year, month, branch_id=current_branch_id)
+
+    return render_template('reports/payroll_philhealth_remittance.html',
+                         philhealth_data=philhealth_data,
+                         year=year,
+                         month=month,
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
+
+
+@reports_bp.route('/reports/payroll/philhealth-remittance/export/excel')
+@login_required
+@accountant_or_admin_required
+def philhealth_remittance_export_excel():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    philhealth_data = get_philhealth_remittance(year, month, branch_id=current_branch_id)
+
+    columns = ['employee_no', 'employee_name', 'philhealth_no', 'philhealth_ee',
+               'philhealth_er', 'total']
+    headers = ['Employee No.', 'Employee Name', 'PhilHealth No.', 'EE Premium',
+               'ER Premium', 'Total Premium']
+
+    filename = f'PhilHealth_Remittance_{year}_{month:02d}.xlsx'
+    title = f"PhilHealth Employer's Remittance Report - {get_month_name(month)} {year}"
+
+    return export_to_excel(philhealth_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/payroll/pagibig-remittance')
+@login_required
+@accountant_or_admin_required
+def pagibig_remittance():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    pagibig_data = get_pagibig_remittance(year, month, branch_id=current_branch_id)
+
+    return render_template('reports/payroll_pagibig_remittance.html',
+                         pagibig_data=pagibig_data,
+                         year=year,
+                         month=month,
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
+
+
+@reports_bp.route('/reports/payroll/pagibig-remittance/export/excel')
+@login_required
+@accountant_or_admin_required
+def pagibig_remittance_export_excel():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    pagibig_data = get_pagibig_remittance(year, month, branch_id=current_branch_id)
+
+    columns = ['employee_no', 'employee_name', 'pagibig_no', 'pagibig_ee', 'pagibig_er', 'total']
+    headers = ['Employee No.', 'Employee Name', 'Pag-IBIG No.', 'EE Share', 'ER Share',
+               'Total Contribution']
+
+    filename = f'PagIBIG_Remittance_{year}_{month:02d}.xlsx'
+    title = f'Pag-IBIG Monthly Contribution Remittance Form - {get_month_name(month)} {year}'
+
+    return export_to_excel(pagibig_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/payroll/bir-1601c')
+@login_required
+@accountant_or_admin_required
+def bir_1601c():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    wht_data = get_bir_1601c(year, month, branch_id=current_branch_id)
+
+    return render_template('reports/payroll_bir_1601c.html',
+                         wht_data=wht_data,
+                         year=year,
+                         month=month,
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
+
+
+@reports_bp.route('/reports/payroll/bir-1601c/export/excel')
+@login_required
+@accountant_or_admin_required
+def bir_1601c_export_excel():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    wht_data = get_bir_1601c(year, month, branch_id=current_branch_id)
+
+    columns = ['employee_no', 'employee_name', 'tin', 'taxable_comp', 'wht']
+    headers = ['Employee No.', 'Employee Name', 'TIN', 'Taxable Compensation', 'Tax Withheld']
+
+    filename = f'BIR_1601C_{year}_{month:02d}.xlsx'
+    title = f'BIR 1601-C - Monthly Remittance Return of Income Taxes Withheld on Compensation - {get_month_name(month)} {year}'
+
+    return export_to_excel(wht_data, columns, headers, filename, title)
+
+
+@reports_bp.route('/reports/payroll')
+@login_required
+@accountant_or_admin_required
+def payroll_remittances_index():
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+
+    return render_template('reports/payroll_remittances_index.html',
+                         current_year=current_year,
+                         current_month=current_month)
 
 
 # ============================================================================
