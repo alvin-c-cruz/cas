@@ -162,6 +162,10 @@ MODULE_REGISTRY = [
      'optional': True, 'depends_on': ['products', 'product_categories'], 'default_enabled': False,
      'endpoints': ('reports.sales_by_product_line', 'reports.sales_by_product_line_print',
                    'reports.sales_by_product_line_export_excel')},
+    {'key': 'budgeting', 'label': 'Budget Entry', 'section': 'Financial Reports',
+     'area': 'Accounting', 'group': 'Financial Statements',
+     'optional': True, 'depends_on': [], 'default_enabled': False,
+     'endpoints': ('budgeting.',)},
     # ── Maintenance (master data; deny-by-default for staff) ─────────────────
     {'key': 'customers', 'label': 'Customers', 'section': 'Maintenance',
      'area': 'Sales', 'group': 'Masters',
