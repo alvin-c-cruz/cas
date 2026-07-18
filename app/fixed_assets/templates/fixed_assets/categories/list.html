@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Asset Categories{% endblock %}
+{% block page_title %}Asset Categories{% endblock %}
+{% block content %}
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Asset Categories</h1>
+        <p class="page-subheading">Classification tags for fixed assets</p>
+    </div>
+    <div class="page-actions">
+        {% if current_user.has_full_access or current_user.role == 'accountant' %}
+        <a href="{{ url_for('fixed_assets.category_create') }}" class="btn btn-primary">+ Create Asset Category</a>
+        {% endif %}
+    </div>
+</div>
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr><th>Name</th><th>Default Useful Life</th><th>Default Method</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for c in categories %}
+                <tr>
+                    <td>{{ c.name }}</td>
+                    <td>{{ c.default_useful_life_months or '—' }}</td>
+                    <td>{{ c.default_depreciation_method or '—' }}</td>
+                    <td>
+                        {% if c.is_active %}<span class="badge badge-active">Active</span>
+                        {% else %}<span class="badge badge-inactive">Inactive</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if current_user.has_full_access or current_user.role == 'accountant' %}
+                        <a href="{{ url_for('fixed_assets.category_edit', id=c.id) }}" class="btn btn-sm btn-secondary">Edit</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty-state-cell"><p>No asset categories found.</p></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
