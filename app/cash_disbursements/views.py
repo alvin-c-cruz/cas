@@ -854,9 +854,9 @@ def create():
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
     all_accounts = _get_all_accounts_for_select()
-    form.cash_account_id.choices = [(0, '-- Select Account --')] + [
-        (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
-    ]
+    from app.bank_accounts.service import cash_bank_account_choices
+    form.cash_account_id.choices = [(0, '-- Select Account --')] + cash_bank_account_choices(
+        session.get('selected_branch_id'))
 
     def _render_form():
         """Render the create form. On a failed POST, carry the submitted AP/expense
@@ -978,9 +978,8 @@ def edit(id):
     vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.code).all()
     form.vendor_id.choices = [(v.id, f'{v.code} - {v.name}') for v in vendors]
     all_accounts = _get_all_accounts_for_select()
-    form.cash_account_id.choices = [
-        (a['id'], f"{a['code']} — {a['name']}") for a in all_accounts if not a['is_group']
-    ]
+    from app.bank_accounts.service import cash_bank_account_choices
+    form.cash_account_id.choices = cash_bank_account_choices(session.get('selected_branch_id'))
 
     def _render_edit_form():
         """Render the edit form.

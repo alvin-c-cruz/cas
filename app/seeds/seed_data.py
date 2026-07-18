@@ -695,7 +695,7 @@ def _seed_admin_and_branch():
 
 
 def _seed_app_settings(company_name='Company Name', bir_reports_enabled='1'):
-    """Seed the 24-row settings block (idempotent). company_name is parameterized.
+    """Seed the settings block (idempotent). company_name is parameterized.
 
     bir_reports_enabled controls the seeded 'module_enabled:bir_reports' flag (BIR Reports +
     VAT Settlement share this switch). Fresh CLIENT instances (seed_firm/construction/
@@ -730,6 +730,9 @@ def _seed_app_settings(company_name='Company Name', bir_reports_enabled='1'):
         {'key': 'module_enabled:units_of_measure', 'value': '0'},
         {'key': 'module_enabled:products',         'value': '0'},
     ]
+    # Default cash_bank_parent_account_code to 10100 if it exists in the COA
+    if Account.query.filter_by(code='10100').first():
+        settings.append({'key': 'cash_bank_parent_account_code', 'value': '10100'})
     for s in settings:
         db.session.add(AppSettings(key=s['key'], value=s['value'], updated_by='system'))
     db.session.commit()
@@ -846,8 +849,8 @@ def seed_minimal():
 
     try:
         _seed_admin_and_branch()
-        _seed_app_settings('Company Name', bir_reports_enabled='0')
         _seed_accounts(BASELINE_COA)
+        _seed_app_settings('Company Name', bir_reports_enabled='0')
         _seed_vat_categories()
         _seed_sales_vat_categories()
         _seed_withholding_taxes()
@@ -880,8 +883,8 @@ def seed_firm():
     print("="*60 + "\n")
     try:
         _seed_admin_and_branch()
-        _seed_app_settings('Cruz Accounting & Software')
         _seed_accounts(FIRM_COA)
+        _seed_app_settings('Cruz Accounting & Software')
         _seed_vat_categories()
         _seed_sales_vat_categories()
         _seed_withholding_taxes()
@@ -924,8 +927,8 @@ def seed_construction():
     print("="*60 + "\n")
     try:
         _seed_admin_and_branch()
-        _seed_app_settings('Construction Company')
         _seed_accounts(CONSTRUCTION_COA)
+        _seed_app_settings('Construction Company')
         _seed_vat_categories()
         _seed_sales_vat_categories()
         _seed_withholding_taxes()
@@ -974,8 +977,8 @@ def seed_manufacturing():
     print("="*60 + "\n")
     try:
         _seed_admin_and_branch()
-        _seed_app_settings('Manufacturing Company')
         _seed_accounts(coa)
+        _seed_app_settings('Manufacturing Company')
         _seed_vat_categories()
         _seed_sales_vat_categories()
         _seed_withholding_taxes()
