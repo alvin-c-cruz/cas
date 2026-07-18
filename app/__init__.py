@@ -241,6 +241,7 @@ def create_app(config_name=None):
     )  # noqa: F401
     from app.payroll.models import PayrollRun, PayrollRunLine, EmployeeLoan  # noqa: F401
     from app.fixed_assets.models import AssetCategory, FixedAsset  # noqa: F401
+    from app.fixed_asset_depreciation.models import DepreciationRun, DepreciationEntry  # noqa: F401
     from app.bank_accounts.models import BankAccount  # noqa: F401
     from app.bank_transfers.models import BankTransfer  # noqa: F401
 
@@ -285,6 +286,7 @@ def create_app(config_name=None):
     from app.payroll.views import payroll_bp
     from app.permission_requests.views import permission_requests_bp
     from app.fixed_assets.views import fixed_assets_bp
+    from app.fixed_asset_depreciation.views import fixed_asset_depreciation_bp
     from app.bank_accounts.views import bank_accounts_bp
     from app.bank_transfers.views import bank_transfers_bp
 
@@ -328,6 +330,7 @@ def create_app(config_name=None):
     app.register_blueprint(payroll_bp)
     app.register_blueprint(permission_requests_bp)
     app.register_blueprint(fixed_assets_bp)
+    app.register_blueprint(fixed_asset_depreciation_bp)
     app.register_blueprint(bank_accounts_bp)
     app.register_blueprint(bank_transfers_bp)
 

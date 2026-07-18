@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Run Depreciation{% endblock %}
+{% block page_title %}Run Depreciation{% endblock %}
+{% block content %}
+{% from "macros.html" import render_field %}
+<div class="page-header">
+  <h1>Run Depreciation</h1>
+</div>
+<div class="card">
+  <div class="card-body">
+    <form method="POST">
+      {{ form.hidden_tag() }}
+      <div class="form-row-2">
+        {{ render_field(form.branch_id, required=True) }}
+        {{ render_field(form.period_year, required=True) }}
+        {{ render_field(form.period_month, required=True) }}
+      </div>
+      {% if not preview_rows %}
+      <button type="submit" class="btn btn-primary">Preview</button>
+      {% endif %}
+
+      {% if preview_rows is not none %}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Asset</th><th>Method</th><th>Prior Accum.</th><th>This Period</th>
+            <th>New Accum.</th><th>New NBV</th><th>Units Used</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in preview_rows %}
+          <tr>
+            <td>{{ row.asset.code }} — {{ row.asset.name }}</td>
+            <td>{{ row.asset.depreciation_method|replace('_', ' ')|title }}</td>
+            <td>{{ '%.2f'|format(row.prior_accumulated) }}</td>
+            <td>{{ '%.2f'|format(row.depreciation_amount) }}</td>
+            <td>{{ '%.2f'|format(row.accumulated_after) }}</td>
+            <td>{{ '%.2f'|format(row.net_book_value_after) }}</td>
+            <td>
+              {% if row.needs_units_input %}
+              <input type="number" step="0.01" name="units_used_{{ row.asset.id }}"
+                    class="form-control" placeholder="Units used">
+              {% else %}
+              {{ row.units_used or '—' }}
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7">No eligible assets found for this branch/period.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <input type="hidden" name="confirmed" value="0" id="confirmed-flag">
+      <button type="button" class="btn btn-primary"
+             onclick="document.getElementById('confirmed-flag').value='1'; this.form.submit();">
+        Confirm &amp; Post
+      </button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endblock %}
