@@ -1064,6 +1064,7 @@
               {%- elif key == 'bank_transfers' and ep.startswith('bank_transfers.') -%}active
               {%- elif key == 'petty_cash' and ep.startswith('petty_cash.') -%}active
               {%- elif key == 'bank_reconciliation' and ep.startswith('bank_reconciliation.') -%}active
+              {%- elif key == 'budgeting' and ep.startswith('budgeting.') -%}active
               {%- endif -%}
             {%- endif -%}
             {%- endmacro %}
@@ -1115,7 +1116,8 @@
                 'bank_accounts':      'bank_accounts.list_accounts',
                 'bank_transfers':     'bank_transfers.list_transfers',
                 'petty_cash':         'petty_cash.fund_list',
-                'bank_reconciliation': 'bank_reconciliation.pick_account'
+                'bank_reconciliation': 'bank_reconciliation.pick_account',
+                'budgeting':          'budgeting.grid'
             } %}
             {% set _nav_icon = {
                 'job_order_slips':    '🧰',
@@ -1160,7 +1162,8 @@
                 'bank_accounts':      '🏦',
                 'bank_transfers':     '🔁',
                 'petty_cash':         '👛',
-                'bank_reconciliation': '🧮'
+                'bank_reconciliation': '🧮',
+                'budgeting':          '📊'
             } %}
 
             {% for area in build_sidebar(current_user) %}

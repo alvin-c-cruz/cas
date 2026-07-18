@@ -296,6 +296,7 @@ def create_app(config_name=None):
     from app.bank_transfers.views import bank_transfers_bp
     from app.petty_cash.views import petty_cash_bp
     from app.bank_reconciliation.views import bank_reconciliation_bp
+    from app.budgeting.views import budgeting_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -343,6 +344,7 @@ def create_app(config_name=None):
     app.register_blueprint(bank_transfers_bp)
     app.register_blueprint(petty_cash_bp)
     app.register_blueprint(bank_reconciliation_bp)
+    app.register_blueprint(budgeting_bp)
 
     from app.backup.views import backup_bp
     app.register_blueprint(backup_bp)
