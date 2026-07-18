@@ -309,3 +309,59 @@ def test_print_preprinted_renders_designer_no_currency_glyph(client, db_session,
     html = resp.get_data(as_text=True)
     assert 'ppCanvas' in html            # drag-designer canvas rendered
     assert '₱' not in html          # peso sign U+20B1
+
+
+def test_print_job_order_hides_pricing_and_uses_job_order_name(client, db_session, admin_user,
+                                                                main_branch):
+    """The Job Order Slip shows job_order_name (falling back to name), Qty, UOM -- and NEVER
+    unit price, amount, VT, or the Total Sales summary."""
+    c = _customer(db_session)
+    p_named = _product(db_session, code='JON-P1', name='Regular Name One')
+    p_named.job_order_name = 'PROD-NAME-ONE'
+    p_blank = _product(db_session, code='JON-P2', name='Regular Name Two')
+    db.session.commit()
+
+    so = SalesOrder(so_number='SO-2026-06-JOS1', order_date=datetime.date(2026, 6, 15),
+                    customer_id=c.id, customer_name='Acme', branch_id=main_branch.id,
+                    status='draft')
+    db.session.add(so); db.session.flush()
+    li1 = SalesOrderItem(sales_order_id=so.id, line_number=1, product_id=p_named.id,
+                         quantity=Decimal('5'), unit_price=Decimal('999.99'),
+                         amount=Decimal('4999.95'), line_total=Decimal('4999.95'))
+    li2 = SalesOrderItem(sales_order_id=so.id, line_number=2, product_id=p_blank.id,
+                         quantity=Decimal('3'), unit_price=Decimal('50.00'),
+                         amount=Decimal('150.00'), line_total=Decimal('150.00'))
+    db.session.add_all([li1, li2])
+    so.total_amount = Decimal('5149.95')
+    db.session.commit()
+
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get(f'/sales-orders/{so.id}/print-job-order')
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    assert 'JOB ORDER SLIP' in html
+    assert 'PROD-NAME-ONE' in html          # job_order_name used when set
+    assert 'Regular Name Two' in html       # falls back to product.name when blank
+    assert 'Regular Name One' not in html   # the SET job_order_name replaces the regular name
+    assert '999.99' not in html
+    assert '4,999.95' not in html
+    assert '5,149.95' not in html
+    assert 'Total Sales' not in html
+    assert 'Unit Price' not in html
+    assert 'Amount' not in html
+
+
+def test_print_job_order_cross_branch_404(client, db_session, admin_user, main_branch,
+                                          branch_manila):
+    c = _customer(db_session)
+    so = SalesOrder(so_number='SO-2026-06-JOS2', order_date=datetime.date(2026, 6, 16),
+                    customer_id=c.id, customer_name='Acme', branch_id=branch_manila.id,
+                    status='draft')
+    db.session.add(so); db.session.commit()
+
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)   # different branch than the SO
+    resp = client.get(f'/sales-orders/{so.id}/print-job-order')
+    assert resp.status_code == 404
