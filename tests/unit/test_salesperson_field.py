@@ -38,12 +38,19 @@ def test_copy_salesperson(db_session, main_branch):
     assert dst.salesperson_id == e.id
 
 
-def test_salesperson_choices_only_includes_flagged_employees(app, db_session, main_branch):
+def test_salesperson_choices_only_includes_flagged_employees(app, db_session, main_branch, request):
     from app.sales_orders.views import _salesperson_choices
     from app.settings import AppSettings
     from app.utils.cache_helpers import clear_module_config_cache
     AppSettings.set_setting('module_enabled:employees', '1')
     db_session.commit(); clear_module_config_cache()
+    # Clear again at teardown -- the module-config cache lives on the
+    # session-scoped `app` fixture, so leaving a stale '1' here leaks into any
+    # later test in the same run that doesn't explicitly clear it (found
+    # live: this leak was silently defeating
+    # tests/unit/test_sidebar_nav.py::test_admin_sees_all_areas_ordered under
+    # full-suite ordering, via the 'Payroll' area which employees also gates).
+    request.addfinalizer(clear_module_config_cache)
     db_session.add(Employee(employee_no='S1', first_name='Sal', last_name='Rep',
                             branch_id=main_branch.id, is_active=True, is_salesperson=True))
     db_session.add(Employee(employee_no='A1', first_name='Ac', last_name='Count',

@@ -378,15 +378,24 @@ class TestPayrollSemiMonthlyTimingSetting:
     Settings SelectField, following the exact apv_print_access/sv_print_access
     pattern (plain SelectField, generic SETTINGS_KEYS read/write loop)."""
 
-    def _enable_payroll_module(self, db_session):
+    @pytest.fixture
+    def payroll_module_enabled(self, db_session):
+        """Enables the payroll module for the test, then clears the shared
+        module-config cache again at teardown -- the cache lives on the
+        session-scoped `app` fixture, so leaving a stale '1' cached here
+        would leak into any later test in the same run that doesn't
+        explicitly clear it (found live: this leak was silently defeating
+        tests/unit/test_sidebar_nav.py::test_admin_sees_all_areas_ordered
+        under full-suite ordering)."""
         from app.utils.cache_helpers import clear_module_config_cache
         AppSettings.set_setting('module_enabled:payroll', '1')
         db_session.commit()
         clear_module_config_cache()
+        yield
+        clear_module_config_cache()
 
     def test_saved_when_posted_and_audited(
-            self, client, db_session, admin_user, main_branch):
-        self._enable_payroll_module(db_session)
+            self, client, db_session, admin_user, main_branch, payroll_module_enabled):
         login(client)
         data = dict(VALID_FORM_DATA)
         data['payroll_semi_monthly_timing'] = 'split_50_50'
@@ -407,8 +416,7 @@ class TestPayrollSemiMonthlyTimingSetting:
         assert old_values['payroll_semi_monthly_timing'] is None   # was unset before
 
     def test_get_rerender_shows_the_saved_value_selected(
-            self, client, db_session, admin_user, main_branch):
-        self._enable_payroll_module(db_session)
+            self, client, db_session, admin_user, main_branch, payroll_module_enabled):
         login(client)
         data = dict(VALID_FORM_DATA)
         data['payroll_semi_monthly_timing'] = 'first_cutoff'
@@ -434,8 +442,7 @@ class TestPayrollSemiMonthlyTimingSetting:
         assert b'Enable the Payroll module' in body
 
     def test_shown_when_payroll_module_enabled(
-            self, client, db_session, admin_user, main_branch):
-        self._enable_payroll_module(db_session)
+            self, client, db_session, admin_user, main_branch, payroll_module_enabled):
         login(client)
         resp = client.get('/settings')
         assert b'name="payroll_semi_monthly_timing"' in resp.data

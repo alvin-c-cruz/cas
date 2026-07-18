@@ -135,10 +135,17 @@ class TestChiefAccountantApprovedEmails:
     def test_ca_does_not_see_staff_management_link(self, client, db_session,
                                                    chief_accountant_user, main_branch):
         # staff_management is accountant-only; a CA must not get a dead link to it.
+        # Assert on the actual nav link (URL + the real nav-section markup), not a bare
+        # 'Staff Management' substring -- base.html's sidebar-accordion JS has an
+        # unrelated `//` comment mentioning "Staff Management" that ships in every
+        # response body regardless of role (JS comments aren't stripped server-side
+        # like Jinja {# #} comments are), which defeated the blanket substring check
+        # even though the real nav section is correctly role-gated.
         db_session.commit()
         login(client, 'chief', 'chief123')
         resp = client.get('/under-development')
-        assert b'Staff Management' not in resp.data
+        assert b'/staff-management' not in resp.data
+        assert b'data-section="staff"' not in resp.data
 
     def test_accountant_still_sees_approved_emails_link(self, client, db_session,
                                                         admin_user, accountant_user, main_branch):

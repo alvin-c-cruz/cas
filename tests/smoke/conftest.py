@@ -26,10 +26,25 @@ def smoke_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'connect_args': {'check_same_thread': False}}
 
+    # Push/pop briefly for setup and teardown only -- do NOT hold this app's
+    # context open across the whole `yield` (i.e. across the entire test
+    # session). tests/conftest.py's `app` fixture is ALSO session-scoped and
+    # holds its own separate app_context open for the whole session; two
+    # independent long-lived app-context pushes on Flask's shared _cv_app
+    # ContextVar stack aren't guaranteed to unwind in the order pytest tears
+    # fixtures down in, and corrupt the stack at session teardown
+    # (LookupError / "Popped wrong app context" -- BUG-PYTEST-APPCTX-STACK-
+    # CORRUPTION). Nothing downstream needs this context held open: the live
+    # server thread (see `live_url` below) pushes its own request+app context
+    # per request regardless of what's on this process's context stack, and
+    # `_seed_smoke_data` already pushes its own context internally.
     with app.app_context():
         _db.create_all()
-        _seed_smoke_data(app)
-        yield app
+    _seed_smoke_data(app)
+
+    yield app
+
+    with app.app_context():
         _db.drop_all()
 
     os.unlink(db_path)

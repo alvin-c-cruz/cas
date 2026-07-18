@@ -15,9 +15,22 @@ it builds today's model, not the migration history. So this test drives the REAL
 `flask db upgrade` CLI (via subprocess, same interpreter as the running test
 process) against real, throwaway on-disk sqlite files, exercising the actual
 Alembic upgrade chain end to end, and inspects the resulting database directly.
+
+Both tests below build a DB stopped at bir_bkoff1's own down_revision
+(prodcat_0002) rather than copying an already-fully-migrated DB (e.g. the real
+demo cas.db). Alembic tracks applied revisions and never re-runs one that's
+already stamped, so upgrading an already-head DB is a silent no-op for
+bir_bkoff1 regardless of what state you poke into it first -- that was the bug
+in the previous version of this file: it copied `instance/cas.db` (already at
+head), so `flask db upgrade` never actually executed bir_bkoff1's upgrade() at
+all, and `test_live_install_does_not_clobber_existing_override` passed
+vacuously (nothing could have clobbered the override, because the migration
+never ran). Stopping at the pre-backfill revision and injecting state there
+(a users row, and for the second test an existing override row) before
+completing the upgrade to head is the only way to make bir_bkoff1's upgrade()
+genuinely execute under test.
 """
 import os
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -29,9 +42,13 @@ pytestmark = [pytest.mark.integration]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# bir_bkoff1's own down_revision (migrations/versions/bir_bkoff1_backfill_bir_reports_enabled.py) --
+# the DB must be stopped here so the final `flask db upgrade` to head actually runs bir_bkoff1.
+_PRE_BACKFILL_REVISION = 'prodcat_0002'
 
-def _run_flask_db_upgrade(db_path):
-    """Run `flask db upgrade` to head against db_path (sqlite file), return CompletedProcess."""
+
+def _run_flask_db(db_path, *args):
+    """Run `flask db <args>` against db_path (sqlite file), return CompletedProcess."""
     env = os.environ.copy()
     env['FLASK_APP'] = 'flask_app.py'
     env['FLASK_ENV'] = 'development'
@@ -39,7 +56,7 @@ def _run_flask_db_upgrade(db_path):
     # Absolute Windows path -> sqlite:///C:/... (three slashes, drive letter follows)
     env['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + str(db_path).replace('\\', '/')
     result = subprocess.run(
-        [sys.executable, '-m', 'flask', 'db', 'upgrade'],
+        [sys.executable, '-m', 'flask', 'db', *args],
         cwd=str(REPO_ROOT), env=env, capture_output=True, text=True, timeout=180,
     )
     return result
@@ -53,36 +70,44 @@ def _query(db_path, sql, params=()):
         conn.close()
 
 
-@pytest.fixture
-def real_db_copy_no_override(tmp_path):
-    """A copy of the real demo DB (has users -- an already-used, live-like install),
-    with any pre-existing 'module_enabled:bir_reports' override row stripped so it
-    reproduces the exact target scenario: a live install that never had to toggle a
-    switch that was already in the position it wanted."""
-    source = REPO_ROOT.parent / 'cas' / 'instance' / 'cas.db'
-    if not source.exists():
-        pytest.skip(f'reference demo DB not found at {source}')
-    dest = tmp_path / 'live_no_override.db'
-    shutil.copy(str(source), str(dest))
-    conn = sqlite3.connect(str(dest))
+def _insert_dummy_user(db_path, username='migration_test_admin'):
+    """Insert a minimal, valid `users` row directly via SQL -- simulates 'an admin was
+    already bootstrapped' (the migration's own heuristic for 'already-used install')
+    without depending on the ORM/app factory mid-chain, at a schema point (users table
+    has existed since long before prodcat_0002) that's stable regardless of today's
+    full User model."""
+    conn = sqlite3.connect(str(db_path))
     try:
-        conn.execute("DELETE FROM app_settings WHERE key = 'module_enabled:bir_reports'")
+        conn.execute(
+            "INSERT INTO users (username, email, password_hash, full_name, role, "
+            "is_active, failed_login_attempts) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (username, f'{username}@test.local', 'x', 'Migration Test User', 'admin', 1, 0))
         conn.commit()
     finally:
         conn.close()
-    return dest
 
 
-def test_live_install_backfills_bir_reports_enabled(real_db_copy_no_override):
+@pytest.fixture
+def db_at_pre_backfill_revision(tmp_path):
+    """A fresh DB migrated up to (not including) bir_bkoff1."""
+    db_path = tmp_path / 'pre_backfill.db'
+    assert not db_path.exists()
+    result = _run_flask_db(db_path, 'upgrade', _PRE_BACKFILL_REVISION)
+    assert result.returncode == 0, (
+        f'flask db upgrade {_PRE_BACKFILL_REVISION} failed:\n{result.stdout}\n{result.stderr}')
+    return db_path
+
+
+def test_live_install_backfills_bir_reports_enabled(db_at_pre_backfill_revision):
     """A pre-existing DB with real users and NO prior override -> migration inserts
     module_enabled:bir_reports='1' so BIR Reports does not silently disappear."""
-    db_path = real_db_copy_no_override
-    user_count_before = _query(db_path, 'SELECT COUNT(*) FROM users')[0][0]
-    assert user_count_before > 0, 'fixture must represent an already-used install'
+    db_path = db_at_pre_backfill_revision
+    _insert_dummy_user(db_path)
+    assert _query(db_path, 'SELECT COUNT(*) FROM users')[0][0] > 0
     assert _query(db_path,
                   "SELECT * FROM app_settings WHERE key='module_enabled:bir_reports'") == []
 
-    result = _run_flask_db_upgrade(db_path)
+    result = _run_flask_db(db_path, 'upgrade')
     assert result.returncode == 0, f'flask db upgrade failed:\n{result.stdout}\n{result.stderr}'
 
     rows = _query(db_path,
@@ -90,10 +115,12 @@ def test_live_install_backfills_bir_reports_enabled(real_db_copy_no_override):
     assert rows == [('1', 'system_migration')]
 
 
-def test_live_install_does_not_clobber_existing_override(real_db_copy_no_override):
-    """If a client somehow already had an explicit override (any value), the backfill
-    must not clobber it -- idempotent/defensive per the migration's own contract."""
-    db_path = real_db_copy_no_override
+def test_live_install_does_not_clobber_existing_override(db_at_pre_backfill_revision):
+    """If a client somehow already had an explicit override (any value) by the time
+    bir_bkoff1 runs, the backfill must not clobber it -- idempotent/defensive per the
+    migration's own contract."""
+    db_path = db_at_pre_backfill_revision
+    _insert_dummy_user(db_path)
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute(
@@ -103,7 +130,7 @@ def test_live_install_does_not_clobber_existing_override(real_db_copy_no_overrid
     finally:
         conn.close()
 
-    result = _run_flask_db_upgrade(db_path)
+    result = _run_flask_db(db_path, 'upgrade')
     assert result.returncode == 0, f'flask db upgrade failed:\n{result.stdout}\n{result.stderr}'
 
     rows = _query(db_path,
@@ -118,7 +145,7 @@ def test_fresh_install_from_base_does_not_backfill(tmp_path):
     db_path = tmp_path / 'fresh.db'
     assert not db_path.exists()
 
-    result = _run_flask_db_upgrade(db_path)
+    result = _run_flask_db(db_path, 'upgrade')
     assert result.returncode == 0, f'flask db upgrade failed:\n{result.stdout}\n{result.stderr}'
 
     assert _query(db_path, 'SELECT COUNT(*) FROM users')[0][0] == 0
