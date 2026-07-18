@@ -215,3 +215,57 @@ def post_depreciation_run(branch_id, period_year, period_month, units_used_by_as
     log_create('fixed_asset_depreciation', run.id,
               f'{branch_id}/{period_year}-{period_month:02d}', run.to_dict())
     return run
+
+
+def reverse_depreciation_run(run, reversal_date, user_id):
+    """Reverse a posted depreciation run: mirrors the source JE with Dr/Cr
+    swapped (same pattern as app/payroll/service.py's cancel reversal and
+    app/vat_settlement/service.py's reverse_settlement), flips the run to
+    'reversed', and frees its (branch, period) slot for a fresh run.
+
+    Returns the reversal JournalEntry, or None if the run had no JE to
+    reverse (the zero-amount case from post_depreciation_run).
+
+    Raises ValueError if run.status != 'posted'.
+    """
+    from app import db
+    from app.audit.utils import log_update
+    from app.journal_entries.models import JournalEntry, JournalEntryLine
+    from app.journal_entries.utils import generate_jv_number
+    from app.utils import ph_now
+
+    if run.status != 'posted':
+        raise ValueError(
+            f'Only a posted depreciation run can be reversed (this run is {run.status}).'
+        )
+
+    old = run.to_dict()
+    source_je = run.journal_entry
+
+    reversal_je = None
+    if source_je is not None:
+        reversal_je = JournalEntry(
+            entry_number=generate_jv_number(run.branch_id), entry_date=reversal_date,
+            description=f'Depreciation Reversal — {run.period_year}-{run.period_month:02d}',
+            reference=f'CANCEL-DEPR-{run.id}', entry_type='depreciation_reversal',
+            is_reversing=True, reversed_entry_id=source_je.id, branch_id=run.branch_id,
+            created_by_id=user_id, status='posted', posted_by_id=user_id, posted_at=ph_now(),
+            is_balanced=False, total_debit=Decimal('0.00'), total_credit=Decimal('0.00'),
+        )
+        db.session.add(reversal_je)
+        db.session.flush()
+
+        for i, src in enumerate(source_je.lines.all(), start=1):
+            db.session.add(JournalEntryLine(
+                entry_id=reversal_je.id, line_number=i, account_id=src.account_id,
+                description=f'Reversal: {src.description}',
+                debit_amount=src.credit_amount, credit_amount=src.debit_amount,
+            ))
+        db.session.flush()
+        reversal_je.calculate_totals()
+
+    run.status = 'reversed'
+    db.session.commit()
+    log_update('fixed_asset_depreciation', run.id,
+              f'{run.branch_id}/{run.period_year}-{run.period_month:02d}', old, run.to_dict())
+    return reversal_je
