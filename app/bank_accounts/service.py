@@ -39,3 +39,16 @@ def cash_bank_leaf_account_choices():
     else:
         leaves = _leaf_accounts(parent)
     return [(a.id, f'{a.code} — {a.name}') for a in sorted(leaves, key=lambda a: a.code)]
+
+
+def cash_bank_account_choices(branch_id):
+    """ON -> the branch's active BankAccounts (value = the GL account_id, so posting is
+    unchanged either way); OFF -> the fail-soft cash/bank leaf-account list."""
+    from app.users.module_access import module_enabled
+    if module_enabled('bank_accounts'):
+        from app.bank_accounts.models import BankAccount
+        rows = (BankAccount.query
+                .filter_by(branch_id=branch_id, is_active=True)
+                .order_by(BankAccount.code).all())
+        return [(b.account_id, f'{b.code} - {b.name}') for b in rows]
+    return cash_bank_leaf_account_choices()
