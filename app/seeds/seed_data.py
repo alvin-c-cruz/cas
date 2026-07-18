@@ -216,6 +216,7 @@ def seed_chart_of_accounts():
         {'code': '20500', 'name': 'Accrued Expenses', 'type': 'Liability', 'parent': '20000', 'is_header': True},
         {'code': '20501', 'name': 'Accrued Salaries and Wages', 'type': 'Liability', 'parent': '20500', 'normal_balance': 'credit'},
         {'code': '20502', 'name': 'Accrued Interest Payable', 'type': 'Liability', 'parent': '20500', 'normal_balance': 'credit'},
+        {'code': '20503', 'name': 'Due to Petty Cash Custodian', 'type': 'Liability', 'parent': '20500', 'normal_balance': 'credit'},
 
         # Non-Current Liabilities (21xxx)
         {'code': '21000', 'name': 'NON-CURRENT LIABILITIES', 'type': 'Liability', 'parent': None, 'is_header': True},
@@ -317,6 +318,7 @@ def seed_chart_of_accounts():
         {'code': '50300', 'name': 'Financial Expenses', 'type': 'Expense', 'parent': '50000', 'is_header': True},
         {'code': '50301', 'name': 'Interest Expense', 'type': 'Expense', 'parent': '50300', 'normal_balance': 'debit'},
         {'code': '50302', 'name': 'Bank Charges', 'type': 'Expense', 'parent': '50300', 'normal_balance': 'debit'},
+        {'code': '50303', 'name': 'Cash Short/Over', 'type': 'Expense', 'parent': '50300', 'normal_balance': 'debit'},
     ]
 
     # Create accounts in two passes
@@ -952,7 +954,7 @@ def seed_construction():
 def seed_manufacturing():
     """Seed a clean manufacturing-company instance (MANUFACTURING_COA + VAT/EWT incl. V0 zero-rated).
 
-    Same shape as seed_construction but with the 148-account MANUFACTURING_COA and a GENERIC
+    Same shape as seed_construction but with the 150-account MANUFACTURING_COA and a GENERIC
     identity (company_name='Manufacturing Company') -- rename in Company Settings per client, so
     no client name is coupled into shared code. Suited to manufacturers/exporters: RM/WIP/FG
     inventory accounts + the V0 VAT zero-rated (export) sales category. Refuses to run if the COA

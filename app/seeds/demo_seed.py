@@ -62,6 +62,7 @@ CONSTRUCTION_COA = [
     {'code': '20110', 'name': 'Subcontractors Payable', 'type': 'Liability', 'parent': '20000', 'nb': 'credit'},
     {'code': '20120', 'name': 'Retention Payable', 'type': 'Liability', 'parent': '20000', 'nb': 'credit'},
     {'code': '20111', 'name': 'Inter-branch Due to', 'type': 'Liability', 'parent': '20000', 'nb': 'credit'},
+    {'code': '20112', 'name': 'Due to Petty Cash Custodian', 'type': 'Liability', 'parent': '20000', 'nb': 'credit'},
     {'code': '20300', 'name': 'Withholding Tax Payable', 'type': 'Liability', 'parent': '20000', 'nb': 'credit'},
     {'code': '20301', 'name': 'Withholding Tax Payable - Expanded', 'type': 'Liability', 'parent': '20300', 'nb': 'credit'},
     {'code': '20302', 'name': 'Withholding Tax Payable - Compensation', 'type': 'Liability', 'parent': '20300', 'nb': 'credit'},
@@ -115,6 +116,7 @@ CONSTRUCTION_COA = [
     {'code': '50300', 'name': 'Financial Expenses', 'type': 'Expense', 'parent': None, 'nb': 'debit'},
     {'code': '50301', 'name': 'Interest Expense', 'type': 'Expense', 'parent': '50300', 'nb': 'debit'},
     {'code': '50302', 'name': 'Bank Charges', 'type': 'Expense', 'parent': '50300', 'nb': 'debit'},
+    {'code': '50303', 'name': 'Cash Short/Over', 'type': 'Expense', 'parent': '50300', 'nb': 'debit'},
 ]
 
 

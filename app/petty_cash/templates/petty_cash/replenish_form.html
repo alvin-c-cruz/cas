@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Replenish {{ fund.code }}{% endblock %}
+{% block page_title %}Replenish Petty Cash Fund — {{ fund.code }}{% endblock %}
+{% block content %}
+
+<p class="page-sub">
+    Posts Dr Expense(s) [/ Dr or Cr Short/Over] / Cr Due to Petty Cash Custodian for the amount
+    needed to bring the fund back to its ₱{{ '{:,.2f}'.format(fund.float_amount) }} float.
+    This is an accrual — the actual reimbursement check/transfer is a separate, manually-entered
+    Cash Disbursement recorded outside this module once payment is issued.
+</p>
+
+<form method="POST" novalidate id="replenish-form">
+    {{ form.hidden_tag() }}
+    <input type="hidden" name="selected_voucher_ids" id="selected_voucher_ids" value="{{ form.selected_voucher_ids.data or '' }}"/>
+
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="stat-label">Float Amount</div>
+            <div class="stat-value">₱{{ '{:,.2f}'.format(fund.float_amount) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Selected Vouchers Total</div>
+            <div class="stat-value" id="stat-vouchers-total">₱0.00</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Expected Cash on Hand</div>
+            <div class="stat-value" id="stat-expected-cash">₱{{ '{:,.2f}'.format(expected_cash) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Amount Due Custodian</div>
+            <div class="stat-value" id="stat-due-custodian">₱0.00</div>
+            <div class="stat-detail">Float − Physical Cash Counted</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><span class="card-title">Held Vouchers</span></div>
+        <div class="card-body">
+            {% if held_vouchers %}
+            <div class="table-wrap">
+            <table class="table" id="voucher-table">
+                <thead>
+                    <tr>
+                        <th style="width:34px;"><input type="checkbox" id="check-all" checked></th>
+                        <th>Voucher #</th><th>Date</th><th>Payee</th><th>Expense Account</th>
+                        <th style="text-align:right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in held_vouchers %}
+                    <tr>
+                        <td><input type="checkbox" class="voucher-check" value="{{ v.id }}" data-amount="{{ v.amount }}" checked></td>
+                        <td style="font-family:var(--mono);">{{ v.voucher_number }}</td>
+                        <td>{{ v.voucher_date.strftime('%b %d, %Y') }}</td>
+                        <td>{{ v.payee }}</td>
+                        <td>{{ v.expense_account.code }} — {{ v.expense_account.name }}</td>
+                        <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(v.amount) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="empty-state"><p>No held vouchers to replenish.</p></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div style="max-width:320px;">
+                <label class="form-label" for="{{ form.physical_cash_counted.id }}">Physical Cash Counted</label>
+                {{ form.physical_cash_counted(class='form-control', id='physical-cash-input') }}
+                <small class="form-hint">Actual cash counted in the box before replenishing.</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-actions" style="display:flex; gap:12px; margin-top:8px;">
+        <button type="submit" class="btn btn-success" {{ 'disabled' if not held_vouchers else '' }}>Post Replenishment</button>
+        <a href="{{ url_for('petty_cash.fund_status', id=fund.id) }}" class="btn btn-secondary">Back</a>
+    </div>
+</form>
+
+<script>
+(function() {
+    var floatAmount = {{ fund.float_amount }};
+    var checkAll = document.getElementById('check-all');
+    var checks = Array.prototype.slice.call(document.querySelectorAll('.voucher-check'));
+    var hidden = document.getElementById('selected_voucher_ids');
+    var cashInput = document.getElementById('physical-cash-input');
+
+    function fmt(n) { return '₱' + n.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+    function recalc() {
+        var selected = checks.filter(function(c) { return c.checked; });
+        var total = selected.reduce(function(sum, c) { return sum + parseFloat(c.dataset.amount || '0'); }, 0);
+        hidden.value = selected.map(function(c) { return c.value; }).join(',');
+        document.getElementById('stat-vouchers-total').textContent = fmt(total);
+        document.getElementById('stat-expected-cash').textContent = fmt(floatAmount - total);
+        var cash = parseFloat(cashInput.value || '0');
+        document.getElementById('stat-due-custodian').textContent = fmt(floatAmount - cash);
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', function() {
+            checks.forEach(function(c) { c.checked = checkAll.checked; });
+            recalc();
+        });
+    }
+    checks.forEach(function(c) { c.addEventListener('change', recalc); });
+    if (cashInput) { cashInput.addEventListener('input', recalc); }
+    recalc();
+})();
+</script>
+{% endblock %}

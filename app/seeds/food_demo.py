@@ -63,6 +63,7 @@ FOOD_COA = [
     ('20404', 'Pag-IBIG Contributions Payable', 'Liability', 'Current', 'credit', '20400'),
     ('20405', 'Accrued Utilities', 'Liability', 'Current', 'credit', '20400'),
     ('20406', 'Income Tax Payable', 'Liability', 'Current', 'credit', '20400'),
+    ('20407', 'Due to Petty Cash Custodian', 'Liability', 'Current', 'credit', '20400'),
     ('25000', 'Loans Payable', 'Liability', 'Non-Current', 'credit', None),
     ('25001', 'Bank Loan Payable', 'Liability', 'Non-Current', 'credit', '25000'),
     ('30100', 'Share Capital', 'Equity', None, 'credit', None),
@@ -92,6 +93,7 @@ FOOD_COA = [
     ('70000', 'Other Expenses', 'Other Expense', None, 'debit', None),
     ('70101', 'Interest Expense', 'Other Expense', None, 'debit', '70000'),
     ('70102', 'Bank Charges', 'Other Expense', None, 'debit', '70000'),
+    ('70103', 'Cash Short/Over', 'Other Expense', None, 'debit', '70000'),
     ('80000', 'Income Tax Expense', 'Income Tax Expense', None, 'debit', None),
     ('80101', 'Income Tax Expense - Current', 'Income Tax Expense', None, 'debit', '80000'),
 ]

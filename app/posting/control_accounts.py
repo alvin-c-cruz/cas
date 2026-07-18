@@ -40,6 +40,19 @@ CONTROL_ACCOUNTS = {
     # INTER-BRANCH transfer can post; intra-branch transfers never touch these.
     'inter_branch_due_from': ('inter_branch_due_from_account_code', 'Inter-branch Due-from control account'),
     'inter_branch_due_to':   ('inter_branch_due_to_account_code',   'Inter-branch Due-to control account'),
+
+    # Petty Cash (R-04 slice 4). Fail-closed, no default code (same reasoning as
+    # the inter-branch clearing pair) -- but only ever RESOLVED when a nonzero
+    # shortage/overage actually exists on a given replenishment; an exact-tie
+    # replenishment must post fine while this stays unassigned.
+    'petty_cash_short_over': ('petty_cash_short_over_account_code', 'Cash Short/Over control account'),
+    # The liability leg of every replenishment JE (owner decision: accrual-then-
+    # manual-pay, mirroring Payroll v1's Accrued Salaries pattern -- see
+    # app/petty_cash/replenishment.py's module docstring). Fail-closed, no
+    # default code -- ALWAYS resolved (not conditional like the short/over key
+    # above), since every replenishment credits this account regardless of
+    # whether there's a shortage/overage.
+    'petty_cash_due_to_custodian': ('petty_cash_due_to_custodian_account_code', 'Due to Petty Cash Custodian control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,
