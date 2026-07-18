@@ -25,6 +25,7 @@ from app.reports.bir import (
     get_quarter_months,
     get_vat_return_summary
 )
+from app.reports.payroll_remittances import get_sss_remittance
 from app.reports.financial import (
     generate_trial_balance,
     generate_income_statement,
@@ -702,6 +703,46 @@ def bir_vat_return_export_excel():
     title = f'VAT Return 2550Q - {get_quarter_name(quarter)} {year}'
     return export_to_excel(rows, ['section', 'line', 'base', 'tax'],
                            ['Section', 'Line', 'Amount', 'Tax'], filename, title)
+
+
+# ============================================================================
+# PAYROLL GOVERNMENT REMITTANCE REPORTS
+# ============================================================================
+
+@reports_bp.route('/reports/payroll/sss-remittance')
+@login_required
+@accountant_or_admin_required
+def sss_remittance():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    sss_data = get_sss_remittance(year, month, branch_id=current_branch_id)
+
+    return render_template('reports/payroll_sss_remittance.html',
+                         sss_data=sss_data,
+                         year=year,
+                         month=month,
+                         month_name=get_month_name(month),
+                         company=get_company_identity())
+
+
+@reports_bp.route('/reports/payroll/sss-remittance/export/excel')
+@login_required
+@accountant_or_admin_required
+def sss_remittance_export_excel():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    current_branch_id = session.get('selected_branch_id')
+    sss_data = get_sss_remittance(year, month, branch_id=current_branch_id)
+
+    columns = ['employee_no', 'employee_name', 'sss_no', 'sss_ee', 'sss_er', 'sss_ec', 'total']
+    headers = ['Employee No.', 'Employee Name', 'SSS No.', 'EE Share', 'ER Share',
+               'EC', 'Total Contribution']
+
+    filename = f'SSS_Remittance_{year}_{month:02d}.xlsx'
+    title = f'SSS Contribution Collection List - {get_month_name(month)} {year}'
+
+    return export_to_excel(sss_data, columns, headers, filename, title)
 
 
 # ============================================================================

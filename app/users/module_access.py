@@ -80,7 +80,8 @@ MODULE_REGISTRY = [
     {'key': 'payroll', 'label': 'Payroll', 'section': 'Transactions',
      'area': 'Payroll', 'group': 'Documents',
      'optional': True, 'depends_on': ['employees'], 'default_enabled': False, 'per_user': True,
-     'endpoints': ('payroll.',)},
+     'endpoints': ('payroll.',
+                   'reports.sss_remittance', 'reports.sss_remittance_export_excel')},
     # ── Ledger (Phase 2; deny-by-default for staff) — mirrors the sidebar's
     #    "Ledger" section, in the same order ──────────────────────────────────
     {'key': 'opening_balances', 'label': 'Opening Balances', 'section': 'Ledger',
