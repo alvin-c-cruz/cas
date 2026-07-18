@@ -224,6 +224,7 @@ def create_app(config_name=None):
     from app.units_of_measure.models import UnitOfMeasure
     from app.product_categories.models import ProductCategory
     from app.products.models import Product
+    from app.expense_allocation_rules.models import ExpenseAllocationRule
     from app.sales_orders.models import SalesOrder, SalesOrderItem
     from app.quotations.models import Quotation, QuotationItem
     from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
