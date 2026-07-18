@@ -5,8 +5,12 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 from app import db
 from app.fixed_assets.models import AssetCategory
-from app.fixed_assets.forms import AssetCategoryForm
-from app.utils.cache_helpers import clear_asset_category_cache
+from app.fixed_assets.forms import AssetCategoryForm, FixedAssetForm
+from app.fixed_assets.services import (
+    FixedAssetTagError, get_taggable_line, create_fixed_asset, leaf_accounts_by_type,
+)
+from app.utils.cache_helpers import clear_asset_category_cache, get_active_asset_categories
+from app.users.utils import get_accessible_branches
 from app.audit.utils import log_create, log_update
 
 fixed_assets_bp = Blueprint('fixed_assets', __name__, template_folder='templates')
@@ -78,3 +82,52 @@ def category_edit(id):
         return redirect(url_for('fixed_assets.category_list'))
     return render_template('fixed_assets/categories/form.html', form=form,
                            title='Edit Asset Category', category=cat)
+
+
+# ---- Opening assets --------------------------------------------------------
+
+def _populate_common_choices(form):
+    form.branch_id.choices = [(b.id, b.name) for b in get_accessible_branches(current_user)]
+    form.category_id.choices = [('', '-- None --')] + [
+        (str(c.id), c.name) for c in get_active_asset_categories()]
+    form.accumulated_depreciation_account_id.choices = [
+        (a.id, f'{a.code} — {a.name}') for a in leaf_accounts_by_type('Asset')]
+    form.depreciation_expense_account_id.choices = [
+        (a.id, f'{a.code} — {a.name}') for a in leaf_accounts_by_type('Expense')]
+
+
+@fixed_assets_bp.route('/fixed-assets/new-opening', methods=['GET', 'POST'])
+@login_required
+@accountant_or_admin_required
+def new_opening():
+    form = FixedAssetForm()
+    _populate_common_choices(form)
+    form.cost_account_id.choices = [(a.id, f'{a.code} — {a.name}')
+                                    for a in leaf_accounts_by_type('Asset')]
+
+    if form.validate_on_submit():
+        asset = create_fixed_asset(
+            branch_id=form.branch_id.data, code=form.code.data.strip(),
+            name=form.name.data.strip(),
+            category_id=(int(form.category_id.data) if form.category_id.data else None),
+            acquisition_source_type='opening', acquisition_source_id=None,
+            acquisition_source_line_id=None, acquisition_date=form.acquisition_date.data,
+            acquisition_cost=form.acquisition_cost.data, cost_account_id=form.cost_account_id.data,
+            accumulated_depreciation_account_id=form.accumulated_depreciation_account_id.data,
+            depreciation_expense_account_id=form.depreciation_expense_account_id.data,
+            depreciation_method=form.depreciation_method.data,
+            useful_life_months=form.useful_life_months.data,
+            declining_balance_rate=form.declining_balance_rate.data,
+            total_estimated_units=form.total_estimated_units.data,
+            salvage_value=form.salvage_value.data or 0,
+            opening_accumulated_depreciation=form.opening_accumulated_depreciation.data or 0,
+            created_by_id=current_user.id,
+        )
+        log_create('fixed_assets', asset.id, asset.code, asset.to_dict(),
+                  notes='Opening asset (pre-CAS acquisition)')
+        flash(f'Opening asset "{asset.code}" created.', 'success')
+        return redirect(url_for('fixed_assets.list'))
+
+    return render_template('fixed_assets/form.html', form=form, title='Add Opening Asset',
+                           asset=None, is_opening=True, readonly_code=False,
+                           readonly_acquisition=False)
