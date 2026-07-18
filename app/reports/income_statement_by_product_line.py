@@ -141,3 +141,130 @@ def _distribute(amount, shares):
         allocated += out[cid]
     out[UNALLOCATED] = amount - allocated
     return out
+
+
+_REVENUE_SECTION_KEYS = {'revenue', 'contra_revenue'}
+_SIGN_BY_KEY = {s['key']: s['sign'] for s in IS_SECTIONS}
+_SIGN_BY_KEY['cogs_variance'] = _SIGN_BY_KEY['cogs']  # participates in Gross Profit like COGS itself
+
+
+def _cogs_variance_distribution(actual_cogs_total, standard_cogs_by_cat, category_ids):
+    """Variance = actual GL COGS - Sigma(ALL recognized standard COGS, incl. any
+    uncategorized-product bucket). Distributed by each KNOWN category's own standard-COGS
+    share of that total; the unshared remainder (the uncategorized bucket's share, plus a
+    zero-standard-COGS period) falls to Unallocated via _distribute's leftover mechanic --
+    never divide by zero, and the cogs row + this row always sum to exactly actual_cogs_total
+    regardless of an uncategorized-product bucket (see _matrix_for_period's 'cogs' branch)."""
+    standard_total = sum(standard_cogs_by_cat.values(), Decimal('0'))
+    variance = actual_cogs_total - standard_total
+    if standard_total == 0:
+        return {UNALLOCATED: variance}
+    shares = {cid: standard_cogs_by_cat.get(cid, Decimal('0')) / standard_total
+             for cid in category_ids}
+    return _distribute(variance, shares)
+
+
+def _matrix_for_period(start_date, end_date, branch_id, categories):
+    stmt = generate_income_statement(start_date, end_date, branch_id=branch_id)
+    category_ids = list(categories.keys())
+
+    revenue_by_cat = _revenue_by_category(start_date, end_date, branch_id)
+    total_revenue = sum(revenue_by_cat.values(), Decimal('0'))
+    revenue_shares = ({cid: revenue_by_cat.get(cid, Decimal('0')) / total_revenue
+                      for cid in category_ids} if total_revenue != 0 else {})
+
+    standard_cogs_by_cat = _standard_cogs_by_category(start_date, end_date, branch_id)
+    units_by_cat = _units_sold_by_category(start_date, end_date, branch_id)
+    gross_profit_by_cat = {cid: revenue_by_cat.get(cid, Decimal('0'))
+                                - standard_cogs_by_cat.get(cid, Decimal('0'))
+                          for cid in category_ids}
+
+    rules = {r.account_id: r.basis for r in ExpenseAllocationRule.query.all()}
+
+    rows = []
+    running_by_col = defaultdict(lambda: Decimal('0'))
+
+    def _row_dict(key, label, kind, by_col):
+        return {'key': key, 'label': label, 'kind': kind,
+               'by_column': {**{c: by_col.get(c, Decimal('0')) for c in category_ids},
+                             UNALLOCATED: by_col.get(UNALLOCATED, Decimal('0')),
+                             TOTAL: sum(by_col.values(), Decimal('0'))}}
+
+    def _add_row(key, label, distributions):
+        by_col = defaultdict(lambda: Decimal('0'))
+        for dist in distributions:
+            for col, amt in dist.items():
+                by_col[col] += amt
+        sign = _SIGN_BY_KEY.get(key, 1)
+        for col, amt in by_col.items():
+            running_by_col[col] += sign * amt
+        rows.append(_row_dict(key, label, 'line', by_col))
+
+    def _add_subtotal(key, label):
+        rows.append(_row_dict(key, label, 'subtotal', running_by_col))
+
+    for section in stmt['sections']:
+        leaves = _resolve_leaves(section['lines'])
+        if section['key'] in _REVENUE_SECTION_KEYS:
+            distributions = [_distribute(leaf['amount'], revenue_shares) for leaf in leaves]
+            _add_row(section['key'], section['label'], distributions)
+        elif section['key'] == 'cogs':
+            # The 'cogs' row shows STANDARD cost by category (an independent absolute
+            # driver, not a proportion of the actual leaf amount); 'cogs_variance' is the
+            # exact plug back to the actual GL total, so together they always tie.
+            cogs_by_col = {cid: standard_cogs_by_cat.get(cid, Decimal('0')) for cid in category_ids}
+            cogs_by_col[UNALLOCATED] = standard_cogs_by_cat.get(None, Decimal('0'))
+            _add_row('cogs', section['label'], [cogs_by_col])
+            variance_dist = _cogs_variance_distribution(
+                Decimal(str(section['total'])), standard_cogs_by_cat, category_ids)
+            _add_row('cogs_variance', 'COGS Variance', [variance_dist])
+        else:
+            distributions = []
+            for leaf in leaves:
+                basis = rules.get(leaf['account_id'], 'none')
+                shares = _allocation_shares(basis, revenue_by_cat, gross_profit_by_cat,
+                                            units_by_cat, category_ids)
+                distributions.append(_distribute(leaf['amount'], shares))
+            _add_row(section['key'], section['label'], distributions)
+        if section.get('subtotal_label'):
+            key = section['subtotal_label'].lower().replace(' ', '_')
+            _add_subtotal(key, section['subtotal_label'])
+
+    return {'rows': rows, 'stmt': stmt}
+
+
+_RECON_KEYS = ('net_sales', 'gross_profit', 'operating_income', 'income_before_tax', 'net_income')
+
+
+def _reconcile(period):
+    stmt = period['stmt']
+    row_by_key = {r['key']: r for r in period['rows']}
+    checks = {}
+    for key in _RECON_KEYS:
+        row = row_by_key.get(key)
+        matrix_total = float(row['by_column'][TOTAL]) if row else 0.0
+        is_total = stmt[key]
+        checks[key] = {'is_total': is_total, 'matrix_total': matrix_total,
+                      'ties': abs(is_total - matrix_total) < 0.01}
+    return checks
+
+
+def _finalize_rows(period):
+    return [{'key': r['key'], 'label': r['label'], 'kind': r['kind'],
+            'by_column': {k: float(v) for k, v in r['by_column'].items()}}
+           for r in period['rows']]
+
+
+def generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=None):
+    categories = _categories()
+    mtd = _matrix_for_period(mtd_start, as_of, branch_id, categories)
+    ytd = _matrix_for_period(ytd_start, as_of, branch_id, categories)
+
+    columns = ([{'category_id': c.id, 'code': c.code, 'name': c.name}
+               for c in sorted(categories.values(), key=lambda c: c.code)]
+              + [{'category_id': UNALLOCATED, 'code': None, 'name': 'Unallocated'},
+                 {'category_id': TOTAL, 'code': None, 'name': 'Total'}])
+
+    return {'as_of': as_of, 'columns': columns,
+           'mtd': {'rows': _finalize_rows(mtd), 'reconciliation': _reconcile(mtd)},
+           'ytd': {'rows': _finalize_rows(ytd), 'reconciliation': _reconcile(ytd)}}
