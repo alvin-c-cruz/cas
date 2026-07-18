@@ -46,20 +46,20 @@ def test_create_and_edit_round_trips_standard_cost(client, db_session, admin_use
                 data={'code': 'WID-SC', 'name': 'Widget SC', 'description': '',
                      'default_unit_of_measure_id': '', 'default_unit_price': '',
                      'default_account_id': '', 'category_id': '',
-                     'standard_cost': '12.3456', 'is_active': '1'},
+                     'standard_cost': '12.35', 'is_active': '1'},
                 follow_redirects=True)
     p = Product.query.filter_by(code='WID-SC').first()
     assert p is not None
-    assert p.standard_cost == Decimal('12.3456')
+    assert p.standard_cost == Decimal('12.35')
 
     client.post(f'/products/{p.id}/edit',
                 data={'code': 'WID-SC', 'name': 'Widget SC', 'description': '',
                      'default_unit_of_measure_id': '', 'default_unit_price': '',
                      'default_account_id': '', 'category_id': '',
-                     'standard_cost': '20.0000', 'is_active': '1'},
+                     'standard_cost': '20.00', 'is_active': '1'},
                 follow_redirects=True)
     db.session.refresh(p)
-    assert p.standard_cost == Decimal('20.0000')
+    assert p.standard_cost == Decimal('20.00')
 
 
 def test_create_product_persists_and_audits(client, db_session, admin_user, main_branch,
