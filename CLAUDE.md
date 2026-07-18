@@ -93,7 +93,7 @@ Requires a `.env` file (see `.env.example`). **`SECRET_KEY` is mandatory** — `
 
 ## Testing Notes
 
-- Fixtures live in `tests/conftest.py`: `app` (session-scoped, testing config), `db_session` (function-scoped; schema created once per session via `_db_schema`, all rows deleted at each test's teardown -- not per-test `create_all`/`drop_all`), `client`, plus per-role user fixtures (`admin_user`, `accountant_user`, `staff_user`, `viewer_user`). Additional helpers: `db_with_data` (admin + branch + cash/revenue accounts pre-populated), `branch_manila` (second branch), `login_user()` / `logout_user()` helpers.
+- Fixtures live in `tests/conftest.py`: `app` (session-scoped, testing config), `db_session` (function-scoped; `create_all()`/`drop_all()` per test), `client`, plus per-role user fixtures (`admin_user`, `accountant_user`, `staff_user`, `viewer_user`). Additional helpers: `db_with_data` (admin + branch + cash/revenue accounts pre-populated), `branch_manila` (second branch), `login_user()` / `logout_user()` helpers.
 - Layout: `tests/unit/`, `tests/integration/`, `tests/performance/`, `tests/test_smoke.py`.
 - For browser/Playwright tests, the login password field is `readonly` (anti-autofill) — `click('#password')` to clear it before `fill`/`type`.
 - Integration tests that exercise registration need an `ApprovedEmail` row; tests that exercise lockout logic need an account with `failed_login_attempts < 5` and `account_locked_until` unset.
