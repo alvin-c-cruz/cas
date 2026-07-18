@@ -231,7 +231,16 @@
                         {% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}
                     </td>
                     {% endif %}
-                    <td>{{ item.description or '—' }}</td>
+                    <td>{{ item.description or '—' }}
+                        {% if item.has_variance %}
+                        <div style="font-size:11px; color:var(--alert-warning-text); margin-top:2px;">
+                            ⚠
+                            {%- if item.price_variance %} Ordered @ ₱{{ '{:,.2f}'.format(item.matched_unit_price) }} — billed @ ₱{{ '{:,.2f}'.format(item.unit_price) }}{% endif -%}
+                            {%- if item.price_variance and item.quantity_variance %} ·{% endif -%}
+                            {%- if item.quantity_variance %} Matched qty {{ '{:,.4f}'.format(item.matched_quantity) }} — billed qty {{ '{:,.4f}'.format(item.quantity) }}{% endif -%}
+                        </div>
+                        {% endif %}
+                    </td>
                     <td style="text-align:right; font-family:var(--mono);">
                         {{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '—' }}
                     </td>
