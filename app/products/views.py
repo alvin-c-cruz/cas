@@ -63,6 +63,9 @@ def create():
             default_account_id=_int_or_none(form.default_account_id.data),
             category_id=_int_or_none(form.category_id.data),
             standard_cost=form.standard_cost.data,
+            track_inventory=form.track_inventory.data,
+            costing_method=(form.costing_method.data or None),
+            reorder_level=form.reorder_level.data,
             is_active=(form.is_active.data == '1'),
             created_by_id=current_user.id,
         )
@@ -100,6 +103,7 @@ def edit(id):
         form.default_unit_of_measure_id.data = str(p.default_unit_of_measure_id or '')
         form.default_account_id.data = str(p.default_account_id or '')
         form.category_id.data = str(p.category_id or '')
+        form.costing_method.data = p.costing_method or ''
     if form.validate_on_submit():
         old = p.to_dict()
         p.code = form.code.data.strip()
@@ -111,6 +115,9 @@ def edit(id):
         p.default_account_id = _int_or_none(form.default_account_id.data)
         p.category_id = _int_or_none(form.category_id.data)
         p.standard_cost = form.standard_cost.data
+        p.track_inventory = form.track_inventory.data
+        p.costing_method = (form.costing_method.data or None)
+        p.reorder_level = form.reorder_level.data
         p.is_active = (form.is_active.data == '1')
         db.session.commit()
         clear_product_cache()

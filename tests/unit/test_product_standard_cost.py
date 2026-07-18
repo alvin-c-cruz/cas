@@ -7,11 +7,23 @@ pytestmark = [pytest.mark.unit]
 
 
 def test_standard_cost_column_persists(db_session):
-    p = Product(code='P1', name='Widget', standard_cost=Decimal('12.3456'))
+    p = Product(code='P1', name='Widget', standard_cost=Decimal('12.35'))
     db.session.add(p)
     db.session.commit()
     fetched = db.session.get(Product, p.id)
-    assert fetched.standard_cost == Decimal('12.3456')
+    assert fetched.standard_cost == Decimal('12.35')
+
+
+def test_standard_cost_rounds_to_two_decimal_places(db_session):
+    """standard_cost was narrowed from Numeric(15,4) to Numeric(15,2) (R-03/R-03a
+    collision resolution, see docs/superpowers/plans/2026-07-19-product-standard-cost-collision-decision.md)
+    to match every other monetary field on Product. A 4-decimal input must round
+    to 2 places, not silently truncate."""
+    p = Product(code='P1-ROUND', name='Widget', standard_cost=Decimal('12.3456'))
+    db.session.add(p)
+    db.session.commit()
+    fetched = db.session.get(Product, p.id)
+    assert fetched.standard_cost == Decimal('12.35')
 
 
 def test_standard_cost_defaults_to_none(db_session):
