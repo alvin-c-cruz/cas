@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Income Statement by Product Line</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #000; margin: 24px; }
+        .company { font-size: 14px; font-weight: bold; }
+        .meta { color: #333; margin: 2px 0 14px 0; }
+        h1 { font-size: 16px; margin: 0 0 2px 0; }
+        h2 { font-size: 13px; margin: 16px 0 4px 0; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+        td, th { padding: 3px 8px; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .colhead td, .colhead th { font-weight: bold; border-bottom: 1px solid #000; }
+        .total-row td { font-weight: bold; border-top: 1px solid #000; }
+        .reconciliation-note { color: #333; margin-top: 14px; }
+    </style>
+</head>
+<body onload="window.print()">
+    {% if company.name %}<div class="company">{{ company.name }}</div>{% endif %}
+    <div class="meta">
+        {% if company.tin %}TIN: {{ company.tin }} &nbsp; {% endif %}
+        {% if company.address %}{{ company.address }}<br>{% endif %}
+        {% if branch_name %}Branch: {{ branch_name }} &nbsp; {% endif %}
+    </div>
+    <h1>Income Statement by Product Line</h1>
+    <div class="meta">As of {{ as_of.strftime('%B %d, %Y') }} &mdash; Current month vs. Year to date</div>
+
+    {% macro matrix(period_data, heading) %}
+    <h2>{{ heading }}</h2>
+    <table>
+        <tbody>
+            <tr class="colhead">
+                <td>Caption</td>
+                {% for c in data.columns %}<td class="num">{{ c.name }}</td>{% endfor %}
+            </tr>
+            {% for r in period_data.rows %}
+            <tr class="{{ 'total-row' if r.kind == 'subtotal' else '' }}">
+                <td>{{ r.label }}</td>
+                {% for c in data.columns %}
+                <td class="num">{{ '{:,.2f}'.format(r.by_column.get(c.category_id, 0.0)) }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endmacro %}
+
+    {{ matrix(data.mtd, as_of.strftime('%b %Y') + ' (MTD)') }}
+    {{ matrix(data.ytd, 'YTD ' ~ as_of.year) }}
+</body>
+</html>
