@@ -7,6 +7,7 @@
     <div class="card-header">
         <div class="card-title">Payroll Register</div>
         <div style="display:flex;gap:8px;">
+            <a href="{{ url_for('reports.payroll_remittances_index') }}" class="btn btn-secondary btn-sm">Gov't Remittance Reports</a>
             <a href="{{ url_for('payroll.list_loans') }}" class="btn btn-secondary btn-sm">Employee Loans</a>
             <a href="{{ url_for('payroll.new_run') }}" class="btn btn-primary btn-sm">+ Enter Payroll Run</a>
             <a href="{{ url_for('payroll.new_run', run_type='13th_month') }}" class="btn btn-secondary btn-sm">+ Enter 13th-Month Run</a>

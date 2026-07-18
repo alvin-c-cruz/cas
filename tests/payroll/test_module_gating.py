@@ -60,10 +60,11 @@ class TestRegistryEntry:
         # report route lives in the reports blueprint, so it needs its own
         # exact-match string here (module_key_for_endpoint has no prefix to
         # match on 'reports.'). Task 3 (PhilHealth remittance), Task 4
-        # (Pag-IBIG remittance), and Task 5 (BIR 1601-C) each append their
-        # own pair of endpoints the same way.
+        # (Pag-IBIG remittance), Task 5 (BIR 1601-C), and Task 6 (the hub
+        # page) each append their own endpoint(s) the same way.
         assert entry['endpoints'] == (
-            'payroll.', 'reports.sss_remittance', 'reports.sss_remittance_export_excel',
+            'payroll.', 'reports.payroll_remittances_index',
+            'reports.sss_remittance', 'reports.sss_remittance_export_excel',
             'reports.philhealth_remittance', 'reports.philhealth_remittance_export_excel',
             'reports.pagibig_remittance', 'reports.pagibig_remittance_export_excel',
             'reports.bir_1601c', 'reports.bir_1601c_export_excel')

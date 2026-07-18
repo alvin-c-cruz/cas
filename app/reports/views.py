@@ -855,6 +855,18 @@ def bir_1601c_export_excel():
     return export_to_excel(wht_data, columns, headers, filename, title)
 
 
+@reports_bp.route('/reports/payroll')
+@login_required
+@accountant_or_admin_required
+def payroll_remittances_index():
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+
+    return render_template('reports/payroll_remittances_index.html',
+                         current_year=current_year,
+                         current_month=current_month)
+
+
 # ============================================================================
 # FINANCIAL STATEMENTS
 # ============================================================================

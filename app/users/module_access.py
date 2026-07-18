@@ -80,7 +80,7 @@ MODULE_REGISTRY = [
     {'key': 'payroll', 'label': 'Payroll', 'section': 'Transactions',
      'area': 'Payroll', 'group': 'Documents',
      'optional': True, 'depends_on': ['employees'], 'default_enabled': False, 'per_user': True,
-     'endpoints': ('payroll.',
+     'endpoints': ('payroll.', 'reports.payroll_remittances_index',
                    'reports.sss_remittance', 'reports.sss_remittance_export_excel',
                    'reports.philhealth_remittance', 'reports.philhealth_remittance_export_excel',
                    'reports.pagibig_remittance', 'reports.pagibig_remittance_export_excel',

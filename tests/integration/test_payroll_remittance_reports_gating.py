@@ -167,3 +167,28 @@ class TestBir1601cView:
         assert (b'do not have access' in resp.data.lower()
                 or resp.status_code in (302, 403, 404))
         _enable_payroll()
+
+
+class TestRemittanceHub:
+    def test_hub_renders_with_links_to_all_four_reports(self, client, db_session,
+                                                          login_user, admin_user, main_branch):
+        _enable_payroll()
+        login_user(client, 'admin', 'admin123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get('/reports/payroll')
+        assert resp.status_code == 200
+        assert b'SSS' in resp.data
+        assert b'PhilHealth' in resp.data
+        assert b'Pag-IBIG' in resp.data
+        assert b'1601-C' in resp.data
+
+    def test_payroll_register_page_links_to_hub(self, client, db_session, login_user,
+                                                  admin_user, main_branch):
+        _enable_payroll()
+        login_user(client, 'admin', 'admin123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.get('/payroll/runs')
+        assert resp.status_code == 200
+        assert b'/reports/payroll' in resp.data
