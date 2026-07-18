@@ -4,6 +4,20 @@ shortage/overage plug -- it is independently computed and checked, never just
 trusted because debits happen to equal credits (posted-je-leg-vs-source-header-
 invariant discipline, same class as the payroll plug guard).
 
+Books-of-account classification (owner decision): Replenishment is economically
+Dr Expense(s)/Cr Cash -- the textbook shape of a Cash Disbursement -- but it
+cannot be a real CashDisbursementVoucher: CDV.vendor_id is NOT NULL, and a
+replenishment reimburses a custodian for a BATCH of held vouchers spanning
+multiple/mixed payees, not one vendor. Forcing it into a CDV row would mean
+inventing a fake vendor. Instead it gets its OWN entry_type
+('petty_cash_replenishment', registered in VOUCHER_TYPES/VOUCHER_ENTRY_TYPES so
+it surfaces in the General Journal / Books of Accounts) -- the same treatment
+Bank Transfers' entry_type='transfer' got for the identical reason (real cash
+movement that doesn't map onto SI/AP/CRV/CDV's document shape). Distinct from
+'adjustment' (used by posting.py's establish/adjust-float/close, which are pure
+fund-transfer events recognizing no expense) so it doesn't blend into that
+generic bucket in the General Journal listing.
+
 Concurrency (a real gap the plan's own draft left unresolved, fixed here rather
 than deferred to Task 5 -- see the plan's Self-Review): the race this module
 must guard is two accountants selecting OVERLAPPING held vouchers for two
@@ -45,7 +59,7 @@ def _new_je(entry_number, entry_date, description, reference, branch_id, actor):
         entry_date=entry_date,
         description=description,
         reference=reference,
-        entry_type='adjustment',
+        entry_type='petty_cash_replenishment',
         branch_id=branch_id,
         created_by_id=actor.id,
         status='posted',
@@ -69,14 +83,15 @@ def _add_line(je, line_number, account_id, description, debit, credit):
     return line
 
 
-def post_replenishment(fund, selected_voucher_ids, physical_cash_counted, bank_account, actor):
+def post_replenishment(fund, selected_voucher_ids, physical_cash_counted, actor):
     """Returns the completed PettyCashReplenishment, or None if a concurrent
     writer already claimed one or more of the selected vouchers (caller flashes
     a conflict message and re-renders the still-held vouchers). Raises
-    ControlAccountError only when a nonzero shortage/overage needs the
-    unassigned 'petty_cash_short_over' setting -- resolved BEFORE any write, so
-    that failure leaves zero side effects (no orphaned draft replenishment, no
-    partially-claimed voucher)."""
+    ControlAccountError if either control account is unresolvable:
+    'petty_cash_due_to_custodian' is ALWAYS required (the credit leg of every
+    replenishment); 'petty_cash_short_over' only when a nonzero shortage/overage
+    exists. Both are resolved BEFORE any write, so a failure leaves zero side
+    effects (no orphaned draft replenishment, no partially-claimed voucher)."""
     selected_voucher_ids = list(selected_voucher_ids)
     if not selected_voucher_ids:
         raise ValueError('Select at least one held voucher to replenish.')
@@ -98,12 +113,13 @@ def post_replenishment(fund, selected_voucher_ids, physical_cash_counted, bank_a
     short_over_amount = -short_over
     replenish_amount = fund.float_amount - physical_cash_counted
 
+    due_to_account = get_control_account('petty_cash_due_to_custodian')   # ALWAYS required; raises if unassigned, no writes yet
     so_account = None
     if short_over_amount != 0:
         so_account = get_control_account('petty_cash_short_over')   # raises ControlAccountError if unassigned; no writes yet
 
     rep = PettyCashReplenishment(fund_id=fund.id, replenishment_number=generate_pcr_number(),
-                                 replenishment_date=ph_now().date(), bank_account_id=bank_account.id,
+                                 replenishment_date=ph_now().date(),
                                  physical_cash_counted=physical_cash_counted, vouchers_total=vouchers_total,
                                  short_over_amount=short_over_amount, replenish_amount=replenish_amount,
                                  status='draft')
@@ -150,7 +166,7 @@ def post_replenishment(fund, selected_voucher_ids, physical_cash_counted, bank_a
             _add_line(je, line_no, so_account.id, 'Cash overage', ZERO, -short_over_amount)
         line_no += 1
 
-    _add_line(je, line_no, bank_account.account_id, 'Petty cash replenishment', ZERO, replenish_amount)
+    _add_line(je, line_no, due_to_account.id, 'Due to Petty Cash Custodian', ZERO, replenish_amount)
 
     db.session.flush()
     je.calculate_totals()

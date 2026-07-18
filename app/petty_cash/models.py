@@ -60,8 +60,18 @@ class PettyCashVoucher(db.Model):
 
 
 class PettyCashReplenishment(RowVersioned, db.Model):
-    """The JE-posting event. Groups held vouchers by expense account, folds in
-    the physical count, and asserts the short/over plug (mirrors the payroll
+    """The JE-posting event -- but an ACCRUAL only (owner decision, mirroring
+    Payroll v1's accrual-then-manual-pay precedent): Dr Expense(s) + Short/Over
+    / Cr 'Due to Petty Cash Custodian' (a liability control account). It never
+    touches a bank/cash account directly -- CashDisbursementVoucher.vendor_id
+    is NOT NULL and CDV has no employee/custodian payee support, so a real
+    check issuance to the custodian is a SEPARATE, manually-entered CDV the
+    accountant creates later (same as Payroll leaves salary payment to a
+    manual voucher after booking Accrued Salaries). This module's own scope
+    stops at the accrual; whether the liability has since been paid off is
+    visible via the control account's GL balance, not tracked by this row's
+    own status. Groups held vouchers by expense account, folds in the
+    physical count, and asserts the short/over plug (mirrors the payroll
     plug-guard discipline -- never silently absorbed)."""
     __tablename__ = 'petty_cash_replenishments'
 
@@ -69,7 +79,6 @@ class PettyCashReplenishment(RowVersioned, db.Model):
     fund_id = db.Column(db.Integer, db.ForeignKey('petty_cash_funds.id'), nullable=False, index=True)
     replenishment_number = db.Column(db.String(50), unique=True, index=True, nullable=False)
     replenishment_date = db.Column(db.Date, nullable=False)
-    bank_account_id = db.Column(db.Integer, db.ForeignKey('bank_accounts.id'), nullable=True)
     physical_cash_counted = db.Column(db.Numeric(15, 2), nullable=False)
     vouchers_total = db.Column(db.Numeric(15, 2), nullable=False)
     short_over_amount = db.Column(db.Numeric(15, 2), nullable=False, default=0)
@@ -82,7 +91,6 @@ class PettyCashReplenishment(RowVersioned, db.Model):
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
 
     fund_ref = db.relationship('PettyCashFund', foreign_keys=[fund_id])
-    bank_account = db.relationship('BankAccount')
     journal_entry = db.relationship('JournalEntry')
     vouchers_replenished = db.relationship('PettyCashVoucher', backref='replenishment',
                                            foreign_keys=[PettyCashVoucher.replenishment_id])

@@ -43,7 +43,6 @@ def upgrade():
         sa.Column('fund_id', sa.Integer(), sa.ForeignKey('petty_cash_funds.id'), nullable=False),
         sa.Column('replenishment_number', sa.String(length=50), nullable=False),
         sa.Column('replenishment_date', sa.Date(), nullable=False),
-        sa.Column('bank_account_id', sa.Integer(), sa.ForeignKey('bank_accounts.id'), nullable=True),
         sa.Column('physical_cash_counted', sa.Numeric(precision=15, scale=2), nullable=False),
         sa.Column('vouchers_total', sa.Numeric(precision=15, scale=2), nullable=False),
         sa.Column('short_over_amount', sa.Numeric(precision=15, scale=2), nullable=False, server_default='0'),

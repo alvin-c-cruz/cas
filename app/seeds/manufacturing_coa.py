@@ -1,7 +1,8 @@
 """Canonical manufacturing Chart of Accounts for CAS (Philippine manufacturing corp).
 
-149 accounts (146 base + 2 inter-branch clearing accounts, R-04 slice 2 + 1 Cash
-Short/Over control account, R-04 slice 4) already
+150 accounts (146 base + 2 inter-branch clearing accounts, R-04 slice 2 + 2 Petty
+Cash control accounts -- Cash Short/Over + Due to Petty Cash Custodian, R-04
+slice 4) already
 carrying the FS taxonomy used by the type-driven financial
 statements (account_type one of: Asset, Liability, Equity, Revenue, Contra-Revenue,
 Other Income, Cost of Goods Sold, Selling Expense, Administrative Expense, Other
@@ -18,7 +19,7 @@ older COA seed; remaining names follow standard PH-manufacturing convention.
 
 NOTE: as of the core-baseline rewrite, seed_minimal() no longer uses this module — it
 seeds the lean general-purpose BASELINE_COA (see seed_data.py), which is what
-/reset-database produces. This 149-account manufacturing COA is retained for the
+/reset-database produces. This 150-account manufacturing COA is retained for the
 demo/pitch datasets and its own type test (tests/unit/test_manufacturing_coa_types.py).
 """
 
@@ -90,6 +91,7 @@ MANUFACTURING_COA = [
     {'code': '20107', 'name': 'Dividends Payable', 'type': 'Liability', 'classification': 'Current', 'normal_balance': 'credit', 'parent': '20100'},
     {'code': '20108', 'name': 'Due to Related Parties', 'type': 'Liability', 'classification': 'Current', 'normal_balance': 'credit', 'parent': '20100'},
     {'code': '20109', 'name': 'Other Payables', 'type': 'Liability', 'classification': 'Current', 'normal_balance': 'credit', 'parent': '20100'},
+    {'code': '20110', 'name': 'Due to Petty Cash Custodian', 'type': 'Liability', 'classification': 'Current', 'normal_balance': 'credit', 'parent': '20100'},
     {'code': '20111', 'name': 'Inter-branch Due to', 'type': 'Liability', 'classification': 'Current', 'normal_balance': 'credit', 'parent': '20100'},
     {'code': '20200', 'name': 'Output VAT', 'type': 'Liability', 'classification': 'Current', 'normal_balance': 'credit', 'parent': None},
     {'code': '20201', 'name': 'Output VAT - Sales', 'type': 'Liability', 'classification': 'Current', 'normal_balance': 'credit', 'parent': '20200'},

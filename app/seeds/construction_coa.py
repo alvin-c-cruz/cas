@@ -65,6 +65,7 @@ CONSTRUCTION_COA = [
     ('20102', 'Subcontractors Payable',                        'Liability', 'Current', 'credit', '20100'),
     ('20103', 'Retention Payable',                             'Liability', 'Current', 'credit', '20100'),
     ('20104', 'Accrued Expenses',                              'Liability', 'Current', 'credit', '20100'),
+    ('20105', 'Due to Petty Cash Custodian',                    'Liability', 'Current', 'credit', '20100'),
     ('20111', 'Inter-branch Due to',                           'Liability', 'Current', 'credit', '20100'),
     ('20200', 'Output VAT',                                    'Liability', 'Current', 'credit', None),
     ('20201', 'Output VAT - Sales',                            'Liability', 'Current', 'credit', '20200'),
