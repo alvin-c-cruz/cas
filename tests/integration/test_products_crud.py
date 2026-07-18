@@ -172,3 +172,38 @@ def test_ajax_create_product_validation_error(client, db_session, admin_user, ma
     assert data['ok'] is False
     assert 'errors' in data
     assert Product.query.count() == 0
+
+
+def test_create_product_with_job_order_name(client, db_session, admin_user, main_branch,
+                                             products_module_enabled):
+    _login(client, admin_user, main_branch)
+    resp = client.post('/products/create',
+                       data={'code': 'JON-3', 'name': 'Widget C', 'description': '',
+                             'job_order_name': 'WGT-C-PROD',
+                             'default_unit_of_measure_id': '', 'default_unit_price': '',
+                             'default_account_id': '', 'is_active': '1'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    p = Product.query.filter_by(code='JON-3').first()
+    assert p is not None
+    assert p.job_order_name == 'WGT-C-PROD'
+
+
+def test_edit_product_updates_job_order_name(client, db_session, admin_user, main_branch,
+                                              products_module_enabled):
+    p = Product(code='JON-4', name='Widget D', is_active=True)
+    db.session.add(p); db.session.commit()
+    _login(client, admin_user, main_branch)
+    resp = client.post(f'/products/{p.id}/edit',
+                       data={'code': 'JON-4', 'name': 'Widget D', 'description': '',
+                             'job_order_name': 'WGT-D-PROD',
+                             'default_unit_of_measure_id': '', 'default_unit_price': '',
+                             'default_account_id': '', 'is_active': '1'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(p)
+    assert p.job_order_name == 'WGT-D-PROD'
+    audit = AuditLog.query.filter_by(module='products', action='update').order_by(
+        AuditLog.id.desc()).first()
+    assert audit is not None
+    assert 'job_order_name' in (audit.new_values or '')

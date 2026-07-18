@@ -10,6 +10,7 @@ class ProductForm(FlaskForm):
     name = StringField('Name', validators=[DataRequired(message='Name is required.'),
                                            Length(max=200)])
     description = TextAreaField('Description', validators=[Optional()])
+    job_order_name = StringField('Job Order Name', validators=[Optional(), Length(max=200)])
     # choices populated in the view from active UOMs / accounts; '' = none
     default_unit_of_measure_id = SelectField('Default Unit of Measure',
                                              validators=[Optional()], default='')

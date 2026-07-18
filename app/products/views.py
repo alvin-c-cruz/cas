@@ -57,6 +57,7 @@ def create():
             code=form.code.data.strip(),
             name=form.name.data.strip(),
             description=(form.description.data or '').strip() or None,
+            job_order_name=(form.job_order_name.data or '').strip() or None,
             default_unit_of_measure_id=_int_or_none(form.default_unit_of_measure_id.data),
             default_unit_price=form.default_unit_price.data,
             default_account_id=_int_or_none(form.default_account_id.data),
@@ -103,6 +104,7 @@ def edit(id):
         p.code = form.code.data.strip()
         p.name = form.name.data.strip()
         p.description = (form.description.data or '').strip() or None
+        p.job_order_name = (form.job_order_name.data or '').strip() or None
         p.default_unit_of_measure_id = _int_or_none(form.default_unit_of_measure_id.data)
         p.default_unit_price = form.default_unit_price.data
         p.default_account_id = _int_or_none(form.default_account_id.data)
