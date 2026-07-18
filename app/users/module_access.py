@@ -181,6 +181,10 @@ MODULE_REGISTRY = [
      'area': 'Fixed Assets', 'group': 'Documents',
      'optional': True, 'depends_on': ['fixed_assets'], 'default_enabled': False,
      'endpoints': ('fixed_asset_depreciation.',)},
+    {'key': 'fixed_asset_disposal', 'label': 'Disposal', 'section': 'Transactions',
+     'area': 'Fixed Assets', 'group': 'Documents',
+     'optional': True, 'depends_on': ['fixed_assets', 'fixed_asset_depreciation'],
+     'default_enabled': False, 'endpoints': ('fixed_asset_disposal.',)},
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
      'area': 'Compliance', 'group': 'BIR',
