@@ -20,6 +20,7 @@ class Product(db.Model):
     default_unit_price = db.Column(db.Numeric(15, 2), nullable=True)   # VAT-inclusive
     default_account_id = db.Column(db.Integer, db.ForeignKey('accounts.id'), nullable=True)
     category_id = db.Column(db.Integer, db.ForeignKey('product_categories.id'), nullable=True)
+    standard_cost = db.Column(db.Numeric(15, 4), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=ph_now)
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -42,5 +43,6 @@ class Product(db.Model):
             'default_unit_price': float(self.default_unit_price) if self.default_unit_price is not None else None,
             'default_account_id': self.default_account_id,
             'category_id': self.category_id,
+            'standard_cost': float(self.standard_cost) if self.standard_cost is not None else None,
             'is_active': self.is_active,
         }
