@@ -14,7 +14,8 @@ def test_get_company_identity_reads_settings(db_session):
     _set('company_address', '1 Rizal St, Manila')
     assert get_company_identity() == {
         'name': 'Acme Trading Inc.', 'tin': '123-456-789', 'tin_branch': '00000',
-        'rdo': '050', 'address': '1 Rizal St, Manila'}
+        'rdo': '050', 'address': '1 Rizal St, Manila',
+        'sss_employer_no': '', 'philhealth_employer_no': '', 'pagibig_employer_no': ''}
 
 
 def test_get_company_identity_blank_when_unset(db_session):

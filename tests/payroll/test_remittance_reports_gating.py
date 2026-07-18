@@ -3,18 +3,24 @@ the two new endpoints per report (facsimile render + Excel export), registered
 under the existing `payroll` module entry in app.users.module_access.
 MODULE_REGISTRY -- no new toggle. PhilHealth/Pag-IBIG/BIR 1601-C (Tasks 3-5)
 add their own test classes to this same file.
+
+Lives under tests/payroll/ (not tests/integration/) specifically so it picks up
+tests/payroll/conftest.py's run_factory and the payroll module autouse-enable
+fixture via ordinary directory-scoped conftest resolution -- no `pytest_plugins`
+needed. An earlier version of this file lived in tests/integration/ and reached
+those fixtures via `pytest_plugins = ['tests.payroll.conftest']`, which silently
+promotes ALL of that conftest's fixtures (including its autouse module-enable/
+cache-clear fixture) to apply to the ENTIRE pytest session, not just this file --
+confirmed to leak into and break unrelated tests/integration/test_vat_settlement_views.py
+tests (a stale-cache dependency in those tests got exposed by our fixture's
+extra clear_module_config_cache() calls running before/after every single test
+in tests/integration/). Moved here 2026-07-18 during the pre-merge test-suite
+verification pass; see the finishing-a-development-branch SDD ledger.
 """
 import pytest
 
 from app.settings import AppSettings
 from app.utils.cache_helpers import clear_module_config_cache
-
-# tests/payroll/conftest.py's run_factory (and the payroll module autouse-enable
-# fixture) live outside this directory's own conftest chain -- pull them in
-# explicitly so this file can build a posted PayrollRun without redefining the
-# factory. Mirrors how other cross-tree integration tests reuse a package's
-# fixtures.
-pytest_plugins = ['tests.payroll.conftest']
 
 pytestmark = [pytest.mark.integration]
 
