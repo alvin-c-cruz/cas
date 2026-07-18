@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Fixed Asset Schedule{% endblock %}
+{% block page_title %}Fixed Asset Schedule{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Fixed Asset Schedule</h1>
+</div>
+<div class="card">
+  <div class="card-body">
+    <form method="GET">
+      <div class="form-row-2">
+        <div class="form-group">
+          <label class="form-label">Branch</label>
+          <select name="branch_id" class="form-control">
+            {% for b in branches %}
+            <option value="{{ b.id }}" {{ 'selected' if b.id == branch_id else '' }}>{{ b.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">As of</label>
+          <input type="date" name="as_of" class="form-control" value="{{ as_of_date.isoformat() }}">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Refresh</button>
+      {% if report %}
+      <a href="{{ url_for('fixed_asset_depreciation.schedule_report_export_excel', branch_id=branch_id, as_of=as_of_date.isoformat()) }}" class="btn btn-secondary">Export Excel</a>
+      {% endif %}
+    </form>
+
+    {% if report %}
+    {% if not report.reconciliation.is_reconciled %}
+    <div class="alert alert-warning">
+      Reconciliation variance detected — subledger totals do not match the GL for one or more accounts.
+      <ul>
+        {% for line in report.reconciliation.lines %}
+        {% if line.variance != 0 %}
+        <li>{{ line.account_code }} — {{ line.account_name }}: subledger {{ '%.2f'|format(line.subledger_total) }}, GL {{ '%.2f'|format(line.gl_balance) }}, variance {{ '%.2f'|format(line.variance) }}</li>
+        {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% for cat in report.categories %}
+    <h3>{{ cat.category_name }}</h3>
+    <table class="data-table">
+      <thead><tr><th>Code</th><th>Name</th><th>Cost</th><th>Accum. Dep.</th><th>NBV</th></tr></thead>
+      <tbody>
+        {% for a in cat.assets %}
+        <tr>
+          <td>{{ a.code }}</td><td>{{ a.name }}</td>
+          <td>{{ '%.2f'|format(a.cost) }}</td>
+          <td>{{ '%.2f'|format(a.accumulated_depreciation) }}</td>
+          <td>{{ '%.2f'|format(a.net_book_value) }}</td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td colspan="2"><strong>Subtotal</strong></td>
+          <td><strong>{{ '%.2f'|format(cat.subtotal.cost) }}</strong></td>
+          <td><strong>{{ '%.2f'|format(cat.subtotal.accumulated_depreciation) }}</strong></td>
+          <td><strong>{{ '%.2f'|format(cat.subtotal.net_book_value) }}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    {% endfor %}
+
+    <table class="data-table">
+      <tbody>
+        <tr>
+          <td colspan="2"><strong>Grand Total</strong></td>
+          <td><strong>{{ '%.2f'|format(report.grand_total.cost) }}</strong></td>
+          <td><strong>{{ '%.2f'|format(report.grand_total.accumulated_depreciation) }}</strong></td>
+          <td><strong>{{ '%.2f'|format(report.grand_total.net_book_value) }}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

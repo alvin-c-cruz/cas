@@ -15,6 +15,15 @@ fixed_asset_depreciation_bp = Blueprint('fixed_asset_depreciation', __name__,
                                         template_folder='templates')
 
 
+def _parse_report_params():
+    from datetime import datetime
+    branch_id = request.args.get('branch_id', type=int)
+    as_of_str = request.args.get('as_of')
+    as_of_date = (datetime.strptime(as_of_str, '%Y-%m-%d').date() if as_of_str
+                 else datetime.today().date())
+    return branch_id, as_of_date
+
+
 def _accountant_or_admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -97,3 +106,41 @@ def reverse_run(id):
     except ValueError as e:
         flash(str(e), 'error')
     return redirect(url_for('fixed_asset_depreciation.list_runs'))
+
+
+@fixed_asset_depreciation_bp.route('/fixed-asset-depreciation/schedule')
+@login_required
+def schedule_report():
+    from app.reports.fixed_asset_schedule import generate_fixed_asset_schedule
+    branch_id, as_of_date = _parse_report_params()
+    accessible_ids = [b.id for b in get_accessible_branches(current_user)]
+    branches = get_accessible_branches(current_user)
+    report = None
+    if branch_id and branch_id in accessible_ids:
+        report = generate_fixed_asset_schedule(branch_id, as_of_date)
+    return render_template('fixed_asset_depreciation/schedule_report.html', report=report,
+                           branches=branches, branch_id=branch_id, as_of_date=as_of_date)
+
+
+@fixed_asset_depreciation_bp.route('/fixed-asset-depreciation/schedule/export')
+@login_required
+def schedule_report_export_excel():
+    from app.reports.fixed_asset_schedule import generate_fixed_asset_schedule
+    from app.utils.export import export_to_excel
+    branch_id, as_of_date = _parse_report_params()
+    report = generate_fixed_asset_schedule(branch_id, as_of_date)
+    rows = [
+        {'category': cat['category_name'], 'code': a['code'], 'name': a['name'],
+         'cost': float(a['cost']),
+         'accumulated_depreciation': float(a['accumulated_depreciation']),
+         'net_book_value': float(a['net_book_value'])}
+        for cat in report['categories'] for a in cat['assets']
+    ]
+    return export_to_excel(
+        rows, columns=['category', 'code', 'name', 'cost', 'accumulated_depreciation',
+                       'net_book_value'],
+        headers=['Category', 'Code', 'Name', 'Cost', 'Accumulated Depreciation',
+                'Net Book Value'],
+        filename=f'fixed_asset_schedule_{as_of_date.isoformat()}.xlsx',
+        title=f'Fixed Asset Schedule — as of {as_of_date.isoformat()}',
+    )
