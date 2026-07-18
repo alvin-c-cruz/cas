@@ -183,6 +183,18 @@
             </div>
         </div>
     </div>
+
+    <h3 class="settings-section-label settings-section-label--spaced">Bank Accounts</h3>
+    <div class="card settings-card">
+        <div class="card-body">
+            <div class="settings-grid-3">
+                {{ render_field(form.cash_bank_parent_account_code) }}
+            </div>
+            <div class="form-hint">Parent account code whose leaf (postable) descendants populate the
+                Cash &amp; Bank account picker. Leave blank to use the default (10100); if that account
+                isn't found, all leaf accounts are shown.</div>
+        </div>
+    </div>
     </div>
 
     <div class="tab-content" data-tab-panel="settings" id="settings-docprint">
