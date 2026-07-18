@@ -1039,6 +1039,50 @@ def sales_by_product_line_export_excel():
                            title='Sales by Product Line')
 
 
+@reports_bp.route('/reports/income-statement-by-product-line')
+@login_required
+def income_statement_by_product_line():
+    from app.reports.income_statement_by_product_line import generate_income_statement_by_product_line
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    return render_template('reports/income_statement_by_product_line.html',
+                           data=data, as_of=as_of, mtd_start=mtd_start, ytd_start=ytd_start)
+
+
+@reports_bp.route('/reports/income-statement-by-product-line/print')
+@login_required
+def income_statement_by_product_line_print():
+    from app.reports.income_statement_by_product_line import generate_income_statement_by_product_line
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    company, branch_name = _bs_company_branch(branch_id)
+    return render_template('reports/income_statement_by_product_line_print.html',
+                           data=data, as_of=as_of, company=company, branch_name=branch_name)
+
+
+@reports_bp.route('/reports/income-statement-by-product-line/export/excel')
+@login_required
+def income_statement_by_product_line_export_excel():
+    from app.reports.income_statement_by_product_line import generate_income_statement_by_product_line
+    from app.utils.export import export_to_excel
+    as_of, mtd_start, ytd_start, branch_id = _stmt_params()
+    data = generate_income_statement_by_product_line(as_of, mtd_start, ytd_start, branch_id=branch_id)
+    col_keys = [c['category_id'] for c in data['columns']]
+    col_headers = [c['name'] for c in data['columns']]
+    rows = []
+    for period_key, period_label in (('mtd', as_of.strftime('%b %Y')), ('ytd', f'YTD {as_of.year}')):
+        for r in data[period_key]['rows']:
+            row = {'period': period_label, 'caption': r['label']}
+            for ck in col_keys:
+                row[str(ck)] = r['by_column'].get(ck, 0.0)
+            rows.append(row)
+    columns = ['period', 'caption'] + [str(ck) for ck in col_keys]
+    headers = ['Period', 'Caption'] + col_headers
+    filename = f'Income_Statement_by_Product_Line_{as_of.isoformat()}.xlsx'
+    return export_to_excel(rows, columns, headers, filename,
+                           title='Income Statement by Product Line')
+
+
 @reports_bp.route('/reports/balance-sheet')
 @login_required
 def balance_sheet():
