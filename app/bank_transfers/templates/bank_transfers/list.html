@@ -45,7 +45,7 @@
                     <td>{{ bt.transfer_date.strftime('%b %d, %Y') }}</td>
                     <td>{{ bt.from_bank_account.code }} <span class="branch-tag">{{ bt.from_bank_account.branch.name }}</span></td>
                     <td>{{ bt.to_bank_account.code }} <span class="branch-tag">{{ bt.to_bank_account.branch.name }}</span></td>
-                    <td class="amount">₱{{ '%.2f'|format(bt.amount) }}</td>
+                    <td class="amount">₱{{ '{:,.2f}'.format(bt.amount) }}</td>
                     <td><span class="badge badge-{{ badge_map.get(bt.status, 'draft') }}">{{ status_labels.get(bt.status, bt.status|title) }}</span></td>
                 </tr>
                 {% endfor %}

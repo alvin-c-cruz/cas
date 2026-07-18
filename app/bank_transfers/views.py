@@ -67,6 +67,24 @@ def _bank_account_choices():
     return [(a.id, f'{a.code} — {a.name} ({a.branch.name})') for a in accounts]
 
 
+def _from_bank_account_choices():
+    """`from_bank_account_id` choices, branch-scoped to the ACTING user -- unlike
+    `to_bank_account_id` (an inter-branch transfer legitimately targets an account at
+    ANY branch), the sending account must be one the user can actually operate from.
+    Mirrors cash_disbursements' cash_account_id branch-scoping (app/cash_disbursements/
+    views.py::edit()/create(), via app/bank_accounts/service.py::cash_bank_account_choices),
+    but scoped to the user's full accessible-branches set (get_accessible_branches) rather
+    than just session['selected_branch_id'], matching this module's own money-moving-transition
+    gate (_branch_accessible / _require_accountant_at) since an accountant may be assigned
+    more than one branch. Full-access users (admin/chief_accountant) are unrestricted."""
+    accounts = (BankAccount.query.filter_by(is_active=True)
+                .order_by(BankAccount.code).all())
+    if not current_user.has_full_access:
+        accessible_ids = {b.id for b in get_accessible_branches(current_user)}
+        accounts = [a for a in accounts if a.branch_id in accessible_ids]
+    return [(a.id, f'{a.code} — {a.name} ({a.branch.name})') for a in accounts]
+
+
 def _bank_account_branch_meta():
     """{account_id: {branch_id, branch_name}} for the create/edit form's inline
     JS -- drives the live "this is an inter-branch transfer" note without a
@@ -121,9 +139,8 @@ def list_transfers():
 @staff_or_above_required
 def new_transfer():
     form = BankTransferForm()
-    choices = _bank_account_choices()
-    form.from_bank_account_id.choices = choices
-    form.to_bank_account_id.choices = choices
+    form.from_bank_account_id.choices = _from_bank_account_choices()
+    form.to_bank_account_id.choices = _bank_account_choices()
 
     if form.validate_on_submit():
         error, from_ba, to_ba = _validate_transfer_inputs(form)
@@ -158,14 +175,23 @@ def new_transfer():
 @staff_or_above_required
 def edit_transfer(id):
     bt = db.get_or_404(BankTransfer, id)
+    # Branch containment for the draft layer (Task 4 review Finding 1) -- reuses
+    # _transfer_visible, the SAME check view_transfer/list_transfers already use to
+    # scope branch visibility (either leg), rather than inventing a new pattern. Covers
+    # BOTH the GET and POST paths since it runs before the method branch below.
+    if not _transfer_visible(bt):
+        flash('You do not have access to this transfer.', 'error')
+        return redirect(url_for('bank_transfers.list_transfers'))
     if bt.status != 'draft':
         flash('Only draft transfers can be edited.', 'error')
         return redirect(url_for('bank_transfers.view_transfer', id=id))
 
     form = BankTransferForm(obj=bt)
-    choices = _bank_account_choices()
-    form.from_bank_account_id.choices = choices
-    form.to_bank_account_id.choices = choices
+    # Choices MUST be populated before validate_on_submit() on BOTH GET and POST --
+    # a SelectField validates the submitted value against whatever choices were set
+    # on THIS request (Finding 2).
+    form.from_bank_account_id.choices = _from_bank_account_choices()
+    form.to_bank_account_id.choices = _bank_account_choices()
 
     if request.method == 'GET':
         form.from_bank_account_id.data = bt.from_bank_account_id
