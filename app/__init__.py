@@ -245,6 +245,7 @@ def create_app(config_name=None):
     from app.fixed_asset_disposal.models import FixedAssetDisposal  # noqa: F401
     from app.bank_accounts.models import BankAccount  # noqa: F401
     from app.bank_transfers.models import BankTransfer  # noqa: F401
+    from app.petty_cash.models import PettyCashFund, PettyCashVoucher, PettyCashReplenishment  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp
@@ -291,6 +292,7 @@ def create_app(config_name=None):
     from app.fixed_asset_disposal.views import fixed_asset_disposal_bp
     from app.bank_accounts.views import bank_accounts_bp
     from app.bank_transfers.views import bank_transfers_bp
+    from app.petty_cash.views import petty_cash_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix='/accounts')
@@ -336,6 +338,7 @@ def create_app(config_name=None):
     app.register_blueprint(fixed_asset_disposal_bp)
     app.register_blueprint(bank_accounts_bp)
     app.register_blueprint(bank_transfers_bp)
+    app.register_blueprint(petty_cash_bp)
 
     from app.backup.views import backup_bp
     app.register_blueprint(backup_bp)

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_field %}
+{% block title %}{{ 'Edit Voucher' if voucher else 'Record Petty Cash Voucher' }}{% endblock %}
+{% block page_title %}{{ 'Edit Voucher' if voucher else 'Record Petty Cash Voucher' }} — {{ fund.code }}{% endblock %}
+{% block content %}
+
+<p class="page-sub">Recording a voucher does not post a journal entry — it accumulates against the fund's float until replenished.</p>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 18px;">
+                {{ render_field(form.payee, required=True) }}
+                <div class="form-group">
+                    {{ form.expense_account_id.label(class='form-label') }} <span class="required">*</span>
+                    {{ form.expense_account_id(class='form-control') }}
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 18px;">
+                {{ render_field(form.amount, required=True) }}
+                {{ render_field(form.receipt_ref) }}
+            </div>
+            {{ render_field(form.description) }}
+
+            <div class="form-actions" style="display:flex; gap:12px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{{ url_for('petty_cash.fund_status', id=fund.id) }}" class="btn btn-secondary">Back</a>
+                {% if voucher %}
+                <form method="POST" action="{{ url_for('petty_cash.voucher_delete', id=voucher.id) }}" style="margin-left:auto;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

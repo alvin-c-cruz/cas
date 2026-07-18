@@ -58,6 +58,7 @@ FIRM_COA = [
     ('20102', 'Accounts Payable - Others',                 'Liability', 'Current', 'credit', '20100'),
     ('20103', 'Accrued Expenses',                          'Liability', 'Current', 'credit', '20100'),
     ('20104', 'Accrued Salaries and Wages',               'Liability', 'Current', 'credit', '20100'),
+    ('20105', 'Due to Petty Cash Custodian',               'Liability', 'Current', 'credit', '20100'),
     ('20111', 'Inter-branch Due to',                      'Liability', 'Current', 'credit', '20100'),
     ('20200', 'Output VAT',                                'Liability', 'Current', 'credit', None),
     ('20201', 'Output VAT - Sales',                        'Liability', 'Current', 'credit', '20200'),
@@ -138,6 +139,7 @@ FIRM_COA = [
     ('50300', 'Other Expenses',                          'Other Expense', None, 'debit', None),
     ('50301', 'Interest Expense',                        'Other Expense', None, 'debit', '50300'),
     ('50302', 'Loss on Disposal of Assets',              'Other Expense', None, 'debit', '50300'),
+    ('50303', 'Cash Short/Over',                          'Other Expense', None, 'debit', '50300'),
     # ===== INCOME TAX EXPENSE =====
     ('50400', 'Income Tax Expense',                      'Income Tax Expense', None, 'debit', None),
     ('50401', 'Income Tax Expense - Current',            'Income Tax Expense', None, 'debit', '50400'),

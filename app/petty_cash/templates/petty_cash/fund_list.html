@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Petty Cash{% endblock %}
+{% block page_title %}Petty Cash{% endblock %}
+{% block content %}
+
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-label">Active Funds</div>
+        <div class="stat-value">{{ funds | selectattr('status', 'equalto', 'active') | list | length }}</div>
+        <div class="stat-detail">of {{ funds | length }} total</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Float</div>
+        <div class="stat-value">₱{{ '{:,.2f}'.format(funds | selectattr('status', 'equalto', 'active') | sum(attribute='float_amount')) }}</div>
+        <div class="stat-detail">across active funds</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Petty Cash Funds</span>
+        <div class="card-header-actions">
+            {% if current_user.role in ['accountant', 'admin', 'chief_accountant'] %}
+            <a href="{{ url_for('petty_cash.fund_new') }}" class="btn btn-green">➕ Enter Petty Cash Fund</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        {% if funds %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Code</th><th>Name</th><th>Custodian</th><th>GL Account</th>
+                    <th style="text-align:right;">Float</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                {% for f in funds %}
+                <tr>
+                    <td><a href="{{ url_for('petty_cash.fund_status', id=f.id) }}" style="font-weight:600;color:var(--blue);">{{ f.code }}</a></td>
+                    <td>{{ f.name }}</td>
+                    <td>{{ f.custodian or '—' }}</td>
+                    <td style="font-family:var(--mono);">{{ f.account.code }} — {{ f.account.name }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(f.float_amount) }}</td>
+                    <td><span class="badge badge-{{ 'active' if f.status == 'active' else 'inactive' }}">{{ f.status | title }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state"><p>No Petty Cash Funds found.</p></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

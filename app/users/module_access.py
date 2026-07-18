@@ -224,6 +224,11 @@ MODULE_REGISTRY = [
      'area': 'Banking', 'group': 'Banking',
      'optional': True, 'depends_on': ['bank_accounts'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('bank_transfers.',)},
+    # ── Petty Cash Fund (R-04 slice 4) — same per_user=True precedent as bank_transfers ──
+    {'key': 'petty_cash', 'label': 'Petty Cash', 'section': 'Transactions',
+     'area': 'Banking', 'group': 'Banking',
+     'optional': True, 'depends_on': ['bank_accounts'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('petty_cash.',)},
 ]
 
 AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Banking', 'Accounting', 'Compliance', 'Payroll',

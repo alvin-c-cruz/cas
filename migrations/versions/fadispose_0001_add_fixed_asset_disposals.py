@@ -1,14 +1,14 @@
 """add fixed asset disposals (R-05 Slice 3)
 
 Revision ID: fadispose_0001
-Revises: fadepr_0001
+Revises: 041eda0bb5ad
 Create Date: 2026-07-19
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = 'fadispose_0001'
-down_revision = 'fadepr_0001'
+down_revision = '041eda0bb5ad'
 branch_labels = None
 depends_on = None
 

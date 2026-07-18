@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "macros.html" import render_field %}
+{% block title %}{{ 'Adjust Petty Cash Fund' if fund else 'Enter Petty Cash Fund' }}{% endblock %}
+{% block page_title %}{{ 'Adjust Petty Cash Fund' if fund else 'Enter Petty Cash Fund' }}{% endblock %}
+{% block content %}
+
+<p class="page-sub">
+    {% if fund %}
+    Custodian/name changes don't post; a nonzero float adjustment posts Dr/Cr Petty Cash vs. the funding bank account.
+    {% else %}
+    Establishing posts Dr Petty Cash / Cr Bank for the float amount.
+    {% endif %}
+</p>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 18px;">
+                {% if fund %}
+                {{ render_field(form.name, required=True) }}
+                {{ render_field(form.custodian) }}
+                {% else %}
+                {{ render_field(form.code, required=True) }}
+                {{ render_field(form.name, required=True) }}
+                {% endif %}
+            </div>
+
+            {% if fund %}
+            <div style="margin-bottom:14px;">
+                <label class="form-label">GL Petty Cash Account</label>
+                <input class="form-control" value="{{ fund.account.code }} — {{ fund.account.name }}" readonly>
+                <small class="form-hint">Immutable — one Petty Cash Fund per GL account.</small>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 18px;">
+                <div class="form-group">
+                    <label class="form-label">Current Float Amount</label>
+                    <input class="form-control" value="₱{{ '{:,.2f}'.format(fund.float_amount) }}" readonly>
+                </div>
+                {{ render_field(form.float_delta) }}
+            </div>
+            {% else %}
+            <div style="margin-bottom:14px;">
+                {{ form.account_id.label(class='form-label') }} <span class="required">*</span>
+                {{ form.account_id(class='form-control') }}
+                <small class="form-hint">A separate GL account per fund (same 1:1 pattern as Bank Accounts) — cannot be changed after creation.</small>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 18px;">
+                {{ render_field(form.custodian) }}
+                {{ render_field(form.float_amount, required=True) }}
+            </div>
+            <div style="margin-bottom:14px;">
+                {{ form.funding_bank_account_id.label(class='form-label') }} <span class="required">*</span>
+                {{ form.funding_bank_account_id(class='form-control') }}
+                <small class="form-hint">Where the float is drawn from — picked from Bank Accounts.</small>
+            </div>
+            {% endif %}
+
+            <div class="form-actions" style="display:flex; gap:12px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{{ url_for('petty_cash.fund_status', id=fund.id) if fund else url_for('petty_cash.fund_list') }}" class="btn btn-secondary">Back</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
