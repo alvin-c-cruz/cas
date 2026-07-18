@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+{% from "macros.html" import render_field %}
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {{ form.hidden_tag() }}
+            <div class="form-row-2">
+                {{ render_field(form.account_id, required=True) }}
+                {{ render_field(form.basis, required=True) }}
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{% if rule %}Update{% else %}Create{% endif %}</button>
+                <a href="{{ url_for('expense_allocation_rules.list') }}" class="btn btn-secondary">Back</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
