@@ -4,6 +4,7 @@ from functools import wraps
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
+from app.accounts.models import Account
 from app.fixed_assets.models import AssetCategory
 from app.fixed_assets.forms import AssetCategoryForm, FixedAssetForm
 from app.fixed_assets.services import (
@@ -131,3 +132,53 @@ def new_opening():
     return render_template('fixed_assets/form.html', form=form, title='Add Opening Asset',
                            asset=None, is_opening=True, readonly_code=False,
                            readonly_acquisition=False)
+
+
+# ---- Tag flow ---------------------------------------------------------------
+
+@fixed_assets_bp.route('/fixed-assets/tag/<source_type>/<int:source_id>/<int:source_line_id>',
+                       methods=['GET', 'POST'])
+@login_required
+@accountant_or_admin_required
+def tag(source_type, source_id, source_line_id):
+    try:
+        line, cost_account_id, amount = get_taggable_line(source_type, source_id, source_line_id)
+    except FixedAssetTagError as e:
+        flash(str(e), 'error')
+        return redirect(request.referrer or url_for('fixed_assets.list'))
+
+    cost_account = db.session.get(Account, cost_account_id)
+    form = FixedAssetForm()
+    _populate_common_choices(form)
+    form.cost_account_id.choices = [(cost_account_id,
+                                     f'{cost_account.code} — {cost_account.name}')]
+
+    if request.method == 'GET':
+        form.acquisition_cost.data = amount
+        form.cost_account_id.data = cost_account_id
+
+    if form.validate_on_submit():
+        asset = create_fixed_asset(
+            branch_id=form.branch_id.data, code=form.code.data.strip(),
+            name=form.name.data.strip(),
+            category_id=(int(form.category_id.data) if form.category_id.data else None),
+            acquisition_source_type=source_type, acquisition_source_id=source_id,
+            acquisition_source_line_id=source_line_id, acquisition_date=form.acquisition_date.data,
+            acquisition_cost=amount, cost_account_id=cost_account_id,
+            accumulated_depreciation_account_id=form.accumulated_depreciation_account_id.data,
+            depreciation_expense_account_id=form.depreciation_expense_account_id.data,
+            depreciation_method=form.depreciation_method.data,
+            useful_life_months=form.useful_life_months.data,
+            declining_balance_rate=form.declining_balance_rate.data,
+            total_estimated_units=form.total_estimated_units.data,
+            salvage_value=form.salvage_value.data or 0,
+            opening_accumulated_depreciation=0, created_by_id=current_user.id,
+        )
+        log_create('fixed_assets', asset.id, asset.code, asset.to_dict(),
+                  notes=f'Capitalized from {source_type} #{source_id} line #{source_line_id}')
+        flash(f'Fixed asset "{asset.code}" created.', 'success')
+        return redirect(url_for('fixed_assets.list'))
+
+    return render_template('fixed_assets/form.html', form=form,
+                           title='Capitalize as Fixed Asset', asset=None, is_opening=False,
+                           readonly_code=False, readonly_acquisition=True)

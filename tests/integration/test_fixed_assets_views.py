@@ -61,3 +61,70 @@ def test_create_opening_asset(client, db_session, accountant_user, main_branch, 
     log = AuditLog.query.filter_by(module='fixed_assets', action='create',
                                     record_id=asset.id).first()
     assert log is not None
+
+
+from decimal import Decimal
+from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+
+
+def test_tag_ap_line_as_fixed_asset(client, db_session, accountant_user, main_branch, login_user):
+    cost, accum, exp = _accounts(db_session)
+    ap = AccountsPayable(branch_id=main_branch.id, ap_number='AP-2026-01-0002',
+                         ap_date=date(2026, 1, 20), due_date=date(2026, 2, 20),
+                         vendor_name='Office Depot', status='posted')
+    db_session.add(ap)
+    db_session.flush()
+    item = AccountsPayableItem(ap_id=ap.id, line_number=1, description='Standing Desk',
+                               amount=Decimal('15000.00'), line_total=Decimal('15000.00'),
+                               account_id=cost.id)
+    db_session.add(item)
+    db_session.commit()
+
+    login_user(client, 'accountant', 'accountant123')
+    resp = client.post(f'/fixed-assets/tag/ap_bill/{ap.id}/{item.id}', data={
+        'code': 'FA-0002', 'name': 'Standing Desk', 'branch_id': str(main_branch.id),
+        'category_id': '', 'acquisition_date': '2026-01-20', 'acquisition_cost': '15000.00',
+        'cost_account_id': str(cost.id), 'opening_accumulated_depreciation': '0',
+        'accumulated_depreciation_account_id': str(accum.id),
+        'depreciation_expense_account_id': str(exp.id),
+        'depreciation_method': 'straight_line', 'useful_life_months': '36',
+        'declining_balance_rate': '', 'total_estimated_units': '', 'salvage_value': '0',
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+
+    asset = FixedAsset.query.filter_by(code='FA-0002').first()
+    assert asset is not None
+    assert asset.acquisition_source_type == 'ap_bill'
+    assert asset.acquisition_source_id == ap.id
+    assert asset.acquisition_source_line_id == item.id
+    assert asset.acquisition_cost == Decimal('15000.00')
+    assert asset.cost_account_id == cost.id
+
+    log = AuditLog.query.filter_by(module='fixed_assets', action='create',
+                                    record_id=asset.id).first()
+    assert log is not None
+
+
+def test_tag_draft_ap_line_rejected(client, db_session, accountant_user, main_branch, login_user):
+    cost, accum, exp = _accounts(db_session)
+    ap = AccountsPayable(branch_id=main_branch.id, ap_number='AP-2026-01-0003',
+                         ap_date=date(2026, 1, 20), due_date=date(2026, 2, 20),
+                         vendor_name='Office Depot', status='draft')
+    db_session.add(ap)
+    db_session.flush()
+    item = AccountsPayableItem(ap_id=ap.id, line_number=1, description='Chair',
+                               amount=Decimal('5000.00'), line_total=Decimal('5000.00'),
+                               account_id=cost.id)
+    db_session.add(item)
+    db_session.commit()
+
+    login_user(client, 'accountant', 'accountant123')
+    # Set a realistic Referer (the AP bill's own detail page, where a "Tag as
+    # Fixed Asset" action link would live) so the error-path redirect lands on
+    # a real page that renders flashed messages via base.html -- redirecting to
+    # fixed_assets.list would hit this test module's route stub (Task 8 isn't
+    # built yet), which renders no template and therefore no flash message.
+    resp = client.get(f'/fixed-assets/tag/ap_bill/{ap.id}/{item.id}', follow_redirects=True,
+                      headers={'Referer': f'/accounts-payable/{ap.id}'})
+    assert FixedAsset.query.count() == 0
+    assert b'posted' in resp.data.lower()
