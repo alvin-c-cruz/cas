@@ -33,17 +33,31 @@ def test_si_form_pull_dr_populates_lines(logged_in_sales_page, sales_e2e_server)
     page.wait_for_selector('.dr-pull-btn')
     assert 'DR-E2E-0001' in page.locator('#drBillingList').inner_text()
 
-    # Count SI lines before pulling (the form auto-adds one on customer select).
+    # Count SI lines before pulling (the form auto-adds one untouched blank starter line
+    # on customer select).
     before = page.evaluate("() => document.querySelectorAll('#lineItemsBody tr').length")
 
-    # Pull the DR -> its line is appended to the SI grid.
+    # Pull the DR -> its line is appended to the SI grid. Wait on source_dr_ids (the
+    # picker's own completion signal) rather than a row-count increase: BUG-SI-PULL-DR-
+    # LEAVES-BLANK-LINE's fix (5bd9e207) makes pull() call removeBlankStarterLine() FIRST,
+    # so the untouched blank line here is replaced, not kept alongside the pulled line --
+    # a bare `count > before` wait would time out forever against the fixed behavior.
     page.locator('.dr-pull-btn').first.click()
     page.wait_for_function(
-        "(n) => document.querySelectorAll('#lineItemsBody tr').length > n", arg=before)
+        "() => { try { return JSON.parse(document.getElementById('sourceDrIds').value).length > 0; } "
+        "catch (e) { return false; } }")
 
     # The hidden source_dr_ids now carries the DR id.
     ids = json.loads(page.locator('#sourceDrIds').input_value())
     assert len(ids) == 1
+
+    # BUG-SI-PULL-DR-LEAVES-BLANK-LINE regression guard: the blank starter line was
+    # REPLACED (not kept alongside), so the row count is unchanged, not incremented.
+    after = page.evaluate("() => document.querySelectorAll('#lineItemsBody tr').length")
+    assert after == before, (
+        f"expected the blank starter line to be replaced by the pulled DR line "
+        f"(before={before}, after={after}) -- BUG-SI-PULL-DR-LEAVES-BLANK-LINE regressed"
+    )
 
     # Consolidation is OFF (default) -> the picker locked after the single pull.
     page.wait_for_selector('#drBillingLocked', state='visible')
