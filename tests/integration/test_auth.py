@@ -167,6 +167,15 @@ class TestSessionManagement:
             assert '_user_id' in sess
             assert sess['_user_id'] == str(admin_user.id)
 
+    def test_session_permanent_on_login(self, client, admin_user, main_branch, login_user):
+        """Session is marked permanent so PERMANENT_SESSION_LIFETIME actually governs
+        expiry, instead of the cookie riding on an undefined browser-session lifetime
+        (BUG-PA-SESSION-UNEXPECTED-LOGOUT)."""
+        login_user(client, 'admin', 'admin123')
+
+        with client.session_transaction() as sess:
+            assert sess.permanent is True
+
     def test_session_destroyed_on_logout(self, client, admin_user, main_branch, login_user, logout_user):
         """Test that session is destroyed on logout"""
         # Login
