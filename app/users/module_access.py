@@ -177,6 +177,10 @@ MODULE_REGISTRY = [
      'area': 'Fixed Assets', 'group': 'Masters',
      'optional': True, 'depends_on': [], 'default_enabled': False,
      'endpoints': ('fixed_assets.',)},
+    {'key': 'fixed_asset_depreciation', 'label': 'Depreciation', 'section': 'Transactions',
+     'area': 'Fixed Assets', 'group': 'Documents',
+     'optional': True, 'depends_on': ['fixed_assets'], 'default_enabled': False,
+     'endpoints': ('fixed_asset_depreciation.',)},
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
      'area': 'Compliance', 'group': 'BIR',
