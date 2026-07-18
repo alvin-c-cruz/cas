@@ -21,12 +21,16 @@ def _login(client, user, branch):
         sess['selected_branch_id'] = branch.id
 
 
-def _create(client, lines=None, reason='Site needs cement'):
+def _create(client, lines=None, reason='Site needs cement', pr_number=None):
     if lines is None:
         lines = [{'product_id': None, 'description': 'Cement', 'quantity': '10', 'uom_text': 'bag'}]
+    if pr_number is None:
+        from app.purchase_requests.models import generate_pr_number
+        pr_number = generate_pr_number()
     return client.post('/purchase-requests/create', data={
         'request_date': '2026-07-11', 'reason': reason,
         'line_items': json.dumps(lines),
+        'pr_number': pr_number,
     }, follow_redirects=True)
 
 

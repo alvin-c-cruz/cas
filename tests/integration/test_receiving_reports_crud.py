@@ -36,12 +36,20 @@ def _approved_po(db_session, branch, vendor, qty=100, number='PO-2026-07-0300'):
     return po
 
 
-def _create_rr(client, po, received=60):
+_rr_counter = 0
+
+
+def _create_rr(client, po, received=60, rr_number=None):
+    global _rr_counter
+    if rr_number is None:
+        _rr_counter += 1
+        rr_number = f'RR-TEST-{_rr_counter:04d}'
     poi = po.line_items[0]
     lines = [{'purchase_order_item_id': poi.id, 'received_quantity': str(received)}]
     return client.post('/receiving-reports/create', data={
         'purchase_order_id': str(po.id), 'receipt_date': '2026-07-11',
         'remarks': 'partial delivery', 'lines': json.dumps(lines),
+        'rr_number': rr_number,
     }, follow_redirects=True)
 
 

@@ -93,24 +93,20 @@
                         </tr>
                     </thead>
                     <tbody id="lineItemsBody"></tbody>
+                    {# SO is a pre-sale order — only the total sales figure is shown (VAT/WHT
+                       belong on the invoice). Matches detail.html's <tfoot> pattern so the
+                       total's presentation is stable across create/edit and view. #}
+                    <tfoot>
+                        <tr>
+                            <td colspan="5" style="text-align:right; font-weight:700;">Total Sales</td>
+                            <td id="totalDisplay" style="text-align:right; font-family:var(--mono); font-weight:700;">0.00</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
                 </table>
 
                 <button type="button" class="btn btn-secondary" id="addLineBtn" onclick="addLineItem()" style="margin-top: 8px;">+ Add Line</button>
                 <input type="hidden" name="line_items" id="lineItemsData">
-
-                {# ── Bottom: Summary panel ── #}
-                <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin-bottom: 10px;">Sales Order Summary</div>
-                        <div class="bill-summary-panel">
-                            {# SO is a pre-sale order — only the total sales figure is shown (VAT/WHT belong on the invoice). #}
-                            <div class="bsr bsr--total">
-                                <span class="bsr-label bsr-label--total">Total Sales</span>
-                                <span id="totalDisplay" class="bsr-amt bsr-amt--total">0.00</span>
-                            </div>
-                        </div>{# end .bill-summary-panel #}
-                    </div>
-                </div>
 
                 <div class="form-actions" style="margin-top: 32px;">
                     <button type="submit" id="submitBtn" class="btn btn-primary" disabled>
@@ -276,16 +272,16 @@ function addLineItem(existingItem) {
     const item = existingItem
         ? { ...existingItem, id }
         : { id, product_id: null, quantity: null, uom_id: null, uom_text: null,
-            unit_price: null, amount: 0.00, vat_category: '' };
+            unit_price: null, amount: 0.00, vat_category: currentCustomerVatCategory || '' };
 
     const rowNum = lineItems.length + 1;
     const row = document.createElement('tr');
     row.id = `line-${id}`;
     row.innerHTML = `
         <td style="text-align:center; color:var(--text-2); font-size:12px; white-space:nowrap;" class="line-num-cell">${rowNum}</td>
-        <td><select class="form-control" required onchange="onProductPick(${id}, this.value)">
+        <td><select class="form-control" id="prod-sel-${id}" required onchange="onProductPick(${id}, this.value)">
               <option value="">— select product —</option>
-              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+              ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
             </select></td>
         <td><input type="number" step="0.0001" min="0" id="qty-${id}" class="form-control"
                    style="text-align:right;"
@@ -294,7 +290,7 @@ function addLineItem(existingItem) {
         ${uomMasterOn ? `
         <td><select class="form-control" id="uom-sel-${id}" onchange="updateLineItem(${id}, 'uom_id', this.value)">
               <option value="">—</option>
-              ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
+              ${units.map(u => `<option value="${u.id}" data-custom-properties="${escHtml(JSON.stringify({name: u.name}))}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
             </select></td>` : `
         <td><input type="text" maxlength="20" id="uom-txt-${id}" class="form-control"
                    value="${escHtml(item.uom_text != null ? item.uom_text : '')}"
@@ -342,7 +338,25 @@ function addLineItem(existingItem) {
     const vatC = new Choices(vatSel, codeOnlyOpts);
     vatSel.addEventListener('change', () => { updateLineItem(id, 'vat_category', vatSel.value); calculateTotals(); });
 
-    lineChoices[id] = { vat: vatC };
+    const nameOnlyOpts = {
+        searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
+        allowHTML: false,
+        callbackOnCreateTemplates: function(tmpl) {
+            return {
+                item: function(cfg, data) {
+                    const cn = cfg.classNames;
+                    const name = (data.customProperties && data.customProperties.name) || data.label || '—';
+                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(name))}</div>`);
+                }
+            };
+        }
+    };
+    const prodSelEl = newRow.querySelector(`#prod-sel-${id}`);
+    const uomSelEl  = newRow.querySelector(`#uom-sel-${id}`);
+    const prodC = prodSelEl ? new Choices(prodSelEl, nameOnlyOpts) : null;
+    const uomC  = uomSelEl  ? new Choices(uomSelEl, nameOnlyOpts)  : null;
+
+    lineChoices[id] = { vat: vatC, prod: prodC, uom: uomC };
     lineItems.push(item);
     refreshLineNumbers();
     updateDerivedAmount(id);
@@ -358,6 +372,8 @@ function updateLineItem(id, field, value) {
 function removeLineItem(id) {
     if (lineChoices[id]) {
         lineChoices[id].vat.destroy();
+        if (lineChoices[id].prod) lineChoices[id].prod.destroy();
+        if (lineChoices[id].uom)  lineChoices[id].uom.destroy();
         delete lineChoices[id];
     }
     document.getElementById(`line-${id}`).remove();
@@ -394,8 +410,12 @@ function onProductPick(id, productId) {
     if (!p) return;
     if (p.default_uom_id != null) {
         item.uom_id = p.default_uom_id;
-        const uomEl = document.getElementById(`uom-sel-${id}`);
-        if (uomEl) uomEl.value = String(p.default_uom_id);
+        if (lineChoices[id] && lineChoices[id].uom) {
+            lineChoices[id].uom.setChoiceByValue(String(p.default_uom_id));
+        } else {
+            const uomEl = document.getElementById(`uom-sel-${id}`);
+            if (uomEl) uomEl.value = String(p.default_uom_id);
+        }
     }
     if (p.default_unit_price != null) {
         item.unit_price = p.default_unit_price;

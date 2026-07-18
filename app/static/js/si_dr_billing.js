@@ -24,6 +24,7 @@
   function pull(dr, rowEl) {
     if (!consolidate && pulled) { return; }
     if (typeof window.addLineItem !== 'function') { return; }
+    if (typeof window.removeBlankStarterLine === 'function') { window.removeBlankStarterLine(); }
     (dr.lines || []).forEach(function (ln) {
       var qty = ln.quantity, up = ln.unit_price;
       window.addLineItem({

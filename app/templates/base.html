@@ -1196,6 +1196,14 @@
                             {%- if m.key == 'vendor_debit_memos' %}<span class="nav-subtext">(Purchase Returns)</span>{% endif %}
                         </span>
                     </a>
+                    {% if m.key == 'sales_orders' %}
+                    {# Order Monitoring is a report scoped to Sales Orders -- reuses this module's
+                       own gate rather than a new grantable permission (BUG-SO-MONITORING-NOT-IN-SIDEBAR). #}
+                    <a href="{{ url_for('sales_orders.monitor') }}" class="nav-item {% if request.endpoint == 'sales_orders.monitor' %}active{% endif %}">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-text">Order Monitoring</span>
+                    </a>
+                    {% endif %}
                     {% endif %}
                     {% endfor %}
                     {% endfor %}

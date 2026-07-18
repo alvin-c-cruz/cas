@@ -111,10 +111,15 @@ def create():
         return gate
     form = PurchaseRequestForm()
     if form.validate_on_submit():
+        pr_number = (form.pr_number.data or '').strip()
+        if PurchaseRequest.query.filter(PurchaseRequest.pr_number == pr_number).first():
+            flash('Purchase Request number already exists.', 'error')
+            return render_template('purchase_requests/form.html', form=form, pr=None,
+                                   line_items=[], **_common_form_ctx())
         try:
             pr = PurchaseRequest(
                 branch_id=session.get('selected_branch_id'),
-                pr_number=generate_pr_number(),
+                pr_number=pr_number,
                 request_date=form.request_date.data,
                 reason=form.reason.data or None,
                 status='draft', created_by_id=current_user.id)
@@ -136,6 +141,7 @@ def create():
             flash('An error occurred creating the Purchase Request.', 'error')
 
     if request.method == 'GET':
+        form.pr_number.data = generate_pr_number()
         form.request_date.data = ph_now().date()
     return render_template('purchase_requests/form.html', form=form, pr=None,
                            line_items=[], **_common_form_ctx())

@@ -176,6 +176,13 @@ def create():
     form.purchase_order_id.choices = [(po.id, f'{po.po_number}: {po.vendor_name}') for po in eligible]
 
     if form.validate_on_submit():
+        rr_number = (form.rr_number.data or '').strip()
+        if ReceivingReport.query.filter(ReceivingReport.rr_number == rr_number).first():
+            flash('Receiving Report number already exists.', 'error')
+            return render_template('receiving_reports/form.html', form=form, rr=None,
+                                   eligible=eligible, po_lines=_po_lines_payload(eligible),
+                                   existing={})
+
         po = db.session.get(PurchaseOrder, form.purchase_order_id.data)
         if not po or po.branch_id != branch_id or po.status not in RECEIVABLE_PO_STATUSES:
             flash('Select a valid approved Purchase Order.', 'error')
@@ -184,7 +191,7 @@ def create():
                                    existing={})
         try:
             rr = ReceivingReport(
-                rr_number=generate_rr_number(branch_id), branch_id=branch_id,
+                rr_number=rr_number, branch_id=branch_id,
                 receipt_date=form.receipt_date.data, purchase_order_id=po.id,
                 vendor_id=po.vendor_id, vendor_name=po.vendor_name,
                 remarks=form.remarks.data or None, status='draft',
@@ -202,6 +209,7 @@ def create():
             db.session.rollback(); flash('An error occurred creating the Receiving Report.', 'error')
 
     if request.method == 'GET':
+        form.rr_number.data = generate_rr_number(branch_id)
         form.receipt_date.data = ph_now().date()
         preselect = request.args.get('po', type=int)
         if preselect and any(po.id == preselect for po in eligible):
