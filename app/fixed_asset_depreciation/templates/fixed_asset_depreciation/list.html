@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Depreciation Runs{% endblock %}
+{% block page_title %}Depreciation Runs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Depreciation Runs</h1>
+  <div>
+    <a href="{{ url_for('fixed_asset_depreciation.new_run') }}" class="btn btn-primary">+ Run Depreciation</a>
+  </div>
+</div>
+<div class="card">
+  <div class="card-body">
+    <table class="data-table">
+      <thead><tr><th>Branch</th><th>Period</th><th>Status</th><th>Journal Entry</th><th></th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td>{{ run.branch.name }}</td>
+          <td>{{ run.period_year }}-{{ '%02d'|format(run.period_month) }}</td>
+          <td><span class="badge {{ 'badge-success' if run.status == 'posted' else 'badge-inactive' }}">{{ run.status|title }}</span></td>
+          <td>{% if run.journal_entry %}{{ run.journal_entry.entry_number }}{% else %}—{% endif %}</td>
+          <td>
+            {% if run.status == 'posted' and (current_user.role == 'accountant' or current_user.has_full_access) %}
+            <form method="POST" action="{{ url_for('fixed_asset_depreciation.reverse_run', id=run.id) }}" style="display:inline">
+              {{ reversal_form.hidden_tag() }}
+              {{ reversal_form.reversal_date(value=now.strftime('%Y-%m-%d')) }}
+              <button type="submit" class="btn btn-secondary">Reverse</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">No depreciation runs found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

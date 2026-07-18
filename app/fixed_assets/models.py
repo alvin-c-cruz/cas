@@ -109,9 +109,21 @@ class FixedAsset(db.Model):
 
     @property
     def accumulated_depreciation(self):
-        """Slice 1 has no DepreciationEntry table yet -- until Slice 2 ships, the
-        only accumulated depreciation a FixedAsset carries is its opening figure."""
-        return self.opening_accumulated_depreciation
+        """opening_accumulated_depreciation plus every posted DepreciationEntry
+        for this asset (Slice 2). A reversed run's entries are excluded -- the
+        DepreciationEntry rows themselves are never deleted on reversal (they
+        stay as a historical record of what that run computed), so the query
+        filters by the owning DepreciationRun.status, not row presence."""
+        from decimal import Decimal
+        from app import db
+        from app.fixed_asset_depreciation.models import DepreciationRun, DepreciationEntry
+        posted_total = db.session.query(
+            db.func.coalesce(db.func.sum(DepreciationEntry.depreciation_amount), 0)
+        ).join(DepreciationRun, DepreciationEntry.run_id == DepreciationRun.id).filter(
+            DepreciationEntry.fixed_asset_id == self.id,
+            DepreciationRun.status == 'posted',
+        ).scalar()
+        return Decimal(str(self.opening_accumulated_depreciation)) + Decimal(str(posted_total))
 
     @property
     def net_book_value(self):
