@@ -45,6 +45,26 @@
             <button type="button" class="btn btn-secondary" id="addLineBtn" onclick="addLineItem()" style="margin-top: 8px;">+ Add Component</button>
             <input type="hidden" name="lines" id="lineItemsData">
 
+            <div id="routingSection">
+                <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin: 24px 0 12px;">Routing (Discrete mode only)</h3>
+
+                <table class="table" id="operationsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 1%; white-space: nowrap; color: var(--text-2);">Seq</th>
+                            <th style="width: 35%;">Work Center</th>
+                            <th style="width: 35%;">Operation Name</th>
+                            <th style="width: 20%; text-align: right;">Std. Time (min)</th>
+                            <th style="width: 5%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="operationsBody"></tbody>
+                </table>
+
+                <button type="button" class="btn btn-secondary" id="addOperationBtn" onclick="addOperation()" style="margin-top: 8px;">+ Add Operation</button>
+                <input type="hidden" name="operations" id="operationsData">
+            </div>
+
             <div class="form-actions" style="margin-top: 32px; display:flex; gap:10px;">
                 <button type="submit" class="btn btn-primary">Save</button>
                 <a href="{{ url_for('bill_of_materials.list_boms') }}" class="btn btn-secondary">Cancel</a>
@@ -54,10 +74,13 @@
 </div>
 
 <script>
-const components = {{ components | tojson }};
-const units      = {{ units      | tojson }};
+const components   = {{ components   | tojson }};
+const units        = {{ units        | tojson }};
+const workCenters  = {{ work_centers | tojson }};
 let lineItems    = [];
 let lineCounter  = 0;
+let operationItems  = [];
+let operationCounter = 0;
 
 function escHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
@@ -114,11 +137,72 @@ function refreshLineNumbers() {
     cells.forEach((cell, idx) => { cell.textContent = idx + 1; });
 }
 
+function addOperation(existingItem) {
+    operationCounter++;
+    const id = operationCounter;
+    const item = existingItem
+        ? { ...existingItem, id }
+        : { id, work_center_id: null, operation_name: null, standard_time_minutes: null };
+
+    const rowNum = document.querySelectorAll('#operationsBody tr').length + 1;
+    const row = document.createElement('tr');
+    row.id = `op-${id}`;
+    row.innerHTML = `
+        <td style="text-align:center; color:var(--text-2); font-size:12px;" class="op-num-cell">${rowNum}</td>
+        <td><select class="form-control" id="wc-sel-${id}" onchange="updateOperation(${id}, 'work_center_id', this.value)">
+              <option value="">— select work center —</option>
+              ${workCenters.map(w => `<option value="${w.id}" ${item.work_center_id == w.id ? 'selected' : ''}>${escHtml(w.code)} — ${escHtml(w.name)}</option>`).join('')}
+            </select></td>
+        <td><input type="text" id="opname-${id}" class="form-control"
+                   value="${escHtml(item.operation_name != null ? item.operation_name : '')}"
+                   onchange="updateOperation(${id}, 'operation_name', this.value)"></td>
+        <td><input type="number" step="0.01" min="0" id="optime-${id}" class="form-control"
+                   style="text-align:right;"
+                   value="${item.standard_time_minutes != null ? item.standard_time_minutes : ''}"
+                   onchange="updateOperation(${id}, 'standard_time_minutes', this.value)"></td>
+        <td style="text-align:center;">
+            <button type="button" class="li-btn-action" onclick="removeOperation(${id})" title="Remove operation">&#10005;</button>
+        </td>
+    `;
+    document.getElementById('operationsBody').appendChild(row);
+    operationItems.push(item);
+    refreshOperationNumbers();
+}
+
+function updateOperation(id, field, value) {
+    const item = operationItems.find(i => i.id === id);
+    if (!item) return;
+    item[field] = value;
+}
+
+function removeOperation(id) {
+    document.getElementById(`op-${id}`).remove();
+    operationItems = operationItems.filter(i => i.id !== id);
+    refreshOperationNumbers();
+}
+
+function refreshOperationNumbers() {
+    const cells = document.querySelectorAll('#operationsBody .op-num-cell');
+    cells.forEach((cell, idx) => { cell.textContent = idx + 1; });
+}
+
+function updateRoutingVisibility() {
+    const modeSelect = document.getElementById('manufacturing_mode');
+    const section = document.getElementById('routingSection');
+    if (!modeSelect || !section) return;
+    section.style.display = (modeSelect.value === 'discrete') ? '' : 'none';
+}
+
 document.getElementById('bomForm').addEventListener('submit', function () {
     document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(i => ({
         component_product_id: i.component_product_id,
         quantity_per: i.quantity_per,
         uom_id: i.uom_id,
+    })));
+    document.getElementById('operationsData').value = JSON.stringify(operationItems.map(i => ({
+        work_center_id: i.work_center_id,
+        operation_name: i.operation_name,
+        standard_time_minutes: i.standard_time_minutes,
     })));
 });
 
@@ -129,5 +213,17 @@ existingItems.forEach(item => addLineItem(item));
 {% else %}
 addLineItem();
 {% endif %}
+
+// ── Init: load existing operations on edit; otherwise start with one blank row ──
+{% if operations %}
+const existingOperations = {{ operations | tojson }};
+existingOperations.forEach(item => addOperation(item));
+{% else %}
+addOperation();
+{% endif %}
+
+const modeSelectEl = document.getElementById('manufacturing_mode');
+if (modeSelectEl) { modeSelectEl.addEventListener('change', updateRoutingVisibility); }
+updateRoutingVisibility();
 </script>
 {% endblock %}

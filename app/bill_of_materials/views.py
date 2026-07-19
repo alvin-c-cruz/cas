@@ -11,8 +11,10 @@ from app.audit.utils import log_create, log_update, model_to_dict
 from app.utils.cache_helpers import get_active_products, get_active_units
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
 from app.bill_of_materials.models import BillOfMaterial
-from app.bill_of_materials.forms import BillOfMaterialForm, _parse_and_attach_bom_lines
+from app.bill_of_materials.forms import (BillOfMaterialForm, _parse_and_attach_bom_lines,
+                                         _parse_and_attach_bom_operations)
 from app.bill_of_materials import service
+from app.work_centers.models import WorkCenter
 
 bill_of_materials_bp = Blueprint('bill_of_materials', __name__, template_folder='templates')
 
@@ -67,6 +69,8 @@ def new_bom():
                                  manufacturing_mode=form.manufacturing_mode.data,
                                  created_by_id=current_user.id)
             _parse_and_attach_bom_lines(bom, request.form.get('lines', '[]'))
+            if bom.manufacturing_mode == 'discrete':
+                _parse_and_attach_bom_operations(bom, request.form.get('operations', '[]'))
             db.session.add(bom)
             db.session.commit()
             log_create('bill_of_materials', bom.id, bom.product.code, model_to_dict(bom, _BOM_FIELDS))
@@ -79,7 +83,9 @@ def new_bom():
     return render_template('bill_of_materials/form.html', form=form, bom=None,
                            units=[u.to_dict() for u in get_active_units()],
                            components=[p.to_dict() for p in get_active_products()],
-                           line_items=[])
+                           line_items=[],
+                           work_centers=[wc.to_dict() for wc in WorkCenter.query.filter_by(is_active=True).all()],
+                           operations=[])
 
 
 @bill_of_materials_bp.route('/bill-of-materials/<int:bom_id>/edit', methods=['GET', 'POST'])
@@ -99,12 +105,17 @@ def edit_bom(bom_id):
             return render_template('bill_of_materials/form.html', form=form, bom=bom,
                                    units=[u.to_dict() for u in get_active_units()],
                                    components=[p.to_dict() for p in get_active_products()],
-                                   line_items=[line.to_dict() for line in bom.lines])
+                                   line_items=[line.to_dict() for line in bom.lines],
+                                   work_centers=[wc.to_dict() for wc in WorkCenter.query.filter_by(is_active=True).all()],
+                                   operations=[op.to_dict() for op in bom.operations])
         try:
             old_values = model_to_dict(bom, _BOM_FIELDS)
             bom.manufacturing_mode = form.manufacturing_mode.data
             bom.lines = []
             _parse_and_attach_bom_lines(bom, request.form.get('lines', '[]'))
+            bom.operations = []
+            if bom.manufacturing_mode == 'discrete':
+                _parse_and_attach_bom_operations(bom, request.form.get('operations', '[]'))
             db.session.commit()
             log_update('bill_of_materials', bom.id, bom.product.code, old_values,
                        model_to_dict(bom, _BOM_FIELDS))
@@ -117,7 +128,9 @@ def edit_bom(bom_id):
     return render_template('bill_of_materials/form.html', form=form, bom=bom,
                            units=[u.to_dict() for u in get_active_units()],
                            components=[p.to_dict() for p in get_active_products()],
-                           line_items=[line.to_dict() for line in bom.lines])
+                           line_items=[line.to_dict() for line in bom.lines],
+                           work_centers=[wc.to_dict() for wc in WorkCenter.query.filter_by(is_active=True).all()],
+                           operations=[op.to_dict() for op in bom.operations])
 
 
 @bill_of_materials_bp.route('/bill-of-materials/<int:bom_id>/toggle-active', methods=['POST'])
