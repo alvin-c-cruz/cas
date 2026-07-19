@@ -38,8 +38,11 @@ def test_inventory_fields_absent_when_module_off(client, db_session, admin_user,
     assert resp.status_code == 200
     assert b'name="track_inventory"' not in resp.data
     assert b'name="costing_method"' not in resp.data
-    assert b'name="standard_cost"' not in resp.data
     assert b'name="reorder_level"' not in resp.data
+    # standard_cost is NOT gated by the inventory module -- it's R-03a's always-visible
+    # planning-cost field, reused (not owned) by this slice. See the collision-resolution
+    # doc: docs/superpowers/plans/2026-07-19-product-standard-cost-collision-decision.md
+    assert b'name="standard_cost"' in resp.data
 
 
 def test_inventory_fields_present_when_module_on(client, db_session, admin_user, main_branch,
