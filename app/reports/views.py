@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, request, jsonify, redirect, url_fo
 from flask_login import login_required, current_user
 from functools import wraps
 from app import db
+from app.utils.authz import full_access_required
 from app.sales_invoices.models import SalesInvoice
 from app.customers.models import Customer
 from app.reports.statement_data import build_statement_of_account
@@ -947,6 +948,23 @@ def _stmt_params():
     return as_of, mtd_start, ytd_start, session.get('selected_branch_id')
 
 
+def _budget_variance_params():
+    """(fiscal_year, month, branch_id) for the Budget-vs-Actual Variance report.
+    Defaults to the current PH year/month. Param names 'fiscal_year'/'month'."""
+    today = ph_now().date()
+    try:
+        fiscal_year = int(request.args.get('fiscal_year', today.year))
+    except (TypeError, ValueError):
+        fiscal_year = today.year
+    try:
+        month = int(request.args.get('month', today.month))
+    except (TypeError, ValueError):
+        month = today.month
+    if month < 1 or month > 12:
+        month = today.month
+    return fiscal_year, month, session.get('selected_branch_id')
+
+
 @reports_bp.route('/reports/income-statement')
 @login_required
 def income_statement():
@@ -1081,6 +1099,57 @@ def income_statement_by_product_line_export_excel():
     filename = f'Income_Statement_by_Product_Line_{as_of.isoformat()}.xlsx'
     return export_to_excel(rows, columns, headers, filename,
                            title='Income Statement by Product Line')
+
+
+@reports_bp.route('/reports/budget-variance')
+@login_required
+@full_access_required
+def budget_variance():
+    from app.reports.budget_variance import generate_budget_variance
+    fiscal_year, month, branch_id = _budget_variance_params()
+    data = generate_budget_variance(branch_id, fiscal_year, month)
+    return render_template('reports/budget_variance.html', data=data)
+
+
+@reports_bp.route('/reports/budget-variance/print')
+@login_required
+@full_access_required
+def budget_variance_print():
+    from app.reports.budget_variance import generate_budget_variance
+    fiscal_year, month, branch_id = _budget_variance_params()
+    data = generate_budget_variance(branch_id, fiscal_year, month)
+    company, branch_name = _bs_company_branch(branch_id)
+    return render_template('reports/budget_variance_print.html', data=data,
+                           company=company, branch_name=branch_name)
+
+
+@reports_bp.route('/reports/budget-variance/export/excel')
+@login_required
+@full_access_required
+def budget_variance_export_excel():
+    from app.reports.budget_variance import generate_budget_variance
+    from app.utils.export import export_to_excel
+    fiscal_year, month, branch_id = _budget_variance_params()
+    data = generate_budget_variance(branch_id, fiscal_year, month)
+    rows = []
+    for r in data['rows']:
+        if r['is_header']:
+            continue
+        rows.append({
+            'code': r['account'].code, 'name': r['account'].name,
+            'mtd_budget': r['mtd_budget'], 'mtd_actual': r['mtd_actual'],
+            'mtd_variance': r['mtd_variance'],
+            'mtd_variance_pct': r['mtd_variance_pct'] if r['mtd_variance_pct'] is not None else '',
+            'ytd_budget': r['ytd_budget'], 'ytd_actual': r['ytd_actual'],
+            'ytd_variance': r['ytd_variance'],
+            'ytd_variance_pct': r['ytd_variance_pct'] if r['ytd_variance_pct'] is not None else '',
+        })
+    columns = ['code', 'name', 'mtd_budget', 'mtd_actual', 'mtd_variance', 'mtd_variance_pct',
+               'ytd_budget', 'ytd_actual', 'ytd_variance', 'ytd_variance_pct']
+    headers = ['Code', 'Account', 'MTD Budget', 'MTD Actual', 'MTD Variance', 'MTD Variance %',
+               'YTD Budget', 'YTD Actual', 'YTD Variance', 'YTD Variance %']
+    filename = f'Budget_Variance_{data["fiscal_year"]}_{data["month"]:02d}.xlsx'
+    return export_to_excel(rows, columns, headers, filename, title='Budget-vs-Actual Variance')
 
 
 @reports_bp.route('/reports/balance-sheet')
