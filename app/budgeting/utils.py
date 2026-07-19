@@ -16,6 +16,22 @@ MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
                'August', 'September', 'October', 'November', 'December']
 
 
+def account_tree_index(accounts):
+    """Build the parent/child index used by every COA-tree walk in this app (mirrors
+    app/accounts/views.py::list_accounts's DFS prologue). `accounts` must already be
+    code-sorted. Returns (id_to_account, has_children, children_by_parent, roots)."""
+    id_to_account = {a.id: a for a in accounts}
+    has_children = {a.parent_id for a in accounts if a.parent_id}
+    children_by_parent = {}
+    roots = []
+    for a in accounts:
+        if a.parent_id and a.parent_id in id_to_account:
+            children_by_parent.setdefault(a.parent_id, []).append(a)
+        else:
+            roots.append(a)
+    return id_to_account, has_children, children_by_parent, roots
+
+
 def budget_account_rows():
     """Pre-order DFS rows for the grid template: every header (shown for grouping
     context, same as the Chart of Accounts list) plus every active, postable
@@ -25,16 +41,7 @@ def budget_account_rows():
     Returns a list of {'account': Account, 'depth': int, 'is_header': bool}.
     """
     accounts = Account.query.order_by(Account.code).all()
-    id_to_account = {a.id: a for a in accounts}
-    has_children = {a.parent_id for a in accounts if a.parent_id}
-
-    children_by_parent = {}
-    roots = []
-    for a in accounts:
-        if a.parent_id and a.parent_id in id_to_account:
-            children_by_parent.setdefault(a.parent_id, []).append(a)
-        else:
-            roots.append(a)
+    id_to_account, has_children, children_by_parent, roots = account_tree_index(accounts)
 
     rows = []
     visited = set()
