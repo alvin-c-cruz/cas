@@ -31,6 +31,10 @@ def _product(db_session, code='BOMV-1'):
 
 
 def test_routes_404_when_module_off(client, admin_user, db_session, main_branch):
+    # get_module_override() is memoized for 1h -- clear it so this test proves the
+    # OFF state regardless of what an earlier test in this run already enabled
+    # (mirrors bank_reconciliation/bank_transfers/petty_cash's identical guard).
+    clear_module_config_cache()
     _login(client, admin_user, main_branch)
     resp = client.get('/bill-of-materials/')
     assert resp.status_code == 404
@@ -38,6 +42,7 @@ def test_routes_404_when_module_off(client, admin_user, db_session, main_branch)
 
 def test_every_endpoint_404_when_module_off(client, accountant_user, db_session, main_branch):
     # Module is deliberately left OFF (not enabled) for this whole test.
+    clear_module_config_cache()
     out = _product(db_session, 'BOMV-OFF')
     _login(client, accountant_user, main_branch)
     assert client.get('/bill-of-materials/').status_code == 404
