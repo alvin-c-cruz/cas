@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Bills of Materials{% endblock %}
+{% block page_title %}Bills of Materials{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <p class="page-sub">Recipes/formulas — one Bill of Materials per output product.</p>
+    <div class="page-actions" style="display: flex; gap: 8px;">
+        <a href="{{ url_for('bill_of_materials.new_bom') }}" class="btn btn-primary">
+            + Create Bill of Materials
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body card-body--flush">
+        <table class="data-table" id="bomTable">
+            <thead>
+                <tr>
+                    <th>PRODUCT (OUTPUT)</th>
+                    <th>MODE</th>
+                    <th>COMPONENTS</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bom in boms %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('bill_of_materials.edit_bom', bom_id=bom.id) }}" class="row-link">
+                            <strong>{{ bom.product.code }}</strong> — {{ bom.product.name }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if bom.manufacturing_mode == 'discrete' %}
+                            <span class="badge badge-discrete">Discrete</span>
+                        {% else %}
+                            <span class="badge badge-process">Process</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ bom.lines|length }} component{{ 's' if bom.lines|length != 1 }}</td>
+                    <td>
+                        {% if bom.is_active %}
+                            <span class="badge badge-active">Active</span>
+                        {% else %}
+                            <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{{ url_for('bill_of_materials.edit_bom', bom_id=bom.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if not boms %}
+        <div class="empty-state">
+            <p>No bills of materials found.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 20px;
+}
+.page-sub {
+    color: var(--text-2);
+    font-size: 13px;
+    margin: 0;
+}
+.row-link { color: inherit; text-decoration: none; }
+.row-link:hover { color: var(--blue); text-decoration: underline; }
+.badge-discrete { background: #e0e7ff; color: #3730a3; }
+.badge-process  { background: #fef3c7; color: #92400e; }
+</style>
+{% endblock %}

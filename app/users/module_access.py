@@ -265,12 +265,19 @@ MODULE_REGISTRY = [
      'area': 'Banking', 'group': 'Banking',
      'optional': True, 'depends_on': ['bank_accounts'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('bank_reconciliation.',)},
+    # ── Bill of Materials (R-07 Wave 0) — accountant+-only, same per_user=True
+    # precedent as the Banking-area modules (a plain accountant must be
+    # individually grantable, not just admin/CA).
+    {'key': 'bill_of_materials', 'label': 'Bill of Materials', 'section': 'Transactions',
+     'area': 'Manufacturing', 'group': 'Manufacturing',
+     'optional': True, 'depends_on': ['products'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('bill_of_materials.',)},
 ]
 
-AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Banking', 'Accounting', 'Compliance', 'Payroll',
-              'Fixed Assets', 'Admin']
+AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Manufacturing', 'Banking', 'Accounting', 'Compliance',
+              'Payroll', 'Fixed Assets', 'Admin']
 GROUP_ORDER = ['Documents', 'Masters', 'Journals', 'Ledger', 'Financial Statements', 'Reports', 'BIR', 'Admin',
-               'Banking']
+               'Banking', 'Manufacturing']
 
 TRANSACTION_KEYS = [m['key'] for m in MODULE_REGISTRY
                     if m['section'] == 'Transactions' and not m.get('optional')]

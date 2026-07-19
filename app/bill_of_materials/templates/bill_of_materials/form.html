@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}{% if bom %}Edit Bill of Materials{% else %}Create Bill of Materials{% endif %}{% endblock %}
+{% block page_title %}{% if bom %}Edit Bill of Materials{% else %}Create Bill of Materials{% endif %}{% endblock %}
+
+{% block content %}
+{% from "macros.html" import render_field %}
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" novalidate id="bomForm">
+            {{ form.hidden_tag() }}
+
+            <div class="form-main-grid" style="display:flex; gap:32px; flex-wrap:wrap;">
+                <div class="form-group" style="max-width:420px; flex:1;">
+                    <label class="form-label">Product (output) *</label>
+                    {% if bom %}
+                        <input type="text" class="form-control" value="{{ bom.product.code }} — {{ bom.product.name }}" disabled>
+                        <div class="form-hint">Immutable once created.</div>
+                    {% else %}
+                        {{ render_field(form.product_id) }}
+                    {% endif %}
+                </div>
+                <div class="form-group" style="max-width:420px; flex:1;">
+                    {{ render_field(form.manufacturing_mode) }}
+                    <div class="form-hint">Only shows manufacturing mode(s) currently enabled in Company Settings.</div>
+                </div>
+            </div>
+
+            <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin: 24px 0 12px;">Components</h3>
+
+            <table class="table" id="lineItemsTable">
+                <thead>
+                    <tr>
+                        <th style="width: 1%; white-space: nowrap; color: var(--text-2);">#</th>
+                        <th style="width: 45%;">Component Product</th>
+                        <th style="width: 15%; text-align: right;">Quantity Per</th>
+                        <th style="width: 15%;">UOM</th>
+                        <th style="width: 5%;"></th>
+                    </tr>
+                </thead>
+                <tbody id="lineItemsBody"></tbody>
+            </table>
+
+            <button type="button" class="btn btn-secondary" id="addLineBtn" onclick="addLineItem()" style="margin-top: 8px;">+ Add Component</button>
+            <input type="hidden" name="lines" id="lineItemsData">
+
+            <div class="form-actions" style="margin-top: 32px; display:flex; gap:10px;">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{{ url_for('bill_of_materials.list_boms') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const components = {{ components | tojson }};
+const units      = {{ units      | tojson }};
+let lineItems    = [];
+let lineCounter  = 0;
+
+function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function addLineItem(existingItem) {
+    lineCounter++;
+    const id = lineCounter;
+    const item = existingItem
+        ? { ...existingItem, id }
+        : { id, component_product_id: null, quantity_per: null, uom_id: null };
+
+    const rowNum = document.querySelectorAll('#lineItemsBody tr').length + 1;
+    const row = document.createElement('tr');
+    row.id = `line-${id}`;
+    row.innerHTML = `
+        <td style="text-align:center; color:var(--text-2); font-size:12px;" class="line-num-cell">${rowNum}</td>
+        <td><select class="form-control" id="comp-sel-${id}" onchange="updateLineItem(${id}, 'component_product_id', this.value)">
+              <option value="">— select product —</option>
+              ${components.map(p => `<option value="${p.id}" ${item.component_product_id == p.id ? 'selected' : ''}>${escHtml(p.code)} — ${escHtml(p.name)}</option>`).join('')}
+            </select></td>
+        <td><input type="number" step="0.0001" min="0" id="qty-${id}" class="form-control"
+                   style="text-align:right;"
+                   value="${item.quantity_per != null ? item.quantity_per : ''}"
+                   onchange="updateLineItem(${id}, 'quantity_per', this.value)"></td>
+        <td><select class="form-control" id="uom-sel-${id}" onchange="updateLineItem(${id}, 'uom_id', this.value)">
+              <option value="">—</option>
+              ${units.map(u => `<option value="${u.id}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}</option>`).join('')}
+            </select></td>
+        <td style="text-align:center;">
+            <button type="button" class="li-btn-action" onclick="removeLineItem(${id})" title="Remove line">&#10005;</button>
+        </td>
+    `;
+    document.getElementById('lineItemsBody').appendChild(row);
+    lineItems.push(item);
+    refreshLineNumbers();
+}
+
+function updateLineItem(id, field, value) {
+    const item = lineItems.find(i => i.id === id);
+    if (!item) return;
+    item[field] = value;
+}
+
+function removeLineItem(id) {
+    document.getElementById(`line-${id}`).remove();
+    lineItems = lineItems.filter(i => i.id !== id);
+    refreshLineNumbers();
+}
+
+function refreshLineNumbers() {
+    const cells = document.querySelectorAll('#lineItemsBody .line-num-cell');
+    cells.forEach((cell, idx) => { cell.textContent = idx + 1; });
+}
+
+document.getElementById('bomForm').addEventListener('submit', function () {
+    document.getElementById('lineItemsData').value = JSON.stringify(lineItems.map(i => ({
+        component_product_id: i.component_product_id,
+        quantity_per: i.quantity_per,
+        uom_id: i.uom_id,
+    })));
+});
+
+// ── Init: load existing components on edit; otherwise start with one blank row ──
+{% if line_items %}
+const existingItems = {{ line_items | tojson }};
+existingItems.forEach(item => addLineItem(item));
+{% else %}
+addLineItem();
+{% endif %}
+</script>
+{% endblock %}
