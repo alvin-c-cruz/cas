@@ -747,6 +747,18 @@ function removeLineItem(id) {
     calculateTotals();
 }
 
+// Exposed for the PO/RR billing picker: when the form is still in its untouched single-blank-line
+// state (a vendor was just selected, nothing typed yet), Pull should replace that line
+// rather than leave it orphaned alongside the PO/RR's real content (BUG-AP-PULL-PORR-LEAVES-BLANK-LINE).
+window.removeBlankStarterLine = function () {
+    if (lineItems.length === 1) {
+        const item = lineItems[0];
+        const isBlank = !item.description && !item.product_id &&
+                        item.quantity == null && item.unit_price == null;
+        if (isBlank) removeLineItem(item.id);
+    }
+};
+
 // ── Derived amount (qty × unit_price, integer-centavo lock) ──────────────────
 
 function updateDerivedAmount(id) {
@@ -1305,7 +1317,7 @@ initItems();
 
 {# ap_po_billing.js must load AFTER the block above (needs window.addLineItem to already exist --
    see BUG-AP-PO-BILLING-SCRIPT-LOAD-ORDER, docs/bug-reports/2026-07-15-ap-po-billing-picker-script-order.md) #}
-{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=2"></script>{% endif %}
+{% if module_enabled('purchase_orders') or module_enabled('receiving_reports') %}<script src="{{ url_for('static', filename='ap_po_billing.js') }}?v=3"></script>{% endif %}
 
 <script>
 // ── Create-form attachment queue (held in browser until Save) ────────────────

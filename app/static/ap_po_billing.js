@@ -31,6 +31,7 @@
   }
 
   function injectLines(lines) {
+    if (typeof window.removeBlankStarterLine === 'function') { window.removeBlankStarterLine(); }
     (lines || []).forEach(function (ln) {
       window.addLineItem({
         description: ln.description || '',
