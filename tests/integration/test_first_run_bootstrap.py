@@ -78,6 +78,15 @@ def test_first_run_bootstrap_auto_logs_in(client, db_session):
         assert sess.get('selected_branch_id') == branch.id
 
 
+def test_first_run_bootstrap_sets_last_login(client, db_session):
+    """BUG-FIRSTRUN-BOOTSTRAP-NO-LAST-LOGIN: the bootstrap auto-login must set
+    last_login like a normal /login does, so User Management doesn't show
+    'Never' for an admin who is actively logged in."""
+    _register(client, 'admin')
+    admin = User.query.filter_by(username='admin').first()
+    assert admin.last_login is not None
+
+
 def test_non_admin_username_on_empty_db_creates_nothing(client, db_session):
     resp = _register(client, 'owner')
     assert resp.status_code == 200  # re-renders the form with the whitelist error

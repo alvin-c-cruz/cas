@@ -338,6 +338,8 @@ def register():
                     notes='Initial system administrator created via first-run bootstrap (whitelist bypassed).'
                 )
                 login_user(user)
+                user.last_login = ph_now()
+                db.session.commit()
                 log_audit(module='auth', action='login_success', record_id=user.id,
                           record_identifier=user.username,
                           notes='Auto-login after first-run admin bootstrap', user_id=user.id)
