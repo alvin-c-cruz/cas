@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Vendor Debit Memos{% endblock %}
+{% block title %}{{ doc_title }}{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>Vendor Debit Memos</h1>
+  <h1>{{ doc_title }}</h1>
   <div class="page-actions">
-    <a href="{{ url_for('purchase_memos.debit_create') }}" class="btn btn-primary btn-sm">+ Enter Vendor Debit Memo</a>
+    <a href="{{ url_for(ep_prefix + 'create') }}" class="btn btn-primary btn-sm">+ Enter {{ doc_title[:-1] if doc_title.endswith('s') else doc_title }}</a>
     {% if can_configure %}
     <a href="{{ url_for('purchase_memos.settings') }}" class="btn btn-secondary btn-sm">Settings</a>
     {% endif %}
@@ -24,7 +24,7 @@
       <tbody>
       {% for m in memos %}
         <tr>
-          <td><a href="{{ url_for('purchase_memos.debit_view', id=m.id) }}">{{ m.memo_number }}</a></td>
+          <td><a href="{{ url_for(ep_prefix + 'view', id=m.id) }}">{{ m.memo_number }}</a></td>
           <td>{{ m.memo_date.strftime('%b %d, %Y') }}</td>
           <td>{{ m.original_ap_number }}</td>
           <td>{{ m.vendor_name }}</td>
@@ -36,7 +36,7 @@
     </table>
   </div>
   {% else %}
-  <p>No vendor debit memos found.</p>
+  <p>No {{ doc_title|lower }} found.</p>
   {% endif %}
 </div></div>
 {% endblock %}

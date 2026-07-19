@@ -2,15 +2,15 @@
 {% set dest_label = {'ap': 'Accounts Payable',
                      'cash_refund': 'Cash',
                      'vendor_credit': 'Vendor credit balance'} %}
-{% block title %}Vendor Debit Memo {{ memo.memo_number }}{% endblock %}
+{% block title %}{{ doc_title }} {{ memo.memo_number }}{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>Vendor Debit Memo {{ memo.memo_number }}</h1>
+  <h1>{{ doc_title }} {{ memo.memo_number }}</h1>
   <div class="page-actions">
-    <a href="{{ url_for('purchase_memos.debit_list') }}" class="btn btn-secondary btn-sm">Back to list</a>
-    <a href="{{ url_for('purchase_memos.debit_print', id=memo.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    <a href="{{ url_for(ep_prefix + 'list') }}" class="btn btn-secondary btn-sm">Back to list</a>
+    <a href="{{ url_for(ep_prefix + 'print', id=memo.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
     {% if memo.status == 'draft' and can_manage %}
-    <form method="POST" action="{{ url_for('purchase_memos.debit_post', id=memo.id) }}" class="inline-form">
+    <form method="POST" action="{{ url_for(ep_prefix + 'post', id=memo.id) }}" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
       <button type="submit" class="btn btn-primary btn-sm">Post</button>
     </form>
@@ -66,13 +66,13 @@
 {% if memo.status != 'voided' and can_manage %}
 <div class="card"><div class="card-body">
   <h2 class="card-title">Void this memo</h2>
-  <form method="POST" action="{{ url_for('purchase_memos.debit_void', id=memo.id) }}">
+  <form method="POST" action="{{ url_for(ep_prefix + 'void', id=memo.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <div class="form-group">
       <label class="form-label" for="void_reason">Reason (min 10 characters)</label>
       <textarea id="void_reason" name="void_reason" class="form-control" rows="2" required minlength="10"></textarea>
     </div>
-    <button type="submit" class="btn btn-danger btn-sm">Void Vendor Debit Memo</button>
+    <button type="submit" class="btn btn-danger btn-sm">Void {{ doc_title }}</button>
   </form>
 </div></div>
 {% endif %}

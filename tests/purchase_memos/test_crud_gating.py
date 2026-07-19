@@ -135,10 +135,15 @@ def test_debit_view_blocked_when_module_off(client, db_session, admin_user, main
                        data={'void_reason': 'irrelevant test reason'}).status_code == 404
 
 
-def test_settings_blocked_when_module_off(client, db_session, admin_user, main_branch):
+def test_settings_accessible_when_module_off(client, db_session, admin_user, main_branch):
+    """Settings routes are NOT gated by either memo type's module key -- mirrors
+    sales_memos.settings (also absent from MODULE_REGISTRY). An accountant can
+    assign the vendor_credits account even with vendor_debit_memos disabled (the
+    gap this fixes: a future VCM-only deployment still needs this page)."""
     _setup(client, admin_user, main_branch, enable=False)
-    assert client.get('/purchase-memos/settings').status_code == 404
-    assert client.post('/purchase-memos/settings/accounts', data={}).status_code == 404
+    assert client.get('/purchase-memos/settings').status_code == 200
+    assert client.post('/purchase-memos/settings/accounts', data={},
+                       follow_redirects=True).status_code == 200
 
 
 def test_registry_entry(db_session):

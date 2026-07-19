@@ -1,18 +1,18 @@
-"""Vendor Debit Memo views -- buy-side mirror of app/sales_memos/views.py's
-credit-memo branch (a debit memo REDUCES AP, exactly like a credit memo REDUCES
-AR -- see app/purchase_memos/je.py's module docstring for the full "name flip").
+"""Vendor Debit Memo / Vendor Credit Memo views -- shared MEMO_META-parameterized
+implementation, mirroring app/sales_memos/views.py's own Credit Memo/Debit Note
+pattern (see docs/superpowers/specs/2026-07-19-vendor-credit-memo-design.md).
 
-Only 'debit' is wired (a future Vendor Credit Memo would reuse memo_type='credit',
-out of scope here) -- so, unlike sales_memos, this blueprint is NOT parameterized
-by memo_type; every route is the debit-note-shaped one directly.
+Vendor Debit Memo (memo_type='debit') REDUCES AP (a purchase return) -- shipped.
+Vendor Credit Memo (memo_type='credit') INCREASES AP (a supplementary vendor
+charge, wired in a later task) -- see app/purchase_memos/je.py's module
+docstring for the full "name flip" vs the sales side.
 
-Adjudication 1 (Task 4, binding): sales_memos/views.py::_post_impl -- not
-sales_memos/je.py::post_memo_je -- performs the AR-balance mutation
-(_apply_memo_to_ar/_reverse_memo_from_ar). Task 3's post_purchase_memo_je
-originally reduced the AP bill's balance itself; that has been MOVED here
-(_apply_memo_to_ap/_reverse_memo_from_ap) to restore mirror parity. There is
-now exactly ONE reduction site: debit_post -> _apply_memo_to_ap. je.py no
-longer touches the bill at all (see its updated module docstring)."""
+Settings routes (account assignment) are NOT gated by either memo type's module
+key -- mirrors sales_memos.views.settings/save_accounts, which are likewise
+absent from MODULE_REGISTRY (gated only by the in-view accountant/admin check).
+This lets a VCM-only deployment (vendor_debit_memos off) still assign the
+vendor_credits account VCM needs.
+"""
 import json
 from decimal import Decimal, InvalidOperation
 
@@ -22,7 +22,7 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.purchase_memos.models import PurchaseMemo, PurchaseMemoItem, generate_purchase_memo_number
-from app.purchase_memos.forms import PurchaseMemoForm
+from app.purchase_memos.forms import PurchaseMemoForm, DESTINATION_CHOICES
 from app.purchase_memos import service
 from app.audit.utils import log_create, log_audit, model_to_dict
 from app.errors.utils import log_exception
@@ -34,15 +34,21 @@ purchase_memos_bp = Blueprint('purchase_memos', __name__, template_folder='templ
 
 DEBITABLE_AP_STATUSES = ('posted', 'partially_paid', 'paid')
 
+# Per-type presentation + endpoint prefix (templates build url_for(ep_prefix + '<route>')).
+MEMO_META = {
+    'debit': {'title': 'Vendor Debit Memo', 'plural': 'Vendor Debit Memos',
+              'prefix': 'purchase_memos.debit_'},
+}
+
 
 def _accountant_or_admin():
     return current_user.role == 'accountant' or current_user.has_full_access
 
 
-def _memo_create_gate():
+def _memo_create_gate(memo_type):
     if current_user.role not in ['staff', 'accountant', 'admin', 'chief_accountant']:
         flash('You do not have permission to enter memos.', 'error')
-        return redirect(url_for('purchase_memos.debit_list'))
+        return redirect(url_for(MEMO_META[memo_type]['prefix'] + 'list'))
     return None
 
 
@@ -65,8 +71,8 @@ def _parse_memo_lines(memo, ap, lines_json):
     """Attach memo lines from [{accounts_payable_item_id, amount}]. Each line snapshots
     the referenced AP line's VAT/WHT/account/product, but is AMOUNT-based: quantity/
     unit_price are left null so calculate_amounts uses the given amount directly. The
-    per-line amount is guarded to the referenced AP line's amount (mirror
-    sales_memos._parse_memo_lines)."""
+    per-line amount is guarded to the referenced AP line's amount -- shared by both
+    memo types (mirror sales_memos._parse_memo_lines)."""
     items = json.loads(lines_json) if lines_json else []
     ap_lines = {li.id: li for li in ap.line_items}
     kept = 0
@@ -104,26 +110,27 @@ def _parse_memo_lines(memo, ap, lines_json):
         raise ValueError('Add at least one line.')
 
 
-# -- routes ---------------------------------------------------------------------
+# -- shared implementations ----------------------------------------------------
 
-@purchase_memos_bp.route('/vendor-debit-memos')
-@login_required
-def debit_list():
+def _list_impl(memo_type):
+    meta = MEMO_META[memo_type]
     branch_id = session.get('selected_branch_id')
     status_filter = request.args.get('status', 'all')
-    query = PurchaseMemo.query.filter_by(branch_id=branch_id, memo_type='debit')
+    query = PurchaseMemo.query.filter_by(branch_id=branch_id, memo_type=memo_type)
     if status_filter in ('draft', 'posted', 'voided'):
         query = query.filter_by(status=status_filter)
     memos = query.order_by(PurchaseMemo.memo_date.desc(), PurchaseMemo.id.desc()).all()
     return render_template('purchase_memos/list.html', memos=memos,
-                           status_filter=status_filter, can_configure=_accountant_or_admin())
+                           status_filter=status_filter, can_configure=_accountant_or_admin(),
+                           doc_title=meta['plural'], ep_prefix=meta['prefix'])
 
 
-@purchase_memos_bp.route('/vendor-debit-memos/ap-lines/<int:ap_id>')
-@login_required
-def debit_ap_lines(ap_id):
-    """JSON: the referenced AP bill's lines for the create grid."""
+def _ap_lines_impl(ap_id, memo_type):
+    """JSON: the referenced AP bill's lines for the create grid. Only the error
+    message varies by memo_type (document title); the underlying bill/line data
+    is identical for either type."""
     from app.accounts_payable.models import AccountsPayable
+    meta = MEMO_META[memo_type]
     branch_id = session.get('selected_branch_id')
     ap = db.session.get(AccountsPayable, ap_id)
     if not ap or ap.branch_id != branch_id or ap.status not in DEBITABLE_AP_STATUSES:
@@ -131,7 +138,8 @@ def debit_ap_lines(ap_id):
     if ap.payee_type != 'vendor':
         # _eligible_aps already filters these out of the picker; this guards a
         # tampered/crafted ap_id from reaching an employee-payee bill directly.
-        return {'error': 'A Vendor Debit Memo can only reference a vendor bill, not an employee bill.'}, 404
+        return {'error': f'A {meta["title"]} can only reference a vendor bill, '
+                          'not an employee bill.'}, 404
     lines = []
     for li in ap.line_items:
         d = li.to_dict()
@@ -142,14 +150,15 @@ def debit_ap_lines(ap_id):
     return {'vendor_name': ap.vendor_name, 'lines': lines}
 
 
-def _render_form(form):
-    return render_template('purchase_memos/form.html', form=form, memo=None)
+def _render_form(form, memo_type):
+    meta = MEMO_META[memo_type]
+    return render_template('purchase_memos/form.html', form=form, memo=None,
+                           memo_type=memo_type, doc_title=meta['title'], ep_prefix=meta['prefix'])
 
 
-@purchase_memos_bp.route('/vendor-debit-memos/create', methods=['GET', 'POST'])
-@login_required
-def debit_create():
-    gate = _memo_create_gate()
+def _create_impl(memo_type):
+    meta = MEMO_META[memo_type]
+    gate = _memo_create_gate(memo_type)
     if gate:
         return gate
     branch_id = session.get('selected_branch_id')
@@ -157,6 +166,7 @@ def debit_create():
     eligible = _eligible_aps(branch_id)
     form.accounts_payable_id.choices = [(ap.id, f'{ap.ap_number}: {ap.vendor_name}')
                                         for ap in eligible]
+    form.destination.choices = DESTINATION_CHOICES[memo_type]
     form.cash_account_id.choices = _cash_account_choices()
 
     if form.validate_on_submit():
@@ -164,19 +174,18 @@ def debit_create():
         ap = db.session.get(AccountsPayable, form.accounts_payable_id.data)
         if not ap or ap.branch_id != branch_id or ap.status not in DEBITABLE_AP_STATUSES:
             flash('Select a valid posted Accounts Payable bill.', 'error')
-            return _render_form(form)
+            return _render_form(form, memo_type)
         if ap.payee_type != 'vendor':
-            # _eligible_aps already filters these out of the picker; this guards a
-            # tampered accounts_payable_id from reaching an employee-payee bill directly.
-            flash('A Vendor Debit Memo can only reference a vendor bill, not an employee bill.', 'error')
-            return _render_form(form)
+            flash(f'A {meta["title"]} can only reference a vendor bill, not an employee bill.',
+                 'error')
+            return _render_form(form, memo_type)
         if form.destination.data == 'cash_refund' and not form.cash_account_id.data:
             flash('Select a cash account.', 'error')
-            return _render_form(form)
+            return _render_form(form, memo_type)
         try:
             memo = PurchaseMemo(
-                memo_type='debit',
-                memo_number=generate_purchase_memo_number('debit'),
+                memo_type=memo_type,
+                memo_number=generate_purchase_memo_number(memo_type),
                 memo_date=form.memo_date.data,
                 branch_id=branch_id,
                 accounts_payable_id=ap.id,
@@ -199,57 +208,56 @@ def debit_create():
                        new_values=model_to_dict(memo, ['memo_number', 'memo_type',
                                                        'original_ap_number', 'total_amount',
                                                        'destination', 'status']))
-            flash(f'Vendor Debit Memo "{memo.memo_number}" created.', 'success')
-            return redirect(url_for('purchase_memos.debit_view', id=memo.id))
+            flash(f'{meta["title"]} "{memo.memo_number}" created.', 'success')
+            return redirect(url_for(meta['prefix'] + 'view', id=memo.id))
         except ValueError as e:
             db.session.rollback()
             flash(str(e), 'error')
-            return _render_form(form)
+            return _render_form(form, memo_type)
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error('Error creating Vendor Debit Memo', exc_info=True)
-            log_exception(e, severity='ERROR', module='purchase_memos.debit_create')
-            flash('An error occurred while creating the Vendor Debit Memo.', 'error')
-            return _render_form(form)
+            current_app.logger.error('Error creating %s', meta['title'], exc_info=True)
+            log_exception(e, severity='ERROR', module=f'purchase_memos.{memo_type}_create')
+            flash(f'An error occurred while creating the {meta["title"]}.', 'error')
+            return _render_form(form, memo_type)
 
     if request.method == 'GET':
         form.memo_date.data = ph_now().date()
-    return _render_form(form)
+    return _render_form(form, memo_type)
 
 
-def _memo_or_404(id):
+def _memo_or_404(id, memo_type):
     memo = db.get_or_404(PurchaseMemo, id)
-    if memo.memo_type != 'debit' or memo.branch_id != session.get('selected_branch_id'):
+    if memo.memo_type != memo_type or memo.branch_id != session.get('selected_branch_id'):
         abort(404)
     return memo
 
 
-@purchase_memos_bp.route('/vendor-debit-memos/<int:id>')
-@login_required
-def debit_view(id):
+def _view_impl(id, memo_type):
     from app.users.models import User
-    memo = _memo_or_404(id)
+    meta = MEMO_META[memo_type]
+    memo = _memo_or_404(id, memo_type)
     created_by = db.session.get(User, memo.created_by_id) if memo.created_by_id else None
-    return render_template('purchase_memos/detail.html', memo=memo,
-                           can_manage=_accountant_or_admin(), created_by=created_by)
+    return render_template('purchase_memos/detail.html', memo=memo, doc_title=meta['title'],
+                           ep_prefix=meta['prefix'], can_manage=_accountant_or_admin(),
+                           created_by=created_by)
 
 
-@purchase_memos_bp.route('/vendor-debit-memos/<int:id>/print')
-@login_required
-def debit_print(id):
+def _print_impl(id, memo_type):
     from app.settings import AppSettings
-    memo = _memo_or_404(id)
+    meta = MEMO_META[memo_type]
+    memo = _memo_or_404(id, memo_type)
     company = {'name': AppSettings.get_setting('company_name', ''),
                'address': AppSettings.get_setting('company_address', ''),
                'tin': AppSettings.get_setting('company_tin', '')}
     return render_template('purchase_memos/print.html', memo=memo, company=company,
-                           printed_at=ph_now())
+                           printed_at=ph_now(), doc_title=meta['title'])
 
 
 def _apply_memo_to_ap(memo):
-    """AP-balance reduction: reduce the referenced bill's open balance (mirror
-    sales_memos._apply_memo_to_ar). Only for a debit memo with destination='ap'.
-    This is the ONE place the referenced bill's balance is mutated on post --
+    """AP-balance reduction for a Vendor DEBIT Memo (destination='ap'): reduce the
+    referenced bill's open balance (mirror sales_memos._apply_memo_to_ar). This is
+    the ONE place a debit memo's referenced bill balance is mutated on post --
     post_purchase_memo_je (app/purchase_memos/je.py) builds the JE only."""
     ap = memo.accounts_payable
     amount = Decimal(str(memo.total_amount or 0))
@@ -276,20 +284,19 @@ def _reverse_memo_from_ap(memo):
     ap.status = 'posted' if ap.amount_paid <= 0 else 'partially_paid'
 
 
-@purchase_memos_bp.route('/vendor-debit-memos/<int:id>/post', methods=['POST'])
-@login_required
-def debit_post(id):
-    memo = _memo_or_404(id)
-    view_url = url_for('purchase_memos.debit_view', id=id)
+def _post_impl(id, memo_type):
+    meta = MEMO_META[memo_type]
+    memo = _memo_or_404(id, memo_type)
+    view_url = url_for(meta['prefix'] + 'view', id=id)
     if not _accountant_or_admin():
-        flash('Only an accountant or administrator can post a Vendor Debit Memo.', 'error')
+        flash(f'Only an accountant or administrator can post a {meta["title"]}.', 'error')
         return redirect(view_url)
     if memo.status != 'draft':
-        flash('Only a draft Vendor Debit Memo can be posted.', 'error')
+        flash(f'Only a draft {meta["title"]} can be posted.', 'error')
         return redirect(view_url)
     # Memos post real GL via post_purchase_memo_je, so -- like every other posting
     # document -- a memo dated in a closed period must not be posted.
-    if not validate_transaction_date_with_flash(memo.memo_date, 'Vendor Debit Memo'):
+    if not validate_transaction_date_with_flash(memo.memo_date, meta['title']):
         return redirect(view_url)
     try:
         memo.status = 'posted'
@@ -302,28 +309,27 @@ def debit_post(id):
         db.session.commit()
         log_audit(module='purchase_memos', action='post', record_id=memo.id,
                   record_identifier=memo.memo_number, notes='Posted')
-        flash(f'Vendor Debit Memo "{memo.memo_number}" posted.', 'success')
+        flash(f'{meta["title"]} "{memo.memo_number}" posted.', 'success')
     except ValueError as e:
         db.session.rollback()
         flash(str(e), 'error')
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error('Error posting Vendor Debit Memo', exc_info=True)
-        log_exception(e, severity='ERROR', module='purchase_memos.debit_post')
-        flash('An error occurred posting the Vendor Debit Memo.', 'error')
+        current_app.logger.error('Error posting %s', meta['title'], exc_info=True)
+        log_exception(e, severity='ERROR', module=f'purchase_memos.{memo_type}_post')
+        flash(f'An error occurred posting the {meta["title"]}.', 'error')
     return redirect(view_url)
 
 
-@purchase_memos_bp.route('/vendor-debit-memos/<int:id>/void', methods=['POST'])
-@login_required
-def debit_void(id):
-    memo = _memo_or_404(id)
-    view_url = url_for('purchase_memos.debit_view', id=id)
+def _void_impl(id, memo_type):
+    meta = MEMO_META[memo_type]
+    memo = _memo_or_404(id, memo_type)
+    view_url = url_for(meta['prefix'] + 'view', id=id)
     if not _accountant_or_admin():
-        flash('Only an accountant or administrator can void a Vendor Debit Memo.', 'error')
+        flash(f'Only an accountant or administrator can void a {meta["title"]}.', 'error')
         return redirect(view_url)
     if memo.status == 'voided':
-        flash('This Vendor Debit Memo is already voided.', 'error')
+        flash(f'This {meta["title"]} is already voided.', 'error')
         return redirect(view_url)
     reason = (request.form.get('void_reason') or '').strip()
     if len(reason) < 10:
@@ -347,16 +353,61 @@ def debit_void(id):
         db.session.commit()
         log_audit(module='purchase_memos', action='void', record_id=memo.id,
                   record_identifier=memo.memo_number, notes=f'Voided: {reason}')
-        flash(f'Vendor Debit Memo "{memo.memo_number}" voided.', 'warning')
+        flash(f'{meta["title"]} "{memo.memo_number}" voided.', 'warning')
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error('Error voiding Vendor Debit Memo', exc_info=True)
-        log_exception(e, severity='ERROR', module='purchase_memos.debit_void')
-        flash('An error occurred voiding the Vendor Debit Memo.', 'error')
+        current_app.logger.error('Error voiding %s', meta['title'], exc_info=True)
+        log_exception(e, severity='ERROR', module=f'purchase_memos.{memo_type}_void')
+        flash(f'An error occurred voiding the {meta["title"]}.', 'error')
     return redirect(view_url)
 
 
-# -- Settings: accountant-assigned accounts (adjudication 2) --------------------
+# -- debit routes (Vendor Debit Memo) --------------------------------------------
+
+@purchase_memos_bp.route('/vendor-debit-memos')
+@login_required
+def debit_list():
+    return _list_impl('debit')
+
+
+@purchase_memos_bp.route('/vendor-debit-memos/ap-lines/<int:ap_id>')
+@login_required
+def debit_ap_lines(ap_id):
+    return _ap_lines_impl(ap_id, 'debit')
+
+
+@purchase_memos_bp.route('/vendor-debit-memos/create', methods=['GET', 'POST'])
+@login_required
+def debit_create():
+    return _create_impl('debit')
+
+
+@purchase_memos_bp.route('/vendor-debit-memos/<int:id>')
+@login_required
+def debit_view(id):
+    return _view_impl(id, 'debit')
+
+
+@purchase_memos_bp.route('/vendor-debit-memos/<int:id>/print')
+@login_required
+def debit_print(id):
+    return _print_impl(id, 'debit')
+
+
+@purchase_memos_bp.route('/vendor-debit-memos/<int:id>/post', methods=['POST'])
+@login_required
+def debit_post(id):
+    return _post_impl(id, 'debit')
+
+
+@purchase_memos_bp.route('/vendor-debit-memos/<int:id>/void', methods=['POST'])
+@login_required
+def debit_void(id):
+    return _void_impl(id, 'debit')
+
+
+# -- Settings: accountant-assigned accounts (shared by both memo types; NOT
+# gated by either memo type's module key -- mirrors sales_memos.settings) -----
 
 @purchase_memos_bp.route('/purchase-memos/settings')
 @login_required
