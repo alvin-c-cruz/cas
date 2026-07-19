@@ -2,6 +2,7 @@
 Accountant/admin/chief-accountant only, same tier as bill_of_materials --
 releasing a job is a control activity, not routine entry."""
 from functools import wraps
+from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
 from flask_login import login_required, current_user
@@ -10,9 +11,9 @@ from app import db
 from app.audit.utils import log_create, log_update
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
 from app.utils import ph_now
-from app.work_orders.models import WorkOrder
+from app.work_orders.models import WorkOrder, WorkOrderOperation, WorkOrderMaterial
 from app.work_orders.forms import WorkOrderForm, generate_wo_number
-from app.work_orders.service import release_work_order
+from app.work_orders.service import release_work_order, start_operation, complete_operation, issue_material
 from app.bill_of_materials.models import BillOfMaterial
 
 work_orders_bp = Blueprint('work_orders', __name__, template_folder='templates')
@@ -146,4 +147,73 @@ def cancel(id):
     db.session.commit()
     log_update('work_orders', wo.id, wo.wo_number, {}, {'status': 'cancelled', 'reason': reason})
     flash(f'Work Order "{wo.wo_number}" cancelled.', 'warning')
+    return redirect(url_for('work_orders.view', id=id))
+
+
+@work_orders_bp.route('/work-orders/<int:id>/operations/<int:op_id>/start', methods=['POST'])
+@login_required
+@accountant_or_above_required
+def start_operation_route(id, op_id):
+    wo = db.get_or_404(WorkOrder, id)
+    if wo.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    op = db.get_or_404(WorkOrderOperation, op_id)
+    if op.wo_id != wo.id:
+        abort(404)
+    try:
+        start_operation(op, current_user)
+        db.session.commit()
+        log_update('work_orders', wo.id, wo.wo_number, {}, {'operation': op.operation_name, 'status': 'in_progress'})
+        flash(f'Operation "{op.operation_name}" started.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('work_orders.view', id=id))
+
+
+@work_orders_bp.route('/work-orders/<int:id>/operations/<int:op_id>/complete', methods=['POST'])
+@login_required
+@accountant_or_above_required
+def complete_operation_route(id, op_id):
+    wo = db.get_or_404(WorkOrder, id)
+    if wo.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    op = db.get_or_404(WorkOrderOperation, op_id)
+    if op.wo_id != wo.id:
+        abort(404)
+    try:
+        complete_operation(op, current_user)
+        db.session.commit()
+        log_update('work_orders', wo.id, wo.wo_number, {}, {'operation': op.operation_name, 'status': 'complete'})
+        flash(f'Operation "{op.operation_name}" completed.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('work_orders.view', id=id))
+
+
+@work_orders_bp.route('/work-orders/<int:id>/materials/<int:mat_id>/issue', methods=['POST'])
+@login_required
+@accountant_or_above_required
+def issue_material_route(id, mat_id):
+    wo = db.get_or_404(WorkOrder, id)
+    if wo.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    mat = db.get_or_404(WorkOrderMaterial, mat_id)
+    if mat.wo_id != wo.id:
+        abort(404)
+    try:
+        quantity = Decimal(request.form.get('quantity', '0'))
+    except InvalidOperation:
+        flash('Enter a valid quantity.', 'error')
+        return redirect(url_for('work_orders.view', id=id))
+    try:
+        issue_material(mat, quantity, current_user)
+        db.session.commit()
+        log_update('work_orders', wo.id, wo.wo_number, {},
+                  {'material': mat.component_product.code, 'quantity_issued': float(quantity)})
+        flash(f'Issued {quantity} of "{mat.component_product.code}".', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
     return redirect(url_for('work_orders.view', id=id))

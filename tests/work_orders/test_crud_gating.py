@@ -107,3 +107,56 @@ def test_wo_scoped_to_current_branch(client, admin_user, db_session, main_branch
         sess['selected_branch_id'] = branch_manila.id
     resp = client.get(f'/work-orders/{wo.id}')
     assert resp.status_code == 404
+
+
+def _released_wo_for_execution(db_session, main_branch, client, accountant_user):
+    _enable(db_session)
+    from app.work_centers.models import WorkCenter
+    wc = WorkCenter(branch_id=main_branch.id, code='EXV-WC', name='Line')
+    db.session.add(wc); db.session.commit()
+    out = Product(code='EXV-OUT', name='Out', is_active=True)
+    comp = Product(code='EXV-COMP', name='Comp', is_active=True)
+    db.session.add_all([out, comp]); db.session.commit()
+    bom = BillOfMaterial(product_id=out.id, manufacturing_mode='discrete')
+    bom.lines.append(BillOfMaterialLine(line_number=1, component_product_id=comp.id, quantity_per=1))
+    db.session.add(bom); db.session.commit()
+    from app.bill_of_materials.models import BillOfMaterialOperation
+    bom.operations.append(BillOfMaterialOperation(sequence_no=1, work_center_id=wc.id, operation_name='Cut'))
+    db.session.commit()
+    _login(client, accountant_user, main_branch)
+    client.post('/work-orders/create', data={'bom_id': bom.id, 'qty_to_produce': '5'}, follow_redirects=True)
+    from app.work_orders.models import WorkOrder
+    wo = WorkOrder.query.filter_by(bom_id=bom.id).one()
+    client.post(f'/work-orders/{wo.id}/release', follow_redirects=True)
+    db.session.refresh(wo)
+    return wo
+
+
+def test_start_and_complete_operation_via_view(client, accountant_user, db_session, main_branch):
+    wo = _released_wo_for_execution(db_session, main_branch, client, accountant_user)
+    op = wo.operations[0]
+    resp = client.post(f'/work-orders/{wo.id}/operations/{op.id}/start', follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(op); db.session.refresh(wo)
+    assert op.status == 'in_progress'
+    assert wo.status == 'in_progress'
+
+    resp = client.post(f'/work-orders/{wo.id}/operations/{op.id}/complete', follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(op)
+    assert op.status == 'complete'
+
+
+def test_issue_material_route_surfaces_notimplemented(client, accountant_user, db_session, main_branch):
+    wo = _released_wo_for_execution(db_session, main_branch, client, accountant_user)
+    mat = wo.materials[0]
+    with pytest.raises(NotImplementedError):
+        client.post(f'/work-orders/{wo.id}/materials/{mat.id}/issue', data={'quantity': '1'})
+
+
+def test_every_endpoint_404_when_module_off_includes_execution_routes(client, accountant_user, db_session, main_branch):
+    clear_module_config_cache()
+    _login(client, accountant_user, main_branch)
+    assert client.post('/work-orders/1/operations/1/start').status_code == 404
+    assert client.post('/work-orders/1/operations/1/complete').status_code == 404
+    assert client.post('/work-orders/1/materials/1/issue', data={'quantity': '1'}).status_code == 404

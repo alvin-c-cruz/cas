@@ -24,6 +24,7 @@
         {% if wo.status == 'draft' %}
             <a href="{{ url_for('work_orders.edit', id=wo.id) }}" class="btn btn-secondary">Edit</a>
             <form method="POST" action="{{ url_for('work_orders.release', id=wo.id) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="btn btn-primary">Release</button>
             </form>
         {% endif %}
@@ -60,7 +61,7 @@
         <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin: 24px 0 12px;">Components (snapshotted)</h3>
         <table class="data-table">
             <thead>
-                <tr><th>#</th><th>COMPONENT</th><th>QTY REQUIRED</th><th>QTY ISSUED</th></tr>
+                <tr><th>#</th><th>COMPONENT</th><th>QTY REQUIRED</th><th>QTY ISSUED</th><th>ISSUE</th></tr>
             </thead>
             <tbody>
                 {% for m in wo.materials %}
@@ -69,6 +70,17 @@
                     <td>{{ m.component_product.code }} — {{ m.component_product.name }}</td>
                     <td>{{ m.quantity_required }}</td>
                     <td>{{ m.quantity_issued }}</td>
+                    <td>
+                        {% if wo.status in ('released', 'in_progress') and m.quantity_issued < m.quantity_required %}
+                        <form method="POST" action="{{ url_for('work_orders.issue_material_route', id=wo.id, mat_id=m.id) }}" style="display:flex; gap:6px;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <input type="number" name="quantity" step="0.0001" min="0.0001" class="form-control" style="width:100px;" required>
+                            <button type="submit" class="btn btn-secondary btn-sm">Issue</button>
+                        </form>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -78,7 +90,7 @@
         <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin: 24px 0 12px;">Routing (snapshotted)</h3>
         <table class="data-table">
             <thead>
-                <tr><th>SEQ</th><th>WORK CENTER</th><th>OPERATION</th><th>STD. TIME (MIN)</th></tr>
+                <tr><th>SEQ</th><th>WORK CENTER</th><th>OPERATION</th><th>STD. TIME (MIN)</th><th>STATUS</th><th>ACTUAL MIN</th><th>ACTION</th></tr>
             </thead>
             <tbody>
                 {% for op in wo.operations %}
@@ -87,6 +99,31 @@
                     <td>{{ op.work_center.code }} — {{ op.work_center.name }}</td>
                     <td>{{ op.operation_name }}</td>
                     <td>{{ op.standard_time_minutes or '—' }}</td>
+                    <td>
+                        {% if op.status == 'pending' %}
+                            <span class="badge badge-draft">Pending</span>
+                        {% elif op.status == 'in_progress' %}
+                            <span class="badge badge-open">In Progress</span>
+                        {% else %}
+                            <span class="badge badge-active">Complete</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ op.actual_minutes or '—' }}</td>
+                    <td>
+                        {% if op.status == 'pending' and wo.status in ('released', 'in_progress') %}
+                        <form method="POST" action="{{ url_for('work_orders.start_operation_route', id=wo.id, op_id=op.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <button type="submit" class="btn btn-secondary btn-sm">Start</button>
+                        </form>
+                        {% elif op.status == 'in_progress' %}
+                        <form method="POST" action="{{ url_for('work_orders.complete_operation_route', id=wo.id, op_id=op.id) }}" style="display:inline;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            <button type="submit" class="btn btn-secondary btn-sm">Complete</button>
+                        </form>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -106,6 +143,7 @@
     <div class="card-body">
         <h3 style="margin-bottom:12px;">Cancel Work Order</h3>
         <form method="POST" action="{{ url_for('work_orders.cancel', id=wo.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="form-group">
                 <label class="form-label">Cancellation Reason * (min 10 characters)</label>
                 <textarea name="cancel_reason" class="form-control" rows="3" required></textarea>
