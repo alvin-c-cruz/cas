@@ -26,6 +26,8 @@ class BillOfMaterial(RowVersioned, db.Model):
     created_by = db.relationship('User', foreign_keys=[created_by_id])
     lines = db.relationship('BillOfMaterialLine', backref='bom', cascade='all, delete-orphan',
                             order_by='BillOfMaterialLine.line_number')
+    operations = db.relationship('BillOfMaterialOperation', backref='bom', cascade='all, delete-orphan',
+                                 order_by='BillOfMaterialOperation.sequence_no')
 
     def __repr__(self):
         return f'<BillOfMaterial product_id={self.product_id} mode={self.manufacturing_mode}>'
@@ -53,4 +55,29 @@ class BillOfMaterialLine(db.Model):
             'quantity_per': float(self.quantity_per),
             'uom_id': self.uom_id,
             'uom_code': self.uom.code if self.uom else None,
+        }
+
+
+class BillOfMaterialOperation(db.Model):
+    """A routing step, discrete-mode BOMs only (R-07 Discrete Track slice D1)."""
+    __tablename__ = 'bill_of_material_operations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    bom_id = db.Column(db.Integer, db.ForeignKey('bills_of_material.id'), nullable=False, index=True)
+    sequence_no = db.Column(db.Integer, nullable=False)
+    work_center_id = db.Column(db.Integer, db.ForeignKey('work_centers.id'), nullable=False)
+    operation_name = db.Column(db.String(200), nullable=False)
+    standard_time_minutes = db.Column(db.Numeric(10, 2), nullable=True)
+
+    work_center = db.relationship('WorkCenter', foreign_keys=[work_center_id])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'sequence_no': self.sequence_no,
+            'work_center_id': self.work_center_id,
+            'work_center_code': self.work_center.code if self.work_center else None,
+            'operation_name': self.operation_name,
+            'standard_time_minutes': (float(self.standard_time_minutes)
+                                      if self.standard_time_minutes is not None else None),
         }
