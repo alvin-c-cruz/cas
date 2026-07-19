@@ -15,6 +15,11 @@ DESTINATION_CHOICES = {
         ('cash_refund', 'Cash refund'),
         ('vendor_credit', 'Vendor credit balance'),
     ],
+    'credit': [
+        ('ap', 'Apply to the bill (increase Accounts Payable)'),
+        ('cash_refund', 'Paid in cash'),
+        ('vendor_credit', 'Apply against vendor credit balance'),
+    ],
 }
 
 

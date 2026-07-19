@@ -1038,7 +1038,8 @@
               {%- elif key == 'receiving_reports' and ep.startswith('receiving_reports.') -%}active
               {%- elif key == 'accounts_payable' and ep.startswith('accounts_payable.') -%}active
               {%- elif key == 'payments' and ep.startswith('cash_disbursements.') -%}active
-              {%- elif key == 'vendor_debit_memos' and ep.startswith('purchase_memos.') -%}active
+              {%- elif key == 'vendor_debit_memos' and ep.startswith('purchase_memos.debit_') -%}active
+              {%- elif key == 'vendor_credit_memos' and ep.startswith('purchase_memos.credit_') -%}active
               {%- elif key == 'journal_entries' and (ep == 'journals.voucher' or (ep.startswith('journal_entries.') and ep != 'journal_entries.list_entries')) -%}active
               {%- elif key == 'chart_of_accounts' and ep.startswith('accounts.') -%}active
               {%- elif key == 'general_ledger' and ep.startswith('reports.general_ledger') -%}active
@@ -1090,6 +1091,7 @@
                 'accounts_payable':   'accounts_payable.list_ap',
                 'payments':           'cash_disbursements.list_cdvs',
                 'vendor_debit_memos': 'purchase_memos.debit_list',
+                'vendor_credit_memos': 'purchase_memos.credit_list',
                 'journal_entries':    'journals.voucher',
                 'opening_balances':   'opening_balances.index',
                 'chart_of_accounts':  'accounts.list_accounts',
@@ -1139,6 +1141,7 @@
                 'accounts_payable':   '📋',
                 'payments':           '💸',
                 'vendor_debit_memos': '↩️',
+                'vendor_credit_memos': '➕',
                 'journal_entries':    '📓',
                 'opening_balances':   '🏛️',
                 'chart_of_accounts':  '📋',
@@ -1227,6 +1230,7 @@
                             {%- if m.key == 'accounts_payable' %}<span class="nav-subtext">(Enter Bill)</span>{% endif %}
                             {%- if m.key == 'payments' %}<span class="nav-subtext">(Pay Bill)</span>{% endif %}
                             {%- if m.key == 'vendor_debit_memos' %}<span class="nav-subtext">(Purchase Returns)</span>{% endif %}
+                            {%- if m.key == 'vendor_credit_memos' %}<span class="nav-subtext">(Additional Charges)</span>{% endif %}
                         </span>
                     </a>
                     {% if m.key == 'sales_orders' %}

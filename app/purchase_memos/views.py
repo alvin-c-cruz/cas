@@ -38,6 +38,8 @@ DEBITABLE_AP_STATUSES = ('posted', 'partially_paid', 'paid')
 MEMO_META = {
     'debit': {'title': 'Vendor Debit Memo', 'plural': 'Vendor Debit Memos',
               'prefix': 'purchase_memos.debit_'},
+    'credit': {'title': 'Vendor Credit Memo', 'plural': 'Vendor Credit Memos',
+               'prefix': 'purchase_memos.credit_'},
 }
 
 
@@ -284,6 +286,38 @@ def _reverse_memo_from_ap(memo):
     ap.status = 'posted' if ap.amount_paid <= 0 else 'partially_paid'
 
 
+def _apply_credit_to_ap(memo):
+    """AP-balance increase for a Vendor CREDIT Memo (destination='ap'): increase
+    the referenced bill's own total_amount/balance -- the mirror of
+    _apply_memo_to_ap (which decreases it for a debit memo). Safe to bump
+    total_amount directly: AccountsPayable.calculate_totals() (which would
+    recompute total_amount from scratch, wiping this out) is only ever called
+    from the AP edit view, which is gated to status == 'draft' -- a bill
+    eligible for a memo (posted/partially_paid/paid) can never re-enter that
+    flow. This is the ONE place a credit memo's referenced bill balance is
+    mutated on post -- post_purchase_memo_je (app/purchase_memos/je.py) builds
+    the JE only."""
+    ap = memo.accounts_payable
+    amount = Decimal(str(memo.total_amount or 0))
+    ap.total_amount = Decimal(str(ap.total_amount or 0)) + amount
+    ap.balance = ap.total_amount - Decimal(str(ap.amount_paid or 0))
+    if ap.balance > 0:
+        ap.status = 'partially_paid' if Decimal(str(ap.amount_paid or 0)) > 0 else 'posted'
+
+
+def _reverse_credit_from_ap(memo):
+    ap = memo.accounts_payable
+    amount = Decimal(str(memo.total_amount or 0))
+    ap.total_amount = Decimal(str(ap.total_amount or 0)) - amount
+    ap.balance = ap.total_amount - Decimal(str(ap.amount_paid or 0))
+    if ap.balance <= 0:
+        ap.status = 'paid'
+    elif Decimal(str(ap.amount_paid or 0)) > 0:
+        ap.status = 'partially_paid'
+    else:
+        ap.status = 'posted'
+
+
 def _post_impl(id, memo_type):
     meta = MEMO_META[memo_type]
     memo = _memo_or_404(id, memo_type)
@@ -305,7 +339,10 @@ def _post_impl(id, memo_type):
         je = post_purchase_memo_je(memo, current_user.id)   # status posted -> JE posted
         memo.journal_entry_id = je.id
         if memo.destination == 'ap':
-            _apply_memo_to_ap(memo)
+            if memo_type == 'debit':
+                _apply_memo_to_ap(memo)
+            else:
+                _apply_credit_to_ap(memo)
         db.session.commit()
         log_audit(module='purchase_memos', action='post', record_id=memo.id,
                   record_identifier=memo.memo_number, notes='Posted')
@@ -345,7 +382,10 @@ def _void_impl(id, memo_type):
         if memo.status == 'posted':
             reverse_purchase_memo_je(memo, current_user.id)
             if memo.destination == 'ap':
-                _reverse_memo_from_ap(memo)
+                if memo_type == 'debit':
+                    _reverse_memo_from_ap(memo)
+                else:
+                    _reverse_credit_from_ap(memo)
         memo.status = 'voided'
         memo.voided_by_id = current_user.id
         memo.voided_at = ph_now()
@@ -404,6 +444,50 @@ def debit_post(id):
 @login_required
 def debit_void(id):
     return _void_impl(id, 'debit')
+
+
+# -- credit routes (Vendor Credit Memo) ------------------------------------------
+
+@purchase_memos_bp.route('/vendor-credit-memos')
+@login_required
+def credit_list():
+    return _list_impl('credit')
+
+
+@purchase_memos_bp.route('/vendor-credit-memos/ap-lines/<int:ap_id>')
+@login_required
+def credit_ap_lines(ap_id):
+    return _ap_lines_impl(ap_id, 'credit')
+
+
+@purchase_memos_bp.route('/vendor-credit-memos/create', methods=['GET', 'POST'])
+@login_required
+def credit_create():
+    return _create_impl('credit')
+
+
+@purchase_memos_bp.route('/vendor-credit-memos/<int:id>')
+@login_required
+def credit_view(id):
+    return _view_impl(id, 'credit')
+
+
+@purchase_memos_bp.route('/vendor-credit-memos/<int:id>/print')
+@login_required
+def credit_print(id):
+    return _print_impl(id, 'credit')
+
+
+@purchase_memos_bp.route('/vendor-credit-memos/<int:id>/post', methods=['POST'])
+@login_required
+def credit_post(id):
+    return _post_impl(id, 'credit')
+
+
+@purchase_memos_bp.route('/vendor-credit-memos/<int:id>/void', methods=['POST'])
+@login_required
+def credit_void(id):
+    return _void_impl(id, 'credit')
 
 
 # -- Settings: accountant-assigned accounts (shared by both memo types; NOT
