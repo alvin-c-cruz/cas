@@ -121,12 +121,10 @@ MODULE_REGISTRY = [
      'area': 'Purchases', 'group': 'Reports',
      'endpoints': ('reports.ap_aging', 'reports.ap_aging_export_excel', 'reports.ap_aging_export_csv')},
     # ── Financial Reports — mirrors the sidebar's "Financial Reports" section ─
-    # income_statement_by_product_line MUST be listed before income_statement: its
-    # endpoint names all start with 'reports.income_statement', so
-    # module_key_for_endpoint's prefix match (endpoint.startswith(pref)) would otherwise
-    # resolve them to the plain (always-on) 'income_statement' entry first and silently
-    # bypass this module's own gate -- the shorter 'income_statement' prefix can never
-    # match the other way round, so this ordering has no effect on the plain report.
+    # income_statement_by_product_line's endpoint names all start with
+    # 'reports.income_statement' (the plain report's own prefix below) -- this is safe
+    # regardless of list order because module_key_for_endpoint picks the LONGEST matching
+    # prefix, not the first one in list order (see BUG-MODULEKEY-PREFIX-COLLISION-ORDERING).
     {'key': 'income_statement_by_product_line', 'label': 'Income Statement by Product Line',
      'section': 'Financial Reports', 'area': 'Accounting', 'group': 'Financial Statements',
      'optional': True, 'depends_on': ['products', 'product_categories'], 'default_enabled': False,
@@ -289,11 +287,12 @@ def module_key_for_endpoint(endpoint):
     """Return the book key that guards a Flask endpoint, or None if unguarded/exempt."""
     if not endpoint or endpoint in EXEMPT_ENDPOINTS:
         return None
+    best_key, best_len = None, -1
     for m in MODULE_REGISTRY:
         for pref in m['endpoints']:
-            if endpoint == pref or endpoint.startswith(pref):
-                return m['key']
-    return None
+            if (endpoint == pref or endpoint.startswith(pref)) and len(pref) > best_len:
+                best_key, best_len = m['key'], len(pref)
+    return best_key
 
 
 def module_enabled(key):
