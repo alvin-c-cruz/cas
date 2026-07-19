@@ -6,6 +6,7 @@ own BillOfMaterialLine/Operation copy from BOM to itself, one level up."""
 from decimal import Decimal
 from app import db
 from app.utils import ph_now
+from app.bill_of_materials.service import consume_materials
 from app.work_orders.models import WorkOrderMaterial, WorkOrderOperation
 
 
@@ -56,3 +57,18 @@ def complete_operation(operation, actor):
     delta_minutes = (complete_at - start_at).total_seconds() / 60
     operation.actual_minutes = Decimal(str(round(delta_minutes, 2)))
     operation.status = 'complete'
+
+
+def issue_material(wo_material, quantity, actor):
+    if quantity <= 0:
+        raise ValueError('Quantity issued must be greater than zero.')
+    wo = wo_material.work_order
+    if wo.status not in ('released', 'in_progress'):
+        raise ValueError('Materials can only be issued on a released or in-progress Work Order.')
+    remaining = wo_material.quantity_required - wo_material.quantity_issued
+    if quantity > remaining:
+        raise ValueError(f'Cannot issue more than the remaining required quantity ({remaining}).')
+    consume_materials(wo, [(wo_material, quantity)])
+    wo_material.quantity_issued += quantity
+    if wo.status == 'released':
+        wo.status = 'in_progress'
