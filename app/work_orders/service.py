@@ -3,7 +3,9 @@ lines/operations onto WorkOrderMaterial/WorkOrderOperation rows attached to the
 same WorkOrder, then flips status to 'released'. A later BOM edit never
 disturbs a job already released -- same snapshot-at-creation rule as Wave 0's
 own BillOfMaterialLine/Operation copy from BOM to itself, one level up."""
+from decimal import Decimal
 from app import db
+from app.utils import ph_now
 from app.work_orders.models import WorkOrderMaterial, WorkOrderOperation
 
 
@@ -31,3 +33,26 @@ def release_work_order(wo, actor):
             ))
 
     wo.status = 'released'
+
+
+def start_operation(operation, actor):
+    if operation.status != 'pending':
+        raise ValueError('Only a pending operation can be started.')
+    wo = operation.work_order
+    if wo.status not in ('released', 'in_progress'):
+        raise ValueError('Operations can only be started on a released or in-progress Work Order.')
+    operation.status = 'in_progress'
+    operation.actual_start_at = ph_now()
+    if wo.status == 'released':
+        wo.status = 'in_progress'
+
+
+def complete_operation(operation, actor):
+    if operation.status != 'in_progress':
+        raise ValueError('Only an in-progress operation can be completed.')
+    operation.actual_complete_at = ph_now()
+    complete_at = operation.actual_complete_at.replace(tzinfo=None)
+    start_at = operation.actual_start_at.replace(tzinfo=None)
+    delta_minutes = (complete_at - start_at).total_seconds() / 60
+    operation.actual_minutes = Decimal(str(round(delta_minutes, 2)))
+    operation.status = 'complete'
