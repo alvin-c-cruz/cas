@@ -1122,7 +1122,8 @@
                 'petty_cash':         'petty_cash.fund_list',
                 'bank_reconciliation': 'bank_reconciliation.pick_account',
                 'budgeting':          'budgeting.grid',
-                'bill_of_materials':  'bill_of_materials.list_boms'
+                'bill_of_materials':  'bill_of_materials.list_boms',
+                'work_centers':       'work_centers.list'
             } %}
             {% set _nav_icon = {
                 'job_order_slips':    '🧰',
@@ -1171,7 +1172,8 @@
                 'petty_cash':         '👛',
                 'bank_reconciliation': '🧮',
                 'budgeting':          '📊',
-                'bill_of_materials':  '🏭'
+                'bill_of_materials':  '🏭',
+                'work_centers':       '⚙️'
             } %}
 
             {% for area in build_sidebar(current_user) %}

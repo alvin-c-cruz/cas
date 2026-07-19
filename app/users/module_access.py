@@ -271,6 +271,14 @@ MODULE_REGISTRY = [
      'area': 'Manufacturing', 'group': 'Manufacturing',
      'optional': True, 'depends_on': ['products'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('bill_of_materials.',)},
+    # ── Work Centers (R-07 Discrete Track slice D1) — reference data for
+    # routing; not gated on manufacturing_discrete_enabled (a company may set
+    # these up before turning the mode on, same reasoning as units_of_measure
+    # not hard-blocking on products).
+    {'key': 'work_centers', 'label': 'Work Centers', 'section': 'Maintenance',
+     'area': 'Manufacturing', 'group': 'Masters',
+     'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('work_centers.',)},
 ]
 
 AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Manufacturing', 'Banking', 'Accounting', 'Compliance',

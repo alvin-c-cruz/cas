@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Work Centers{% endblock %}
+{% block page_title %}Work Centers{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Work Centers</h1>
+        <p class="page-subheading">Resources/machines routing operations run at</p>
+    </div>
+    <div class="page-actions">
+        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+        <a href="{{ url_for('work_centers.create') }}" class="btn btn-primary">+ Create Work Center</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>CODE</th>
+                    <th>NAME</th>
+                    <th>HOURLY RATE</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for center in centers %}
+                <tr>
+                    <td><strong>{{ center.code }}</strong></td>
+                    <td>{{ center.name }}</td>
+                    <td>{{ '%.2f'|format(center.hourly_rate) if center.hourly_rate is not none else '—' }}</td>
+                    <td>
+                        {% if center.is_active %}
+                        <span class="badge badge-active">Active</span>
+                        {% else %}
+                        <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+                        <div class="action-buttons">
+                            <a href="{{ url_for('work_centers.edit', id=center.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                        </div>
+                        {% else %}
+                        &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state-cell">
+                        <p>No work centers found.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
