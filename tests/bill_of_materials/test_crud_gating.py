@@ -36,6 +36,18 @@ def test_routes_404_when_module_off(client, admin_user, db_session, main_branch)
     assert resp.status_code == 404
 
 
+def test_every_endpoint_404_when_module_off(client, accountant_user, db_session, main_branch):
+    # Module is deliberately left OFF (not enabled) for this whole test.
+    out = _product(db_session, 'BOMV-OFF')
+    _login(client, accountant_user, main_branch)
+    assert client.get('/bill-of-materials/').status_code == 404
+    assert client.get('/bill-of-materials/new').status_code == 404
+    assert client.post('/bill-of-materials/new', data={}).status_code == 404
+    assert client.get(f'/bill-of-materials/{out.id}/edit').status_code == 404
+    assert client.post(f'/bill-of-materials/{out.id}/edit', data={}).status_code == 404
+    assert client.post(f'/bill-of-materials/{out.id}/toggle-active').status_code == 404
+
+
 def test_create_blocked_when_no_mode_enabled(client, accountant_user, db_session, main_branch):
     _enable_bom(db_session)
     _login(client, accountant_user, main_branch)
