@@ -24,6 +24,21 @@ def test_routes_404_when_module_off(client, admin_user, db_session, main_branch)
     assert resp.status_code == 404
 
 
+def test_every_endpoint_404_when_module_off(client, accountant_user, db_session, main_branch):
+    from app import db
+    from app.work_centers.models import WorkCenter
+    # Module is deliberately left OFF (not enabled) for this whole test.
+    clear_module_config_cache()
+    wc = WorkCenter(branch_id=main_branch.id, code='WC-OFF', name='Off Line')
+    db.session.add(wc); db.session.commit()
+    _login(client, accountant_user, main_branch)
+    assert client.get('/work-centers').status_code == 404
+    assert client.get('/work-centers/create').status_code == 404
+    assert client.post('/work-centers/create', data={}).status_code == 404
+    assert client.get(f'/work-centers/{wc.id}/edit').status_code == 404
+    assert client.post(f'/work-centers/{wc.id}/edit', data={}).status_code == 404
+
+
 def test_create_work_center(client, accountant_user, db_session, main_branch):
     _enable(db_session)
     _login(client, accountant_user, main_branch)
