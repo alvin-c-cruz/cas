@@ -282,6 +282,13 @@ MODULE_REGISTRY = [
      'area': 'Manufacturing', 'group': 'Masters',
      'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
      'endpoints': ('work_centers.',)},
+    # ── Work Orders (R-07 Discrete Track slice D2) — accountant+-only, same
+    # per_user=True precedent; depends on bill_of_materials (a WO needs an
+    # existing BOM to release against).
+    {'key': 'work_orders', 'label': 'Work Orders', 'section': 'Transactions',
+     'area': 'Manufacturing', 'group': 'Manufacturing',
+     'optional': True, 'depends_on': ['bill_of_materials'], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('work_orders.',)},
 ]
 
 AREA_ORDER = ['Sales', 'Purchases', 'Inventory', 'Manufacturing', 'Banking', 'Accounting', 'Compliance',

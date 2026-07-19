@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Work Orders{% endblock %}
+{% block page_title %}Work Orders{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Work Orders</h1>
+        <p class="page-subheading">Discrete-track job costing documents</p>
+    </div>
+    <div class="page-actions">
+        <a href="{{ url_for('work_orders.create') }}" class="btn btn-primary">+ Enter Work Order</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>WO #</th>
+                    <th>BOM PRODUCT</th>
+                    <th>QTY</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for wo in wos %}
+                <tr>
+                    <td><strong>{{ wo.wo_number }}</strong></td>
+                    <td>{{ wo.bom.product.code }} — {{ wo.bom.product.name }}</td>
+                    <td>{{ wo.qty_to_produce }}</td>
+                    <td>
+                        {% if wo.status == 'draft' %}
+                            <span class="badge badge-draft">Draft</span>
+                        {% elif wo.status == 'released' %}
+                            <span class="badge badge-open">Released</span>
+                        {% elif wo.status == 'cancelled' %}
+                            <span class="badge badge-cancelled">Cancelled</span>
+                        {% else %}
+                            <span class="badge badge-open">{{ wo.status|capitalize }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{{ url_for('work_orders.view', id=wo.id) }}" class="btn-action btn-action-edit" title="View">View</a>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state-cell">
+                        <p>No work orders found.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

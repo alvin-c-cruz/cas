@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}{{ wo.wo_number }}{% endblock %}
+{% block page_title %}{{ wo.wo_number }}{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">
+            {{ wo.wo_number }}
+            {% if wo.status == 'draft' %}
+                <span class="badge badge-draft" style="margin-left:8px;">Draft</span>
+            {% elif wo.status == 'released' %}
+                <span class="badge badge-open" style="margin-left:8px;">Released</span>
+            {% elif wo.status == 'cancelled' %}
+                <span class="badge badge-cancelled" style="margin-left:8px;">Cancelled</span>
+            {% else %}
+                <span class="badge badge-open" style="margin-left:8px;">{{ wo.status|capitalize }}</span>
+            {% endif %}
+        </h1>
+    </div>
+    <div class="page-actions">
+        {% if wo.status == 'draft' %}
+            <a href="{{ url_for('work_orders.edit', id=wo.id) }}" class="btn btn-secondary">Edit</a>
+            <form method="POST" action="{{ url_for('work_orders.release', id=wo.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn-primary">Release</button>
+            </form>
+        {% endif %}
+        {% if wo.status in ('draft', 'released') %}
+            <button type="button" class="btn-action btn-action-delete" onclick="document.getElementById('cancelPanel').style.display='block'">Cancel</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="form-main-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:24px;">
+            <div>
+                <div class="page-subheading">Bill of Materials</div>
+                <div><strong>{{ wo.bom.product.code }} — {{ wo.bom.product.name }}</strong></div>
+            </div>
+            <div>
+                <div class="page-subheading">Quantity to Produce</div>
+                <div><strong>{{ wo.qty_to_produce }}</strong></div>
+            </div>
+            <div>
+                <div class="page-subheading">Planned Start</div>
+                <div><strong>{{ wo.planned_start_date or '—' }}</strong></div>
+            </div>
+            <div>
+                <div class="page-subheading">Planned End</div>
+                <div><strong>{{ wo.planned_end_date or '—' }}</strong></div>
+            </div>
+        </div>
+
+        {% if wo.status == 'draft' %}
+        <div class="form-hint">Draft — Components/Routing are not yet snapshotted. Click Release to lock them in from the current Bill of Materials.</div>
+        {% else %}
+        <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin: 24px 0 12px;">Components (snapshotted)</h3>
+        <table class="data-table">
+            <thead>
+                <tr><th>#</th><th>COMPONENT</th><th>QTY REQUIRED</th><th>QTY ISSUED</th></tr>
+            </thead>
+            <tbody>
+                {% for m in wo.materials %}
+                <tr>
+                    <td>{{ m.line_number }}</td>
+                    <td>{{ m.component_product.code }} — {{ m.component_product.name }}</td>
+                    <td>{{ m.quantity_required }}</td>
+                    <td>{{ m.quantity_issued }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if wo.operations %}
+        <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin: 24px 0 12px;">Routing (snapshotted)</h3>
+        <table class="data-table">
+            <thead>
+                <tr><th>SEQ</th><th>WORK CENTER</th><th>OPERATION</th><th>STD. TIME (MIN)</th></tr>
+            </thead>
+            <tbody>
+                {% for op in wo.operations %}
+                <tr>
+                    <td>{{ op.sequence_no }}</td>
+                    <td>{{ op.work_center.code }} — {{ op.work_center.name }}</td>
+                    <td>{{ op.operation_name }}</td>
+                    <td>{{ op.standard_time_minutes or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        <div class="form-hint">Read-only — this is a snapshot from release time, not a live view of the current Bill of Materials.</div>
+        {% endif %}
+
+        {% if wo.status == 'cancelled' and wo.cancel_reason %}
+        <div class="form-hint" style="margin-top:16px;">Cancelled: {{ wo.cancel_reason }}</div>
+        {% endif %}
+    </div>
+</div>
+
+{% if wo.status in ('draft', 'released') %}
+<div id="cancelPanel" class="card" style="display:none; margin-top:20px; max-width:480px;">
+    <div class="card-body">
+        <h3 style="margin-bottom:12px;">Cancel Work Order</h3>
+        <form method="POST" action="{{ url_for('work_orders.cancel', id=wo.id) }}">
+            <div class="form-group">
+                <label class="form-label">Cancellation Reason * (min 10 characters)</label>
+                <textarea name="cancel_reason" class="form-control" rows="3" required></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-action btn-action-delete">Confirm Cancel</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelPanel').style.display='none'">Back</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
