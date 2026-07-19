@@ -39,6 +39,22 @@ def test_routes_404_when_module_off(client, admin_user, db_session, main_branch)
     assert resp.status_code == 404
 
 
+def test_every_endpoint_404_when_module_off(client, accountant_user, db_session, main_branch):
+    # Module is deliberately left OFF (not enabled) for this whole test. No WorkOrder
+    # can exist yet (create is gated), so id-based routes are probed with a made-up id
+    # -- module gating runs before the row lookup, same as every other R-07 module.
+    clear_module_config_cache()
+    _login(client, accountant_user, main_branch)
+    assert client.get('/work-orders').status_code == 404
+    assert client.get('/work-orders/create').status_code == 404
+    assert client.post('/work-orders/create', data={}).status_code == 404
+    assert client.get('/work-orders/1').status_code == 404
+    assert client.get('/work-orders/1/edit').status_code == 404
+    assert client.post('/work-orders/1/edit', data={}).status_code == 404
+    assert client.post('/work-orders/1/release').status_code == 404
+    assert client.post('/work-orders/1/cancel', data={}).status_code == 404
+
+
 def test_create_and_release_work_order(client, accountant_user, db_session, main_branch):
     _enable(db_session)
     bom = _bom_with_line()
