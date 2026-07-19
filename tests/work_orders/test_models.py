@@ -53,3 +53,27 @@ def test_materials_cascade_delete(db_session, main_branch):
     db.session.delete(wo)
     db.session.commit()
     assert db.session.get(WorkOrderMaterial, mat_id) is None
+
+
+def test_operation_execution_columns_default(db_session, main_branch, accountant_user):
+    from app.work_orders.models import WorkOrderOperation
+    from app.work_centers.models import WorkCenter
+    from app.work_orders.forms import generate_wo_number
+
+    out = Product(code='WOO-OUT', name='Out', is_active=True)
+    db.session.add(out); db.session.commit()
+    bom = BillOfMaterial(product_id=out.id, manufacturing_mode='discrete')
+    db.session.add(bom); db.session.commit()
+    wc = WorkCenter(branch_id=main_branch.id, code='WOO-WC', name='Line')
+    db.session.add(wc); db.session.commit()
+    wo = WorkOrder(wo_number=generate_wo_number(), bom_id=bom.id, branch_id=main_branch.id,
+                   qty_to_produce=Decimal('1'))
+    db.session.add(wo); db.session.commit()
+    op = WorkOrderOperation(wo_id=wo.id, sequence_no=1, work_center_id=wc.id,
+                            operation_name='Cut')
+    db.session.add(op); db.session.commit()
+
+    assert op.status == 'pending'
+    assert op.actual_start_at is None
+    assert op.actual_complete_at is None
+    assert op.actual_minutes is None

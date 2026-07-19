@@ -7,6 +7,7 @@ from app.utils import ph_now
 from app.utils.concurrency import RowVersioned
 
 WO_STATUSES = ('draft', 'released', 'in_progress', 'completed', 'cancelled')
+OP_STATUSES = ('pending', 'in_progress', 'complete')
 
 
 class WorkOrder(RowVersioned, db.Model):
@@ -68,8 +69,9 @@ class WorkOrderMaterial(db.Model):
 
 
 class WorkOrderOperation(db.Model):
-    """Snapshot of a BillOfMaterialOperation at release time (R-07 D2). Execution-
-    tracking columns (status, actual timestamps) are added by D3, not here."""
+    """Snapshot of a BillOfMaterialOperation at release time (R-07 D2).
+    Execution-tracking columns (status, actual timestamps, actual_minutes) were
+    added by D3 (R-07 Discrete Track slice D3)."""
     __tablename__ = 'work_order_operations'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -78,6 +80,10 @@ class WorkOrderOperation(db.Model):
     work_center_id = db.Column(db.Integer, db.ForeignKey('work_centers.id'), nullable=False)
     operation_name = db.Column(db.String(200), nullable=False)
     standard_time_minutes = db.Column(db.Numeric(10, 2), nullable=True)
+    status = db.Column(db.String(20), default='pending', nullable=False)
+    actual_start_at = db.Column(db.DateTime, nullable=True)
+    actual_complete_at = db.Column(db.DateTime, nullable=True)
+    actual_minutes = db.Column(db.Numeric(10, 2), nullable=True)
 
     work_center = db.relationship('WorkCenter', foreign_keys=[work_center_id])
 
@@ -90,4 +96,8 @@ class WorkOrderOperation(db.Model):
             'operation_name': self.operation_name,
             'standard_time_minutes': (float(self.standard_time_minutes)
                                       if self.standard_time_minutes is not None else None),
+            'status': self.status,
+            'actual_start_at': self.actual_start_at.isoformat() if self.actual_start_at else None,
+            'actual_complete_at': self.actual_complete_at.isoformat() if self.actual_complete_at else None,
+            'actual_minutes': float(self.actual_minutes) if self.actual_minutes is not None else None,
         }
