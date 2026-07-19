@@ -169,6 +169,12 @@ class CompanySettingsForm(FlaskForm):
     job_order_slips_show_drafts = BooleanField(
         'Show draft Sales Orders on the Job Order Slips list (off = confirmed/cancelled/closed only)')
 
+    manufacturing_discrete_enabled = BooleanField(
+        'Enable Discrete Manufacturing (Work Orders / Routing)')
+
+    manufacturing_process_enabled = BooleanField(
+        'Enable Process Manufacturing (Production Runs / Equivalent Units)')
+
     payroll_semi_monthly_timing = SelectField(
         'Semi-Monthly Statutory Timing', choices=PAYROLL_SEMI_MONTHLY_TIMING_CHOICES,
         default='second_cutoff'
