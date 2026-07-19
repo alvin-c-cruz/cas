@@ -1,7 +1,7 @@
 """BOM CRUD + module gating + mode-availability tests (R-07 Wave 0)."""
 import pytest
 from app.settings import AppSettings
-from app.utils.cache_helpers import clear_module_config_cache
+from app.utils.cache_helpers import clear_module_config_cache, clear_product_cache
 
 pytestmark = [pytest.mark.integration]
 
@@ -27,6 +27,7 @@ def _product(db_session, code='BOMV-1'):
     from app.products.models import Product
     p = Product(code=code, name='Output Widget', is_active=True)
     db.session.add(p); db.session.commit()
+    clear_product_cache()
     return p
 
 

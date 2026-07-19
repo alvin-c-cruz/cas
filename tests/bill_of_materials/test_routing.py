@@ -4,6 +4,7 @@ import pytest
 from app import db
 from app.bill_of_materials.models import BillOfMaterial, BillOfMaterialOperation
 from app.products.models import Product
+from app.utils.cache_helpers import clear_product_cache
 from app.work_centers.models import WorkCenter
 
 pytestmark = [pytest.mark.integration]
@@ -12,6 +13,7 @@ pytestmark = [pytest.mark.integration]
 def _bom(db_session, main_branch, mode='discrete'):
     p = Product(code='ROUTE-P1', name='Can Product', is_active=True)
     db.session.add(p); db.session.commit()
+    clear_product_cache()
     bom = BillOfMaterial(product_id=p.id, manufacturing_mode=mode)
     db.session.add(bom); db.session.commit()
     return bom
@@ -85,6 +87,7 @@ def test_create_discrete_bom_with_routing(client, accountant_user, db_session, m
     db_session.commit()
     out = Product(code='ROUTE-OUT', name='Out', is_active=True)
     _db.session.add(out); _db.session.commit()
+    clear_product_cache()
     wc = _work_center(db_session, main_branch, code='ROUTE-WC2')
     with client.session_transaction() as sess:
         sess['_user_id'] = str(accountant_user.id); sess['_fresh'] = True

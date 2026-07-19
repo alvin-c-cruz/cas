@@ -20,6 +20,8 @@ def test_create_logs_audit_entry(client, accountant_user, db_session, main_branc
     db_session.commit()
     out = Product(code='BOMA-OUT', name='Out', is_active=True)
     db.session.add(out); db.session.commit()
+    from app.utils.cache_helpers import clear_product_cache
+    clear_product_cache()
     _login(client, accountant_user, main_branch)
     client.post('/bill-of-materials/new', data={
         'product_id': out.id, 'manufacturing_mode': 'discrete', 'lines': '[]',
