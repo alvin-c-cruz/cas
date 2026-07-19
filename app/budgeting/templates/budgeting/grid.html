@@ -14,6 +14,9 @@
         </select>
       </label>
     </form>
+    <a href="{{ url_for('reports.budget_variance', fiscal_year=fiscal_year) }}" class="btn btn-secondary">
+      View Variance Report
+    </a>
   </header>
 
   {% with messages = get_flashed_messages(with_categories=true) %}

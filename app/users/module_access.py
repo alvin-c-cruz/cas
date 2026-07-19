@@ -165,7 +165,8 @@ MODULE_REGISTRY = [
     {'key': 'budgeting', 'label': 'Budget Entry', 'section': 'Financial Reports',
      'area': 'Accounting', 'group': 'Financial Statements',
      'optional': True, 'depends_on': [], 'default_enabled': False,
-     'endpoints': ('budgeting.',)},
+     'endpoints': ('budgeting.', 'reports.budget_variance', 'reports.budget_variance_print',
+                   'reports.budget_variance_export_excel')},
     # ── Maintenance (master data; deny-by-default for staff) ─────────────────
     {'key': 'customers', 'label': 'Customers', 'section': 'Maintenance',
      'area': 'Sales', 'group': 'Masters',
