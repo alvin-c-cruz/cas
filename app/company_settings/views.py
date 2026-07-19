@@ -205,6 +205,23 @@ def edit_settings():
                 old_values[_jok] = _jo_old
                 new_values[_jok] = _jo_new
 
+            # Manufacturing mode toggles (R-07 Wave 0, default OFF).
+            _mdk = 'manufacturing_discrete_enabled'
+            _md_old = AppSettings.get_setting(_mdk, '0')
+            _md_new = '1' if form.manufacturing_discrete_enabled.data else '0'
+            if _md_old != _md_new:
+                AppSettings.set_setting(_mdk, _md_new, updated_by=current_user.username)
+                old_values[_mdk] = _md_old
+                new_values[_mdk] = _md_new
+
+            _mpk = 'manufacturing_process_enabled'
+            _mp_old = AppSettings.get_setting(_mpk, '0')
+            _mp_new = '1' if form.manufacturing_process_enabled.data else '0'
+            if _mp_old != _mp_new:
+                AppSettings.set_setting(_mpk, _mp_new, updated_by=current_user.username)
+                old_values[_mpk] = _mp_old
+                new_values[_mpk] = _mp_new
+
             if new_values:
                 log_audit(
                     module='settings',
@@ -239,6 +256,10 @@ def edit_settings():
             AppSettings.get_setting('ap_billing_consolidate', '0') == '1')
         form.job_order_slips_show_drafts.data = (
             AppSettings.get_setting('job_order_slips_show_drafts', '0') == '1')
+        form.manufacturing_discrete_enabled.data = (
+            AppSettings.get_setting('manufacturing_discrete_enabled', '0') == '1')
+        form.manufacturing_process_enabled.data = (
+            AppSettings.get_setting('manufacturing_process_enabled', '0') == '1')
 
     from app.users.module_access import MODULE_REGISTRY, module_enabled
     optional_modules = [dict(m, enabled=module_enabled(m['key']))

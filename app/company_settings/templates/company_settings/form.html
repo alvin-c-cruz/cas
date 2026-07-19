@@ -246,6 +246,19 @@
             <div class="form-hint">When on, the Job Order Slips list also shows draft (not yet
                 confirmed) Sales Orders. When off (default), only confirmed/cancelled/closed
                 orders appear there.</div>
+            <label class="checkbox-label" style="margin-top:12px;">
+                {{ form.manufacturing_discrete_enabled() }}
+                <span>{{ form.manufacturing_discrete_enabled.label.text }}</span>
+            </label>
+            <div class="form-hint">When on, Bills of Materials may be created in Discrete mode
+                (job-order production with multi-step routing).</div>
+            <label class="checkbox-label" style="margin-top:12px;">
+                {{ form.manufacturing_process_enabled() }}
+                <span>{{ form.manufacturing_process_enabled.label.text }}</span>
+            </label>
+            <div class="form-hint">When on, Bills of Materials may be created in Process mode
+                (batch production costed via equivalent units). At least one mode must be on
+                before a Bill of Materials can be created.</div>
             {% endif %}
             {% if module_states.delivery_receipts %}
             <label class="checkbox-label" style="margin-top:12px;">
