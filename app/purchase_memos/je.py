@@ -1,42 +1,46 @@
-"""Vendor Debit Memo journal-entry builder -- the buy-side inverse mirror of
-``app/sales_memos/je.py``'s credit-memo branch.
+"""Vendor Debit Memo / Vendor Credit Memo journal-entry builder.
 
-A Vendor Debit Memo (our return of goods to a vendor) REVERSES the returned
-portion of the referenced posted Accounts Payable bill:
+A Vendor DEBIT Memo (our return of goods to a vendor, memo_type='debit') REVERSES
+the returned portion of the referenced posted Accounts Payable bill:
     Dr  {AP-Trade (control account) | cash account | Vendor Credits}  destination (= gross - WHT)
     Dr  Withholding Tax Payable (control account)     WHT unwound (if wht > 0)
       Cr  Purchase Returns & Allowances (contra-expense)  net purchase reversed (subtotal - VAT)
       Cr  Input VAT (per input-VAT-account bucket)          VAT reversed
 
-AP-Trade and WHT-Payable are resolved via ``app.posting.control_accounts.
-get_control_account`` (settings-assigned). Purchase Returns and Vendor Credits are
-resolved via ``app.purchase_memos.service.resolve_memo_account`` (settings-assigned
-via AppSettings, NOT a control_accounts entry -- Task 2's verified finding: sales
-resolves its mirror accounts, sales_returns_allowances/customer_credits_advances,
-the same way). Neither is hardcoded -- see BUG-POSTING-HARDCODED-CONTROL-ACCOUNTS.
+A Vendor CREDIT Memo (a supplementary vendor charge, memo_type='credit') is the
+buy-side mirror of the sales-side Debit Note -- it INCREASES what we owe the
+vendor:
+    Dr  {line's expense/purchase account}, per line     net (subtotal - VAT)
+    Dr  Input VAT (per input-VAT-account bucket)         VAT on the charge
+      Cr  Withholding Tax Payable (control account)        WHT withheld (if wht > 0)
+      Cr  {AP-Trade (control account) | cash account | Vendor Credits}  destination (= gross - WHT)
 
-Divergence from the credit-memo mirror (documented, not a guess): the sales
-credit-memo branch's destination leg sits on the CREDIT side (AR is an asset;
-crediting it reduces what the customer owes), so its residual/plug math is
-``dest_line.credit_amount += residual``. Our destination leg sits on the DEBIT
-side (AP-Trade is a liability; debiting it reduces what we owe the vendor), which
-is structurally the sales *debit-note* branch's plug shape
-(``dest_line.debit_amount -= residual``) even though the leg SET (destination +
-WHT debited; contra + VAT credited) mirrors the credit-memo branch. This is the
-"clone-and-invert" the task brief calls for, not a divergent reimplementation.
+AP-Trade and WHT-Payable are resolved via ``app.posting.control_accounts.
+get_control_account`` (settings-assigned). Purchase Returns (debit-memo only) and
+Vendor Credits (both types) are resolved via ``app.purchase_memos.service.
+resolve_memo_account`` (settings-assigned via AppSettings, NOT a control_accounts
+entry). Neither is hardcoded -- see BUG-POSTING-HARDCODED-CONTROL-ACCOUNTS.
+
+Destination-account RESOLUTION is shared, uniform code across both memo types
+(mirrors app/sales_memos/je.py) -- only the debit/credit SIDE the destination and
+WHT legs land on differs by memo_type. This is why the 'vendor_credit'
+destination needs no special-casing: crediting the Vendor Credits ASSET account
+(credit memo) correctly DECREASES it (drawing down an existing credit to fund the
+new charge), while debiting it (debit memo) correctly INCREASES it (a return adds
+to the credit) -- same account-resolution code, opposite natural-balance effect,
+by construction.
 
 Follows the posted-JE-leg-vs-header invariant: the non-plug legs equal the memo
 header buckets by construction; the destination is the reconciled residual (only
 sub-centavo VAT-bucket rounding ever lands there).
 
-Adjudication 1 (Task 4, binding): this module builds the JE ONLY -- it does NOT
-mutate the referenced AP bill's balance. That mirrors sales_memos/je.py::post_memo_je,
-which likewise leaves AR-balance mutation to the VIEW layer
-(sales_memos/views.py::_apply_memo_to_ar / _reverse_memo_from_ar). Task 3
-originally reduced the bill's balance here (gated behind is_balanced); that has
-been MOVED to app/purchase_memos/views.py::_apply_memo_to_ap /
-_reverse_memo_from_ap (called from debit_post / debit_void) to restore mirror
-parity -- there is exactly ONE reduction site now.
+Adjudication 1 (Task 4 of the original Vendor Debit Memo build, binding, unchanged
+by the credit-memo addition): this module builds the JE ONLY -- it does NOT
+mutate the referenced AP bill's balance. That mirrors sales_memos/je.py::
+post_memo_je. The AP-balance mutation for EITHER memo type lives in
+app/purchase_memos/views.py (_apply_memo_to_ap/_reverse_memo_from_ap for debit,
+_apply_credit_to_ap/_reverse_credit_from_ap for credit), called from the shared
+_post_impl/_void_impl.
 """
 from decimal import Decimal
 
@@ -52,7 +56,7 @@ def post_purchase_memo_je(memo, user_id):
     """Build and return the memo's JournalEntry (draft or posted, matching memo.status)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
-    if memo.memo_type != 'debit':
+    if memo.memo_type not in ('debit', 'credit'):
         raise ValueError(f'Unknown memo_type {memo.memo_type!r}.')
 
     subtotal = Decimal(str(memo.subtotal or 0))    # VAT-inclusive line sum (mirrors AP)
@@ -61,7 +65,7 @@ def post_purchase_memo_je(memo, user_id):
     total = Decimal(str(memo.total_amount or 0))
     net_purchase = subtotal - vat_total
 
-    # Destination account.
+    # Destination account (shared by both memo types).
     if memo.destination == 'ap':
         dest = get_control_account('ap_trade')
     elif memo.destination == 'cash_refund':
@@ -73,11 +77,12 @@ def post_purchase_memo_je(memo, user_id):
 
     wt_account = get_control_account('wht_payable') if wht_total > 0 else None
 
+    doc_label = 'Debit Memo' if memo.memo_type == 'debit' else 'Credit Memo'
     je_status = 'posted' if memo.status == 'posted' else 'draft'
     je = JournalEntry(
         entry_number=generate_entry_number(memo.branch_id),
         entry_date=memo.memo_date,
-        description=f'Debit Memo {memo.memo_number} - {memo.vendor_name}',
+        description=f'{doc_label} {memo.memo_number} - {memo.vendor_name}',
         reference=memo.memo_number, entry_type='purchase', branch_id=memo.branch_id,
         created_by_id=user_id, status=je_status,
         posted_by_id=user_id if je_status == 'posted' else None,
@@ -99,39 +104,64 @@ def post_purchase_memo_je(memo, user_id):
 
     vat_bucket_total = Decimal('0.00')
 
-    # Dr destination (= gross - WHT) + Dr WHT unwound; Cr Purchase Returns + Cr Input VAT.
-    dest_line = add(dest.id, f'{memo.memo_number} - {memo.vendor_name}',
-                    total, Decimal('0.00'))
-    if wt_account is not None:
-        add(wt_account.id, f'Withholding Tax Payable unwound: {memo.memo_number}',
-            wht_total, Decimal('0.00'))
-    contra = service.resolve_memo_account(service.PURCHASE_RETURNS_KEY,
-                                          'Purchase Returns & Allowances')
-    if net_purchase > 0:
-        add(contra.id, f'Purchase Returns: {memo.memo_number}', Decimal('0.00'), net_purchase)
-    for vat_acct, vat_amt in input_vat_buckets(memo):
-        if vat_amt <= 0:
-            continue
-        add(vat_acct.id, f'Input VAT reversed: {memo.memo_number}', Decimal('0.00'), vat_amt)
-        vat_bucket_total += vat_amt
+    if memo.memo_type == 'debit':
+        # Reverse the returned portion: Dr destination + Dr WHT; Cr Purchase Returns + Cr Input VAT.
+        dest_line = add(dest.id, f'{memo.memo_number} - {memo.vendor_name}',
+                        total, Decimal('0.00'))
+        if wt_account is not None:
+            add(wt_account.id, f'Withholding Tax Payable unwound: {memo.memo_number}',
+                wht_total, Decimal('0.00'))
+        contra = service.resolve_memo_account(service.PURCHASE_RETURNS_KEY,
+                                              'Purchase Returns & Allowances')
+        if net_purchase > 0:
+            add(contra.id, f'Purchase Returns: {memo.memo_number}', Decimal('0.00'), net_purchase)
+        for vat_acct, vat_amt in input_vat_buckets(memo):
+            if vat_amt <= 0:
+                continue
+            add(vat_acct.id, f'Input VAT reversed: {memo.memo_number}', Decimal('0.00'), vat_amt)
+            vat_bucket_total += vat_amt
+        plug_is_debit = True
+    else:
+        # Supplementary charge (mirrors the Sales Invoice/Debit Note JE): Dr destination +
+        # Dr WHT; Cr per-line expense/purchase account; Cr Input VAT.
+        dest_line = add(dest.id, f'{memo.memo_number} - {memo.vendor_name}',
+                        Decimal('0.00'), total)
+        if wt_account is not None:
+            add(wt_account.id, f'Withholding Tax Payable: {memo.memo_number}',
+                Decimal('0.00'), wht_total)
+        for li in memo.line_items:
+            if not li.account_id:
+                continue
+            net = Decimal(str(li.line_total or 0)) - Decimal(str(li.vat_amount or 0))
+            if net <= 0:
+                continue
+            add(li.account_id, f'Additional charge: {memo.memo_number}', net, Decimal('0.00'))
+        for vat_acct, vat_amt in input_vat_buckets(memo):
+            if vat_amt <= 0:
+                continue
+            add(vat_acct.id, f'Input VAT: {memo.memo_number}', vat_amt, Decimal('0.00'))
+            vat_bucket_total += vat_amt
+        plug_is_debit = False
 
     # Header tie-out invariant on the non-plug legs (VAT already reconciled to
     # header by input_vat_buckets; a mismatch is a bug, not a rounding residual).
     if vat_bucket_total != vat_total:
         raise ValueError('Input VAT legs do not tie to the memo VAT total.')
 
-    # Absorb ONLY rounding residual into the destination (plug) leg -- destination
-    # sits on the DEBIT side here (see module docstring divergence note).
+    # Absorb ONLY rounding residual into the destination (plug) leg.
     residual = (sum((l.debit_amount for l in lines), Decimal('0.00'))
                 - sum((l.credit_amount for l in lines), Decimal('0.00')))
     if residual != Decimal('0.00'):
-        dest_line.debit_amount -= residual
+        if plug_is_debit:
+            dest_line.debit_amount -= residual
+        else:
+            dest_line.credit_amount += residual
 
     db.session.flush()
     je.calculate_totals()
     if not je.is_balanced:
         raise ValueError(
-            f'Debit Memo JE is not balanced (debit={je.total_debit}, credit={je.total_credit}).')
+            f'{doc_label} JE is not balanced (debit={je.total_debit}, credit={je.total_credit}).')
 
     return je
 
@@ -139,16 +169,18 @@ def post_purchase_memo_je(memo, user_id):
 def reverse_purchase_memo_je(memo, user_id):
     """Post a reversing JE (swap debit/credit of the memo's JE) when a posted memo is voided.
     Returns the reversal JE, or None if the memo has no JE (a draft void). Mirror of
-    sales_memos.je.reverse_memo_je."""
+    sales_memos.je.reverse_memo_je. Type-agnostic -- works identically for either
+    memo_type since it just swaps whatever legs the original JE has."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
     src = memo.journal_entry
     if src is None:
         return None
+    doc_label = 'Debit Memo' if memo.memo_type == 'debit' else 'Credit Memo'
     je = JournalEntry(
         entry_number=generate_entry_number(memo.branch_id),
         entry_date=ph_now().date(),
-        description=f'Void Debit Memo {memo.memo_number} - {memo.vendor_name}',
+        description=f'Void {doc_label} {memo.memo_number} - {memo.vendor_name}',
         reference=memo.memo_number, entry_type='reversal', branch_id=memo.branch_id,
         created_by_id=user_id, status='posted', posted_by_id=user_id, posted_at=ph_now(),
         is_balanced=False, total_debit=Decimal('0.00'), total_credit=Decimal('0.00'))

@@ -129,6 +129,7 @@ def memo_coa(db_session):
         'invat': _acct(CTRL['input_vat'], 'Input VAT', 'Asset', 'Debit'),
         'pr': _acct(CTRL['purchase_returns'], 'Purchase Returns and Allowances', 'Expense', 'Credit'),
         'vc': _acct(CTRL['vendor_credits'], 'Vendor Credits', 'Liability', 'Credit'),
+        'exp': _acct('50101', 'Purchases', 'Expense', 'Debit'),
         'cash': _acct('10110', 'Cash in Bank', 'Asset', 'Debit'),
     }
     db.session.commit()
@@ -239,5 +240,107 @@ def posted_ap_factory_no_ctrl(db_session, one_branch, a_vendor):
     def _make(destination='ap', subtotal='1000', vat='120', wht='0'):
         return _make_posted_ap_and_memo(
             db_session, one_branch, a_vendor, coa, 'AP-PM-NOCTRL-0001',
+            destination, subtotal, vat, wht)
+    return _make
+
+
+def _make_posted_ap_and_credit_memo(db_session, one_branch, a_vendor, coa, ap_number,
+                                    destination, subtotal, vat, wht):
+    """Shared builder: one posted AP bill (big enough that a supplementary charge
+    never needs it) + one posted PurchaseMemo (credit) referencing it, with header
+    totals set directly (bypassing PurchaseMemoItem.calculate_amounts, which
+    derives from wt_rate/quantity rather than an exact target wht) so the fixture
+    can hit the brief's exact subtotal/vat/wht numbers. Uses coa['exp'] (an
+    Expense account) for both the bill's original line and the memo's line --
+    unlike the debit-memo builder, a credit memo's contra leg is the line's OWN
+    account, not a single Purchase Returns contra."""
+    from app.accounts_payable.models import AccountsPayable, AccountsPayableItem
+    from app.purchase_memos.models import PurchaseMemo, PurchaseMemoItem, generate_purchase_memo_number
+
+    net = Decimal(str(subtotal))
+    vat = Decimal(str(vat))
+    wht = Decimal(str(wht))
+    gross = net + vat
+
+    bill_gross = gross * 5
+    bill = AccountsPayable(
+        branch_id=one_branch.id, ap_number=ap_number,
+        ap_date=date(2026, 2, 15), due_date=date(2026, 3, 17),
+        payee_type='vendor', payee_id=a_vendor.id,
+        vendor_id=a_vendor.id, vendor_name=a_vendor.name, vendor_tin=a_vendor.tin,
+        status='posted', subtotal=bill_gross, total_amount=bill_gross,
+        amount_paid=Decimal('0.00'), balance=bill_gross,
+    )
+    item = AccountsPayableItem(
+        line_number=1, description='Goods purchased', amount=bill_gross,
+        vat_rate=Decimal('12.00'), vat_category='V12', vat_nature='regular',
+        line_total=bill_gross, vat_amount=(vat * 5), account_id=coa['exp'].id,
+    )
+    bill.line_items.append(item)
+    db_session.add(bill)
+    db_session.commit()
+
+    memo = PurchaseMemo(
+        memo_type='credit', memo_number=generate_purchase_memo_number('credit'),
+        vendor_id=a_vendor.id, accounts_payable_id=bill.id, original_ap_number=bill.ap_number,
+        vendor_name=a_vendor.name, branch_id=one_branch.id, memo_date=bill.ap_date,
+        destination=destination, reason='additional charge', status='posted',
+        cash_account_id=(coa['cash'].id if destination == 'cash_refund' else None),
+    )
+    db_session.add(memo)
+    db_session.flush()
+    mitem = PurchaseMemoItem(
+        purchase_memo_id=memo.id, accounts_payable_item_id=item.id, line_number=1,
+        amount=gross, line_total=gross, vat_category='V12', vat_rate=Decimal('12.00'),
+        vat_amount=vat, wt_amount=wht, account_id=coa['exp'].id,
+    )
+    memo.line_items.append(mitem)
+    memo.calculate_totals()
+    db_session.add(memo)
+    db_session.commit()
+    return memo
+
+
+@pytest.fixture
+def posted_ap_credit_factory(db_session, one_branch, a_vendor, memo_coa):
+    """Factory: posted_ap_credit_factory(destination='ap', subtotal='1000', vat='120', wht='0')
+    -> a posted PurchaseMemo (credit) referencing a posted AP bill, with the
+    Purchase-memo/AP-memo control accounts + Vendor Credits assigned (via memo_coa)."""
+    counter = {'n': 0}
+
+    def _make(destination='ap', subtotal='1000', vat='120', wht='0'):
+        counter['n'] += 1
+        return _make_posted_ap_and_credit_memo(
+            db_session, one_branch, a_vendor, memo_coa, f'AP-PMC-{counter["n"]:04d}',
+            destination, subtotal, vat, wht)
+    return _make
+
+
+@pytest.fixture
+def posted_ap_credit_factory_no_ctrl(db_session, one_branch, a_vendor):
+    """Like posted_ap_credit_factory, but Vendor Credits is left UNASSIGNED
+    (AP-Trade/WHT-Payable control accounts ARE assigned) -- isolates the
+    friendly-error path to service.resolve_memo_account for the credit-memo
+    'vendor_credit' destination."""
+    from app.vat_categories.models import VATCategory
+    from tests.conftest import assign_control_accounts
+
+    coa = {
+        'ap': _acct(CTRL['ap_trade'], 'Accounts Payable - Trade', 'Liability', 'Credit'),
+        'wt': _acct(CTRL['wht_payable'], 'Withholding Tax Payable', 'Liability', 'Credit'),
+        'invat': _acct(CTRL['input_vat'], 'Input VAT', 'Asset', 'Debit'),
+        'exp': _acct('50101', 'Purchases', 'Expense', 'Debit'),
+        'cash': _acct('10110', 'Cash in Bank', 'Asset', 'Debit'),
+    }
+    db.session.commit()
+    db.session.add(VATCategory(code='V12', name='VATABLE', rate=Decimal('12'),
+                               input_vat_account_id=coa['invat'].id, is_active=True))
+    db.session.commit()
+    assign_control_accounts(db.session, ap=CTRL['ap_trade'], wht_payable=CTRL['wht_payable'])
+    # Deliberately NOT assigning vendor_credits_account_code.
+
+    def _make(destination='vendor_credit', subtotal='1000', vat='120', wht='0'):
+        return _make_posted_ap_and_credit_memo(
+            db_session, one_branch, a_vendor, coa, 'AP-PMC-NOCTRL-0001',
             destination, subtotal, vat, wht)
     return _make
