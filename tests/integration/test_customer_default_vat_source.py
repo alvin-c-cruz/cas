@@ -15,3 +15,21 @@ def test_customer_form_lists_sales_vat_names(client, db_session, admin_user, mai
     resp = client.get('/customers/create')
     assert b'Sale of Goods (12%)' in resp.data
     assert b'Purchase Goods (12%)' not in resp.data
+
+
+def test_customer_form_vat_option_value_is_code_not_name(client, db_session, admin_user, main_branch):
+    """BUG-CUSTOMER-VENDOR-VAT-DISPLAY-MISMATCH: the dropdown's submitted VALUE must be
+    the VAT category CODE (matching Vendor's convention), not its name -- so a saved
+    Customer.default_vat_category stores the same representation as Vendor's, and the
+    shared "DEFAULT VAT" list column renders identically for both."""
+    db_session.add(SalesVATCategory(code='SVAT-G', name='Sale of Goods (12%)', rate=12.00,
+                                    transaction_nature='regular', is_active=True))
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    client.post('/login', data={'username': admin_user.username, 'password': 'admin123'},
+                follow_redirects=True)
+    resp = client.get('/customers/create')
+    assert b'value="SVAT-G"' in resp.data
+    assert b'value="Sale of Goods (12%)"' not in resp.data

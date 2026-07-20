@@ -135,7 +135,7 @@ def populate_dropdown_choices(form):
     # VAT Categories
     vat_categories = SalesVATCategory.query.filter_by(is_active=True).order_by(SalesVATCategory.name).all()
     vat_choices = [('', '-- Select --')]
-    vat_choices.extend([(cat.name, cat.name) for cat in vat_categories])
+    vat_choices.extend([(cat.code, f'{cat.code} — {cat.name}') for cat in vat_categories])
     form.default_vat_category.choices = vat_choices
 
     # Withholding Tax
