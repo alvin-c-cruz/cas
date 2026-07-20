@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=21">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=22">
     <style>
         /* Minimal scrollbar styling for better accessibility */
         * {
@@ -1375,7 +1375,7 @@
         <div class="user-switcher">
             <div class="user-avatar">{{ current_user.full_name[0].upper() if current_user.full_name else 'U' }}</div>
             <div style="flex: 1;">
-                <div class="user-name">{{ current_user.full_name }}</div>
+                <div class="sidebar-user-name">{{ current_user.full_name }}</div>
                 <div class="user-role-label">
                     {% if current_user.role == 'admin' %}Administrator
                     {% elif current_user.role == 'chief_accountant' %}Chief Accountant

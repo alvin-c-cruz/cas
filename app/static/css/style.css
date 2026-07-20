@@ -474,11 +474,14 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 /* ── Master-data change-request badge (rows with an open pending request) ── */
 .badge-pending-change   { background: #fef3c7; color: #92400e; margin-left: 6px; }
 
-/* ── User switcher (topbar) ────────────────────────────────── */
+/* ── User switcher (sidebar footer) ───────────────────────────
+   Despite the historical name, this is the sidebar footer's user block
+   (base.html's "User Switcher" comment, inside <nav>), not the topbar --
+   the actually-distinct topbar element uses .topbar-user-name/-role. ── */
 .user-switcher { display:flex; align-items:center; gap:8px; padding:4px 10px; border-radius:8px; border:1px solid transparent; transition:border-color .15s, background .15s; }
 .user-switcher:hover { background:#f1f5f9; border-color:var(--border); }
 .user-avatar { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff; flex-shrink:0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.user-name { font-size:12px; font-weight:600; color:var(--text); line-height:1.3; }
+.sidebar-user-name { font-size:12px; font-weight:600; color:#e2e8f0; line-height:1.3; }
 .user-role-label { font-size:10px; color:var(--text-3); line-height:1.2; }
 .logout-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; background: transparent; transition: all 0.2s; text-decoration: none; }
 .logout-btn:hover { background: #fee2e2; }
