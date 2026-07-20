@@ -668,6 +668,17 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .form-control:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
 .form-hint { font-size: 11px; color: var(--text-3); margin-top: 3px; }
 .required { color: #dc2626; }
+/* Field-level validation error text -- three class names in use across the
+   app for the same purpose (.field-errors/.error-message from macros.html's
+   render_field() macro; .form-error from its status_toggle() macro and ~20
+   forms' own inline rendering); none had a real rule anywhere reachable
+   (macros.html has its own near-identical rule, but it sits outside any
+   macro block, so `{% from "macros.html" import ... %}` -- used by every
+   consumer -- never renders it). */
+.field-errors { margin-top: 6px; }
+.error-message, .form-error {
+  display: block; color: #dc2626; font-size: 12px; font-weight: 600; margin-top: 4px;
+}
 
 /* ─── Journal Entry Lines ────────────────────────────────────── */
 .je-lines { width: 100%; border-collapse: collapse; font-size: 13px; }
