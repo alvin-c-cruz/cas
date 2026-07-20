@@ -213,6 +213,27 @@ def branch_manila(db_session):
     return branch
 
 
+@pytest.fixture
+def branch_main(db_session):
+    """Create the branch used by the stock ledger tests (Branch.code is
+    required/unique, unlike the brief's illustrative snippet)."""
+    from app.branches.models import Branch as _Branch
+    b = _Branch.query.filter_by(code='STKMAIN').first()
+    if b is None:
+        b = _Branch(code='STKMAIN', name='Main', is_active=True)
+        db.session.add(b); db.session.commit()
+    return b
+
+
+@pytest.fixture
+def product_tracked(db_session):
+    from app.products.models import Product
+    p = Product(code='STK-001', name='Tracked Item', track_inventory=True,
+                costing_method='moving_average', standard_cost=None, is_active=True)
+    db.session.add(p); db.session.commit()
+    return p
+
+
 # Account Fixtures
 
 @pytest.fixture
