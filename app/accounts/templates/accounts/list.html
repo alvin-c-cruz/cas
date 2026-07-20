@@ -400,8 +400,15 @@ function filterAccounts() {
 
     const noResults = document.getElementById('coa-no-results');
     const tableWrap = document.getElementById('coa-table-wrap');
-    noResults.style.display = visible === 0 ? '' : 'none';
-    tableWrap.style.display = visible === 0 ? 'none' : '';
+    if (total === 0) {
+        // Nothing to filter -- let the server-rendered true-empty state show
+        // (inside tableWrap's tbody), not the "no search results" message.
+        noResults.style.display = 'none';
+        tableWrap.style.display = '';
+    } else {
+        noResults.style.display = visible === 0 ? '' : 'none';
+        tableWrap.style.display = visible === 0 ? 'none' : '';
+    }
 }
 
 function clearSearch() {
