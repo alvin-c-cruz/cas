@@ -101,5 +101,6 @@ def seed_bank_accounts_from_usage(created_by='system'):
                   notes=f'Auto-seeded from posted journal-entry usage by {created_by}')
         others = [bid for bid in per_branch if bid != win_branch]
         if others:
-            flags.append({'account_id': account_id, 'code': acct.code, 'other_branch_ids': others})
+            flags.append({'account_id': account_id, 'code': acct.code, 'name': acct.name,
+                         'other_branch_ids': others})
     return flags

@@ -132,3 +132,34 @@ def test_toggle_on_survives_seeder_failure(client, db_session, admin_user, main_
         # doesn't see a stale '1' for an AppSettings row that no longer exists (see the same
         # guard in test_picker.py).
         clear_module_config_cache()
+
+
+def test_toggle_on_warning_names_the_specific_accounts_and_branches(
+        client, db_session, admin_user, main_branch, branch_manila, cash_account, login_user):
+    """BUG-BANKACCT-SHARED-ACCOUNT-NO-REASSIGN: the old warning just said "N cash
+    account(s) are used by more than one branch" with no indication of WHICH account
+    or WHICH branches, and never mentioned that creating the new Bank Account has to
+    happen while viewing the other branch (BankAccount.branch_id is silently taken
+    from the current session branch at creation -- there is no branch_id form field).
+    The message must name the specific account and the specific other branch(es), and
+    spell out the branch-switch step."""
+    from app.utils.cache_helpers import clear_module_config_cache
+    try:
+        _posted_je_on(db_session, cash_account, main_branch, 'JE-SEED-0010')
+        _posted_je_on(db_session, cash_account, branch_manila, 'JE-SEED-0011')
+
+        login_user(client, 'admin', 'admin123')
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = main_branch.id
+        resp = client.post('/settings/modules/toggle',
+                           data={'key': 'bank_accounts', 'enable': '1'},
+                           follow_redirects=True)
+
+        assert resp.status_code == 200
+        body = resp.data.decode()
+        assert cash_account.code in body                    # names the specific account
+        assert cash_account.name in body
+        assert branch_manila.name in body                    # names the specific other branch
+        assert 'switch' in body.lower()                       # spells out the branch-switch step
+    finally:
+        clear_module_config_cache()

@@ -318,10 +318,18 @@ def modules_toggle():
                   'again to pick up where it left off.', 'error')
         else:
             if flags:
-                flash(f'{len(flags)} cash account(s) are used by more than one branch — '
-                      f'to give each branch its own Bank Account, split them into '
-                      f'separate per-branch GL accounts in the Chart of Accounts, then '
-                      f'register each here.', 'warning')
+                from app.branches.models import Branch
+                details = []
+                for f in flags:
+                    other_names = [b.name for b in
+                                   Branch.query.filter(Branch.id.in_(f['other_branch_ids'])).all()]
+                    details.append(f"{f['code']} ({f['name']}) — also posted from: "
+                                   f"{', '.join(other_names)}")
+                flash(f'{len(flags)} cash account(s) are shared across branches, so only one '
+                      f'branch could be auto-registered for each: {"; ".join(details)}. To give '
+                      f'an affected branch its own Bank Account: create a separate GL account for '
+                      f'it in the Chart of Accounts, then switch to that branch and register the '
+                      f'new account under Bank Accounts.', 'warning')
 
     return redirect(url_for('company_settings.edit_settings'))
 
