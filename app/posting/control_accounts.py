@@ -60,6 +60,16 @@ CONTROL_ACCOUNTS = {
     # above), since every replenishment credits this account regardless of
     # whether there's a shortage/overage.
     'petty_cash_due_to_custodian': ('petty_cash_due_to_custodian_account_code', 'Due to Petty Cash Custodian control account'),
+
+    # Inventory / Stock Ledger (R-03 slice 2a-i). Fully accountant-assigned --
+    # deliberately NOT in DEFAULT_CONTROL_ACCOUNT_CODES, so no seed/migration
+    # auto-assigns them (same reasoning as the petty-cash and disposal keys).
+    # 'inventory'                = the Inventory asset control account (every stock movement's asset leg)
+    # 'inventory_adjustment'     = P&L offset for a genuine correction (found/lost/write-off) -- a gain or loss
+    # 'inventory_opening_equity' = equity offset for an opening-stock load at cutover (never the P&L)
+    'inventory':                ('inventory_account_code',                'Inventory control account'),
+    'inventory_adjustment':     ('inventory_adjustment_account_code',     'Inventory Adjustment (gain/loss) control account'),
+    'inventory_opening_equity': ('inventory_opening_equity_account_code', 'Inventory Opening Balance Equity control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,
