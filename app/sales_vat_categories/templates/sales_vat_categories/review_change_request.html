@@ -68,7 +68,7 @@
             <div>{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
 
             <div style="font-weight: 600; color: #64748b;">Transaction Nature:</div>
-            <div>{{ proposed_data.get('transaction_nature', '-') }}</div>
+            <div>{{ proposed_data.get('transaction_nature') | sales_nature_label }}</div>
 
             <div style="font-weight: 600; color: var(--text-2);">Output Tax Account:</div>
             <div>{% if proposed_output_account %}{{ proposed_output_account.code }} : {{ proposed_output_account.name }}{% else %}&mdash;{% endif %}</div>
@@ -107,8 +107,8 @@
             <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ "%.2f"|format(proposed_data.get('rate', 0)) }}%</div>
 
             <div style="font-weight: 600; color: #64748b;">Transaction Nature:</div>
-            <div style="text-align: center;">{{ change_request.sales_vat_category.transaction_nature if change_request.sales_vat_category else '-' }}</div>
-            <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ proposed_data.get('transaction_nature', '-') }}</div>
+            <div style="text-align: center;">{{ (change_request.sales_vat_category.transaction_nature | sales_nature_label) if change_request.sales_vat_category else '-' }}</div>
+            <div style="text-align: center; color: #3b82f6; font-weight: 500;">{{ proposed_data.get('transaction_nature') | sales_nature_label }}</div>
 
             <div style="font-weight: 600; color: var(--text-2);">Output Tax Account:</div>
             <div style="text-align: center;">
@@ -154,7 +154,7 @@
             <div>{{ "%.2f"|format(change_request.sales_vat_category.rate) }}%</div>
 
             <div style="font-weight: 600; color: #64748b;">Transaction Nature:</div>
-            <div>{{ change_request.sales_vat_category.transaction_nature or '-' }}</div>
+            <div>{{ change_request.sales_vat_category.transaction_nature | sales_nature_label }}</div>
 
             <div style="font-weight: 600; color: var(--text-2);">Output Tax Account:</div>
             <div>

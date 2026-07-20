@@ -31,6 +31,21 @@ class TestSalesVatAccess:
         resp = client.get('/sales-vat-categories/')
         assert resp.status_code == 200
 
+    def test_list_shows_nature_label_not_raw_code(self, client, db_session, admin_user, db_with_data):
+        """BUG-SALES-VAT-NATURE-RAW-VALUE: the TRANSACTION NATURE column used
+        to render the bare DB token ('regular') instead of the friendly
+        label the create form itself uses ('Regular VATable')."""
+        cat = SalesVATCategory(code='V12', name='VATable Sales - 12%', rate=12.00,
+                               transaction_nature='regular', is_active=True)
+        db_session.add(cat)
+        db_session.commit()
+        _login_admin(client, admin_user)
+        with client.session_transaction() as sess:
+            sess['selected_branch_id'] = db_with_data['branch'].id
+        resp = client.get('/sales-vat-categories/')
+        assert b'Regular VATable' in resp.data
+        assert b'>regular<' not in resp.data
+
 
 class TestSalesVatCreate:
     def test_sole_admin_create_applies_and_audits(self, client, db_session, admin_user, db_with_data):

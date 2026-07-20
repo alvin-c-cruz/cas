@@ -4,13 +4,9 @@ from wtforms import StringField, TextAreaField, DecimalField, SelectField
 from wtforms.validators import (DataRequired, InputRequired, Length, NumberRange,
                                 Optional, ValidationError)
 
-TRANSACTION_NATURE_CHOICES = [
-    ('regular', 'Regular VATable'),
-    ('zero_export', 'Zero-Rated (Export)'),
-    ('zero_other', 'Zero-Rated (Other)'),
-    ('exempt', 'VAT-Exempt'),
-    ('government', 'Sales to Government'),
-]
+from app.sales_vat_categories.models import SALES_NATURES, SALES_NATURE_LABELS
+
+TRANSACTION_NATURE_CHOICES = [(n, SALES_NATURE_LABELS[n]) for n in SALES_NATURES]
 
 
 class SalesVATCategoryForm(FlaskForm):

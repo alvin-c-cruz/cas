@@ -57,7 +57,7 @@
                             {{ "%.2f"|format(svc.rate) }}%
                         </td>
                         <td style="font-size: 13px;">
-                            {{ svc.transaction_nature or '-' }}
+                            {{ svc.transaction_nature | sales_nature_label }}
                         </td>
                         <td>
                             {% if svc.output_vat_account %}

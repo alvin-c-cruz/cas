@@ -6,6 +6,44 @@ from app import db
 from app.utils import ph_now
 
 
+# BIR sales classifier. Mirrors VATCategory's PURCHASE_NATURES on the purchase
+# side, but non-nullable here (transaction_nature has a DB-level default of
+# 'regular') -- still handle None defensively (e.g. a proposed_data JSON
+# payload missing the key) rather than assume every value in the wild is set.
+SALES_NATURES = (
+    'regular',
+    'zero_export',
+    'zero_other',
+    'exempt',
+    'government',
+)
+
+# Human-readable label for each SALES_NATURES token. Public (no leading
+# underscore) so it can be imported by forms.py (SelectField choices) and the
+# 'sales_nature_label' Jinja filter -- mirrors PURCHASE_NATURE_LABELS' shape
+# in app.vat_categories.models.
+SALES_NATURE_LABELS = {
+    'regular': 'Regular VATable',
+    'zero_export': 'Zero-Rated (Export)',
+    'zero_other': 'Zero-Rated (Other)',
+    'exempt': 'VAT-Exempt',
+    'government': 'Sales to Government',
+}
+
+
+def format_sales_nature(value):
+    """Render a transaction_nature value for display.
+
+    A bare dict .get(value, '-') conflates two different situations: value is
+    None (an unset/legacy row) vs. value present but not a recognized key (a
+    stale or unrecognized token -- a data-integrity signal). Render them
+    distinguishably, mirroring app.vat_categories.models.format_purchase_nature.
+    """
+    if value is None:
+        return '(unclassified)'
+    return SALES_NATURE_LABELS.get(value, f'Unrecognized: {value}')
+
+
 class SalesVATCategory(db.Model):
     """Sales (output) VAT Category master table (shared across branches)."""
     __tablename__ = 'sales_vat_categories'

@@ -169,6 +169,13 @@ def create_app(config_name=None):
         from app.vat_categories.models import format_purchase_nature
         return format_purchase_nature(value)
 
+    # BIR sales-nature classification label -- sales-side twin of nature_label
+    # above (different vocabulary: regular/zero_export/zero_other/exempt/government).
+    @app.template_filter('sales_nature_label')
+    def sales_nature_label_filter(value):
+        from app.sales_vat_categories.models import format_sales_nature
+        return format_sales_nature(value)
+
     # Initialize extensions
     db.init_app(app)
     csrf.init_app(app)

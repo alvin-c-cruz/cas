@@ -1,6 +1,9 @@
 from decimal import Decimal
 from app.accounts.models import Account
-from app.sales_vat_categories.models import SalesVATCategory, SalesVATCategoryChangeRequest
+from app.sales_vat_categories.models import (
+    SalesVATCategory, SalesVATCategoryChangeRequest,
+    SALES_NATURES, SALES_NATURE_LABELS, format_sales_nature,
+)
 
 
 class TestSalesVATCategoryModel:
@@ -71,3 +74,35 @@ class TestSalesVATCategoryModel:
         assert d2['output_vat_account_code'] is None
         assert 'output_vat_account_name' in d2
         assert d2['output_vat_account_name'] is None
+
+
+class TestSalesNatures:
+    def test_five_natures_defined(self):
+        assert SALES_NATURES == (
+            'regular', 'zero_export', 'zero_other', 'exempt', 'government',
+        )
+
+    def test_labels_have_exactly_one_entry_per_nature(self):
+        """SALES_NATURE_LABELS must never drift from SALES_NATURES -- exactly
+        one label per defined nature, no more, no fewer."""
+        assert set(SALES_NATURE_LABELS.keys()) == set(SALES_NATURES)
+        assert len(SALES_NATURE_LABELS) == len(SALES_NATURES)
+
+
+class TestFormatSalesNature:
+    """BUG-SALES-VAT-NATURE-RAW-VALUE: the list page rendered the bare DB
+    token ('regular') instead of a friendly label. format_sales_nature is the
+    fix's formatting function -- mirrors format_purchase_nature's None vs.
+    unrecognized-token distinction."""
+
+    def test_none_renders_unclassified(self):
+        assert format_sales_nature(None) == '(unclassified)'
+
+    def test_recognized_value_renders_its_label(self):
+        assert format_sales_nature('regular') == 'Regular VATable'
+        assert format_sales_nature('zero_export') == SALES_NATURE_LABELS['zero_export']
+
+    def test_unrecognized_value_renders_distinctly_from_unclassified(self):
+        result = format_sales_nature('some_stale_token')
+        assert result != '(unclassified)'
+        assert 'some_stale_token' in result
