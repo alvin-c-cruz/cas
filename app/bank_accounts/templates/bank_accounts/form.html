@@ -80,7 +80,7 @@
         </div>
 
         <div class="form-actions">
-            <button type="submit" class="btn btn-primary">{{ 'Update' if bank_account else 'Create' }}</button>
+            <button type="submit" class="btn btn-primary">{{ 'Update Bank Account' if bank_account else 'Save Bank Account' }}</button>
             <a href="{{ url_for('bank_accounts.list_accounts') }}" class="btn btn-secondary">Back</a>
         </div>
     </form>

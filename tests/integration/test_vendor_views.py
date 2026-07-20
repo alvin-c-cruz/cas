@@ -512,17 +512,24 @@ class TestVendorListAnalyzeFixes:
         assert b'Create Vendor' in resp.data
         assert b'Add Vendor' not in resp.data
 
-    def test_create_form_submit_button_uses_create_verb(self, client, db_session, admin_user, main_branch):
-        """The create-form submit button uses the master-data 'Create' verb, not 'Save'.
+    def test_create_form_submit_button_uses_save_verb(self, client, db_session, admin_user, main_branch):
+        """The create-form submit button uses the master-data 'Save' verb (changed
+        2026-07-20 from 'Create', app-wide across master-data forms -- owner
+        directive -- to match the transaction-document Save/Update pairing while
+        keeping the record noun).
 
-        (The page <title> already says 'Create Vendor', so the meaningful signal is
-        the absence of the old 'Save Vendor' button label.)
+        (The page <title> still says 'Create Vendor' -- unaffected, only the
+        in-form submit button changed -- so the meaningful signal is the
+        submit button's own text via its containing <button> tag.)
         """
         login(client)
         resp = client.get('/vendors/create')
         assert resp.status_code == 200
-        assert b'Save Vendor' not in resp.data
-        assert b'Create Vendor' in resp.data
+        html = resp.data.decode()
+        import re
+        m = re.search(r'<button type="submit"[^>]*>\s*([^<]+?)\s*</button>', html)
+        assert m is not None
+        assert m.group(1) == 'Save Vendor'
 
 
 def test_generate_next_vendor_code_is_numeric_safe_past_999(db_session):
