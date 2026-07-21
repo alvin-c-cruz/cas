@@ -52,6 +52,47 @@ class StockBalance(RowVersioned, db.Model):
     branch = db.relationship('Branch')
 
 
+class StockCostLayer(db.Model):
+    """One open-or-exhausted FIFO cost layer (R-03 slice 2b). Created either by
+    a real receipt (source_movement_id set) or by the one-time cutover
+    bootstrap for a product's first FIFO movement (source_movement_id null).
+    Never deleted, even at remaining_qty=0 -- append-only history, same
+    philosophy as StockMovement. remaining_qty MAY go negative (a layer-
+    exhaustion deficit -- see fifo.py); it is never a simple "qty left"
+    display value in isolation without checking sign."""
+    __tablename__ = 'stock_cost_layers'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, index=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False, index=True)
+    original_qty = db.Column(db.Numeric(15, 4), nullable=False)
+    remaining_qty = db.Column(db.Numeric(15, 4), nullable=False)
+    unit_cost = db.Column(db.Numeric(15, 2), nullable=False)
+    received_at = db.Column(db.DateTime, nullable=False)
+    source_movement_id = db.Column(db.Integer, db.ForeignKey('stock_movements.id'), nullable=True)
+
+    product = db.relationship('Product')
+    branch = db.relationship('Branch')
+    source_movement = db.relationship('StockMovement')
+
+
+class StockLayerConsumption(db.Model):
+    """One (OUT movement, layer) draw record (R-03 slice 2b) -- what makes a
+    FIFO issue-reversal exact (restore precisely these layers by precisely
+    these amounts) instead of approximate. One movement can produce several
+    of these rows if it spanned multiple layers."""
+    __tablename__ = 'stock_layer_consumptions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    movement_id = db.Column(db.Integer, db.ForeignKey('stock_movements.id'), nullable=False, index=True)
+    layer_id = db.Column(db.Integer, db.ForeignKey('stock_cost_layers.id'), nullable=False, index=True)
+    qty_consumed = db.Column(db.Numeric(15, 4), nullable=False)
+    unit_cost_at_consumption = db.Column(db.Numeric(15, 2), nullable=False)
+
+    movement = db.relationship('StockMovement')
+    layer = db.relationship('StockCostLayer')
+
+
 REASON_TYPES = ('correction', 'opening')
 
 

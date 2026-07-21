@@ -234,6 +234,15 @@ def product_tracked(db_session):
     return p
 
 
+@pytest.fixture
+def product_fifo(db_session):
+    from app.products.models import Product
+    p = Product(code='STK-FIFO-001', name='FIFO Tracked Item', track_inventory=True,
+                costing_method='fifo', standard_cost=None, is_active=True)
+    db.session.add(p); db.session.commit()
+    return p
+
+
 # Account Fixtures
 
 @pytest.fixture
