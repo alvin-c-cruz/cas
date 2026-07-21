@@ -105,9 +105,39 @@ def consume_materials(source_document, lines, actor):
     source_document._negative_warnings = warnings   # transient, read by the caller for a flash
 
 
-def produce_finished_goods(source_document, product_id, quantity, unit_cost):
+def produce_finished_goods(source_document, product_id, quantity, unit_cost, actor):
     """Increment finished-goods stock for *product_id* at *unit_cost*, produced
-    by *source_document*. Same deferred-body contract as consume_materials."""
-    raise NotImplementedError(
-        'produce_finished_goods is a Wave 0 interface stub -- implement once '
-        'R-03 slice 2 (stock movements/ledger) ships.')
+    by *source_document*. No-op if the product is untracked. Fail-closed:
+    inventory/wip resolved before any write. The JE debit amount is read
+    from the movement's OWN returned unit_cost, not the raw *unit_cost*
+    parameter -- for a standard-costed product these can differ (2a-i's
+    engine pins to Product.standard_cost regardless of what's passed); any
+    gap becomes a separate variance posting the CALLER (D4) is responsible
+    for, never silently absorbed here. Does NOT commit."""
+    from app.products.models import Product
+    product = db.session.get(Product, product_id)
+    if not product or not product.track_inventory:
+        return
+
+    source_document_type, reference = _source_document_type(source_document)
+    description = f'Work Order {reference} completion'
+
+    inv_account = get_control_account('inventory')
+    wip_account = get_control_account('wip')
+
+    je = _new_je(generate_entry_number(source_document.branch_id), ph_now().date(),
+                 description, reference, 'manufacturing_production',
+                 source_document.branch_id, actor)
+    mv, _went_negative = post_movement(
+        product, source_document.branch_id, 'production', Decimal(str(quantity)), Decimal(str(unit_cost)),
+        source_document_type, source_document.id, f'{reference} production: {product.code}',
+        actor, journal_entry_id=je.id)
+    amount = (Decimal(str(mv.quantity)) * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))
+    _add_line(je, 1, inv_account.id, f'{product.code} produced', amount, ZERO)
+    _add_line(je, 2, wip_account.id, f'{product.code} relieved from WIP', ZERO, amount)
+
+    db.session.flush()
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'{reference} production JE does not balance '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')

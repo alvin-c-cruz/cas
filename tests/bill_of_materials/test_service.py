@@ -25,9 +25,3 @@ def test_available_modes_reflects_settings(db_session):
     _set(db_session, 'manufacturing_process_enabled', True)
     modes = service.available_manufacturing_modes()
     assert {v for v, _ in modes} == {'discrete', 'process'}
-
-
-def test_produce_finished_goods_is_a_wave0_stub():
-    from app.bill_of_materials import service
-    with pytest.raises(NotImplementedError, match='R-03 slice 2'):
-        service.produce_finished_goods(source_document=None, product_id=1, quantity=1, unit_cost=1)

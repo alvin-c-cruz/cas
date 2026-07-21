@@ -114,3 +114,80 @@ def test_negative_on_hand_consumption_surfaces_warning(db_session, main_branch, 
     consume_materials(wo, [(wo.materials[0], Decimal('3'))], admin_user)
     db.session.commit()
     assert wo._negative_warnings == [wo.materials[0].component_product.code]
+
+
+from app.bill_of_materials.service import produce_finished_goods
+
+
+def test_produces_at_passed_cost_for_moving_average_product(db_session, main_branch, admin_user, make_account):
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('wip_account_code', '1402', make_account)
+    out = Product(code='PFG-OUT1', name='Out', is_active=True, track_inventory=True, costing_method='moving_average')
+    db.session.add(out); db.session.commit()
+    bom = BillOfMaterial(product_id=out.id, manufacturing_mode='discrete')
+    db.session.add(bom); db.session.commit()
+    wo = WorkOrder(wo_number=generate_wo_number(), bom_id=bom.id, branch_id=main_branch.id, qty_to_produce=Decimal('5'))
+    db.session.add(wo); db.session.commit()
+
+    produce_finished_goods(wo, out.id, Decimal('5'), Decimal('10.00'), admin_user)
+    db.session.commit()
+
+    mv = StockMovement.query.filter_by(source_document_type='work_order', source_document_id=wo.id,
+                                       movement_type='production').one()
+    assert mv.quantity == Decimal('5.0000') and mv.unit_cost == Decimal('10.00')
+    je = mv.journal_entry
+    assert je.is_balanced and je.entry_type == 'manufacturing_production'
+    inv_line = next(l for l in je.lines if l.account.code == '1401')
+    wip_line = next(l for l in je.lines if l.account.code == '1402')
+    assert inv_line.debit_amount == Decimal('50.00') and wip_line.credit_amount == Decimal('50.00')
+    bal = StockBalance.query.filter_by(product_id=out.id, branch_id=main_branch.id).one()
+    assert bal.quantity_on_hand == Decimal('5.0000') and bal.average_unit_cost == Decimal('10.00')
+
+
+def test_produces_at_standard_cost_ignoring_passed_cost_for_standard_costed_product(
+        db_session, main_branch, admin_user, make_account):
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('wip_account_code', '1402', make_account)
+    out = Product(code='PFG-OUT2', name='Out', is_active=True, track_inventory=True,
+                  costing_method='standard', standard_cost=Decimal('9.00'))
+    db.session.add(out); db.session.commit()
+    bom = BillOfMaterial(product_id=out.id, manufacturing_mode='discrete')
+    db.session.add(bom); db.session.commit()
+    wo = WorkOrder(wo_number=generate_wo_number(), bom_id=bom.id, branch_id=main_branch.id, qty_to_produce=Decimal('5'))
+    db.session.add(wo); db.session.commit()
+
+    produce_finished_goods(wo, out.id, Decimal('5'), Decimal('11.50'), admin_user)   # actual != standard
+    db.session.commit()
+
+    mv = StockMovement.query.filter_by(source_document_type='work_order', source_document_id=wo.id).one()
+    assert mv.unit_cost == Decimal('9.00')   # pinned to standard, NOT the passed 11.50
+    je = mv.journal_entry
+    inv_line = next(l for l in je.lines if l.account.code == '1401')
+    assert inv_line.debit_amount == Decimal('45.00')   # 5 * 9.00, not 5 * 11.50
+
+
+def test_untracked_product_posts_nothing(db_session, main_branch, admin_user):
+    out = Product(code='PFG-OUT3', name='Out', is_active=True, track_inventory=False)
+    db.session.add(out); db.session.commit()
+    bom = BillOfMaterial(product_id=out.id, manufacturing_mode='discrete')
+    db.session.add(bom); db.session.commit()
+    wo = WorkOrder(wo_number=generate_wo_number(), bom_id=bom.id, branch_id=main_branch.id, qty_to_produce=Decimal('5'))
+    db.session.add(wo); db.session.commit()
+
+    produce_finished_goods(wo, out.id, Decimal('5'), Decimal('10.00'), admin_user)  # no accounts assigned -- must not raise
+    db.session.commit()
+    assert StockMovement.query.count() == 0
+
+
+def test_fails_closed_before_any_write_when_inventory_unassigned(db_session, main_branch, admin_user, make_account):
+    _assign('wip_account_code', '1402', make_account)  # inventory left unassigned
+    out = Product(code='PFG-OUT4', name='Out', is_active=True, track_inventory=True, costing_method='moving_average')
+    db.session.add(out); db.session.commit()
+    bom = BillOfMaterial(product_id=out.id, manufacturing_mode='discrete')
+    db.session.add(bom); db.session.commit()
+    wo = WorkOrder(wo_number=generate_wo_number(), bom_id=bom.id, branch_id=main_branch.id, qty_to_produce=Decimal('5'))
+    db.session.add(wo); db.session.commit()
+
+    with pytest.raises(ControlAccountError):
+        produce_finished_goods(wo, out.id, Decimal('5'), Decimal('10.00'), admin_user)
+    assert StockMovement.query.count() == 0
