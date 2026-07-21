@@ -1,15 +1,15 @@
 ﻿{% extends "base.html" %}
 
-{% block title %}VAT Categories{% endblock %}
-{% block page_title %}VAT Categories{% endblock %}
+{% block title %}Input VAT Categories{% endblock %}
+{% block page_title %}Input VAT Categories{% endblock %}
 
 {% block content %}
 
 <div class="content-header">
     <div class="page-header-actions">
         <div>
-            <h1 class="page-heading">VAT Categories</h1>
-            <p class="page-subheading">Manage Philippine BIR VAT Categories</p>
+            <h1 class="page-heading">Input VAT Categories</h1>
+            <p class="page-subheading">Manage Philippine BIR Input VAT Categories</p>
         </div>
         <div class="page-actions">
             {% if (current_user.has_full_access or current_user.role == 'accountant') %}
@@ -18,7 +18,7 @@
                 View Pending Requests ({{ pending_requests|length }})
             </a>
             {% endif %}
-            <a href="{{ url_for('vat_categories.create') }}" class="btn btn-primary">+ New VAT Category</a>
+            <a href="{{ url_for('vat_categories.create') }}" class="btn btn-primary">+ New Input VAT Category</a>
             {% endif %}
         </div>
     </div>
@@ -98,7 +98,7 @@
 <!-- Delete modal -->
 <div id="delete-modal" class="modal-overlay" style="display: none;">
     <div class="modal-box">
-        <h3>Delete VAT Category</h3>
+        <h3>Delete Input VAT Category</h3>
         <p id="delete-modal-message" class="modal-message"></p>
         <form id="delete-form" method="POST" action="">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

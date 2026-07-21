@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Review Change Request{% endblock %}
-{% block page_title %}Review VAT Category Change Request{% endblock %}
+{% block page_title %}Review Input VAT Category Change Request{% endblock %}
 
 {% block content %}
 {% from "macros.html" import render_field %}
@@ -53,7 +53,7 @@
         </div>
 
         {% if change_request.action == 'create' %}
-        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">Proposed New VAT Category</h3>
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">Proposed New Input VAT Category</h3>
         <div style="display: grid; grid-template-columns: 150px 1fr; gap: 12px; margin-bottom: 24px;">
             <div style="font-weight: 600; color: #64748b;">Code:</div>
             <div>{{ proposed_data.get('code', 'N/A') }}</div>
@@ -142,7 +142,7 @@
         </div>
 
         {% elif change_request.action == 'delete' %}
-        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ef4444;">Delete VAT Category</h3>
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ef4444;">Delete Input VAT Category</h3>
         {% if change_request.vat_category %}
         <div style="display: grid; grid-template-columns: 150px 1fr; gap: 12px; margin-bottom: 24px;">
             <div style="font-weight: 600; color: #64748b;">Code:</div>

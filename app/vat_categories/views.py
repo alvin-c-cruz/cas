@@ -1,5 +1,5 @@
 """
-VAT Category views with approval workflow
+Input VAT Category views with approval workflow
 """
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
@@ -74,9 +74,9 @@ def flash_duplicate_pending(existing_request):
 
 @vat_categories_bp.route('/')
 @login_required
-@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
+@admin_required('vat_categories.list_vat_categories', 'Input VAT Categories')
 def list_vat_categories():
-    """List all VAT categories"""
+    """List all Input VAT categories"""
     vat_categories = VATCategory.query.order_by(VATCategory.code).all()
 
     # Get pending change requests for display
@@ -93,9 +93,9 @@ def list_vat_categories():
 
 @vat_categories_bp.route('/create', methods=['GET', 'POST'])
 @login_required
-@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
+@admin_required('vat_categories.list_vat_categories', 'Input VAT Categories')
 def create():
-    """Create new VAT category - submits for approval"""
+    """Create new Input VAT category - submits for approval"""
     form = VATCategoryForm()
     form.input_vat_account_id.choices = _input_vat_account_choices()
 
@@ -137,7 +137,7 @@ def create():
                 model_cls=VATCategory,
                 cr_cls=VATCategoryChangeRequest,
                 module='vat_category',
-                noun='VAT category',
+                noun='Input VAT category',
                 change_data=change_data,
                 auto_approve=auto_approve,
                 list_endpoint='vat_categories.list_vat_categories',
@@ -150,10 +150,10 @@ def create():
         except Exception as e:
             from flask import current_app
             from app.errors.utils import log_exception
-            current_app.logger.error(f"Error creating VAT category", exc_info=True)
+            current_app.logger.error(f"Error creating Input VAT category", exc_info=True)
             log_exception(e, severity='ERROR', module='vat_categories.create')
             db.session.rollback()
-            flash('An error occurred while creating the VAT category. Please try again.', 'error')
+            flash('An error occurred while creating the Input VAT category. Please try again.', 'error')
             return render_template('vat_categories/form.html', form=form, vat_category=None)
 
     return render_template('vat_categories/form.html', form=form, vat_category=None)
@@ -161,9 +161,9 @@ def create():
 
 @vat_categories_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
-@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
+@admin_required('vat_categories.list_vat_categories', 'Input VAT Categories')
 def edit(id):
-    """Edit VAT category - submits for approval"""
+    """Edit Input VAT category - submits for approval"""
     vat_category = db.get_or_404(VATCategory, id)
     form = VATCategoryForm(obj=vat_category, require_reason=True)
     form.input_vat_account_id.choices = _input_vat_account_choices()
@@ -211,7 +211,7 @@ def edit(id):
                 # Capture old values before update
                 old_values = model_to_dict(vat_category, ['code', 'name', 'description', 'rate', 'is_active', 'input_vat_account_id', 'transaction_nature'])
 
-                # Update VAT category directly
+                # Update Input VAT category directly
                 vat_category.code = change_data['code']
                 vat_category.name = change_data['name']
                 vat_category.description = change_data['description']
@@ -235,7 +235,7 @@ def edit(id):
 
                 db.session.commit()
                 clear_vat_cache()
-                flash(f'VAT category "{vat_category.name}" has been updated successfully.', 'success')
+                flash(f'Input VAT category "{vat_category.name}" has been updated successfully.', 'success')
                 return redirect(url_for('vat_categories.list_vat_categories'))
             else:
                 # Create change request for approval
@@ -270,10 +270,10 @@ def edit(id):
         except Exception as e:
             from flask import current_app
             from app.errors.utils import log_exception
-            current_app.logger.error(f"Error updating VAT category", exc_info=True)
+            current_app.logger.error(f"Error updating Input VAT category", exc_info=True)
             log_exception(e, severity='ERROR', module='vat_categories.update')
             db.session.rollback()
-            flash('An error occurred while updating the VAT category. Please try again.', 'error')
+            flash('An error occurred while updating the Input VAT category. Please try again.', 'error')
             return render_template('vat_categories/form.html', form=form, vat_category=vat_category)
 
     # Pre-fill form with existing data
@@ -291,9 +291,9 @@ def edit(id):
 
 @vat_categories_bp.route('/<int:id>/delete', methods=['POST'])
 @login_required
-@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
+@admin_required('vat_categories.list_vat_categories', 'Input VAT Categories')
 def delete(id):
-    """Delete VAT category - submits for approval"""
+    """Delete Input VAT category - submits for approval"""
     vat_category = db.get_or_404(VATCategory, id)
 
     # Reason for change is required (collected in the delete modal)
@@ -320,7 +320,7 @@ def delete(id):
             vat_id = vat_category.id
             vat_name = vat_category.name
 
-            # Delete VAT category directly
+            # Delete Input VAT category directly
             db.session.delete(vat_category)
 
             # Audit log for auto-approved deletion
@@ -335,7 +335,7 @@ def delete(id):
 
             db.session.commit()
             clear_vat_cache()
-            flash(f'VAT category "{vat_name}" has been deleted successfully.', 'success')
+            flash(f'Input VAT category "{vat_name}" has been deleted successfully.', 'success')
         else:
             # Create change request for approval
             change_request = VATCategoryChangeRequest(
@@ -369,16 +369,16 @@ def delete(id):
     except Exception as e:
         from flask import current_app
         from app.errors.utils import log_exception
-        current_app.logger.error(f"Error deleting VAT category", exc_info=True)
+        current_app.logger.error(f"Error deleting Input VAT category", exc_info=True)
         log_exception(e, severity='ERROR', module='vat_categories.delete')
         db.session.rollback()
-        flash('An error occurred while deleting the VAT category. Please try again.', 'error')
+        flash('An error occurred while deleting the Input VAT category. Please try again.', 'error')
         return redirect(url_for('vat_categories.list_vat_categories'))
 
 
 @vat_categories_bp.route('/change-requests')
 @login_required
-@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
+@admin_required('vat_categories.list_vat_categories', 'Input VAT Categories')
 def change_requests():
     """View all change requests (pending, approved, rejected)"""
     all_requests = VATCategoryChangeRequest.query.order_by(VATCategoryChangeRequest.requested_at.desc()).all()
@@ -448,7 +448,7 @@ def withdraw_change_request(id):
     proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
     record_identifier = (f'{change_request.vat_category.code} - {change_request.vat_category.name}'
                         if change_request.vat_category
-                        else f"{proposed_data.get('code', 'N/A')} - {proposed_data.get('name', 'VAT Category')}")
+                        else f"{proposed_data.get('code', 'N/A')} - {proposed_data.get('name', 'Input VAT Category')}")
 
     change_request.status = 'withdrawn'
     change_request.reviewed_by_id = current_user.id
@@ -470,7 +470,7 @@ def withdraw_change_request(id):
 
 @vat_categories_bp.route('/change-requests/<int:id>/review', methods=['GET', 'POST'])
 @login_required
-@admin_required('vat_categories.list_vat_categories', 'VAT Categories')
+@admin_required('vat_categories.list_vat_categories', 'Input VAT Categories')
 def review_change_request(id):
     """Review and approve/reject a change request"""
     change_request = db.get_or_404(VATCategoryChangeRequest, id)
@@ -528,7 +528,7 @@ def review_change_request(id):
                               f'This request cannot be approved.', 'error')
                         return redirect(url_for('vat_categories.change_requests'))
 
-                    # Create new VAT category
+                    # Create new Input VAT category
                     vat_category = VATCategory(
                         code=proposed_data['code'],
                         name=proposed_data['name'],
@@ -553,10 +553,10 @@ def review_change_request(id):
                         notes=f'Approved by {current_user.username}'
                     )
 
-                    flash(f'VAT category "{vat_category.name}" has been created successfully.', 'success')
+                    flash(f'Input VAT category "{vat_category.name}" has been created successfully.', 'success')
 
                 elif change_request.action == 'update':
-                    # Update existing VAT category
+                    # Update existing Input VAT category
                     vat_category = change_request.vat_category
                     if vat_category:
                         # Capture old values before update
@@ -584,10 +584,10 @@ def review_change_request(id):
                             notes=f'Approved by {current_user.username}'
                         )
 
-                        flash(f'VAT category "{vat_category.name}" has been updated successfully.', 'success')
+                        flash(f'Input VAT category "{vat_category.name}" has been updated successfully.', 'success')
 
                 elif change_request.action == 'delete':
-                    # Delete VAT category
+                    # Delete Input VAT category
                     vat_category = change_request.vat_category
                     if vat_category:
                         # Capture values before delete
@@ -608,12 +608,12 @@ def review_change_request(id):
                             notes=f'Approved by {current_user.username}'
                         )
 
-                        flash(f'VAT category "{vat_name}" has been deleted successfully.', 'success')
+                        flash(f'Input VAT category "{vat_name}" has been deleted successfully.', 'success')
 
             else:
                 # Log rejection to audit
                 proposed_data = json.loads(change_request.proposed_data) if change_request.proposed_data else {}
-                record_identifier = f"{proposed_data.get('code', 'N/A')} - {proposed_data.get('name', 'VAT Category')}"
+                record_identifier = f"{proposed_data.get('code', 'N/A')} - {proposed_data.get('name', 'Input VAT Category')}"
 
                 log_audit(
                     module='vat_category',
@@ -633,7 +633,7 @@ def review_change_request(id):
                     create_notification(
                         user_id=change_request.requested_by_id,
                         title='Change Request Approved',
-                        message=f'Your VAT Category change request "{proposed_data.get("name", "N/A")}" ({change_request.action}) has been approved by {current_user.full_name}.',
+                        message=f'Your Input VAT Category change request "{proposed_data.get("name", "N/A")}" ({change_request.action}) has been approved by {current_user.full_name}.',
                         category='success',
                         related_type='vat_category_request',
                         related_id=change_request.id
@@ -644,7 +644,7 @@ def review_change_request(id):
                     create_notification(
                         user_id=change_request.requested_by_id,
                         title='Change Request Rejected',
-                        message=f'Your VAT Category change request "{proposed_data.get("name", "N/A")}" ({change_request.action}) has been rejected by {current_user.full_name}.{reason_text}',
+                        message=f'Your Input VAT Category change request "{proposed_data.get("name", "N/A")}" ({change_request.action}) has been rejected by {current_user.full_name}.{reason_text}',
                         category='error',
                         related_type='vat_category_request',
                         related_id=change_request.id
@@ -658,7 +658,7 @@ def review_change_request(id):
         except Exception as e:
             from flask import current_app
             from app.errors.utils import log_exception
-            current_app.logger.error(f"Error reviewing VAT category change request", exc_info=True)
+            current_app.logger.error(f"Error reviewing Input VAT category change request", exc_info=True)
             log_exception(e, severity='ERROR', module='vat_categories.review_change_request')
             db.session.rollback()
             flash('An error occurred while processing the change request. Please try again.', 'error')

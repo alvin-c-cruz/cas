@@ -43,7 +43,7 @@ def _submit_button_text(html):
 
 @pytest.mark.parametrize('url,expected', [
     ('/customers/create', 'Save Customer'),
-    ('/vat-categories/create', 'Save VAT Category'),
+    ('/vat-categories/create', 'Save Input VAT Category'),
     ('/sales-vat-categories/create', 'Save Sales VAT Category'),
     ('/withholding-tax/create', 'Save Withholding Tax'),
     ('/branches/create', 'Save Branch'),
