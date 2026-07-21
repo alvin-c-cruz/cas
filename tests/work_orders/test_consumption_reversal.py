@@ -1,4 +1,5 @@
 # tests/work_orders/test_consumption_reversal.py
+from collections import Counter
 from decimal import Decimal
 import pytest
 from app import db
@@ -63,6 +64,16 @@ def test_reverse_consumption_reverses_single_issue(db_session, main_branch, admi
     jes = JournalEntry.query.filter_by(reference=wo.wo_number).order_by(JournalEntry.id).all()
     assert len(jes) == 2   # original + reversal
 
+    original, reversal = jes[0], jes[1]
+    original_wip_line = next(l for l in original.lines if l.debit_amount > 0)   # WIP was debited originally
+    original_inv_line = next(l for l in original.lines if l.credit_amount > 0)  # Inventory was credited originally
+    reversal_wip_line = next(l for l in reversal.lines if l.account_id == original_wip_line.account_id)
+    reversal_inv_line = next(l for l in reversal.lines if l.account_id == original_inv_line.account_id)
+    assert reversal_wip_line.credit_amount == original_wip_line.debit_amount   # WIP flips to credit
+    assert reversal_wip_line.debit_amount == Decimal('0')
+    assert reversal_inv_line.debit_amount == original_inv_line.credit_amount  # Inventory flips to debit
+    assert reversal_inv_line.credit_amount == Decimal('0')
+
 
 def test_reverse_consumption_reverses_multiple_separate_issue_events(db_session, main_branch, admin_user, make_account):
     from app.work_orders.service import reverse_consumption
@@ -93,3 +104,20 @@ def test_reverse_consumption_reverses_multiple_separate_issue_events(db_session,
     reversal_je = jes[-1]
     assert reversal_je.is_balanced
     assert reversal_je.lines.count() == 4   # 2 lines from each of the 2 originals (lines is lazy='dynamic')
+
+    # Each of the two originals' lines must have a correctly Dr/Cr-swapped, same-amount
+    # counterpart in the single combined reversal JE (4 lines total, 2 swapped pairs).
+    # Match as a multiset of (account_id, expected_debit, expected_credit) rather than by
+    # account_id alone -- both originals post to the SAME wip/inventory control accounts,
+    # just with different amounts (comp1's 4 units @ 2.00 vs comp2's 2 units @ 3.00).
+    original1, original2 = jes[0], jes[1]
+    expected_swapped = Counter(
+        (line.account_id, line.credit_amount, line.debit_amount)   # (account_id, expected debit, expected credit)
+        for orig in (original1, original2)
+        for line in orig.lines
+    )
+    actual_reversal = Counter(
+        (l.account_id, l.debit_amount, l.credit_amount)
+        for l in reversal_je.lines
+    )
+    assert actual_reversal == expected_swapped
