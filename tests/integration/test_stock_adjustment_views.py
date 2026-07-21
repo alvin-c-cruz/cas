@@ -96,6 +96,38 @@ def test_void_writes_audit_row(client, admin_user, login_user, db_session,
     assert void_log.record_identifier == adj.sa_number
 
 
+def test_status_badge_uses_named_modifier_class(client, admin_user, login_user, db_session,
+                                                product_tracked, branch_main, make_account):
+    """Reviewer finding: status was rendered via a bare <span class="badge">
+    (unstyled default) instead of this codebase's named badge-{status} design-
+    token modifier -- .badge-draft/.badge-posted/.badge-voided already exist in
+    style.css and match this document's exact status values."""
+    _enable_module()
+    make_account('1401'); AppSettings.set_setting('inventory_account_code', '1401', updated_by='t')
+    make_account('7101'); AppSettings.set_setting('inventory_adjustment_account_code', '7101', updated_by='t')
+    login_user(client, 'admin', 'admin123')
+    client.post('/select-branch', data={'branch_id': branch_main.id})
+
+    lines = json.dumps([{'product_id': product_tracked.id, 'quantity_delta': '5', 'unit_cost': '4.00'}])
+    resp = client.post('/stock-adjustments/create', data={
+        'adjustment_date': '2026-07-21', 'reason_type': 'correction', 'lines': lines,
+    }, follow_redirects=True)
+    adj = StockAdjustment.query.order_by(StockAdjustment.id.desc()).first()
+
+    list_resp = client.get('/stock-adjustments/')
+    assert b'class="badge badge-draft"' in list_resp.data
+    view_resp = client.get(f'/stock-adjustments/{adj.id}')
+    assert b'class="badge badge-draft"' in view_resp.data
+
+    client.post(f'/stock-adjustments/{adj.id}/approve', follow_redirects=True)
+    view_resp = client.get(f'/stock-adjustments/{adj.id}')
+    assert b'class="badge badge-posted"' in view_resp.data
+
+    client.post(f'/stock-adjustments/{adj.id}/void', follow_redirects=True)
+    view_resp = client.get(f'/stock-adjustments/{adj.id}')
+    assert b'class="badge badge-voided"' in view_resp.data
+
+
 def test_form_get_renders_row_version_hidden_field(client, admin_user, login_user, branch_main):
     _enable_module()
     login_user(client, 'admin', 'admin123')

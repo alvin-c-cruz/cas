@@ -22,7 +22,7 @@
 
 <div class="card"><div class="card-body">
   <div class="detail-grid">
-    <div><strong>Status:</strong> <span class="badge">{{ adj.status|capitalize }}</span></div>
+    <div><strong>Status:</strong> <span class="badge badge-{{ adj.status }}">{{ adj.status|capitalize }}</span></div>
     <div><strong>Date:</strong> {{ adj.adjustment_date.strftime('%b %d, %Y') if adj.adjustment_date else '' }}</div>
     <div><strong>Branch:</strong> {{ adj.branch.name if adj.branch else '' }}</div>
     <div><strong>Reason:</strong> {{ adj.reason_type|capitalize }}</div>

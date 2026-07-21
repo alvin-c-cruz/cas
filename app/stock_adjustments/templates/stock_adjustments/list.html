@@ -28,7 +28,7 @@
             <td>{{ adj.adjustment_date.strftime('%b %d, %Y') if adj.adjustment_date else '' }}</td>
             <td>{{ adj.branch.name if adj.branch else '' }}</td>
             <td>{{ adj.reason_type|capitalize }}</td>
-            <td><span class="badge">{{ adj.status|capitalize }}</span></td>
+            <td><span class="badge badge-{{ adj.status }}">{{ adj.status|capitalize }}</span></td>
         </tr>
         {% endfor %}
     </tbody>
