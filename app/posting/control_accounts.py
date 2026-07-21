@@ -81,6 +81,13 @@ CONTROL_ACCOUNTS = {
     #                        as petty_cash_short_over).
     'grni':                ('grni_account_code',                'Goods Received Not Invoiced (GRNI) control account'),
     'inventory_variance':  ('inventory_variance_account_code',  'Inventory Price/Quantity Variance control account'),
+
+    # Delivery Receipt COGS relief (R-03 slice 2a-iii). Fully accountant-assigned --
+    # deliberately NOT in DEFAULT_CONTROL_ACCOUNT_CODES. No VAT, no variance -- COGS
+    # is a pure cost figure, valued at whatever the product's current moving-average/
+    # standard cost already is; nothing to reconcile against (unlike GRNI's accrual-
+    # vs-actual-invoice gap).
+    'cogs': ('cogs_account_code', 'Cost of Goods Sold control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,
