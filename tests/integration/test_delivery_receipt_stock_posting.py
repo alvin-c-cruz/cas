@@ -107,6 +107,7 @@ def test_negative_on_hand_delivery_posts_with_warning(
     dr = _delivered_dr(db_session, branch_main, so, delivered_qty=3)
 
     post_dr_delivery(dr, admin_user)  # must not raise
+    assert dr._negative_warnings == [product_tracked.code]   # the spec-mandated warning
     db.session.commit()
     bal = StockBalance.query.filter_by(product_id=product_tracked.id, branch_id=branch_main.id).one()
     assert bal.quantity_on_hand == Decimal('-3.0000')
@@ -183,6 +184,24 @@ def test_deliver_route_posts_cogs_je(
     db.session.refresh(dr)
     assert dr.status == 'delivered'
     assert dr.journal_entry_id is not None
+
+
+def test_deliver_route_flashes_warning_on_negative_on_hand(
+        client, db_session, admin_user, branch_main, product_tracked, make_account):
+    _enable_dr()
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('cogs_account_code', '61060', make_account)
+    # No prior receipt -- shipping from zero on-hand.
+    so = _confirmed_so(db_session, branch_main, product_tracked, qty=3)
+    dr = _delivered_dr(db_session, branch_main, so, delivered_qty=3)   # status='approved'
+    _login(client, admin_user, branch_main)
+
+    resp = client.post(f'/delivery-receipts/{dr.id}/deliver', follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(dr)
+    assert dr.status == 'delivered'
+    assert b'negative on-hand balance' in resp.data
+    assert product_tracked.code.encode() in resp.data
 
 
 def test_deliver_route_fails_closed_leaves_approved(

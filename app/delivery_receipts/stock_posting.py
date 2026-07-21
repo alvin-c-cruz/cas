@@ -53,10 +53,13 @@ def post_dr_delivery(dr, actor):
                  f'Delivery Receipt {dr.dr_number} — {dr.customer_name}', dr.dr_number,
                  dr.branch_id, actor)
     n = 1
+    warnings = []
     for li in tracked_lines:
-        mv, _went_negative = post_movement(
+        mv, went_negative = post_movement(
             li.product, dr.branch_id, 'issue', -Decimal(str(li.delivered_quantity)), None,
             'delivery_receipt', dr.id, f'DR {dr.dr_number}', actor, journal_entry_id=je.id)
+        if went_negative:
+            warnings.append(li.product.code)
         amount = (abs(Decimal(str(mv.quantity))) * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))
         _add_line(je, n, cogs_account.id, f'{li.product.code} COGS', amount, ZERO); n += 1
         _add_line(je, n, inv_account.id, f'{li.product.code} relief', ZERO, amount); n += 1
@@ -67,6 +70,7 @@ def post_dr_delivery(dr, actor):
         raise ValueError(f'Delivery Receipt {dr.dr_number} COGS JE does not balance '
                          f'(debit={je.total_debit}, credit={je.total_credit}).')
     dr.journal_entry_id = je.id
+    dr._negative_warnings = warnings   # transient, read by the view for a flash
 
 
 def reverse_dr_delivery(dr, actor):

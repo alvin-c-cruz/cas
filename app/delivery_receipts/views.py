@@ -327,6 +327,10 @@ def mark_delivered(id):
     log_audit(module='delivery_receipts', action='update', record_id=dr.id,
               record_identifier=dr.dr_number, notes='Delivered')
     flash(f'Delivery Receipt "{dr.dr_number}" marked delivered.', 'success')
+    warnings = getattr(dr, '_negative_warnings', None) or []
+    if warnings:
+        flash('Delivered, but these products went to a negative on-hand balance: '
+              + ', '.join(warnings) + '.', 'warning')
     return redirect(url_for('delivery_receipts.view', id=id))
 
 
