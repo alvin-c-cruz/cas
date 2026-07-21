@@ -66,3 +66,74 @@ def test_form_get_renders_row_version_hidden_field(client, admin_user, login_use
     assert resp.status_code == 200
     assert b'name="row_version"' in resp.data   # csrf-only-render-drops-hidden-fields guard
     assert b'name="lines"' in resp.data
+
+
+def test_view_reachable_for_accessible_branch_not_currently_selected(
+        client, admin_user, login_user, db_session, product_tracked,
+        branch_manila, main_branch, make_account):
+    """Reviewer finding: a multi-branch user's record must stay reachable even
+    after they switch their SELECTED branch away from it -- accessible-branch
+    scoping (matching the list route), not selected-branch scoping."""
+    _enable_module()
+    make_account('1401'); AppSettings.set_setting('inventory_account_code', '1401', updated_by='t')
+    make_account('7101'); AppSettings.set_setting('inventory_adjustment_account_code', '7101', updated_by='t')
+    login_user(client, 'admin', 'admin123')
+
+    # Create the adjustment while Manila is the selected branch.
+    client.post('/select-branch', data={'branch_id': branch_manila.id})
+    lines = json.dumps([{'product_id': product_tracked.id, 'quantity_delta': '3', 'unit_cost': '2.00'}])
+    resp = client.post('/stock-adjustments/create', data={
+        'adjustment_date': '2026-07-21', 'reason_type': 'correction', 'lines': lines,
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    adj = (StockAdjustment.query.filter_by(branch_id=branch_manila.id)
+           .order_by(StockAdjustment.id.desc()).first())
+    assert adj is not None
+
+    # Admin (full-access) switches the SELECTED branch away from Manila. The
+    # record's branch remains in the admin's ACCESSIBLE set, so it must not 404.
+    client.post('/select-branch', data={'branch_id': main_branch.id})
+    view_resp = client.get(f'/stock-adjustments/{adj.id}')
+    assert view_resp.status_code == 200
+    assert adj.sa_number.encode() in view_resp.data
+
+    # Same for the print route, which shares the _adj_or_404 helper.
+    print_resp = client.get(f'/stock-adjustments/{adj.id}/print')
+    assert print_resp.status_code == 200
+
+
+def test_view_blocked_for_branch_outside_users_accessible_set(
+        client, admin_user, login_user, logout_user, db_session, product_tracked,
+        branch_manila, accountant_user, make_account):
+    """Negative case: a branch-scoped user with NO access to the record's
+    branch at all must still 404 -- the relaxation only widens "selected" to
+    "accessible", it does not remove branch scoping entirely."""
+    _enable_module()
+    make_account('1401'); AppSettings.set_setting('inventory_account_code', '1401', updated_by='t')
+    make_account('7101'); AppSettings.set_setting('inventory_adjustment_account_code', '7101', updated_by='t')
+    login_user(client, 'admin', 'admin123')
+    client.post('/select-branch', data={'branch_id': branch_manila.id})
+    lines = json.dumps([{'product_id': product_tracked.id, 'quantity_delta': '2', 'unit_cost': '1.00'}])
+    resp = client.post('/stock-adjustments/create', data={
+        'adjustment_date': '2026-07-21', 'reason_type': 'correction', 'lines': lines,
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    adj = (StockAdjustment.query.filter_by(branch_id=branch_manila.id)
+           .order_by(StockAdjustment.id.desc()).first())
+    assert adj is not None
+    logout_user(client)
+
+    # accountant_user (conftest) is assigned only to main_branch -- not Manila.
+    # Grant the stock_adjustments book permission explicitly so this test isolates
+    # the branch-scoping check (app/__init__.py's enforce_module_access before_request
+    # hook gates per-module access separately, and would otherwise also 404/redirect
+    # for an unrelated reason -- accountant_user's default fixture permissions don't
+    # include this module).
+    perms = accountant_user.get_book_permissions()
+    perms['stock_adjustments'] = True
+    accountant_user.set_book_permissions(perms)
+    db.session.commit()
+
+    login_user(client, 'accountant', 'accountant123')
+    view_resp = client.get(f'/stock-adjustments/{adj.id}')
+    assert view_resp.status_code == 404

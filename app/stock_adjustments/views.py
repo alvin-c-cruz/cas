@@ -78,9 +78,16 @@ def _parse_lines(raw_json, valid_product_ids):
 
 
 def _adj_or_404(id):
+    """Fetch a StockAdjustment by id, scoped to the user's ACCESSIBLE branches
+    (same set the list route uses via get_accessible_branches) -- not just the
+    single currently-SELECTED branch. Matches the app/fixed_assets/views.py
+    convention: the list does the access-scoping, detail/edit/approve/void
+    fetch by id and 404 only when the record falls outside that access set."""
     from app.stock_adjustments.models import StockAdjustment
+    from app.users.utils import get_accessible_branches
     adj = db.get_or_404(StockAdjustment, id)
-    if adj.branch_id != session.get('selected_branch_id'):
+    accessible_ids = {b.id for b in get_accessible_branches(current_user)}
+    if adj.branch_id not in accessible_ids:
         abort(404)
     return adj
 
