@@ -315,6 +315,14 @@ def mark_delivered(id):
     dr.status = 'delivered'
     dr.delivered_by_id = current_user.id
     dr.delivered_at = ph_now()
+    from app.delivery_receipts.stock_posting import post_dr_delivery
+    from app.posting.control_accounts import ControlAccountError
+    try:
+        post_dr_delivery(dr, current_user)
+    except (ValueError, ControlAccountError) as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
     db.session.commit()
     log_audit(module='delivery_receipts', action='update', record_id=dr.id,
               record_identifier=dr.dr_number, notes='Delivered')

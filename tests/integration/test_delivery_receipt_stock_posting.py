@@ -151,3 +151,49 @@ def test_reverse_dr_delivery_noop_when_never_posted(db_session, branch_main, adm
     db.session.commit()
     from app.journal_entries.models import JournalEntry
     assert JournalEntry.query.filter_by(reference=dr.dr_number).count() == 0
+
+
+def _login(client, user, branch):
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.id); sess['_fresh'] = True
+        sess['selected_branch_id'] = branch.id
+
+
+def _enable_dr():
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:delivery_receipts', '1')
+    db.session.commit(); clear_module_config_cache()
+
+
+def test_deliver_route_posts_cogs_je(
+        client, db_session, admin_user, branch_main, product_tracked, make_account):
+    _enable_dr()
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('cogs_account_code', '61060', make_account)
+    post_movement(product_tracked, branch_main.id, 'receipt', Decimal('20'), Decimal('8.00'),
+                  'seed', None, 'seed stock', admin_user)
+    db.session.commit()
+    so = _confirmed_so(db_session, branch_main, product_tracked, qty=6)
+    dr = _delivered_dr(db_session, branch_main, so, delivered_qty=6)   # status='approved'
+    _login(client, admin_user, branch_main)
+
+    resp = client.post(f'/delivery-receipts/{dr.id}/deliver', follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(dr)
+    assert dr.status == 'delivered'
+    assert dr.journal_entry_id is not None
+
+
+def test_deliver_route_fails_closed_leaves_approved(
+        client, db_session, admin_user, branch_main, product_tracked, make_account):
+    _enable_dr()
+    # No control accounts assigned at all.
+    so = _confirmed_so(db_session, branch_main, product_tracked, qty=3)
+    dr = _delivered_dr(db_session, branch_main, so, delivered_qty=3)
+    _login(client, admin_user, branch_main)
+
+    resp = client.post(f'/delivery-receipts/{dr.id}/deliver', follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(dr)
+    assert dr.status == 'approved'   # still approved -- delivery did NOT silently half-succeed
