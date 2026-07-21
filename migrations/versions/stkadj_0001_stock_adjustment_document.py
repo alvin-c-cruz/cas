@@ -29,9 +29,12 @@ def upgrade():
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
         sa.Column('row_version', sa.Integer(), nullable=False, server_default='1'),
-        sa.UniqueConstraint('sa_number', name='uq_stock_adjustment_number'),
     )
     op.create_index('ix_stock_adjustments_branch_id', 'stock_adjustments', ['branch_id'])
+    # Single unique index, matching the model's Column(unique=True, index=True) exactly --
+    # a separate UniqueConstraint alongside this would be a redundant second enforcement
+    # mechanism on the same column (review finding: model vs migration schema mismatch).
+    op.create_index('ix_stock_adjustments_sa_number', 'stock_adjustments', ['sa_number'], unique=True)
     op.create_table(
         'stock_adjustment_lines',
         sa.Column('id', sa.Integer(), primary_key=True),
