@@ -405,3 +405,48 @@ def test_actor_none_with_chain_verified_line_raises_value_error(
 
     assert StockMovement.query.filter_by(source_document_type='purchase_memo',
                                          source_document_id=memo.id).count() == 0
+
+
+def test_void_reverses_chain_verified_movement(db_session, main_branch, admin_user):
+    from app.purchase_memos.je import reverse_purchase_memo_je
+    coa = _full_vdm_coa()
+    ap_item, product = _ap_item_from_rr(db_session, main_branch, admin_user, tracked=True)
+    mitem = _memo_item_for(ap_item)
+    mitem.product_id = product.id
+    mitem.quantity = Decimal('2')
+    mitem.amount = Decimal('11.20'); mitem.line_total = Decimal('11.20')
+    mitem.vat_amount = Decimal('1.20')
+    memo = mitem.memo
+    memo.subtotal = Decimal('11.20'); memo.vat_amount = Decimal('1.20')
+    memo.total_amount = Decimal('11.20')
+    memo.status = 'posted'
+    db.session.commit()
+    je = post_purchase_memo_je(memo, admin_user.id, actor=admin_user)
+    memo.journal_entry_id = je.id
+    db.session.commit()
+
+    reverse_purchase_memo_je(memo, admin_user.id, actor=admin_user)
+    db.session.commit()
+
+    bal = StockBalance.query.filter_by(product_id=product.id, branch_id=main_branch.id).one()
+    assert bal.quantity_on_hand == Decimal('10.0000')   # back to the seeded 10
+
+
+def test_void_noop_when_no_movement_posted(db_session, main_branch, admin_user):
+    from app.purchase_memos.je import reverse_purchase_memo_je
+    coa = _full_vdm_coa()
+    ap_item, product = _ap_item_from_rr(db_session, main_branch, admin_user, tracked=False)
+    mitem = _memo_item_for(ap_item)
+    mitem.product_id = product.id
+    memo = mitem.memo
+    memo.subtotal = Decimal('11.20'); memo.vat_amount = Decimal('1.20')
+    memo.total_amount = Decimal('11.20')
+    memo.status = 'posted'
+    db.session.commit()
+    je = post_purchase_memo_je(memo, admin_user.id, actor=admin_user)
+    memo.journal_entry_id = je.id
+    db.session.commit()
+
+    reverse_purchase_memo_je(memo, admin_user.id, actor=admin_user)   # must not raise
+    db.session.commit()
+    assert StockMovement.query.filter_by(source_document_type='purchase_memo').count() == 0

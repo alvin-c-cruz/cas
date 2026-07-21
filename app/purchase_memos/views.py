@@ -382,7 +382,7 @@ def _void_impl(id, memo_type):
         return redirect(view_url)
     try:
         if memo.status == 'posted':
-            reverse_purchase_memo_je(memo, current_user.id)
+            reverse_purchase_memo_je(memo, current_user.id, actor=current_user)
             if memo.destination == 'ap':
                 if memo_type == 'debit':
                     _reverse_memo_from_ap(memo)
