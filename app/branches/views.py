@@ -9,6 +9,7 @@ from app.branches.forms import BranchForm
 from app.users.models import User
 from app.audit.utils import log_create, log_update, log_delete, log_audit, model_to_dict
 from app.utils.authz import admin_panel_required
+from app.utils.color import is_valid_hex_color
 
 branches_bp = Blueprint('branches', __name__, template_folder='templates')
 
@@ -43,7 +44,7 @@ def create():
                 address=form.address.data,
                 phone=form.phone.data,
                 email=form.email.data,
-                theme_color=form.theme_color.data if form.use_custom_theme.data else None,
+                theme_color=form.theme_color.data if form.use_custom_theme.data and is_valid_hex_color(form.theme_color.data) else None,
                 is_active=form.is_active.data if form.is_active.data is not None else True
             )
             db.session.add(branch)
@@ -101,7 +102,7 @@ def edit(id):
             branch.address = form.address.data
             branch.phone = form.phone.data
             branch.email = form.email.data
-            branch.theme_color = form.theme_color.data if form.use_custom_theme.data else None
+            branch.theme_color = form.theme_color.data if form.use_custom_theme.data and is_valid_hex_color(form.theme_color.data) else None
             branch.is_active = form.is_active.data
             db.session.commit()
 

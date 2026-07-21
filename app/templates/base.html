@@ -945,6 +945,7 @@
     </style>
     {% if current_branch and current_branch.theme_color %}
     {% set derived = current_branch.theme_color | derive_sidebar_theme %}
+    {% if derived %}
     <style>
       :root {
         --sidebar-bg: {{ derived.bg }};
@@ -957,6 +958,7 @@
         background: linear-gradient(135deg, {{ current_branch.theme_color }} 0%, {{ derived.hover }} 100%);
       }
     </style>
+    {% endif %}
     {% endif %}
     {% block extra_css %}{% endblock %}
 </head>
