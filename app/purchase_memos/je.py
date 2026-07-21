@@ -52,6 +52,25 @@ from app.posting.purchase_vat import input_vat_buckets
 from app.posting.control_accounts import get_control_account
 
 
+def _vdm_line_chain_verified(li):
+    """True if this PurchaseMemoItem's underlying AP line was billed FROM a
+    Receiving Report item whose own receipt posted a real stock movement --
+    i.e. the returned goods are genuinely sitting in the `inventory` balance
+    today (R-03 slice 2a-v). Mirrors the exact chain
+    app/accounts_payable/views.py already walks to force the grni account on
+    AP billing (2a-ii): source_rr_item_id -> ReceivingReportItem ->
+    stock_movement_id. A non-None stock_movement_id already implies the RR
+    line was tracked (2a-ii only ever sets it for a tracked line), so no
+    separate track_inventory check is needed here."""
+    from app.receiving_reports.models import ReceivingReportItem
+
+    ap_item = li.accounts_payable_item
+    if ap_item is None or ap_item.source_rr_item_id is None:
+        return False
+    rr_item = db.session.get(ReceivingReportItem, ap_item.source_rr_item_id)
+    return rr_item is not None and rr_item.stock_movement_id is not None
+
+
 def post_purchase_memo_je(memo, user_id):
     """Build and return the memo's JournalEntry (draft or posted, matching memo.status)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
