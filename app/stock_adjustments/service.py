@@ -48,25 +48,51 @@ def _claim_balance_update(balance_id, read_version, new_qty, new_avg, new_value)
 
 def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                   source_document_type, source_document_id, reason, actor, journal_entry_id=None):
-    """Apply one stock movement. Returns (StockMovement, went_negative). Does not commit."""
+    """Apply one stock movement. Returns (StockMovement, went_negative). Does not commit.
+
+    FIFO branch (R-03 2b): plan-only reads happen fresh every retry attempt,
+    inside the loop, before the balance claim; the corresponding layer WRITES
+    (fifo_apply_receive/fifo_apply_consume) happen only after that same
+    attempt's claim has already succeeded -- never before, to avoid
+    double-writing layers if a losing attempt retries."""
+    from app.stock_adjustments.fifo import (fifo_plan_consume, fifo_apply_receive,
+                                            fifo_apply_consume, bootstrap_opening_layer_if_needed)
     delta_qty = Decimal(delta_qty)
     bal = _get_or_create_balance(product.id, branch_id)
+    is_fifo = (product.costing_method == 'fifo')
+    if is_fifo:
+        bootstrap_opening_layer_if_needed(product.id, branch_id)
 
     for _ in range(MAX_ATTEMPTS):
         read_version = bal.row_version
         old_qty = Decimal(bal.quantity_on_hand)
         old_avg = Decimal(bal.average_unit_cost)
-        new_qty, new_avg = compute_new_balance(
-            product.costing_method or 'moving_average', old_qty, old_avg,
-            delta_qty, in_unit_cost, product.standard_cost)
+
+        fifo_plan = None
+        if is_fifo:
+            new_qty = (old_qty + delta_qty).quantize(Decimal('0.0001'))
+            if delta_qty > ZERO:
+                move_unit_cost = Decimal(in_unit_cost).quantize(Decimal('0.01'))
+                new_total_value = old_qty * old_avg + delta_qty * move_unit_cost
+            else:
+                fifo_plan, move_unit_cost = fifo_plan_consume(product.id, branch_id, -delta_qty)
+                total_cost_drawn = sum((take * Decimal(layer.unit_cost) for layer, take in fifo_plan),
+                                       ZERO)
+                new_total_value = old_qty * old_avg - total_cost_drawn
+            new_avg = (new_total_value / new_qty).quantize(Decimal('0.01')) if new_qty != ZERO else ZERO
+        else:
+            new_qty, new_avg = compute_new_balance(
+                product.costing_method or 'moving_average', old_qty, old_avg,
+                delta_qty, in_unit_cost, product.standard_cost)
+            move_unit_cost = None   # resolved below, unchanged from before this task
         new_value = (new_qty * new_avg).quantize(Decimal('0.01'))
 
         if _claim_balance_update(bal.id, read_version, new_qty, new_avg, new_value):
-            # the cost this movement itself is valued at:
-            if delta_qty > ZERO and (product.costing_method or 'moving_average') != 'standard':
-                move_unit_cost = Decimal(in_unit_cost)
-            else:
-                move_unit_cost = new_avg   # issues, and all standard moves, value at the (new) avg/standard
+            if not is_fifo:
+                if delta_qty > ZERO and (product.costing_method or 'moving_average') != 'standard':
+                    move_unit_cost = Decimal(in_unit_cost)
+                else:
+                    move_unit_cost = new_avg   # issues, and all standard moves, value at the (new) avg/standard
             mv = StockMovement(
                 product_id=product.id, branch_id=branch_id, movement_type=movement_type,
                 quantity=delta_qty.quantize(Decimal('0.0001')), unit_cost=move_unit_cost,
@@ -76,6 +102,11 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                 created_at=ph_now(), created_by_id=actor.id)
             db.session.add(mv)
             db.session.flush()
+            if is_fifo:
+                if delta_qty > ZERO:
+                    fifo_apply_receive(product.id, branch_id, delta_qty, move_unit_cost, mv, mv.created_at)
+                else:
+                    fifo_apply_consume(fifo_plan, mv)
             db.session.expire(bal, ['row_version', 'quantity_on_hand', 'average_unit_cost', 'total_value'])
             return mv, (new_qty < ZERO)
 
