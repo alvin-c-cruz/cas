@@ -218,7 +218,7 @@ MODULE_REGISTRY = [
      'default_enabled': False, 'endpoints': ('fixed_asset_disposal.',)},
     {'key': 'stock_adjustments', 'label': 'Stock Adjustments', 'section': 'Transactions',
      'area': 'Inventory', 'group': 'Documents',
-     'optional': True, 'depends_on': ['inventory'], 'default_enabled': False,
+     'optional': True, 'depends_on': ['inventory'], 'default_enabled': False, 'per_user': True,
      'endpoints': ('stock_adjustments.',
                    'reports.stock_ledger', 'reports.stock_ledger_print',
                    'reports.stock_ledger_export_excel')},
