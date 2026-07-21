@@ -907,6 +907,15 @@ def seed_firm():
         raise
 
 
+def seed_standard_parent_accounts():
+    """Seed the 27 standard top-level (parent) accounts used by the UI
+    first-run admin bootstrap (app/users/views.py::register). Delegates to
+    _seed_accounts()'s existing idempotency guard -- safe to call
+    unconditionally."""
+    from app.seeds.standard_parents_coa import STANDARD_PARENT_ACCOUNTS
+    _seed_accounts(STANDARD_PARENT_ACCOUNTS)
+
+
 def seed_construction():
     """Seed a clean construction-contractor instance (CONSTRUCTION_COA + VAT/EWT).
 
