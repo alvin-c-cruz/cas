@@ -356,7 +356,12 @@ def cancel(id):
     dr.cancelled_at = ph_now()
     dr.cancel_reason = reason
     from app.delivery_receipts.stock_posting import reverse_dr_delivery
-    reverse_dr_delivery(dr, current_user)
+    try:
+        reverse_dr_delivery(dr, current_user)
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
     db.session.commit()   # cancelling drops it out of COMMITTED_STATUSES -> qty released
     log_audit(module='delivery_receipts', action='update', record_id=dr.id,
               record_identifier=dr.dr_number, notes=f'Cancelled: {reason}')
