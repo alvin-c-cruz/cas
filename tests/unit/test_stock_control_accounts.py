@@ -21,3 +21,20 @@ def test_stock_control_keys_not_auto_seeded():
 def test_unassigned_stock_control_account_raises(db_session):
     with pytest.raises(ControlAccountError):
         get_control_account('inventory')
+
+STOCK_2A_II_KEYS = ('grni', 'inventory_variance')
+
+def test_2a_ii_control_keys_registered():
+    for key in STOCK_2A_II_KEYS:
+        assert key in CONTROL_ACCOUNTS
+        setting_key, label = CONTROL_ACCOUNTS[key]
+        assert setting_key.endswith('_account_code')
+        assert label
+
+def test_2a_ii_control_keys_not_auto_seeded():
+    for key in STOCK_2A_II_KEYS:
+        assert key not in DEFAULT_CONTROL_ACCOUNT_CODES
+
+def test_unassigned_grni_raises(db_session):
+    with pytest.raises(ControlAccountError):
+        get_control_account('grni')
