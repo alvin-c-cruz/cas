@@ -51,3 +51,16 @@ def test_cogs_control_key_not_auto_seeded():
 def test_unassigned_cogs_raises(db_session):
     with pytest.raises(ControlAccountError):
         get_control_account('cogs')
+
+def test_wip_control_key_registered():
+    assert 'wip' in CONTROL_ACCOUNTS
+    setting_key, label = CONTROL_ACCOUNTS['wip']
+    assert setting_key.endswith('_account_code')
+    assert label
+
+def test_wip_control_key_not_auto_seeded():
+    assert 'wip' not in DEFAULT_CONTROL_ACCOUNT_CODES
+
+def test_unassigned_wip_raises(db_session):
+    with pytest.raises(ControlAccountError):
+        get_control_account('wip')

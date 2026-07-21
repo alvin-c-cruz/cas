@@ -88,6 +88,13 @@ CONTROL_ACCOUNTS = {
     # standard cost already is; nothing to reconcile against (unlike GRNI's accrual-
     # vs-actual-invoice gap).
     'cogs': ('cogs_account_code', 'Cost of Goods Sold control account'),
+
+    # Manufacturing WIP (R-03 slice 2a-iv). Fully accountant-assigned --
+    # deliberately NOT in DEFAULT_CONTROL_ACCOUNT_CODES. Bridges
+    # consume_materials (Dr wip/Cr inventory) and produce_finished_goods
+    # (Dr inventory/Cr wip) -- shared by both the discrete (WorkOrder) and
+    # process (ProductionRun, not yet built) manufacturing tracks.
+    'wip': ('wip_account_code', 'Work-in-Process control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,
