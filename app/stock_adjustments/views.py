@@ -162,7 +162,7 @@ def edit(id):
     from app.stock_adjustments.forms import StockAdjustmentForm
     from app.stock_adjustments.models import StockAdjustment
     from app.utils.concurrency import claim_version, submitted_version, conflict_message
-    from app.audit.utils import log_update
+    from app.audit.utils import log_update, get_changes
 
     adj = _adj_or_404(id)
     if adj.status != 'draft':
@@ -183,17 +183,29 @@ def edit(id):
             db.session.rollback()
             flash(conflict_message('stock_adjustments', adj.id), 'error')
             return redirect(url_for('stock_adjustments.edit', id=adj.id))
+        # Diff header fields against adj's CURRENT (pre-mutation) state --
+        # get_changes reads adj via getattr, so it must run before any of
+        # the assignments below.
+        new_data = {'adjustment_date': form.adjustment_date.data,
+                   'reason_type': form.reason_type.data,
+                   'notes': form.notes.data or None}
+        old_values, new_values = get_changes(adj, new_data, ['adjustment_date', 'reason_type', 'notes'])
+        old_lines_count = len(adj.lines)
+
         adj.adjustment_date = form.adjustment_date.data
         adj.reason_type = form.reason_type.data
         adj.notes = form.notes.data or None
         adj.lines.clear()
         for li in lines:
             adj.lines.append(li)
+        new_lines_count = len(adj.lines)
+        if old_lines_count != new_lines_count:
+            old_values['lines'] = old_lines_count
+            new_values['lines'] = new_lines_count
         db.session.commit()
         log_update(module='stock_adjustments', record_id=adj.id,
                    record_identifier=adj.sa_number,
-                   old_values={}, new_values={'reason_type': adj.reason_type,
-                                              'lines': len(adj.lines)})
+                   old_values=old_values, new_values=new_values)
         flash(f'Stock Adjustment {adj.sa_number} updated.', 'success')
         return redirect(url_for('stock_adjustments.view', id=adj.id))
 

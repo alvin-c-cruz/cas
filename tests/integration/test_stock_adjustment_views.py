@@ -207,3 +207,40 @@ def test_view_blocked_for_branch_outside_users_accessible_set(
     login_user(client, 'accountant', 'accountant123')
     view_resp = client.get(f'/stock-adjustments/{adj.id}')
     assert view_resp.status_code == 404
+
+
+def test_edit_writes_real_before_after_diff_not_empty_old_values(
+        client, admin_user, login_user, db_session, product_tracked, branch_main, make_account):
+    """Review finding: edit's log_update passed old_values={} -- no real diff,
+    against CLAUDE.md's "Use get_changes(old_obj, new_data, fields) to diff
+    before logging updates" convention. Change notes on an existing draft and
+    assert the audit row's old_values/new_values genuinely reflect the real
+    before/after, not an empty dict."""
+    _enable_module()
+    make_account('1401'); AppSettings.set_setting('inventory_account_code', '1401', updated_by='t')
+    make_account('7101'); AppSettings.set_setting('inventory_adjustment_account_code', '7101', updated_by='t')
+    login_user(client, 'admin', 'admin123')
+    client.post('/select-branch', data={'branch_id': branch_main.id})
+
+    lines = json.dumps([{'product_id': product_tracked.id, 'quantity_delta': '5', 'unit_cost': '4.00'}])
+    client.post('/stock-adjustments/create', data={
+        'adjustment_date': '2026-07-21', 'reason_type': 'correction', 'lines': lines,
+        'notes': 'original note',
+    }, follow_redirects=True)
+    adj = StockAdjustment.query.order_by(StockAdjustment.id.desc()).first()
+    row_version = adj.row_version
+
+    edit_lines = json.dumps([{'product_id': product_tracked.id, 'quantity_delta': '5', 'unit_cost': '4.00'}])
+    resp = client.post(f'/stock-adjustments/{adj.id}/edit', data={
+        'adjustment_date': '2026-07-21', 'reason_type': 'correction', 'lines': edit_lines,
+        'notes': 'edited note', 'row_version': row_version,
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+
+    update_log = (AuditLog.query.filter_by(module='stock_adjustments', action='update',
+                                           record_id=adj.id).first())
+    assert update_log is not None
+    old_values = json.loads(update_log.old_values) if update_log.old_values else {}
+    new_values = json.loads(update_log.new_values) if update_log.new_values else {}
+    assert old_values.get('notes') == 'original note'
+    assert new_values.get('notes') == 'edited note'
