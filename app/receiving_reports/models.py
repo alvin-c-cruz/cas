@@ -42,6 +42,7 @@ class ReceivingReport(RowVersioned, db.Model):
                                     nullable=True, index=True)
     # Accrual seam (deferred): a future GRNI / period-end reversing JE attaches here. Inert in v1.
     journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
+    journal_entry = db.relationship('JournalEntry', foreign_keys=[journal_entry_id])
 
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
@@ -83,6 +84,11 @@ class ReceivingReportItem(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)  # snapshot for print
     product = db.relationship('Product', foreign_keys=[product_id])
     received_quantity = db.Column(db.Numeric(15, 4), nullable=False)
+
+    # R-03 slice 2a-ii: points at the StockMovement this line's receipt posted
+    # (tracked products only -- NULL for an untracked line or a not-yet-approved RR).
+    stock_movement_id = db.Column(db.Integer, db.ForeignKey('stock_movements.id'), nullable=True)
+    stock_movement = db.relationship('StockMovement')
 
     # A RR line's quantity is the RECEIVED quantity; UoM/price belong to the PO line it receives.
     @property

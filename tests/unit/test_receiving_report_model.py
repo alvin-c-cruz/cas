@@ -88,3 +88,10 @@ def test_rr_item_delegates_uom_and_price_to_po_line(db_session):
     assert li.quantity == Decimal('5')                              # quantity == received_quantity
     d = li.to_dict()
     assert d['received_quantity'] == 5.0 and d['ordered_quantity'] == 100.0
+
+
+def test_item_has_stock_movement_id_column(db_session):
+    from app.receiving_reports.models import ReceivingReportItem
+    col = ReceivingReportItem.__table__.columns.get('stock_movement_id')
+    assert col is not None
+    assert col.nullable is True

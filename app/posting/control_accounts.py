@@ -70,6 +70,17 @@ CONTROL_ACCOUNTS = {
     'inventory':                ('inventory_account_code',                'Inventory control account'),
     'inventory_adjustment':     ('inventory_adjustment_account_code',     'Inventory Adjustment (gain/loss) control account'),
     'inventory_opening_equity': ('inventory_opening_equity_account_code', 'Inventory Opening Balance Equity control account'),
+
+    # Receiving Report GRNI accrual (R-03 slice 2a-ii). Fully accountant-assigned --
+    # deliberately NOT in DEFAULT_CONTROL_ACCOUNT_CODES.
+    # 'grni'               = Goods Received Not Invoiced -- the accrual liability RR
+    #                        approval credits (net of VAT) and AP billing clears.
+    # 'inventory_variance' = the plug when a bill's actual net amount differs from
+    #                        what was accrued -- only resolved when that difference
+    #                        is actually nonzero (conditional-resolve, same pattern
+    #                        as petty_cash_short_over).
+    'grni':                ('grni_account_code',                'Goods Received Not Invoiced (GRNI) control account'),
+    'inventory_variance':  ('inventory_variance_account_code',  'Inventory Price/Quantity Variance control account'),
 }
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,

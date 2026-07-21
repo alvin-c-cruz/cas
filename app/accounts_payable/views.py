@@ -388,6 +388,17 @@ def _build_validated_ap_lines():
                 matched_unit_price = po_item.unit_price
                 matched_quantity = po_item.quantity
 
+        # R-03 slice 2a-ii: a GRNI-accrued RR line's account is FORCED server-side
+        # to the grni control account, ignoring whatever the client posted -- same
+        # trust-boundary principle as matched_unit_price/matched_quantity above.
+        # Untracked lines (rr_item.stock_movement_id is None) and PO-direct/no-RR
+        # lines are completely unaffected. Reuses the `rr_item` already fetched
+        # above (in scope here only when source_rr_item_id resolved it) rather
+        # than re-querying the same row.
+        if source_rr_item_id and rr_item is not None and rr_item.stock_movement_id is not None:
+            from app.posting.control_accounts import get_control_account
+            account_id = get_control_account('grni').id
+
         line_item = AccountsPayableItem(
             line_number=idx,
             description=item_data.get('description', ''),
@@ -1418,10 +1429,59 @@ def _post_ap_je(ap, user_id):
     first_expense_line = None
     all_lines = []
 
+    ZERO = Decimal('0.00')
+    grni_account = get_control_account('grni', required=False)   # None if never assigned -- fine, no bills use it yet then
+
     for item in ap.line_items:
         if not item.account_id:
             continue
         net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+
+        if grni_account is not None and item.account_id == grni_account.id and item.source_rr_item_id:
+            from app.receiving_reports.models import ReceivingReportItem
+            rr_item = db.session.get(ReceivingReportItem, item.source_rr_item_id)
+            mv = rr_item.stock_movement if rr_item else None
+            if mv is not None:
+                accrued = (Decimal(str(mv.quantity)) * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))
+                variance = (net_base - accrued).quantize(Decimal('0.01'))
+                # RR accrual rounds VAT extraction PER-UNIT (unit_price/(1+vat/100),
+                # quantized, then * qty), while AP billing rounds it PER-LINE (extract
+                # from the whole gross, quantized once). For a unit price that doesn't
+                # divide evenly by (1+vat_rate/100) these two conventions disagree by a
+                # centavo or two even on an EXACT price match -- a mathematically-inherent
+                # gap, not a real price/quantity variance. Absorb any discrepancy within a
+                # bounded tolerance (PHP 0.01 per unit received, capped at PHP 1.00) into
+                # the GRNI leg itself rather than posting spurious variance noise (which
+                # would also force inventory_variance to resolve -- blocking a genuinely
+                # exact-match bill when that account is deliberately left unassigned). Real
+                # price/quantity variances are far larger than this band, so they are
+                # unaffected and still post + still require inventory_variance.
+                qty_for_tolerance = Decimal(str(item.quantity)) if item.quantity else Decimal('0')
+                rounding_tolerance = min(qty_for_tolerance * Decimal('0.01'), Decimal('1.00'))
+                within_tolerance = abs(variance) <= rounding_tolerance
+                # Within tolerance: GRNI debits the FULL net_base so the JE still balances
+                # (the tiny discrepancy rides silently on the GRNI leg, no variance line).
+                # Beyond tolerance: GRNI debits exactly the accrued amount and the full
+                # difference posts as a real variance leg (as before).
+                grni_debit = net_base if within_tolerance else accrued
+                grni_line = JournalEntryLine(entry_id=je.id, line_number=line_num, account_id=grni_account.id,
+                                             description=item.description or '', debit_amount=grni_debit, credit_amount=ZERO)
+                db.session.add(grni_line); all_lines.append(grni_line); line_num += 1
+                # NB: a GRNI-accrued line must NEVER become first_expense_line.
+                # The residual-absorption block below adds any header-level
+                # rounding/VAT-override residual to first_expense_line's debit;
+                # letting GRNI absorb it would break the "GRNI clears exactly at
+                # the accrued amount" invariant (posted-je-leg-vs-source-header-invariant).
+                if not within_tolerance:
+                    variance_account = get_control_account('inventory_variance')   # raises here ONLY when actually needed
+                    var_debit = variance if variance > 0 else ZERO
+                    var_credit = -variance if variance < 0 else ZERO
+                    var_line = JournalEntryLine(entry_id=je.id, line_number=line_num, account_id=variance_account.id,
+                                                description=f'{item.description or ""} — inventory variance',
+                                                debit_amount=var_debit, credit_amount=var_credit)
+                    db.session.add(var_line); all_lines.append(var_line); line_num += 1
+                continue   # skip the generic single-line path below for this item
+
         entry_line = JournalEntryLine(
             entry_id=je.id,
             line_number=line_num,

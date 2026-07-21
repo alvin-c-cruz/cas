@@ -13,7 +13,7 @@ from datetime import datetime
 
 journals_bp = Blueprint('journals', __name__, template_folder='templates')
 
-VOUCHER_TYPES = ('reversal', 'adjustment', 'closing', 'closing_reversal', 'opening', 'opening_balance', 'reclassification', 'transfer', 'petty_cash_replenishment')
+VOUCHER_TYPES = ('reversal', 'adjustment', 'closing', 'closing_reversal', 'opening', 'opening_balance', 'reclassification', 'transfer', 'petty_cash_replenishment', 'stock_adjustment', 'receiving_report')
 
 
 def _branch_id():

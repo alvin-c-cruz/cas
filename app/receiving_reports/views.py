@@ -1,5 +1,7 @@
 """Receiving Report views -- goods received against an approved Purchase Order.
-Buy-side mirror of app/delivery_receipts/views.py. Operational only: posts NO journal entry.
+Buy-side mirror of app/delivery_receipts/views.py. Approving a RR posts a GRNI accrual
+JE (Dr Inventory / Cr GRNI, net of VAT) for tracked-inventory lines via
+app.receiving_reports.stock_posting.post_rr_receipt -- a no-op for untracked lines.
 The open-qty grid caps received qty at each PO line's OPEN quantity (checked at approve)."""
 import json
 from decimal import Decimal, InvalidOperation
@@ -293,6 +295,14 @@ def approve(id):
     rr.status = 'approved'
     rr.approved_by_id = current_user.id
     rr.approved_at = ph_now()
+    from app.receiving_reports.stock_posting import post_rr_receipt
+    from app.posting.control_accounts import ControlAccountError
+    try:
+        post_rr_receipt(rr, current_user)
+    except (ValueError, ControlAccountError) as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('receiving_reports.view', id=id))
     db.session.commit()
     log_audit(module='receiving_reports', action='approve', record_id=rr.id,
               record_identifier=rr.rr_number, notes='Approved')
@@ -321,6 +331,8 @@ def cancel(id):
     rr.cancelled_by_id = current_user.id
     rr.cancelled_at = ph_now()
     rr.cancel_reason = reason
+    from app.receiving_reports.stock_posting import reverse_rr_receipt
+    reverse_rr_receipt(rr, current_user)
     db.session.commit()   # cancelling drops it out of COMMITTED_STATUSES -> qty released
     log_audit(module='receiving_reports', action='update', record_id=rr.id,
               record_identifier=rr.rr_number, notes=f'Cancelled: {reason}')
