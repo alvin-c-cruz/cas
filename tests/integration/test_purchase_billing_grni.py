@@ -121,6 +121,47 @@ def test_exact_match_billing_needs_no_variance_account(
     assert not any(c == '61099' for c, _, _ in codes_with_amounts)  # variance NOT touched, none resolved/needed
 
 
+def test_per_unit_vs_per_line_vat_rounding_absorbed_no_variance_account(
+        client, db_session, admin_user, branch_main, product_tracked, vl_vendor, make_account):
+    """Exact price match, but a unit price that doesn't divide evenly by (1+vat/100):
+    RR accrual rounds VAT per-unit (1.00/1.12 -> 0.89, *7 = 6.23) while AP billing
+    rounds per-line (7.00/1.12 -> net 6.25). The 0.02 gap is mathematically inherent,
+    NOT a real variance. It must be absorbed into the GRNI leg (debit 6.25), post NO
+    inventory_variance line, and NOT force inventory_variance to resolve -- so the bill
+    saves even though inventory_variance_account_code is left COMPLETELY UNASSIGNED.
+    (Pre-fix this posted a spurious 0.02 variance and blocked the bill with
+    ControlAccountError when inventory_variance was unassigned.)"""
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('grni_account_code', '2015', make_account)
+    # NB: inventory_variance_account_code is DELIBERATELY never assigned.
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
+    _seed_je_accounts(db_session)
+    vendor = make_vendor(db_session, code='GRNIV7')
+    login(client, 'admin', 'admin123'); _select_branch(client, branch_main)
+    po = _approved_po(db_session, branch_main, vendor, product_tracked, unit_price='1.00', vat_rate='12.00', qty=7)
+    rr = _approved_and_posted_rr(db_session, branch_main, po, admin_user, received=7, number='RR-GRNI-7')
+    rr_item = rr.line_items[0]
+
+    payload = _bill_payload(vendor, rr, rr_item, make_account('61099').id, '1.00', 7)
+    payload['ap_number'] = 'AP-GRNI-7'
+    resp = client.post('/accounts-payable/create', data=payload, follow_redirects=True)
+    assert resp.status_code == 200
+
+    from app.accounts_payable.models import AccountsPayable
+    ap = AccountsPayable.query.filter_by(ap_number='AP-GRNI-7').first()
+    assert ap is not None and ap.journal_entry is not None   # bill saved despite no inventory_variance
+    codes_with_amounts = {(l.account.code, l.debit_amount, l.credit_amount) for l in ap.journal_entry.lines}
+    # GRNI debits the WHOLE-LINE net (6.25), not the naive per-unit accrual (6.23).
+    assert ('2015', Decimal('6.25'), Decimal('0.00')) in codes_with_amounts
+    assert not any(l.account.code == '2015' and l.debit_amount == Decimal('6.23')
+                   for l in ap.journal_entry.lines)
+    # No line posts to ANY inventory_variance-coded account (none was even assigned).
+    var_code = AppSettings.get_setting('inventory_variance_account_code')
+    assert not var_code   # confirm the account was never assigned in this test
+    assert ap.journal_entry.is_balanced
+
+
 def test_billed_more_than_accrued_debits_variance(
         client, db_session, admin_user, branch_main, product_tracked, vl_vendor, make_account):
     _assign('inventory_account_code', '1401', make_account)
