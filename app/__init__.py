@@ -160,6 +160,12 @@ def create_app(config_name=None):
         except:
             return {}
 
+    # Add custom Jinja2 filter for per-branch sidebar theming (R-11 #231)
+    @app.template_filter('derive_sidebar_theme')
+    def derive_sidebar_theme_filter(hex_color):
+        from app.utils.color import derive_sidebar_theme
+        return derive_sidebar_theme(hex_color)
+
     # BIR purchase-nature classification label. Distinguishes an
     # unclassified value (None) from an unrecognized/stale token -- a bare
     # dict .get(value, '-') would render both identically and hide the
