@@ -3,7 +3,8 @@ Forms for Branch management
 """
 from flask_wtf import FlaskForm
 from wtforms import StringField, TextAreaField, BooleanField, SelectMultipleField
-from wtforms.validators import DataRequired, Length, Email, Optional
+from wtforms.fields import ColorField
+from wtforms.validators import DataRequired, Length, Email, Optional, Regexp
 
 
 class BranchForm(FlaskForm):
@@ -27,3 +28,8 @@ class BranchForm(FlaskForm):
         Length(max=120, message='Email must be 120 characters or less.')
     ])
     is_active = BooleanField('Active')
+    use_custom_theme = BooleanField('Use a custom sidebar color for this branch')
+    theme_color = ColorField('Sidebar Color', validators=[
+        Optional(),
+        Regexp(r'^#[0-9a-fA-F]{6}$', message='Must be a valid #RRGGBB color.')
+    ])
