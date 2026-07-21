@@ -70,8 +70,10 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if customer.default_wt_code %}
-                        <span class="badge badge-wt">{{ customer.default_wt_code }}</span>
+                        {% if customer.withholding_taxes %}
+                        {% for wt in customer.withholding_taxes %}
+                        <span class="badge badge-wt">{{ wt.code }}</span>
+                        {% endfor %}
                         {% else %}
                         —
                         {% endif %}

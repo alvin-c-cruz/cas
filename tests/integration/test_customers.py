@@ -35,6 +35,28 @@ def test_customer_list_shows_customer(client, db_session, accountant_user, main_
     assert b'BIR incomplete' in response.data
 
 
+def test_customer_list_shows_withholding_tax_from_m2m(client, db_session, accountant_user, main_branch):
+    """Customer list's DEFAULT WT column reads the real withholding_taxes m2m
+    relation (what the Create Customer form actually writes to), not the
+    legacy default_wt_code column it never populates. BUG-CUSTOMER-LIST-WT-STALE-FIELD."""
+    from app.customers.models import Customer
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC120', name='Contractors/Subcontractors', rate=2.00, is_active=True)
+    db_session.add(wt)
+    cust = Customer(code='C001', name='Theidi Construction Corp.', is_active=True)
+    cust.withholding_taxes = [wt]
+    db_session.add(cust)
+    db_session.commit()
+
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    client.post('/login', data={'username': accountant_user.username,
+                                'password': 'accountant123'}, follow_redirects=True)
+    response = client.get('/customers')
+    assert response.status_code == 200
+    assert b'WC120' in response.data
+
+
 def test_customer_list_delete_modal_present(client, db_session, accountant_user, main_branch):
     """Delete modal is in the HTML — no data-confirm HTML attribute on any form element."""
     from app.customers.models import Customer
