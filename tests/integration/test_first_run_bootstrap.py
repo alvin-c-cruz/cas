@@ -4,6 +4,7 @@ from app import db
 from app.users.models import User
 from app.branches.models import Branch
 from app.audit.models import AuditLog
+from app.accounts.models import Account
 
 pytestmark = [pytest.mark.integration, pytest.mark.users]
 
@@ -140,3 +141,18 @@ def test_register_page_shows_no_bootstrap_indication(client, db_session):
     admin_body = client.get('/register').data.lower()
     for hint in FORBIDDEN_HINTS:
         assert hint not in admin_body, f'register page leaked bootstrap hint: {hint!r}'
+
+
+def test_first_run_bootstrap_seeds_standard_parent_accounts(client, db_session):
+    _register(client, 'admin')
+    assert Account.query.count() == 27
+    cash = Account.query.filter_by(code='111000').first()
+    assert cash is not None
+    assert cash.parent_id is None
+
+    assert AuditLog.query.filter_by(module='account', action='seed').first() is not None
+
+
+def test_non_admin_username_on_empty_db_does_not_seed_accounts(client, db_session):
+    _register(client, 'owner')
+    assert Account.query.count() == 0

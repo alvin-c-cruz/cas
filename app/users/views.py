@@ -293,6 +293,7 @@ def register():
             from app.users.approved_emails import ApprovedEmail
             from app.users.utils import system_has_admin, FIRST_RUN_ADMIN_USERNAME
             from app.branches.models import Branch
+            from app.seeds.seed_data import seed_standard_parent_accounts
 
             admin_exists = system_has_admin()
             is_admin_username = form.username.data == FIRST_RUN_ADMIN_USERNAME
@@ -329,6 +330,13 @@ def register():
                         new_values={'code': branch.code, 'name': branch.name, 'is_active': branch.is_active},
                         notes='Default branch created via first-run admin bootstrap'
                     )
+
+                seed_standard_parent_accounts()
+                log_audit(
+                    module='account', action='seed', record_id=None,
+                    record_identifier='27 standard parent accounts',
+                    notes='27 standard parent accounts seeded via first-run bootstrap'
+                )
 
                 db.session.commit()
 
