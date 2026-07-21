@@ -23,6 +23,27 @@ from app.posting.sales_vat import output_vat_buckets
 from app.posting.control_accounts import get_control_account
 
 
+def _cm_line_chain_verified(li):
+    """True if this SalesMemoItem's referenced Sales Invoice has at least one
+    billed DeliveryReceipt carrying a line for the SAME product -- document-
+    level proof that a real DR-driven COGS relief happened for this product
+    under this invoice (R-03 slice 2a-v). Not a precise per-unit trace (there
+    is no line-level SI<->DR link in this data model) -- a Sales Invoice can
+    be created fully standalone with zero DR involvement, so this check
+    exists specifically to avoid reversing COGS that was never expensed."""
+    from app.delivery_receipts.models import DeliveryReceipt
+
+    si_item = li.sales_invoice_item
+    if si_item is None:
+        return False
+    drs = DeliveryReceipt.query.filter_by(sales_invoice_id=si_item.invoice_id).all()
+    for dr in drs:
+        for dr_li in dr.line_items:
+            if dr_li.product_id == li.product_id:
+                return True
+    return False
+
+
 def post_memo_je(memo, user_id):
     """Build and return the memo's JournalEntry (draft or posted, matching memo.status)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
