@@ -215,3 +215,31 @@ def test_negative_opening_line_debits_equity_credits_inventory(
     assert cr.credit_amount == expected and cr.debit_amount == Decimal('0.00')
     codes = {l.account.code for l in je.lines}
     assert '7101' not in codes               # never the P&L offset for an opening adjustment
+
+
+def test_unrecognized_reason_type_raises_rather_than_defaulting_to_pl(
+        db_session, product_tracked, branch_main, admin_user, make_account):
+    """Review finding: _offset_key previously fell through to
+    'inventory_adjustment' (the P&L gain/loss account) for ANY reason_type
+    that wasn't exactly 'opening' -- the wrong direction for the safety
+    concern this whole spec exists to address (an opening-type document
+    mistakenly routed to the P&L instead of equity would inflate income).
+    Currently unreachable via the form (SelectField choices + DataRequired
+    only ever submit 'correction'/'opening'), but the service itself must
+    fail closed on an unrecognized value rather than silently posting to
+    the P&L. No control accounts need assigning -- must raise before either
+    is even resolved."""
+    from app.stock_adjustments.service import _offset_key
+    with pytest.raises(ValueError):
+        _offset_key('not_a_real_reason_type')
+
+    adj = StockAdjustment(sa_number=generate_sa_number(), branch_id=branch_main.id,
+                          adjustment_date=datetime.date(2026, 7, 21),
+                          reason_type='not_a_real_reason_type',
+                          status='draft', created_by_id=admin_user.id)
+    adj.lines.append(StockAdjustmentLine(product_id=product_tracked.id,
+                                         quantity_delta=Decimal('5'), unit_cost=Decimal('4.00')))
+    db.session.add(adj); db.session.commit()
+    with pytest.raises(ValueError):
+        approve_adjustment(adj, admin_user)
+    assert adj.status == 'draft'  # untouched -- fails before any write, same as an unassigned account

@@ -104,7 +104,18 @@ def reverse_document_movements(source_document_type, source_document_id, actor, 
 
 
 def _offset_key(reason_type):
-    return 'inventory_opening_equity' if reason_type == 'opening' else 'inventory_adjustment'
+    """Fail closed on an unrecognized reason_type, rather than defaulting to
+    'inventory_adjustment' (the P&L account) -- the wrong failure direction
+    for the exact safety concern this whole spec exists to address (an
+    opening-stock load misrouted to income). Currently unreachable via the
+    form (SelectField + DataRequired only ever submit a REASON_TYPES member),
+    this is a service-layer hardening guard, not a reachable user path."""
+    if reason_type == 'opening':
+        return 'inventory_opening_equity'
+    if reason_type == 'correction':
+        return 'inventory_adjustment'
+    raise ValueError(f"Unrecognized Stock Adjustment reason_type '{reason_type}' -- "
+                     f"expected 'correction' or 'opening'.")
 
 
 def _new_je(entry_number, entry_date, description, reference, branch_id, actor):
