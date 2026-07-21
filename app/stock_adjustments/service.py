@@ -83,9 +83,12 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
     raise RuntimeError('stock balance update failed after retries (persistent contention)')
 
 
-def reverse_document_movements(source_document_type, source_document_id, actor):
+def reverse_document_movements(source_document_type, source_document_id, actor, journal_entry_id=None):
     """Post an opposite movement for each original movement of a document (void).
-    Reversal is at the SAME cost basis as the original (append-only ledger)."""
+    Reversal is at the SAME cost basis as the original (append-only ledger).
+    journal_entry_id links each reversal movement to the JE that reversed it
+    (the VOID's own new JE, not the original approval's) -- pass the id of a
+    JE already created by the caller; this function does not create one."""
     originals = StockMovement.query.filter_by(
         source_document_type=source_document_type, source_document_id=source_document_id
     ).order_by(StockMovement.id).all()
@@ -95,7 +98,7 @@ def reverse_document_movements(source_document_type, source_document_id, actor):
         mv, _ = post_movement(
             product, orig.branch_id, 'adjustment', -Decimal(orig.quantity),
             Decimal(orig.unit_cost), source_document_type, source_document_id,
-            f'Reversal of movement {orig.id}', actor)
+            f'Reversal of movement {orig.id}', actor, journal_entry_id=journal_entry_id)
         reversals.append(mv)
     return reversals
 
@@ -181,10 +184,13 @@ def approve_adjustment(adjustment, actor):
 
 
 def void_adjustment(adjustment, actor):
-    """Reverse movements + post a reversing JE, mirroring the ORIGINAL legs
-    (swap Dr/Cr) -- a void reverses exactly what was booked, not a fresh
-    valuation from current balances."""
-    reverse_document_movements('stock_adjustment', adjustment.id, actor)
+    """Post a reversing JE mirroring the ORIGINAL legs (swap Dr/Cr) -- a void
+    reverses exactly what was booked, not a fresh valuation from current
+    balances -- then reverse the stock movements, linked to THIS JE (not the
+    original approval's). The JE is built first: its lines derive entirely
+    from the original JE's own stored lines, independent of the movements, so
+    building it before the movements loses nothing and lets the reversal
+    movements carry the void's own journal_entry_id from the start."""
     orig = adjustment.journal_entry
     je = _new_je(generate_entry_number(adjustment.branch_id), ph_now().date(),
                  f'Void Stock Adjustment {adjustment.sa_number}', adjustment.sa_number,
@@ -197,5 +203,6 @@ def void_adjustment(adjustment, actor):
     if not je.is_balanced:
         raise ValueError(f'Void Stock Adjustment {adjustment.sa_number} JE does not balance '
                          f'(debit={je.total_debit}, credit={je.total_credit}).')
+    reverse_document_movements('stock_adjustment', adjustment.id, actor, journal_entry_id=je.id)
     adjustment.status = 'voided'
     return adjustment

@@ -2,7 +2,7 @@ from decimal import Decimal
 import datetime, pytest
 from app import db
 from app.products.models import Product
-from app.stock_adjustments.models import StockAdjustment, StockAdjustmentLine, StockBalance
+from app.stock_adjustments.models import StockAdjustment, StockAdjustmentLine, StockBalance, StockMovement
 from app.stock_adjustments.numbering import generate_sa_number
 from app.stock_adjustments.service import approve_adjustment, void_adjustment, post_movement
 from app.posting.control_accounts import ControlAccountError
@@ -79,6 +79,31 @@ def test_void_reverses_balance_and_posts_reversing_je(
     assert adj.status == 'voided'
     bal = StockBalance.query.filter_by(product_id=product_tracked.id, branch_id=branch_main.id).one()
     assert bal.quantity_on_hand == Decimal('0.0000')
+
+    # Review finding: the reversal StockMovement row must be linked to the
+    # VOID's own new JE (not left NULL, and not the ORIGINAL approval's JE) --
+    # traceability from a reversal movement back to the JE that actually
+    # reversed it. void_adjustment does not update adj.journal_entry_id (it
+    # still points at the ORIGINAL approval JE), so find the void JE
+    # separately: both JEs share reference=adj.sa_number, the void one is the
+    # later of the two.
+    from app.journal_entries.models import JournalEntry
+    original_je_id = adj.journal_entry_id
+    jes_for_this_doc = (JournalEntry.query.filter_by(reference=adj.sa_number)
+                        .order_by(JournalEntry.id).all())
+    assert len(jes_for_this_doc) == 2  # approval JE + void JE
+    void_je = jes_for_this_doc[1]
+    assert void_je.id != original_je_id
+
+    original_movement = (StockMovement.query
+                         .filter_by(source_document_type='stock_adjustment', source_document_id=adj.id)
+                         .filter(StockMovement.quantity > 0).one())
+    reversal_movement = (StockMovement.query
+                         .filter_by(source_document_type='stock_adjustment', source_document_id=adj.id)
+                         .filter(StockMovement.quantity < 0).one())
+    assert original_movement.journal_entry_id == original_je_id
+    assert reversal_movement.journal_entry_id == void_je.id
+    assert reversal_movement.journal_entry_id != original_movement.journal_entry_id
 
 
 def test_negative_correction_line_valued_at_prior_balance_average_not_entered_cost(
