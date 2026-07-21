@@ -6,7 +6,7 @@ from app.customers.models import Customer
 from app.products.models import Product
 from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.delivery_receipts.models import (
-    DeliveryReceipt, DeliveryReceiptItem, so_line_open_qty, post_delivery_je)
+    DeliveryReceipt, DeliveryReceiptItem, so_line_open_qty)
 
 pytestmark = [pytest.mark.integration, pytest.mark.delivery_receipts]
 
@@ -54,7 +54,6 @@ def test_to_dict_and_post_seam(db_session, main_branch):
     assert d['status'] == 'draft' and d['sales_order_number'] == 'SO-DR-1'
     assert dr.line_items[0].to_dict()['delivered_quantity'] == 5.0
     assert dr.line_items[0].to_dict()['ordered_quantity'] == 10.0
-    assert post_delivery_je(dr) is None      # inert R-03 seam
 
 
 def test_qty_fmt_renders_delivered_quantity(db_session, main_branch):
@@ -73,3 +72,16 @@ def test_exclude_dr_id_leaves_that_dr_out_of_committed_sum(db_session, main_bran
     dr = _dr(db_session, so, li, main_branch.id, '4', 'approved')
     assert so_line_open_qty(li) == Decimal('6')
     assert so_line_open_qty(li, exclude_dr_id=dr.id) == Decimal('10')
+
+
+def test_has_journal_entry_id_column_and_relationship(db_session):
+    from app.delivery_receipts.models import DeliveryReceipt
+    col = DeliveryReceipt.__table__.columns.get('journal_entry_id')
+    assert col is not None
+    assert col.nullable is True
+    assert hasattr(DeliveryReceipt, 'journal_entry')
+
+
+def test_post_delivery_je_stub_removed():
+    import app.delivery_receipts.models as m
+    assert not hasattr(m, 'post_delivery_je')
