@@ -197,3 +197,44 @@ def test_deliver_route_fails_closed_leaves_approved(
     assert resp.status_code == 200
     db.session.refresh(dr)
     assert dr.status == 'approved'   # still approved -- delivery did NOT silently half-succeed
+
+
+def test_cancel_route_reverses_cogs_je_when_delivered(
+        client, db_session, admin_user, branch_main, product_tracked, make_account):
+    _enable_dr()
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('cogs_account_code', '61060', make_account)
+    post_movement(product_tracked, branch_main.id, 'receipt', Decimal('20'), Decimal('8.00'),
+                  'seed', None, 'seed stock', admin_user)
+    db.session.commit()
+    so = _confirmed_so(db_session, branch_main, product_tracked, qty=6)
+    dr = _delivered_dr(db_session, branch_main, so, delivered_qty=6)
+    _login(client, admin_user, branch_main)
+    client.post(f'/delivery-receipts/{dr.id}/deliver', follow_redirects=True)
+    db.session.refresh(dr)
+    assert dr.status == 'delivered' and dr.journal_entry_id is not None
+
+    resp = client.post(f'/delivery-receipts/{dr.id}/cancel',
+                       data={'cancel_reason': 'Customer refused the shipment'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(dr)
+    assert dr.status == 'cancelled'
+    bal = StockBalance.query.filter_by(product_id=product_tracked.id, branch_id=branch_main.id).one()
+    assert bal.quantity_on_hand == Decimal('20.0000')   # back to the seeded 20
+
+
+def test_cancel_route_noop_when_cancelled_before_delivery(
+        client, db_session, admin_user, branch_main, product_tracked, make_account):
+    _enable_dr()
+    so = _confirmed_so(db_session, branch_main, product_tracked, qty=6)
+    dr = _delivered_dr(db_session, branch_main, so, delivered_qty=6)   # status='approved', never delivered
+    _login(client, admin_user, branch_main)
+
+    resp = client.post(f'/delivery-receipts/{dr.id}/cancel',
+                       data={'cancel_reason': 'Order changed before shipping'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(dr)
+    assert dr.status == 'cancelled'
+    assert dr.journal_entry_id is None   # nothing was ever posted -- clean no-op, no error
