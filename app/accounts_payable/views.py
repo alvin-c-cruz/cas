@@ -1447,8 +1447,11 @@ def _post_ap_je(ap, user_id):
                 grni_line = JournalEntryLine(entry_id=je.id, line_number=line_num, account_id=grni_account.id,
                                              description=item.description or '', debit_amount=accrued, credit_amount=ZERO)
                 db.session.add(grni_line); all_lines.append(grni_line); line_num += 1
-                if first_expense_line is None:
-                    first_expense_line = grni_line
+                # NB: a GRNI-accrued line must NEVER become first_expense_line.
+                # The residual-absorption block below adds any header-level
+                # rounding/VAT-override residual to first_expense_line's debit;
+                # letting GRNI absorb it would break the "GRNI clears exactly at
+                # the accrued amount" invariant (posted-je-leg-vs-source-header-invariant).
                 if variance != 0:
                     variance_account = get_control_account('inventory_variance')   # raises here ONLY when actually needed
                     var_debit = variance if variance > 0 else ZERO
