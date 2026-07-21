@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Stock Adjustment {{ adj.sa_number }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Stock Adjustment {{ adj.sa_number }}</h1>
+  <div class="page-actions">
+    <a href="{{ url_for('stock_adjustments.index') }}" class="btn btn-secondary btn-sm">Back to list</a>
+    <a href="{{ url_for('stock_adjustments.print_adjustment', id=adj.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    {% if adj.status == 'draft' and can_manage %}
+    <a href="{{ url_for('stock_adjustments.edit', id=adj.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+    <form method="POST" action="{{ url_for('stock_adjustments.approve', id=adj.id) }}" class="inline-form" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+    </form>
+    {% endif %}
+    {% if adj.status == 'posted' and can_manage %}
+    <button type="button" class="btn btn-danger btn-sm"
+            onclick="document.getElementById('voidModal').style.display='flex'">Void</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card"><div class="card-body">
+  <div class="detail-grid">
+    <div><strong>Status:</strong> <span class="badge">{{ adj.status|capitalize }}</span></div>
+    <div><strong>Date:</strong> {{ adj.adjustment_date.strftime('%b %d, %Y') if adj.adjustment_date else '' }}</div>
+    <div><strong>Branch:</strong> {{ adj.branch.name if adj.branch else '' }}</div>
+    <div><strong>Reason:</strong> {{ adj.reason_type|capitalize }}</div>
+    {% if adj.status == 'posted' and adj.journal_entry_id %}
+    <div><strong>Journal Entry:</strong>
+      <a href="{{ url_for('journal_entries.view', id=adj.journal_entry_id) }}">{{ adj.journal_entry.entry_number if adj.journal_entry else adj.journal_entry_id }}</a>
+    </div>
+    {% endif %}
+  </div>
+  {% if adj.notes %}<p><strong>Notes:</strong> {{ adj.notes }}</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2 class="card-title">Adjustment lines</h2>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th class="text-right">Quantity</th>
+          <th class="text-right">Unit cost</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for li in adj.lines %}
+        <tr>
+          <td>{% if li.product %}{{ li.product.code }} - {{ li.product.name }}{% else %}(item){% endif %}</td>
+          <td class="text-right">{{ '{:,.4f}'.format(li.quantity_delta) }}</td>
+          <td class="text-right">{{ '{:,.2f}'.format(li.unit_cost) if li.unit_cost is not none else '-' }}</td>
+          <td>{{ li.note or '' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="form-hint">Quantities in stock units; costs in PHP.</p>
+</div></div>
+
+{% if adj.status == 'posted' and can_manage %}
+<div id="voidModal" class="modal-overlay" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
+  <div class="card" style="max-width:480px;width:90%">
+    <div class="card-body">
+      <h3>Void Stock Adjustment</h3>
+      <p>This reverses the posted stock movements and posts a reversing journal entry.
+         This cannot be undone.</p>
+      <form method="POST" action="{{ url_for('stock_adjustments.void', id=adj.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-danger">Confirm Void</button>
+          <button type="button" class="btn btn-secondary"
+                  onclick="document.getElementById('voidModal').style.display='none'">Close</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

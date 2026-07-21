@@ -1,28 +1,38 @@
 {% extends "base.html" %}
+{% block title %}Stock Adjustments{% endblock %}
 {% block content %}
-<h1>Stock Adjustments</h1>
+<div class="page-header">
+  <h1>Stock Adjustments</h1>
+  {% if can_manage %}
+  <a href="{{ url_for('stock_adjustments.create') }}" class="btn btn-primary btn-sm">+ Enter Stock Adjustment</a>
+  {% endif %}
+</div>
 {% if not adjustments %}
 <p>No stock adjustments found.</p>
 {% else %}
-<table>
+<div class="table-responsive">
+<table class="table">
     <thead>
         <tr>
             <th>SA #</th>
             <th>Date</th>
             <th>Branch</th>
+            <th>Reason</th>
             <th>Status</th>
         </tr>
     </thead>
     <tbody>
         {% for adj in adjustments %}
         <tr>
-            <td>{{ adj.sa_number }}</td>
-            <td>{{ adj.adjustment_date }}</td>
+            <td><a href="{{ url_for('stock_adjustments.view', id=adj.id) }}">{{ adj.sa_number }}</a></td>
+            <td>{{ adj.adjustment_date.strftime('%b %d, %Y') if adj.adjustment_date else '' }}</td>
             <td>{{ adj.branch.name if adj.branch else '' }}</td>
-            <td>{{ adj.status }}</td>
+            <td>{{ adj.reason_type|capitalize }}</td>
+            <td><span class="badge">{{ adj.status|capitalize }}</span></td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+</div>
 {% endif %}
 {% endblock %}

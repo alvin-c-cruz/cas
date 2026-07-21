@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if adj else 'Enter' }} Stock Adjustment{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ 'Edit' if adj else 'Enter' }} Stock Adjustment</h1>
+  <a href="{{ url_for('stock_adjustments.index') }}" class="btn btn-secondary btn-sm">Back to list</a>
+</div>
+
+<form method="POST" id="sa-form"
+      action="{{ url_for('stock_adjustments.edit', id=adj.id) if adj else url_for('stock_adjustments.create') }}">
+  {# hidden_tag() emits csrf_token, the lost-update row_version, AND the lines
+     HiddenField (each with id=name, e.g. id="lines"), so the line editor targets
+     #lines directly. Rendering ONLY hidden_tag() avoids the double-render that
+     would post name="lines" twice (csrf-only-render-drops-hidden-fields). #}
+  {{ form.hidden_tag() }}
+
+  <div class="card"><div class="card-body">
+    <div class="form-row">
+      <div class="form-group">
+        {{ form.adjustment_date.label }}
+        {{ form.adjustment_date(class="form-control") }}
+        {% if form.adjustment_date.errors %}<div class="form-error">{{ form.adjustment_date.errors[0] }}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        {{ form.reason_type.label }}
+        {{ form.reason_type(class="form-control") }}
+      </div>
+    </div>
+    <div class="form-group">
+      {{ form.notes.label }}
+      {{ form.notes(class="form-control", rows="2") }}
+    </div>
+  </div></div>
+
+  <div class="card"><div class="card-body">
+    <h2 class="card-title">Adjustment lines</h2>
+    <p class="form-hint">A positive quantity adds stock (requires a unit cost); a negative
+       quantity removes stock (valued at the current average cost).</p>
+    <div class="table-responsive">
+      <table class="table" id="sa-lines">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th class="text-right">Quantity (+ in / &minus; out)</th>
+            <th class="text-right">Unit cost</th>
+            <th>Note</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="sa-no-lines">No lines yet.</p>
+    <button type="button" class="btn btn-secondary btn-sm" id="sa-add-line">+ Add line</button>
+  </div></div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ 'Update' if adj else 'Save' }}</button>
+    <a href="{{ url_for('stock_adjustments.index') }}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+
+{# Product list emitted via |tojson (XSS-safe); rows are built with textContent so
+   a product name can never inject markup. The line rows themselves are seeded from
+   and serialized back into the #lines hidden field (single source of truth). #}
+<script type="application/json" id="sa-products-data">{{ product_options|tojson }}</script>
+<script src="{{ url_for('static', filename='js/stock_adjustments_form.js') }}?v=1"></script>
+{% endblock %}

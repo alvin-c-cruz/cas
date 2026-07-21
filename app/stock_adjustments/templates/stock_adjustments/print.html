@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Stock Adjustment {{ adj.sa_number }}{% endblock %}
+{% block content %}
+<div class="print-document">
+  <div class="print-header">
+    {% if company.name %}<h2>{{ company.name }}</h2>{% endif %}
+    {% if company.address %}<p>{{ company.address }}</p>{% endif %}
+    {% if company.tin %}<p>TIN: {{ company.tin }}</p>{% endif %}
+    <h1>Stock Adjustment</h1>
+  </div>
+
+  <div class="detail-grid">
+    <div><strong>SA #:</strong> {{ adj.sa_number }}</div>
+    <div><strong>Date:</strong> {{ adj.adjustment_date.strftime('%b %d, %Y') if adj.adjustment_date else '' }}</div>
+    <div><strong>Branch:</strong> {{ adj.branch.name if adj.branch else '' }}</div>
+    <div><strong>Reason:</strong> {{ adj.reason_type|capitalize }}</div>
+    <div><strong>Status:</strong> {{ adj.status|capitalize }}</div>
+  </div>
+  {% if adj.notes %}<p><strong>Notes:</strong> {{ adj.notes }}</p>{% endif %}
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th class="text-right">Quantity</th>
+        <th class="text-right">Unit cost</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for li in adj.lines %}
+      <tr>
+        <td>{% if li.product %}{{ li.product.code }} - {{ li.product.name }}{% else %}(item){% endif %}</td>
+        <td class="text-right">{{ '{:,.4f}'.format(li.quantity_delta) }}</td>
+        <td class="text-right">{{ '{:,.2f}'.format(li.unit_cost) if li.unit_cost is not none else '-' }}</td>
+        <td>{{ li.note or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="form-hint">Printed {{ printed_at.strftime('%b %d, %Y %H:%M') if printed_at else '' }}. Quantities in stock units; costs in PHP.</p>
+</div>
+{% endblock %}
