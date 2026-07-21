@@ -27,12 +27,6 @@ def test_available_modes_reflects_settings(db_session):
     assert {v for v, _ in modes} == {'discrete', 'process'}
 
 
-def test_consume_materials_is_a_wave0_stub():
-    from app.bill_of_materials import service
-    with pytest.raises(NotImplementedError, match='R-03 slice 2'):
-        service.consume_materials(source_document=None, lines=[])
-
-
 def test_produce_finished_goods_is_a_wave0_stub():
     from app.bill_of_materials import service
     with pytest.raises(NotImplementedError, match='R-03 slice 2'):
