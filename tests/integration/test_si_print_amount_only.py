@@ -15,8 +15,26 @@ from app import db
 from app.accounts.models import Account
 from app.customers.models import Customer
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceItem
+from app.settings import AppSettings
 
 pytestmark = [pytest.mark.sales_invoices, pytest.mark.integration]
+
+
+@pytest.fixture
+def modules_on(db_session):
+    # units_of_measure only -- NOT products: this test's lines are free-text
+    # descriptions (no product_id), matching the description+qty/uom pattern
+    # (e.g. a client without a product catalog). Turning products on too would
+    # switch the column to Product-name (blank for these lines) instead of
+    # Description, hiding the very text these tests assert on.
+    from app.utils.cache_helpers import clear_module_config_cache, clear_uom_cache
+    AppSettings.set_setting('module_enabled:units_of_measure', '1')
+    db.session.commit()
+    clear_module_config_cache()
+    clear_uom_cache()
+    yield
+    clear_module_config_cache()
+    clear_uom_cache()
 
 
 def _login(client, user, branch):
@@ -56,7 +74,7 @@ def _build_mixed_invoice(db_session, branch):
     return inv
 
 
-def test_si_print_blanks_qty_uom_on_amount_only(client, db_session, accountant_user, main_branch):
+def test_si_print_blanks_qty_uom_on_amount_only(client, db_session, accountant_user, main_branch, modules_on):
     inv = _build_mixed_invoice(db_session, main_branch)
     _login(client, accountant_user, main_branch)
     resp = client.get(f'/sales-invoices/{inv.id}/print')
@@ -73,7 +91,7 @@ def test_si_print_blanks_qty_uom_on_amount_only(client, db_session, accountant_u
     assert '—' in html  # em-dash placeholder rendered for the amount-only qty/uom
 
 
-def test_si_detail_blanks_qty_uom_on_amount_only(client, db_session, accountant_user, main_branch):
+def test_si_detail_blanks_qty_uom_on_amount_only(client, db_session, accountant_user, main_branch, modules_on):
     inv = _build_mixed_invoice(db_session, main_branch)
     _login(client, accountant_user, main_branch)
     resp = client.get(f'/sales-invoices/{inv.id}')

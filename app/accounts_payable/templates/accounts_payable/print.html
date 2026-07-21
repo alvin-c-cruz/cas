@@ -107,9 +107,11 @@
         <th style="width:4%">#</th>
         {% if module_enabled('products') %}<th style="width:14%">Product</th>{% endif %}
         <th>Description / Particulars</th>
+        {% if module_enabled('units_of_measure') %}
         <th style="width:6%;text-align:right">Qty</th>
         <th style="width:6%">UOM</th>
         <th style="width:10%;text-align:right">Unit Price</th>
+        {% endif %}
         <th style="width:12%;text-align:right">Amount</th>
         <th style="width:{% if module_enabled('products') %}18{% else %}22{% endif %}%">Account Title</th>
       </tr>
@@ -124,9 +126,11 @@
         </td>
         {% endif %}
         <td>{{ item.description or '—' }}</td>
+        {% if module_enabled('units_of_measure') %}
         <td class="amount">{{ '{:,.4f}'.format(item.quantity) if item.quantity is not none else '' }}</td>
         <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '') }}</td>
         <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% endif %}</td>
+        {% endif %}
         <td class="amount">{{ '{:,.2f}'.format(item.line_total) }}</td>
         <td>{{ item.account.code ~ ' : ' ~ item.account.name if item.account else '—' }}</td>
       </tr>

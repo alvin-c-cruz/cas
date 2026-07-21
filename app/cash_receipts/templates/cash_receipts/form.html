@@ -215,9 +215,11 @@
                   <tr>
                     <th style="width:20%">Description</th>
                     {% if module_enabled('products') %}<th style="width:16%">Product</th>{% endif %}
+                    {% if module_enabled('units_of_measure') %}
                     <th style="width:6%;text-align:right">Qty</th>
-                    {% if module_enabled('units_of_measure') %}<th style="width:6%">UOM</th>{% endif %}
+                    <th style="width:6%">UOM</th>
                     <th style="width:9%;text-align:right">UP</th>
+                    {% endif %}
                     <th style="width:9%;text-align:right">Amount</th>
                     <th style="width:9%">VT</th>
                     <th style="width:8%">WT</th>
@@ -720,20 +722,20 @@ function addRevenueLine(existingItem) {
               <option value="__add_product__">+ Add Product</option>
               ${products.map(p => `<option value="${p.id}" data-custom-properties="${escHtml(JSON.stringify({name: p.name}))}" ${item.product_id == p.id ? 'selected' : ''}>${escHtml(p.code)}: ${escHtml(p.name)}</option>`).join('')}
             </select></td>` : ''}
+        ${uomMasterOn ? `
         <td><input type="text" class="form-control rev-qty"
                    style="text-align:right; border:none; background:transparent; font-family:var(--mono);"
                    value="${item.quantity != null ? amtFmt(item.quantity) : ''}"
                    onfocus="amtFocus(this)" onblur="revQtyBlur(this, ${id})"></td>
-        ${uomMasterOn ? `
         <td><select class="form-control rev-uom-sel uom-select">
               <option value="">—</option>
               <option value="__add_uom__">+ Add UOM</option>
               ${units.map(u => `<option value="${u.id}" data-custom-properties="${escHtml(JSON.stringify({name: u.name}))}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
-            </select></td>` : ''}
+            </select></td>
         <td><input type="text" class="form-control rev-up"
                    style="text-align:right; font-family:var(--mono); border:none; background:transparent;"
                    value="${item.unit_price != null ? amtFmt(item.unit_price) : ''}"
-                   onfocus="amtFocus(this)" onblur="revUpBlur(this, ${id})"></td>
+                   onfocus="amtFocus(this)" onblur="revUpBlur(this, ${id})"></td>` : ''}
         <td><input type="text" class="form-control rev-amt" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right;font-family:var(--mono);border:none;background:transparent;"
                    onfocus="amtFocus(this)" onblur="revAmtBlur(this, ${id})"></td>

@@ -117,9 +117,11 @@
         <th style="width:4%">#</th>
         <th>Description / Particulars</th>
         {% if module_enabled('products') %}<th style="width:10%">Product</th>{% endif %}
+        {% if module_enabled('units_of_measure') %}
         <th style="width:5%;text-align:right">Qty</th>
         <th style="width:6%">UOM</th>
         <th style="width:8%;text-align:right">Unit Price</th>
+        {% endif %}
         <th style="width:11%;text-align:right">Amount (₱, VAT-incl.)</th>
         <th style="width:11%">VAT Category</th>
         <th style="width:10%">WHT Code</th>
@@ -134,9 +136,11 @@
         {% if module_enabled('products') %}
         <td>{% if item.product %}{{ item.product.code }} — {{ item.product.name }}{% else %}—{% endif %}</td>
         {% endif %}
+        {% if module_enabled('units_of_measure') %}
         <td class="amount">{{ item | qty_fmt('—') }}</td>
         <td>{{ item.unit_of_measure.code if item.unit_of_measure else (item.uom_text or '—') }}</td>
         <td class="amount">{% if item.unit_price is not none %}{{ '{:,.2f}'.format(item.unit_price) }}{% else %}—{% endif %}</td>
+        {% endif %}
         <td class="amount">{{ '{:,.2f}'.format(item.amount) }}</td>
         <td>{{ item.vat_category or 'N/A' }} ({{ '{:.2f}'.format(item.vat_rate) }}%)</td>
         <td>{% if item.withholding_tax %}{{ item.withholding_tax.code }} ({{ '{:.2f}'.format(item.wt_rate) }}%){% else %}—{% endif %}</td>

@@ -229,9 +229,11 @@
                   <tr>
                     <th style="width:20%">Description</th>
                     {% if module_enabled('products') %}<th style="width:16%">Product</th>{% endif %}
+                    {% if module_enabled('units_of_measure') %}
                     <th style="width:6%;text-align:right">Qty</th>
-                    {% if module_enabled('units_of_measure') %}<th style="width:6%">UOM</th>{% endif %}
+                    <th style="width:6%">UOM</th>
                     <th style="width:9%;text-align:right">UP</th>
+                    {% endif %}
                     <th style="width:9%;text-align:right">Amount</th>
                     <th style="width:9%">VT</th>
                     <th style="width:8%">WT</th>
@@ -726,12 +728,24 @@ function addExpenseLine(existingItem) {
     }
     expenseLines.push(item);
 
+    const qtyCell = uomMasterOn
+        ? `<td><input type="text" class="form-control" id="exp-qty-${id}"
+                   style="text-align:right;font-family:var(--mono);min-width:60px;border:none;background:transparent;"
+                   value="${item.quantity != null ? amtFmt(item.quantity) : ''}"
+                   onfocus="amtFocus(this)" onblur="expQtyBlur(this, ${id})"></td>`
+        : '';
     const uomCell = uomMasterOn
         ? `<td><select class="form-control uom-select" style="min-width:60px">
                <option value="">—</option>
                <option value="__add_uom__">+ Add UOM</option>
                ${units.map(u => `<option value="${u.id}" data-custom-properties="${escHtml(JSON.stringify({name: u.name}))}" ${item.uom_id == u.id ? 'selected' : ''}>${escHtml(u.code)}: ${escHtml(u.name)}</option>`).join('')}
            </select></td>`
+        : '';
+    const upCell = uomMasterOn
+        ? `<td><input type="text" class="form-control" id="exp-up-${id}"
+                   style="text-align:right;font-family:var(--mono);min-width:70px;border:none;background:transparent;"
+                   value="${item.unit_price != null ? amtFmt(item.unit_price) : ''}"
+                   onfocus="amtFocus(this)" onblur="expUpBlur(this, ${id})"></td>`
         : '';
     const productCell = productMasterOn
         ? `<td><select class="form-control prod-select">
@@ -748,15 +762,9 @@ function addExpenseLine(existingItem) {
                    style="border:none; background:transparent; padding-left:0;"
                    onchange="updateExpense(${id}, 'description', this.value)"></td>
         ${productCell}
-        <td><input type="text" class="form-control" id="exp-qty-${id}"
-                   style="text-align:right;font-family:var(--mono);min-width:60px;border:none;background:transparent;"
-                   value="${item.quantity != null ? amtFmt(item.quantity) : ''}"
-                   onfocus="amtFocus(this)" onblur="expQtyBlur(this, ${id})"></td>
+        ${qtyCell}
         ${uomCell}
-        <td><input type="text" class="form-control" id="exp-up-${id}"
-                   style="text-align:right;font-family:var(--mono);min-width:70px;border:none;background:transparent;"
-                   value="${item.unit_price != null ? amtFmt(item.unit_price) : ''}"
-                   onfocus="amtFocus(this)" onblur="expUpBlur(this, ${id})"></td>
+        ${upCell}
         <td><input type="text" class="form-control exp-amt" id="exp-amt-${id}" value="${amtFmt(item.amount || 0)}"
                    style="text-align:right;font-family:var(--mono);border:none;background:transparent;"
                    onfocus="amtFocus(this)" onblur="expAmtBlur(this, ${id})"></td>
