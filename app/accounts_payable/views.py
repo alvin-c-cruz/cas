@@ -388,6 +388,17 @@ def _build_validated_ap_lines():
                 matched_unit_price = po_item.unit_price
                 matched_quantity = po_item.quantity
 
+        # R-03 slice 2a-ii: a GRNI-accrued RR line's account is FORCED server-side
+        # to the grni control account, ignoring whatever the client posted -- same
+        # trust-boundary principle as matched_unit_price/matched_quantity above.
+        # Untracked lines (rr_item.stock_movement_id is None) and PO-direct/no-RR
+        # lines are completely unaffected. Reuses the `rr_item` already fetched
+        # above (in scope here only when source_rr_item_id resolved it) rather
+        # than re-querying the same row.
+        if source_rr_item_id and rr_item is not None and rr_item.stock_movement_id is not None:
+            from app.posting.control_accounts import get_control_account
+            account_id = get_control_account('grni').id
+
         line_item = AccountsPayableItem(
             line_number=idx,
             description=item_data.get('description', ''),
