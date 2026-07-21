@@ -169,3 +169,28 @@ def test_cancel_route_noop_when_never_issued(client, db_session, admin_user, mai
     db.session.refresh(wo)
     assert wo.status == 'cancelled'
     assert JournalEntry.query.filter_by(reference=wo.wo_number).count() == 0
+
+
+def test_issue_material_route_flashes_negative_on_hand_warning(
+        client, db_session, admin_user, main_branch, make_account):
+    """Issuing material for a component with NO prior stock drives it negative
+    -- consume_materials() sets wo._negative_warnings, and the route must read
+    it and flash a warning alongside the success flash (mirrors the
+    delivery_receipts/stock_adjustments pattern)."""
+    AppSettings.set_setting('module_enabled:work_orders', '1')
+    AppSettings.set_setting('module_enabled:bill_of_materials', '1')
+    db.session.commit(); clear_module_config_cache()
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('wip_account_code', '1402', make_account)
+    wo, comp1, _ = _wo_with_two_materials(main_branch)
+    # comp1 has NO prior stock seeded -- issuing any quantity drives it negative.
+    mat1 = next(m for m in wo.materials if m.component_product_id == comp1.id)
+    _login(client, admin_user, main_branch)
+
+    resp = client.post(f'/work-orders/{wo.id}/materials/{mat1.id}/issue',
+                       data={'quantity': '4'},
+                       follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert b'negative' in resp.data
+    assert comp1.code.encode() in resp.data

@@ -215,6 +215,10 @@ def issue_material_route(id, mat_id):
         log_update('work_orders', wo.id, wo.wo_number, {},
                   {'material': mat.component_product.code, 'quantity_issued': float(quantity)})
         flash(f'Issued {quantity} of "{mat.component_product.code}".', 'success')
+        warnings = getattr(wo, '_negative_warnings', None) or []
+        if warnings:
+            flash('Issued, but these products went to a negative on-hand balance: '
+                  + ', '.join(warnings) + '.', 'warning')
     except ValueError as e:
         db.session.rollback()
         flash(str(e), 'error')
