@@ -1,0 +1,95 @@
+# tests/work_orders/test_consumption_reversal.py
+from decimal import Decimal
+import pytest
+from app import db
+from app.bill_of_materials.models import BillOfMaterial, BillOfMaterialLine
+from app.bill_of_materials.service import consume_materials
+from app.work_orders.models import WorkOrder
+from app.work_orders.service import release_work_order
+from app.work_orders.forms import generate_wo_number
+from app.products.models import Product
+from app.stock_adjustments.models import StockBalance
+from app.stock_adjustments.service import post_movement
+from app.settings import AppSettings
+from app.journal_entries.models import JournalEntry
+
+pytestmark = [pytest.mark.integration]
+
+
+def _assign(code_setting, code, account_factory):
+    account_factory(code)
+    AppSettings.set_setting(code_setting, code, updated_by='test')
+
+
+def _wo_with_two_materials(main_branch, out_code='RCN-OUT', c1='RCN-C1', c2='RCN-C2'):
+    out = Product(code=out_code, name='Out', is_active=True)
+    comp1 = Product(code=c1, name='Comp A', is_active=True, track_inventory=True, costing_method='moving_average')
+    comp2 = Product(code=c2, name='Comp B', is_active=True, track_inventory=True, costing_method='moving_average')
+    db.session.add_all([out, comp1, comp2]); db.session.commit()
+    bom = BillOfMaterial(product_id=out.id, manufacturing_mode='discrete')
+    bom.lines.append(BillOfMaterialLine(line_number=1, component_product_id=comp1.id, quantity_per=Decimal('1')))
+    bom.lines.append(BillOfMaterialLine(line_number=2, component_product_id=comp2.id, quantity_per=Decimal('1')))
+    db.session.add(bom); db.session.commit()
+    wo = WorkOrder(wo_number=generate_wo_number(), bom_id=bom.id, branch_id=main_branch.id, qty_to_produce=Decimal('10'))
+    db.session.add(wo); db.session.commit()
+    release_work_order(wo, None); db.session.commit()
+    return wo, comp1, comp2
+
+
+def test_reverse_consumption_noop_when_never_issued(db_session, main_branch, admin_user):
+    from app.work_orders.service import reverse_consumption
+    wo, _, _ = _wo_with_two_materials(main_branch)
+    reverse_consumption(wo, admin_user)
+    db.session.commit()
+    assert JournalEntry.query.filter_by(reference=wo.wo_number).count() == 0
+
+
+def test_reverse_consumption_reverses_single_issue(db_session, main_branch, admin_user, make_account):
+    from app.work_orders.service import reverse_consumption
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('wip_account_code', '1402', make_account)
+    wo, comp1, comp2 = _wo_with_two_materials(main_branch)
+    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user)
+    db.session.commit()
+    mat1 = next(m for m in wo.materials if m.component_product_id == comp1.id)
+    consume_materials(wo, [(mat1, Decimal('4'))], admin_user)
+    db.session.commit()
+
+    reverse_consumption(wo, admin_user)
+    db.session.commit()
+
+    bal = StockBalance.query.filter_by(product_id=comp1.id, branch_id=main_branch.id).one()
+    assert bal.quantity_on_hand == Decimal('20.0000')   # back to the seeded 20
+    jes = JournalEntry.query.filter_by(reference=wo.wo_number).order_by(JournalEntry.id).all()
+    assert len(jes) == 2   # original + reversal
+
+
+def test_reverse_consumption_reverses_multiple_separate_issue_events(db_session, main_branch, admin_user, make_account):
+    from app.work_orders.service import reverse_consumption
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('wip_account_code', '1402', make_account)
+    wo, comp1, comp2 = _wo_with_two_materials(main_branch)
+    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user)
+    post_movement(comp2, main_branch.id, 'receipt', Decimal('20'), Decimal('3.00'), 'seed', None, 's', admin_user)
+    db.session.commit()
+    mat1 = next(m for m in wo.materials if m.component_product_id == comp1.id)
+    mat2 = next(m for m in wo.materials if m.component_product_id == comp2.id)
+    # two SEPARATE issue events, each its own consume_materials call/JE
+    consume_materials(wo, [(mat1, Decimal('4'))], admin_user)
+    db.session.commit()
+    consume_materials(wo, [(mat2, Decimal('2'))], admin_user)
+    db.session.commit()
+    assert JournalEntry.query.filter_by(reference=wo.wo_number).count() == 2   # two original JEs
+
+    reverse_consumption(wo, admin_user)
+    db.session.commit()
+
+    bal1 = StockBalance.query.filter_by(product_id=comp1.id, branch_id=main_branch.id).one()
+    bal2 = StockBalance.query.filter_by(product_id=comp2.id, branch_id=main_branch.id).one()
+    assert bal1.quantity_on_hand == Decimal('20.0000')
+    assert bal2.quantity_on_hand == Decimal('20.0000')
+    jes = JournalEntry.query.filter_by(reference=wo.wo_number).order_by(JournalEntry.id).all()
+    assert len(jes) == 3   # 2 originals + 1 combined reversal
+    reversal_je = jes[-1]
+    assert reversal_je.is_balanced
+    assert reversal_je.lines.count() == 4   # 2 lines from each of the 2 originals (lines is lazy='dynamic')
