@@ -42,6 +42,7 @@ class ReceivingReport(RowVersioned, db.Model):
                                     nullable=True, index=True)
     # Accrual seam (deferred): a future GRNI / period-end reversing JE attaches here. Inert in v1.
     journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
+    journal_entry = db.relationship('JournalEntry', foreign_keys=[journal_entry_id])
 
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
