@@ -432,6 +432,129 @@ def test_void_reverses_chain_verified_movement(db_session, main_branch, admin_us
     assert bal.quantity_on_hand == Decimal('10.0000')   # back to the seeded 10
 
 
+def _assign_inventory_variance(code='50104', name='Inventory Variance'):
+    """Assign the inventory_variance control account (NOT assigned by
+    _full_vdm_coa, which mirrors a chart where it is deliberately left blank
+    until a real variance forces it)."""
+    acc = Account.query.filter_by(code=code).first()
+    if acc is None:
+        acc = Account(code=code, name=name, account_type='Expense', normal_balance='Debit')
+        db.session.add(acc); db.session.commit()
+    AppSettings.set_setting('inventory_variance_account_code', code, updated_by='test')
+    return acc
+
+
+def test_moving_average_drift_routes_gap_to_inventory_variance(
+        db_session, main_branch, admin_user):
+    """Issue 2 (final review): the chain-verified Cr Inventory leg must be valued
+    at the stock MOVEMENT valuation (abs(mv.quantity) * mv.unit_cost, the current
+    moving average), NOT the billed amount. When the average has drifted since the
+    goods were received, the gap posts to inventory_variance (beyond the cents-
+    level tolerance), and the JE stays balanced.
+
+    Setup: receive the product twice at DIFFERENT prices so the moving average
+    (7.00) drifts away from the first receipt's billed price (5.00); return a line
+    sourced from the FIRST receipt's AP bill (billed_net reflects 5.00)."""
+    coa = _full_vdm_coa()
+    var_acct = _assign_inventory_variance()
+    # First chain: receipt 10 @ 5.00, AP billed at 5.00/unit (source of the return).
+    ap_item, product = _ap_item_from_rr(db_session, main_branch, admin_user, tracked=True,
+                                        suffix='DRIFT', receipt_qty=Decimal('10'),
+                                        receipt_cost=Decimal('5.00'))
+    # Second receipt on the SAME product at 9.00 -> moving average = (10*5 + 10*9)/20 = 7.00.
+    post_movement(product, main_branch.id, 'receipt', Decimal('10'), Decimal('9.00'),
+                  'receiving_report', 999001, 'second receipt drifts average', admin_user)
+    db.session.commit()
+    bal = StockBalance.query.filter_by(product_id=product.id, branch_id=main_branch.id).one()
+    assert bal.average_unit_cost == Decimal('7.00')   # sanity: average drifted
+
+    mitem = _memo_item_for(ap_item)
+    mitem.product_id = product.id
+    mitem.quantity = Decimal('2')
+    mitem.amount = Decimal('11.20'); mitem.line_total = Decimal('11.20')
+    mitem.vat_amount = Decimal('1.20')   # billed_net = 10.00 (reflects the 5.00 receipt price)
+    memo = mitem.memo
+    memo.subtotal = Decimal('11.20'); memo.vat_amount = Decimal('1.20')
+    memo.total_amount = Decimal('11.20')
+    db.session.commit()
+
+    je = post_purchase_memo_je(memo, admin_user.id, actor=admin_user)
+    db.session.commit()
+
+    mv = StockMovement.query.filter_by(source_document_type='purchase_memo',
+                                       source_document_id=memo.id).one()
+    assert mv.quantity == Decimal('-2.0000')
+    assert mv.unit_cost == Decimal('7.00')   # drifted average, NOT the 5.00 bill price
+
+    # Cr Inventory valued at the MOVEMENT valuation 2 * 7.00 = 14.00, NOT billed 10.00.
+    inv_line = next(l for l in je.lines if l.account_id == coa['inv'].id)
+    assert inv_line.credit_amount == Decimal('14.00')
+
+    # billed_net (10.00) - accrued (14.00) = -4.00 -> billed LESS than movement worth
+    # -> DEBIT inventory_variance for 4.00 (far beyond the 0.02 tolerance).
+    var_lines = [l for l in je.lines if l.account_id == var_acct.id]
+    assert len(var_lines) == 1
+    assert var_lines[0].debit_amount == Decimal('4.00')
+    assert var_lines[0].credit_amount == Decimal('0.00')
+
+    # No Purchase Returns leg (single fully-chain-verified line).
+    assert [l for l in je.lines if l.account_id == coa['pr'].id] == []
+
+    # Balance identity (step 8): inv_net(14.00) + contra(0) + variance_running(-4.00)
+    # == net_purchase(10.00); and the whole JE balances.
+    assert je.is_balanced is True
+    assert je.total_debit == je.total_credit
+
+
+def test_within_tolerance_drift_absorbed_no_variance_line(
+        db_session, main_branch, admin_user):
+    """Issue 2 (final review): a chain-verified line whose billed_net and movement
+    valuation differ by only a centavo (a fractional-quantity rounding artifact,
+    well inside the tolerance band) posts with NO inventory_variance line at all,
+    and MUST NOT require inventory_variance to be assigned (it is left unassigned
+    here). The tiny residual rides silently on the Inventory credit."""
+    coa = _full_vdm_coa()
+    # NOTE: inventory_variance is deliberately NOT assigned in _full_vdm_coa.
+    assert (AppSettings.get_setting('inventory_variance_account_code') or '') == ''
+
+    # Receipt 10 @ 5.00 -> average 5.00. Return a fractional 2.5 units:
+    # accrued = 2.5 * 5.00 = 12.50; bill it at billed_net 12.49 (a 0.01 gap).
+    ap_item, product = _ap_item_from_rr(db_session, main_branch, admin_user, tracked=True,
+                                        suffix='TOL', receipt_qty=Decimal('10'),
+                                        receipt_cost=Decimal('5.00'))
+    mitem = _memo_item_for(ap_item)
+    mitem.product_id = product.id
+    mitem.quantity = Decimal('2.5')
+    mitem.amount = Decimal('13.69'); mitem.line_total = Decimal('13.69')
+    mitem.vat_amount = Decimal('1.20')   # billed_net = 12.49; accrued = 12.50; gap = -0.01
+    memo = mitem.memo
+    memo.subtotal = Decimal('13.69'); memo.vat_amount = Decimal('1.20')
+    memo.total_amount = Decimal('13.69')
+    db.session.commit()
+
+    # Must NOT raise (inventory_variance stays unassigned within tolerance).
+    je = post_purchase_memo_je(memo, admin_user.id, actor=admin_user)
+    db.session.commit()
+
+    mv = StockMovement.query.filter_by(source_document_type='purchase_memo',
+                                       source_document_id=memo.id).one()
+    assert mv.unit_cost == Decimal('5.00')
+
+    # Inventory credit = accrued(12.50) + within-tolerance residual(-0.01) = 12.49.
+    inv_line = next(l for l in je.lines if l.account_id == coa['inv'].id)
+    assert inv_line.credit_amount == Decimal('12.49')
+
+    # No variance line anywhere (no inventory_variance account exists / is posted).
+    from app.posting.control_accounts import get_control_account
+    assert get_control_account('inventory_variance', required=False) is None
+    # No Purchase Returns leg either (single fully-chain-verified line).
+    assert [l for l in je.lines if l.account_id == coa['pr'].id] == []
+
+    # Balance identity holds: inv_net(12.49) + VAT(1.20) == total(13.69).
+    assert je.is_balanced is True
+    assert je.total_debit == je.total_credit
+
+
 def test_void_noop_when_no_movement_posted(db_session, main_branch, admin_user):
     from app.purchase_memos.je import reverse_purchase_memo_je
     coa = _full_vdm_coa()
