@@ -473,6 +473,11 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .badge-active              { background: #dcfce7; color: #15803d; }
 .badge-inactive            { background: #f1f5f9; color: #64748b; }
 
+/* ── Inline AJAX toggle note (Company Settings > Packages) ───── */
+.module-toggle-note              { margin-top: 6px; font-size: 0.85rem; }
+.module-toggle-note--error       { color: var(--red); }
+.module-toggle-note--warning     { color: var(--amber); }
+
 /* ── Lifecycle state badges ────────────────────────────────── */
 .badge-submitted        { background: #e0e7ff; color: #3730a3; }
 .badge-approved         { background: #dcfce7; color: #15803d; }

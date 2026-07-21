@@ -10,7 +10,7 @@ from functools import wraps
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
-    current_app, send_file, abort
+    current_app, send_file, abort, jsonify
 )
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -288,12 +288,15 @@ def modules():
 def modules_toggle():
     from app.users.module_access import MODULE_REGISTRY, module_enabled, can_toggle
     from app.utils.cache_helpers import clear_module_config_cache
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     key = request.form.get('key', '')
     enable = request.form.get('enable') == '1'
     enabled_keys = {m['key'] for m in MODULE_REGISTRY
                     if m.get('optional') and module_enabled(m['key'])}
     ok, reason = can_toggle(key, enable, enabled_keys)
     if not ok:
+        if is_ajax:
+            return jsonify(ok=False, key=key, reason=reason)
         flash(f'Cannot change "{key}": {reason}.', 'error')
         return redirect(url_for('company_settings.edit_settings'))
     was_off = key not in enabled_keys
@@ -303,8 +306,10 @@ def modules_toggle():
     log_audit(module='module_config', action='enable' if enable else 'disable',
               record_id=None, record_identifier=key,
               new_values={'enabled': enable})
-    flash(f'Module "{key}" {"enabled" if enable else "disabled"}.', 'success')
+    if not is_ajax:
+        flash(f'Module "{key}" {"enabled" if enable else "disabled"}.', 'success')
 
+    note, note_category = None, None
     if key == 'bank_accounts' and enable and was_off:
         from app.bank_accounts.service import seed_bank_accounts_from_usage
         try:
@@ -313,9 +318,10 @@ def modules_toggle():
             db.session.rollback()
             current_app.logger.error(
                 'Error auto-seeding bank accounts on module enable', exc_info=True)
-            flash('Bank Accounts auto-seeding did not complete. The module is still '
-                  'enabled and it is safe to retry: turn "Bank Accounts" off then on '
-                  'again to pick up where it left off.', 'error')
+            note_category = 'error'
+            note = ('Bank Accounts auto-seeding did not complete. The module is still '
+                    'enabled and it is safe to retry: turn "Bank Accounts" off then on '
+                    'again to pick up where it left off.')
         else:
             if flags:
                 from app.branches.models import Branch
@@ -325,12 +331,17 @@ def modules_toggle():
                                    Branch.query.filter(Branch.id.in_(f['other_branch_ids'])).all()]
                     details.append(f"{f['code']} ({f['name']}) — also posted from: "
                                    f"{', '.join(other_names)}")
-                flash(f'{len(flags)} cash account(s) are shared across branches, so only one '
-                      f'branch could be auto-registered for each: {"; ".join(details)}. To give '
-                      f'an affected branch its own Bank Account: create a separate GL account for '
-                      f'it in the Chart of Accounts, then switch to that branch and register the '
-                      f'new account under Bank Accounts.', 'warning')
+                note_category = 'warning'
+                note = (f'{len(flags)} cash account(s) are shared across branches, so only one '
+                        f'branch could be auto-registered for each: {"; ".join(details)}. To give '
+                        f'an affected branch its own Bank Account: create a separate GL account for '
+                        f'it in the Chart of Accounts, then switch to that branch and register the '
+                        f'new account under Bank Accounts.')
 
+    if is_ajax:
+        return jsonify(ok=True, key=key, enabled=enable, note=note, note_category=note_category)
+    if note:
+        flash(note, note_category)
     return redirect(url_for('company_settings.edit_settings'))
 
 

@@ -6,22 +6,81 @@
   <thead><tr><th>Module</th><th>Section</th><th>Requires</th><th>Status</th><th>Action</th></tr></thead>
   <tbody>
   {% for m in modules %}
-    <tr>
+    <tr data-module-row="{{ m.key }}">
       <td>{{ m.label }}</td>
       <td>{{ m.section }}</td>
       <td>{{ m.depends_on | join(', ') if m.depends_on else '—' }}</td>
-      <td><span class="badge {{ 'badge-active' if m.enabled else 'badge-inactive' }}">
+      <td><span class="badge module-status-badge {{ 'badge-active' if m.enabled else 'badge-inactive' }}">
           {{ 'Enabled' if m.enabled else 'Disabled' }}</span></td>
       <td>
-        <form method="post" action="{{ url_for('company_settings.modules_toggle') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-          <input type="hidden" name="key" value="{{ m.key }}"/>
-          <input type="hidden" name="enable" value="{{ '0' if m.enabled else '1' }}"/>
-          <button type="submit" class="btn {{ 'btn-danger' if m.enabled else 'btn-primary' }}">
-            {{ 'Disable' if m.enabled else 'Enable' }}</button>
-        </form>
+        <button type="button" class="btn module-toggle-btn {{ 'btn-danger' if m.enabled else 'btn-primary' }}"
+                data-key="{{ m.key }}" data-enabled="{{ '1' if m.enabled else '0' }}">
+          {{ 'Disable' if m.enabled else 'Enable' }}</button>
+        <div class="module-toggle-note" style="display:none;"></div>
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
+
+<script>
+// BUG-MODULE-TOGGLE-FULL-PAGE-RELOAD fix: toggle via fetch and update this row in place --
+// no page reload, no scroll-position reset. Falls back to nothing special server-side; a
+// plain (non-JS) POST to the same endpoint still redirects, per company_settings.modules_toggle.
+(function () {
+  var TOGGLE_URL = {{ url_for('company_settings.modules_toggle') | tojson }};
+  var CSRF = {{ csrf_token() | tojson }};
+
+  document.querySelectorAll('.module-toggle-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var row = btn.closest('tr');
+      var badge = row.querySelector('.module-status-badge');
+      var note = row.querySelector('.module-toggle-note');
+      var key = btn.dataset.key;
+      var enabling = btn.dataset.enabled !== '1';
+
+      btn.disabled = true;
+      note.style.display = 'none';
+      note.className = 'module-toggle-note';
+
+      fetch(TOGGLE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: new URLSearchParams({csrf_token: CSRF, key: key, enable: enabling ? '1' : '0'})
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          btn.disabled = false;
+          if (!data.ok) {
+            note.textContent = 'Cannot change "' + data.key + '": ' + data.reason + '.';
+            note.className = 'module-toggle-note module-toggle-note--error';
+            note.style.display = '';
+            return;
+          }
+          btn.dataset.enabled = data.enabled ? '1' : '0';
+          btn.textContent = data.enabled ? 'Disable' : 'Enable';
+          btn.classList.toggle('btn-danger', data.enabled);
+          btn.classList.toggle('btn-primary', !data.enabled);
+          badge.textContent = data.enabled ? 'Enabled' : 'Disabled';
+          badge.classList.toggle('badge-active', data.enabled);
+          badge.classList.toggle('badge-inactive', !data.enabled);
+          if (data.note) {
+            note.textContent = data.note;
+            note.className = 'module-toggle-note module-toggle-note--' +
+              (data.note_category === 'error' ? 'error' : 'warning');
+            note.style.display = '';
+          }
+        })
+        .catch(function () {
+          btn.disabled = false;
+          note.textContent = 'Request failed -- check your connection and try again.';
+          note.className = 'module-toggle-note module-toggle-note--error';
+          note.style.display = '';
+        });
+    });
+  });
+})();
+</script>
