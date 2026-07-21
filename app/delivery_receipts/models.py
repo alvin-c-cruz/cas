@@ -36,6 +36,12 @@ class DeliveryReceipt(RowVersioned, db.Model):
     # Billing seam (sub-project #2 fills this); null until billed.
     sales_invoice_id = db.Column(db.Integer, db.ForeignKey('sales_invoices.id'), nullable=True, index=True)
 
+    # R-03 slice 2a-iii: the COGS-relief JE posted by mark_delivered() for tracked
+    # lines. NULL for an all-untracked DR, or one cancelled before ever being
+    # delivered.
+    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
+    journal_entry = db.relationship('JournalEntry', foreign_keys=[journal_entry_id])
+
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
@@ -143,8 +149,3 @@ def generate_dr_number(branch_id=None):
         if tail.isdigit():
             nums.append(int(tail))
     return f"{prefix}{(max(nums) + 1) if nums else 1:04d}"
-
-
-def post_delivery_je(dr):
-    """R-03 seam: on-delivery inventory-relief / COGS journal entry. Inert now (no-op)."""
-    return None

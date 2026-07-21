@@ -315,10 +315,22 @@ def mark_delivered(id):
     dr.status = 'delivered'
     dr.delivered_by_id = current_user.id
     dr.delivered_at = ph_now()
+    from app.delivery_receipts.stock_posting import post_dr_delivery
+    from app.posting.control_accounts import ControlAccountError
+    try:
+        post_dr_delivery(dr, current_user)
+    except (ValueError, ControlAccountError) as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
     db.session.commit()
     log_audit(module='delivery_receipts', action='update', record_id=dr.id,
               record_identifier=dr.dr_number, notes='Delivered')
     flash(f'Delivery Receipt "{dr.dr_number}" marked delivered.', 'success')
+    warnings = getattr(dr, '_negative_warnings', None) or []
+    if warnings:
+        flash('Delivered, but these products went to a negative on-hand balance: '
+              + ', '.join(warnings) + '.', 'warning')
     return redirect(url_for('delivery_receipts.view', id=id))
 
 
@@ -343,6 +355,8 @@ def cancel(id):
     dr.cancelled_by_id = current_user.id
     dr.cancelled_at = ph_now()
     dr.cancel_reason = reason
+    from app.delivery_receipts.stock_posting import reverse_dr_delivery
+    reverse_dr_delivery(dr, current_user)
     db.session.commit()   # cancelling drops it out of COMMITTED_STATUSES -> qty released
     log_audit(module='delivery_receipts', action='update', record_id=dr.id,
               record_identifier=dr.dr_number, notes=f'Cancelled: {reason}')

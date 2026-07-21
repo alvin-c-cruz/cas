@@ -38,3 +38,16 @@ def test_2a_ii_control_keys_not_auto_seeded():
 def test_unassigned_grni_raises(db_session):
     with pytest.raises(ControlAccountError):
         get_control_account('grni')
+
+def test_cogs_control_key_registered():
+    assert 'cogs' in CONTROL_ACCOUNTS
+    setting_key, label = CONTROL_ACCOUNTS['cogs']
+    assert setting_key.endswith('_account_code')
+    assert label
+
+def test_cogs_control_key_not_auto_seeded():
+    assert 'cogs' not in DEFAULT_CONTROL_ACCOUNT_CODES
+
+def test_unassigned_cogs_raises(db_session):
+    with pytest.raises(ControlAccountError):
+        get_control_account('cogs')
