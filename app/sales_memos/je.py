@@ -21,6 +21,8 @@ from app.journal_entries.utils import generate_entry_number
 from app.sales_memos import service
 from app.posting.sales_vat import output_vat_buckets
 from app.posting.control_accounts import get_control_account
+from app.stock_adjustments.service import post_movement
+from app.stock_adjustments.models import StockBalance
 
 
 def _cm_line_chain_verified(li):
@@ -44,8 +46,14 @@ def _cm_line_chain_verified(li):
     return False
 
 
-def post_memo_je(memo, user_id):
-    """Build and return the memo's JournalEntry (draft or posted, matching memo.status)."""
+def post_memo_je(memo, user_id, actor=None):
+    """Build and return the memo's JournalEntry (draft or posted, matching memo.status).
+
+    ``actor`` (the acting User) is required ONLY when a credit memo has a
+    chain-verified, inventory-tracked line -- those lines post a real
+    ``'sales_return'`` stock movement (which needs ``actor.id``). Existing callers
+    passing just ``(memo, user_id)`` keep working: a memo with no such line never
+    touches ``actor``. See R-03 slice 2a-v."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
     if memo.memo_type not in ('credit', 'debit'):
@@ -111,6 +119,49 @@ def post_memo_je(memo, user_id):
                 Decimal('0.00'), wht_total)
         dest_line = add(dest.id, f'{memo.memo_number} - {memo.customer_name}',
                         Decimal('0.00'), total)
+
+        # R-03 2a-v: ADD (never redirect) a real Dr inventory / Cr cogs pair for lines
+        # with a genuine DR-driven COGS relief -- the sales-return COGS reversal is an
+        # INDEPENDENT, additive effect alongside the revenue reversal above.
+        #
+        # Fail-closed ordering: resolve BOTH 'inventory' and 'cogs' control accounts
+        # lazily, on the FIRST chain-verified+tracked line, strictly BEFORE that line's
+        # post_movement. Resolving them after the movement loop would let a stock write
+        # land before the control-account check could fire, breaking the "zero writes on
+        # a missing account" guarantee (the bug the VDM side had to fix).
+        inv_account = None
+        cogs_account = None
+        cogs_net = Decimal('0.00')
+        for li in memo.line_items:
+            if li.product_id is None or not li.product.track_inventory:
+                continue
+            if not _cm_line_chain_verified(li):
+                continue
+            qty = Decimal(str(li.quantity)) if li.quantity is not None else None
+            if qty is None or qty <= 0:
+                continue
+            if actor is None:
+                raise ValueError(
+                    f'{memo.memo_number} has a chain-verified inventory line -- '
+                    f'an actor is required to post the stock movement.')
+            if inv_account is None:
+                inv_account = get_control_account('inventory')   # raises if unassigned
+                cogs_account = get_control_account('cogs')       # raises if unassigned
+            # 'sales_return' is a POSITIVE/IN delta: compute_new_balance dereferences
+            # in_unit_cost unconditionally for a positive move on a non-standard product,
+            # so pass the product's CURRENT average (a no-op weighted-avg-with-itself;
+            # ignored entirely for a standard-costed product). None would crash here.
+            bal = StockBalance.query.filter_by(product_id=li.product_id,
+                                               branch_id=memo.branch_id).first()
+            current_avg = Decimal(str(bal.average_unit_cost)) if bal else Decimal('0.00')
+            mv, _went_negative = post_movement(
+                li.product, memo.branch_id, 'sales_return', qty, current_avg,
+                'sales_memo', memo.id, f'{memo.memo_number} return: {li.product.code}',
+                actor, journal_entry_id=je.id)
+            cogs_net += abs(Decimal(str(mv.quantity))) * Decimal(str(mv.unit_cost))
+        if cogs_net > 0:
+            add(inv_account.id, f'Inventory returned: {memo.memo_number}', cogs_net, Decimal('0.00'))
+            add(cogs_account.id, f'COGS reversed: {memo.memo_number}', Decimal('0.00'), cogs_net)
         plug_is_debit = False
     else:
         # Debit note (supplementary charge): Dr destination + Dr WHT; Cr revenue per line; Cr Output VAT.
