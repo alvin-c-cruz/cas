@@ -331,6 +331,8 @@ def cancel(id):
     rr.cancelled_by_id = current_user.id
     rr.cancelled_at = ph_now()
     rr.cancel_reason = reason
+    from app.receiving_reports.stock_posting import reverse_rr_receipt
+    reverse_rr_receipt(rr, current_user)
     db.session.commit()   # cancelling drops it out of COMMITTED_STATUSES -> qty released
     log_audit(module='receiving_reports', action='update', record_id=rr.id,
               record_identifier=rr.rr_number, notes=f'Cancelled: {reason}')

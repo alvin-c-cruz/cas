@@ -187,3 +187,24 @@ def test_approve_route_fails_closed_flashes_error_leaves_draft(
     assert resp.status_code == 200
     db.session.refresh(rr)
     assert rr.status == 'draft'   # still draft -- approval did NOT silently half-succeed
+
+
+def test_cancel_route_reverses_grni_je(
+        client, db_session, accountant_user, branch_main, product_tracked, vl_vendor, make_account):
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('grni_account_code', '2015', make_account)
+    po = _approved_po(db_session, branch_main, vl_vendor, product_tracked, unit_price='11.20', vat_rate='12.00', qty=10)
+    rr = _draft_rr(db_session, branch_main, po, received=10, number='RR-2A2-CANCEL-1')
+    _login(client, accountant_user, branch_main)
+    client.post(f'/receiving-reports/{rr.id}/approve', follow_redirects=True)
+    db.session.refresh(rr)
+    assert rr.status == 'approved' and rr.journal_entry_id is not None
+
+    resp = client.post(f'/receiving-reports/{rr.id}/cancel',
+                       data={'cancel_reason': 'Damaged goods, returning to vendor'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(rr)
+    assert rr.status == 'cancelled'
+    bal = StockBalance.query.filter_by(product_id=product_tracked.id, branch_id=branch_main.id).one()
+    assert bal.quantity_on_hand == Decimal('0.0000')
