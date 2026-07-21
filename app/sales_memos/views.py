@@ -295,7 +295,7 @@ def _post_impl(id, memo_type):
         memo.status = 'posted'
         memo.posted_by_id = current_user.id
         memo.posted_at = ph_now()
-        je = post_memo_je(memo, current_user.id)   # status posted -> JE posted
+        je = post_memo_je(memo, current_user.id, actor=current_user)   # status posted -> JE posted
         memo.journal_entry_id = je.id
         # A credit memo settles the referenced SI's AR; a debit note is its OWN receivable --
         # open its collectible balance so a Cash Receipt can settle it (Phase 2b).
@@ -348,7 +348,7 @@ def _void_impl(id, memo_type):
         return redirect(view_url)
     try:
         if memo.status == 'posted':
-            reverse_memo_je(memo, current_user.id)
+            reverse_memo_je(memo, current_user.id, actor=current_user)
             if memo_type == 'credit' and memo.destination == 'ar':
                 _reverse_memo_from_ar(memo)
         memo.status = 'voided'

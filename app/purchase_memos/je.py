@@ -50,9 +50,29 @@ from app.journal_entries.utils import generate_entry_number
 from app.purchase_memos import service
 from app.posting.purchase_vat import input_vat_buckets
 from app.posting.control_accounts import get_control_account
+from app.stock_adjustments.service import post_movement, reverse_document_movements
 
 
-def post_purchase_memo_je(memo, user_id):
+def _vdm_line_chain_verified(li):
+    """True if this PurchaseMemoItem's underlying AP line was billed FROM a
+    Receiving Report item whose own receipt posted a real stock movement --
+    i.e. the returned goods are genuinely sitting in the `inventory` balance
+    today (R-03 slice 2a-v). Mirrors the exact chain
+    app/accounts_payable/views.py already walks to force the grni account on
+    AP billing (2a-ii): source_rr_item_id -> ReceivingReportItem ->
+    stock_movement_id. A non-None stock_movement_id already implies the RR
+    line was tracked (2a-ii only ever sets it for a tracked line), so no
+    separate track_inventory check is needed here."""
+    from app.receiving_reports.models import ReceivingReportItem
+
+    ap_item = li.accounts_payable_item
+    if ap_item is None or ap_item.source_rr_item_id is None:
+        return False
+    rr_item = db.session.get(ReceivingReportItem, ap_item.source_rr_item_id)
+    return rr_item is not None and rr_item.stock_movement_id is not None
+
+
+def post_purchase_memo_je(memo, user_id, actor=None):
     """Build and return the memo's JournalEntry (draft or posted, matching memo.status)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
@@ -105,21 +125,116 @@ def post_purchase_memo_je(memo, user_id):
     vat_bucket_total = Decimal('0.00')
 
     if memo.memo_type == 'debit':
-        # Reverse the returned portion: Dr destination + Dr WHT; Cr Purchase Returns + Cr Input VAT.
+        # Reverse the returned portion: Dr destination + Dr WHT; Cr Purchase
+        # Returns (non-chain-verified) + Cr Inventory (chain-verified, R-03 2a-v)
+        # + Cr Input VAT.
         dest_line = add(dest.id, f'{memo.memo_number} - {memo.vendor_name}',
                         total, Decimal('0.00'))
         if wt_account is not None:
             add(wt_account.id, f'Withholding Tax Payable unwound: {memo.memo_number}',
                 wht_total, Decimal('0.00'))
-        contra = service.resolve_memo_account(service.PURCHASE_RETURNS_KEY,
-                                              'Purchase Returns & Allowances')
-        if net_purchase > 0:
-            add(contra.id, f'Purchase Returns: {memo.memo_number}', Decimal('0.00'), net_purchase)
+
+        # Cr Inventory is valued at the stock MOVEMENT valuation
+        # (abs(mv.quantity) * mv.unit_cost -- the product's current moving
+        # average), NOT the billed net, exactly as the Credit Memo side values
+        # its Dr Inventory leg (app/sales_memos/je.py). The gap between the
+        # billed net and the movement valuation (moving-average drift since the
+        # goods were received) is routed to the `inventory_variance` control
+        # account, mirroring the RR-accrual-vs-actual-bill variance precedent at
+        # app/accounts_payable/views.py:1435-1482 -- including its bounded
+        # rounding-tolerance band so cent-level Decimal-quantization noise does
+        # NOT force inventory_variance to be assigned on an exact-price match.
+        inv_net = Decimal('0.00')          # Cr Inventory -- SUM of movement valuations (accrued)
+        contra_net = Decimal('0.00')       # Cr Purchase Returns -- non-chain-verified lines' billed net
+        variance_running = Decimal('0.00')  # signed billed-vs-movement gap across chain-verified lines
+        cv_qty_running = Decimal('0.00')    # total chain-verified return qty (drives the tolerance band)
+        inv_account = None
+        warnings = []
+        for li in memo.line_items:
+            billed_net = Decimal(str(li.line_total or 0)) - Decimal(str(li.vat_amount or 0))
+            qty = Decimal(str(li.quantity)) if li.quantity is not None else None
+            is_chain_verified = (li.product_id is not None
+                                 and _vdm_line_chain_verified(li)
+                                 and qty is not None and qty > 0)
+            if not is_chain_verified:
+                # Non-chain-verified (or no product, or bad qty): its billed net
+                # is a clean Purchase Returns & Allowances credit, never touched
+                # by valuation drift. contra_net is computed DIRECTLY here (not as
+                # net_purchase - inv_net) -- movement valuation can exceed or fall
+                # short of billed value, so the old subtraction would let
+                # contra_net go negative under drift and drop the Purchase-Returns
+                # leg (breaking the JE balance).
+                contra_net += billed_net
+                continue
+            if actor is None:
+                raise ValueError(
+                    f'{memo.memo_number} has a chain-verified inventory line -- '
+                    f'an actor is required to post the stock movement.')
+            # Fail closed BEFORE any stock write: resolve the inventory control
+            # account on the first chain-verified line (a memo with zero
+            # chain-verified lines never reaches here, so `inventory` is never
+            # required for it). A ControlAccountError here aborts before
+            # post_movement writes anything.
+            if inv_account is None:
+                inv_account = get_control_account('inventory')
+            mv, went_negative = post_movement(
+                li.product, memo.branch_id, 'purchase_return', -qty, None,
+                'purchase_memo', memo.id, f'{memo.memo_number} return: {li.product.code}',
+                actor, journal_entry_id=je.id)
+            if went_negative:
+                warnings.append(li.product.code)
+            # Value the Cr Inventory leg at the movement's OWN current-average
+            # valuation (read from the returned movement, never a separate value).
+            accrued = (abs(Decimal(str(mv.quantity)))
+                       * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))
+            line_variance = (billed_net - accrued).quantize(Decimal('0.01'))
+            inv_net += accrued
+            variance_running += line_variance
+            cv_qty_running += abs(Decimal(str(li.quantity)))
+
+        # Bounded rounding-tolerance band (exact mirror of the AP/GRNI precedent):
+        # genuine cent-level quantization noise rides silently on the Inventory
+        # credit and does NOT require inventory_variance to be assigned; a real
+        # moving-average drift (far larger than the band) posts a variance leg.
+        variance_account = None
+        variance_leg = None   # (debit, credit) to post, or None
+        if cv_qty_running > 0:
+            rounding_tolerance = min(cv_qty_running * Decimal('0.01'), Decimal('1.00'))
+            if abs(variance_running) <= rounding_tolerance:
+                # Within tolerance: absorb the residual into the Inventory credit
+                # itself so the JE still balances; post NO variance line and do
+                # NOT resolve inventory_variance (an unassigned account must not
+                # block an otherwise-exact return).
+                inv_net += variance_running
+            else:
+                # Beyond tolerance: real drift. Resolve inventory_variance (now
+                # required -- raises if unassigned, same as the AP/GRNI call site)
+                # and post exactly the missing amount so total credits still tie
+                # to net_purchase.
+                variance_account = get_control_account('inventory_variance')
+                if variance_running > 0:
+                    # Billed more than the movement is worth: extra CREDIT needed.
+                    variance_leg = (Decimal('0.00'), variance_running)
+                else:
+                    # Billed less than the movement is worth: DEBIT the shortfall.
+                    variance_leg = (-variance_running, Decimal('0.00'))
+
+        if inv_net > 0:
+            add(inv_account.id, f'Inventory returned: {memo.memo_number}',
+                Decimal('0.00'), inv_net)
+        if contra_net > 0:
+            contra = service.resolve_memo_account(service.PURCHASE_RETURNS_KEY,
+                                                  'Purchase Returns & Allowances')
+            add(contra.id, f'Purchase Returns: {memo.memo_number}', Decimal('0.00'), contra_net)
+        if variance_leg is not None:
+            v_debit, v_credit = variance_leg
+            add(variance_account.id, f'Inventory variance: {memo.memo_number}', v_debit, v_credit)
         for vat_acct, vat_amt in input_vat_buckets(memo):
             if vat_amt <= 0:
                 continue
             add(vat_acct.id, f'Input VAT reversed: {memo.memo_number}', Decimal('0.00'), vat_amt)
             vat_bucket_total += vat_amt
+        memo._negative_warnings = warnings   # transient, read by the view for a flash
         plug_is_debit = True
     else:
         # Supplementary charge (mirrors the Sales Invoice/Debit Note JE): Dr destination +
@@ -166,7 +281,7 @@ def post_purchase_memo_je(memo, user_id):
     return je
 
 
-def reverse_purchase_memo_je(memo, user_id):
+def reverse_purchase_memo_je(memo, user_id, actor=None):
     """Post a reversing JE (swap debit/credit of the memo's JE) when a posted memo is voided.
     Returns the reversal JE, or None if the memo has no JE (a draft void). Mirror of
     sales_memos.je.reverse_memo_je. Type-agnostic -- works identically for either
@@ -196,4 +311,6 @@ def reverse_purchase_memo_je(memo, user_id):
         n += 1
     db.session.flush()
     je.calculate_totals()
+    if actor is not None:
+        reverse_document_movements('purchase_memo', memo.id, actor, journal_entry_id=je.id)
     return je
