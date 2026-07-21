@@ -38,7 +38,11 @@ class TestDeriveSidebarTheme:
     ])
     def test_bg_lightness_always_clamped(self, hex_color):
         derived = derive_sidebar_theme(hex_color)
-        assert 0.10 - 1e-6 <= _hex_to_lightness(derived['bg']) <= 0.16 + 1e-6
+        # Tolerance covers 8-bit hex round-trip quantization (derive ->
+        # rgb -> hex -> back to rgb -> hls loses ~1/255 per channel), not
+        # slack in the clamp itself -- max observed drift is ~0.0008.
+        tolerance = 0.002
+        assert 0.10 - tolerance <= _hex_to_lightness(derived['bg']) <= 0.16 + tolerance
 
     @pytest.mark.parametrize('hex_color', [
         '#3b82f6', '#fbcfe8', '#050505', '#fefefe', '#808080',
