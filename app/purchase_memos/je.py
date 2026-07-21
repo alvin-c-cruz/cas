@@ -50,6 +50,7 @@ from app.journal_entries.utils import generate_entry_number
 from app.purchase_memos import service
 from app.posting.purchase_vat import input_vat_buckets
 from app.posting.control_accounts import get_control_account
+from app.stock_adjustments.service import post_movement
 
 
 def _vdm_line_chain_verified(li):
@@ -71,7 +72,7 @@ def _vdm_line_chain_verified(li):
     return rr_item is not None and rr_item.stock_movement_id is not None
 
 
-def post_purchase_memo_je(memo, user_id):
+def post_purchase_memo_je(memo, user_id, actor=None):
     """Build and return the memo's JournalEntry (draft or posted, matching memo.status)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
@@ -124,21 +125,58 @@ def post_purchase_memo_je(memo, user_id):
     vat_bucket_total = Decimal('0.00')
 
     if memo.memo_type == 'debit':
-        # Reverse the returned portion: Dr destination + Dr WHT; Cr Purchase Returns + Cr Input VAT.
+        # Reverse the returned portion: Dr destination + Dr WHT; Cr Purchase
+        # Returns (non-chain-verified) + Cr Inventory (chain-verified, R-03 2a-v)
+        # + Cr Input VAT.
         dest_line = add(dest.id, f'{memo.memo_number} - {memo.vendor_name}',
                         total, Decimal('0.00'))
         if wt_account is not None:
             add(wt_account.id, f'Withholding Tax Payable unwound: {memo.memo_number}',
                 wht_total, Decimal('0.00'))
-        contra = service.resolve_memo_account(service.PURCHASE_RETURNS_KEY,
-                                              'Purchase Returns & Allowances')
-        if net_purchase > 0:
-            add(contra.id, f'Purchase Returns: {memo.memo_number}', Decimal('0.00'), net_purchase)
+
+        inv_net = Decimal('0.00')
+        inv_account = None
+        warnings = []
+        for li in memo.line_items:
+            if li.product_id is None or not _vdm_line_chain_verified(li):
+                continue
+            qty = Decimal(str(li.quantity)) if li.quantity is not None else None
+            if qty is None or qty <= 0:
+                continue
+            if actor is None:
+                raise ValueError(
+                    f'{memo.memo_number} has a chain-verified inventory line -- '
+                    f'an actor is required to post the stock movement.')
+            # Fail closed BEFORE any stock write: resolve the inventory control
+            # account on the first chain-verified line (a memo with zero
+            # chain-verified lines never reaches here, so `inventory` is never
+            # required for it). A ControlAccountError here aborts before
+            # post_movement writes anything.
+            if inv_account is None:
+                inv_account = get_control_account('inventory')
+            line_net = Decimal(str(li.line_total or 0)) - Decimal(str(li.vat_amount or 0))
+            mv, went_negative = post_movement(
+                li.product, memo.branch_id, 'purchase_return', -qty, None,
+                'purchase_memo', memo.id, f'{memo.memo_number} return: {li.product.code}',
+                actor, journal_entry_id=je.id)
+            if went_negative:
+                warnings.append(li.product.code)
+            inv_net += line_net
+
+        contra_net = net_purchase - inv_net
+        if inv_net > 0:
+            add(inv_account.id, f'Inventory returned: {memo.memo_number}',
+                Decimal('0.00'), inv_net)
+        if contra_net > 0:
+            contra = service.resolve_memo_account(service.PURCHASE_RETURNS_KEY,
+                                                  'Purchase Returns & Allowances')
+            add(contra.id, f'Purchase Returns: {memo.memo_number}', Decimal('0.00'), contra_net)
         for vat_acct, vat_amt in input_vat_buckets(memo):
             if vat_amt <= 0:
                 continue
             add(vat_acct.id, f'Input VAT reversed: {memo.memo_number}', Decimal('0.00'), vat_amt)
             vat_bucket_total += vat_amt
+        memo._negative_warnings = warnings   # transient, read by the view for a flash
         plug_is_debit = True
     else:
         # Supplementary charge (mirrors the Sales Invoice/Debit Note JE): Dr destination +
