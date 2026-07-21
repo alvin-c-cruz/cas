@@ -32,17 +32,24 @@ def _released_wo_with_material(main_branch, qty_per='2'):
     return wo
 
 
-def test_issue_material_raises_notimplemented_against_the_real_stub(db_session, main_branch, accountant_user):
+def test_issue_material_calls_real_consume_materials_without_control_accounts_when_untracked(
+        db_session, main_branch, accountant_user):
+    """consume_materials is no longer a Wave-0 stub as of R-03 slice 2a-iv --
+    this replaces the old test that pinned the propagating NotImplementedError.
+    ISS-COMP (from _released_wo_with_material) is untracked by default, so
+    this exercises the real seam end-to-end via the untracked no-op path,
+    with zero control accounts assigned."""
     from app.work_orders.service import issue_material
     wo = _released_wo_with_material(main_branch)
     mat = wo.materials[0]
-    with pytest.raises(NotImplementedError, match='R-03'):
-        issue_material(mat, Decimal('3'), accountant_user)
+    issue_material(mat, Decimal('3'), accountant_user)   # must not raise
+    db.session.commit()
+    assert mat.quantity_issued == Decimal('3')
 
 
 def test_issue_material_updates_quantity_and_transitions_wo_when_consume_succeeds(db_session, main_branch, accountant_user, monkeypatch):
     from app.work_orders import service as wo_service
-    monkeypatch.setattr(wo_service, 'consume_materials', lambda source_document, lines: None)
+    monkeypatch.setattr(wo_service, 'consume_materials', lambda source_document, lines, actor: None)
     wo = _released_wo_with_material(main_branch)
     mat = wo.materials[0]
     assert wo.status == 'released'

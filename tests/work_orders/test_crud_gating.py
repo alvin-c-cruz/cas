@@ -1,4 +1,5 @@
 """Work Order CRUD + release/cancel + module gating tests (R-07 D2)."""
+from decimal import Decimal
 import pytest
 from app import db
 from app.settings import AppSettings
@@ -147,11 +148,18 @@ def test_start_and_complete_operation_via_view(client, accountant_user, db_sessi
     assert op.status == 'complete'
 
 
-def test_issue_material_route_surfaces_notimplemented(client, accountant_user, db_session, main_branch):
+def test_issue_material_route_no_longer_raises_notimplemented_for_untracked_component(
+        client, accountant_user, db_session, main_branch):
+    """consume_materials is no longer a Wave-0 stub as of R-03 slice 2a-iv --
+    this replaces the old test that pinned the propagating NotImplementedError.
+    EXV-COMP (from _released_wo_for_execution) is untracked by default, so
+    this exercises the real seam end-to-end via the untracked no-op path."""
     wo = _released_wo_for_execution(db_session, main_branch, client, accountant_user)
     mat = wo.materials[0]
-    with pytest.raises(NotImplementedError):
-        client.post(f'/work-orders/{wo.id}/materials/{mat.id}/issue', data={'quantity': '1'})
+    resp = client.post(f'/work-orders/{wo.id}/materials/{mat.id}/issue', data={'quantity': '1'})
+    assert resp.status_code in (200, 302)   # succeeds -- no exception propagates
+    db.session.refresh(mat)
+    assert mat.quantity_issued == Decimal('1')
 
 
 def test_every_endpoint_404_when_module_off_includes_execution_routes(client, accountant_user, db_session, main_branch):

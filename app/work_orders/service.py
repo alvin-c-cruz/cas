@@ -68,7 +68,7 @@ def issue_material(wo_material, quantity, actor):
     remaining = wo_material.quantity_required - wo_material.quantity_issued
     if quantity > remaining:
         raise ValueError(f'Cannot issue more than the remaining required quantity ({remaining}).')
-    consume_materials(wo, [(wo_material, quantity)])
+    consume_materials(wo, [(wo_material, quantity)], actor)
     wo_material.quantity_issued += quantity
     if wo.status == 'released':
         wo.status = 'in_progress'
