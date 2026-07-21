@@ -11,6 +11,21 @@ from app.settings import AppSettings
 pytestmark = [pytest.mark.integration]
 
 
+@pytest.fixture(autouse=True)
+def rr_enabled(db_session):
+    """HTTP-level tests hit routes gated by enforce_module_access -- mirrors
+    tests/integration/test_receiving_reports_lifecycle.py's own autouse fixture
+    (this file previously only called post_rr_receipt/reverse_rr_receipt directly,
+    which bypasses routing entirely, so this gate was never needed until now)."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    for k in ('products', 'purchase_orders', 'receiving_reports'):
+        AppSettings.set_setting(f'module_enabled:{k}', '1')
+    db_session.commit(); clear_module_config_cache()
+    yield
+    clear_module_config_cache()
+
+
 def _assign(code_setting, code, account_factory):
     account_factory(code)
     AppSettings.set_setting(code_setting, code, updated_by='test')
@@ -130,3 +145,45 @@ def test_reverse_rr_receipt_noop_when_never_posted(db_session, branch_main, admi
     db.session.commit()
     from app.journal_entries.models import JournalEntry
     assert JournalEntry.query.filter_by(reference=rr.rr_number).count() == 0
+
+
+def _login(client, user, branch):
+    # accountant_user (tests/conftest.py) is only assigned to main_branch, not
+    # branch_main (this file's own branch fixture) -- grant it explicitly so the
+    # app's real before_request branch-access gate (app/__init__.py) doesn't
+    # silently swap session['selected_branch_id'] back to main_branch and 404
+    # _rr_or_404's branch-match check.
+    if branch not in user.branches:
+        user.set_branches(list(user.branches) + [branch])
+        db.session.commit()
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.id); sess['_fresh'] = True
+        sess['selected_branch_id'] = branch.id
+
+
+def test_approve_route_posts_grni_je(
+        client, db_session, accountant_user, branch_main, product_tracked, vl_vendor, make_account):
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('grni_account_code', '2015', make_account)
+    po = _approved_po(db_session, branch_main, vl_vendor, product_tracked, unit_price='11.20', vat_rate='12.00', qty=10)
+    rr = _draft_rr(db_session, branch_main, po, received=10, number='RR-2A2-APPROVE-1')
+    _login(client, accountant_user, branch_main)
+
+    resp = client.post(f'/receiving-reports/{rr.id}/approve', follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(rr)
+    assert rr.status == 'approved'
+    assert rr.journal_entry_id is not None
+
+
+def test_approve_route_fails_closed_flashes_error_leaves_draft(
+        client, db_session, accountant_user, branch_main, product_tracked, vl_vendor, make_account):
+    # No control accounts assigned at all.
+    po = _approved_po(db_session, branch_main, vl_vendor, product_tracked, qty=10)
+    rr = _draft_rr(db_session, branch_main, po, received=10, number='RR-2A2-APPROVE-2')
+    _login(client, accountant_user, branch_main)
+
+    resp = client.post(f'/receiving-reports/{rr.id}/approve', follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(rr)
+    assert rr.status == 'draft'   # still draft -- approval did NOT silently half-succeed
