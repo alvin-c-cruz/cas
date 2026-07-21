@@ -1429,10 +1429,36 @@ def _post_ap_je(ap, user_id):
     first_expense_line = None
     all_lines = []
 
+    ZERO = Decimal('0.00')
+    grni_account = get_control_account('grni', required=False)   # None if never assigned -- fine, no bills use it yet then
+
     for item in ap.line_items:
         if not item.account_id:
             continue
         net_base = Decimal(str(item.line_total)) - Decimal(str(item.vat_amount))
+
+        if grni_account is not None and item.account_id == grni_account.id and item.source_rr_item_id:
+            from app.receiving_reports.models import ReceivingReportItem
+            rr_item = db.session.get(ReceivingReportItem, item.source_rr_item_id)
+            mv = rr_item.stock_movement if rr_item else None
+            if mv is not None:
+                accrued = (Decimal(str(mv.quantity)) * Decimal(str(mv.unit_cost))).quantize(Decimal('0.01'))
+                variance = (net_base - accrued).quantize(Decimal('0.01'))
+                grni_line = JournalEntryLine(entry_id=je.id, line_number=line_num, account_id=grni_account.id,
+                                             description=item.description or '', debit_amount=accrued, credit_amount=ZERO)
+                db.session.add(grni_line); all_lines.append(grni_line); line_num += 1
+                if first_expense_line is None:
+                    first_expense_line = grni_line
+                if variance != 0:
+                    variance_account = get_control_account('inventory_variance')   # raises here ONLY when actually needed
+                    var_debit = variance if variance > 0 else ZERO
+                    var_credit = -variance if variance < 0 else ZERO
+                    var_line = JournalEntryLine(entry_id=je.id, line_number=line_num, account_id=variance_account.id,
+                                                description=f'{item.description or ""} — inventory variance',
+                                                debit_amount=var_debit, credit_amount=var_credit)
+                    db.session.add(var_line); all_lines.append(var_line); line_num += 1
+                continue   # skip the generic single-line path below for this item
+
         entry_line = JournalEntryLine(
             entry_id=je.id,
             line_number=line_num,

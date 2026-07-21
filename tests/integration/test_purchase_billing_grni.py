@@ -91,3 +91,85 @@ def test_tracked_rr_line_bills_to_grni_not_decoy_account(
     item = ap.line_items[0]
     assert item.account_id != decoy.id
     assert item.account.code == '2015'   # GRNI, not the decoy expense account
+
+
+def test_exact_match_billing_needs_no_variance_account(
+        client, db_session, admin_user, branch_main, product_tracked, vl_vendor, make_account):
+    """Billed price exactly matches accrued -- inventory_variance is deliberately
+    left UNASSIGNED and the bill must still post successfully (zero variance
+    never needs the account resolved)."""
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('grni_account_code', '2015', make_account)
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
+    _seed_je_accounts(db_session)
+    vendor = make_vendor(db_session, code='GRNIV2')
+    login(client, 'admin', 'admin123'); _select_branch(client, branch_main)
+    po = _approved_po(db_session, branch_main, vendor, product_tracked, unit_price='11.20', vat_rate='12.00', qty=10)
+    rr = _approved_and_posted_rr(db_session, branch_main, po, admin_user, received=10, number='RR-GRNI-2')
+    rr_item = rr.line_items[0]
+
+    payload = _bill_payload(vendor, rr, rr_item, make_account('61099').id, '11.20', 10)
+    payload['ap_number'] = 'AP-GRNI-2'
+    resp = client.post('/accounts-payable/create', data=payload, follow_redirects=True)
+    assert resp.status_code == 200
+
+    from app.accounts_payable.models import AccountsPayable
+    ap = AccountsPayable.query.filter_by(ap_number='AP-GRNI-2').first()
+    codes_with_amounts = {(l.account.code, l.debit_amount, l.credit_amount) for l in ap.journal_entry.lines}
+    assert ('2015', Decimal('100.00'), Decimal('0.00')) in codes_with_amounts  # Dr GRNI = accrued net (10 * 10.00)
+    assert not any(c == '61099' for c, _, _ in codes_with_amounts)  # variance NOT touched, none resolved/needed
+
+
+def test_billed_more_than_accrued_debits_variance(
+        client, db_session, admin_user, branch_main, product_tracked, vl_vendor, make_account):
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('grni_account_code', '2015', make_account)
+    _assign('inventory_variance_account_code', '61050', make_account)
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
+    _seed_je_accounts(db_session)
+    vendor = make_vendor(db_session, code='GRNIV3')
+    login(client, 'admin', 'admin123'); _select_branch(client, branch_main)
+    po = _approved_po(db_session, branch_main, vendor, product_tracked, unit_price='11.20', vat_rate='12.00', qty=10)
+    rr = _approved_and_posted_rr(db_session, branch_main, po, admin_user, received=10, number='RR-GRNI-3')
+    rr_item = rr.line_items[0]
+    # accrued net = 10 * 10.00 = 100.00; billed at 12.32 gross/unit (net 11.00) -> billed net = 110.00
+    payload = _bill_payload(vendor, rr, rr_item, make_account('61099').id, '12.32', 10)
+    payload['ap_number'] = 'AP-GRNI-3'
+    resp = client.post('/accounts-payable/create', data=payload, follow_redirects=True)
+    assert resp.status_code == 200
+
+    from app.accounts_payable.models import AccountsPayable
+    ap = AccountsPayable.query.filter_by(ap_number='AP-GRNI-3').first()
+    codes_with_amounts = {(l.account.code, l.debit_amount, l.credit_amount) for l in ap.journal_entry.lines}
+    assert ('2015', Decimal('100.00'), Decimal('0.00')) in codes_with_amounts   # Dr GRNI, still the accrued amount
+    assert ('61050', Decimal('10.00'), Decimal('0.00')) in codes_with_amounts   # Dr variance = 110.00 - 100.00
+    assert ap.journal_entry.is_balanced
+
+
+def test_billed_less_than_accrued_credits_variance(
+        client, db_session, admin_user, branch_main, product_tracked, vl_vendor, make_account):
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('grni_account_code', '2015', make_account)
+    _assign('inventory_variance_account_code', '61050', make_account)
+    from tests.conftest import assign_control_accounts
+    assign_control_accounts(db_session)
+    _seed_je_accounts(db_session)
+    vendor = make_vendor(db_session, code='GRNIV4')
+    login(client, 'admin', 'admin123'); _select_branch(client, branch_main)
+    po = _approved_po(db_session, branch_main, vendor, product_tracked, unit_price='11.20', vat_rate='12.00', qty=10)
+    rr = _approved_and_posted_rr(db_session, branch_main, po, admin_user, received=10, number='RR-GRNI-4')
+    rr_item = rr.line_items[0]
+    # billed at 10.08 gross/unit (net 9.00) -> billed net = 90.00, accrued = 100.00
+    payload = _bill_payload(vendor, rr, rr_item, make_account('61099').id, '10.08', 10)
+    payload['ap_number'] = 'AP-GRNI-4'
+    resp = client.post('/accounts-payable/create', data=payload, follow_redirects=True)
+    assert resp.status_code == 200
+
+    from app.accounts_payable.models import AccountsPayable
+    ap = AccountsPayable.query.filter_by(ap_number='AP-GRNI-4').first()
+    codes_with_amounts = {(l.account.code, l.debit_amount, l.credit_amount) for l in ap.journal_entry.lines}
+    assert ('2015', Decimal('100.00'), Decimal('0.00')) in codes_with_amounts   # Dr GRNI, still the accrued amount
+    assert ('61050', Decimal('0.00'), Decimal('10.00')) in codes_with_amounts   # Cr variance = 100.00 - 90.00
+    assert ap.journal_entry.is_balanced
