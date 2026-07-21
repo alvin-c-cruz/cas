@@ -15,6 +15,7 @@ class Branch(db.Model):
     address = db.Column(db.Text)
     phone = db.Column(db.String(50))
     email = db.Column(db.String(120))
+    theme_color = db.Column(db.String(7), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=ph_now)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
@@ -43,6 +44,7 @@ class Branch(db.Model):
             'address': self.address,
             'phone': self.phone,
             'email': self.email,
+            'theme_color': self.theme_color,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'user_count': user_count
