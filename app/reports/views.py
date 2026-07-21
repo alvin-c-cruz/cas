@@ -1749,3 +1749,76 @@ def books_export_all():
         download_name='Books_of_Accounts.xlsx',
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
+
+
+def _stock_ledger_movements(product_id):
+    """(products, product_id, movements) -- shared query for the screen/print/export
+    variants of the Stock Ledger report. Read-only, branch-scoped."""
+    from app.stock_adjustments.models import StockMovement
+    from app.products.models import Product
+    from app.users.utils import get_accessible_branches
+    branch_ids = [b.id for b in get_accessible_branches(current_user)]
+    products = Product.query.filter_by(is_active=True, track_inventory=True).order_by(Product.code).all()
+    movements = []
+    if product_id and branch_ids:
+        movements = (StockMovement.query
+                     .filter(StockMovement.product_id == product_id,
+                             StockMovement.branch_id.in_(branch_ids))
+                     .order_by(StockMovement.id).all())
+    return products, movements
+
+
+@reports_bp.route('/reports/stock-ledger')
+@login_required
+def stock_ledger():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    product_id = request.args.get('product_id', type=int)
+    products, movements = _stock_ledger_movements(product_id)
+    return render_template('reports/stock_ledger.html', products=products,
+                           product_id=product_id, movements=movements)
+
+
+@reports_bp.route('/reports/stock-ledger/print')
+@login_required
+def stock_ledger_print():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    product_id = request.args.get('product_id', type=int)
+    products, movements = _stock_ledger_movements(product_id)
+    product = next((p for p in products if p.id == product_id), None)
+    company, branch_name = _bs_company_branch(None)
+    return render_template('reports/stock_ledger_print.html', product=product,
+                           movements=movements, company=company, branch_name=branch_name)
+
+
+@reports_bp.route('/reports/stock-ledger/export/excel')
+@login_required
+def stock_ledger_export_excel():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    product_id = request.args.get('product_id', type=int)
+    products, movements = _stock_ledger_movements(product_id)
+    product = next((p for p in products if p.id == product_id), None)
+    rows = [{
+        'date': m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '',
+        'movement_type': m.movement_type,
+        'quantity': m.quantity,
+        'unit_cost': m.unit_cost,
+        'balance_qty_after': m.balance_qty_after,
+        'balance_avg_cost_after': m.balance_avg_cost_after,
+        'balance_value_after': m.balance_value_after,
+    } for m in movements]
+    columns = ['date', 'movement_type', 'quantity', 'unit_cost',
+               'balance_qty_after', 'balance_avg_cost_after', 'balance_value_after']
+    headers = ['Date', 'Movement Type', 'Qty', 'Unit Cost',
+               'Balance Qty', 'Balance Avg Cost', 'Balance Value']
+    filename = f"Stock_Ledger_{product.code if product else 'export'}.xlsx"
+    return export_to_excel(rows, columns, headers, filename,
+                           title=f"Stock Ledger — {product.name}" if product else 'Stock Ledger')

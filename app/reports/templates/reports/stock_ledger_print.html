@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Stock Ledger</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #000; margin: 24px; }
+        .company { font-size: 14px; font-weight: bold; }
+        .meta { color: #333; margin: 2px 0 14px 0; }
+        h1 { font-size: 16px; margin: 0 0 2px 0; }
+        table { width: 100%; border-collapse: collapse; }
+        td, th { padding: 3px 8px; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .colhead td, .colhead th { font-weight: bold; border-bottom: 1px solid #000; }
+    </style>
+</head>
+<body onload="window.print()">
+    {% if company.name %}<div class="company">{{ company.name }}</div>{% endif %}
+    <div class="meta">
+        {% if company.tin %}TIN: {{ company.tin }} &nbsp; {% endif %}
+        {% if company.address %}{{ company.address }}<br>{% endif %}
+        {% if branch_name %}Branch: {{ branch_name }} &nbsp; {% endif %}
+    </div>
+    <h1>Stock Ledger</h1>
+    <div class="meta">
+        {% if product %}{{ product.code }} &mdash; {{ product.name }}{% else %}No product selected{% endif %}
+    </div>
+
+    <table>
+        <tbody>
+            <tr class="colhead">
+                <td>Date</td>
+                <td>Branch</td>
+                <td>Movement Type</td>
+                <td class="num">Qty</td>
+                <td class="num">Unit Cost</td>
+                <td class="num">Balance Qty</td>
+                <td class="num">Balance Avg Cost</td>
+                <td class="num">Balance Value</td>
+            </tr>
+            {% for m in movements %}
+            <tr>
+                <td>{{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '' }}</td>
+                <td>{{ m.branch.name if m.branch else '' }}</td>
+                <td>{{ m.movement_type }}</td>
+                <td class="num">{{ '{:,.4f}'.format(m.quantity) }}</td>
+                <td class="num">{{ '{:,.2f}'.format(m.unit_cost) }}</td>
+                <td class="num">{{ '{:,.4f}'.format(m.balance_qty_after) }}</td>
+                <td class="num">{{ '{:,.2f}'.format(m.balance_avg_cost_after) }}</td>
+                <td class="num">{{ '{:,.2f}'.format(m.balance_value_after) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8">No movements for this product.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
