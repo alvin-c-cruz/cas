@@ -77,3 +77,41 @@ def test_stock_ledger_branch_scoped(
     resp = client.get(f'/reports/stock-ledger?product_id={product_tracked.id}')
     assert resp.status_code == 200
     assert b'50.00' not in resp.data
+
+
+def test_stock_ledger_branch_filter_narrows_to_selected_branch(
+        client, admin_user, login_user, db_session, product_tracked,
+        branch_main, branch_manila):
+    """Review finding: the spec says the report is 'optionally filtered by
+    branch' -- it previously only showed a Branch column with zero query-
+    string filter. Post movements for the same product in two branches;
+    filtering by branch_id must narrow to just that branch's rows, and
+    omitting the param must show both (the existing default, unchanged)."""
+    _enable_stock_adjustments()
+    post_movement(product_tracked, branch_main.id, 'adjustment', Decimal('10'), Decimal('5.00'),
+                  'stock_adjustment', 1, 'seed main', admin_user)
+    post_movement(product_tracked, branch_manila.id, 'adjustment', Decimal('20'), Decimal('7.00'),
+                  'stock_adjustment', 2, 'seed manila', admin_user)
+    db.session.commit()
+    login_user(client, 'admin', 'admin123')
+    client.post('/select-branch', data={'branch_id': branch_main.id})
+
+    # No branch_id -- both branches' movements appear (unchanged default).
+    all_resp = client.get(f'/reports/stock-ledger?product_id={product_tracked.id}')
+    assert all_resp.status_code == 200
+    assert branch_main.name.encode() in all_resp.data
+    assert branch_manila.name.encode() in all_resp.data
+
+    # branch_id=branch_main.id -- only that branch's movement/value appears.
+    main_resp = client.get(
+        f'/reports/stock-ledger?product_id={product_tracked.id}&branch_id={branch_main.id}')
+    assert main_resp.status_code == 200
+    assert b'50.00' in main_resp.data      # 10 * 5.00, main branch
+    assert b'140.00' not in main_resp.data  # 20 * 7.00, manila branch -- must NOT appear
+
+    # branch_id=branch_manila.id -- only Manila's movement/value appears.
+    manila_resp = client.get(
+        f'/reports/stock-ledger?product_id={product_tracked.id}&branch_id={branch_manila.id}')
+    assert manila_resp.status_code == 200
+    assert b'140.00' in manila_resp.data
+    assert b'50.00' not in manila_resp.data

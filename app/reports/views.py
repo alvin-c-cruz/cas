@@ -1751,13 +1751,22 @@ def books_export_all():
     )
 
 
-def _stock_ledger_movements(product_id):
-    """(products, product_id, movements) -- shared query for the screen/print/export
-    variants of the Stock Ledger report. Read-only, branch-scoped."""
+def _stock_ledger_movements(product_id, branch_id=None):
+    """(products, movements) -- shared query for the screen/print/export
+    variants of the Stock Ledger report. Read-only, branch-scoped.
+
+    branch_id is an OPTIONAL filter narrowing to a single branch; it must
+    itself be one of the user's accessible branches (fails closed -- an
+    inaccessible/bogus branch_id is silently ignored, falling back to the
+    full accessible set, same "no data leak, no 500" shape as the rest of
+    this report's branch-scoping)."""
     from app.stock_adjustments.models import StockMovement
     from app.products.models import Product
     from app.users.utils import get_accessible_branches
-    branch_ids = [b.id for b in get_accessible_branches(current_user)]
+    accessible_branches = get_accessible_branches(current_user)
+    branch_ids = [b.id for b in accessible_branches]
+    if branch_id is not None and branch_id in branch_ids:
+        branch_ids = [branch_id]
     products = Product.query.filter_by(is_active=True, track_inventory=True).order_by(Product.code).all()
     movements = []
     if product_id and branch_ids:
@@ -1775,10 +1784,13 @@ def stock_ledger():
     if not module_enabled('stock_adjustments'):
         flash('The Stock Adjustments module is not enabled.', 'error')
         return redirect(url_for('dashboard.index'))
+    from app.users.utils import get_accessible_branches
     product_id = request.args.get('product_id', type=int)
-    products, movements = _stock_ledger_movements(product_id)
+    branch_id = request.args.get('branch_id', type=int)
+    products, movements = _stock_ledger_movements(product_id, branch_id)
     return render_template('reports/stock_ledger.html', products=products,
-                           product_id=product_id, movements=movements)
+                           product_id=product_id, branch_id=branch_id,
+                           branches=get_accessible_branches(current_user), movements=movements)
 
 
 @reports_bp.route('/reports/stock-ledger/print')
@@ -1789,7 +1801,8 @@ def stock_ledger_print():
         flash('The Stock Adjustments module is not enabled.', 'error')
         return redirect(url_for('dashboard.index'))
     product_id = request.args.get('product_id', type=int)
-    products, movements = _stock_ledger_movements(product_id)
+    branch_id = request.args.get('branch_id', type=int)
+    products, movements = _stock_ledger_movements(product_id, branch_id)
     product = next((p for p in products if p.id == product_id), None)
     company, branch_name = _bs_company_branch(None)
     return render_template('reports/stock_ledger_print.html', product=product,
@@ -1804,7 +1817,8 @@ def stock_ledger_export_excel():
         flash('The Stock Adjustments module is not enabled.', 'error')
         return redirect(url_for('dashboard.index'))
     product_id = request.args.get('product_id', type=int)
-    products, movements = _stock_ledger_movements(product_id)
+    branch_id = request.args.get('branch_id', type=int)
+    products, movements = _stock_ledger_movements(product_id, branch_id)
     product = next((p for p in products if p.id == product_id), None)
     rows = [{
         'date': m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '',
