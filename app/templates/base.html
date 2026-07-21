@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=23">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=24">
     <style>
         /* Minimal scrollbar styling for better accessibility */
         * {
@@ -1557,10 +1557,24 @@
                 });
             }
 
-            // Single source of truth: persist which section is open, then render it
+            // Single source of truth: persist which section is open, then render it.
+            // Guard pointer-events on the whole nav for the duration of the CSS transition
+            // (max-height 0.3s is the longest of the two) -- toggling one section also
+            // animates a different section closed, and a click fired before both settle can
+            // land on the still-repositioning sibling instead of its intended target
+            // (BUG-SIDEBAR-COLLAPSIBLE-OVERLAP-INTERCEPT). 350ms leaves a small buffer past 0.3s.
+            var navEl = document.querySelector('.nav');
+            var transitionGuardTimer = null;
             function setExpandedSection(sectionName) {
                 localStorage.setItem(EXPANDED_SECTION_KEY, sectionName || '');
                 applyExpandedSection(sectionName);
+                if (navEl) {
+                    navEl.classList.add('is-transitioning');
+                    if (transitionGuardTimer) { clearTimeout(transitionGuardTimer); }
+                    transitionGuardTimer = setTimeout(function() {
+                        navEl.classList.remove('is-transitioning');
+                    }, 350);
+                }
             }
 
             // Resolve initial state: active section wins, else a still-valid saved section,

@@ -183,6 +183,14 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
   opacity: 0;
 }
 
+/* Guard against a click landing on the wrong element while the accordion's
+   expand/collapse transition is still in flight (BUG-SIDEBAR-COLLAPSIBLE-OVERLAP-INTERCEPT):
+   toggling one section simultaneously animates another closed, and a click fired before both
+   settle can hit the still-repositioning sibling instead of its intended target. */
+.nav.is-transitioning {
+  pointer-events: none;
+}
+
 .nav-item {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 20px;
