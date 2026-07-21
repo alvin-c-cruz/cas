@@ -17,7 +17,7 @@ STANDARD_PARENT_ACCOUNTS = [
     ('113000', 'Non-Trade Receivables', 'Asset', 'Current', 'debit', None),
     ('114000', 'Inventory', 'Asset', 'Current', 'debit', None),
     ('115000', 'Supplies Inventory', 'Asset', 'Current', 'debit', None),
-    ('116000', 'Prepaid Expenses', 'Asset', 'Current', 'debit', None),
+    ('116000', 'Prepayments', 'Asset', 'Current', 'debit', None),
     ('117000', 'Prepaid Taxes', 'Asset', 'Current', 'debit', None),
     ('119000', 'Other Current Assets', 'Asset', 'Current', 'debit', None),
     ('121000', 'Property, Plant & Equipment', 'Asset', 'Non-Current', 'debit', None),
