@@ -144,6 +144,8 @@ def cancel(id):
         return redirect(url_for('work_orders.view', id=id))
     wo.status = 'cancelled'; wo.cancelled_by_id = current_user.id; wo.cancelled_at = ph_now()
     wo.cancel_reason = reason
+    from app.work_orders.service import reverse_consumption
+    reverse_consumption(wo, current_user)
     db.session.commit()
     log_update('work_orders', wo.id, wo.wo_number, {}, {'status': 'cancelled', 'reason': reason})
     flash(f'Work Order "{wo.wo_number}" cancelled.', 'warning')

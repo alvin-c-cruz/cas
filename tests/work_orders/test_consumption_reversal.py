@@ -13,6 +13,7 @@ from app.stock_adjustments.models import StockBalance
 from app.stock_adjustments.service import post_movement
 from app.settings import AppSettings
 from app.journal_entries.models import JournalEntry
+from app.utils.cache_helpers import clear_module_config_cache
 
 pytestmark = [pytest.mark.integration]
 
@@ -121,3 +122,50 @@ def test_reverse_consumption_reverses_multiple_separate_issue_events(db_session,
         for l in reversal_je.lines
     )
     assert actual_reversal == expected_swapped
+
+
+def _login(client, user, branch):
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.id); sess['_fresh'] = True
+        sess['selected_branch_id'] = branch.id
+
+
+def test_cancel_route_reverses_consumption_when_materials_issued(
+        client, db_session, admin_user, main_branch, make_account):
+    AppSettings.set_setting('module_enabled:work_orders', '1')
+    AppSettings.set_setting('module_enabled:bill_of_materials', '1')
+    db.session.commit(); clear_module_config_cache()
+    _assign('inventory_account_code', '1401', make_account)
+    _assign('wip_account_code', '1402', make_account)
+    wo, comp1, _ = _wo_with_two_materials(main_branch)
+    post_movement(comp1, main_branch.id, 'receipt', Decimal('20'), Decimal('2.00'), 'seed', None, 's', admin_user)
+    db.session.commit()
+    mat1 = next(m for m in wo.materials if m.component_product_id == comp1.id)
+    consume_materials(wo, [(mat1, Decimal('4'))], admin_user)
+    db.session.commit()
+    _login(client, admin_user, main_branch)
+
+    resp = client.post(f'/work-orders/{wo.id}/cancel',
+                       data={'cancel_reason': 'Customer changed the order'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(wo)
+    assert wo.status == 'cancelled'
+    bal = StockBalance.query.filter_by(product_id=comp1.id, branch_id=main_branch.id).one()
+    assert bal.quantity_on_hand == Decimal('20.0000')
+
+
+def test_cancel_route_noop_when_never_issued(client, db_session, admin_user, main_branch):
+    AppSettings.set_setting('module_enabled:work_orders', '1')
+    AppSettings.set_setting('module_enabled:bill_of_materials', '1')
+    db.session.commit(); clear_module_config_cache()
+    wo, _, _ = _wo_with_two_materials(main_branch)
+    _login(client, admin_user, main_branch)
+
+    resp = client.post(f'/work-orders/{wo.id}/cancel',
+                       data={'cancel_reason': 'Never started production'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db.session.refresh(wo)
+    assert wo.status == 'cancelled'
+    assert JournalEntry.query.filter_by(reference=wo.wo_number).count() == 0
