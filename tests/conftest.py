@@ -237,6 +237,21 @@ def product_tracked(db_session):
 # Account Fixtures
 
 @pytest.fixture
+def make_account(db_session):
+    """Factory: get-or-create an Account by code (account_type/normal_balance are
+    NOT NULL, so supply them even though these tests only reference account_id)."""
+    from app.accounts.models import Account
+    def _make(code):
+        acc = Account.query.filter_by(code=code).first()
+        if acc is None:
+            acc = Account(code=code, name=f'Acct {code}', account_type='Asset',
+                          normal_balance='Debit', is_active=True)
+            db.session.add(acc); db.session.commit()
+        return acc
+    return _make
+
+
+@pytest.fixture
 def cash_account(db_session):
     """Create a cash account"""
     account = Account(
