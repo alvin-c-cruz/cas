@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Stock Adjustments</h1>
+{% if not adjustments %}
+<p>No stock adjustments found.</p>
+{% else %}
+<table>
+    <thead>
+        <tr>
+            <th>SA #</th>
+            <th>Date</th>
+            <th>Branch</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for adj in adjustments %}
+        <tr>
+            <td>{{ adj.sa_number }}</td>
+            <td>{{ adj.adjustment_date }}</td>
+            <td>{{ adj.branch.name if adj.branch else '' }}</td>
+            <td>{{ adj.status }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

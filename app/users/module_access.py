@@ -216,6 +216,12 @@ MODULE_REGISTRY = [
      'area': 'Fixed Assets', 'group': 'Documents',
      'optional': True, 'depends_on': ['fixed_assets', 'fixed_asset_depreciation'],
      'default_enabled': False, 'endpoints': ('fixed_asset_disposal.',)},
+    {'key': 'stock_adjustments', 'label': 'Stock Adjustments', 'section': 'Transactions',
+     'area': 'Inventory', 'group': 'Documents',
+     'optional': True, 'depends_on': ['inventory'], 'default_enabled': False,
+     'endpoints': ('stock_adjustments.',
+                   'reports.stock_ledger', 'reports.stock_ledger_print',
+                   'reports.stock_ledger_export_excel')},
     # ── Reports (optional / configurable module) ─────────────────────────────
     {'key': 'bir_reports', 'label': 'BIR Reports', 'section': 'Reports',
      'area': 'Compliance', 'group': 'BIR',
