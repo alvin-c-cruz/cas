@@ -21,7 +21,7 @@ from app.journal_entries.utils import generate_entry_number
 from app.sales_memos import service
 from app.posting.sales_vat import output_vat_buckets
 from app.posting.control_accounts import get_control_account
-from app.stock_adjustments.service import post_movement
+from app.stock_adjustments.service import post_movement, reverse_document_movements
 from app.stock_adjustments.models import StockBalance
 
 
@@ -206,9 +206,11 @@ def post_memo_je(memo, user_id, actor=None):
     return je
 
 
-def reverse_memo_je(memo, user_id):
+def reverse_memo_je(memo, user_id, actor=None):
     """Post a reversing JE (swap debit/credit of the memo's JE) when a posted memo is voided.
-    Returns the reversal JE, or None if the memo has no JE (a draft void)."""
+    Returns the reversal JE, or None if the memo has no JE (a draft void). When ``actor`` is
+    provided, also reverses whatever stock movements the memo posted (no-op if none) -- mirrors
+    app.purchase_memos.je.reverse_purchase_memo_je. See R-03 slice 2a-v."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
 
     src = memo.journal_entry
@@ -233,4 +235,6 @@ def reverse_memo_je(memo, user_id):
         n += 1
     db.session.flush()
     je.calculate_totals()
+    if actor is not None:
+        reverse_document_movements('sales_memo', memo.id, actor, journal_entry_id=je.id)
     return je

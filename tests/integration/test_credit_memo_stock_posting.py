@@ -236,3 +236,62 @@ def test_fails_closed_before_any_write_when_cogs_unassigned(db_session, main_bra
     with pytest.raises(ControlAccountError):
         post_memo_je(memo, admin_user.id, actor=admin_user)
     assert StockMovement.query.filter_by(source_document_type='sales_memo').count() == 0
+
+
+# --- Task 6: void reverses whatever stock movement a Credit Memo posted ---
+from app.sales_memos.je import reverse_memo_je
+
+
+def test_void_reverses_chain_verified_movement(db_session, main_branch, admin_user):
+    coa = _full_cm_coa()
+    product = Product(code='CMC-PROD7', name='CM Chain Product 7', is_active=True,
+                      track_inventory=True, costing_method='moving_average')
+    db.session.add(product); db.session.commit()
+    post_movement(product, main_branch.id, 'receipt', Decimal('20'), Decimal('4.00'),
+                  'seed', None, 'seed stock', admin_user)
+    db.session.commit()
+    si, si_item = _si_with_item(main_branch, product)
+    so, soi = _so_item(main_branch, si.customer, product, 'SO-CMC-0007')
+    dr = DeliveryReceipt(branch_id=main_branch.id, dr_number='DR-CMC-0007',
+                         delivery_date=date(2026, 2, 8), sales_order_id=so.id,
+                         customer_id=si.customer_id, customer_name=si.customer.name,
+                         sales_invoice_id=si.id, status='delivered')
+    dr.line_items.append(DeliveryReceiptItem(line_number=1, sales_order_item_id=soi.id,
+                                             product_id=product.id, delivered_quantity=Decimal('5')))
+    db.session.add(dr); db.session.commit()
+    mitem = _cm_item_for(si_item)
+    memo = mitem.memo
+    memo.subtotal = Decimal('22.40'); memo.vat_amount = Decimal('2.40')
+    memo.total_amount = Decimal('22.40')
+    memo.status = 'posted'
+    db.session.commit()
+    je = post_memo_je(memo, admin_user.id, actor=admin_user)
+    memo.journal_entry_id = je.id
+    db.session.commit()
+
+    reverse_memo_je(memo, admin_user.id, actor=admin_user)
+    db.session.commit()
+
+    bal = StockBalance.query.filter_by(product_id=product.id, branch_id=main_branch.id).one()
+    assert bal.quantity_on_hand == Decimal('20.0000')   # back to the seeded 20
+
+
+def test_void_noop_when_no_movement_posted(db_session, main_branch, admin_user):
+    coa = _full_cm_coa()
+    product = Product(code='CMC-PROD8', name='CM Chain Product 8', is_active=True,
+                      track_inventory=True, costing_method='moving_average')
+    db.session.add(product); db.session.commit()
+    si, si_item = _si_with_item(main_branch, product)   # no DR
+    mitem = _cm_item_for(si_item)
+    memo = mitem.memo
+    memo.subtotal = Decimal('22.40'); memo.vat_amount = Decimal('2.40')
+    memo.total_amount = Decimal('22.40')
+    memo.status = 'posted'
+    db.session.commit()
+    je = post_memo_je(memo, admin_user.id, actor=admin_user)
+    memo.journal_entry_id = je.id
+    db.session.commit()
+
+    reverse_memo_je(memo, admin_user.id, actor=admin_user)   # must not raise
+    db.session.commit()
+    assert StockMovement.query.filter_by(source_document_type='sales_memo').count() == 0

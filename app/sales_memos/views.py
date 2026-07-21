@@ -348,7 +348,7 @@ def _void_impl(id, memo_type):
         return redirect(view_url)
     try:
         if memo.status == 'posted':
-            reverse_memo_je(memo, current_user.id)
+            reverse_memo_je(memo, current_user.id, actor=current_user)
             if memo_type == 'credit' and memo.destination == 'ar':
                 _reverse_memo_from_ar(memo)
         memo.status = 'voided'
