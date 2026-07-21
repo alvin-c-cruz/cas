@@ -259,7 +259,7 @@ def create_app(config_name=None):
     from app.bill_of_materials.models import BillOfMaterial, BillOfMaterialLine  # noqa: F401
     from app.work_centers.models import WorkCenter  # noqa: F401
     from app.work_orders.models import WorkOrder, WorkOrderMaterial, WorkOrderOperation  # noqa: F401
-    from app.stock_adjustments.models import StockMovement, StockBalance  # noqa: F401
+    from app.stock_adjustments.models import StockMovement, StockBalance, StockAdjustment, StockAdjustmentLine  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp

@@ -50,3 +50,43 @@ class StockBalance(RowVersioned, db.Model):
 
     product = db.relationship('Product')
     branch = db.relationship('Branch')
+
+
+REASON_TYPES = ('correction', 'opening')
+
+
+class StockAdjustment(RowVersioned, db.Model):
+    __tablename__ = 'stock_adjustments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sa_number = db.Column(db.String(50), unique=True, index=True, nullable=False)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False, index=True)
+    adjustment_date = db.Column(db.Date, nullable=False)
+    reason_type = db.Column(db.String(20), nullable=False, default='correction', server_default='correction')
+    notes = db.Column(db.Text, nullable=True)
+    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='draft', server_default='draft')
+    posted_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    posted_at = db.Column(db.DateTime, nullable=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
+
+    branch = db.relationship('Branch')
+    journal_entry = db.relationship('JournalEntry')
+    posted_by = db.relationship('User', foreign_keys=[posted_by_id])
+    lines = db.relationship('StockAdjustmentLine', backref='adjustment',
+                            cascade='all, delete-orphan', order_by='StockAdjustmentLine.id')
+
+
+class StockAdjustmentLine(db.Model):
+    __tablename__ = 'stock_adjustment_lines'
+
+    id = db.Column(db.Integer, primary_key=True)
+    adjustment_id = db.Column(db.Integer, db.ForeignKey('stock_adjustments.id'), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    quantity_delta = db.Column(db.Numeric(15, 4), nullable=False)   # signed
+    unit_cost = db.Column(db.Numeric(15, 2), nullable=True)         # required only for positive lines
+    note = db.Column(db.String(500), nullable=True)
+
+    product = db.relationship('Product')
