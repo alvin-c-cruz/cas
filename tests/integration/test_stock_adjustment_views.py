@@ -57,6 +57,44 @@ def test_create_draft_then_approve_flow(client, admin_user, login_user, db_sessi
     assert adj.status == 'posted'
     assert adj.journal_entry_id is not None
 
+    # audit row for the approve action, via the real HTTP route (not just the
+    # service layer) -- CLAUDE.md: "Verify the audit log in CRUD tests".
+    approve_log = (AuditLog.query.filter_by(module='stock_adjustments', action='approve',
+                                            record_id=adj.id).first())
+    assert approve_log is not None
+    assert approve_log.record_identifier == adj.sa_number
+
+
+def test_void_writes_audit_row(client, admin_user, login_user, db_session,
+                               product_tracked, branch_main, make_account):
+    """Reviewer finding: only create's audit row was asserted through the real
+    HTTP route; approve/void were only proven at the service layer. This closes
+    the void side (approve's is covered above)."""
+    _enable_module()
+    make_account('1401'); AppSettings.set_setting('inventory_account_code', '1401', updated_by='t')
+    make_account('7101'); AppSettings.set_setting('inventory_adjustment_account_code', '7101', updated_by='t')
+    login_user(client, 'admin', 'admin123')
+    client.post('/select-branch', data={'branch_id': branch_main.id})
+
+    lines = json.dumps([{'product_id': product_tracked.id, 'quantity_delta': '5', 'unit_cost': '4.00'}])
+    resp = client.post('/stock-adjustments/create', data={
+        'adjustment_date': '2026-07-21', 'reason_type': 'correction', 'lines': lines,
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    adj = StockAdjustment.query.order_by(StockAdjustment.id.desc()).first()
+    client.post(f'/stock-adjustments/{adj.id}/approve', follow_redirects=True)
+    db.session.refresh(adj)
+    assert adj.status == 'posted'
+
+    client.post(f'/stock-adjustments/{adj.id}/void', follow_redirects=True)
+    db.session.refresh(adj)
+    assert adj.status == 'voided'
+
+    void_log = (AuditLog.query.filter_by(module='stock_adjustments', action='void',
+                                         record_id=adj.id).first())
+    assert void_log is not None
+    assert void_log.record_identifier == adj.sa_number
+
 
 def test_form_get_renders_row_version_hidden_field(client, admin_user, login_user, branch_main):
     _enable_module()
