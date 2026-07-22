@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Purchase Request {{ pr.pr_number }}{% endblock %}
+{% block page_title %}Purchase Request — {{ pr.pr_number }}{% endblock %}
 {% block content %}
 {% set can_write = current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
 {% set can_approve = current_user.role == 'accountant' or current_user.has_full_access %}

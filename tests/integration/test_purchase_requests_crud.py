@@ -73,6 +73,24 @@ def test_list_and_view_show_pr(client, accountant_user, main_branch, db_session)
     assert client.get(f'/purchase-requests/{pr.id}').status_code == 200
 
 
+def test_page_title_not_dashboard(client, accountant_user, main_branch, db_session):
+    """Regression (BUG-PURCHASES-PAGE-TITLE-DASHBOARD): list/detail/form must set their
+    own page_title block, not fall through to base.html's default "Dashboard"."""
+    from app.purchase_requests.models import PurchaseRequest
+    _login(client, accountant_user, main_branch)
+    _create(client)
+    pr = PurchaseRequest.query.first()
+
+    list_body = client.get('/purchase-requests').data.decode('utf-8')
+    assert 'Purchase Requests' in list_body
+
+    detail_body = client.get(f'/purchase-requests/{pr.id}').data.decode('utf-8')
+    assert f'Purchase Request — {pr.pr_number}' in detail_body
+
+    create_body = client.get('/purchase-requests/create').data.decode('utf-8')
+    assert 'Enter Purchase Request' in create_body
+
+
 def test_detail_page_shows_created_by(client, accountant_user, main_branch, db_session):
     _login(client, accountant_user, main_branch)
     _create(client)

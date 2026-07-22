@@ -51,6 +51,28 @@ def test_create_draft_dr_persists_and_snapshots_customer(client, db_session, adm
     assert dr.dr_number.startswith('DR-')
 
 
+def test_page_title_not_dashboard(client, db_session, admin_user, main_branch):
+    """Regression (BUG-DR-LIST-PAGE-TITLE-DASHBOARD): list/detail/form must set their
+    own page_title block, not fall through to base.html's default "Dashboard"."""
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    lines = json.dumps([{'sales_order_item_id': so.line_items[0].id, 'delivered_quantity': '4'}])
+    client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'lines': lines},
+        follow_redirects=True)
+    dr = DeliveryReceipt.query.filter_by(sales_order_id=so.id).first()
+
+    list_body = client.get('/delivery-receipts').data.decode('utf-8')
+    assert 'Delivery Receipts' in list_body
+
+    detail_body = client.get(f'/delivery-receipts/{dr.id}').data.decode('utf-8')
+    assert f'Delivery Receipt — {dr.dr_number}' in detail_body
+
+    create_body = client.get('/delivery-receipts/create').data.decode('utf-8')
+    assert 'Enter Delivery Receipt' in create_body
+
+
 def test_create_form_renders_lines_field_exactly_once(client, db_session, admin_user, main_branch):
     """Regression (BUG-DR-DUP-LINES): the hidden `lines` field must render EXACTLY ONCE.
 

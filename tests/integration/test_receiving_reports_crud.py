@@ -101,3 +101,22 @@ def test_list_and_view_show_rr(client, accountant_user, main_branch, vl_vendor, 
     rr = ReceivingReport.query.first()
     assert bytes(rr.rr_number, 'utf-8') in client.get('/receiving-reports').data
     assert client.get(f'/receiving-reports/{rr.id}').status_code == 200
+
+
+def test_page_title_not_dashboard(client, accountant_user, main_branch, vl_vendor, db_session):
+    """Regression (BUG-PURCHASES-PAGE-TITLE-DASHBOARD): list/detail/form must set their
+    own page_title block, not fall through to base.html's default "Dashboard"."""
+    from app.receiving_reports.models import ReceivingReport
+    _login(client, accountant_user, main_branch)
+    po = _approved_po(db_session, main_branch, vl_vendor)
+    _create_rr(client, po)
+    rr = ReceivingReport.query.first()
+
+    list_body = client.get('/receiving-reports').data.decode('utf-8')
+    assert 'Receiving Reports' in list_body
+
+    detail_body = client.get(f'/receiving-reports/{rr.id}').data.decode('utf-8')
+    assert f'Receiving Report — {rr.rr_number}' in detail_body
+
+    create_body = client.get('/receiving-reports/create').data.decode('utf-8')
+    assert 'Enter Receiving Report' in create_body
