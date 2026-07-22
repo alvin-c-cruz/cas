@@ -39,6 +39,65 @@ def test_staff_cannot_view_control_accounts(client, db_session, staff_user, main
     assert b'Only Accountants and Administrators' in resp.data or resp.status_code in (302, 403)
 
 
+def _set_module(key, enabled):
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting(f'module_enabled:{key}', '1' if enabled else '0')
+    db.session.commit()
+    clear_module_config_cache()
+
+
+def test_disabled_module_hides_its_control_account_fields(client, db_session, accountant_user):
+    """Regression (BUG-CONTROL-ACCOUNTS-NO-MODULE-GATING): a field whose owning optional
+    module is disabled must not render -- nothing can post against it anyway."""
+    _set_module('payroll', False)
+    _set_module('bank_transfers', False)
+    login(client, 'accountant', 'accountant123')
+    body = client.get('/settings/control-accounts').data.decode('utf-8')
+    assert 'Salaries Expense control account' not in body
+    assert 'Inter-branch Due-from control account' not in body
+    # core/non-optional fields are never gated -- always shown regardless
+    assert 'Accounts Receivable control account' in body
+    assert 'Accounts Payable control account' in body
+
+
+def test_enabled_module_shows_its_control_account_fields(client, db_session, accountant_user):
+    _set_module('payroll', True)
+    login(client, 'accountant', 'accountant123')
+    body = client.get('/settings/control-accounts').data.decode('utf-8')
+    assert 'Salaries Expense control account' in body
+
+
+def test_saving_with_module_disabled_does_not_blank_its_stored_value(client, db_session, accountant_user):
+    """Critical constraint from the fix plan: a real browser submit never includes a
+    field the template didn't render, so a missing POST key must NOT be treated as
+    "clear it" -- that would silently wipe a previously-assigned control account the
+    moment its module is toggled off."""
+    parent = Account(code='CSCA10', name='Assets Group 2', account_type='Asset',
+                      normal_balance='Debit', is_active=True)
+    db.session.add(parent); db.session.commit()
+    acct = Account(code='CSCA11', name='Salaries Expense Test', account_type='Administrative Expense',
+                   normal_balance='Debit', is_active=True, parent_id=parent.id)
+    db.session.add(acct); db.session.commit()
+
+    _set_module('payroll', True)
+    login(client, 'accountant', 'accountant123')
+    client.post('/settings/control-accounts', data={
+        'ar_trade_account_code': '', 'ap_trade_account_code': '',
+        'creditable_wht_account_code': '', 'wht_payable_account_code': '',
+        'payroll_salaries_expense_account_code': acct.code,
+    }, follow_redirects=True)
+    assert AppSettings.get_setting('payroll_salaries_expense_account_code') == acct.code
+
+    # Now disable payroll -- the form no longer renders/submits that field at all.
+    _set_module('payroll', False)
+    client.post('/settings/control-accounts', data={
+        'ar_trade_account_code': '', 'ap_trade_account_code': '',
+        'creditable_wht_account_code': '', 'wht_payable_account_code': '',
+    }, follow_redirects=True)
+    # The stored value for the now-hidden field must survive untouched.
+    assert AppSettings.get_setting('payroll_salaries_expense_account_code') == acct.code
+
+
 def test_control_accounts_url_resolves_to_new_blueprint(app):
     """Verify that /settings/control-accounts resolves to the NEW company_settings
     blueprint endpoints, not the OLD control_accounts blueprint endpoints.

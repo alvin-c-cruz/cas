@@ -97,6 +97,49 @@ CONTROL_ACCOUNTS = {
     'wip': ('wip_account_code', 'Work-in-Process control account'),
 }
 
+# key -> owning optional module key (app.users.module_access.MODULE_REGISTRY), used ONLY by the
+# Company Settings > Control Accounts page to hide a field when its module is disabled (nothing
+# can post against it anyway). A key absent from this dict is always shown -- ar_trade/ap_trade/
+# creditable_wht/wht_payable are core/non-optional, never module-gated. Deliberately a SEPARATE
+# dict rather than widening CONTROL_ACCOUNTS's own 2-tuple shape: that shape is unpacked in
+# ~10 other test files plus app call sites, so changing it would ripple far wider than this
+# display-only concern warrants (BUG-CONTROL-ACCOUNTS-NO-MODULE-GATING).
+CONTROL_ACCOUNT_MODULE_GATE = {
+    'payroll_salaries_expense':      'payroll',
+    'payroll_sss_er_expense':        'payroll',
+    'payroll_philhealth_er_expense': 'payroll',
+    'payroll_pagibig_er_expense':    'payroll',
+    'payroll_wht_payable':           'payroll',
+    'payroll_sss_payable':           'payroll',
+    'payroll_philhealth_payable':    'payroll',
+    'payroll_pagibig_payable':       'payroll',
+    'payroll_sss_loan_payable':      'payroll',
+    'payroll_pagibig_loan_payable':  'payroll',
+    'payroll_accrued_salaries':      'payroll',
+    'inter_branch_due_from': 'bank_transfers',
+    'inter_branch_due_to':   'bank_transfers',
+    'gain_loss_on_disposal': 'fixed_asset_disposal',
+    'petty_cash_short_over':         'petty_cash',
+    'petty_cash_due_to_custodian':   'petty_cash',
+    'inventory':                'inventory',
+    'inventory_adjustment':     'inventory',
+    'inventory_opening_equity': 'inventory',
+    'grni':               'inventory',
+    'inventory_variance': 'inventory',
+    'cogs': 'inventory',
+    'wip':  'bill_of_materials',
+}
+
+
+def visible_control_accounts():
+    """CONTROL_ACCOUNTS filtered to keys whose owning module (if any) is currently enabled."""
+    from app.users.module_access import module_enabled
+    return {
+        key: meta for key, meta in CONTROL_ACCOUNTS.items()
+        if CONTROL_ACCOUNT_MODULE_GATE.get(key) is None
+        or module_enabled(CONTROL_ACCOUNT_MODULE_GATE[key])
+    }
+
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,
 # and test setup -- NEVER by get_control_account. Single place the legacy chart's
 # control codes are named.

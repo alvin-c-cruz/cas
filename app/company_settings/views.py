@@ -114,12 +114,13 @@ def control_accounts():
     if not _accountant_or_full_access():
         flash('Only Accountants and Administrators can assign control accounts.', 'error')
         return redirect(url_for('dashboard.index'))
-    from app.posting.control_accounts import get_postable_accounts, CONTROL_ACCOUNTS
+    from app.posting.control_accounts import get_postable_accounts, visible_control_accounts
     accounts = get_postable_accounts()
+    control = visible_control_accounts()
     current = {key: AppSettings.get_setting(setting_key)
-               for key, (setting_key, _) in CONTROL_ACCOUNTS.items()}
+               for key, (setting_key, _) in control.items()}
     return render_template('company_settings/control_accounts.html',
-                           accounts=accounts, control=CONTROL_ACCOUNTS, current=current)
+                           accounts=accounts, control=control, current=current)
 
 
 @company_settings_bp.route('/control-accounts', methods=['POST'])
@@ -128,10 +129,13 @@ def save_control_accounts():
     if not _accountant_or_full_access():
         flash('Only Accountants and Administrators can perform this action.', 'error')
         return redirect(url_for('dashboard.index'))
-    from app.posting.control_accounts import get_postable_accounts, CONTROL_ACCOUNTS
+    from app.posting.control_accounts import get_postable_accounts, visible_control_accounts
     postable_codes = {a.code for a in get_postable_accounts()}
     submitted = {}
-    for key, (setting_key, label) in CONTROL_ACCOUNTS.items():
+    # Only process fields the template actually rendered (visible_control_accounts()) --
+    # a hidden (module-disabled) field's stored AppSettings value must be left untouched,
+    # since a real browser submit never includes a field the template didn't render.
+    for key, (setting_key, label) in visible_control_accounts().items():
         code = (request.form.get(setting_key) or '').strip()
         if code and code not in postable_codes:
             flash(f'Account {code} for {label} was not found or is not postable.', 'error')

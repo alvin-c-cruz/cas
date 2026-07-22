@@ -3,7 +3,8 @@ from app.accounts.models import Account
 from app.settings import AppSettings
 from app.posting.control_accounts import (
     get_control_account, ControlAccountError, assign_default_control_accounts,
-    get_postable_accounts,
+    get_postable_accounts, CONTROL_ACCOUNTS, CONTROL_ACCOUNT_MODULE_GATE,
+    visible_control_accounts,
 )
 
 
@@ -50,6 +51,47 @@ class TestControlAccountResolver:
         AppSettings.set_setting('ar_trade_account_code', '1210', updated_by='t')
         assign_default_control_accounts()
         assert AppSettings.get_setting('ar_trade_account_code') == '1210'  # unchanged
+
+
+def _set_module(key, enabled):
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting(f'module_enabled:{key}', '1' if enabled else '0')
+    clear_module_config_cache()
+
+
+class TestVisibleControlAccounts:
+    """Regression (BUG-CONTROL-ACCOUNTS-NO-MODULE-GATING)."""
+
+    def test_core_keys_always_visible_regardless_of_any_module_state(self, db_session):
+        _set_module('payroll', False)
+        visible = visible_control_accounts()
+        for key in ('ar_trade', 'ap_trade', 'creditable_wht', 'wht_payable'):
+            assert key in visible
+
+    def test_gated_key_hidden_when_owning_module_disabled(self, db_session):
+        _set_module('payroll', False)
+        visible = visible_control_accounts()
+        assert 'payroll_salaries_expense' not in visible
+
+    def test_gated_key_shown_when_owning_module_enabled(self, db_session):
+        _set_module('payroll', True)
+        visible = visible_control_accounts()
+        assert 'payroll_salaries_expense' in visible
+
+    def test_every_gated_key_exists_in_control_accounts(self):
+        """CONTROL_ACCOUNT_MODULE_GATE keys must be a subset of CONTROL_ACCOUNTS --
+        a typo'd key here would silently never gate anything."""
+        assert set(CONTROL_ACCOUNT_MODULE_GATE) <= set(CONTROL_ACCOUNTS)
+
+    def test_ungated_core_keys_always_visible_when_all_modules_disabled(self, db_session):
+        """The 4 core keys are the ONLY ones absent from CONTROL_ACCOUNT_MODULE_GATE --
+        every other key belongs to some optional module and IS gated. With every
+        optional module disabled, only the 4 core keys should remain visible."""
+        for key in ('payroll', 'bank_transfers', 'fixed_asset_disposal', 'petty_cash',
+                    'inventory', 'bill_of_materials'):
+            _set_module(key, False)
+        visible = visible_control_accounts()
+        assert set(visible) == {'ar_trade', 'ap_trade', 'creditable_wht', 'wht_payable'}
 
 
 def test_get_postable_accounts_excludes_group_headers(db_session):
