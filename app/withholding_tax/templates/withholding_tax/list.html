@@ -33,6 +33,8 @@
                     <th>Name</th>
                     <th>Description</th>
                     <th>Rate (%)</th>
+                    <th>WHT Payable Account</th>
+                    <th>WHT Receivable Account</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -56,6 +58,16 @@
                         <td style="font-weight: 600; color: #1e293b;">
                             {{ "%.2f"|format(withholding_tax.rate) }}%
                         </td>
+                        <td style="font-size: 13px; color: #64748b;">
+                            {% if withholding_tax.payable_account %}
+                                {{ withholding_tax.payable_account.code }} : {{ withholding_tax.payable_account.name }}
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td style="font-size: 13px; color: #64748b;">
+                            {% if withholding_tax.receivable_account %}
+                                {{ withholding_tax.receivable_account.code }} : {{ withholding_tax.receivable_account.name }}
+                            {% else %}&mdash;{% endif %}
+                        </td>
                         <td>
                             {% if withholding_tax.is_active %}
                             <span class="badge badge-success">Active</span>
@@ -78,7 +90,7 @@
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="6" class="empty-state-cell">
+                        <td colspan="8" class="empty-state-cell">
                             <div class="empty-icon">📋</div>
                             <div>No withholding tax codes found</div>
                         </td>

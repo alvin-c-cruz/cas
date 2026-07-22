@@ -61,3 +61,44 @@ def test_auto_approve_sets_account_ids(client, db_session, admin_user, main_bran
     assert wt is not None
     assert wt.payable_account_id == payable_acct.id
     assert wt.receivable_account_id == recv_acct.id
+
+
+def test_list_shows_related_payable_and_receivable_account(client, db_session, admin_user, main_branch):
+    """List page must show each ATC's mapped GL account(s), not just its rate/status
+    (owner report: 'must show the related account title'). Matches the same
+    '<code> : <name>' convention app/vat_categories/templates/vat_categories/list.html
+    already uses for its Input Tax Account column."""
+    payable_acct = Account(code='20301', name='WT Payable',
+                           account_type='Liability', normal_balance='Credit',
+                           is_active=True)
+    recv_acct = Account(code='13501', name='WT Receivable',
+                        account_type='Asset', normal_balance='Debit',
+                        is_active=True)
+    db_session.add_all([payable_acct, recv_acct])
+    db_session.flush()
+
+    wt = WithholdingTax(code='WC020MA', name='List Account Test', rate='5.00',
+                        tax_type='expanded', is_active=True,
+                        payable_account_id=payable_acct.id,
+                        receivable_account_id=recv_acct.id)
+    db_session.add(wt)
+    db_session.commit()
+
+    login(client)
+    resp = client.get('/withholding-tax/')
+    assert resp.status_code == 200
+    assert b'20301 : WT Payable' in resp.data
+    assert b'13501 : WT Receivable' in resp.data
+
+
+def test_list_shows_em_dash_when_no_account_mapped(client, db_session, admin_user, main_branch):
+    """Regression: a row with no GL account mapped must not error, and shows the
+    same em-dash fallback the VAT Categories list uses."""
+    wt = WithholdingTax(code='WC021MA', name='No Account Mapped', rate='5.00',
+                        tax_type='expanded', is_active=True)
+    db_session.add(wt)
+    db_session.commit()
+
+    login(client)
+    resp = client.get('/withholding-tax/')
+    assert resp.status_code == 200
