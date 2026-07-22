@@ -243,6 +243,15 @@ def product_fifo(db_session):
     return p
 
 
+@pytest.fixture
+def product_lifo(db_session):
+    from app.products.models import Product
+    p = Product(code='STK-LIFO-001', name='LIFO Shadow Test Item', track_inventory=True,
+                costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(p); db.session.commit()
+    return p
+
+
 # Account Fixtures
 
 @pytest.fixture
