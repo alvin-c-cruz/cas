@@ -171,6 +171,8 @@ def reverse_document_movements(source_document_type, source_document_id, actor, 
         product = orig.product
         if product.costing_method == 'fifo':
             mv = _reverse_fifo_movement(orig, actor, journal_entry_id)
+        elif product.costing_method == 'specific_identification':
+            mv = _reverse_specific_id_movement(orig, actor, journal_entry_id)
         else:
             mv, _ = post_movement(
                 product, orig.branch_id, 'adjustment', -Decimal(orig.quantity),
@@ -246,6 +248,87 @@ def _reverse_fifo_movement(orig, actor, journal_entry_id):
             return mv
 
         db.session.expire(bal)
+    raise RuntimeError('stock balance update failed after retries (persistent contention)')
+
+
+class SpecificIdLotConsumedError(ValueError):
+    """Raised when voiding a specific-identification IN-movement (receipt)
+    whose created lot has already been drawn down by something else --
+    reversal is refused rather than silently corrupting the lot's audit
+    trail. A ValueError subclass so every existing generic 'except
+    ValueError' call-site pattern already catches it and flashes its
+    message. Mirrors FifoLayerConsumedError exactly."""
+    pass
+
+
+def _reverse_specific_id_movement(orig, actor, journal_entry_id):
+    """Specific-identification-aware reversal for one original movement. An
+    OUT original (issue) restores exactly the ONE lot its single
+    StockLotConsumption row recorded -- never more than one, since a
+    specific-ID line can only ever draw from one lot (no auto-splitting).
+    An IN original (receipt) targets its own source_movement_id-linked lot
+    directly and refuses (SpecificIdLotConsumedError) if anything has drawn
+    from it since. Mirrors _reverse_fifo_movement's retry/claim skeleton,
+    simplified: a specific-ID OUT movement has AT MOST ONE consumption row
+    to restore, never several."""
+    from app.stock_adjustments.models import StockLot, StockLotConsumption
+    orig_qty = Decimal(orig.quantity)
+    bal = _get_or_create_balance(orig.product_id, orig.branch_id)
+
+    for _ in range(MAX_ATTEMPTS):
+        read_version = bal.row_version
+        old_qty = Decimal(bal.quantity_on_hand)
+        old_avg = Decimal(bal.average_unit_cost)
+        reversal_qty = -orig_qty
+        new_qty = (old_qty + reversal_qty).quantize(Decimal('0.0001'))
+
+        consumption = None
+        lot = None
+        if orig_qty < ZERO:
+            consumption = StockLotConsumption.query.filter_by(movement_id=orig.id).first()
+            if consumption is None:
+                raise ValueError(f'No lot consumption record found for movement {orig.id} -- data integrity error.')
+            restore_value = Decimal(consumption.qty_consumed) * Decimal(consumption.unit_cost_at_consumption)
+            new_total_value = old_qty * old_avg + restore_value
+        else:
+            lot = StockLot.query.filter_by(source_movement_id=orig.id).first()
+            if lot is None:
+                raise ValueError(f'No lot found for movement {orig.id} -- data integrity error.')
+            if Decimal(lot.remaining_qty) != Decimal(lot.original_qty):
+                consumers = StockLotConsumption.query.filter_by(lot_id=lot.id).all()
+                names = sorted({f'{c.movement.source_document_type} #{c.movement.source_document_id}'
+                               for c in consumers}) or ['another transaction']
+                consumed = Decimal(lot.original_qty) - Decimal(lot.remaining_qty)
+                raise SpecificIdLotConsumedError(
+                    f'Cannot reverse movement {orig.id} -- {consumed} of {lot.original_qty} units '
+                    f'from this lot have already been consumed by {", ".join(names)}.')
+            new_total_value = old_qty * old_avg - Decimal(lot.original_qty) * Decimal(lot.unit_cost)
+
+        new_avg = (new_total_value / new_qty).quantize(Decimal('0.01')) if new_qty != ZERO else ZERO
+        new_value = (new_qty * new_avg).quantize(Decimal('0.01'))
+
+        if _claim_balance_update(bal.id, read_version, new_qty, new_avg, new_value):
+            mv = StockMovement(
+                product_id=orig.product_id, branch_id=orig.branch_id, movement_type='adjustment',
+                quantity=reversal_qty.quantize(Decimal('0.0001')), unit_cost=Decimal(orig.unit_cost),
+                balance_qty_after=new_qty, balance_avg_cost_after=new_avg, balance_value_after=new_value,
+                source_document_type=orig.source_document_type, source_document_id=orig.source_document_id,
+                journal_entry_id=journal_entry_id, reason=f'Reversal of movement {orig.id}',
+                created_at=ph_now(), created_by_id=actor.id)
+            db.session.add(mv)
+            db.session.flush()
+            if orig_qty < ZERO:
+                consumption.lot.remaining_qty = (Decimal(consumption.lot.remaining_qty)
+                                                 + Decimal(consumption.qty_consumed)).quantize(Decimal('0.0001'))
+            else:
+                lot.remaining_qty = Decimal('0.0000')
+            db.session.expire(bal, ['row_version', 'quantity_on_hand', 'average_unit_cost', 'total_value'])
+            return mv
+
+        db.session.expire_all()   # lost the race: re-read EVERYTHING fresh (matches post_movement's
+                                  # own fix -- see feedback-plan-pattern-bug-repeats-sibling-tasks;
+                                  # deliberately NOT the narrower db.session.expire(bal) 2b's own
+                                  # review had to catch and fix after the fact)
     raise RuntimeError('stock balance update failed after retries (persistent contention)')
 
 
