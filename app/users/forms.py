@@ -113,6 +113,16 @@ class ChangePasswordForm(FlaskForm):
     ])
 
 
+class ChangeEmailForm(FlaskForm):
+    """Self-service email change -- requires current password as a confirmation gate."""
+    current_password = PasswordField('Current Password', validators=[DataRequired()])
+    new_email = StringField('New Email', validators=[
+        DataRequired(),
+        Email(message='Please enter a valid email address.', check_deliverability=False),
+        Length(max=120)
+    ])
+
+
 class RejectReasonForm(FlaskForm):
     """CSRF-protected form for capturing a reject reason (no other fields needed)."""
     reason = TextAreaField('Reason', validators=[Optional(), Length(max=500)])

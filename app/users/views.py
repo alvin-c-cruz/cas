@@ -11,7 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app import db, limiter
 from app.branches.models import Branch
 from app.users.models import User
-from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
+from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm, ChangeEmailForm
 from app.utils import ph_now
 from app.audit.utils import log_audit, log_create, log_update, log_delete, model_to_dict
 from app.notifications.utils import create_notification
@@ -710,6 +710,44 @@ def change_password():
             flash(f'Error changing password: {str(e)}', 'error')
 
     return render_template('users/change_password.html', form=form)
+
+
+@users_bp.route('/profile/change-email', methods=['GET', 'POST'])
+@login_required
+def change_email():
+    """Change current user email (self-service)."""
+    form = ChangeEmailForm()
+
+    if form.validate_on_submit():
+        if not current_user.check_password(form.current_password.data):
+            flash('Current password is incorrect.', 'error')
+            return render_template('users/change_email.html', form=form)
+
+        new_email = form.new_email.data.strip()
+        existing = User.query.filter(User.email == new_email, User.id != current_user.id).first()
+        if existing:
+            flash('This email is already in use by another account.', 'error')
+            return render_template('users/change_email.html', form=form)
+
+        try:
+            old_email = current_user.email
+            current_user.email = new_email
+            db.session.commit()
+            log_audit(module='users', action='change_email', record_id=current_user.id,
+                      record_identifier=current_user.username,
+                      old_values={'email': old_email}, new_values={'email': new_email},
+                      notes='Email changed by the account owner', user_id=current_user.id)
+            flash('Email updated successfully.', 'success')
+            return redirect(url_for('users.profile'))
+        except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error changing email", exc_info=True)
+            log_exception(e, severity='CRITICAL', module='users.change_email')
+            db.session.rollback()
+            flash(f'Error changing email: {str(e)}', 'error')
+
+    return render_template('users/change_email.html', form=form)
 
 
 # ============================================================
