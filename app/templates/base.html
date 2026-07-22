@@ -956,6 +956,8 @@
       }
       .sidebar-branch-indicator {
         background: linear-gradient(135deg, {{ current_branch.theme_color }} 0%, {{ derived.hover }} 100%);
+        border-color: {{ current_branch.theme_color }};
+        box-shadow: 0 4px 12px {{ derived.badge_shadow }};
       }
     </style>
     {% endif %}

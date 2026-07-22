@@ -55,4 +55,5 @@ def derive_sidebar_theme(hex_color):
         'active_bg': f'rgba({r}, {g}, {b}, 0.15)',
         'active_text': active_text,
         'active_border': hex_color,
+        'badge_shadow': f'rgba({r}, {g}, {b}, 0.4)',
     }

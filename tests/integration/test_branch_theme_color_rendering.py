@@ -29,6 +29,12 @@ def test_themed_branch_renders_derived_style_block(client, db_session, admin_use
     assert f'--sidebar-bg: {derived["bg"]}' in body
     assert f'--sidebar-active-border: {derived["active_border"]}' in body
     assert f'linear-gradient(135deg, #0ea5e9 0%, {derived["hover"]} 100%)' in body
+    # BUG-BRANCH-THEME-BADGE-BORDER-STALE: the badge's border/glow must also
+    # follow the theme, not stay on the hardcoded default-blue values from the
+    # always-present first <style> block (border-color: #1e40af; box-shadow:
+    # rgba(59,130,246,.4)).
+    assert f'border-color: #0ea5e9' in body
+    assert f'box-shadow: 0 4px 12px {derived["badge_shadow"]}' in body
 
 
 def test_unthemed_branch_renders_no_override_style_block(client, db_session, admin_user, main_branch):
