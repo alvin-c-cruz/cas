@@ -2008,10 +2008,18 @@ def lifo_valuation_export_excel():
     from app.utils.export import export_to_excel
     product_id = request.args.get('product_id', type=int)
     branch_id = request.args.get('branch_id', type=int)
+    as_of = None
+    raw_as_of = request.args.get('as_of')
+    if raw_as_of:
+        try:
+            as_of = date.fromisoformat(raw_as_of)
+        except ValueError:
+            as_of = None
     products = _lifo_products()
     single_branch_id = _lifo_single_branch_id(branch_id)
     product = next((p for p in products if p.id == product_id), None)
-    layers = current_lifo_valuation(product_id, single_branch_id) if product_id and single_branch_id else []
+    layers = (current_lifo_valuation(product_id, single_branch_id, as_of_date=as_of)
+              if product_id and single_branch_id else [])
     rows = [{
         'received_at': l.received_at.strftime('%Y-%m-%d') if l.received_at else '',
         'qty': l.qty, 'unit_cost': l.unit_cost, 'value': (l.qty * l.unit_cost),

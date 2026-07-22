@@ -50,9 +50,9 @@
             <input type="date" id="v_as_of" name="as_of" value="{{ (as_of or today).strftime('%Y-%m-%d') }}">
             <button type="submit" class="btn btn-secondary">Apply</button>
         </form>
-        {% if product_id %}
+        {% if product_id and not branch_ambiguous %}
         <div class="page-actions">
-            <a href="{{ url_for('reports.lifo_valuation_export_excel', product_id=product_id, branch_id=branch_id) }}"
+            <a href="{{ url_for('reports.lifo_valuation_export_excel', product_id=product_id, branch_id=branch_id, as_of=(as_of or today).strftime('%Y-%m-%d')) }}"
                class="btn btn-secondary">Export Excel</a>
         </div>
         {% endif %}
@@ -148,7 +148,7 @@
             <input type="date" id="c_end_date" name="end_date" value="{{ end_date.strftime('%Y-%m-%d') if end_date else '' }}">
             <button type="submit" class="btn btn-secondary">Apply</button>
         </form>
-        {% if product_id %}
+        {% if product_id and not branch_ambiguous %}
         <div class="page-actions">
             <a href="{{ url_for('reports.lifo_valuation_cogs_export_excel', product_id=product_id, branch_id=branch_id, start_date=start_date, end_date=end_date) }}"
                class="btn btn-secondary">Export Excel</a>

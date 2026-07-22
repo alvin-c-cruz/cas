@@ -115,6 +115,67 @@ def test_lifo_valuation_report_export_excel(client, db_session, admin_user, bran
     assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 
+def test_lifo_valuation_report_export_excel_honors_as_of(client, db_session, admin_user, branch_main):
+    # Final whole-branch review finding (Minor, fixed before merge): the export route ignored
+    # the "as of" filter the on-screen Tab 1 view respects, so a user viewing a historical
+    # snapshot and clicking Export got today's current snapshot instead -- a screen-vs-export
+    # mismatch. A layer received AFTER the requested as_of date must be excluded from the export.
+    import io
+    from openpyxl import load_workbook
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-ASOF', name='LIFO Report As-Of Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    early = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                          quantity=D('5'), unit_cost=D('3.00'), balance_qty_after=D('5'),
+                          balance_avg_cost_after=D('3.00'), balance_value_after=D('15.00'),
+                          created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(early); db.session.commit()
+    later = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                          quantity=D('5'), unit_cost=D('11.11'), balance_qty_after=D('10'),
+                          balance_avg_cost_after=D('7.06'), balance_value_after=D('70.55'),
+                          created_at=datetime(2026, 6, 1), created_by_id=admin_user.id)
+    db.session.add(later); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation/export/excel?product_id={product.id}'
+                      f'&branch_id={branch_main.id}&as_of=2026-03-01')
+    assert resp.status_code == 200
+    wb = load_workbook(io.BytesIO(resp.get_data()))
+    ws = wb.active
+    cell_values = [str(c.value) for row in ws.iter_rows() for c in row if c.value is not None]
+    joined = ' '.join(cell_values)
+    assert '3' in joined  # the early (pre-cutoff) layer's cost must be present
+    assert '11.11' not in joined  # the later (post-cutoff) layer must be excluded
+
+
+def test_lifo_valuation_report_export_links_hidden_when_branch_ambiguous(
+        client, db_session, admin_user, branch_main, branch_manila):
+    # Final whole-branch review finding (Minor, fixed before merge): both Export Excel links
+    # rendered regardless of branch_ambiguous, so an ambiguous request downloaded a silently
+    # empty spreadsheet with no on-page explanation. The links must not render at all when the
+    # branch is ambiguous -- same gate the on-page empty-state message already uses.
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-NOEXPORT', name='LIFO Report No-Export Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                       quantity=D('5'), unit_cost=D('2.00'), balance_qty_after=D('5'),
+                       balance_avg_cost_after=D('2.00'), balance_value_after=D('10.00'),
+                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(mv); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation?product_id={product.id}')  # no branch_id, 2 accessible branches
+    assert resp.status_code == 200
+    assert b'Select a specific branch' in resp.data
+    assert b'Export Excel' not in resp.data
+
+
 def test_lifo_valuation_report_cogs_export_excel(client, db_session, admin_user, branch_main):
     # The approved Task 3 mockup shows "Export to Excel" on BOTH tabs (plan line 444), but
     # Task 4's own build spec (plan line 688) only wired up Tab 1 -- a genuine plan-authoring
