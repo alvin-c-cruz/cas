@@ -93,6 +93,53 @@ class StockLayerConsumption(db.Model):
     layer = db.relationship('StockCostLayer')
 
 
+class StockLot(db.Model):
+    """One received-or-exhausted specific-identification lot (R-03 slice 2d).
+    Created either by a real receipt (source_movement_id set) or by an
+    "opening" Stock Adjustment establishing a pre-existing batch (also
+    source_movement_id set -- there is no separate bootstrap mechanism the
+    way FIFO has one; the user names their existing batches explicitly via
+    an opening receipt, which fits specific-ID's whole point better than an
+    auto-generated, unlabeled opening lot would). Never deleted, even at
+    remaining_qty=0 -- append-only history, same philosophy as
+    StockMovement/StockCostLayer. Unlike a FIFO layer, remaining_qty can
+    NEVER go negative -- a specific-ID issue that would exceed a lot's
+    remaining quantity is rejected before posting (see lots.py)."""
+    __tablename__ = 'stock_lots'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, index=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('branches.id'), nullable=False, index=True)
+    original_qty = db.Column(db.Numeric(15, 4), nullable=False)
+    remaining_qty = db.Column(db.Numeric(15, 4), nullable=False)
+    unit_cost = db.Column(db.Numeric(15, 2), nullable=False)
+    received_at = db.Column(db.DateTime, nullable=False)
+    lot_reference = db.Column(db.String(200), nullable=True)
+    source_movement_id = db.Column(db.Integer, db.ForeignKey('stock_movements.id'), nullable=True)
+
+    product = db.relationship('Product')
+    branch = db.relationship('Branch')
+    source_movement = db.relationship('StockMovement')
+
+
+class StockLotConsumption(db.Model):
+    """One (OUT movement, lot) draw record (R-03 slice 2d) -- what makes a
+    specific-ID issue-reversal exact. Unlike StockLayerConsumption, a
+    specific-ID movement produces AT MOST ONE of these rows, never several
+    -- a line always draws from exactly one user-picked lot, no
+    auto-splitting across lots."""
+    __tablename__ = 'stock_lot_consumptions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    movement_id = db.Column(db.Integer, db.ForeignKey('stock_movements.id'), nullable=False, index=True)
+    lot_id = db.Column(db.Integer, db.ForeignKey('stock_lots.id'), nullable=False, index=True)
+    qty_consumed = db.Column(db.Numeric(15, 4), nullable=False)
+    unit_cost_at_consumption = db.Column(db.Numeric(15, 2), nullable=False)
+
+    movement = db.relationship('StockMovement')
+    lot = db.relationship('StockLot')
+
+
 REASON_TYPES = ('correction', 'opening')
 
 
@@ -128,6 +175,9 @@ class StockAdjustmentLine(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
     quantity_delta = db.Column(db.Numeric(15, 4), nullable=False)   # signed
     unit_cost = db.Column(db.Numeric(15, 2), nullable=True)         # required only for positive lines
+    lot_id = db.Column(db.Integer, db.ForeignKey('stock_lots.id'), nullable=True)     # negative specific-ID lines only
+    lot_reference = db.Column(db.String(200), nullable=True)         # positive specific-ID lines only, optional
     note = db.Column(db.String(500), nullable=True)
 
     product = db.relationship('Product')
+    lot = db.relationship('StockLot')
