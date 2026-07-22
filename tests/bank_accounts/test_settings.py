@@ -41,12 +41,43 @@ def test_leaf_choices_filtered_to_parent(db_session, cash_account, revenue_accou
     assert revenue_account.id not in ids
 
 
-def test_leaf_choices_fail_soft_when_unassigned(db_session, cash_account, revenue_account):
+def test_leaf_choices_falls_back_to_cash_named_account_when_unassigned(
+        db_session, cash_account, revenue_account):
+    """Regression (BUG-CASHBANK-DEFAULT-CODE-STALE): when unassigned AND the
+    hardcoded DEFAULT_CASH_BANK_PARENT_CODE ('10100') doesn't exist in this
+    instance's COA, the fallback must narrow to whichever top-level Asset account
+    has "cash" in its name (here, cash_account itself) -- NOT fail wide open to
+    every leaf account in the whole COA."""
     from app.bank_accounts import service
     AppSettings.set_setting('cash_bank_parent_account_code', '')   # unassigned
     db_session.commit()
     ids = {aid for aid, _ in service.cash_bank_leaf_account_choices()}
-    assert revenue_account.id in ids              # falls back to ALL leaves
+    assert cash_account.id in ids
+    assert revenue_account.id not in ids
+
+
+def test_leaf_choices_falls_back_to_cash_named_account_when_configured_code_is_stale(
+        db_session, cash_account, revenue_account):
+    """The literal repro: an explicitly-configured code that doesn't exist in this
+    instance's COA (e.g. a leftover '10100' on a 6-digit-scheme instance) must also
+    narrow to the cash-named account, not fail wide open."""
+    from app.bank_accounts import service
+    AppSettings.set_setting('cash_bank_parent_account_code', '99999-does-not-exist')
+    db_session.commit()
+    ids = {aid for aid, _ in service.cash_bank_leaf_account_choices()}
+    assert cash_account.id in ids
+    assert revenue_account.id not in ids
+
+
+def test_leaf_choices_fail_soft_to_all_leaves_when_no_cash_account_exists_either(
+        db_session, revenue_account):
+    """True last resort: unassigned/stale code AND no top-level "cash"-named Asset
+    account exists at all -- only then does it fail all the way open."""
+    from app.bank_accounts import service
+    AppSettings.set_setting('cash_bank_parent_account_code', '')
+    db_session.commit()
+    ids = {aid for aid, _ in service.cash_bank_leaf_account_choices()}
+    assert revenue_account.id in ids
 
 
 def test_leaf_choices_excludes_inactive_accounts_when_parent_configured(db_session):

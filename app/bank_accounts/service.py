@@ -38,9 +38,25 @@ def _leaf_accounts(parent):
     return out
 
 
+def _resolve_cash_bank_parent(code):
+    """Find the Account matching `code`; if that doesn't resolve (e.g. an instance
+    seeded with a different COA numbering scheme than DEFAULT_CASH_BANK_PARENT_CODE
+    -- BUG-CASHBANK-DEFAULT-CODE-STALE), fall back to whichever top-level (no
+    parent_id) Asset account has "cash" in its name -- narrower and far more likely
+    correct than showing every leaf account in the COA. Returns None only if
+    neither resolves, at which point the caller falls all the way open."""
+    parent = Account.query.filter_by(code=code, is_active=True).first() if code else None
+    if parent is not None:
+        return parent
+    return (Account.query
+            .filter(Account.parent_id.is_(None), Account.account_type == 'Asset',
+                    Account.is_active.is_(True), Account.name.ilike('%cash%'))
+            .order_by(Account.code).first())
+
+
 def cash_bank_leaf_account_choices():
     code = get_cash_bank_parent_code()
-    parent = Account.query.filter_by(code=code, is_active=True).first() if code else None
+    parent = _resolve_cash_bank_parent(code)
     if parent is None:
         leaves = [a for a in Account.query.filter_by(is_active=True).all() if not a.children]  # fail-soft: all leaves
     else:
