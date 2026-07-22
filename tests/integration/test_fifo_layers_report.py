@@ -31,8 +31,14 @@ def test_fifo_layers_report_shows_open_and_deficit_layers(client, db_session, ad
     post_movement(product, branch_main.id, 'receipt', D('5'), D('4.00'),
                   'test_doc', 1, 'r1', admin_user)
     db.session.commit()
-    post_movement(product, branch_main.id, 'issue', D('-8'), None,
-                  'test_doc', 2, 'issue', admin_user)   # drains it + deficits
+    post_movement(product, branch_main.id, 'issue', D('-5'), None,
+                  'test_doc', 2, 'issue-drain', admin_user)   # drains layer 1 to exactly 0
+    db.session.commit()
+    post_movement(product, branch_main.id, 'receipt', D('3'), D('6.00'),
+                  'test_doc', 3, 'r2', admin_user)
+    db.session.commit()
+    post_movement(product, branch_main.id, 'issue', D('-6'), None,
+                  'test_doc', 4, 'issue-deficit', admin_user)   # drains layer 2 then deficits it
     db.session.commit()
 
     _login(client, admin_user, branch_main)
@@ -40,6 +46,8 @@ def test_fifo_layers_report_shows_open_and_deficit_layers(client, db_session, ad
     assert resp.status_code == 200
     assert b'4.00' in resp.data          # the layer's unit cost
     assert b'-3.0000' in resp.data or b'-3' in resp.data   # the deficit remaining_qty is shown
+    assert b'badge-drained' in resp.data   # layer 1's remaining_qty == 0 shows the DRAINED badge
+    assert b'badge-error' in resp.data     # layer 2's negative remaining_qty shows the deficit badge
 
 
 def test_fifo_layers_report_excel_export(client, db_session, admin_user, branch_main):

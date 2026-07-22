@@ -58,9 +58,22 @@
                 <tr class="{{ 'fifo-layer-deficit' if layer.remaining_qty < 0 else ('fifo-layer-drained' if layer.remaining_qty == 0 else '') }}">
                   <td>{{ layer.received_at.strftime('%Y-%m-%d') if layer.received_at else '—' }}</td>
                   <td class="num">{{ '%.4f'|format(layer.original_qty) }}</td>
-                  <td class="num">{{ '%.4f'|format(layer.remaining_qty) }}{% if layer.remaining_qty < 0 %} <span class="badge badge-error">deficit</span>{% endif %}</td>
+                  <td class="num">{{ '%.4f'|format(layer.remaining_qty) }}{% if layer.remaining_qty < 0 %} <span class="badge badge-error">deficit</span>{% elif layer.remaining_qty == 0 %} <span class="badge badge-drained">drained</span>{% endif %}</td>
                   <td class="num">₱{{ '%.2f'|format(layer.unit_cost) }}</td>
-                  <td class="num">{{ (today - layer.received_at.date()).days if layer.received_at else '—' }}</td>
+                  <td class="num">
+                    {% if layer.received_at %}
+                    {% set age_days = (today - layer.received_at.date()).days %}
+                    {% if age_days < 30 %}
+                    <span class="badge badge-age-ok">{{ age_days }}</span>
+                    {% elif age_days <= 60 %}
+                    <span class="badge badge-age-warn">{{ age_days }}</span>
+                    {% else %}
+                    <span class="badge badge-age-danger">{{ age_days }}</span>
+                    {% endif %}
+                    {% else %}
+                    —
+                    {% endif %}
+                  </td>
                   <td class="num">₱{{ '%.2f'|format(layer.remaining_qty * layer.unit_cost) }}</td>
                 </tr>
                 {% else %}
@@ -85,6 +98,9 @@
         </div>
         {% if layers %}
         <div class="legend">
+            <div class="legend-item"><span class="legend-swatch" style="background: var(--aging-ok-bg); border: 1px solid var(--aging-ok-fg);"></span> Age &lt; 30 days</div>
+            <div class="legend-item"><span class="legend-swatch" style="background: var(--aging-warn-bg); border: 1px solid var(--aging-warn-fg);"></span> Age 30&ndash;60 days</div>
+            <div class="legend-item"><span class="legend-swatch" style="background: var(--aging-danger-bg); border: 1px solid var(--aging-danger-fg);"></span> Age &gt; 60 days</div>
             <div class="legend-item"><span class="legend-swatch legend-swatch-drained"></span> Drained layer (remaining = 0, kept for audit trail)</div>
             <div class="legend-item"><span class="legend-swatch legend-swatch-deficit"></span> Deficit layer (remaining &lt; 0 &mdash; over-consumed, needs investigation)</div>
         </div>

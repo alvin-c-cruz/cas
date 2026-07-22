@@ -481,6 +481,15 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
    the --aging-danger-* tokens already shipped (used for report aging
    buckets) rather than hardcoding hex, per the no-hardcoded-styling rule. */
 .badge-error { background: var(--aging-danger-bg); color: var(--aging-danger-fg); }
+/* Age-bucket badges on the Age (days) column, and the drained-cell badge --
+   both approved in the mockup (2026-07-22-fifo-layers-on-hand-mockup.html)
+   but omitted from the first shipped template; restored here (Task 8 fix).
+   .badge-drained's colours are literal hex, matching .legend-swatch-drained
+   above -- the mockup itself doesn't token-back this one either. */
+.badge-age-ok     { background: var(--aging-ok-bg);     color: var(--aging-ok-fg); }
+.badge-age-warn   { background: var(--aging-warn-bg);   color: var(--aging-warn-fg); }
+.badge-age-danger { background: var(--aging-danger-bg); color: var(--aging-danger-fg); }
+.badge-drained    { background: #f1f5f9; color: #64748b; }
 .fifo-layer-drained { opacity: 0.5; }
 .fifo-layer-deficit { background: var(--aging-danger-bg); }
 .fifo-layer-deficit td { color: var(--aging-danger-fg); }
