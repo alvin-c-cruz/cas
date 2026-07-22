@@ -113,6 +113,16 @@ class ChangePasswordForm(FlaskForm):
     ])
 
 
+class ChangeEmailForm(FlaskForm):
+    """Self-service email change -- requires current password as a confirmation gate."""
+    current_password = PasswordField('Current Password', validators=[DataRequired()])
+    new_email = StringField('New Email', validators=[
+        DataRequired(),
+        Email(message='Please enter a valid email address.', check_deliverability=False),
+        Length(max=120)
+    ])
+
+
 class RejectReasonForm(FlaskForm):
     """CSRF-protected form for capturing a reject reason (no other fields needed)."""
     reason = TextAreaField('Reason', validators=[Optional(), Length(max=500)])
@@ -150,7 +160,11 @@ class ApprovedEmailForm(FlaskForm):
     ])
 
     def validate_email(self, email):
-        """Check if email is already in approved list."""
+        """Check if email already belongs to a User, or is already in the approved list."""
+        existing_user = User.query.filter_by(email=email.data).first()
+        if existing_user:
+            raise ValidationError('This email already belongs to an existing user account.')
+
         from app.users.approved_emails import ApprovedEmail
         approved = ApprovedEmail.query.filter_by(email=email.data.lower()).first()
         if approved:

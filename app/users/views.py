@@ -11,7 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app import db, limiter
 from app.branches.models import Branch
 from app.users.models import User
-from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm
+from app.users.forms import LoginForm, RegistrationForm, UserForm, ChangePasswordForm, ChangeEmailForm
 from app.utils import ph_now
 from app.audit.utils import log_audit, log_create, log_update, log_delete, model_to_dict
 from app.notifications.utils import create_notification
@@ -460,15 +460,16 @@ def edit_user(id):
             flash('Username cannot be changed after account creation.', 'error')
             return render_template('users/form.html', form=form, user=user)
 
-        # CRITICAL: Prevent email changes (email is immutable after account creation)
-        if user.email != form.email.data:
-            flash('Email cannot be changed after account creation.', 'error')
-            return render_template('users/form.html', form=form, user=user)
-
         # Check for duplicate email (excluding current user)
         existing_email = User.query.filter(User.email == form.email.data, User.id != id).first()
         if existing_email:
             flash(f'Email "{form.email.data}" already exists. Please use a different email.', 'error')
+            return render_template('users/form.html', form=form, user=user)
+
+        from app.users.approved_emails import ApprovedEmail
+        pending = ApprovedEmail.query.filter_by(email=form.email.data.lower(), is_used=False, status='approved').first()
+        if pending:
+            flash('This email is reserved for a pending registration. Choose a different one, or ask an administrator to release it first.', 'error')
             return render_template('users/form.html', form=form, user=user)
 
         try:
@@ -479,8 +480,7 @@ def edit_user(id):
 
             # Username is immutable - do not update it
             # user.username = form.username.data  # REMOVED - username cannot be changed
-            # Email is immutable - do not update it
-            # user.email = form.email.data  # REMOVED - email cannot be changed
+            user.email = form.email.data
             user.full_name = form.full_name.data
             user.role = form.role.data
             user.is_active = form.is_active.data
@@ -710,6 +710,50 @@ def change_password():
             flash(f'Error changing password: {str(e)}', 'error')
 
     return render_template('users/change_password.html', form=form)
+
+
+@users_bp.route('/profile/change-email', methods=['GET', 'POST'])
+@login_required
+def change_email():
+    """Change current user email (self-service)."""
+    form = ChangeEmailForm()
+
+    if form.validate_on_submit():
+        if not current_user.check_password(form.current_password.data):
+            flash('Current password is incorrect.', 'error')
+            return render_template('users/change_email.html', form=form)
+
+        new_email = form.new_email.data.strip()
+        existing = User.query.filter(User.email == new_email, User.id != current_user.id).first()
+        if existing:
+            flash('This email is already in use by another account.', 'error')
+            return render_template('users/change_email.html', form=form)
+
+        from app.users.approved_emails import ApprovedEmail
+        pending = ApprovedEmail.query.filter_by(email=new_email.lower(), is_used=False, status='approved').first()
+        if pending:
+            flash('This email is reserved for a pending registration. Choose a different one, or ask an administrator to release it first.', 'error')
+            return render_template('users/change_email.html', form=form)
+
+        try:
+            old_email = current_user.email
+            current_user.email = new_email
+            db.session.commit()
+            log_audit(module='users', action='change_email', record_id=current_user.id,
+                      record_identifier=current_user.username,
+                      old_values={'email': old_email}, new_values={'email': new_email},
+                      notes='Email changed by the account owner', user_id=current_user.id)
+            flash('Email updated successfully.', 'success')
+            return redirect(url_for('users.profile'))
+        except Exception as e:
+            from flask import current_app
+            from app.errors.utils import log_exception
+            current_app.logger.error(f"Error changing email", exc_info=True)
+            log_exception(e, severity='CRITICAL', module='users.change_email')
+            db.session.rollback()
+            flash(f'Error changing email: {str(e)}', 'error')
+
+    return render_template('users/change_email.html', form=form)
 
 
 # ============================================================
@@ -1036,13 +1080,10 @@ def delete_approved_email(id):
     try:
         approved_email = db.get_or_404(ApprovedEmail, id)
 
-        # Don't allow deleting already used emails
-        if approved_email.is_used:
-            flash('Cannot delete an approved email that has already been used for registration.', 'error')
-            return redirect(url_for('users.list_approved_emails'))
-
         email_address = approved_email.email
-        old_values = {'email': approved_email.email, 'notes': approved_email.notes}
+        was_used = approved_email.is_used
+        old_values = {'email': approved_email.email, 'notes': approved_email.notes,
+                      'is_used': approved_email.is_used}
         db.session.delete(approved_email)
         db.session.commit()
 
@@ -1052,7 +1093,8 @@ def delete_approved_email(id):
             record_id=id,
             record_identifier=email_address,
             old_values=old_values,
-            notes='Approved email removed before use'
+            notes='Approved email removed (was used for registration)' if was_used
+                  else 'Approved email removed before use'
         )
 
         flash(f'Approved email "{email_address}" has been removed.', 'success')
