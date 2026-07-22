@@ -110,7 +110,9 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
             db.session.expire(bal, ['row_version', 'quantity_on_hand', 'average_unit_cost', 'total_value'])
             return mv, (new_qty < ZERO)
 
-        db.session.expire(bal)   # lost the race: re-read and retry
+        db.session.expire_all()  # lost the race: re-read EVERYTHING fresh, not just bal --
+                                 # a FIFO retry's fifo_plan_consume call must not reuse
+                                 # identity-mapped StockCostLayer objects from the losing attempt
     raise RuntimeError('stock balance update failed after retries (persistent contention)')
 
 
