@@ -73,9 +73,35 @@ def test_as_of_date_excludes_later_movements(db_session, product_lifo, branch_ma
     assert layers[0].unit_cost == D('4.00')
 
 
+def test_second_issue_after_deficit_grows_the_same_deficit(db_session, product_lifo, branch_main):
+    _mv(product_lifo.id, branch_main.id, '5', '4.00', datetime(2026, 1, 1))
+    _mv(product_lifo.id, branch_main.id, '-8', None, datetime(2026, 2, 1))  # exhausts to a -3 deficit @4.00
+    _mv(product_lifo.id, branch_main.id, '-2', None, datetime(2026, 3, 1))  # no receipt in between
+    db.session.commit()
+    layers = current_lifo_valuation(product_lifo.id, branch_main.id)
+    # the second issue must grow the existing deficit, not misread it via min(-3, 2)
+    assert len(layers) == 1
+    assert layers[0].qty == D('-5.0000')
+    assert layers[0].unit_cost == D('4.00')
+
+
 def test_reversal_nets_out_with_no_special_handling(db_session, product_lifo, branch_main):
     _mv(product_lifo.id, branch_main.id, '10', '5.00', datetime(2026, 1, 1))
     _mv(product_lifo.id, branch_main.id, '-10', None, datetime(2026, 1, 2))  # a void's reversal
     db.session.commit()
     layers = current_lifo_valuation(product_lifo.id, branch_main.id)
     assert layers == []
+
+
+def test_deficit_then_refill_then_issue_past_refill(db_session, product_lifo, branch_main):
+    _mv(product_lifo.id, branch_main.id, '5', '4.00', datetime(2026, 1, 1))
+    _mv(product_lifo.id, branch_main.id, '-8', None, datetime(2026, 2, 1))   # -> -3 deficit @4.00
+    _mv(product_lifo.id, branch_main.id, '2', '10.00', datetime(2026, 3, 1))  # refill on top
+    _mv(product_lifo.id, branch_main.id, '-5', None, datetime(2026, 4, 1))   # draws the 2@10, then past it
+    db.session.commit()
+    layers = current_lifo_valuation(product_lifo.id, branch_main.id)
+    # 2 units drawn @10.00 = 20.00; remaining 3 units draw past the refill into
+    # a combined deficit of 3 (existing) + 3 (new) = 6 units @ the original 4.00 basis
+    assert len(layers) == 1
+    assert layers[0].qty == D('-6.0000')
+    assert layers[0].unit_cost == D('4.00')
