@@ -77,6 +77,23 @@ def test_change_email_audit_log_entry(client, db_session, staff_user, main_branc
     assert audit is not None
 
 
+def test_change_email_rejected_when_reserved_by_pending_approved_email(client, db_session, staff_user, main_branch):
+    """Guard: can't squat on an address an admin reserved for someone else's future
+    registration -- an ApprovedEmail row that's approved but not yet used."""
+    pending = ApprovedEmail(email='pending-hire@test.com', status='approved')
+    db_session.add(pending)
+    db_session.commit()
+
+    _login_staff(client, db_session, staff_user, main_branch)
+    client.post('/profile/change-email', data={
+        'current_password': 'staff123',
+        'new_email': 'pending-hire@test.com',
+    }, follow_redirects=True)
+
+    unchanged = db_session.get(User, staff_user.id)
+    assert unchanged.email == 'staff@test.com'
+
+
 def test_change_email_does_not_touch_original_approved_email_row(client, db_session, staff_user, main_branch):
     """Rule #2: changing email must NOT free the ApprovedEmail row consumed at registration."""
     approved = ApprovedEmail(email='staff@test.com', status='approved')

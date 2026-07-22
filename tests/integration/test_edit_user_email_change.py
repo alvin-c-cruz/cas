@@ -5,6 +5,7 @@ Mirrors tests/integration/test_edit_user_optional_perms.py's payload pattern.
 import json
 import pytest
 from app.users.models import User
+from app.users.approved_emails import ApprovedEmail
 from app.audit.models import AuditLog
 
 pytestmark = [pytest.mark.integration, pytest.mark.users]
@@ -56,6 +57,22 @@ def test_admin_edit_email_change_is_audited(client, db_session, admin_user, staf
     assert audit is not None
     assert json.loads(audit.old_values)['email'] == 'staff@test.com'
     assert json.loads(audit.new_values)['email'] == 'staff-new@test.com'
+
+
+def test_admin_edit_rejects_email_reserved_by_pending_approved_email(client, db_session, admin_user, staff_user, main_branch):
+    """Guard: admin can't hand a user an address an ApprovedEmail row is still
+    reserving for someone else's future registration (approved, not yet used)."""
+    pending = ApprovedEmail(email='pending-hire@test.com', status='approved')
+    db_session.add(pending)
+    db_session.commit()
+
+    _login(client, 'admin', 'admin123')
+    client.post(f'/users/{staff_user.id}/edit', data=_edit_payload(
+        main_branch, email='pending-hire@test.com'
+    ), follow_redirects=True)
+
+    unchanged = db_session.get(User, staff_user.id)
+    assert unchanged.email == 'staff@test.com'
 
 
 def test_edit_form_email_field_is_editable_username_stays_locked(client, db_session, admin_user, staff_user, main_branch):

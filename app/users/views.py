@@ -466,6 +466,12 @@ def edit_user(id):
             flash(f'Email "{form.email.data}" already exists. Please use a different email.', 'error')
             return render_template('users/form.html', form=form, user=user)
 
+        from app.users.approved_emails import ApprovedEmail
+        pending = ApprovedEmail.query.filter_by(email=form.email.data.lower(), is_used=False, status='approved').first()
+        if pending:
+            flash('This email is reserved for a pending registration. Choose a different one, or ask an administrator to release it first.', 'error')
+            return render_template('users/form.html', form=form, user=user)
+
         try:
             # Capture old values before update
             old_values = model_to_dict(user, ['username', 'email', 'full_name', 'role', 'is_active'])
@@ -721,6 +727,12 @@ def change_email():
         existing = User.query.filter(User.email == new_email, User.id != current_user.id).first()
         if existing:
             flash('This email is already in use by another account.', 'error')
+            return render_template('users/change_email.html', form=form)
+
+        from app.users.approved_emails import ApprovedEmail
+        pending = ApprovedEmail.query.filter_by(email=new_email.lower(), is_used=False, status='approved').first()
+        if pending:
+            flash('This email is reserved for a pending registration. Choose a different one, or ask an administrator to release it first.', 'error')
             return render_template('users/change_email.html', form=form)
 
         try:
