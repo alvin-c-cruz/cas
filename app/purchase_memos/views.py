@@ -396,6 +396,9 @@ def _void_impl(id, memo_type):
         log_audit(module='purchase_memos', action='void', record_id=memo.id,
                   record_identifier=memo.memo_number, notes=f'Voided: {reason}')
         flash(f'{meta["title"]} "{memo.memo_number}" voided.', 'warning')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
     except Exception as e:
         db.session.rollback()
         current_app.logger.error('Error voiding %s', meta['title'], exc_info=True)

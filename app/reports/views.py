@@ -1836,3 +1836,69 @@ def stock_ledger_export_excel():
     filename = f"Stock_Ledger_{product.code if product else 'export'}.xlsx"
     return export_to_excel(rows, columns, headers, filename,
                            title=f"Stock Ledger — {product.name}" if product else 'Stock Ledger')
+
+
+def _fifo_layers(product_id, branch_id=None):
+    """(products, layers) -- shared query for the screen/export variants of
+    the FIFO Layers on Hand report. products is filtered to FIFO-costed
+    tracked products only."""
+    from app.stock_adjustments.models import StockCostLayer
+    from app.products.models import Product
+    from app.users.utils import get_accessible_branches
+    accessible_branches = get_accessible_branches(current_user)
+    branch_ids = [b.id for b in accessible_branches]
+    if branch_id is not None and branch_id in branch_ids:
+        branch_ids = [branch_id]
+    products = Product.query.filter_by(is_active=True, track_inventory=True,
+                                       costing_method='fifo').order_by(Product.code).all()
+    layers = []
+    if product_id and branch_ids:
+        layers = (StockCostLayer.query
+                 .filter(StockCostLayer.product_id == product_id,
+                         StockCostLayer.branch_id.in_(branch_ids))
+                 .order_by(StockCostLayer.received_at, StockCostLayer.id).all())
+    return products, layers
+
+
+@reports_bp.route('/reports/fifo-layers')
+@login_required
+def fifo_layers():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.users.utils import get_accessible_branches
+    from app.utils import ph_now
+    product_id = request.args.get('product_id', type=int)
+    branch_id = request.args.get('branch_id', type=int)
+    products, layers = _fifo_layers(product_id, branch_id)
+    return render_template('reports/fifo_layers.html', products=products,
+                           product_id=product_id, branch_id=branch_id,
+                           branches=get_accessible_branches(current_user), layers=layers,
+                           today=ph_now().date())
+
+
+@reports_bp.route('/reports/fifo-layers/export/excel')
+@login_required
+def fifo_layers_export_excel():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.utils.export import export_to_excel
+    product_id = request.args.get('product_id', type=int)
+    branch_id = request.args.get('branch_id', type=int)
+    products, layers = _fifo_layers(product_id, branch_id)
+    product = next((p for p in products if p.id == product_id), None)
+    rows = [{
+        'received_at': l.received_at.strftime('%Y-%m-%d') if l.received_at else '',
+        'original_qty': l.original_qty,
+        'remaining_qty': l.remaining_qty,
+        'unit_cost': l.unit_cost,
+        'value': (l.remaining_qty * l.unit_cost),
+    } for l in layers]
+    columns = ['received_at', 'original_qty', 'remaining_qty', 'unit_cost', 'value']
+    headers = ['Received', 'Original Qty', 'Remaining Qty', 'Unit Cost', 'Value']
+    filename = f'FIFO_Layers_{product.code if product else "all"}.xlsx'
+    return export_to_excel(rows, columns, headers, filename,
+                           title=f'FIFO Layers — {product.name}' if product else 'FIFO Layers')

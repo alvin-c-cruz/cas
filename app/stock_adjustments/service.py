@@ -48,25 +48,51 @@ def _claim_balance_update(balance_id, read_version, new_qty, new_avg, new_value)
 
 def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                   source_document_type, source_document_id, reason, actor, journal_entry_id=None):
-    """Apply one stock movement. Returns (StockMovement, went_negative). Does not commit."""
+    """Apply one stock movement. Returns (StockMovement, went_negative). Does not commit.
+
+    FIFO branch (R-03 2b): plan-only reads happen fresh every retry attempt,
+    inside the loop, before the balance claim; the corresponding layer WRITES
+    (fifo_apply_receive/fifo_apply_consume) happen only after that same
+    attempt's claim has already succeeded -- never before, to avoid
+    double-writing layers if a losing attempt retries."""
+    from app.stock_adjustments.fifo import (fifo_plan_consume, fifo_apply_receive,
+                                            fifo_apply_consume, bootstrap_opening_layer_if_needed)
     delta_qty = Decimal(delta_qty)
     bal = _get_or_create_balance(product.id, branch_id)
+    is_fifo = (product.costing_method == 'fifo')
+    if is_fifo:
+        bootstrap_opening_layer_if_needed(product.id, branch_id)
 
     for _ in range(MAX_ATTEMPTS):
         read_version = bal.row_version
         old_qty = Decimal(bal.quantity_on_hand)
         old_avg = Decimal(bal.average_unit_cost)
-        new_qty, new_avg = compute_new_balance(
-            product.costing_method or 'moving_average', old_qty, old_avg,
-            delta_qty, in_unit_cost, product.standard_cost)
+
+        fifo_plan = None
+        if is_fifo:
+            new_qty = (old_qty + delta_qty).quantize(Decimal('0.0001'))
+            if delta_qty > ZERO:
+                move_unit_cost = Decimal(in_unit_cost).quantize(Decimal('0.01'))
+                new_total_value = old_qty * old_avg + delta_qty * move_unit_cost
+            else:
+                fifo_plan, move_unit_cost = fifo_plan_consume(product.id, branch_id, -delta_qty)
+                total_cost_drawn = sum((take * Decimal(layer.unit_cost) for layer, take in fifo_plan),
+                                       ZERO)
+                new_total_value = old_qty * old_avg - total_cost_drawn
+            new_avg = (new_total_value / new_qty).quantize(Decimal('0.01')) if new_qty != ZERO else ZERO
+        else:
+            new_qty, new_avg = compute_new_balance(
+                product.costing_method or 'moving_average', old_qty, old_avg,
+                delta_qty, in_unit_cost, product.standard_cost)
+            move_unit_cost = None   # resolved below, unchanged from before this task
         new_value = (new_qty * new_avg).quantize(Decimal('0.01'))
 
         if _claim_balance_update(bal.id, read_version, new_qty, new_avg, new_value):
-            # the cost this movement itself is valued at:
-            if delta_qty > ZERO and (product.costing_method or 'moving_average') != 'standard':
-                move_unit_cost = Decimal(in_unit_cost)
-            else:
-                move_unit_cost = new_avg   # issues, and all standard moves, value at the (new) avg/standard
+            if not is_fifo:
+                if delta_qty > ZERO and (product.costing_method or 'moving_average') != 'standard':
+                    move_unit_cost = Decimal(in_unit_cost)
+                else:
+                    move_unit_cost = new_avg   # issues, and all standard moves, value at the (new) avg/standard
             mv = StockMovement(
                 product_id=product.id, branch_id=branch_id, movement_type=movement_type,
                 quantity=delta_qty.quantize(Decimal('0.0001')), unit_cost=move_unit_cost,
@@ -76,16 +102,35 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
                 created_at=ph_now(), created_by_id=actor.id)
             db.session.add(mv)
             db.session.flush()
+            if is_fifo:
+                if delta_qty > ZERO:
+                    fifo_apply_receive(product.id, branch_id, delta_qty, move_unit_cost, mv, mv.created_at)
+                else:
+                    fifo_apply_consume(fifo_plan, mv)
             db.session.expire(bal, ['row_version', 'quantity_on_hand', 'average_unit_cost', 'total_value'])
             return mv, (new_qty < ZERO)
 
-        db.session.expire(bal)   # lost the race: re-read and retry
+        db.session.expire_all()  # lost the race: re-read EVERYTHING fresh, not just bal --
+                                 # a FIFO retry's fifo_plan_consume call must not reuse
+                                 # identity-mapped StockCostLayer objects from the losing attempt
     raise RuntimeError('stock balance update failed after retries (persistent contention)')
+
+
+class FifoLayerConsumedError(ValueError):
+    """Raised when voiding a FIFO IN-movement (receipt/production/sales-return)
+    whose created layer has already been drawn down by something else --
+    reversal is refused rather than silently corrupting FIFO order. A
+    ValueError subclass so every existing generic 'except ValueError'
+    call-site pattern already catches it and flashes its message."""
+    pass
 
 
 def reverse_document_movements(source_document_type, source_document_id, actor, journal_entry_id=None):
     """Post an opposite movement for each original movement of a document (void).
-    Reversal is at the SAME cost basis as the original (append-only ledger).
+    For a non-FIFO product: reversal is at the SAME cost basis as the original
+    (append-only ledger), via the generic post_movement path -- unchanged from
+    before R-03 2b. For a FIFO product: reversal is TARGETED (see
+    _reverse_fifo_movement) and can raise FifoLayerConsumedError.
     journal_entry_id links each reversal movement to the JE that reversed it
     (the VOID's own new JE, not the original approval's) -- pass the id of a
     JE already created by the caller; this function does not create one."""
@@ -95,12 +140,84 @@ def reverse_document_movements(source_document_type, source_document_id, actor, 
     reversals = []
     for orig in originals:
         product = orig.product
-        mv, _ = post_movement(
-            product, orig.branch_id, 'adjustment', -Decimal(orig.quantity),
-            Decimal(orig.unit_cost), source_document_type, source_document_id,
-            f'Reversal of movement {orig.id}', actor, journal_entry_id=journal_entry_id)
+        if product.costing_method == 'fifo':
+            mv = _reverse_fifo_movement(orig, actor, journal_entry_id)
+        else:
+            mv, _ = post_movement(
+                product, orig.branch_id, 'adjustment', -Decimal(orig.quantity),
+                Decimal(orig.unit_cost), source_document_type, source_document_id,
+                f'Reversal of movement {orig.id}', actor, journal_entry_id=journal_entry_id)
         reversals.append(mv)
     return reversals
+
+
+def _reverse_fifo_movement(orig, actor, journal_entry_id):
+    """FIFO-aware reversal for one original movement. An OUT original (issue/
+    consumption/purchase-return) restores exactly the layers its
+    StockLayerConsumption rows recorded. An IN original (receipt/production/
+    sales-return) targets its own source_movement_id-linked layer directly --
+    never the generic oldest-first plan, which could touch the wrong layer --
+    and refuses (FifoLayerConsumedError) if anything has drawn from it since.
+    Mirrors post_movement's own retry/claim skeleton deliberately, not
+    reusing it directly: the write conditions differ enough (targeted layer
+    restore vs. generic planning) that sharing the loop body would need a
+    callback layer of its own."""
+    from app.stock_adjustments.models import StockCostLayer, StockLayerConsumption
+    orig_qty = Decimal(orig.quantity)
+    bal = _get_or_create_balance(orig.product_id, orig.branch_id)
+
+    for _ in range(MAX_ATTEMPTS):
+        read_version = bal.row_version
+        old_qty = Decimal(bal.quantity_on_hand)
+        old_avg = Decimal(bal.average_unit_cost)
+        reversal_qty = -orig_qty
+        new_qty = (old_qty + reversal_qty).quantize(Decimal('0.0001'))
+
+        consumptions = None
+        layer = None
+        if orig_qty < ZERO:
+            consumptions = StockLayerConsumption.query.filter_by(movement_id=orig.id).all()
+            restore_value = sum((Decimal(c.qty_consumed) * Decimal(c.unit_cost_at_consumption)
+                                 for c in consumptions), ZERO)
+            new_total_value = old_qty * old_avg + restore_value
+        else:
+            layer = StockCostLayer.query.filter_by(source_movement_id=orig.id).first()
+            if layer is None:
+                raise ValueError(f'No FIFO layer found for movement {orig.id} -- data integrity error.')
+            if Decimal(layer.remaining_qty) != Decimal(layer.original_qty):
+                consumers = StockLayerConsumption.query.filter_by(layer_id=layer.id).all()
+                names = sorted({f'{c.movement.source_document_type} #{c.movement.source_document_id}'
+                               for c in consumers}) or ['another transaction']
+                consumed = Decimal(layer.original_qty) - Decimal(layer.remaining_qty)
+                raise FifoLayerConsumedError(
+                    f'Cannot reverse movement {orig.id} -- {consumed} of {layer.original_qty} units '
+                    f'from its FIFO layer have already been consumed by {", ".join(names)}.')
+            new_total_value = old_qty * old_avg - Decimal(layer.original_qty) * Decimal(layer.unit_cost)
+
+        new_avg = (new_total_value / new_qty).quantize(Decimal('0.01')) if new_qty != ZERO else ZERO
+        new_value = (new_qty * new_avg).quantize(Decimal('0.01'))
+
+        if _claim_balance_update(bal.id, read_version, new_qty, new_avg, new_value):
+            mv = StockMovement(
+                product_id=orig.product_id, branch_id=orig.branch_id, movement_type='adjustment',
+                quantity=reversal_qty.quantize(Decimal('0.0001')), unit_cost=Decimal(orig.unit_cost),
+                balance_qty_after=new_qty, balance_avg_cost_after=new_avg, balance_value_after=new_value,
+                source_document_type=orig.source_document_type, source_document_id=orig.source_document_id,
+                journal_entry_id=journal_entry_id, reason=f'Reversal of movement {orig.id}',
+                created_at=ph_now(), created_by_id=actor.id)
+            db.session.add(mv)
+            db.session.flush()
+            if orig_qty < ZERO:
+                for c in consumptions:
+                    c.layer.remaining_qty = (Decimal(c.layer.remaining_qty)
+                                             + Decimal(c.qty_consumed)).quantize(Decimal('0.0001'))
+            else:
+                layer.remaining_qty = Decimal('0.0000')
+            db.session.expire(bal, ['row_version', 'quantity_on_hand', 'average_unit_cost', 'total_value'])
+            return mv
+
+        db.session.expire(bal)
+    raise RuntimeError('stock balance update failed after retries (persistent contention)')
 
 
 def _offset_key(reason_type):

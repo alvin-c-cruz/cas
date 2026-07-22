@@ -31,7 +31,11 @@ def test_standard_issue():
     assert qty == D('16.0000')
     assert avg == D('3.00')
 
-def test_fifo_lifo_specific_fall_back_to_moving_average():
-    for method in ('fifo', 'lifo', 'specific_identification'):
+def test_lifo_specific_identification_fall_back_to_moving_average():
+    # fifo is intentionally excluded here (R-03 2b) -- post_movement no longer
+    # calls compute_new_balance for a fifo-costed product at all (see fifo.py);
+    # this pure function's own fifo behavior is untouched but no longer
+    # production-reachable, so asserting it here would be misleading.
+    for method in ('lifo', 'specific_identification'):
         qty, avg = compute_new_balance(method, D('10'), D('5.00'), D('10'), D('7.00'), None)
         assert avg == D('6.00'), method

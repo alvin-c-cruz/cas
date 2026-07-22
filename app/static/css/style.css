@@ -473,6 +473,33 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .badge-active              { background: #dcfce7; color: #15803d; }
 .badge-inactive            { background: #f1f5f9; color: #64748b; }
 
+/* ── FIFO Layers on Hand report (R-03 slice 2b) ───────────────
+   No existing badge is named for a generic "error" condition (closest
+   status badges -- badge-void/-cancelled/-overdue -- are all bound to a
+   specific document lifecycle, not a bare deficit flag), so this is a new
+   token-backed addition rather than a repurposed status badge. It rides on
+   the --aging-danger-* tokens already shipped (used for report aging
+   buckets) rather than hardcoding hex, per the no-hardcoded-styling rule. */
+.badge-error { background: var(--aging-danger-bg); color: var(--aging-danger-fg); }
+/* Age-bucket badges on the Age (days) column, and the drained-cell badge --
+   both approved in the mockup (2026-07-22-fifo-layers-on-hand-mockup.html)
+   but omitted from the first shipped template; restored here (Task 8 fix).
+   .badge-drained's colours are literal hex, matching .legend-swatch-drained
+   above -- the mockup itself doesn't token-back this one either. */
+.badge-age-ok     { background: var(--aging-ok-bg);     color: var(--aging-ok-fg); }
+.badge-age-warn   { background: var(--aging-warn-bg);   color: var(--aging-warn-fg); }
+.badge-age-danger { background: var(--aging-danger-bg); color: var(--aging-danger-fg); }
+.badge-drained    { background: #f1f5f9; color: #64748b; }
+.fifo-layer-drained { opacity: 0.5; }
+.fifo-layer-deficit { background: var(--aging-danger-bg); }
+.fifo-layer-deficit td { color: var(--aging-danger-fg); }
+.fifo-layer-deficit td.num { font-weight: 700; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; color: var(--text-2); }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.legend-swatch-drained { background: #f1f5f9; border: 1px solid #64748b; }
+.legend-swatch-deficit { background: var(--aging-danger-bg); border: 1px solid var(--aging-danger-fg); }
+
 /* ── Inline AJAX toggle note (Company Settings > Packages) ───── */
 .module-toggle-note              { margin-top: 6px; font-size: 0.85rem; }
 .module-toggle-note--error       { color: var(--red); }
