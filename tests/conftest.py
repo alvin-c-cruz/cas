@@ -252,6 +252,15 @@ def product_lifo(db_session):
     return p
 
 
+@pytest.fixture
+def product_specific_id(db_session):
+    from app.products.models import Product
+    p = Product(code='STK-SPID-001', name='Specific-ID Tracked Item', track_inventory=True,
+               costing_method='specific_identification', standard_cost=None, is_active=True)
+    db.session.add(p); db.session.commit()
+    return p
+
+
 # Account Fixtures
 
 @pytest.fixture
