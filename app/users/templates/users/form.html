@@ -40,15 +40,7 @@
 
                 <div class="form-group">
                     {{ form.email.label(class='form-label') }}
-                    {% if user %}
-                        {# Email cannot be changed after account creation #}
-                        {{ form.email(class='form-control', type='email', readonly=true, style='background-color: #f1f5f9; cursor: not-allowed;') }}
-                        <div class="form-hint" style="color: #64748b;">
-                            🔒 Email cannot be changed after account creation
-                        </div>
-                    {% else %}
-                        {{ form.email(class='form-control', type='email') }}
-                    {% endif %}
+                    {{ form.email(class='form-control', type='email') }}
                     {% if form.email.errors %}
                         <div class="form-error">
                             {% for error in form.email.errors %}{{ error }}{% endfor %}

@@ -460,11 +460,6 @@ def edit_user(id):
             flash('Username cannot be changed after account creation.', 'error')
             return render_template('users/form.html', form=form, user=user)
 
-        # CRITICAL: Prevent email changes (email is immutable after account creation)
-        if user.email != form.email.data:
-            flash('Email cannot be changed after account creation.', 'error')
-            return render_template('users/form.html', form=form, user=user)
-
         # Check for duplicate email (excluding current user)
         existing_email = User.query.filter(User.email == form.email.data, User.id != id).first()
         if existing_email:
@@ -479,8 +474,7 @@ def edit_user(id):
 
             # Username is immutable - do not update it
             # user.username = form.username.data  # REMOVED - username cannot be changed
-            # Email is immutable - do not update it
-            # user.email = form.email.data  # REMOVED - email cannot be changed
+            user.email = form.email.data
             user.full_name = form.full_name.data
             user.role = form.role.data
             user.is_active = form.is_active.data
