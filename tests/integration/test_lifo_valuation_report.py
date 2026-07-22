@@ -1,0 +1,205 @@
+from datetime import datetime
+from decimal import Decimal
+from app import db
+from app.settings import AppSettings
+from app.utils.cache_helpers import clear_module_config_cache
+
+D = Decimal
+
+
+def _login(client, user, branch):
+    with client.session_transaction() as sess:
+        sess['_user_id'] = str(user.id); sess['_fresh'] = True
+        sess['selected_branch_id'] = branch.id
+
+
+def _enable_stock_adjustments():
+    # stock_adjustments is an optional module, default-off in the test DB (see
+    # tests/integration/test_fifo_layers_report.py's own _enable_stock_adjustments) --
+    # the brief's test snippet omitted this (and login) and would 302 without it.
+    AppSettings.set_setting('module_enabled:inventory', '1', updated_by='t')
+    AppSettings.set_setting('module_enabled:stock_adjustments', '1', updated_by='t')
+    clear_module_config_cache()
+
+
+def test_lifo_valuation_report_shows_current_tab_layers(client, db_session, admin_user, branch_main):
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-1', name='LIFO Report Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                       quantity=D('5'), unit_cost=D('7.50'), balance_qty_after=D('5'),
+                       balance_avg_cost_after=D('7.50'), balance_value_after=D('37.50'),
+                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(mv); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation?product_id={product.id}&branch_id={branch_main.id}')
+    assert resp.status_code == 200
+    assert b'7.50' in resp.data
+    assert b'Internal management view only' in resp.data
+
+
+def test_lifo_valuation_report_ambiguous_branch_does_not_silently_pick_one(
+        client, db_session, admin_user, branch_main, branch_manila):
+    # Task 4 review finding: _lifo_branch_ids() used to silently query branch_ids[0]
+    # (the alphabetically-first accessible branch) whenever no branch_id was chosen,
+    # while the template still labeled the result "All Branches" -- misleading, since
+    # a LIFO stack is inherently per-branch and the other branch's stock was silently
+    # dropped. Regressed here: with 2 accessible branches and no branch_id param, the
+    # admin (full access to both) must be prompted to choose, not shown one branch's
+    # data mislabeled as covering both.
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-AMBIG', name='LIFO Ambiguous Branch Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                       quantity=D('5'), unit_cost=D('9.99'), balance_qty_after=D('5'),
+                       balance_avg_cost_after=D('9.99'), balance_value_after=D('49.95'),
+                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(mv); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation?product_id={product.id}')  # no branch_id
+    assert resp.status_code == 200
+    assert b'9.99' not in resp.data  # branch_main's layer must NOT silently appear
+    assert b'All Branches' not in resp.data  # the old, misleading label must be gone
+    assert b'Select a specific branch' in resp.data
+
+
+def test_lifo_valuation_report_cogs_tab_shows_variance(client, db_session, admin_user, branch_main):
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-2', name='LIFO Report COGS Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    receipt = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                            quantity=D('5'), unit_cost=D('4.00'), balance_qty_after=D('5'),
+                            balance_avg_cost_after=D('4.00'), balance_value_after=D('20.00'),
+                            created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(receipt); db.session.commit()
+    issue = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='issue',
+                          quantity=D('-2'), unit_cost=D('4.00'), balance_qty_after=D('3'),
+                          balance_avg_cost_after=D('4.00'), balance_value_after=D('12.00'),
+                          created_at=datetime(2026, 2, 1), created_by_id=admin_user.id)
+    db.session.add(issue); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation/cogs?product_id={product.id}&branch_id={branch_main.id}'
+                      f'&start_date=2026-02-01&end_date=2026-02-28')
+    assert resp.status_code == 200
+    assert b'8.00' in resp.data  # LIFO cost: 2 @ 4.00
+
+
+def test_lifo_valuation_report_export_excel(client, db_session, admin_user, branch_main):
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-3', name='LIFO Report Excel Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                       quantity=D('5'), unit_cost=D('4.00'), balance_qty_after=D('5'),
+                       balance_avg_cost_after=D('4.00'), balance_value_after=D('20.00'),
+                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(mv); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation/export/excel?product_id={product.id}&branch_id={branch_main.id}')
+    assert resp.status_code == 200
+    assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+def test_lifo_valuation_report_export_excel_honors_as_of(client, db_session, admin_user, branch_main):
+    # Final whole-branch review finding (Minor, fixed before merge): the export route ignored
+    # the "as of" filter the on-screen Tab 1 view respects, so a user viewing a historical
+    # snapshot and clicking Export got today's current snapshot instead -- a screen-vs-export
+    # mismatch. A layer received AFTER the requested as_of date must be excluded from the export.
+    import io
+    from openpyxl import load_workbook
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-ASOF', name='LIFO Report As-Of Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    early = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                          quantity=D('5'), unit_cost=D('3.00'), balance_qty_after=D('5'),
+                          balance_avg_cost_after=D('3.00'), balance_value_after=D('15.00'),
+                          created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(early); db.session.commit()
+    later = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                          quantity=D('5'), unit_cost=D('11.11'), balance_qty_after=D('10'),
+                          balance_avg_cost_after=D('7.06'), balance_value_after=D('70.55'),
+                          created_at=datetime(2026, 6, 1), created_by_id=admin_user.id)
+    db.session.add(later); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation/export/excel?product_id={product.id}'
+                      f'&branch_id={branch_main.id}&as_of=2026-03-01')
+    assert resp.status_code == 200
+    wb = load_workbook(io.BytesIO(resp.get_data()))
+    ws = wb.active
+    cell_values = [str(c.value) for row in ws.iter_rows() for c in row if c.value is not None]
+    joined = ' '.join(cell_values)
+    assert '3' in joined  # the early (pre-cutoff) layer's cost must be present
+    assert '11.11' not in joined  # the later (post-cutoff) layer must be excluded
+
+
+def test_lifo_valuation_report_export_links_hidden_when_branch_ambiguous(
+        client, db_session, admin_user, branch_main, branch_manila):
+    # Final whole-branch review finding (Minor, fixed before merge): both Export Excel links
+    # rendered regardless of branch_ambiguous, so an ambiguous request downloaded a silently
+    # empty spreadsheet with no on-page explanation. The links must not render at all when the
+    # branch is ambiguous -- same gate the on-page empty-state message already uses.
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-NOEXPORT', name='LIFO Report No-Export Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                       quantity=D('5'), unit_cost=D('2.00'), balance_qty_after=D('5'),
+                       balance_avg_cost_after=D('2.00'), balance_value_after=D('10.00'),
+                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(mv); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation?product_id={product.id}')  # no branch_id, 2 accessible branches
+    assert resp.status_code == 200
+    assert b'Select a specific branch' in resp.data
+    assert b'Export Excel' not in resp.data
+
+
+def test_lifo_valuation_report_cogs_export_excel(client, db_session, admin_user, branch_main):
+    # The approved Task 3 mockup shows "Export to Excel" on BOTH tabs (plan line 444), but
+    # Task 4's own build spec (plan line 688) only wired up Tab 1 -- a genuine plan-authoring
+    # gap, not an implementer shortcut. Fixed by the controller before final review: the COGS
+    # tab gets its own export route mirroring the Tab 1 one exactly.
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-4', name='LIFO Report COGS Excel Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    receipt = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                            quantity=D('5'), unit_cost=D('4.00'), balance_qty_after=D('5'),
+                            balance_avg_cost_after=D('4.00'), balance_value_after=D('20.00'),
+                            created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(receipt); db.session.commit()
+    issue = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='issue',
+                          quantity=D('-2'), unit_cost=D('4.00'), balance_qty_after=D('3'),
+                          balance_avg_cost_after=D('4.00'), balance_value_after=D('12.00'),
+                          created_at=datetime(2026, 2, 1), created_by_id=admin_user.id)
+    db.session.add(issue); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation/cogs/export/excel?product_id={product.id}'
+                      f'&branch_id={branch_main.id}&start_date=2026-02-01&end_date=2026-02-28')
+    assert resp.status_code == 200
+    assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

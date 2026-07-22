@@ -27,6 +27,10 @@
         <a href="{{ url_for('reports.fifo_layers', product_id=product_id, branch_id=branch_id) }}"
            class="btn btn-secondary">View FIFO Layers</a>
         {% endif %}
+        {% if selected_product and selected_product.costing_method == 'lifo' %}
+        <a href="{{ url_for('reports.lifo_valuation', product_id=product_id, branch_id=branch_id) }}"
+           class="btn btn-secondary">View LIFO Valuation (Internal)</a>
+        {% endif %}
         <a href="{{ url_for('reports.stock_ledger_print', product_id=product_id, branch_id=branch_id) }}"
            class="btn btn-secondary" target="_blank">Print</a>
         <a href="{{ url_for('reports.stock_ledger_export_excel', product_id=product_id, branch_id=branch_id) }}"

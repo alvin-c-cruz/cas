@@ -1902,3 +1902,167 @@ def fifo_layers_export_excel():
     filename = f'FIFO_Layers_{product.code if product else "all"}.xlsx'
     return export_to_excel(rows, columns, headers, filename,
                            title=f'FIFO Layers — {product.name}' if product else 'FIFO Layers')
+
+
+def _lifo_products():
+    """LIFO-costed, active, tracked products -- shared across all three routes below."""
+    from app.products.models import Product
+    return Product.query.filter_by(is_active=True, track_inventory=True,
+                                   costing_method='lifo').order_by(Product.code).all()
+
+
+def _lifo_single_branch_id(branch_id):
+    """Resolve to exactly one accessible branch id, or None if the caller must
+    pick one explicitly. A LIFO stack is inherently per-branch (Task 1/2's
+    replay walks one product/branch's own StockMovement history) -- unlike
+    FIFO's aggregate SQL query (a plain WHERE branch_id IN (...) over a
+    persisted layer table), there is no safe way to silently combine multiple
+    branches' stacks into one "All Branches" result, so an ambiguous request
+    (2+ accessible branches, none chosen) returns None rather than guessing."""
+    from app.users.utils import get_accessible_branches
+    accessible_branches = get_accessible_branches(current_user)
+    branch_ids = [b.id for b in accessible_branches]
+    if branch_id is not None and branch_id in branch_ids:
+        return branch_id
+    if len(branch_ids) == 1:
+        return branch_ids[0]
+    return None
+
+
+@reports_bp.route('/reports/lifo-valuation')
+@login_required
+def lifo_valuation():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.stock_adjustments.lifo_shadow import current_lifo_valuation
+    from app.users.utils import get_accessible_branches
+    from app.utils import ph_now
+    product_id = request.args.get('product_id', type=int)
+    branch_id = request.args.get('branch_id', type=int)
+    today = ph_now().date()
+    as_of = today
+    raw_as_of = request.args.get('as_of')
+    if raw_as_of:
+        try:
+            as_of = date.fromisoformat(raw_as_of)
+        except ValueError:
+            as_of = today
+    products = _lifo_products()
+    single_branch_id = _lifo_single_branch_id(branch_id)
+    layers = []
+    if product_id and single_branch_id:
+        layers = current_lifo_valuation(product_id, single_branch_id, as_of_date=as_of)
+    return render_template('reports/lifo_valuation.html', products=products,
+                           product_id=product_id, branch_id=branch_id,
+                           branches=get_accessible_branches(current_user), layers=layers,
+                           cogs_lines=None, start_date=None, end_date=None,
+                           as_of=as_of, today=today, resolved_branch_id=single_branch_id,
+                           branch_ambiguous=(product_id and not single_branch_id))
+
+
+@reports_bp.route('/reports/lifo-valuation/cogs')
+@login_required
+def lifo_valuation_cogs():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.stock_adjustments.lifo_shadow import lifo_cogs_for_range
+    from app.users.utils import get_accessible_branches
+    from app.utils import ph_now
+    product_id = request.args.get('product_id', type=int)
+    branch_id = request.args.get('branch_id', type=int)
+
+    def _parse(param, fallback):
+        try:
+            return date.fromisoformat(request.args.get(param, ''))
+        except (ValueError, TypeError):
+            return fallback
+
+    today = ph_now().date()
+    start_date = _parse('start_date', date(today.year, today.month, 1))
+    end_date = _parse('end_date', today)
+    products = _lifo_products()
+    single_branch_id = _lifo_single_branch_id(branch_id)
+    cogs_lines = []
+    if product_id and single_branch_id:
+        cogs_lines = lifo_cogs_for_range(product_id, single_branch_id, start_date, end_date)
+    return render_template('reports/lifo_valuation.html', products=products,
+                           product_id=product_id, branch_id=branch_id,
+                           branches=get_accessible_branches(current_user), layers=None,
+                           cogs_lines=cogs_lines, start_date=start_date, end_date=end_date,
+                           as_of=None, today=today, resolved_branch_id=single_branch_id,
+                           branch_ambiguous=(product_id and not single_branch_id))
+
+
+@reports_bp.route('/reports/lifo-valuation/export/excel')
+@login_required
+def lifo_valuation_export_excel():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.stock_adjustments.lifo_shadow import current_lifo_valuation
+    from app.utils.export import export_to_excel
+    product_id = request.args.get('product_id', type=int)
+    branch_id = request.args.get('branch_id', type=int)
+    as_of = None
+    raw_as_of = request.args.get('as_of')
+    if raw_as_of:
+        try:
+            as_of = date.fromisoformat(raw_as_of)
+        except ValueError:
+            as_of = None
+    products = _lifo_products()
+    single_branch_id = _lifo_single_branch_id(branch_id)
+    product = next((p for p in products if p.id == product_id), None)
+    layers = (current_lifo_valuation(product_id, single_branch_id, as_of_date=as_of)
+              if product_id and single_branch_id else [])
+    rows = [{
+        'received_at': l.received_at.strftime('%Y-%m-%d') if l.received_at else '',
+        'qty': l.qty, 'unit_cost': l.unit_cost, 'value': (l.qty * l.unit_cost),
+    } for l in layers]
+    columns = ['received_at', 'qty', 'unit_cost', 'value']
+    headers = ['Received', 'Qty', 'Unit Cost', 'Value']
+    filename = f'LIFO_Valuation_{product.code if product else "all"}.xlsx'
+    return export_to_excel(rows, columns, headers, filename,
+                           title=f'LIFO Valuation (Internal) — {product.name}' if product else 'LIFO Valuation (Internal)')
+
+
+@reports_bp.route('/reports/lifo-valuation/cogs/export/excel')
+@login_required
+def lifo_valuation_cogs_export_excel():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.stock_adjustments.lifo_shadow import lifo_cogs_for_range
+    from app.utils.export import export_to_excel
+    product_id = request.args.get('product_id', type=int)
+    branch_id = request.args.get('branch_id', type=int)
+
+    def _parse(param, fallback):
+        try:
+            return date.fromisoformat(request.args.get(param, ''))
+        except (ValueError, TypeError):
+            return fallback
+
+    today = ph_now().date()
+    start_date = _parse('start_date', date(today.year, today.month, 1))
+    end_date = _parse('end_date', today)
+    products = _lifo_products()
+    single_branch_id = _lifo_single_branch_id(branch_id)
+    product = next((p for p in products if p.id == product_id), None)
+    lines = lifo_cogs_for_range(product_id, single_branch_id, start_date, end_date) if product_id and single_branch_id else []
+    rows = [{
+        'date': l.date.strftime('%Y-%m-%d') if l.date else '', 'qty': l.quantity,
+        'lifo_unit_cost': l.lifo_unit_cost, 'lifo_cost': l.lifo_cost,
+        'actual_unit_cost': l.actual_unit_cost, 'actual_cost': l.actual_cost, 'variance': l.variance,
+    } for l in lines]
+    columns = ['date', 'qty', 'lifo_unit_cost', 'lifo_cost', 'actual_unit_cost', 'actual_cost', 'variance']
+    headers = ['Date', 'Qty', 'LIFO Unit Cost', 'LIFO Cost', 'Actual Unit Cost', 'Actual Cost', 'Variance']
+    filename = f'LIFO_vs_Actual_COGS_{product.code if product else "all"}.xlsx'
+    return export_to_excel(rows, columns, headers, filename,
+                           title=f'LIFO vs Actual COGS — {product.name}' if product else 'LIFO vs Actual COGS')
