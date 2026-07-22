@@ -9,6 +9,7 @@ from app.branches.forms import BranchForm
 from app.users.models import User
 from app.audit.utils import log_create, log_update, log_delete, log_audit, model_to_dict
 from app.utils.authz import admin_panel_required
+from app.utils.color import is_valid_hex_color
 
 branches_bp = Blueprint('branches', __name__, template_folder='templates')
 
@@ -43,6 +44,7 @@ def create():
                 address=form.address.data,
                 phone=form.phone.data,
                 email=form.email.data,
+                theme_color=form.theme_color.data if form.use_custom_theme.data and is_valid_hex_color(form.theme_color.data) else None,
                 is_active=form.is_active.data if form.is_active.data is not None else True
             )
             db.session.add(branch)
@@ -53,7 +55,7 @@ def create():
                 module='branch',
                 record_id=branch.id,
                 record_identifier=f'{branch.code} - {branch.name}',
-                new_values=model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+                new_values=model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'theme_color', 'is_active'])
             )
 
             flash(f'Branch "{branch.name}" created successfully!', 'success')
@@ -80,6 +82,8 @@ def edit(id):
     """Edit branch."""
     branch = db.get_or_404(Branch, id)
     form = BranchForm(obj=branch)
+    if request.method == 'GET':
+        form.use_custom_theme.data = branch.theme_color is not None
 
     if form.validate_on_submit():
         # Check for duplicate code (excluding current branch)
@@ -90,7 +94,7 @@ def edit(id):
 
         try:
             # Capture old values before update
-            old_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+            old_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'theme_color', 'is_active'])
 
             # Update branch
             branch.code = form.code.data
@@ -98,11 +102,12 @@ def edit(id):
             branch.address = form.address.data
             branch.phone = form.phone.data
             branch.email = form.email.data
+            branch.theme_color = form.theme_color.data if form.use_custom_theme.data and is_valid_hex_color(form.theme_color.data) else None
             branch.is_active = form.is_active.data
             db.session.commit()
 
             # Audit log for branch update
-            new_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+            new_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'theme_color', 'is_active'])
             log_update(
                 module='branch',
                 record_id=branch.id,

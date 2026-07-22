@@ -160,6 +160,19 @@ def create_app(config_name=None):
         except:
             return {}
 
+    # Add custom Jinja2 filter for per-branch sidebar theming (R-11 #231).
+    # base.html renders on every authenticated page, so a malformed
+    # theme_color (e.g. written out-of-band, bypassing BranchForm's
+    # regex-validated ColorField) must degrade to "no theme" rather than
+    # 500 the whole page.
+    @app.template_filter('derive_sidebar_theme')
+    def derive_sidebar_theme_filter(hex_color):
+        from app.utils.color import derive_sidebar_theme
+        try:
+            return derive_sidebar_theme(hex_color)
+        except ValueError:
+            return None
+
     # BIR purchase-nature classification label. Distinguishes an
     # unclassified value (None) from an unrecognized/stale token -- a bare
     # dict .get(value, '-') would render both identically and hide the
