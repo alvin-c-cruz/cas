@@ -42,6 +42,35 @@ def test_lifo_valuation_report_shows_current_tab_layers(client, db_session, admi
     assert b'Internal management view only' in resp.data
 
 
+def test_lifo_valuation_report_ambiguous_branch_does_not_silently_pick_one(
+        client, db_session, admin_user, branch_main, branch_manila):
+    # Task 4 review finding: _lifo_branch_ids() used to silently query branch_ids[0]
+    # (the alphabetically-first accessible branch) whenever no branch_id was chosen,
+    # while the template still labeled the result "All Branches" -- misleading, since
+    # a LIFO stack is inherently per-branch and the other branch's stock was silently
+    # dropped. Regressed here: with 2 accessible branches and no branch_id param, the
+    # admin (full access to both) must be prompted to choose, not shown one branch's
+    # data mislabeled as covering both.
+    from app.products.models import Product
+    from app.stock_adjustments.models import StockMovement
+    _enable_stock_adjustments()
+    product = Product(code='LIFO-RPT-AMBIG', name='LIFO Ambiguous Branch Item', track_inventory=True,
+                      costing_method='lifo', standard_cost=None, is_active=True)
+    db.session.add(product); db.session.commit()
+    mv = StockMovement(product_id=product.id, branch_id=branch_main.id, movement_type='receipt',
+                       quantity=D('5'), unit_cost=D('9.99'), balance_qty_after=D('5'),
+                       balance_avg_cost_after=D('9.99'), balance_value_after=D('49.95'),
+                       created_at=datetime(2026, 1, 1), created_by_id=admin_user.id)
+    db.session.add(mv); db.session.commit()
+
+    _login(client, admin_user, branch_main)
+    resp = client.get(f'/reports/lifo-valuation?product_id={product.id}')  # no branch_id
+    assert resp.status_code == 200
+    assert b'9.99' not in resp.data  # branch_main's layer must NOT silently appear
+    assert b'All Branches' not in resp.data  # the old, misleading label must be gone
+    assert b'Select a specific branch' in resp.data
+
+
 def test_lifo_valuation_report_cogs_tab_shows_variance(client, db_session, admin_user, branch_main):
     from app.products.models import Product
     from app.stock_adjustments.models import StockMovement

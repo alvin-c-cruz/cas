@@ -3,7 +3,7 @@
 {% block page_title %}LIFO Valuation (Internal){% endblock %}
 {% block content %}
 {% set selected_product = products | selectattr('id', 'equalto', product_id) | first %}
-{% set selected_branch = branches | selectattr('id', 'equalto', branch_id) | first %}
+{% set selected_branch = branches | selectattr('id', 'equalto', resolved_branch_id) | first %}
 {% set on_cogs_tab = layers is none %}
 {% set tab1_layers = layers if layers is not none else [] %}
 {% set tab2_lines = cogs_lines if cogs_lines is not none else [] %}
@@ -41,9 +41,9 @@
             </select>
             <label for="v_branch_id">Branch</label>
             <select id="v_branch_id" name="branch_id" onchange="this.form.submit()">
-                <option value="">All Branches</option>
+                <option value="">Select a branch&hellip;</option>
                 {% for b in branches %}
-                <option value="{{ b.id }}" {% if branch_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                <option value="{{ b.id }}" {% if resolved_branch_id == b.id %}selected{% endif %}>{{ b.name }}</option>
                 {% endfor %}
             </select>
             <label for="v_as_of">As of</label>
@@ -63,7 +63,11 @@
         <div class="card-header">
             <div>
                 <div class="card-title">{{ selected_product.code }} &mdash; {{ selected_product.name }}</div>
-                <div class="card-sub">{{ selected_branch.name if selected_branch else 'All Branches' }} &middot; as of {{ (as_of or today).strftime('%Y-%m-%d') }} &middot; LIFO cost layers, most recently received first</div>
+                {% if branch_ambiguous %}
+                <div class="card-sub">Select a branch above &mdash; LIFO valuation is computed per branch and can&rsquo;t be combined across branches.</div>
+                {% else %}
+                <div class="card-sub">{{ selected_branch.name }} &middot; as of {{ (as_of or today).strftime('%Y-%m-%d') }} &middot; LIFO cost layers, most recently received first</div>
+                {% endif %}
             </div>
         </div>
         {% endif %}
@@ -81,6 +85,8 @@
                 <tbody>
                     {% if layers is none %}
                     <tr><td colspan="4" class="empty-state-cell"><p>Apply a product and branch on this tab to view LIFO cost layers.</p></td></tr>
+                    {% elif branch_ambiguous %}
+                    <tr><td colspan="4" class="empty-state-cell"><p>Select a specific branch above &mdash; LIFO valuation is computed per branch and can&rsquo;t be combined across branches.</p></td></tr>
                     {% elif tab1_layers %}
                     {% for layer in tab1_layers %}
                     <tr class="{{ 'fifo-layer-deficit' if layer.qty < 0 else '' }}">
@@ -131,9 +137,9 @@
             </select>
             <label for="c_branch_id">Branch</label>
             <select id="c_branch_id" name="branch_id" onchange="this.form.submit()">
-                <option value="">All Branches</option>
+                <option value="">Select a branch&hellip;</option>
                 {% for b in branches %}
-                <option value="{{ b.id }}" {% if branch_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                <option value="{{ b.id }}" {% if resolved_branch_id == b.id %}selected{% endif %}>{{ b.name }}</option>
                 {% endfor %}
             </select>
             <label for="c_start_date">From</label>
@@ -155,7 +161,11 @@
         <div class="card-header">
             <div>
                 <div class="card-title">{{ selected_product.code }} &mdash; {{ selected_product.name }}</div>
-                <div class="card-sub">{{ selected_branch.name if selected_branch else 'All Branches' }} &middot; {{ start_date.strftime('%Y-%m-%d') if start_date else '—' }} to {{ end_date.strftime('%Y-%m-%d') if end_date else '—' }} &middot; LIFO (shadow) vs. Actual (GL-posted) COGS per issue</div>
+                {% if branch_ambiguous %}
+                <div class="card-sub">Select a branch above &mdash; LIFO valuation is computed per branch and can&rsquo;t be combined across branches.</div>
+                {% else %}
+                <div class="card-sub">{{ selected_branch.name }} &middot; {{ start_date.strftime('%Y-%m-%d') if start_date else '—' }} to {{ end_date.strftime('%Y-%m-%d') if end_date else '—' }} &middot; LIFO (shadow) vs. Actual (GL-posted) COGS per issue</div>
+                {% endif %}
             </div>
         </div>
         {% endif %}
@@ -176,6 +186,8 @@
                 <tbody>
                     {% if cogs_lines is none %}
                     <tr><td colspan="7" class="empty-state-cell"><p>Apply a product, branch, and date range on this tab to view LIFO vs. Actual COGS.</p></td></tr>
+                    {% elif branch_ambiguous %}
+                    <tr><td colspan="7" class="empty-state-cell"><p>Select a specific branch above &mdash; LIFO valuation is computed per branch and can&rsquo;t be combined across branches.</p></td></tr>
                     {% elif tab2_lines %}
                     {% for line in tab2_lines %}
                     <tr class="{{ 'variance-unfavorable' if line.variance > 0 else ('variance-favorable' if line.variance < 0 else '') }}">
