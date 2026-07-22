@@ -1,14 +1,14 @@
 """FIFO cost layers: stock_cost_layers + stock_layer_consumptions
 
 Revision ID: stkfifo_0001
-Revises: drje_0001
+Revises: brtheme_0001
 Create Date: 2026-07-22
 """
 import sqlalchemy as sa
 from alembic import op
 
 revision = 'stkfifo_0001'
-down_revision = 'drje_0001'
+down_revision = 'brtheme_0001'
 branch_labels = None
 depends_on = None
 
