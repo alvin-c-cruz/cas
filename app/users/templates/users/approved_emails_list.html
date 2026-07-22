@@ -181,7 +181,7 @@
                     {% if current_user.has_full_access %}
                     <td>
                         <div class="action-buttons">
-                            {% if not email.is_used and email.status != 'rejected' %}
+                            {% if email.status != 'rejected' %}
                             <form method="POST" action="{{ url_for('users.delete_approved_email', id=email.id) }}"
                                   style="display:inline;"
                                   data-confirm="Remove {{ email.email }} from the approved list?">

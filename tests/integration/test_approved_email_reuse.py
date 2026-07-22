@@ -16,6 +16,23 @@ def _login(client, username, password):
     client.post('/login', data={'username': username, 'password': password}, follow_redirects=True)
 
 
+def test_approved_emails_list_renders_delete_button_for_a_used_row(client, db_session, admin_user, main_branch):
+    """Render-assertion regression pin for BUG-APPROVEDEMAIL-DELETE-BUTTON-HIDDEN-WHEN-USED:
+    the backend allowing a used row to be deleted is not provable by a POST-contract test
+    (every test below POSTs the delete URL directly) -- only a GET render assertion catches
+    the template still hiding the button, which is exactly how this one shipped invisible to
+    the pytest suite and was only found in the live pre-merge browser pass."""
+    approved = ApprovedEmail(email='reused-render@test.com', status='approved')
+    db_session.add(approved)
+    db_session.commit()
+    approved.mark_as_used(admin_user.id)
+
+    _login(client, 'admin', 'admin123')
+    resp = client.get('/approved-emails')
+    assert resp.status_code == 200
+    assert f'/approved-emails/{approved.id}/delete'.encode() in resp.data
+
+
 def test_admin_can_delete_a_used_approved_email(client, db_session, admin_user, main_branch):
     approved = ApprovedEmail(email='reused@test.com', status='approved')
     db_session.add(approved)
