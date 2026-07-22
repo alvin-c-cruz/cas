@@ -86,3 +86,16 @@ def current_lifo_valuation(product_id, branch_id, as_of_date=None):
     every movement to date -- if None)."""
     layers, _ = _replay(product_id, branch_id, end_date=as_of_date)
     return layers
+
+
+def lifo_cogs_for_range(product_id, branch_id, start_date, end_date):
+    """Read-only. One LifoCogsLine per OUT movement whose date falls within
+    [start_date, end_date] (inclusive both ends). Replays from the
+    beginning of this product/branch's history through end_date so the
+    stack's state entering the range is correct -- an issue just before
+    start_date still consumes real stack quantity, it just isn't itself
+    returned -- then filters to the requested window."""
+    _, cogs_lines = _replay(product_id, branch_id, end_date=end_date)
+    start_dt = datetime.combine(start_date, time.min)
+    end_dt = datetime.combine(end_date, time.max)
+    return [line for line in cogs_lines if start_dt <= line.date <= end_dt]
