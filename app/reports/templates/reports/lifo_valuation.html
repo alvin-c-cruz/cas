@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}LIFO Valuation (Internal){% endblock %}
+{% block page_title %}LIFO Valuation (Internal){% endblock %}
+{% block content %}
+{% set selected_product = products | selectattr('id', 'equalto', product_id) | first %}
+{% set selected_branch = branches | selectattr('id', 'equalto', branch_id) | first %}
+{% set on_cogs_tab = layers is none %}
+{% set tab1_layers = layers if layers is not none else [] %}
+{% set tab2_lines = cogs_lines if cogs_lines is not none else [] %}
+{% set totals = namespace(value=0) %}
+{% for layer in tab1_layers %}{% set totals.value = totals.value + (layer.qty * layer.unit_cost) %}{% endfor %}
+{% set cogs_totals = namespace(qty=0, lifo_cost=0, actual_cost=0, variance=0) %}
+{% for line in tab2_lines %}
+{% set cogs_totals.qty = cogs_totals.qty + line.quantity %}
+{% set cogs_totals.lifo_cost = cogs_totals.lifo_cost + line.lifo_cost %}
+{% set cogs_totals.actual_cost = cogs_totals.actual_cost + line.actual_cost %}
+{% set cogs_totals.variance = cogs_totals.variance + line.variance %}
+{% endfor %}
+
+<div class="alert alert-warning">
+    <span aria-hidden="true">&#9888;&#65039;</span>
+    <span class="alert-message">Internal management view only &mdash; not used for GL postings, financial statements, or BIR filings.</span>
+</div>
+
+<div class="tabs">
+    <button type="button" class="tab {{ 'active' if not on_cogs_tab else '' }}" data-tab-group="lifo" data-tab="valuation">Current Valuation</button>
+    <button type="button" class="tab {{ 'active' if on_cogs_tab else '' }}" data-tab-group="lifo" data-tab="cogs">LIFO vs Actual COGS</button>
+</div>
+
+<!-- ── Tab 1: Current Valuation ─────────────────────────────────────────────────────────── -->
+<div class="tab-content {{ 'active' if not on_cogs_tab else '' }}" data-tab-panel="lifo" id="lifo-valuation">
+
+    <div class="content-header">
+        <form method="GET" action="{{ url_for('reports.lifo_valuation') }}" class="filter-form">
+            <label for="v_product_id">Product</label>
+            <select id="v_product_id" name="product_id" onchange="this.form.submit()">
+                <option value="">Select a product&hellip;</option>
+                {% for p in products %}
+                <option value="{{ p.id }}" {% if product_id == p.id %}selected{% endif %}>{{ p.code }} &mdash; {{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <label for="v_branch_id">Branch</label>
+            <select id="v_branch_id" name="branch_id" onchange="this.form.submit()">
+                <option value="">All Branches</option>
+                {% for b in branches %}
+                <option value="{{ b.id }}" {% if branch_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                {% endfor %}
+            </select>
+            <label for="v_as_of">As of</label>
+            <input type="date" id="v_as_of" name="as_of" value="{{ (as_of or today).strftime('%Y-%m-%d') }}">
+            <button type="submit" class="btn btn-secondary">Apply</button>
+        </form>
+        {% if product_id %}
+        <div class="page-actions">
+            <a href="{{ url_for('reports.lifo_valuation_export_excel', product_id=product_id, branch_id=branch_id) }}"
+               class="btn btn-secondary">Export Excel</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        {% if selected_product %}
+        <div class="card-header">
+            <div>
+                <div class="card-title">{{ selected_product.code }} &mdash; {{ selected_product.name }}</div>
+                <div class="card-sub">{{ selected_branch.name if selected_branch else 'All Branches' }} &middot; as of {{ (as_of or today).strftime('%Y-%m-%d') }} &middot; LIFO cost layers, most recently received first</div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="card-body">
+            <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Received Date</th>
+                        <th class="num">Qty</th>
+                        <th class="num">Unit Cost</th>
+                        <th class="num">Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if layers is none %}
+                    <tr><td colspan="4" class="empty-state-cell"><p>Apply a product and branch on this tab to view LIFO cost layers.</p></td></tr>
+                    {% elif tab1_layers %}
+                    {% for layer in tab1_layers %}
+                    <tr class="{{ 'fifo-layer-deficit' if layer.qty < 0 else '' }}">
+                      <td>{{ layer.received_at.strftime('%Y-%m-%d') if layer.received_at else '—' }}</td>
+                      <td class="num">{{ '%.4f'|format(layer.qty) }}{% if layer.qty < 0 %} <span class="badge badge-error">deficit</span>{% endif %}</td>
+                      <td class="num">₱{{ '%.2f'|format(layer.unit_cost) }}</td>
+                      <td class="num">₱{{ '%.2f'|format(layer.qty * layer.unit_cost) }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr><td colspan="4" class="empty-state-cell"><p>
+                        {% if product_id %}No layers found.{% else %}Select a product to view its LIFO cost layers.{% endif %}
+                    </p></td></tr>
+                    {% endif %}
+                </tbody>
+                {% if tab1_layers %}
+                <tfoot>
+                    <tr class="tfoot-row">
+                        <td>TOTALS</td>
+                        <td class="num">{{ '%.4f'|format(tab1_layers | sum(attribute='qty')) }}</td>
+                        <td class="num">&mdash;</td>
+                        <td class="num">₱{{ '%.2f'|format(totals.value) }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+            </div>
+            {% if tab1_layers %}
+            <div class="legend">
+                <div class="legend-item"><span class="legend-swatch legend-swatch-deficit"></span> Deficit layer (qty &lt; 0 &mdash; over-consumed, needs investigation)</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ── Tab 2: LIFO vs Actual COGS ───────────────────────────────────────────────────────── -->
+<div class="tab-content {{ 'active' if on_cogs_tab else '' }}" data-tab-panel="lifo" id="lifo-cogs">
+
+    <div class="content-header">
+        <form method="GET" action="{{ url_for('reports.lifo_valuation_cogs') }}" class="filter-form">
+            <label for="c_product_id">Product</label>
+            <select id="c_product_id" name="product_id" onchange="this.form.submit()">
+                <option value="">Select a product&hellip;</option>
+                {% for p in products %}
+                <option value="{{ p.id }}" {% if product_id == p.id %}selected{% endif %}>{{ p.code }} &mdash; {{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <label for="c_branch_id">Branch</label>
+            <select id="c_branch_id" name="branch_id" onchange="this.form.submit()">
+                <option value="">All Branches</option>
+                {% for b in branches %}
+                <option value="{{ b.id }}" {% if branch_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+                {% endfor %}
+            </select>
+            <label for="c_start_date">From</label>
+            <input type="date" id="c_start_date" name="start_date" value="{{ start_date.strftime('%Y-%m-%d') if start_date else '' }}">
+            <label for="c_end_date">To</label>
+            <input type="date" id="c_end_date" name="end_date" value="{{ end_date.strftime('%Y-%m-%d') if end_date else '' }}">
+            <button type="submit" class="btn btn-secondary">Apply</button>
+        </form>
+        {% if product_id %}
+        <div class="page-actions">
+            <a href="{{ url_for('reports.lifo_valuation_cogs_export_excel', product_id=product_id, branch_id=branch_id, start_date=start_date, end_date=end_date) }}"
+               class="btn btn-secondary">Export Excel</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        {% if selected_product %}
+        <div class="card-header">
+            <div>
+                <div class="card-title">{{ selected_product.code }} &mdash; {{ selected_product.name }}</div>
+                <div class="card-sub">{{ selected_branch.name if selected_branch else 'All Branches' }} &middot; {{ start_date.strftime('%Y-%m-%d') if start_date else '—' }} to {{ end_date.strftime('%Y-%m-%d') if end_date else '—' }} &middot; LIFO (shadow) vs. Actual (GL-posted) COGS per issue</div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="card-body">
+            <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th class="num">Qty</th>
+                        <th class="num">LIFO Unit Cost</th>
+                        <th class="num">LIFO Cost</th>
+                        <th class="num">Actual Unit Cost</th>
+                        <th class="num">Actual Cost</th>
+                        <th class="num">Variance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if cogs_lines is none %}
+                    <tr><td colspan="7" class="empty-state-cell"><p>Apply a product, branch, and date range on this tab to view LIFO vs. Actual COGS.</p></td></tr>
+                    {% elif tab2_lines %}
+                    {% for line in tab2_lines %}
+                    <tr class="{{ 'variance-unfavorable' if line.variance > 0 else ('variance-favorable' if line.variance < 0 else '') }}">
+                      <td>{{ line.date.strftime('%Y-%m-%d') if line.date else '—' }}</td>
+                      <td class="num">{{ '%.4f'|format(line.quantity) }}</td>
+                      <td class="num">₱{{ '%.2f'|format(line.lifo_unit_cost) }}</td>
+                      <td class="num">₱{{ '%.2f'|format(line.lifo_cost) }}</td>
+                      <td class="num">₱{{ '%.2f'|format(line.actual_unit_cost) }}</td>
+                      <td class="num">₱{{ '%.2f'|format(line.actual_cost) }}</td>
+                      <td class="num variance-cell">{{ '+' if line.variance > 0 else '' }}₱{{ '%.2f'|format(line.variance) }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr><td colspan="7" class="empty-state-cell"><p>
+                        {% if product_id %}No issues found in this date range.{% else %}Select a product to view LIFO vs. Actual COGS.{% endif %}
+                    </p></td></tr>
+                    {% endif %}
+                </tbody>
+                {% if tab2_lines %}
+                <tfoot>
+                    <tr class="tfoot-row {{ 'variance-unfavorable' if cogs_totals.variance > 0 else ('variance-favorable' if cogs_totals.variance < 0 else '') }}">
+                        <td>TOTALS</td>
+                        <td class="num">{{ '%.4f'|format(cogs_totals.qty) }}</td>
+                        <td class="num">&mdash;</td>
+                        <td class="num">₱{{ '%.2f'|format(cogs_totals.lifo_cost) }}</td>
+                        <td class="num">&mdash;</td>
+                        <td class="num">₱{{ '%.2f'|format(cogs_totals.actual_cost) }}</td>
+                        <td class="num variance-cell">{{ '+' if cogs_totals.variance > 0 else '' }}₱{{ '%.2f'|format(cogs_totals.variance) }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+            </div>
+            {% if tab2_lines %}
+            <div class="legend">
+                <div class="legend-item"><span class="legend-swatch" style="background: #fff; border: 2px solid var(--red);"></span> LIFO would have cost MORE than actual (unfavorable)</div>
+                <div class="legend-item"><span class="legend-swatch" style="background: #fff; border: 2px solid var(--green);"></span> LIFO would have cost LESS than actual (favorable)</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

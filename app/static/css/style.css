@@ -500,6 +500,16 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .legend-swatch-drained { background: #f1f5f9; border: 1px solid #64748b; }
 .legend-swatch-deficit { background: var(--aging-danger-bg); border: 1px solid var(--aging-danger-fg); }
 
+/* ── LIFO Valuation (Internal) report (R-03 slice 2c) ──────────
+   Tab 1's deficit row reuses .fifo-layer-deficit/.badge-error verbatim above --
+   same conceptual "deficit" state, just a different report. Tab 2's variance-cell
+   colouring is new: RED = LIFO would have cost MORE than actual (unfavorable),
+   GREEN = LIFO would have cost LESS than actual (favorable) -- rides the
+   --red/--green tokens already shipped, matching the approved mockup's
+   convention exactly (2026-07-22-lifo-valuation-internal-mockup.html). */
+tr.variance-unfavorable td.variance-cell { color: var(--red); font-weight: 700; }
+tr.variance-favorable td.variance-cell { color: var(--green); font-weight: 700; }
+
 /* ── Inline AJAX toggle note (Company Settings > Packages) ───── */
 .module-toggle-note              { margin-top: 6px; font-size: 0.85rem; }
 .module-toggle-note--error       { color: var(--red); }
