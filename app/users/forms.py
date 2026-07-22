@@ -160,7 +160,11 @@ class ApprovedEmailForm(FlaskForm):
     ])
 
     def validate_email(self, email):
-        """Check if email is already in approved list."""
+        """Check if email already belongs to a User, or is already in the approved list."""
+        existing_user = User.query.filter_by(email=email.data).first()
+        if existing_user:
+            raise ValidationError('This email already belongs to an existing user account.')
+
         from app.users.approved_emails import ApprovedEmail
         approved = ApprovedEmail.query.filter_by(email=email.data.lower()).first()
         if approved:

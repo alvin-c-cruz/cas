@@ -1068,13 +1068,10 @@ def delete_approved_email(id):
     try:
         approved_email = db.get_or_404(ApprovedEmail, id)
 
-        # Don't allow deleting already used emails
-        if approved_email.is_used:
-            flash('Cannot delete an approved email that has already been used for registration.', 'error')
-            return redirect(url_for('users.list_approved_emails'))
-
         email_address = approved_email.email
-        old_values = {'email': approved_email.email, 'notes': approved_email.notes}
+        was_used = approved_email.is_used
+        old_values = {'email': approved_email.email, 'notes': approved_email.notes,
+                      'is_used': approved_email.is_used}
         db.session.delete(approved_email)
         db.session.commit()
 
@@ -1084,7 +1081,8 @@ def delete_approved_email(id):
             record_id=id,
             record_identifier=email_address,
             old_values=old_values,
-            notes='Approved email removed before use'
+            notes='Approved email removed (was used for registration)' if was_used
+                  else 'Approved email removed before use'
         )
 
         flash(f'Approved email "{email_address}" has been removed.', 'success')
