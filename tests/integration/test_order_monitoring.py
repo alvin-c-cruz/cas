@@ -200,3 +200,47 @@ def test_deliveries_breakdown_lists_each_contributing_dr(db_session, main_branch
     assert [d['dr_number'] for d in out_li['deliveries']] == ['DR-MON-0004', 'DR-MON-0005']
     assert [d['quantity'] for d in out_li['deliveries']] == [200.0, 150.0]
     assert sum(d['quantity'] for d in out_li['deliveries']) == out_li['dr_qty']
+
+
+def test_monitor_page_defaults_to_current_month(client, db_session, admin_user, main_branch, login_user, monkeypatch):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    from app.sales_orders import views as so_views
+    monkeypatch.setattr(so_views, 'ph_now', lambda: type('T', (), {'date': lambda self: date(2026, 7, 15)})())
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    db_session.commit(); clear_module_config_cache()
+    login_user(client, 'admin', 'admin123')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    resp = client.get('/sales-orders/monitor')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'value="2026-07-01"' in body
+    assert 'value="2026-07-31"' in body
+
+
+def test_monitor_page_honors_explicit_date_range(client, db_session, admin_user, main_branch, login_user):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    db_session.commit(); clear_module_config_cache()
+    login_user(client, 'admin', 'admin123')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    resp = client.get('/sales-orders/monitor?date_from=2026-05-01&date_to=2026-05-31')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'value="2026-05-01"' in body
+    assert 'value="2026-05-31"' in body
+
+
+def test_monitor_page_gated_by_module(client, db_session, admin_user, main_branch, login_user):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '0')
+    db_session.commit(); clear_module_config_cache()
+    login_user(client, 'admin', 'admin123')
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = main_branch.id
+    resp = client.get('/sales-orders/monitor')
+    assert resp.status_code in (302, 403) or b'Order Monitoring' not in resp.data
