@@ -48,6 +48,7 @@
       <table class="table" id="dr-lines">
         <thead>
           <tr>
+            <th class="text-right">SO Line</th>
             <th>Product</th><th>UOM</th>
             <th class="text-right">Ordered</th>
             <th class="text-right">Already delivered</th>
@@ -72,5 +73,5 @@
    textContent so a product name can never inject markup. #}
 <script type="application/json" id="so-lines-data">{{ so_lines|tojson }}</script>
 <script type="application/json" id="dr-existing-data">{{ existing|tojson }}</script>
-<script src="{{ url_for('static', filename='js/delivery_receipts.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/delivery_receipts.js') }}?v=2"></script>
 {% endblock %}

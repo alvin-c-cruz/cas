@@ -179,6 +179,21 @@
                     <span>{{ invoice.customer_po_date.strftime('%b %d, %Y') }}</span>
                 </div>
                 {% endif %}
+                {% if source_drs %}
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Source Delivery Receipt{{ 's' if source_drs|length > 1 else '' }}</span>
+                    <span style="text-align:right;">
+                        {% for dr in source_drs %}
+                        <div>
+                            <a href="{{ url_for('delivery_receipts.view', id=dr.id) }}">{{ dr.dr_number }}</a>
+                            {% if dr.sales_order %}
+                            (<a href="{{ url_for('sales_orders.view', id=dr.sales_order_id) }}">{{ dr.sales_order.so_number }}</a>)
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </span>
+                </div>
+                {% endif %}
             </div>
 
             {# RIGHT: customer + notes #}

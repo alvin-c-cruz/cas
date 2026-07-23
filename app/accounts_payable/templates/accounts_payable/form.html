@@ -610,7 +610,7 @@ function addLineItem(existingItem, firstDefaults) {
                 item: function(cfg, data) {
                     const cn = cfg.classNames;
                     const code = (data.customProperties && data.customProperties.code) || data.value || '—';
-                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(code))}</div>`);
+                    return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${String(code)}</div>`);
                 }
             };
         }
@@ -633,7 +633,7 @@ function addLineItem(existingItem, firstDefaults) {
                     item: function(cfg, data) {
                         const cn = cfg.classNames;
                         const name = (data.customProperties && data.customProperties.name) || data.label || data.value;
-                        return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(name))}</div>`);
+                        return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${String(name)}</div>`);
                     }
                 };
             }
@@ -662,7 +662,7 @@ function addLineItem(existingItem, firstDefaults) {
                     item: function(cfg, data) {
                         const cn = cfg.classNames;
                         const name = (data.customProperties && data.customProperties.name) || data.label || data.value;
-                        return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${escHtml(String(name))}</div>`);
+                        return tmpl(`<div class="${escHtml(cn.item)} ${data.highlighted ? escHtml(cn.highlightedState) : escHtml(cn.itemSelectable)}" data-item data-id="${escHtml(String(data.id))}" data-value="${escHtml(String(data.value))}" ${data.active ? 'aria-selected="true"' : ''} ${data.disabled ? 'aria-disabled="true"' : ''}>${String(name)}</div>`);
                     }
                 };
             }

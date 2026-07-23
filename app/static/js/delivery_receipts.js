@@ -31,6 +31,7 @@
     rows.forEach(function (r) {
       var tr = document.createElement('tr');
       var label = r.product_code ? r.product_code + ': ' + r.product_name : r.product_name;
+      cell(tr, 'Line ' + r.line_number, 'text-right');
       cell(tr, label);
       cell(tr, r.uom || '');
       cell(tr, r.ordered, 'text-right');

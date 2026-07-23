@@ -8,12 +8,17 @@ from app.sales_invoices.models import SalesInvoice
 pytestmark = [pytest.mark.sales_invoices, pytest.mark.integration]
 
 
-def login(client, username='accountant', password='accountant123'):
+def login(client, username='admin', password='admin123'):
     client.post('/login', data={'username': username, 'password': password}, follow_redirects=True)
 
 
 def test_create_sales_invoice_persists_control_account_override(
-        client, db_session, accountant_user, main_branch):
+        client, db_session, admin_user, main_branch):
+    # BUG-SI-CONTROL-ACCOUNT-OVERRIDE-NOT-GATED: the override is now honored only
+    # for full-access users (admin/chief_accountant) -- login as admin instead of
+    # accountant_user (not full-access) so this test still exercises persistence
+    # of a legitimately-submitted override, not the gated-away staff/accountant path
+    # (which is covered separately by test_sales_invoice_control_account_gating.py).
     login(client)
     with client.session_transaction() as sess:
         sess['selected_branch_id'] = main_branch.id
