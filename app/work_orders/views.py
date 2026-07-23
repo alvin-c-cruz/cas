@@ -138,6 +138,10 @@ def cancel(id):
     if wo.status in ('completed', 'cancelled'):
         flash('This Work Order can no longer be cancelled.', 'error')
         return redirect(url_for('work_orders.view', id=id))
+    if wo.qty_completed_to_date and wo.qty_completed_to_date > 0:
+        flash('This Work Order has completed output and can no longer be cancelled -- '
+             'use Force Close instead.', 'error')
+        return redirect(url_for('work_orders.view', id=id))
     reason = (request.form.get('cancel_reason') or '').strip()
     if len(reason) < 10:
         flash('A cancellation reason (min 10 chars) is required.', 'error')
