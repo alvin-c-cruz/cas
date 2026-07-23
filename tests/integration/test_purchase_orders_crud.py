@@ -185,3 +185,26 @@ def test_detail_page_shows_created_by(client, accountant_user, main_branch, vl_v
     resp = client.get(f'/purchase-orders/{po.id}')
     assert b'Created by' in resp.data
     assert b'accountant' in resp.data
+
+
+def test_export_csv_respects_status_filter(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor, po_number='PO-EXP-001')
+    _create(client, vl_vendor, po_number='PO-EXP-002')
+    po = PurchaseOrder.query.filter_by(po_number='PO-EXP-001').first()
+    po.status = 'approved'
+    db_session.commit()
+
+    resp = client.get('/purchase-orders/export/csv?status=approved')
+    assert resp.status_code == 200
+    assert b'PO-EXP-001' in resp.data
+    assert b'PO-EXP-002' not in resp.data
+
+
+def test_export_excel_returns_200(client, accountant_user, main_branch, vl_vendor, db_session):
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor, po_number='PO-EXP-010')
+    resp = client.get('/purchase-orders/export/excel')
+    assert resp.status_code == 200
+    assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

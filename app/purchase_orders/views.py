@@ -16,7 +16,7 @@ from app.purchase_orders.forms import PurchaseOrderForm
 from app.vendors.models import Vendor
 from app.users.models import User
 from app.settings import AppSettings
-from app.audit.utils import log_create, log_update, model_to_dict
+from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.errors.utils import log_exception
 from app.utils import ph_now
 from app.utils.cache_helpers import get_active_units, get_active_products, get_vat_categories
@@ -455,3 +455,35 @@ def print_po(id):
         'tin': AppSettings.get_setting('company_tin', ''),
     }
     return render_template('purchase_orders/print.html', po=po, company=company, printed_at=ph_now())
+
+
+# ── export routes ────────────────────────────────────────────────────────────
+
+_EXPORT_COLUMNS = ['po_number', 'order_date', 'vendor_name', 'vendor_tin', 'subtotal',
+                   'vat_amount', 'total_amount', 'status']
+_EXPORT_HEADERS = ['PO #', 'Order Date', 'Vendor', 'TIN', 'Subtotal', 'VAT', 'Total', 'Status']
+
+
+@purchase_orders_bp.route('/purchase-orders/export/excel')
+@login_required
+def export_excel():
+    from app.utils.export import export_to_excel
+    rows = _filtered_po_query(include_ids=True).order_by(PurchaseOrder.order_date.desc()).all()
+    log_audit('purchase_orders', 'export_excel', None, f'{len(rows)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_excel(data=rows, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                           filename=f'purchase_orders_{timestamp}.xlsx',
+                           title='Purchase Orders Report')
+
+
+@purchase_orders_bp.route('/purchase-orders/export/csv')
+@login_required
+def export_csv_route():
+    from app.utils.export import export_to_csv
+    rows = _filtered_po_query(include_ids=True).order_by(PurchaseOrder.order_date.desc()).all()
+    log_audit('purchase_orders', 'export_csv', None, f'{len(rows)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_csv(data=rows, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                         filename=f'purchase_orders_{timestamp}.csv')

@@ -61,12 +61,10 @@
 <div class="card">
     <div class="card-header">
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
-            {# Export routes land in Task 5 -- re-enable these two links once
-               purchase_orders.export_excel / export_csv_route exist. #}
-            {# <a href="{{ url_for('purchase_orders.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
-               class="btn btn-secondary btn-sm">Export Excel</a> #}
-            {# <a href="{{ url_for('purchase_orders.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
-               class="btn btn-secondary btn-sm">📄 Export CSV</a> #}
+            <a href="{{ url_for('purchase_orders.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Export Excel</a>
+            <a href="{{ url_for('purchase_orders.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">📄 Export CSV</a>
             <a href="{{ url_for('purchase_orders.create') }}" class="btn btn-primary btn-sm">+ Enter Purchase Order</a>
         </div>
     </div>
