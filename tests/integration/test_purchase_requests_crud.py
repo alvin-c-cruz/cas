@@ -110,3 +110,69 @@ def test_create_form_loads_search_select_for_product_picker(client, accountant_u
     assert b'search-select.js' in resp.data
     assert b'choices.min.js' in resp.data
     assert b'initSearchSelect' in resp.data
+
+
+def test_list_shows_summary_tiles(client, accountant_user, main_branch, db_session):
+    _login(client, accountant_user, main_branch)
+    _create(client, pr_number='PR-TILE-001')
+    body = client.get('/purchase-requests').data.decode('utf-8')
+    assert 'Pending Approval' in body
+    assert 'Converted' in body
+
+
+def test_list_status_filter_narrows_results(client, accountant_user, main_branch, db_session):
+    from app.purchase_requests.models import PurchaseRequest
+    _login(client, accountant_user, main_branch)
+    _create(client, pr_number='PR-FILT-001')
+    pr = PurchaseRequest.query.filter_by(pr_number='PR-FILT-001').first()
+    pr.status = 'approved'
+    db_session.commit()
+    _create(client, pr_number='PR-FILT-002')  # stays draft
+
+    body = client.get('/purchase-requests?status=approved').data.decode('utf-8')
+    assert 'PR-FILT-001' in body
+    assert 'PR-FILT-002' not in body
+
+
+def test_list_search_matches_number_or_reason(client, accountant_user, main_branch, db_session):
+    _login(client, accountant_user, main_branch)
+    _create(client, pr_number='PR-SEARCH-001', reason='Roofing materials')
+    _create(client, pr_number='PR-SEARCH-002', reason='Office supplies')
+
+    body = client.get('/purchase-requests?q=Roofing').data.decode('utf-8')
+    assert 'PR-SEARCH-001' in body
+    assert 'PR-SEARCH-002' not in body
+
+
+def test_list_badge_reflects_status(client, accountant_user, main_branch, db_session):
+    from app.purchase_requests.models import PurchaseRequest
+    _login(client, accountant_user, main_branch)
+    _create(client, pr_number='PR-BADGE-001')
+    pr = PurchaseRequest.query.filter_by(pr_number='PR-BADGE-001').first()
+    pr.status = 'rejected'
+    db_session.commit()
+
+    body = client.get('/purchase-requests').data.decode('utf-8')
+    assert 'badge-rejected' in body
+
+
+def test_list_pagination_preserves_filters(client, accountant_user, main_branch, db_session):
+    _login(client, accountant_user, main_branch)
+    for i in range(51):  # per_page is 50
+        _create(client, pr_number=f'PR-PAGE-{i:03d}')
+    resp = client.get('/purchase-requests?status=draft')
+    assert resp.status_code == 200
+    assert b'status=draft' in resp.data  # filter param carried into pagination links
+
+
+def test_list_actions_column_hides_edit_when_not_draft(client, accountant_user, main_branch, db_session):
+    from app.purchase_requests.models import PurchaseRequest
+    _login(client, accountant_user, main_branch)
+    _create(client, pr_number='PR-ACT-001')
+    pr = PurchaseRequest.query.filter_by(pr_number='PR-ACT-001').first()
+    pr.status = 'submitted'
+    db_session.commit()
+
+    body = client.get('/purchase-requests').data.decode('utf-8')
+    assert f'/purchase-requests/{pr.id}/edit' not in body
+    assert f'/purchase-requests/{pr.id}' in body  # view link still present

@@ -1,6 +1,7 @@
 """Purchase Request views -- a thin requisition that converts to a draft PO on approval.
 Mirror of app/quotations/views.py. Operational only: posts NO journal entry."""
 import json
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, render_template, redirect, url_for, flash,
@@ -89,18 +90,73 @@ def _parse_and_attach_pr_lines(pr, lines_json):
 
 # -- routes --------------------------------------------------------------------
 
-@purchase_requests_bp.route('/purchase-requests')
-@login_required
-def list_pr():
+def _filtered_pr_query(include_ids=False):
+    """Build a branch-scoped PurchaseRequest query from request filter args.
+
+    Args read: status, q, date_from, date_to -- and ids when include_ids=True
+    (exports only); a valid ids list overrides all other filters but stays
+    branch-scoped. Invalid values are ignored.
+    """
     branch_id = session.get('selected_branch_id')
     query = PurchaseRequest.query.filter_by(branch_id=branch_id)
+
+    if include_ids:
+        ids_param = request.args.get('ids', '')
+        if ids_param:
+            ids = [int(x) for x in ids_param.split(',') if x.strip().isdigit()]
+            if ids:
+                return query.filter(PurchaseRequest.id.in_(ids))
+
     status_filter = request.args.get('status', 'all')
     if status_filter in VALID_PR_STATUSES:
         query = query.filter_by(status=status_filter)
-    requests_ = query.order_by(PurchaseRequest.request_date.desc(),
-                               PurchaseRequest.id.desc()).all()
-    return render_template('purchase_requests/list.html', requests=requests_,
-                           status_filter=status_filter)
+
+    q = request.args.get('q', '').strip()
+    if q:
+        like = f'%{q}%'
+        query = query.filter(db.or_(PurchaseRequest.pr_number.ilike(like),
+                                    PurchaseRequest.reason.ilike(like)))
+
+    date_from = request.args.get('date_from', '')
+    if date_from:
+        try:
+            query = query.filter(PurchaseRequest.request_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', '')
+    if date_to:
+        try:
+            query = query.filter(PurchaseRequest.request_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    return query
+
+
+@purchase_requests_bp.route('/purchase-requests')
+@login_required
+def list_pr():
+    from app.purchase_requests.utils import compute_pr_summary
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    query = _filtered_pr_query().order_by(PurchaseRequest.request_date.desc(),
+                                          PurchaseRequest.id.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    branch_id = session.get('selected_branch_id')
+    summary = compute_pr_summary(branch_id)
+
+    return render_template('purchase_requests/list.html',
+                           pr_list=pagination.items,
+                           pagination=pagination,
+                           summary=summary,
+                           status_filter=request.args.get('status', 'all'),
+                           q=request.args.get('q', ''),
+                           date_from=request.args.get('date_from', ''),
+                           date_to=request.args.get('date_to', ''))
 
 
 @purchase_requests_bp.route('/purchase-requests/create', methods=['GET', 'POST'])

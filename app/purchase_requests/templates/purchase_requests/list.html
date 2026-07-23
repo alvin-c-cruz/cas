@@ -2,32 +2,123 @@
 {% block title %}Purchase Requests{% endblock %}
 {% block page_title %}Purchase Requests{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Purchase Requests</h1>
-  <a href="{{ url_for('purchase_requests.create') }}" class="btn btn-primary btn-sm">+ Enter Purchase Request</a>
+
+<div class="pb-summary-grid">
+    <div class="pb-card">
+        <div class="pb-card-label">Draft</div>
+        <div class="pb-card-value">{{ summary.draft_count }}</div>
+        <div class="pb-card-detail">to submit</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label">Pending Approval</div>
+        <div class="pb-card-value">{{ summary.pending_approval_count }}</div>
+        <div class="pb-card-detail">awaiting review</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label">Approved</div>
+        <div class="pb-card-value">{{ summary.approved_count }}</div>
+        <div class="pb-card-detail">awaiting conversion</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label">Converted</div>
+        <div class="pb-card-value">{{ summary.converted_count }}</div>
+        <div class="pb-card-detail">to a Purchase Order</div>
+    </div>
 </div>
-<div class="card"><div class="card-body">
-  {% if requests %}
-  <div class="table-responsive">
-    <table class="table">
-      <thead>
-        <tr><th>PR #</th><th>Date</th><th>Reason</th><th>Status</th><th>PO #</th></tr>
-      </thead>
-      <tbody>
-        {% for pr in requests %}
-        <tr>
-          <td><a href="{{ url_for('purchase_requests.view', id=pr.id) }}">{{ pr.pr_number }}</a></td>
-          <td>{{ pr.request_date.strftime('%b %d, %Y') if pr.request_date else '' }}</td>
-          <td>{{ (pr.reason or '')[:60] }}</td>
-          <td>{{ pr.status }}</td>
-          <td>{{ pr.purchase_order.po_number if pr.purchase_order else '' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p>No purchase requests found.</p>
-  {% endif %}
-</div></div>
+
+<form method="GET" action="{{ url_for('purchase_requests.list_pr') }}" class="pb-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search PR # or reason"
+           class="form-control form-control-sm pb-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="submitted" {% if status_filter == 'submitted' %}selected{% endif %}>Submitted</option>
+        <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+        <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
+        <option value="converted" {% if status_filter == 'converted' %}selected{% endif %}>Converted</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+    <label class="pb-date-group">
+        <span class="pb-date-group__label">From</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </label>
+    <label class="pb-date-group">
+        <span class="pb-date-group__label">To</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('purchase_requests.list_pr') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
+            {#- Export links pending Task 3 (export_excel/export_csv_route routes don't exist
+                yet); commented out to avoid a BuildError until Task 3 ships them. #}
+            {#
+            <a href="{{ url_for('purchase_requests.export_excel', status=status_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Export Excel</a>
+            <a href="{{ url_for('purchase_requests.export_csv_route', status=status_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">📄 Export CSV</a>
+            #}
+            <a href="{{ url_for('purchase_requests.create') }}" class="btn btn-primary btn-sm">+ Enter Purchase Request</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if pr_list %}
+        {% set badge_map = {'draft':'draft','submitted':'submitted','approved':'approved','rejected':'rejected','cancelled':'cancelled','converted':'converted'} %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>PR #</th><th>Date</th><th>Reason</th><th>Status</th><th>PO #</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for pr in pr_list %}
+                <tr>
+                    <td><a href="{{ url_for('purchase_requests.view', id=pr.id) }}" style="font-weight:600;color:var(--blue);">{{ pr.pr_number }}</a></td>
+                    <td>{{ pr.request_date.strftime('%b %d, %Y') if pr.request_date else '' }}</td>
+                    <td>{{ (pr.reason or '')[:60] }}</td>
+                    <td><span class="badge badge-{{ badge_map.get(pr.status, 'draft') }}">{{ pr.status|replace('_', ' ')|title }}</span></td>
+                    <td>{{ pr.purchase_order.po_number if pr.purchase_order else '—' }}</td>
+                    <td>
+                        <a href="{{ url_for('purchase_requests.view', id=pr.id) }}" class="pb-btn-action">👁️</a>
+                        {% if pr.status == 'draft' %}<a href="{{ url_for('purchase_requests.edit', id=pr.id) }}" class="pb-btn-action">✏️</a>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        {% set filters_active = q or status_filter != 'all' or date_from or date_to %}
+        <div class="empty-state">
+            {% if filters_active %}
+            <p>No purchase requests match your filters.</p>
+            {% else %}
+            <p>No purchase requests found.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} PRs
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('purchase_requests.list_pr', page=pagination.prev_num, status=status_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">← Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('purchase_requests.list_pr', page=pagination.next_num, status=status_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}
