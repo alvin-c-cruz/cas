@@ -510,6 +510,19 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 tr.variance-unfavorable td.variance-cell { color: var(--red); font-weight: 700; }
 tr.variance-favorable td.variance-cell { color: var(--green); font-weight: 700; }
 
+/* ── Physical Count entry/detail grids (R-03 physical count slice) ─────
+   Variance-cell colouring rides the existing --green/--red tokens, same
+   convention as the LIFO valuation report above: a POSITIVE variance
+   (counted > book, an overage) = green; a NEGATIVE variance (counted <
+   book, a shrinkage) = red. .badge-warning and the excluded-row background
+   reuse the existing aging-warn / --bg tokens rather than introducing new
+   hex, per the no-hardcoded-styling rule. Matches the approved mockup
+   (2026-07-23-physical-count-entry-mockup.html). */
+.badge-warning { background: var(--aging-warn-bg); color: var(--aging-warn-fg); }
+td.pc-variance-cell.pc-variance-pos, td.pc-variance-pos { color: var(--green); font-weight: 700; }
+td.pc-variance-cell.pc-variance-neg, td.pc-variance-neg { color: var(--red); font-weight: 700; }
+tr.pc-row-excluded { background: var(--bg); }
+
 /* ── Inline AJAX toggle note (Company Settings > Packages) ───── */
 .module-toggle-note              { margin-top: 6px; font-size: 0.85rem; }
 .module-toggle-note--error       { color: var(--red); }

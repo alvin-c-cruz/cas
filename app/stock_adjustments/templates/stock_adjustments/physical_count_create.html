@@ -1,0 +1,30 @@
+{# app/stock_adjustments/templates/stock_adjustments/physical_count_create.html #}
+{% extends "base.html" %}
+{% block title %}Enter Physical Count{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Enter Physical Count</h1>
+  <a href="{{ url_for('stock_adjustments.physical_counts_list') }}" class="btn btn-secondary btn-sm">Back to list</a>
+</div>
+
+<form method="POST" action="{{ url_for('stock_adjustments.physical_counts_create') }}">
+  {{ form.hidden_tag() }}
+  <div class="card"><div class="card-body">
+    <p class="form-hint">This snapshots the current book quantity for every inventory-tracked
+       product in your current branch. You'll enter counted quantities on the next page.</p>
+    <div class="form-group">
+      {{ form.count_date.label }}
+      {{ form.count_date(class="form-control") }}
+      {% if form.count_date.errors %}<div class="form-error">{{ form.count_date.errors[0] }}</div>{% endif %}
+    </div>
+    <div class="form-group">
+      {{ form.notes.label }}
+      {{ form.notes(class="form-control", rows="2") }}
+    </div>
+  </div></div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Start Count</button>
+    <a href="{{ url_for('stock_adjustments.physical_counts_list') }}" class="btn btn-secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}

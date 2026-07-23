@@ -1,0 +1,99 @@
+{# app/stock_adjustments/templates/stock_adjustments/physical_count_view.html #}
+{% extends "base.html" %}
+{% block title %}Physical Count {{ pc.pc_number }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Physical Count {{ pc.pc_number }}</h1>
+  <div class="page-actions">
+    <a href="{{ url_for('stock_adjustments.physical_counts_list') }}" class="btn btn-secondary btn-sm">Back to list</a>
+    <a href="{{ url_for('stock_adjustments.physical_counts_print', id=pc.id) }}" class="btn btn-secondary btn-sm" target="_blank">Print</a>
+    {% if pc.status == 'draft' and can_manage %}
+    <a href="{{ url_for('stock_adjustments.physical_counts_entry', id=pc.id) }}" class="btn btn-secondary btn-sm">Continue Counting</a>
+    {% if can_approve %}
+    <form method="POST" action="{{ url_for('stock_adjustments.physical_counts_approve', id=pc.id) }}" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+    </form>
+    {% else %}
+    <span class="text-muted">A different accountant or admin must approve this count.</span>
+    {% endif %}
+    {% endif %}
+    {% if pc.status == 'approved' and can_manage %}
+    <button type="button" class="btn btn-danger btn-sm"
+            onclick="document.getElementById('pcVoidModal').style.display='flex'">Void</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card"><div class="card-body">
+  <div class="detail-grid">
+    <div><strong>Status:</strong> <span class="badge badge-{{ pc.status }}">{{ pc.status|capitalize }}</span></div>
+    <div><strong>Count Date:</strong> {{ pc.count_date.strftime('%b %d, %Y') if pc.count_date else '' }}</div>
+    <div><strong>Branch:</strong> {{ pc.branch.name if pc.branch else '' }}</div>
+    {% if pc.stock_adjustment %}
+    <div><strong>Stock Adjustment:</strong>
+      <a href="{{ url_for('stock_adjustments.view', id=pc.stock_adjustment_id) }}">{{ pc.stock_adjustment.sa_number }}</a>
+    </div>
+    {% endif %}
+  </div>
+  {% if pc.notes %}<p><strong>Notes:</strong> {{ pc.notes }}</p>{% endif %}
+</div></div>
+
+<div class="card"><div class="card-body">
+  <h2 class="card-title">Count lines</h2>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th class="text-right">Book Qty</th>
+          <th class="text-right">Counted Qty</th>
+          <th class="text-right">Variance</th>
+          <th>Resolution</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.line.product.code }} - {{ row.line.product.name }}</td>
+          <td class="text-right">{{ '{:,.4f}'.format(row.line.book_qty_snapshot) }}</td>
+          <td class="text-right">{{ '{:,.4f}'.format(row.line.counted_qty) if row.line.counted_qty is not none else '-' }}</td>
+          <td class="text-right{{ ' pc-variance-pos' if row.variance and row.variance > 0 else (' pc-variance-neg' if row.variance and row.variance < 0 else '') }}">{{ '{:,.4f}'.format(row.variance) if row.variance is not none else '-' }}</td>
+          <td>
+            {% if row.variance and row.variance != 0 and not row.auto_postable %}
+            <a href="{{ url_for('stock_adjustments.create', product_id=row.line.product_id, qty=row.variance) }}">Resolve via Stock Adjustment &rarr;</a>
+            {% elif row.variance and row.variance != 0 %}
+            <span class="text-muted">Auto-adjusted</span>
+            {% else %}
+            <span class="text-muted">Matched</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+
+{% if pc.status == 'approved' and can_manage %}
+<div id="pcVoidModal" class="modal-overlay" style="display:none;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000">
+  <div class="card" style="max-width:480px;width:90%">
+    <div class="card-body">
+      <h3>Void Physical Count</h3>
+      <p>{% if pc.stock_adjustment %}This reverses the auto-posted Stock Adjustment
+         {{ pc.stock_adjustment.sa_number }} and its stock movements.{% else %}
+         This count has no linked Stock Adjustment to reverse -- voiding just marks the record
+         voided.{% endif %} This cannot be undone.</p>
+      <form method="POST" action="{{ url_for('stock_adjustments.physical_counts_void', id=pc.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-danger">Confirm Void</button>
+          <button type="button" class="btn btn-secondary"
+                  onclick="document.getElementById('pcVoidModal').style.display='none'">Close</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

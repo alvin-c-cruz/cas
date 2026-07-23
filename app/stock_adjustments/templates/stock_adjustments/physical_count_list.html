@@ -1,0 +1,37 @@
+{# app/stock_adjustments/templates/stock_adjustments/physical_count_list.html #}
+{% extends "base.html" %}
+{% block title %}Physical Counts{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Physical Counts</h1>
+  {% if can_manage %}
+  <a href="{{ url_for('stock_adjustments.physical_counts_create') }}" class="btn btn-primary btn-sm">+ Enter Physical Count</a>
+  {% endif %}
+</div>
+{% if not counts %}
+<p>No physical counts found.</p>
+{% else %}
+<div class="table-responsive">
+<table class="table">
+    <thead>
+        <tr>
+            <th>PC #</th>
+            <th>Count Date</th>
+            <th>Branch</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for pc in counts %}
+        <tr>
+            <td><a href="{{ url_for('stock_adjustments.physical_counts_view', id=pc.id) }}">{{ pc.pc_number }}</a></td>
+            <td>{{ pc.count_date.strftime('%b %d, %Y') if pc.count_date else '' }}</td>
+            <td>{{ pc.branch.name if pc.branch else '' }}</td>
+            <td><span class="badge badge-{{ pc.status }}">{{ pc.status|capitalize }}</span></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}
