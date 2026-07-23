@@ -108,6 +108,75 @@ def test_page_title_not_dashboard(client, accountant_user, main_branch, vl_vendo
     assert 'Enter Purchase Order' in create_body
 
 
+def test_list_shows_summary_tiles(client, accountant_user, main_branch, vl_vendor, db_session):
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor)
+    body = client.get('/purchase-orders').data.decode('utf-8')
+    assert 'Open' in body
+    assert 'Total Open Value' in body or 'Open Value' in body
+
+
+def test_list_status_filter_narrows_results(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor, po_number='PO-FILT-001')
+    po = PurchaseOrder.query.filter_by(po_number='PO-FILT-001').first()
+    po.status = 'approved'
+    db_session.commit()
+    _create(client, vl_vendor, po_number='PO-FILT-002')  # stays draft
+
+    body = client.get('/purchase-orders?status=approved').data.decode('utf-8')
+    assert 'PO-FILT-001' in body
+    assert 'PO-FILT-002' not in body
+
+
+def test_list_vendor_filter_narrows_results(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.vendors.models import Vendor
+    other_vendor = Vendor(code='OTHER-V', name='Other Vendor', tin='111-222-333-000')
+    db_session.add(other_vendor); db_session.commit()
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor, po_number='PO-VEND-001')
+    _create(client, other_vendor, po_number='PO-VEND-002')
+
+    body = client.get(f'/purchase-orders?vendor={vl_vendor.id}').data.decode('utf-8')
+    assert 'PO-VEND-001' in body
+    assert 'PO-VEND-002' not in body
+
+
+def test_list_badge_reflects_status(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor, po_number='PO-BADGE-001')
+    po = PurchaseOrder.query.filter_by(po_number='PO-BADGE-001').first()
+    po.status = 'closed'
+    db_session.commit()
+
+    body = client.get('/purchase-orders').data.decode('utf-8')
+    assert 'badge-closed' in body
+
+
+def test_list_pagination_preserves_filters(client, accountant_user, main_branch, vl_vendor, db_session):
+    _login(client, accountant_user, main_branch)
+    for i in range(51):
+        _create(client, vl_vendor, po_number=f'PO-PAGE-{i:03d}')
+    resp = client.get('/purchase-orders?status=draft')
+    assert resp.status_code == 200
+    assert b'status=draft' in resp.data
+
+
+def test_list_actions_column_hides_edit_when_not_draft(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor, po_number='PO-ACT-001')
+    po = PurchaseOrder.query.filter_by(po_number='PO-ACT-001').first()
+    po.status = 'approved'
+    db_session.commit()
+
+    body = client.get('/purchase-orders').data.decode('utf-8')
+    assert f'/purchase-orders/{po.id}/edit' not in body
+    assert f'/purchase-orders/{po.id}' in body
+
+
 def test_detail_page_shows_created_by(client, accountant_user, main_branch, vl_vendor, db_session):
     _login(client, accountant_user, main_branch)
     _create(client, vl_vendor)

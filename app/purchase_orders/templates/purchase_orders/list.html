@@ -1,33 +1,140 @@
 {% extends "base.html" %}
 {% block title %}Purchase Orders{% endblock %}
 {% block page_title %}Purchase Orders{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Purchase Orders</h1>
-  <a href="{{ url_for('purchase_orders.create') }}" class="btn btn-primary btn-sm">+ Enter Purchase Order</a>
+
+<div class="pb-summary-grid">
+    <div class="pb-card">
+        <div class="pb-card-label">Draft</div>
+        <div class="pb-card-value">{{ summary.draft_count }}</div>
+        <div class="pb-card-detail">to approve</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label">Open</div>
+        <div class="pb-card-value">{{ summary.open_count }}</div>
+        <div class="pb-card-detail">approved, not yet closed</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label">Closed</div>
+        <div class="pb-card-value">{{ summary.closed_count }}</div>
+        <div class="pb-card-detail">fully billed</div>
+    </div>
+    <div class="pb-card">
+        <div class="pb-card-label">Total Open Value</div>
+        <div class="pb-card-value">₱{{ '{:,.2f}'.format(summary.open_value_total) }}</div>
+        <div class="pb-card-detail">across open POs</div>
+    </div>
 </div>
-<div class="card"><div class="card-body">
-  {% if orders %}
-  <div class="table-responsive">
-    <table class="table">
-      <thead>
-        <tr><th>PO #</th><th>Date</th><th>Vendor</th><th>Status</th><th class="text-end">Total</th></tr>
-      </thead>
-      <tbody>
-        {% for po in orders %}
-        <tr>
-          <td><a href="{{ url_for('purchase_orders.view', id=po.id) }}">{{ po.po_number }}</a></td>
-          <td>{{ po.order_date.strftime('%b %d, %Y') if po.order_date else '' }}</td>
-          <td>{{ po.vendor_name }}</td>
-          <td>{{ po.status }}</td>
-          <td class="text-end">{{ '{:,.2f}'.format(po.total_amount or 0) }}</td>
-        </tr>
+
+<form method="GET" action="{{ url_for('purchase_orders.list_po') }}" class="pb-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search PO # or vendor"
+           class="form-control form-control-sm pb-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+        <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+        <option value="partially_received" {% if status_filter == 'partially_received' %}selected{% endif %}>Partially Received</option>
+        <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Closed</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+    <select name="vendor" id="vendor-filter" class="form-control form-control-sm">
+        <option value="all">All Vendors</option>
+        {% for v in vendors %}
+        <option value="{{ v.id }}" {% if vendor_filter == v.id|string %}selected{% endif %}>{{ v.name }}</option>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p>No purchase orders found.</p>
-  {% endif %}
-</div></div>
+    </select>
+    <label class="pb-date-group">
+        <span class="pb-date-group__label">From</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </label>
+    <label class="pb-date-group">
+        <span class="pb-date-group__label">To</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
+            {# Export routes land in Task 5 -- re-enable these two links once
+               purchase_orders.export_excel / export_csv_route exist. #}
+            {# <a href="{{ url_for('purchase_orders.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Export Excel</a> #}
+            {# <a href="{{ url_for('purchase_orders.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">📄 Export CSV</a> #}
+            <a href="{{ url_for('purchase_orders.create') }}" class="btn btn-primary btn-sm">+ Enter Purchase Order</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if po_list %}
+        {% set badge_map = {'draft':'draft','approved':'approved','partially_received':'partially-received','closed':'closed','cancelled':'cancelled'} %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>PO #</th><th>Date</th><th>Vendor</th><th style="text-align:right;">Total</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for po in po_list %}
+                <tr>
+                    <td><a href="{{ url_for('purchase_orders.view', id=po.id) }}" style="font-weight:600;color:var(--blue);">{{ po.po_number }}</a></td>
+                    <td>{{ po.order_date.strftime('%b %d, %Y') if po.order_date else '' }}</td>
+                    <td>{{ po.vendor_name }}</td>
+                    <td style="text-align:right;font-family:var(--mono);">₱{{ '{:,.2f}'.format(po.total_amount or 0) }}</td>
+                    <td><span class="badge badge-{{ badge_map.get(po.status, 'draft') }}">{{ po.status|replace('_', ' ')|title }}</span></td>
+                    <td>
+                        <a href="{{ url_for('purchase_orders.view', id=po.id) }}" class="pb-btn-action">👁️</a>
+                        {% if po.status == 'draft' %}<a href="{{ url_for('purchase_orders.edit', id=po.id) }}" class="pb-btn-action">✏️</a>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        {% set filters_active = q or status_filter != 'all' or vendor_filter != 'all' or date_from or date_to %}
+        <div class="empty-state">
+            {% if filters_active %}
+            <p>No purchase orders match your filters.</p>
+            {% else %}
+            <p>No purchase orders found.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} POs
+        </div>
+        <div style="display:flex;gap:8px">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('purchase_orders.list_po', page=pagination.prev_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">← Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('purchase_orders.list_po', page=pagination.next_num, status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next →</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const vendorSel = document.getElementById('vendor-filter');
+    if (vendorSel) {
+        new Choices(vendorSel, { searchEnabled: true, itemSelectText: '', shouldSort: false, allowHTML: false });
+    }
+})();
+</script>
 {% endblock %}

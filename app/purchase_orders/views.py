@@ -106,15 +106,33 @@ def _common_form_ctx():
 
 # ── routes ───────────────────────────────────────────────────────────────────
 
-@purchase_orders_bp.route('/purchase-orders')
-@login_required
-def list_po():
+def _filtered_po_query(include_ids=False):
+    """Build a branch-scoped PurchaseOrder query from request filter args.
+
+    Args read: status, vendor, q, date_from, date_to -- and ids when
+    include_ids=True (exports only); a valid ids list overrides all other
+    filters but stays branch-scoped. Invalid values are ignored.
+    """
     branch_id = session.get('selected_branch_id')
     query = PurchaseOrder.query.filter_by(branch_id=branch_id)
+
+    if include_ids:
+        ids_param = request.args.get('ids', '')
+        if ids_param:
+            ids = [int(x) for x in ids_param.split(',') if x.strip().isdigit()]
+            if ids:
+                return query.filter(PurchaseOrder.id.in_(ids))
 
     status_filter = request.args.get('status', 'all')
     if status_filter in VALID_PO_STATUSES:
         query = query.filter_by(status=status_filter)
+
+    vendor_filter = request.args.get('vendor', 'all')
+    if vendor_filter != 'all':
+        try:
+            query = query.filter_by(vendor_id=int(vendor_filter))
+        except ValueError:
+            pass
 
     q_text = request.args.get('q', '').strip()
     if q_text:
@@ -122,9 +140,50 @@ def list_po():
         query = query.filter(db.or_(PurchaseOrder.po_number.ilike(like),
                                     PurchaseOrder.vendor_name.ilike(like)))
 
-    orders = query.order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc()).all()
-    return render_template('purchase_orders/list.html', orders=orders,
-                           status_filter=status_filter, q=q_text)
+    date_from = request.args.get('date_from', '')
+    if date_from:
+        try:
+            query = query.filter(PurchaseOrder.order_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', '')
+    if date_to:
+        try:
+            query = query.filter(PurchaseOrder.order_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    return query
+
+
+@purchase_orders_bp.route('/purchase-orders')
+@login_required
+def list_po():
+    from app.purchase_orders.utils import compute_po_summary
+    from app.vendors.models import Vendor
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    query = _filtered_po_query().order_by(PurchaseOrder.order_date.desc(),
+                                          PurchaseOrder.id.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    branch_id = session.get('selected_branch_id')
+    summary = compute_po_summary(branch_id)
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+
+    return render_template('purchase_orders/list.html',
+                           po_list=pagination.items,
+                           pagination=pagination,
+                           vendors=vendors,
+                           summary=summary,
+                           status_filter=request.args.get('status', 'all'),
+                           vendor_filter=request.args.get('vendor', 'all'),
+                           q=request.args.get('q', ''),
+                           date_from=request.args.get('date_from', ''),
+                           date_to=request.args.get('date_to', ''))
 
 
 @purchase_orders_bp.route('/purchase-orders/billable')
