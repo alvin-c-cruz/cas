@@ -26,6 +26,10 @@ class WorkOrder(RowVersioned, db.Model):
     cancel_reason = db.Column(db.String(500), nullable=True)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     cancelled_at = db.Column(db.DateTime, nullable=True)
+    qty_completed_to_date = db.Column(db.Numeric(15, 4), default=0, nullable=False)
+    actual_unit_cost = db.Column(db.Numeric(15, 2), nullable=True)
+    force_closed_at = db.Column(db.DateTime, nullable=True)
+    force_close_note = db.Column(db.Text, nullable=True)
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
@@ -36,6 +40,8 @@ class WorkOrder(RowVersioned, db.Model):
     materials = db.relationship('WorkOrderMaterial', backref='work_order', cascade='all, delete-orphan')
     operations = db.relationship('WorkOrderOperation', backref='work_order', cascade='all, delete-orphan',
                                  order_by='WorkOrderOperation.sequence_no')
+    completions = db.relationship('WorkOrderCompletion', backref='work_order', cascade='all, delete-orphan',
+                                  order_by='WorkOrderCompletion.completed_at')
 
     def __repr__(self):
         return f'<WorkOrder {self.wo_number} status={self.status}>'
@@ -100,4 +106,33 @@ class WorkOrderOperation(db.Model):
             'actual_start_at': self.actual_start_at.isoformat() if self.actual_start_at else None,
             'actual_complete_at': self.actual_complete_at.isoformat() if self.actual_complete_at else None,
             'actual_minutes': float(self.actual_minutes) if self.actual_minutes is not None else None,
+        }
+
+
+class WorkOrderCompletion(db.Model):
+    """One row per completion batch (R-07 Discrete Track slice D4). unit_cost is
+    a stable copy of WorkOrder.actual_unit_cost at the time -- the WO's own
+    column never changes after it's first computed, but copying it here keeps
+    this row a self-contained historical record."""
+    __tablename__ = 'work_order_completions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    work_order_id = db.Column(db.Integer, db.ForeignKey('work_orders.id'), nullable=False, index=True)
+    qty_completed = db.Column(db.Numeric(15, 4), nullable=False)
+    unit_cost = db.Column(db.Numeric(15, 2), nullable=False)
+    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entries.id'), nullable=True)
+    completed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    completed_at = db.Column(db.DateTime, default=ph_now, nullable=False)
+
+    journal_entry = db.relationship('JournalEntry', foreign_keys=[journal_entry_id])
+    completed_by = db.relationship('User', foreign_keys=[completed_by_id])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'qty_completed': float(self.qty_completed),
+            'unit_cost': float(self.unit_cost),
+            'journal_entry_id': self.journal_entry_id,
+            'completed_by': self.completed_by.username if self.completed_by else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
         }

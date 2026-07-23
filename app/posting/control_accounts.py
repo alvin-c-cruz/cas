@@ -95,6 +95,13 @@ CONTROL_ACCOUNTS = {
     # (Dr inventory/Cr wip) -- shared by both the discrete (WorkOrder) and
     # process (ProductionRun, not yet built) manufacturing tracks.
     'wip': ('wip_account_code', 'Work-in-Process control account'),
+
+    # Manufacturing labor (R-07 Discrete Track slice D4). Fully accountant-
+    # assigned -- deliberately NOT in DEFAULT_CONTROL_ACCOUNT_CODES. Credited
+    # for the labor portion of a Work Order completion batch (labor is never
+    # posted incrementally to WIP as operations complete -- see
+    # app/work_orders/service.py's complete_work_order_batch).
+    'labor_applied': ('labor_applied_account_code', 'Labor Applied control account'),
 }
 
 # key -> owning optional module key (app.users.module_access.MODULE_REGISTRY), used ONLY by the
@@ -128,6 +135,7 @@ CONTROL_ACCOUNT_MODULE_GATE = {
     'inventory_variance': 'inventory',
     'cogs': 'inventory',
     'wip':  'bill_of_materials',
+    'labor_applied': 'work_orders',
 }
 
 

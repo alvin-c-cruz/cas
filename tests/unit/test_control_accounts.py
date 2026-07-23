@@ -94,6 +94,12 @@ class TestVisibleControlAccounts:
         assert set(visible) == {'ar_trade', 'ap_trade', 'creditable_wht', 'wht_payable'}
 
 
+def test_labor_applied_key_registered_and_gated_on_work_orders():
+    assert 'labor_applied' in CONTROL_ACCOUNTS
+    assert CONTROL_ACCOUNTS['labor_applied'][0] == 'labor_applied_account_code'
+    assert CONTROL_ACCOUNT_MODULE_GATE['labor_applied'] == 'work_orders'
+
+
 def test_get_postable_accounts_excludes_group_headers(db_session):
     parent = Account(code='PA001', name='Parent Group', account_type='Asset',
                      normal_balance='Debit')

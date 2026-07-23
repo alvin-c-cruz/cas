@@ -28,8 +28,11 @@
                 <button type="submit" class="btn btn-primary">Release</button>
             </form>
         {% endif %}
-        {% if wo.status in ('draft', 'released') %}
+        {% if wo.status in ('draft', 'released', 'in_progress') and wo.qty_completed_to_date == 0 %}
             <button type="button" class="btn-action btn-action-delete" onclick="document.getElementById('cancelPanel').style.display='block'">Cancel</button>
+        {% endif %}
+        {% if wo.qty_completed_to_date > 0 and wo.qty_completed_to_date < wo.qty_to_produce %}
+            <button type="button" class="btn-action btn-action-delete" onclick="document.getElementById('forceClosePanel').style.display='block'">Force Close</button>
         {% endif %}
     </div>
 </div>
@@ -138,7 +141,59 @@
     </div>
 </div>
 
-{% if wo.status in ('draft', 'released') %}
+{% set ops_complete = wo.operations and (wo.operations|rejectattr('status', 'equalto', 'complete')|list|length == 0) %}
+{% set remaining = wo.qty_to_produce - wo.qty_completed_to_date %}
+{% if wo.status == 'in_progress' and ops_complete and remaining > 0 %}
+<div class="card" style="margin-top:20px;">
+    <div class="card-body">
+        <h3 style="margin-bottom:12px;">Complete Work Order</h3>
+        <div class="form-hint" style="margin-bottom:12px;">{{ '{:,.4f}'.format(wo.qty_completed_to_date) }} of {{ '{:,.4f}'.format(wo.qty_to_produce) }} completed -- {{ '{:,.4f}'.format(remaining) }} remaining.</div>
+        <form method="POST" action="{{ url_for('work_orders.complete_batch', id=wo.id) }}" style="display:flex; gap:10px; align-items:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="form-group" style="margin:0;">
+                <label class="form-label">Batch Quantity</label>
+                <input type="number" name="batch_qty" step="0.0001" min="0.0001" max="{{ remaining }}" value="{{ remaining }}" class="form-control" style="width:160px;" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Complete Batch</button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if wo.completions %}
+<div class="card" style="margin-top:20px;">
+    <div class="card-body">
+        <h3 style="margin-bottom:12px;">Completion Batches</h3>
+        <table class="data-table">
+            <thead>
+                <tr><th>QTY COMPLETED</th><th>UNIT COST</th><th>DATE</th><th>COMPLETED BY</th><th>JE</th></tr>
+            </thead>
+            <tbody>
+                {% for c in wo.completions %}
+                <tr>
+                    <td>{{ '{:,.4f}'.format(c.qty_completed) }}</td>
+                    <td>₱{{ '{:,.2f}'.format(c.unit_cost) }}</td>
+                    <td>{{ c.completed_at.strftime('%b %d, %Y') if c.completed_at else '—' }}</td>
+                    <td>{{ c.completed_by.username if c.completed_by else '—' }}</td>
+                    <td>{% if c.journal_entry_id %}<a href="{{ url_for('journal_entries.view', id=c.journal_entry_id) }}">{{ c.journal_entry.entry_number }}</a>{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if wo.force_closed_at %}
+<div class="card" style="margin-top:20px;">
+    <div class="card-body">
+        <h3 style="margin-bottom:12px;">Force Closed</h3>
+        <div class="form-hint">Closed {{ wo.force_closed_at.strftime('%b %d, %Y') }} -- {{ wo.force_close_note }}</div>
+    </div>
+</div>
+{% endif %}
+
+{% if wo.status in ('draft', 'released', 'in_progress') and wo.qty_completed_to_date == 0 %}
 <div id="cancelPanel" class="card" style="display:none; margin-top:20px; max-width:480px;">
     <div class="card-body">
         <h3 style="margin-bottom:12px;">Cancel Work Order</h3>
@@ -151,6 +206,26 @@
             <div class="form-actions">
                 <button type="submit" class="btn-action btn-action-delete">Confirm Cancel</button>
                 <button type="button" class="btn btn-secondary" onclick="document.getElementById('cancelPanel').style.display='none'">Back</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if wo.qty_completed_to_date > 0 and wo.qty_completed_to_date < wo.qty_to_produce %}
+<div id="forceClosePanel" class="card" style="display:none; margin-top:20px; max-width:480px;">
+    <div class="card-body">
+        <h3 style="margin-bottom:12px;">Force Close Work Order</h3>
+        <div class="form-hint" style="margin-bottom:12px;">The remaining {{ '{:,.4f}'.format(wo.qty_to_produce - wo.qty_completed_to_date) }} units will never be produced -- their cost pool writes off as a variance.</div>
+        <form method="POST" action="{{ url_for('work_orders.force_close', id=wo.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="form-group">
+                <label class="form-label">Force-Close Note * (min 10 characters)</label>
+                <textarea name="force_close_note" class="form-control" rows="3" required></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-action btn-action-delete">Confirm Force Close</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('forceClosePanel').style.display='none'">Back</button>
             </div>
         </form>
     </div>

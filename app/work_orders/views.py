@@ -13,7 +13,8 @@ from app.utils.concurrency import claim_version, conflict_message, submitted_ver
 from app.utils import ph_now
 from app.work_orders.models import WorkOrder, WorkOrderOperation, WorkOrderMaterial
 from app.work_orders.forms import WorkOrderForm, generate_wo_number
-from app.work_orders.service import release_work_order, start_operation, complete_operation, issue_material
+from app.work_orders.service import (release_work_order, start_operation, complete_operation,
+                                     issue_material, complete_work_order_batch, force_close_work_order)
 from app.bill_of_materials.models import BillOfMaterial
 
 work_orders_bp = Blueprint('work_orders', __name__, template_folder='templates')
@@ -138,6 +139,10 @@ def cancel(id):
     if wo.status in ('completed', 'cancelled'):
         flash('This Work Order can no longer be cancelled.', 'error')
         return redirect(url_for('work_orders.view', id=id))
+    if wo.qty_completed_to_date and wo.qty_completed_to_date > 0:
+        flash('This Work Order has completed output and can no longer be cancelled -- '
+             'use Force Close instead.', 'error')
+        return redirect(url_for('work_orders.view', id=id))
     reason = (request.form.get('cancel_reason') or '').strip()
     if len(reason) < 10:
         flash('A cancellation reason (min 10 chars) is required.', 'error')
@@ -224,6 +229,52 @@ def issue_material_route(id, mat_id):
         if warnings:
             flash('Issued, but these products went to a negative on-hand balance: '
                   + ', '.join(warnings) + '.', 'warning')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('work_orders.view', id=id))
+
+
+@work_orders_bp.route('/work-orders/<int:id>/complete', methods=['POST'])
+@login_required
+@accountant_or_above_required
+def complete_batch(id):
+    wo = db.get_or_404(WorkOrder, id)
+    if wo.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    try:
+        batch_qty = Decimal(request.form.get('batch_qty', '0'))
+    except InvalidOperation:
+        flash('Enter a valid batch quantity.', 'error')
+        return redirect(url_for('work_orders.view', id=id))
+    try:
+        completion = complete_work_order_batch(wo, batch_qty, current_user)
+        db.session.commit()
+        log_update('work_orders', wo.id, wo.wo_number, {},
+                  {'completion_batch_qty': float(batch_qty),
+                   'qty_completed_to_date': float(wo.qty_completed_to_date)})
+        flash(f'Completed {batch_qty} of "{wo.wo_number}".', 'success')
+        if wo.status == 'completed':
+            flash(f'Work Order "{wo.wo_number}" is now fully completed.', 'success')
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    return redirect(url_for('work_orders.view', id=id))
+
+
+@work_orders_bp.route('/work-orders/<int:id>/force-close', methods=['POST'])
+@login_required
+@accountant_or_above_required
+def force_close(id):
+    wo = db.get_or_404(WorkOrder, id)
+    if wo.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    note = request.form.get('force_close_note', '')
+    try:
+        force_close_work_order(wo, note, current_user)
+        db.session.commit()
+        log_update('work_orders', wo.id, wo.wo_number, {}, {'status': 'completed', 'force_closed': True})
+        flash(f'Work Order "{wo.wo_number}" force-closed.', 'warning')
     except ValueError as e:
         db.session.rollback()
         flash(str(e), 'error')

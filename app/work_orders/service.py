@@ -7,10 +7,11 @@ from decimal import Decimal
 from app import db
 from app.utils import ph_now
 from app.bill_of_materials.service import consume_materials
-from app.work_orders.models import WorkOrderMaterial, WorkOrderOperation
+from app.work_orders.models import WorkOrderMaterial, WorkOrderOperation, WorkOrderCompletion
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journal_entries.utils import generate_entry_number
-from app.stock_adjustments.service import reverse_document_movements
+from app.stock_adjustments.service import reverse_document_movements, post_movement
+from app.posting.control_accounts import get_control_account
 
 ZERO = Decimal('0.00')
 
@@ -79,9 +80,10 @@ def issue_material(wo_material, quantity, actor):
         wo.status = 'in_progress'
 
 
-def _new_je(entry_number, entry_date, description, reference, branch_id, actor):
+def _new_je(entry_number, entry_date, description, reference, branch_id, actor,
+           entry_type='manufacturing_consumption'):
     je = JournalEntry(entry_number=entry_number, entry_date=entry_date, description=description,
-                      reference=reference, entry_type='manufacturing_consumption', branch_id=branch_id,
+                      reference=reference, entry_type=entry_type, branch_id=branch_id,
                       created_by_id=actor.id, status='posted', posted_by_id=actor.id,
                       posted_at=ph_now(), is_balanced=False, total_debit=ZERO, total_credit=ZERO)
     db.session.add(je); db.session.flush()
@@ -91,6 +93,179 @@ def _new_je(entry_number, entry_date, description, reference, branch_id, actor):
 def _add_line(je, n, account_id, description, debit, credit):
     db.session.add(JournalEntryLine(entry_id=je.id, line_number=n, account_id=account_id,
                                     description=description, debit_amount=debit, credit_amount=credit))
+
+
+def _check_all_operations_complete(wo):
+    outstanding = [op.operation_name for op in wo.operations if op.status != 'complete']
+    if outstanding:
+        raise ValueError(
+            'All operations must be complete before this Work Order can be completed -- '
+            f'still outstanding: {", ".join(outstanding)}.')
+
+
+def _materials_in_wip_total(wo, wip_account_id):
+    """Sum of every manufacturing_consumption JE's WIP debit lines posted for
+    this Work Order -- the REAL, actual material cost issued so far (D3's
+    issue_material -> consume_materials chain), not a planned/BOM figure."""
+    originals = (JournalEntry.query
+                .filter_by(entry_type='manufacturing_consumption', reference=wo.wo_number)
+                .all())
+    total = ZERO
+    for je in originals:
+        for line in je.lines:
+            if line.account_id == wip_account_id:
+                total += Decimal(line.debit_amount)
+    return total
+
+
+def _labor_total_cost(wo):
+    """Sum of actual_minutes/60 x hourly_rate across every operation --
+    fully deterministic once all operations are complete (actual_minutes
+    never changes after complete_operation() sets it once), so safe to
+    recompute on every call. Raises if any operation's work center has no
+    hourly rate assigned -- fail closed rather than silently costing labor
+    at zero."""
+    total = ZERO
+    for op in wo.operations:
+        if op.work_center.hourly_rate is None:
+            raise ValueError(
+                f'Work Center "{op.work_center.code}" has no hourly rate assigned -- '
+                f'set one before completing this Work Order.')
+        total += (Decimal(op.actual_minutes) / Decimal('60')) * Decimal(op.work_center.hourly_rate)
+    return total.quantize(Decimal('0.01'))
+
+
+def _ensure_actual_unit_cost(wo):
+    """Compute + freeze WorkOrder.actual_unit_cost the first time all
+    operations are complete. A no-op once already set -- every batch after
+    the first reuses the SAME frozen figure, so cost-per-unit never drifts
+    between batches of the same job. Does NOT commit."""
+    _check_all_operations_complete(wo)
+    if wo.actual_unit_cost is not None:
+        return
+    wip_account = get_control_account('wip')
+    materials_total = _materials_in_wip_total(wo, wip_account.id)
+    labor_total = _labor_total_cost(wo)
+    total_actual_cost = materials_total + labor_total
+    wo.actual_unit_cost = (total_actual_cost / wo.qty_to_produce).quantize(Decimal('0.01'))
+
+
+def complete_work_order_batch(wo, batch_qty, actor):
+    """Post one completion batch: produce batch_qty of the WO's finished good
+    at the WO's frozen actual_unit_cost, relieving WIP (material portion) and
+    Labor-Applied (labor portion) proportionally, plus a standard-costing
+    variance leg when the finished good is standard-costed. Auto-transitions
+    the WO to 'completed' once the running total reaches qty_to_produce. Does
+    NOT commit -- caller owns the transaction."""
+    if wo.status not in ('released', 'in_progress'):
+        raise ValueError('Only a released or in-progress Work Order can be completed.')
+    batch_qty = Decimal(batch_qty)
+    if batch_qty <= ZERO:
+        raise ValueError('Batch quantity must be greater than zero.')
+    remaining = wo.qty_to_produce - wo.qty_completed_to_date
+    if batch_qty > remaining:
+        raise ValueError(f'Cannot complete more than the remaining outstanding quantity ({remaining}).')
+
+    _ensure_actual_unit_cost(wo)
+
+    labor_unit_cost = (_labor_total_cost(wo) / wo.qty_to_produce).quantize(Decimal('0.01'))
+    material_unit_cost = wo.actual_unit_cost - labor_unit_cost
+
+    product = wo.bom.product
+    inv_account = get_control_account('inventory')
+    wip_account = get_control_account('wip')
+    labor_account = get_control_account('labor_applied')
+
+    je = _new_je(generate_entry_number(wo.branch_id), ph_now().date(),
+                 f'Work Order {wo.wo_number} completion', wo.wo_number, wo.branch_id, actor,
+                 entry_type='manufacturing_production')
+
+    mv, _went_negative = post_movement(
+        product, wo.branch_id, 'production', batch_qty, wo.actual_unit_cost,
+        'work_order', wo.id, f'{wo.wo_number} completion batch', actor, journal_entry_id=je.id)
+
+    inventory_amount = (batch_qty * wo.actual_unit_cost).quantize(Decimal('0.01'))
+    material_amount = (batch_qty * material_unit_cost).quantize(Decimal('0.01'))
+    labor_amount = (inventory_amount - material_amount).quantize(Decimal('0.01'))
+
+    n = 1
+    _add_line(je, n, inv_account.id, f'{product.code} produced', inventory_amount, ZERO); n += 1
+    _add_line(je, n, wip_account.id, f'{product.code} relieved from WIP', ZERO, material_amount); n += 1
+    _add_line(je, n, labor_account.id, f'{product.code} labor applied', ZERO, labor_amount); n += 1
+
+    if product.costing_method == 'standard':
+        variance = (inventory_amount - batch_qty * Decimal(mv.unit_cost)).quantize(Decimal('0.01'))
+        if variance != ZERO:
+            variance_account = get_control_account('inventory_variance')
+            if variance > ZERO:
+                _add_line(je, n, variance_account.id, f'{product.code} standard cost variance', variance, ZERO); n += 1
+                _add_line(je, n, inv_account.id, f'{product.code} standard cost variance', ZERO, variance); n += 1
+            else:
+                _add_line(je, n, inv_account.id, f'{product.code} standard cost variance', -variance, ZERO); n += 1
+                _add_line(je, n, variance_account.id, f'{product.code} standard cost variance', ZERO, -variance); n += 1
+
+    db.session.flush()
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'{wo.wo_number} completion JE does not balance '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    completion = WorkOrderCompletion(work_order_id=wo.id, qty_completed=batch_qty,
+                                     unit_cost=wo.actual_unit_cost, journal_entry_id=je.id,
+                                     completed_by_id=actor.id, completed_at=ph_now())
+    db.session.add(completion)
+
+    wo.qty_completed_to_date += batch_qty
+    if wo.qty_completed_to_date >= wo.qty_to_produce:
+        wo.status = 'completed'
+    return completion
+
+
+def force_close_work_order(wo, note, actor):
+    """Write off the leftover cost pool for the never-produced remainder and
+    close the Work Order early. Only available once at least one completion
+    batch has posted (qty_completed_to_date > 0) and the WO isn't already
+    fully completed -- otherwise Cancel is the correct action, not Force
+    Close. Does NOT commit."""
+    if wo.qty_completed_to_date <= ZERO or wo.qty_completed_to_date >= wo.qty_to_produce:
+        raise ValueError('Force Close is only available for a Work Order with at least one '
+                         'completed batch and remaining outstanding quantity.')
+    note = (note or '').strip()
+    if len(note) < 10:
+        raise ValueError('A force-close note (min 10 characters) is required.')
+
+    _ensure_actual_unit_cost(wo)
+    remaining_qty = wo.qty_to_produce - wo.qty_completed_to_date
+
+    labor_unit_cost = (_labor_total_cost(wo) / wo.qty_to_produce).quantize(Decimal('0.01'))
+    material_unit_cost = wo.actual_unit_cost - labor_unit_cost
+
+    wip_account = get_control_account('wip')
+    labor_account = get_control_account('labor_applied')
+    variance_account = get_control_account('inventory_variance')
+
+    je = _new_je(generate_entry_number(wo.branch_id), ph_now().date(),
+                 f'Force Close Work Order {wo.wo_number}', wo.wo_number, wo.branch_id, actor,
+                 entry_type='manufacturing_production')
+
+    variance_amount = (remaining_qty * wo.actual_unit_cost).quantize(Decimal('0.01'))
+    material_amount = (remaining_qty * material_unit_cost).quantize(Decimal('0.01'))
+    labor_amount = (variance_amount - material_amount).quantize(Decimal('0.01'))
+
+    _add_line(je, 1, variance_account.id, f'Force close {wo.wo_number}: unused cost pool', variance_amount, ZERO)
+    _add_line(je, 2, wip_account.id, f'Force close {wo.wo_number}: WIP write-off', ZERO, material_amount)
+    _add_line(je, 3, labor_account.id, f'Force close {wo.wo_number}: labor write-off', ZERO, labor_amount)
+
+    db.session.flush()
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'Force Close {wo.wo_number} JE does not balance '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    wo.status = 'completed'
+    wo.force_closed_at = ph_now()
+    wo.force_close_note = note
+    return je
 
 
 def reverse_consumption(wo, actor):
