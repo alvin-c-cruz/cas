@@ -219,6 +219,52 @@ def complete_work_order_batch(wo, batch_qty, actor):
     return completion
 
 
+def force_close_work_order(wo, note, actor):
+    """Write off the leftover cost pool for the never-produced remainder and
+    close the Work Order early. Only available once at least one completion
+    batch has posted (qty_completed_to_date > 0) and the WO isn't already
+    fully completed -- otherwise Cancel is the correct action, not Force
+    Close. Does NOT commit."""
+    if wo.qty_completed_to_date <= ZERO or wo.qty_completed_to_date >= wo.qty_to_produce:
+        raise ValueError('Force Close is only available for a Work Order with at least one '
+                         'completed batch and remaining outstanding quantity.')
+    note = (note or '').strip()
+    if len(note) < 10:
+        raise ValueError('A force-close note (min 10 characters) is required.')
+
+    _ensure_actual_unit_cost(wo)
+    remaining_qty = wo.qty_to_produce - wo.qty_completed_to_date
+
+    labor_unit_cost = (_labor_total_cost(wo) / wo.qty_to_produce).quantize(Decimal('0.01'))
+    material_unit_cost = wo.actual_unit_cost - labor_unit_cost
+
+    wip_account = get_control_account('wip')
+    labor_account = get_control_account('labor_applied')
+    variance_account = get_control_account('inventory_variance')
+
+    je = _new_je(generate_entry_number(wo.branch_id), ph_now().date(),
+                 f'Force Close Work Order {wo.wo_number}', wo.wo_number, wo.branch_id, actor)
+
+    variance_amount = (remaining_qty * wo.actual_unit_cost).quantize(Decimal('0.01'))
+    material_amount = (remaining_qty * material_unit_cost).quantize(Decimal('0.01'))
+    labor_amount = (variance_amount - material_amount).quantize(Decimal('0.01'))
+
+    _add_line(je, 1, variance_account.id, f'Force close {wo.wo_number}: unused cost pool', variance_amount, ZERO)
+    _add_line(je, 2, wip_account.id, f'Force close {wo.wo_number}: WIP write-off', ZERO, material_amount)
+    _add_line(je, 3, labor_account.id, f'Force close {wo.wo_number}: labor write-off', ZERO, labor_amount)
+
+    db.session.flush()
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'Force Close {wo.wo_number} JE does not balance '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    wo.status = 'completed'
+    wo.force_closed_at = ph_now()
+    wo.force_close_note = note
+    return je
+
+
 def reverse_consumption(wo, actor):
     """Reverse every manufacturing_consumption JE posted for wo (there may be
     several -- one per separate issue_material call over the WO's life,
