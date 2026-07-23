@@ -6,54 +6,82 @@ from app.sales_orders.monitoring import get_order_monitoring
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_orders]
 
-_TODAY = date(2026, 7, 8)
 
-
-def _so(db_session, branch_id, n, status, order_date, expected=None, customer='Acme'):
+def _so(db_session, branch_id, n, status, order_date, customer='Acme'):
     so = SalesOrder(so_number=f'SO-MON-{n:04d}', order_date=order_date, customer_id=1,
-                    customer_name=customer, branch_id=branch_id, status=status,
-                    expected_delivery_date=expected)
+                    customer_name=customer, branch_id=branch_id, status=status)
     db_session.add(so); db_session.commit()
     return so
 
 
-def test_metrics_counts_buckets_and_branch_isolation(db_session, main_branch, branch_manila):
+def test_includes_in_range_so(db_session, main_branch):
     b = main_branch.id
-    # three confirmed (open) orders
-    _so(db_session, b, 1, 'confirmed', date(2026, 7, 5), date(2026, 7, 1), 'Acme')   # overdue, aging 0-7
-    _so(db_session, b, 2, 'confirmed', date(2026, 6, 20), date(2026, 7, 10), 'Acme')  # due_soon, aging 8-30
-    _so(db_session, b, 3, 'confirmed', date(2026, 5, 1), None, 'Beta')                # aging 60+
-    _so(db_session, b, 4, 'draft', date(2026, 7, 7))
-    _so(db_session, b, 5, 'cancelled', date(2026, 7, 7))
-    # another branch's confirmed order must NOT leak in
-    _so(db_session, branch_manila.id, 6, 'confirmed', date(2026, 7, 1), date(2026, 7, 1))
-
-    m = get_order_monitoring(b, _TODAY)
-    assert m['cards'] == {'open': 3, 'drafts': 1, 'overdue': 1, 'due_soon': 1}
-    assert m['by_status'] == {'labels': ['Draft', 'Confirmed', 'Cancelled'], 'data': [1, 3, 1]}
-    assert m['aging'] == {'labels': ['0-7', '8-30', '31-60', '60+'], 'data': [1, 1, 0, 1]}
-    assert m['top_customers'] == [{'customer_name': 'Acme', 'count': 2},
-                                  {'customer_name': 'Beta', 'count': 1}]
+    _so(db_session, b, 1, 'confirmed', date(2026, 7, 5), 'Acme')
+    result = get_order_monitoring(b, date(2026, 7, 1), date(2026, 7, 31))
+    assert result['customers'] == [{'customer_name': 'Acme', 'sales_orders': [
+        {'id': result['customers'][0]['sales_orders'][0]['id'], 'so_number': 'SO-MON-0001',
+         'order_date': date(2026, 7, 5), 'status': 'confirmed', 'line_items': [],
+         'delivery_receipts': []},
+    ]}]
 
 
-def test_monitor_page_renders_and_is_gated(client, db_session, admin_user, main_branch, login_user):
-    from app.settings import AppSettings
-    from app.utils.cache_helpers import clear_module_config_cache
-    AppSettings.set_setting('module_enabled:sales_orders', '1')
-    db_session.commit(); clear_module_config_cache()
-    login_user(client, 'admin', 'admin123')
-    with client.session_transaction() as sess:
-        sess['selected_branch_id'] = main_branch.id
-    resp = client.get('/sales-orders/monitor')
-    assert resp.status_code == 200
-    body = resp.get_data(as_text=True)
-    assert 'Order Monitoring' in body
-    assert 'Overdue' in body and 'Due soon' in body          # card labels
-    assert 'byStatusChart' in body and 'agingChart' in body  # canvas ids
-    assert '₱' not in body                                    # no peso glyph
+def test_excludes_out_of_range_non_open_so(db_session, main_branch):
+    b = main_branch.id
+    _so(db_session, b, 1, 'confirmed', date(2026, 6, 5), 'Acme')  # out of range, but confirmed -> carries forward (covered by next test)
+    _so(db_session, b, 2, 'draft', date(2026, 6, 5), 'Beta')      # out of range, draft -> excluded
+    _so(db_session, b, 3, 'closed', date(2026, 6, 5), 'Gamma')    # out of range, closed -> excluded
+    _so(db_session, b, 4, 'cancelled', date(2026, 6, 5), 'Delta') # out of range, cancelled -> excluded
+    result = get_order_monitoring(b, date(2026, 7, 1), date(2026, 7, 31))
+    names = {c['customer_name'] for c in result['customers']}
+    assert names == {'Acme'}   # only the carried-forward confirmed one
 
-    # disabling the module blocks the page
-    AppSettings.set_setting('module_enabled:sales_orders', '0')
-    db_session.commit(); clear_module_config_cache()
-    blocked = client.get('/sales-orders/monitor')
-    assert blocked.status_code in (302, 403) or b'Order Monitoring' not in blocked.data
+
+def test_carries_forward_confirmed_so_from_before_range(db_session, main_branch):
+    b = main_branch.id
+    _so(db_session, b, 1, 'confirmed', date(2026, 5, 1), 'Acme')
+    result = get_order_monitoring(b, date(2026, 7, 1), date(2026, 7, 31))
+    assert len(result['customers']) == 1
+    assert result['customers'][0]['sales_orders'][0]['so_number'] == 'SO-MON-0001'
+    assert result['customers'][0]['sales_orders'][0]['order_date'] == date(2026, 5, 1)
+
+
+def test_does_not_carry_forward_draft_so(db_session, main_branch):
+    b = main_branch.id
+    _so(db_session, b, 1, 'draft', date(2026, 5, 1), 'Acme')
+    result = get_order_monitoring(b, date(2026, 7, 1), date(2026, 7, 31))
+    assert result['customers'] == []
+
+
+def test_groups_by_customer_and_sorts_by_order_date_within_group(db_session, main_branch):
+    b = main_branch.id
+    _so(db_session, b, 1, 'confirmed', date(2026, 7, 20), 'Acme')
+    _so(db_session, b, 2, 'confirmed', date(2026, 7, 5), 'Acme')
+    _so(db_session, b, 3, 'confirmed', date(2026, 7, 10), 'Beta')
+    result = get_order_monitoring(b, date(2026, 7, 1), date(2026, 7, 31))
+    names = [c['customer_name'] for c in result['customers']]
+    assert names == ['Acme', 'Beta']
+    acme_dates = [so['order_date'] for so in result['customers'][0]['sales_orders']]
+    assert acme_dates == [date(2026, 7, 5), date(2026, 7, 20)]
+
+
+def test_branch_isolation(db_session, main_branch, branch_manila):
+    _so(db_session, main_branch.id, 1, 'confirmed', date(2026, 7, 5), 'Acme')
+    _so(db_session, branch_manila.id, 2, 'confirmed', date(2026, 7, 5), 'Beta')
+    result = get_order_monitoring(main_branch.id, date(2026, 7, 1), date(2026, 7, 31))
+    names = {c['customer_name'] for c in result['customers']}
+    assert names == {'Acme'}
+
+
+def test_line_items_included_via_existing_to_dict(db_session, main_branch):
+    from decimal import Decimal
+    from app.sales_orders.models import SalesOrderItem
+    b = main_branch.id
+    so = _so(db_session, b, 1, 'confirmed', date(2026, 7, 5), 'Acme')
+    so.line_items.append(SalesOrderItem(line_number=1, quantity=Decimal('2'),
+                                        unit_price=Decimal('100.00'), amount=Decimal('200.00')))
+    db_session.commit()
+    result = get_order_monitoring(b, date(2026, 7, 1), date(2026, 7, 31))
+    items = result['customers'][0]['sales_orders'][0]['line_items']
+    assert len(items) == 1
+    assert items[0]['quantity'] == 2.0
+    assert items[0]['unit_price'] == 100.0
