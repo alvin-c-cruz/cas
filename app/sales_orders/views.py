@@ -139,14 +139,31 @@ def _common_form_ctx():
 @sales_orders_bp.route('/sales-orders/monitor')
 @login_required
 def monitor():
-    """Read-only, count-based Order Monitoring dashboard (branch-scoped)."""
+    """Order Monitoring -- a per-line-item SO/DR delivery-status view,
+    grouped by customer (branch-scoped). The date range only controls
+    which Sales Orders are included; DR/Undelivered figures are always
+    all-time cumulative for whichever SOs make the cut."""
     branch_id = session.get('selected_branch_id')
     if not branch_id:
         flash('Please select a branch first.', 'error')
         return redirect(url_for('users.select_branch', next=request.url))
+
+    from calendar import monthrange
+    today = ph_now().date()
+    default_from = today.replace(day=1)
+    default_to = today.replace(day=monthrange(today.year, today.month)[1])
+    try:
+        date_from = date.fromisoformat(request.args.get('date_from', ''))
+    except ValueError:
+        date_from = default_from
+    try:
+        date_to = date.fromisoformat(request.args.get('date_to', ''))
+    except ValueError:
+        date_to = default_to
+
     from app.sales_orders.monitoring import get_order_monitoring
-    metrics = get_order_monitoring(branch_id, ph_now().date())
-    return render_template('sales_orders/monitoring.html', **metrics)
+    data = get_order_monitoring(branch_id, date_from, date_to)
+    return render_template('sales_orders/monitoring.html', date_from=date_from, date_to=date_to, **data)
 
 
 @sales_orders_bp.route('/sales-orders')

@@ -1,53 +1,68 @@
-"""Read-only, count-based metrics for the Order Monitoring dashboard.
-
-Pure query -> dict; no ORM objects escape, so the result is safe to hand straight
-to the template. `today` is a parameter for deterministic tests. Branch-scoped.
+"""Order Monitoring -- a per-line-item SO/DR delivery-status view, grouped
+by customer. Pure query -> dict; no ORM objects escape, so the result is
+safe to hand straight to the template. Branch-scoped. DR/Undelivered are
+always all-time cumulative for a line -- the date range only controls
+which Sales Orders are included, never the figures shown for them.
 """
-from datetime import timedelta
-from sqlalchemy import func
+from decimal import Decimal
 from app.sales_orders.models import SalesOrder
+from app.delivery_receipts.models import (
+    DeliveryReceipt, DeliveryReceiptItem, COMMITTED_STATUSES, so_line_open_qty)
 
 
-def get_order_monitoring(branch_id, today):
-    base = SalesOrder.query.filter_by(branch_id=branch_id)
-    confirmed = base.filter_by(status='confirmed')
+def get_order_monitoring(branch_id, date_from, date_to):
+    in_range = SalesOrder.query.filter(
+        SalesOrder.branch_id == branch_id,
+        SalesOrder.order_date >= date_from,
+        SalesOrder.order_date <= date_to,
+    ).all()
+    carried_forward = SalesOrder.query.filter(
+        SalesOrder.branch_id == branch_id,
+        SalesOrder.order_date < date_from,
+        SalesOrder.status == 'confirmed',
+    ).all()
 
-    open_ct = confirmed.count()
-    drafts = base.filter_by(status='draft').count()
-    cancelled = base.filter_by(status='cancelled').count()
+    by_customer = {}
+    for so in in_range + carried_forward:
+        by_customer.setdefault(so.customer_name, []).append(_so_dict(so))
 
-    overdue = confirmed.filter(
-        SalesOrder.expected_delivery_date.isnot(None),
-        SalesOrder.expected_delivery_date < today).count()
-    soon_end = today + timedelta(days=7)
-    due_soon = confirmed.filter(
-        SalesOrder.expected_delivery_date.isnot(None),
-        SalesOrder.expected_delivery_date >= today,
-        SalesOrder.expected_delivery_date <= soon_end).count()
+    customers = [
+        {'customer_name': name, 'sales_orders': sorted(rows, key=lambda r: r['order_date'])}
+        for name, rows in sorted(by_customer.items())
+    ]
+    return {'customers': customers}
 
-    # aging of open (confirmed) orders by days since order_date
-    aging = [0, 0, 0, 0]  # 0-7, 8-30, 31-60, 60+
-    for (od,) in confirmed.with_entities(SalesOrder.order_date).all():
-        days = (today - od).days
-        if days <= 7:
-            aging[0] += 1
-        elif days <= 30:
-            aging[1] += 1
-        elif days <= 60:
-            aging[2] += 1
-        else:
-            aging[3] += 1
 
-    rows = (confirmed.with_entities(SalesOrder.customer_name, func.count(SalesOrder.id))
-            .group_by(SalesOrder.customer_name)
-            .order_by(func.count(SalesOrder.id).desc(), SalesOrder.customer_name)
-            .limit(5).all())
-    top_customers = [{'customer_name': name, 'count': cnt} for (name, cnt) in rows]
-
+def _so_dict(so):
     return {
-        'cards': {'open': open_ct, 'drafts': drafts, 'overdue': overdue, 'due_soon': due_soon},
-        'by_status': {'labels': ['Draft', 'Confirmed', 'Cancelled'],
-                      'data': [drafts, open_ct, cancelled]},
-        'aging': {'labels': ['0-7', '8-30', '31-60', '60+'], 'data': aging},
-        'top_customers': top_customers,
+        'id': so.id,
+        'so_number': so.so_number,
+        'order_date': so.order_date,
+        'status': so.status,
+        'line_items': [_line_item_dict(li) for li in so.line_items],
     }
+
+
+def _line_item_dict(li):
+    base = li.to_dict()
+    undelivered = so_line_open_qty(li)
+    ordered = Decimal(str(li.quantity or 0))
+    delivered = ordered - undelivered
+    base['dr_qty'] = float(delivered)
+    base['undelivered_qty'] = float(undelivered)
+    base['deliveries'] = _deliveries(li)
+    return base
+
+
+def _deliveries(li):
+    rows = (DeliveryReceiptItem.query
+           .join(DeliveryReceipt, DeliveryReceiptItem.delivery_receipt_id == DeliveryReceipt.id)
+           .filter(DeliveryReceiptItem.sales_order_item_id == li.id,
+                   DeliveryReceipt.status.in_(COMMITTED_STATUSES))
+           .order_by(DeliveryReceipt.delivery_date).all())
+    return [
+        {'dr_id': r.delivery_receipt_id, 'dr_number': r.delivery_receipt.dr_number,
+         'delivery_date': r.delivery_receipt.delivery_date,
+         'quantity': float(r.delivered_quantity)}
+        for r in rows
+    ]

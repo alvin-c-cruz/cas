@@ -6,77 +6,99 @@
   <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary btn-sm">&#8592; Sales Orders</a>
 </div>
 
-<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px;">
-  <a class="card" href="{{ url_for('sales_orders.list', status='confirmed') }}" style="text-decoration:none;">
-    <div class="card-body" style="text-align:center;">
-      <div style="font-size:28px; font-weight:700;">{{ cards.open }}</div>
-      <div style="color:var(--text-2); font-size:12px; text-transform:uppercase;">Open</div>
-    </div>
-  </a>
-  <a class="card" href="{{ url_for('sales_orders.list', status='draft') }}" style="text-decoration:none;">
-    <div class="card-body" style="text-align:center;">
-      <div style="font-size:28px; font-weight:700;">{{ cards.drafts }}</div>
-      <div style="color:var(--text-2); font-size:12px; text-transform:uppercase;">Drafts</div>
-    </div>
-  </a>
-  <a class="card" href="{{ url_for('sales_orders.list', status='confirmed', overdue='1') }}" style="text-decoration:none;">
-    <div class="card-body" style="text-align:center;">
-      <div style="font-size:28px; font-weight:700; color:var(--red,#dc2626);">{{ cards.overdue }}</div>
-      <div style="color:var(--text-2); font-size:12px; text-transform:uppercase;">Overdue</div>
-    </div>
-  </a>
-  <a class="card" href="{{ url_for('sales_orders.list', status='confirmed', due_soon='1') }}" style="text-decoration:none;">
-    <div class="card-body" style="text-align:center;">
-      <div style="font-size:28px; font-weight:700;">{{ cards.due_soon }}</div>
-      <div style="color:var(--text-2); font-size:12px; text-transform:uppercase;">Due soon</div>
-    </div>
-  </a>
-</div>
-
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px;">
-  <div class="card"><div class="card-header"><div class="card-title">By Status</div></div>
-    <div class="card-body">
-      {% if by_status.data | sum %}<canvas id="byStatusChart"></canvas>
-      {% else %}<div class="empty-state"><p>No orders yet</p></div>{% endif %}
-    </div>
-  </div>
-  <div class="card"><div class="card-header"><div class="card-title">Aging of Open Orders</div></div>
-    <div class="card-body">
-      {% if aging.data | sum %}<canvas id="agingChart"></canvas>
-      {% else %}<div class="empty-state"><p>No open orders</p></div>{% endif %}
-    </div>
-  </div>
-</div>
-
-<div class="card"><div class="card-header"><div class="card-title">Top Customers by Open Orders</div></div>
+<div class="card" style="margin-bottom:24px;">
   <div class="card-body">
-    {% if top_customers %}
-    <table class="table"><thead><tr><th>Customer</th><th style="text-align:right;">Open Orders</th></tr></thead>
-      <tbody>{% for row in top_customers %}
-        <tr><td>{{ row.customer_name }}</td><td style="text-align:right;">{{ row.count }}</td></tr>
-      {% endfor %}</tbody></table>
-    {% else %}<div class="empty-state"><p>No open orders</p></div>{% endif %}
+    <form method="GET" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+      <div class="form-group" style="margin:0;">
+        <label>From</label>
+        <input type="date" name="date_from" value="{{ date_from.isoformat() }}" class="form-control" style="width:180px;">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>To</label>
+        <input type="date" name="date_to" value="{{ date_to.isoformat() }}" class="form-control" style="width:180px;">
+      </div>
+      <button type="submit" class="btn btn-primary">Enter</button>
+    </form>
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
-<script>
-const byStatusCtx = document.getElementById('byStatusChart');
-if (byStatusCtx) new Chart(byStatusCtx, {
-  type: 'doughnut',
-  data: { labels: {{ by_status.labels | tojson }},
-          datasets: [{ data: {{ by_status.data | tojson }},
-                       backgroundColor: ['#94a3b8', '#3b82f6', '#dc2626'] }] },
-  options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-});
-const agingCtx = document.getElementById('agingChart');
-if (agingCtx) new Chart(agingCtx, {
-  type: 'bar',
-  data: { labels: {{ aging.labels | tojson }},
-          datasets: [{ label: 'Open orders', data: {{ aging.data | tojson }},
-                       backgroundColor: '#3b82f6' }] },
-  options: { responsive: true, plugins: { legend: { display: false } },
-             scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
-});
-</script>
+{% if customers %}
+  {% for cust in customers %}
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><div class="card-title">{{ cust.customer_name }}</div></div>
+    <div class="card-body">
+      {% for so in cust.sales_orders %}
+      {% set badge_map = {'draft': 'draft', 'confirmed': 'posted', 'cancelled': 'cancelled', 'closed': 'paid'} %}
+      <div style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+        <div style="display:flex; gap:12px; align-items:center; margin-bottom:8px;">
+          <strong><a href="{{ url_for('sales_orders.view', id=so.id) }}">{{ so.so_number }}</a></strong>
+          <span class="badge badge-{{ badge_map.get(so.status, 'draft') }}">{{ so.status|capitalize }}</span>
+          <span style="color:var(--text-2); font-size:12px;">{{ so.order_date.strftime('%b %d, %Y') }}</span>
+        </div>
+
+        {% if so.line_items %}
+        <table class="table" style="font-size:0.9rem;">
+          <thead><tr><th>Product</th><th style="text-align:right;">SO</th><th style="text-align:right;">DR</th><th style="text-align:right;">Undelivered</th></tr></thead>
+          <tbody>
+            {% for li in so.line_items %}
+            <tr>
+              <td>{{ li.product_name or '-' }}</td>
+              <td style="text-align:right;">{{ '{:,.0f}'.format(li.quantity) if li.quantity is not none else '-' }}</td>
+              <td style="text-align:right;">
+                {% if li.deliveries %}
+                <button type="button" class="btn-link" style="background:none; border:none; padding:0; color:var(--blue); text-decoration:underline dotted; cursor:pointer; font:inherit;"
+                        onclick="document.getElementById('drModal-{{ li.id }}').style.display='flex'">{{ '{:,.0f}'.format(li.dr_qty) }}</button>
+                {% else %}
+                {{ '{:,.0f}'.format(li.dr_qty) }}
+                {% endif %}
+              </td>
+              <td style="text-align:right;">{{ '{:,.0f}'.format(li.undelivered_qty) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="card"><div class="card-body"><div class="empty-state"><p>No orders in this period.</p></div></div></div>
+{% endif %}
+
+{% for cust in customers %}
+  {% for so in cust.sales_orders %}
+    {% for li in so.line_items %}
+      {% if li.deliveries %}
+      <div id="drModal-{{ li.id }}" class="modal-overlay" style="display:none; align-items:center; justify-content:center; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:1000;">
+        <div class="card" style="max-width:420px; width:92%;">
+          <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="card-title">Deliveries -- {{ li.product_name or '-' }}</div>
+            <button type="button" style="background:none; border:none; font-size:18px; color:var(--text-2); cursor:pointer;"
+                    onclick="document.getElementById('drModal-{{ li.id }}').style.display='none'">&times;</button>
+          </div>
+          <div class="card-body" style="padding:0;">
+            <table class="table" style="font-size:0.9rem; margin:0;">
+              <thead><tr><th>DR #</th><th>Date</th><th style="text-align:right;">Qty</th></tr></thead>
+              <tbody>
+                {% for d in li.deliveries %}
+                <tr>
+                  <td><a href="{{ url_for('delivery_receipts.view', id=d.dr_id) }}">{{ d.dr_number }}</a></td>
+                  <td>{{ d.delivery_date.strftime('%b %d, %Y') }}</td>
+                  <td style="text-align:right;">{{ '{:,.0f}'.format(d.quantity) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="card-body" style="border-top:1px solid var(--border); font-size:12px; color:var(--text-2);">
+            Total delivered: {{ '{:,.0f}'.format(li.dr_qty) }}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+{% endfor %}
 {% endblock %}
