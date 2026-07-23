@@ -176,3 +176,26 @@ def test_list_actions_column_hides_edit_when_not_draft(client, accountant_user, 
     body = client.get('/purchase-requests').data.decode('utf-8')
     assert f'/purchase-requests/{pr.id}/edit' not in body
     assert f'/purchase-requests/{pr.id}' in body  # view link still present
+
+
+def test_export_csv_respects_status_filter(client, accountant_user, main_branch, db_session):
+    from app.purchase_requests.models import PurchaseRequest
+    _login(client, accountant_user, main_branch)
+    _create(client, pr_number='PR-EXP-001')
+    _create(client, pr_number='PR-EXP-002')
+    pr = PurchaseRequest.query.filter_by(pr_number='PR-EXP-001').first()
+    pr.status = 'approved'
+    db_session.commit()
+
+    resp = client.get('/purchase-requests/export/csv?status=approved')
+    assert resp.status_code == 200
+    assert b'PR-EXP-001' in resp.data
+    assert b'PR-EXP-002' not in resp.data
+
+
+def test_export_excel_returns_200(client, accountant_user, main_branch, db_session):
+    _login(client, accountant_user, main_branch)
+    _create(client, pr_number='PR-EXP-010')
+    resp = client.get('/purchase-requests/export/excel')
+    assert resp.status_code == 200
+    assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

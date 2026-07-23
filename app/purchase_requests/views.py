@@ -391,3 +391,34 @@ def print_pr(id):
                'tin': AppSettings.get_setting('company_tin', '')}
     return render_template('purchase_requests/print.html', pr=pr, company=company,
                            printed_at=ph_now())
+
+
+# -- export routes -----------------------------------------------------------------
+
+_EXPORT_COLUMNS = ['pr_number', 'request_date', 'reason', 'status']
+_EXPORT_HEADERS = ['PR #', 'Request Date', 'Reason', 'Status']
+
+
+@purchase_requests_bp.route('/purchase-requests/export/excel')
+@login_required
+def export_excel():
+    from app.utils.export import export_to_excel
+    rows = _filtered_pr_query(include_ids=True).order_by(PurchaseRequest.request_date.desc()).all()
+    log_audit('purchase_requests', 'export_excel', None, f'{len(rows)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_excel(data=rows, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                           filename=f'purchase_requests_{timestamp}.xlsx',
+                           title='Purchase Requests Report')
+
+
+@purchase_requests_bp.route('/purchase-requests/export/csv')
+@login_required
+def export_csv_route():
+    from app.utils.export import export_to_csv
+    rows = _filtered_pr_query(include_ids=True).order_by(PurchaseRequest.request_date.desc()).all()
+    log_audit('purchase_requests', 'export_csv', None, f'{len(rows)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_csv(data=rows, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                         filename=f'purchase_requests_{timestamp}.csv')
