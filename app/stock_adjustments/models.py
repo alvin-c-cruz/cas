@@ -211,6 +211,28 @@ class PhysicalCount(RowVersioned, db.Model):
     lines = db.relationship('PhysicalCountLine', backref='count',
                             cascade='all, delete-orphan', order_by='PhysicalCountLine.id')
 
+    def can_be_approved_by(self, username):
+        """Same rule as app/accounts/approval_models.py's AccountChangeRequest
+        (verified against that real implementation, not re-derived): a
+        full-access user can always approve, including their own count. A
+        non-full-access accountant can approve someone else's count freely,
+        and their OWN only when they are the sole active accountant/admin."""
+        from app.users.models import User
+
+        reviewer = User.query.filter_by(username=username).first()
+        if reviewer and reviewer.has_full_access:
+            return True
+
+        total_accountants = User.query.filter(
+            User.role.in_(['accountant', 'admin', 'chief_accountant']),
+            User.is_active == True
+        ).count()
+        if total_accountants == 1:
+            return True
+
+        creator_username = self.created_by.username if self.created_by else None
+        return username != creator_username
+
 
 class PhysicalCountLine(db.Model):
     __tablename__ = 'physical_count_lines'
