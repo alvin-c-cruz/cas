@@ -61,6 +61,7 @@ def _so_lines_payload(eligible, exclude_dr_id=None):
             ordered = Decimal(str(li.quantity or 0))
             rows.append({
                 'sales_order_item_id': li.id,
+                'line_number': li.line_number,
                 'product_code': li.product.code if li.product else '',
                 'product_name': li.product.name if li.product else '',
                 'uom': (li.unit_of_measure.code if li.unit_of_measure else (li.uom_text or '')),
