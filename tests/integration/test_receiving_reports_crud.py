@@ -252,3 +252,13 @@ def test_export_excel_returns_200(client, accountant_user, main_branch, vl_vendo
     resp = client.get('/receiving-reports/export/excel')
     assert resp.status_code == 200
     assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+def test_export_csv_includes_po_number(client, accountant_user, main_branch, vl_vendor, db_session):
+    po = _approved_po(db_session, main_branch, vl_vendor, number='PO-EXP-PONUM-001')
+    _login(client, accountant_user, main_branch)
+    _create_rr(client, po, rr_number='RR-EXP-PONUM-001')
+
+    body = client.get('/receiving-reports/export/csv').data.decode('utf-8')
+    assert 'RR-EXP-PONUM-001' in body
+    assert 'PO-EXP-PONUM-001' in body

@@ -199,3 +199,38 @@ def test_export_excel_returns_200(client, accountant_user, main_branch, db_sessi
     resp = client.get('/purchase-requests/export/excel')
     assert resp.status_code == 200
     assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+def _minimal_po(db_session, branch, vendor, number):
+    from app.purchase_orders.models import PurchaseOrder, PurchaseOrderItem
+    from datetime import date
+    from decimal import Decimal
+    po = PurchaseOrder(branch_id=branch.id, po_number=number, order_date=date(2026, 7, 11),
+                       vendor_id=vendor.id, vendor_name=vendor.name, status='approved',
+                       vat_treatment='inclusive')
+    po.line_items.append(PurchaseOrderItem(line_number=1, description='Cement',
+                                           quantity=Decimal('10'), unit_price=Decimal('10'),
+                                           amount=Decimal('100')))
+    po.calculate_totals()
+    db_session.add(po); db_session.commit()
+    return po
+
+
+def test_export_csv_includes_converted_po_number(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_requests.models import PurchaseRequest
+    _login(client, accountant_user, main_branch)
+
+    # Converted PR: purchase_order_id linked -> its converted PO # appears in the export.
+    _create(client, pr_number='PR-EXP-PONUM-001', reason='Needs conversion check')
+    pr = PurchaseRequest.query.filter_by(pr_number='PR-EXP-PONUM-001').first()
+    po = _minimal_po(db_session, main_branch, vl_vendor, number='PO-EXP-PONUM-001')
+    pr.purchase_order_id = po.id
+    db_session.commit()
+
+    # Unconverted PR: purchase_order_id stays null -> must still export cleanly (empty column).
+    _create(client, pr_number='PR-EXP-PONUM-002', reason='Not yet converted')
+
+    body = client.get('/purchase-requests/export/csv').data.decode('utf-8')
+    assert 'PR-EXP-PONUM-001' in body
+    assert 'PO-EXP-PONUM-001' in body
+    assert 'PR-EXP-PONUM-002' in body

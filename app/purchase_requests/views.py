@@ -395,8 +395,8 @@ def print_pr(id):
 
 # -- export routes -----------------------------------------------------------------
 
-_EXPORT_COLUMNS = ['pr_number', 'request_date', 'reason', 'status']
-_EXPORT_HEADERS = ['PR #', 'Request Date', 'Reason', 'Status']
+_EXPORT_COLUMNS = ['pr_number', 'request_date', 'reason', 'purchase_order.po_number', 'status']
+_EXPORT_HEADERS = ['PR #', 'Request Date', 'Reason', 'Converted PO #', 'Status']
 
 
 @purchase_requests_bp.route('/purchase-requests/export/excel')

@@ -427,8 +427,8 @@ def print_rr(id):
 
 # -- export --------------------------------------------------------------------
 
-_EXPORT_COLUMNS = ['rr_number', 'receipt_date', 'vendor_name', 'status']
-_EXPORT_HEADERS = ['RR #', 'Receipt Date', 'Vendor', 'Status']
+_EXPORT_COLUMNS = ['rr_number', 'receipt_date', 'vendor_name', 'purchase_order.po_number', 'status']
+_EXPORT_HEADERS = ['RR #', 'Receipt Date', 'Vendor', 'PO #', 'Status']
 
 
 @receiving_reports_bp.route('/receiving-reports/export/excel')
