@@ -91,3 +91,32 @@ class TestApprovePhysicalCount:
 
         reloaded = db.session.get(PhysicalCount, pc.id)
         assert reloaded.status == 'draft'
+
+    def test_posts_stock_adjustment_for_positive_moving_average_variance(
+            self, db_session, branch_main, product_moving_avg, admin_user, control_accounts):
+        pc, bal = _setup_count(branch_main, product_moving_avg, '10', '5.00', '13')
+
+        count, adjustment = approve_physical_count(pc, admin_user)
+        db.session.commit()
+
+        assert adjustment is not None
+        assert adjustment.status == 'posted'
+        assert len(adjustment.lines) == 1
+        assert adjustment.lines[0].quantity_delta == Decimal('3')
+        assert adjustment.lines[0].unit_cost == Decimal('5.00')
+
+        refreshed = StockBalance.query.filter_by(product_id=product_moving_avg.id,
+                                                  branch_id=branch_main.id).first()
+        assert refreshed.quantity_on_hand == Decimal('13.0000')
+
+    def test_posts_stock_adjustment_for_positive_standard_cost_variance(
+            self, db_session, branch_main, product_standard, admin_user, control_accounts):
+        pc, bal = _setup_count(branch_main, product_standard, '10', '5.00', '15')
+
+        count, adjustment = approve_physical_count(pc, admin_user)
+        db.session.commit()
+
+        assert adjustment is not None
+        assert adjustment.status == 'posted'
+        assert adjustment.lines[0].quantity_delta == Decimal('5')
+        assert adjustment.lines[0].unit_cost is None

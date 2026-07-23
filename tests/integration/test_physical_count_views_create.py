@@ -67,6 +67,12 @@ class TestPhysicalCountList:
         # pins the identical pattern for another optional module. _guard()'s own
         # flash only matters for a module key unknown to MODULE_REGISTRY, which
         # doesn't apply here.
+        #
+        # clear_module_config_cache() first: other physical-count test files in
+        # this same run may have already enabled `stock_adjustments` and left
+        # the @cache.memoize'd module-config cache warm, which would make this
+        # test see the module as enabled and fail depending on run order.
+        clear_module_config_cache()
         login_user(client, admin_user.username, 'admin123')
         resp = client.get('/stock-adjustments/physical-counts')
         assert resp.status_code == 404
