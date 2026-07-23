@@ -1,4 +1,5 @@
-/* Stock Adjustment line editor (R-03 slice 2a-i, Task 8).
+/* Stock Adjustment line editor (R-03 slice 2a-i, Task 8; extended R-03 2d
+ * with a Lot column for specific-identification products).
  *
  * Single source of truth is the #lines hidden field: it is seeded with the
  * current line JSON on load (server sets form.lines.data on edit) and the row
@@ -19,6 +20,13 @@
   try {
     products = JSON.parse(document.getElementById('sa-products-data').textContent || '[]');
   } catch (e) { products = []; }
+  var productsById = {};
+  products.forEach(function (p) { productsById[String(p.id)] = p; });
+
+  var lotsByProduct = {};
+  try {
+    lotsByProduct = JSON.parse(document.getElementById('sa-lots-data').textContent || '{}');
+  } catch (e) { lotsByProduct = {}; }
 
   function buildProductSelect(selectedId) {
     var sel = document.createElement('select');
@@ -52,12 +60,63 @@
     }
   }
 
+  function buildLotPicker(productId, selectedLotId) {
+    var sel = document.createElement('select');
+    sel.className = 'form-control sa-lot-picker';
+    sel.setAttribute('required', 'required');
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '- select lot -';
+    sel.appendChild(placeholder);
+    var lots = lotsByProduct[String(productId)] || [];
+    lots.forEach(function (l) {
+      var opt = document.createElement('option');
+      opt.value = String(l.id);
+      opt.textContent = l.label + ' (' + l.remaining_qty + ' left @ ₱' + l.unit_cost + ')';
+      if (selectedLotId != null && String(l.id) === String(selectedLotId)) { opt.selected = true; }
+      sel.appendChild(opt);
+    });
+    return sel;
+  }
+
+  function buildLotRefInput(value) {
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 200;
+    input.className = 'form-control sa-lot-ref';
+    input.placeholder = 'optional reference';
+    if (value != null) { input.value = value; }
+    return input;
+  }
+
+  function updateLotState(row, data) {
+    data = data || {};
+    var lotCell = row.querySelector('.sa-lot-cell');
+    var productSel = row.querySelector('.sa-product');
+    var qty = parseFloat(row.querySelector('.sa-qty').value);
+    var product = productsById[productSel.value];
+    lotCell.innerHTML = '';
+    if (!product || product.costing_method !== 'specific_identification') {
+      var placeholder = document.createElement('span');
+      placeholder.className = 'text-muted';
+      placeholder.textContent = 'n/a';
+      lotCell.appendChild(placeholder);
+      return;
+    }
+    if (!isNaN(qty) && qty < 0) {
+      lotCell.appendChild(buildLotPicker(product.id, data.lot_id));
+    } else {
+      lotCell.appendChild(buildLotRefInput(data.lot_reference));
+    }
+  }
+
   function addRow(data) {
     data = data || {};
     var tr = document.createElement('tr');
 
     var tdProduct = document.createElement('td');
-    tdProduct.appendChild(buildProductSelect(data.product_id));
+    var productSel = buildProductSelect(data.product_id);
+    tdProduct.appendChild(productSel);
     tr.appendChild(tdProduct);
 
     var tdQty = document.createElement('td');
@@ -81,6 +140,10 @@
     tdCost.appendChild(cost);
     tr.appendChild(tdCost);
 
+    var tdLot = document.createElement('td');
+    tdLot.className = 'sa-lot-cell';
+    tr.appendChild(tdLot);
+
     var tdNote = document.createElement('td');
     var note = document.createElement('input');
     note.type = 'text';
@@ -102,9 +165,11 @@
     tdRemove.appendChild(rm);
     tr.appendChild(tdRemove);
 
-    qty.addEventListener('input', function () { updateUnitCostState(tr); });
+    qty.addEventListener('input', function () { updateUnitCostState(tr); updateLotState(tr); });
+    productSel.addEventListener('change', function () { updateLotState(tr); });
     tbody.appendChild(tr);
     updateUnitCostState(tr);
+    updateLotState(tr, data);
     refreshEmptyState();
   }
 
@@ -123,6 +188,10 @@
       if (cost !== '') { row.unit_cost = cost; }
       var note = tr.querySelector('.sa-note').value;
       if (note) { row.note = note; }
+      var lotPicker = tr.querySelector('.sa-lot-picker');
+      if (lotPicker && lotPicker.value) { row.lot_id = lotPicker.value; }
+      var lotRef = tr.querySelector('.sa-lot-ref');
+      if (lotRef && lotRef.value) { row.lot_reference = lotRef.value; }
       out.push(row);
     });
     return out;

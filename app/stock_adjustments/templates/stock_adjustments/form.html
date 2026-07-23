@@ -43,6 +43,7 @@
             <th>Product</th>
             <th class="text-right">Quantity (+ in / &minus; out)</th>
             <th class="text-right">Unit cost</th>
+            <th>Lot</th>
             <th>Note</th>
             <th></th>
           </tr>
@@ -64,5 +65,6 @@
    a product name can never inject markup. The line rows themselves are seeded from
    and serialized back into the #lines hidden field (single source of truth). #}
 <script type="application/json" id="sa-products-data">{{ product_options|tojson }}</script>
-<script src="{{ url_for('static', filename='js/stock_adjustments_form.js') }}?v=1"></script>
+<script type="application/json" id="sa-lots-data">{{ lot_options|tojson }}</script>
+<script src="{{ url_for('static', filename='js/stock_adjustments_form.js') }}?v=2"></script>
 {% endblock %}

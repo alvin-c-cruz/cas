@@ -39,18 +39,48 @@ def _tracked_products():
 
 
 def _product_options(products):
-    """Plain-dict product list for the line editor's product picker."""
-    return [{'id': p.id, 'code': p.code, 'name': p.name} for p in products]
+    """Plain-dict product list for the line editor's product picker. Carries
+    costing_method so the JS line editor knows when to render the Lot column's
+    picker/reference-input instead of the n/a placeholder."""
+    return [{'id': p.id, 'code': p.code, 'name': p.name,
+            'costing_method': p.costing_method} for p in products]
 
 
-def _render_form(form, products, adj):
+def _lot_options(products, branch_id):
+    """Plain-dict open-lot list per specific-identification product, scoped
+    to branch_id, for the line editor's lot picker. Keyed by product_id
+    (string, since JSON object keys are always strings)."""
+    from app.stock_adjustments.models import StockLot
+    out = {}
+    for p in products:
+        if p.costing_method != 'specific_identification':
+            continue
+        lots = (StockLot.query
+               .filter(StockLot.product_id == p.id, StockLot.branch_id == branch_id,
+                       StockLot.remaining_qty > 0)
+               .order_by(StockLot.received_at, StockLot.id).all())
+        out[str(p.id)] = [{
+            'id': l.id,
+            'label': l.lot_reference or l.received_at.strftime('%Y-%m-%d'),
+            'remaining_qty': str(l.remaining_qty),
+            'unit_cost': str(l.unit_cost),
+        } for l in lots]
+    return out
+
+
+def _render_form(form, products, adj, branch_id):
     return render_template('stock_adjustments/form.html', form=form, adj=adj,
-                           product_options=_product_options(products))
+                           product_options=_product_options(products),
+                           lot_options=_lot_options(products, branch_id))
 
 
-def _parse_lines(raw_json, valid_product_ids):
+def _parse_lines(raw_json, valid_product_ids, products_by_id):
     """Build StockAdjustmentLine rows from the posted `lines` JSON. Raises
-    ValueError on an empty payload or an untracked/unknown product."""
+    ValueError on an empty payload or an untracked/unknown product.
+    products_by_id: {id: Product}, so a specific-identification line's
+    lot_id requirement can be checked here (not just at post_movement time
+    -- a fast, clear error before any write, matching the existing
+    positive-line unit-cost check's own timing)."""
     from app.stock_adjustments.models import StockAdjustmentLine
     items = json.loads(raw_json or '[]')
     built = []
@@ -64,13 +94,27 @@ def _parse_lines(raw_json, valid_product_ids):
             raise ValueError('A stock adjustment line quantity cannot be zero.')
         if pid not in valid_product_ids:
             raise ValueError('A line references a product that is not inventory-tracked.')
+        product = products_by_id[pid]
+        is_specific_id = (product.costing_method == 'specific_identification')
         unit_cost = raw.get('unit_cost')
         if qty > 0 and (unit_cost is None or str(unit_cost).strip() == ''):
             raise ValueError('A positive (stock-in) line requires a unit cost.')
+        lot_id = None
+        lot_reference = None
+        if is_specific_id and qty < 0:
+            raw_lot_id = raw.get('lot_id')
+            if raw_lot_id in (None, ''):
+                raise ValueError(f'A specific-identification issue line for {product.code} '
+                                 f'requires a lot to be selected.')
+            lot_id = int(raw_lot_id)
+        elif is_specific_id and qty > 0:
+            lot_reference = (raw.get('lot_reference') or None)
         built.append(StockAdjustmentLine(
             product_id=pid,
             quantity_delta=qty,
             unit_cost=(Decimal(str(unit_cost)) if unit_cost not in (None, '') else None),
+            lot_id=lot_id,
+            lot_reference=lot_reference,
             note=(raw.get('note') or None)))
     if not built:
         raise ValueError('Add at least one line.')
@@ -126,11 +170,12 @@ def create():
     products = _tracked_products()
     if form.validate_on_submit():
         valid_ids = {p.id for p in products}
+        products_by_id = {p.id: p for p in products}
         try:
-            lines = _parse_lines(form.lines.data, valid_ids)
+            lines = _parse_lines(form.lines.data, valid_ids, products_by_id)
         except ValueError as e:
             flash(str(e), 'error')
-            return _render_form(form, products, None)
+            return _render_form(form, products, None, session.get('selected_branch_id'))
         adj = StockAdjustment(sa_number=generate_sa_number(),
                               branch_id=session.get('selected_branch_id'),
                               adjustment_date=form.adjustment_date.data,
@@ -147,7 +192,7 @@ def create():
                                'lines': len(adj.lines)})
         flash(f'Stock Adjustment {adj.sa_number} saved as draft.', 'success')
         return redirect(url_for('stock_adjustments.view', id=adj.id))
-    return _render_form(form, products, None)
+    return _render_form(form, products, None, session.get('selected_branch_id'))
 
 
 @stock_adjustments_bp.route('/<int:id>/edit', methods=['GET', 'POST'])
@@ -173,11 +218,12 @@ def edit(id):
     form = StockAdjustmentForm(obj=adj)
     if form.validate_on_submit():
         valid_ids = {p.id for p in products}
+        products_by_id = {p.id: p for p in products}
         try:
-            lines = _parse_lines(form.lines.data, valid_ids)
+            lines = _parse_lines(form.lines.data, valid_ids, products_by_id)
         except ValueError as e:
             flash(str(e), 'error')
-            return _render_form(form, products, adj)
+            return _render_form(form, products, adj, adj.branch_id)
         # Optimistic-lock claim FIRST, before any line teardown.
         if not claim_version(StockAdjustment, adj.id, submitted_version()):
             db.session.rollback()
@@ -214,8 +260,10 @@ def edit(id):
             {'product_id': li.product_id,
              'quantity_delta': str(li.quantity_delta),
              'unit_cost': (str(li.unit_cost) if li.unit_cost is not None else ''),
+             'lot_id': li.lot_id,
+             'lot_reference': li.lot_reference or '',
              'note': li.note or ''} for li in adj.lines])
-    return _render_form(form, products, adj)
+    return _render_form(form, products, adj, adj.branch_id)
 
 
 @stock_adjustments_bp.route('/<int:id>')
