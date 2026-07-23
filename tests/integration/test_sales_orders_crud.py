@@ -207,6 +207,28 @@ def test_create_form_renders_so_number_and_line_editor(client, db_session, admin
     assert b'addLineBtn' in resp.data
 
 
+def test_create_form_offers_product_and_uom_quick_add_when_module_on(client, db_session, admin_user, main_branch):
+    """With the Products/UOM modules on, the SO form must render the product AND uom quick-add
+    modals + scripts and the line grid's '+ Add Product' / '+ Add UOM' sentinels, so a delegate
+    can inline-add master data while building an SO -- mirrors the Quotation form's existing
+    wiring (test_quotations_crud.py::test_create_form_offers_product_quick_add_when_module_on).
+    Browser-only surface -- assert the RENDERED form, a POST-contract test cannot see template wiring."""
+    _enable_products(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/create')
+    assert resp.status_code == 200
+    body = resp.data
+    assert b'productQuickAddOverlay' in body     # product modal partial included
+    assert b'product-quick-add.js' in body       # product quick-add JS loaded
+    assert b'initProductQuickAdd' in body        # product init call present
+    assert b'__add_product__' in body            # line-grid "+ Add Product" sentinel wired
+    assert b'uomQuickAddOverlay' in body         # uom modal partial included
+    assert b'uom-quick-add.js' in body           # uom quick-add JS loaded
+    assert b'initUomQuickAdd' in body            # uom init call present
+    assert b'__add_uom__' in body                # line-grid "+ Add UOM" sentinel wired
+
+
 def test_duplicate_so_number_rejected(client, db_session, admin_user, main_branch):
     import datetime
     c = _customer(db_session)
