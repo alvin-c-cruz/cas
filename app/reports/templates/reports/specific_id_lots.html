@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Specific-ID Lots on Hand{% endblock %}
+{% block page_title %}Specific-ID Lots on Hand{% endblock %}
+{% block content %}
+{% set selected_product = products | selectattr('id', 'equalto', product_id) | first %}
+{% set selected_branch = branches | selectattr('id', 'equalto', branch_id) | first %}
+{% set totals = namespace(value=0) %}
+{% for lot in lots %}{% set totals.value = totals.value + (lot.remaining_qty * lot.unit_cost) %}{% endfor %}
+<div class="content-header">
+    <form method="GET" class="filter-form">
+        <label for="product_id">Product</label>
+        <select id="product_id" name="product_id" onchange="this.form.submit()">
+            <option value="">Select a product&hellip;</option>
+            {% for p in products %}
+            <option value="{{ p.id }}" {% if product_id == p.id %}selected{% endif %}>{{ p.code }} &mdash; {{ p.name }}</option>
+            {% endfor %}
+        </select>
+        <label for="branch_id">Branch</label>
+        <select id="branch_id" name="branch_id" onchange="this.form.submit()">
+            <option value="">All Branches</option>
+            {% for b in branches %}
+            <option value="{{ b.id }}" {% if branch_id == b.id %}selected{% endif %}>{{ b.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary">Apply</button>
+    </form>
+    {% if product_id %}
+    <div class="page-actions">
+        <a href="{{ url_for('reports.specific_id_lots_export_excel', product_id=product_id, branch_id=branch_id) }}"
+           class="btn btn-secondary">Export Excel</a>
+    </div>
+    {% endif %}
+</div>
+<div class="card">
+    {% if selected_product %}
+    <div class="card-header">
+        <div>
+            <div class="card-title">{{ selected_product.code }} &mdash; {{ selected_product.name }}</div>
+            <div class="card-sub">{{ selected_branch.name if selected_branch else 'All Branches' }} &middot; as of {{ today.strftime('%Y-%m-%d') }} &middot; specific-identification lots</div>
+        </div>
+    </div>
+    {% endif %}
+    <div class="card-body">
+        <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Reference</th>
+                    <th>Received Date</th>
+                    <th class="num">Remaining Qty</th>
+                    <th class="num">Unit Cost</th>
+                    <th class="num">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lot in lots %}
+                <tr class="{{ 'fifo-layer-drained' if lot.remaining_qty == 0 else '' }}">
+                  <td>{{ lot.lot_reference or '—' }}</td>
+                  <td>{{ lot.received_at.strftime('%Y-%m-%d') if lot.received_at else '—' }}</td>
+                  <td class="num">{{ '%.4f'|format(lot.remaining_qty) }}{% if lot.remaining_qty == 0 %} <span class="badge badge-drained">drained</span>{% endif %}</td>
+                  <td class="num">₱{{ '%.2f'|format(lot.unit_cost) }}</td>
+                  <td class="num">₱{{ '%.2f'|format(lot.remaining_qty * lot.unit_cost) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty-state-cell"><p>
+                    {% if product_id %}No lots found.{% else %}Select a product to view its lots.{% endif %}
+                </p></td></tr>
+                {% endfor %}
+            </tbody>
+            {% if lots %}
+            <tfoot>
+                <tr class="tfoot-row">
+                    <td>TOTALS</td>
+                    <td>&mdash;</td>
+                    <td class="num">{{ '%.4f'|format(lots | sum(attribute='remaining_qty')) }}</td>
+                    <td class="num">&mdash;</td>
+                    <td class="num">₱{{ '%.2f'|format(totals.value) }}</td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+        </div>
+        {% if lots %}
+        <div class="legend">
+            <div class="legend-item"><span class="legend-swatch legend-swatch-drained"></span> Drained lot (remaining = 0, kept for audit trail)</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

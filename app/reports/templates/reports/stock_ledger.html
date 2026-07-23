@@ -31,6 +31,10 @@
         <a href="{{ url_for('reports.lifo_valuation', product_id=product_id, branch_id=branch_id) }}"
            class="btn btn-secondary">View LIFO Valuation (Internal)</a>
         {% endif %}
+        {% if selected_product and selected_product.costing_method == 'specific_identification' %}
+        <a href="{{ url_for('reports.specific_id_lots', product_id=product_id, branch_id=branch_id) }}"
+           class="btn btn-secondary">View Specific-ID Lots</a>
+        {% endif %}
         <a href="{{ url_for('reports.stock_ledger_print', product_id=product_id, branch_id=branch_id) }}"
            class="btn btn-secondary" target="_blank">Print</a>
         <a href="{{ url_for('reports.stock_ledger_export_excel', product_id=product_id, branch_id=branch_id) }}"
