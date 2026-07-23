@@ -227,3 +227,28 @@ def test_page_title_not_dashboard(client, accountant_user, main_branch, vl_vendo
 
     create_body = client.get('/receiving-reports/create').data.decode('utf-8')
     assert 'Enter Receiving Report' in create_body
+
+
+def test_export_csv_respects_status_filter(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.receiving_reports.models import ReceivingReport
+    po = _approved_po(db_session, main_branch, vl_vendor)
+    _login(client, accountant_user, main_branch)
+    _create_rr(client, po, rr_number='RR-EXP-001')
+    _create_rr(client, po, rr_number='RR-EXP-002')
+    rr = ReceivingReport.query.filter_by(rr_number='RR-EXP-001').first()
+    rr.status = 'approved'
+    db_session.commit()
+
+    resp = client.get('/receiving-reports/export/csv?status=approved')
+    assert resp.status_code == 200
+    assert b'RR-EXP-001' in resp.data
+    assert b'RR-EXP-002' not in resp.data
+
+
+def test_export_excel_returns_200(client, accountant_user, main_branch, vl_vendor, db_session):
+    po = _approved_po(db_session, main_branch, vl_vendor)
+    _login(client, accountant_user, main_branch)
+    _create_rr(client, po, rr_number='RR-EXP-010')
+    resp = client.get('/receiving-reports/export/excel')
+    assert resp.status_code == 200
+    assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

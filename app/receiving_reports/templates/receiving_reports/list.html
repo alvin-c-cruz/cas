@@ -55,12 +55,10 @@
 <div class="card">
     <div class="card-header">
         <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
-            {# Export links pend Task 7 (receiving_reports.export_excel / export_csv_route
-               don't exist yet) -- commented out to avoid a BuildError; restore once shipped. #}
-            {# <a href="{{ url_for('receiving_reports.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
+            <a href="{{ url_for('receiving_reports.export_excel', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
                class="btn btn-secondary btn-sm">Export Excel</a>
             <a href="{{ url_for('receiving_reports.export_csv_route', status=status_filter, vendor=vendor_filter, q=q, date_from=date_from, date_to=date_to) }}"
-               class="btn btn-secondary btn-sm">📄 Export CSV</a> #}
+               class="btn btn-secondary btn-sm">📄 Export CSV</a>
             <a href="{{ url_for('purchase_orders.list_po') }}" class="btn btn-secondary btn-sm">Purchase Orders</a>
             <a href="{{ url_for('receiving_reports.create') }}" class="btn btn-primary btn-sm">+ Enter Receiving Report</a>
         </div>

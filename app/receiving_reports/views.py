@@ -423,3 +423,34 @@ def print_rr(id):
                'tin': AppSettings.get_setting('company_tin', '')}
     return render_template('receiving_reports/print.html', rr=rr, company=company,
                            printed_at=ph_now())
+
+
+# -- export --------------------------------------------------------------------
+
+_EXPORT_COLUMNS = ['rr_number', 'receipt_date', 'vendor_name', 'status']
+_EXPORT_HEADERS = ['RR #', 'Receipt Date', 'Vendor', 'Status']
+
+
+@receiving_reports_bp.route('/receiving-reports/export/excel')
+@login_required
+def export_excel():
+    from app.utils.export import export_to_excel
+    rows = _filtered_rr_query(include_ids=True).order_by(ReceivingReport.receipt_date.desc()).all()
+    log_audit('receiving_reports', 'export_excel', None, f'{len(rows)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_excel(data=rows, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                           filename=f'receiving_reports_{timestamp}.xlsx',
+                           title='Receiving Reports Report')
+
+
+@receiving_reports_bp.route('/receiving-reports/export/csv')
+@login_required
+def export_csv_route():
+    from app.utils.export import export_to_csv
+    rows = _filtered_rr_query(include_ids=True).order_by(ReceivingReport.receipt_date.desc()).all()
+    log_audit('receiving_reports', 'export_csv', None, f'{len(rows)} records',
+              notes=f'Exported by {current_user.username}; filters: {request.args.to_dict()}')
+    timestamp = ph_now().strftime('%Y%m%d_%H%M%S')
+    return export_to_csv(data=rows, columns=_EXPORT_COLUMNS, headers=_EXPORT_HEADERS,
+                         filename=f'receiving_reports_{timestamp}.csv')
