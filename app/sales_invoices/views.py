@@ -1215,9 +1215,13 @@ def view(id):
     sv_print_access = AppSettings.get_setting('sv_print_access', 'posted_only')
     sv_print_form = AppSettings.get_setting('sv_print_form', 'current')
     payments = _crv_settlements(invoice)
+    from app.delivery_receipts.models import DeliveryReceipt
+    source_drs = (DeliveryReceipt.query.filter_by(sales_invoice_id=invoice.id)
+                 .order_by(DeliveryReceipt.delivery_date).all())
     return render_template('sales_invoices/detail.html', invoice=invoice,
                            je_entries=je_entries, sv_print_access=sv_print_access,
-                           sv_print_form=sv_print_form, payments=payments)
+                           sv_print_form=sv_print_form, payments=payments,
+                           source_drs=source_drs)
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
