@@ -55,6 +55,35 @@ def test_materials_cascade_delete(db_session, main_branch):
     assert db.session.get(WorkOrderMaterial, mat_id) is None
 
 
+def test_completion_columns_default(db_session, main_branch):
+    bom = _bom()
+    wo = WorkOrder(wo_number='WO-2026-07-0004', bom_id=bom.id, branch_id=main_branch.id,
+                   qty_to_produce=Decimal('10'))
+    db.session.add(wo); db.session.commit()
+    assert wo.qty_completed_to_date == Decimal('0')
+    assert wo.actual_unit_cost is None
+    assert wo.force_closed_at is None
+    assert wo.force_close_note is None
+    assert wo.completions == []
+
+
+def test_work_order_completion_row_and_cascade_delete(db_session, main_branch, accountant_user):
+    from app.work_orders.models import WorkOrderCompletion
+    bom = _bom()
+    wo = WorkOrder(wo_number='WO-2026-07-0005', bom_id=bom.id, branch_id=main_branch.id,
+                   qty_to_produce=Decimal('10'))
+    db.session.add(wo); db.session.commit()
+    wo.completions.append(WorkOrderCompletion(
+        qty_completed=Decimal('4'), unit_cost=Decimal('12.50'),
+        completed_by_id=accountant_user.id))
+    db.session.commit()
+    completion_id = wo.completions[0].id
+    assert wo.completions[0].completed_at is not None
+    db.session.delete(wo)
+    db.session.commit()
+    assert db.session.get(WorkOrderCompletion, completion_id) is None
+
+
 def test_operation_execution_columns_default(db_session, main_branch, accountant_user):
     from app.work_orders.models import WorkOrderOperation
     from app.work_centers.models import WorkCenter

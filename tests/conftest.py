@@ -358,6 +358,22 @@ def control_accounts(db_session, make_account):
     AppSettings.set_setting('inventory_adjustment_account_code', '7101', updated_by='test')
 
 
+@pytest.fixture
+def wo_control_accounts(db_session, make_account):
+    """Assign the inventory/wip/labor_applied/inventory_variance control
+    accounts a Work Order completion or force-close needs before posting
+    (R-07 D4)."""
+    from app.settings import AppSettings
+    make_account('1401')
+    make_account('1501')
+    make_account('1502')
+    make_account('7102')
+    AppSettings.set_setting('inventory_account_code', '1401', updated_by='test')
+    AppSettings.set_setting('wip_account_code', '1501', updated_by='test')
+    AppSettings.set_setting('labor_applied_account_code', '1502', updated_by='test')
+    AppSettings.set_setting('inventory_variance_account_code', '7102', updated_by='test')
+
+
 def assign_control_accounts(session, ar='10201', ap='20101',
                             creditable_wht='10212', wht_payable='20301'):
     """Assign the 4 posting control-account settings (legacy codes by default).
