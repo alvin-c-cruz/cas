@@ -149,6 +149,76 @@ def _ensure_actual_unit_cost(wo):
     wo.actual_unit_cost = (total_actual_cost / wo.qty_to_produce).quantize(Decimal('0.01'))
 
 
+def complete_work_order_batch(wo, batch_qty, actor):
+    """Post one completion batch: produce batch_qty of the WO's finished good
+    at the WO's frozen actual_unit_cost, relieving WIP (material portion) and
+    Labor-Applied (labor portion) proportionally, plus a standard-costing
+    variance leg when the finished good is standard-costed. Auto-transitions
+    the WO to 'completed' once the running total reaches qty_to_produce. Does
+    NOT commit -- caller owns the transaction."""
+    if wo.status not in ('released', 'in_progress'):
+        raise ValueError('Only a released or in-progress Work Order can be completed.')
+    batch_qty = Decimal(batch_qty)
+    if batch_qty <= ZERO:
+        raise ValueError('Batch quantity must be greater than zero.')
+    remaining = wo.qty_to_produce - wo.qty_completed_to_date
+    if batch_qty > remaining:
+        raise ValueError(f'Cannot complete more than the remaining outstanding quantity ({remaining}).')
+
+    _ensure_actual_unit_cost(wo)
+
+    labor_unit_cost = (_labor_total_cost(wo) / wo.qty_to_produce).quantize(Decimal('0.01'))
+    material_unit_cost = wo.actual_unit_cost - labor_unit_cost
+
+    product = wo.bom.product
+    inv_account = get_control_account('inventory')
+    wip_account = get_control_account('wip')
+    labor_account = get_control_account('labor_applied')
+
+    je = _new_je(generate_entry_number(wo.branch_id), ph_now().date(),
+                 f'Work Order {wo.wo_number} completion', wo.wo_number, wo.branch_id, actor)
+
+    mv, _went_negative = post_movement(
+        product, wo.branch_id, 'production', batch_qty, wo.actual_unit_cost,
+        'work_order', wo.id, f'{wo.wo_number} completion batch', actor, journal_entry_id=je.id)
+
+    inventory_amount = (batch_qty * wo.actual_unit_cost).quantize(Decimal('0.01'))
+    material_amount = (batch_qty * material_unit_cost).quantize(Decimal('0.01'))
+    labor_amount = (inventory_amount - material_amount).quantize(Decimal('0.01'))
+
+    n = 1
+    _add_line(je, n, inv_account.id, f'{product.code} produced', inventory_amount, ZERO); n += 1
+    _add_line(je, n, wip_account.id, f'{product.code} relieved from WIP', ZERO, material_amount); n += 1
+    _add_line(je, n, labor_account.id, f'{product.code} labor applied', ZERO, labor_amount); n += 1
+
+    if product.costing_method == 'standard':
+        variance = (inventory_amount - batch_qty * Decimal(mv.unit_cost)).quantize(Decimal('0.01'))
+        if variance != ZERO:
+            variance_account = get_control_account('inventory_variance')
+            if variance > ZERO:
+                _add_line(je, n, variance_account.id, f'{product.code} standard cost variance', variance, ZERO); n += 1
+                _add_line(je, n, inv_account.id, f'{product.code} standard cost variance', ZERO, variance); n += 1
+            else:
+                _add_line(je, n, inv_account.id, f'{product.code} standard cost variance', -variance, ZERO); n += 1
+                _add_line(je, n, variance_account.id, f'{product.code} standard cost variance', ZERO, -variance); n += 1
+
+    db.session.flush()
+    je.calculate_totals()
+    if not je.is_balanced:
+        raise ValueError(f'{wo.wo_number} completion JE does not balance '
+                         f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    completion = WorkOrderCompletion(work_order_id=wo.id, qty_completed=batch_qty,
+                                     unit_cost=wo.actual_unit_cost, journal_entry_id=je.id,
+                                     completed_by_id=actor.id, completed_at=ph_now())
+    db.session.add(completion)
+
+    wo.qty_completed_to_date += batch_qty
+    if wo.qty_completed_to_date >= wo.qty_to_produce:
+        wo.status = 'completed'
+    return completion
+
+
 def reverse_consumption(wo, actor):
     """Reverse every manufacturing_consumption JE posted for wo (there may be
     several -- one per separate issue_material call over the WO's life,
