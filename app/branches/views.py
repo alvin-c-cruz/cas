@@ -50,6 +50,10 @@ def create():
             db.session.add(branch)
             db.session.commit()
 
+            # Assign the creating user to the new branch (BUG-BRANCH-CREATE-NO-CREATOR-ASSIGNMENT)
+            current_user.branches.append(branch)
+            db.session.commit()
+
             # Audit log for branch creation
             log_create(
                 module='branch',

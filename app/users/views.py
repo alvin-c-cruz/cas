@@ -445,6 +445,17 @@ def edit_user(id):
         form.branch_ids.data = user.get_branch_ids()
 
     if form.validate_on_submit():
+        # is_active and role render disabled=true for a self-edit (users/form.html) --
+        # a disabled field is never included in the submitted form data, so
+        # form.is_active.data/form.role.data would otherwise read as False/empty
+        # regardless of the account's real values, false-triggering the guards below
+        # on every self-edit (BUG-EDITUSER-SELF-EDIT-DISABLED-CHECKBOX-FALSE-REJECT).
+        # Preserve the real values instead of trusting the form for these two fields
+        # when editing yourself.
+        if user.id == current_user.id:
+            form.is_active.data = user.is_active
+            form.role.data = user.role
+
         # CRITICAL: Prevent admins from deactivating their own account
         if user.id == current_user.id and not form.is_active.data:
             flash('You cannot deactivate your own account.', 'error')
