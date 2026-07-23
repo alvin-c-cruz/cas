@@ -69,7 +69,15 @@ def post_movement(product, branch_id, movement_type, delta_qty, in_unit_cost,
     delta_qty = Decimal(delta_qty)
     bal = _get_or_create_balance(product.id, branch_id)
     is_fifo = (product.costing_method == 'fifo')
-    is_specific_id = (product.costing_method == 'specific_identification')
+    # Unlike FIFO (deliberately app-wide by 2b's own design), specific-ID is
+    # deliberately scoped to Stock Adjustment ONLY this slice (R-03 2d's own
+    # Global Constraints -- DR/VDM/WO-material-issue/RR/Sales-Memo all keep
+    # falling back to moving-average). Gating on source_document_type, not
+    # just costing_method, is what actually enforces that scope boundary --
+    # a real gap the final whole-branch review caught, since costing_method
+    # alone would silently leak the new branch into every other document.
+    is_specific_id = (product.costing_method == 'specific_identification'
+                       and source_document_type == 'stock_adjustment')
     if is_fifo:
         bootstrap_opening_layer_if_needed(product.id, branch_id)
 
@@ -171,7 +179,8 @@ def reverse_document_movements(source_document_type, source_document_id, actor, 
         product = orig.product
         if product.costing_method == 'fifo':
             mv = _reverse_fifo_movement(orig, actor, journal_entry_id)
-        elif product.costing_method == 'specific_identification':
+        elif (product.costing_method == 'specific_identification'
+              and orig.source_document_type == 'stock_adjustment'):
             mv = _reverse_specific_id_movement(orig, actor, journal_entry_id)
         else:
             mv, _ = post_movement(

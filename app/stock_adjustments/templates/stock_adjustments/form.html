@@ -66,5 +66,5 @@
    and serialized back into the #lines hidden field (single source of truth). #}
 <script type="application/json" id="sa-products-data">{{ product_options|tojson }}</script>
 <script type="application/json" id="sa-lots-data">{{ lot_options|tojson }}</script>
-<script src="{{ url_for('static', filename='js/stock_adjustments_form.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/stock_adjustments_form.js') }}?v=3"></script>
 {% endblock %}

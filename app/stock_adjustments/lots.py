@@ -31,8 +31,9 @@ def specific_id_plan_consume(product_id, branch_id, lot_id, qty):
     if lot is None or lot.product_id != product_id or lot.branch_id != branch_id:
         raise ValueError(f'Lot {lot_id} does not exist for this product/branch.')
     if Decimal(lot.remaining_qty) < qty:
+        lot_label = lot.lot_reference or lot.received_at.strftime('%Y-%m-%d')
         raise ValueError(
-            f'Lot {lot.lot_reference or lot.received_at} only has {lot.remaining_qty} '
+            f'Lot {lot_label} only has {lot.remaining_qty} '
             f'units remaining; cannot issue {qty}.')
     return lot, Decimal(lot.unit_cost).quantize(MONEY_Q)
 

@@ -165,7 +165,12 @@
     tdRemove.appendChild(rm);
     tr.appendChild(tdRemove);
 
-    qty.addEventListener('input', function () { updateUnitCostState(tr); updateLotState(tr); });
+    qty.addEventListener('input', function () {
+      updateUnitCostState(tr);
+      var existingRef = tr.querySelector('.sa-lot-ref');
+      var preserved = existingRef ? { lot_reference: existingRef.value } : {};
+      updateLotState(tr, preserved);
+    });
     productSel.addEventListener('change', function () { updateLotState(tr); });
     tbody.appendChild(tr);
     updateUnitCostState(tr);
