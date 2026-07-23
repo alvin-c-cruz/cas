@@ -721,7 +721,10 @@ function addLineItem(existingItem) {
             if (prodSel.value === '__add_product__') {
                 prodC.setChoiceByValue('');
                 openProductModal(id, function(p) {
-                    products.push(p);
+                    products.push({ id: p.id, code: p.code, name: p.name,
+                                     default_uom_id: p.default_uom_id,
+                                     default_unit_price: p.unit_price,
+                                     default_account_id: p.default_account_id });
                     prodC.setChoices([{value: String(p.id), label: escHtml(p.code) + ': ' + escHtml(p.name), customProperties: {name: p.name}}], 'value', 'label', false);
                     prodC.setChoiceByValue(String(p.id));
                     onProductPick(id, String(p.id));
