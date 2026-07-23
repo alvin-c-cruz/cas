@@ -28,10 +28,11 @@
     <div class="card-header"><div class="card-title">{{ cust.customer_name }}</div></div>
     <div class="card-body">
       {% for so in cust.sales_orders %}
+      {% set badge_map = {'draft': 'draft', 'confirmed': 'posted', 'cancelled': 'cancelled', 'closed': 'paid'} %}
       <div style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border);">
         <div style="display:flex; gap:12px; align-items:center; margin-bottom:8px;">
           <strong><a href="{{ url_for('sales_orders.view', id=so.id) }}">{{ so.so_number }}</a></strong>
-          <span class="badge badge-{{ so.status }}">{{ so.status|capitalize }}</span>
+          <span class="badge badge-{{ badge_map.get(so.status, 'draft') }}">{{ so.status|capitalize }}</span>
           <span style="color:var(--text-2); font-size:12px;">{{ so.order_date.strftime('%b %d, %Y') }}</span>
         </div>
 
