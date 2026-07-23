@@ -29,3 +29,27 @@ def line_variance(line):
     if line.counted_qty is None:
         return None
     return Decimal(line.counted_qty) - Decimal(line.book_qty_snapshot)
+
+
+_AUTO_POST_METHODS = ('moving_average', 'standard')
+
+
+def is_auto_postable_line(product, branch_id, variance):
+    """A line auto-posts only if BOTH: (1) the product's costing method is
+    moving_average/standard (fifo/lifo/specific_identification always route
+    to manual resolution -- see the design doc), AND (2) for a POSITIVE
+    variance on a moving_average product specifically, a real cost basis
+    exists to value the overage at. There is no unit-cost entry field in
+    this slice's count-entry UI, so the only available basis is the
+    product's current average cost; if that balance doesn't exist yet or is
+    <= 0, this line is not postable even though its costing method
+    qualifies. 'standard' is unaffected -- it always values via
+    Product.standard_cost, never the balance average."""
+    method = product.costing_method or 'moving_average'
+    if method not in _AUTO_POST_METHODS:
+        return False
+    if variance > ZERO and method == 'moving_average':
+        bal = StockBalance.query.filter_by(product_id=product.id, branch_id=branch_id).first()
+        if bal is None or Decimal(bal.average_unit_cost) <= ZERO:
+            return False
+    return True
