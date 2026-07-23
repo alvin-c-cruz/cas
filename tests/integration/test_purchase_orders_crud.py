@@ -1,4 +1,5 @@
 import json
+from datetime import date
 import pytest
 
 pytestmark = [pytest.mark.integration]
@@ -141,6 +142,33 @@ def test_list_vendor_filter_narrows_results(client, accountant_user, main_branch
     body = client.get(f'/purchase-orders?vendor={vl_vendor.id}').data.decode('utf-8')
     assert 'PO-VEND-001' in body
     assert 'PO-VEND-002' not in body
+
+
+def test_list_search_matches_number_or_vendor_name(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.vendors.models import Vendor
+    other_vendor = Vendor(code='SEARCH-V', name='UniqueSearchVendorXYZ', tin='555-666-777-000')
+    db_session.add(other_vendor); db_session.commit()
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor, po_number='PO-SEARCH-001')
+    _create(client, other_vendor, po_number='PO-SEARCH-002')
+
+    body = client.get('/purchase-orders?q=UniqueSearchVendorXYZ').data.decode('utf-8')
+    assert 'PO-SEARCH-002' in body
+    assert 'PO-SEARCH-001' not in body
+
+
+def test_list_date_range_filter_narrows_results(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.purchase_orders.models import PurchaseOrder
+    _login(client, accountant_user, main_branch)
+    _create(client, vl_vendor, po_number='PO-DATE-001')
+    po = PurchaseOrder.query.filter_by(po_number='PO-DATE-001').first()
+    po.order_date = date(2026, 1, 15)
+    db_session.commit()
+    _create(client, vl_vendor, po_number='PO-DATE-002')  # _create's default order_date is 2026-07-11
+
+    body = client.get('/purchase-orders?date_from=2026-07-01&date_to=2026-07-31').data.decode('utf-8')
+    assert 'PO-DATE-002' in body
+    assert 'PO-DATE-001' not in body
 
 
 def test_list_badge_reflects_status(client, accountant_user, main_branch, vl_vendor, db_session):

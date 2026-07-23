@@ -143,6 +143,36 @@ def test_list_vendor_filter_narrows_results(client, accountant_user, main_branch
     assert 'RR-VEND-002' not in body
 
 
+def test_list_search_matches_number_or_vendor_name(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.vendors.models import Vendor
+    other_vendor = Vendor(code='RRSEARCH-V', name='UniqueRRSearchVendorXYZ', tin='777-888-999-000')
+    db_session.add(other_vendor); db_session.commit()
+    po1 = _approved_po(db_session, main_branch, vl_vendor, number='PO-RRSEARCH-1')
+    po2 = _approved_po(db_session, main_branch, other_vendor, number='PO-RRSEARCH-2')
+    _login(client, accountant_user, main_branch)
+    _create_rr(client, po1, rr_number='RR-SEARCH-001')
+    _create_rr(client, po2, rr_number='RR-SEARCH-002')
+
+    body = client.get('/receiving-reports?q=UniqueRRSearchVendorXYZ').data.decode('utf-8')
+    assert 'RR-SEARCH-002' in body
+    assert 'RR-SEARCH-001' not in body
+
+
+def test_list_date_range_filter_narrows_results(client, accountant_user, main_branch, vl_vendor, db_session):
+    from app.receiving_reports.models import ReceivingReport
+    po = _approved_po(db_session, main_branch, vl_vendor)
+    _login(client, accountant_user, main_branch)
+    _create_rr(client, po, rr_number='RR-DATE-001')
+    rr = ReceivingReport.query.filter_by(rr_number='RR-DATE-001').first()
+    rr.receipt_date = date(2026, 1, 15)
+    db_session.commit()
+    _create_rr(client, po, received=1, rr_number='RR-DATE-002')  # _create_rr's default receipt_date is 2026-07-11
+
+    body = client.get('/receiving-reports?date_from=2026-07-01&date_to=2026-07-31').data.decode('utf-8')
+    assert 'RR-DATE-002' in body
+    assert 'RR-DATE-001' not in body
+
+
 def test_list_badge_reflects_status(client, accountant_user, main_branch, vl_vendor, db_session):
     from app.receiving_reports.models import ReceivingReport
     po = _approved_po(db_session, main_branch, vl_vendor)
