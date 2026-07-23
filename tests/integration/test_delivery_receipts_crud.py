@@ -51,6 +51,46 @@ def test_create_draft_dr_persists_and_snapshots_customer(client, db_session, adm
     assert dr.dr_number.startswith('DR-')
 
 
+def test_create_form_prefills_generated_dr_number(client, db_session, admin_user, main_branch):
+    """Regression (BUG-DR-NUMBER-NOT-EDITABLE): the create GET must render an editable
+    dr_number field pre-filled with a generated value, mirroring SalesOrderForm.so_number."""
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    body = client.get('/delivery-receipts/create').data.decode('utf-8')
+    assert 'name="dr_number"' in body
+    m = re.search(r'name="dr_number"[^>]*value="([^"]+)"', body)
+    assert m and m.group(1).startswith('DR-')
+
+
+def test_create_dr_accepts_custom_dr_number(client, db_session, admin_user, main_branch):
+    """A submitted dr_number overrides the auto-generated one -- lets legacy/pre-printed
+    document numbers be preserved through the form, same as Sales Order entry does."""
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    lines = json.dumps([{'sales_order_item_id': so.line_items[0].id, 'delivered_quantity': '4'}])
+    client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'lines': lines,
+        'dr_number': '25069'}, follow_redirects=True)
+    dr = DeliveryReceipt.query.filter_by(sales_order_id=so.id).first()
+    assert dr is not None and dr.dr_number == '25069'
+
+
+def test_create_dr_rejects_duplicate_custom_dr_number(client, db_session, admin_user, main_branch):
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    lines = json.dumps([{'sales_order_item_id': so.line_items[0].id, 'delivered_quantity': '2'}])
+    client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'lines': lines,
+        'dr_number': '25069'}, follow_redirects=True)
+    resp = client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'lines': lines,
+        'dr_number': '25069'}, follow_redirects=True)
+    assert b'already exists' in resp.data
+    assert DeliveryReceipt.query.filter_by(dr_number='25069').count() == 1
+
+
 def test_page_title_not_dashboard(client, db_session, admin_user, main_branch):
     """Regression (BUG-DR-LIST-PAGE-TITLE-DASHBOARD): list/detail/form must set their
     own page_title block, not fall through to base.html's default "Dashboard"."""

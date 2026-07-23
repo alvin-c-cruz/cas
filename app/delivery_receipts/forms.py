@@ -1,11 +1,17 @@
 from flask_wtf import FlaskForm
-from wtforms import SelectField, DateField, TextAreaField, HiddenField
-from wtforms.validators import DataRequired, Optional
+from wtforms import SelectField, DateField, TextAreaField, HiddenField, StringField
+from wtforms.validators import DataRequired, Optional, Length
 from app.utils.concurrency import RowVersionFormMixin
 from datetime import date
 
 
 class DeliveryReceiptForm(RowVersionFormMixin, FlaskForm):
+    # Pre-filled with a generated DR-YYYY-MM-#### value on GET (see create()/edit() views),
+    # but overridable -- lets a real/pre-printed legacy DR number be entered instead, same
+    # pattern as SalesOrderForm.so_number. Optional (not DataRequired): a blank submission
+    # falls back to server-side auto-generation, same as before this field existed.
+    dr_number = StringField('DR #', validators=[Optional(), Length(max=50)])
+
     sales_order_id = SelectField('Sales Order', coerce=int, validators=[DataRequired()],
                                  validate_choice=False)
     delivery_date = DateField('Delivery Date', validators=[DataRequired()],

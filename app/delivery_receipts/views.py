@@ -176,9 +176,20 @@ def create():
             return render_template('delivery_receipts/form.html', form=form, dr=None,
                                    eligible=eligible, so_lines=_so_lines_payload(eligible),
                                    existing=_existing_lines(None))
+
+        dr_number = (form.dr_number.data or '').strip()
+        if dr_number:
+            if DeliveryReceipt.query.filter(DeliveryReceipt.dr_number == dr_number).first():
+                flash('Delivery Receipt number already exists.', 'error')
+                return render_template('delivery_receipts/form.html', form=form, dr=None,
+                                       eligible=eligible, so_lines=_so_lines_payload(eligible),
+                                       existing=_existing_lines(None))
+        else:
+            dr_number = generate_dr_number(branch_id)
+
         try:
             dr = DeliveryReceipt(
-                dr_number=generate_dr_number(branch_id), branch_id=branch_id,
+                dr_number=dr_number, branch_id=branch_id,
                 delivery_date=form.delivery_date.data, sales_order_id=so.id,
                 customer_id=so.customer_id, customer_name=so.customer_name,
                 remarks=form.remarks.data or None, status='draft',
@@ -199,6 +210,7 @@ def create():
             db.session.rollback(); flash('An error occurred creating the Delivery Receipt.', 'error')
 
     if request.method == 'GET':
+        form.dr_number.data = generate_dr_number(branch_id)
         form.delivery_date.data = ph_now().date()
         preselect = request.args.get('so', type=int)
         if preselect and any(so.id == preselect for so in eligible):
