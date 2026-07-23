@@ -4,6 +4,7 @@ JE (Dr Inventory / Cr GRNI, net of VAT) for tracked-inventory lines via
 app.receiving_reports.stock_posting.post_rr_receipt -- a no-op for untracked lines.
 The open-qty grid caps received qty at each PO line's OPEN quantity (checked at approve)."""
 import json
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flask import (Blueprint, render_template, redirect, url_for, flash,
@@ -140,18 +141,84 @@ def _rr_or_404(id):
 
 # -- routes --------------------------------------------------------------------
 
-@receiving_reports_bp.route('/receiving-reports')
-@login_required
-def list_rr():
+def _filtered_rr_query(include_ids=False):
+    """Build a branch-scoped ReceivingReport query from request filter args.
+
+    Args read: status, vendor, q, date_from, date_to -- and ids when
+    include_ids=True (exports only); a valid ids list overrides all other
+    filters but stays branch-scoped. Invalid values are ignored.
+    """
     branch_id = session.get('selected_branch_id')
     query = ReceivingReport.query.filter_by(branch_id=branch_id)
+
+    if include_ids:
+        ids_param = request.args.get('ids', '')
+        if ids_param:
+            ids = [int(x) for x in ids_param.split(',') if x.strip().isdigit()]
+            if ids:
+                return query.filter(ReceivingReport.id.in_(ids))
+
     status_filter = request.args.get('status', 'all')
     if status_filter in VALID_RR_STATUSES:
         query = query.filter_by(status=status_filter)
-    receipts = query.order_by(ReceivingReport.receipt_date.desc(),
-                              ReceivingReport.id.desc()).all()
-    return render_template('receiving_reports/list.html', receipts=receipts,
-                           status_filter=status_filter)
+
+    vendor_filter = request.args.get('vendor', 'all')
+    if vendor_filter != 'all':
+        try:
+            query = query.filter_by(vendor_id=int(vendor_filter))
+        except ValueError:
+            pass
+
+    q_text = request.args.get('q', '').strip()
+    if q_text:
+        like = f'%{q_text}%'
+        query = query.filter(db.or_(ReceivingReport.rr_number.ilike(like),
+                                    ReceivingReport.vendor_name.ilike(like)))
+
+    date_from = request.args.get('date_from', '')
+    if date_from:
+        try:
+            query = query.filter(ReceivingReport.receipt_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', '')
+    if date_to:
+        try:
+            query = query.filter(ReceivingReport.receipt_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    return query
+
+
+@receiving_reports_bp.route('/receiving-reports')
+@login_required
+def list_rr():
+    from app.receiving_reports.utils import compute_rr_summary
+    from app.vendors.models import Vendor
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    query = _filtered_rr_query().order_by(ReceivingReport.receipt_date.desc(),
+                                          ReceivingReport.id.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    branch_id = session.get('selected_branch_id')
+    summary = compute_rr_summary(branch_id)
+    vendors = Vendor.query.filter_by(is_active=True).order_by(Vendor.name).all()
+
+    return render_template('receiving_reports/list.html',
+                           rr_list=pagination.items,
+                           pagination=pagination,
+                           vendors=vendors,
+                           summary=summary,
+                           status_filter=request.args.get('status', 'all'),
+                           vendor_filter=request.args.get('vendor', 'all'),
+                           q=request.args.get('q', ''),
+                           date_from=request.args.get('date_from', ''),
+                           date_to=request.args.get('date_to', ''))
 
 
 @receiving_reports_bp.route('/receiving-reports/billable')
