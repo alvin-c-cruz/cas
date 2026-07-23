@@ -755,6 +755,15 @@ def create():
                                        customer_quick_add_form=build_customer_quick_add_form(),
                                        customer_quick_add_whts=_customer_quick_add_whts())
 
+            if current_user.has_full_access:
+                ar_account_id = form.ar_trade_account_id.data
+                wt_account_id = form.creditable_wht_account_id.data
+            else:
+                _default_ar = get_control_account('ar_trade', required=False)
+                _default_wt = get_control_account('creditable_wht', required=False)
+                ar_account_id = _default_ar.id if _default_ar else None
+                wt_account_id = _default_wt.id if _default_wt else None
+
             invoice = SalesInvoice(
                 branch_id=session.get('selected_branch_id'),
                 invoice_number=form.invoice_number.data,
@@ -770,8 +779,8 @@ def create():
                 payment_terms=form.payment_terms.data,
                 reference=form.reference.data,
                 notes=form.notes.data or '',
-                ar_trade_account_id=form.ar_trade_account_id.data,
-                creditable_wht_account_id=form.creditable_wht_account_id.data,
+                ar_trade_account_id=ar_account_id,
+                creditable_wht_account_id=wt_account_id,
                 status='draft',
                 amount_paid=Decimal('0.00'),
                 balance=Decimal('0.00'),
@@ -956,8 +965,9 @@ def edit(id):
             invoice.customer_po_date = form.customer_po_date.data or None
             invoice.payment_terms = form.payment_terms.data
             invoice.reference = form.reference.data
-            invoice.ar_trade_account_id = form.ar_trade_account_id.data
-            invoice.creditable_wht_account_id = form.creditable_wht_account_id.data
+            if current_user.has_full_access:
+                invoice.ar_trade_account_id = form.ar_trade_account_id.data
+                invoice.creditable_wht_account_id = form.creditable_wht_account_id.data
             invoice.salesperson_id = form.salesperson_id.data or None
             invoice.notes = form.notes.data or ''
 

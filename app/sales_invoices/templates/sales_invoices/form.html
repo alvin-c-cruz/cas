@@ -31,8 +31,10 @@
                     {{ render_field(form.customer_po_number) }}
                     {{ render_field(form.customer_po_date) }}
                     {{ render_field(form.reference) }}
+                    {% if current_user.has_full_access %}
                     {{ render_field(form.ar_trade_account_id) }}
                     {{ render_field(form.creditable_wht_account_id) }}
+                    {% endif %}
                     {% if module_enabled('employees') %}{{ render_field(form.salesperson_id) }}{% endif %}
                 </div>
 

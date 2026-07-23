@@ -387,6 +387,17 @@ def assign_control_accounts(session, ar='10201', ap='20101',
     AppSettings.set_setting('wht_payable_account_code', wht_payable, updated_by='test')
 
 
+# Customer Fixtures
+
+@pytest.fixture
+def customer(db_session):
+    """Minimal active Customer for SI customer_id FK."""
+    from app.customers.models import Customer
+    c = Customer(code='CUST-TEST', name='Test Customer', is_active=True)
+    db.session.add(c); db.session.commit()
+    return c
+
+
 # Authentication Helpers
 
 @pytest.fixture
