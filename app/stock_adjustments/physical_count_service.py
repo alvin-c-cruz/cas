@@ -5,7 +5,9 @@ void_adjustment() in service.py. See docs/superpowers/specs/
 2026-07-23-stock-ledger-physical-count-design.md for the full design.
 """
 from decimal import Decimal
+from app import db
 from app.stock_adjustments.models import PhysicalCountLine, StockBalance
+from app.utils import ph_now
 
 ZERO = Decimal('0')
 
@@ -53,3 +55,62 @@ def is_auto_postable_line(product, branch_id, variance):
         if bal is None or Decimal(bal.average_unit_cost) <= ZERO:
             return False
     return True
+
+
+def approve_physical_count(count, actor):
+    """Re-check the CURRENT book quantity per line (not the stale snapshot --
+    see is_auto_postable_line's docstring and the design doc's "Stale
+    counts" section for why), split eligible vs. excluded lines, and
+    auto-post ONE StockAdjustment for eligible nonzero-variance lines.
+    Does not commit -- caller owns the transaction, matching
+    approve_adjustment()'s own contract."""
+    from app.stock_adjustments.models import StockAdjustment, StockAdjustmentLine
+    from app.stock_adjustments.numbering import generate_sa_number
+    from app.stock_adjustments.service import approve_adjustment
+
+    drift_notices = []
+    sa_lines = []
+    for line in count.lines:
+        if line.counted_qty is None:
+            continue
+        product = line.product
+        bal = StockBalance.query.filter_by(product_id=product.id, branch_id=count.branch_id).first()
+        current_qty = Decimal(bal.quantity_on_hand) if bal else ZERO
+        variance = Decimal(line.counted_qty) - current_qty
+
+        if current_qty != Decimal(line.book_qty_snapshot):
+            drift_notices.append(
+                f'{product.code}: book quantity changed from {line.book_qty_snapshot} '
+                f'to {current_qty} since this count was taken.')
+
+        if variance == ZERO:
+            continue
+        if not is_auto_postable_line(product, count.branch_id, variance):
+            continue
+
+        unit_cost = None
+        if variance > ZERO and (product.costing_method or 'moving_average') != 'standard':
+            unit_cost = Decimal(bal.average_unit_cost)
+        sa_lines.append(StockAdjustmentLine(
+            product_id=product.id, quantity_delta=variance, unit_cost=unit_cost,
+            note=f'Physical Count {count.pc_number}'))
+
+    adjustment = None
+    if sa_lines:
+        adjustment = StockAdjustment(
+            sa_number=generate_sa_number(), branch_id=count.branch_id,
+            adjustment_date=count.count_date, reason_type='physical_count',
+            notes=f'Auto-generated from Physical Count {count.pc_number}',
+            status='draft', created_by_id=actor.id)
+        for li in sa_lines:
+            adjustment.lines.append(li)
+        db.session.add(adjustment)
+        db.session.flush()
+        approve_adjustment(adjustment, actor)
+        count.stock_adjustment_id = adjustment.id
+
+    count.status = 'approved'
+    count.approved_by_id = actor.id
+    count.approved_at = ph_now()
+    count._drift_notices = drift_notices   # transient, read by the view for a flash
+    return count, adjustment
