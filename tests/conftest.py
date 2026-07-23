@@ -261,6 +261,25 @@ def product_specific_id(db_session):
     return p
 
 
+@pytest.fixture
+def product_moving_avg(db_session):
+    from app.products.models import Product
+    p = Product(code='STK-MAVG-001', name='Moving Average Tracked Item', track_inventory=True,
+                costing_method='moving_average', standard_cost=None, is_active=True)
+    db.session.add(p); db.session.commit()
+    return p
+
+
+@pytest.fixture
+def product_standard(db_session):
+    from decimal import Decimal
+    from app.products.models import Product
+    p = Product(code='STK-STD-001', name='Standard Costed Item', track_inventory=True,
+                costing_method='standard', standard_cost=Decimal('8.00'), is_active=True)
+    db.session.add(p); db.session.commit()
+    return p
+
+
 # Account Fixtures
 
 @pytest.fixture
@@ -324,6 +343,19 @@ def expense_account(db_session):
     db_session.add(account)
     db_session.commit()
     return account
+
+
+@pytest.fixture
+def control_accounts(db_session, make_account):
+    """Assign the inventory + inventory_adjustment control accounts a Stock
+    Adjustment needs before approve_adjustment() can post -- same codes/
+    pattern as test_stock_adjustment_posting.py's inline _assign(), reused
+    here as a fixture for the physical-count approve-flow tests."""
+    from app.settings import AppSettings
+    make_account('1401')
+    make_account('7101')
+    AppSettings.set_setting('inventory_account_code', '1401', updated_by='test')
+    AppSettings.set_setting('inventory_adjustment_account_code', '7101', updated_by='test')
 
 
 def assign_control_accounts(session, ar='10201', ap='20101',

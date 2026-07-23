@@ -25,7 +25,7 @@
     <div><strong>Status:</strong> <span class="badge badge-{{ adj.status }}">{{ adj.status|capitalize }}</span></div>
     <div><strong>Date:</strong> {{ adj.adjustment_date.strftime('%b %d, %Y') if adj.adjustment_date else '' }}</div>
     <div><strong>Branch:</strong> {{ adj.branch.name if adj.branch else '' }}</div>
-    <div><strong>Reason:</strong> {{ adj.reason_type|capitalize }}</div>
+    <div><strong>Reason:</strong> {{ adj.reason_type.replace('_', ' ')|title }}</div>
     {% if adj.status == 'posted' and adj.journal_entry_id %}
     <div><strong>Journal Entry:</strong>
       <a href="{{ url_for('journal_entries.view', id=adj.journal_entry_id) }}">{{ adj.journal_entry.entry_number if adj.journal_entry else adj.journal_entry_id }}</a>

@@ -13,7 +13,7 @@
     <div><strong>SA #:</strong> {{ adj.sa_number }}</div>
     <div><strong>Date:</strong> {{ adj.adjustment_date.strftime('%b %d, %Y') if adj.adjustment_date else '' }}</div>
     <div><strong>Branch:</strong> {{ adj.branch.name if adj.branch else '' }}</div>
-    <div><strong>Reason:</strong> {{ adj.reason_type|capitalize }}</div>
+    <div><strong>Reason:</strong> {{ adj.reason_type.replace('_', ' ')|title }}</div>
     <div><strong>Status:</strong> {{ adj.status|capitalize }}</div>
   </div>
   {% if adj.notes %}<p><strong>Notes:</strong> {{ adj.notes }}</p>{% endif %}

@@ -1,0 +1,52 @@
+{# app/stock_adjustments/templates/stock_adjustments/physical_count_print.html #}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Physical Count {{ pc.pc_number }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1">
+  <style>
+    body { padding: 2rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+    th.text-right, td.text-right { text-align: right; }
+    .no-print { display: none; }
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body>
+  <h2>{{ company.name }}</h2>
+  <p>{{ company.address }}{% if company.tin %} &middot; TIN: {{ company.tin }}{% endif %}</p>
+  <h3>Physical Count {{ pc.pc_number }}</h3>
+  <p>Branch: {{ pc.branch.name if pc.branch else '' }} &middot;
+     Count Date: {{ pc.count_date.strftime('%b %d, %Y') if pc.count_date else '' }} &middot;
+     Status: {{ pc.status|capitalize }}</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th class="text-right">Book Qty</th>
+        <th class="text-right">Counted Qty</th>
+        <th class="text-right">Variance</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.line.product.code }} - {{ row.line.product.name }}</td>
+        <td class="text-right">{{ '{:,.4f}'.format(row.line.book_qty_snapshot) }}</td>
+        <td class="text-right">
+          {% if pc.status == 'draft' %}______________{% else %}
+          {{ '{:,.4f}'.format(row.line.counted_qty) if row.line.counted_qty is not none else '-' }}
+          {% endif %}
+        </td>
+        <td class="text-right">{{ '{:,.4f}'.format(row.variance) if row.variance is not none else '-' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <p>Printed: {{ printed_at.strftime('%b %d, %Y %I:%M %p') }}</p>
+</body>
+</html>

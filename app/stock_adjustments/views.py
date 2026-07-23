@@ -192,6 +192,12 @@ def create():
                                'lines': len(adj.lines)})
         flash(f'Stock Adjustment {adj.sa_number} saved as draft.', 'success')
         return redirect(url_for('stock_adjustments.view', id=adj.id))
+    if request.method == 'GET':
+        prefill_pid = request.args.get('product_id', type=int)
+        prefill_qty = request.args.get('qty')
+        if prefill_pid is not None and prefill_qty is not None:
+            form.lines.data = json.dumps([
+                {'product_id': prefill_pid, 'quantity_delta': prefill_qty}])
     return _render_form(form, products, None, session.get('selected_branch_id'))
 
 
@@ -361,4 +367,240 @@ def void(id):
         db.session.rollback()
         current_app.logger.error('Error voiding Stock Adjustment', exc_info=True)
         flash('An error occurred while voiding the Stock Adjustment.', 'error')
+    return redirect(view_url)
+
+
+# ─────────────────────────── Physical Count ───────────────────────────
+
+def _pc_or_404(id):
+    """Mirrors _adj_or_404 exactly: fetch by id, scoped to the user's
+    accessible branches, 404 if outside that set."""
+    from app.stock_adjustments.models import PhysicalCount
+    from app.users.utils import get_accessible_branches
+    pc = db.get_or_404(PhysicalCount, id)
+    accessible_ids = {b.id for b in get_accessible_branches(current_user)}
+    if pc.branch_id not in accessible_ids:
+        abort(404)
+    return pc
+
+
+@stock_adjustments_bp.route('/physical-counts')
+@login_required
+def physical_counts_list():
+    blocked = _guard()
+    if blocked:
+        return blocked
+    from app.stock_adjustments.models import PhysicalCount
+    from app.users.utils import get_accessible_branches
+    branch_ids = [b.id for b in get_accessible_branches(current_user)]
+    counts = (PhysicalCount.query.filter(PhysicalCount.branch_id.in_(branch_ids))
+             .order_by(PhysicalCount.id.desc()).all())
+    return render_template('stock_adjustments/physical_count_list.html', counts=counts,
+                           can_manage=_can_manage())
+
+
+@stock_adjustments_bp.route('/physical-counts/create', methods=['GET', 'POST'])
+@login_required
+def physical_counts_create():
+    blocked = _guard()
+    if blocked:
+        return blocked
+    if not _can_manage():
+        flash('You do not have permission to enter physical counts.', 'error')
+        return redirect(url_for('stock_adjustments.physical_counts_list'))
+    from app.stock_adjustments.forms import PhysicalCountForm
+    from app.stock_adjustments.models import PhysicalCount
+    from app.stock_adjustments.numbering import generate_pc_number
+    from app.stock_adjustments.physical_count_service import snapshot_physical_count_lines
+    from app.utils.concurrency import commit_with_renumber_retry
+    from app.audit.utils import log_create
+
+    form = PhysicalCountForm()
+    if form.validate_on_submit():
+        branch_id = session.get('selected_branch_id')
+        products = _tracked_products()
+        pc = PhysicalCount(pc_number=generate_pc_number(), branch_id=branch_id,
+                          count_date=form.count_date.data, notes=form.notes.data or None,
+                          status='draft', created_by_id=current_user.id)
+        snapshot_physical_count_lines(pc, products)
+        db.session.add(pc)
+        commit_with_renumber_retry(pc, 'pc_number', generate_pc_number)
+        log_create(module='stock_adjustments', record_id=pc.id, record_identifier=pc.pc_number,
+                  new_values={'pc_number': pc.pc_number, 'lines': len(pc.lines)})
+        flash(f'Physical Count {pc.pc_number} created with {len(pc.lines)} product(s). '
+             f'Enter counted quantities below.', 'success')
+        return redirect(url_for('stock_adjustments.physical_counts_entry', id=pc.id))
+    return render_template('stock_adjustments/physical_count_create.html', form=form)
+
+
+@stock_adjustments_bp.route('/physical-counts/<int:id>/entry', methods=['GET', 'POST'])
+@login_required
+def physical_counts_entry(id):
+    blocked = _guard()
+    if blocked:
+        return blocked
+    if not _can_manage():
+        flash('You do not have permission to edit physical counts.', 'error')
+        return redirect(url_for('stock_adjustments.physical_counts_list'))
+    from app.stock_adjustments.physical_count_service import line_variance, is_auto_postable_line
+    from app.utils.concurrency import claim_version, submitted_version, conflict_message
+    from app.audit.utils import log_update
+
+    pc = _pc_or_404(id)
+    if pc.status != 'draft':
+        # `physical_counts_view` is Task 10's route -- not yet defined on this
+        # branch. Building this url_for() unconditionally (as the Task 9 brief's
+        # draft did) raises BuildError on every call to this view, including the
+        # draft-status happy path that has nothing to do with Task 10. Deferred
+        # here so it's only evaluated on the branch that actually needs it; this
+        # specific redirect remains unreachable until Task 10 adds the endpoint
+        # (see tests/integration/test_physical_count_views_create.py::
+        # test_entry_blocked_once_approved, expected-failing on BuildError until
+        # then, analogous to the TemplateNotFound surface Task 11 resolves).
+        flash('Only a draft Physical Count can be edited.', 'error')
+        return redirect(url_for('stock_adjustments.physical_counts_view', id=pc.id))
+
+    if request.method == 'POST':
+        if not claim_version(type(pc), pc.id, submitted_version()):
+            db.session.rollback()
+            flash(conflict_message('stock_adjustments', pc.id), 'error')
+            return redirect(url_for('stock_adjustments.physical_counts_entry', id=pc.id))
+        for line in pc.lines:
+            raw = request.form.get(f'counted_qty_{line.id}')
+            if raw is None or raw.strip() == '':
+                line.counted_qty = None
+                continue
+            try:
+                line.counted_qty = Decimal(raw)
+            except InvalidOperation:
+                db.session.rollback()
+                flash(f'Invalid counted quantity for {line.product.code}.', 'error')
+                return redirect(url_for('stock_adjustments.physical_counts_entry', id=pc.id))
+        db.session.commit()
+        log_update(module='stock_adjustments', record_id=pc.id, record_identifier=pc.pc_number,
+                  old_values={}, new_values={'lines_counted':
+                                            sum(1 for li in pc.lines if li.counted_qty is not None)})
+        flash(f'Physical Count {pc.pc_number} saved.', 'success')
+        return redirect(url_for('stock_adjustments.physical_counts_entry', id=pc.id))
+
+    rows = [{'line': li, 'variance': line_variance(li),
+            'auto_postable': is_auto_postable_line(
+                li.product, pc.branch_id, line_variance(li) or Decimal('0'))}
+           for li in pc.lines]
+    return render_template('stock_adjustments/physical_count_entry.html', pc=pc, rows=rows)
+
+
+@stock_adjustments_bp.route('/physical-counts/<int:id>')
+@login_required
+def physical_counts_view(id):
+    blocked = _guard()
+    if blocked:
+        return blocked
+    from app.stock_adjustments.physical_count_service import line_variance, is_auto_postable_line
+    pc = _pc_or_404(id)
+    rows = [{'line': li, 'variance': line_variance(li),
+            'auto_postable': is_auto_postable_line(
+                li.product, pc.branch_id, line_variance(li) or Decimal('0'))}
+           for li in pc.lines]
+    can_approve = pc.status == 'draft' and pc.can_be_approved_by(current_user.username)
+    return render_template('stock_adjustments/physical_count_view.html', pc=pc, rows=rows,
+                           can_manage=_can_manage(), can_approve=can_approve)
+
+
+@stock_adjustments_bp.route('/physical-counts/<int:id>/print')
+@login_required
+def physical_counts_print(id):
+    blocked = _guard()
+    if blocked:
+        return blocked
+    from app.settings import AppSettings
+    from app.utils import ph_now
+    from app.stock_adjustments.physical_count_service import line_variance
+    pc = _pc_or_404(id)
+    rows = [{'line': li, 'variance': line_variance(li)} for li in pc.lines]
+    company = {'name': AppSettings.get_setting('company_name', ''),
+              'address': AppSettings.get_setting('company_address', ''),
+              'tin': AppSettings.get_setting('company_tin', '')}
+    return render_template('stock_adjustments/physical_count_print.html', pc=pc, rows=rows,
+                           company=company, printed_at=ph_now())
+
+
+@stock_adjustments_bp.route('/physical-counts/<int:id>/approve', methods=['POST'])
+@login_required
+def physical_counts_approve(id):
+    blocked = _guard()
+    if blocked:
+        return blocked
+    from app.stock_adjustments.physical_count_service import approve_physical_count
+    from app.posting.control_accounts import ControlAccountError
+    from app.audit.utils import log_audit
+
+    pc = _pc_or_404(id)
+    view_url = url_for('stock_adjustments.physical_counts_view', id=pc.id)
+    if not _can_manage():
+        flash('You do not have permission to approve physical counts.', 'error')
+        return redirect(view_url)
+    if pc.status != 'draft':
+        flash('Only a draft Physical Count can be approved.', 'error')
+        return redirect(view_url)
+    if not pc.can_be_approved_by(current_user.username):
+        flash('You cannot approve your own physical count -- a different '
+             'accountant or admin must approve it.', 'error')
+        return redirect(view_url)
+    try:
+        count, adjustment = approve_physical_count(pc, current_user)
+        db.session.commit()
+        log_audit(module='stock_adjustments', action='approve', record_id=pc.id,
+                  record_identifier=pc.pc_number,
+                  notes=(f'Approved; posted {adjustment.sa_number}' if adjustment
+                        else 'Approved; no eligible variance to post'))
+        if adjustment:
+            flash(f'Physical Count {pc.pc_number} approved -- posted Stock Adjustment '
+                 f'{adjustment.sa_number}.', 'success')
+        else:
+            flash(f'Physical Count {pc.pc_number} approved -- no variance required posting.',
+                 'success')
+        for notice in (getattr(count, '_drift_notices', None) or []):
+            flash(notice, 'warning')
+    except (ValueError, ControlAccountError) as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception:
+        db.session.rollback()
+        current_app.logger.error('Error approving Physical Count', exc_info=True)
+        flash('An error occurred while approving the Physical Count.', 'error')
+    return redirect(view_url)
+
+
+@stock_adjustments_bp.route('/physical-counts/<int:id>/void', methods=['POST'])
+@login_required
+def physical_counts_void(id):
+    blocked = _guard()
+    if blocked:
+        return blocked
+    from app.stock_adjustments.physical_count_service import void_physical_count
+    from app.posting.control_accounts import ControlAccountError
+    from app.audit.utils import log_audit
+
+    pc = _pc_or_404(id)
+    view_url = url_for('stock_adjustments.physical_counts_view', id=pc.id)
+    if not _can_manage():
+        flash('You do not have permission to void physical counts.', 'error')
+        return redirect(view_url)
+    if pc.status != 'approved':
+        flash('Only an approved Physical Count can be voided.', 'error')
+        return redirect(view_url)
+    try:
+        void_physical_count(pc, current_user)
+        db.session.commit()
+        log_audit(module='stock_adjustments', action='void', record_id=pc.id,
+                  record_identifier=pc.pc_number, notes='Voided')
+        flash(f'Physical Count {pc.pc_number} voided.', 'warning')
+    except (ValueError, ControlAccountError) as e:
+        db.session.rollback()
+        flash(str(e), 'error')
+    except Exception:
+        db.session.rollback()
+        current_app.logger.error('Error voiding Physical Count', exc_info=True)
+        flash('An error occurred while voiding the Physical Count.', 'error')
     return redirect(view_url)
