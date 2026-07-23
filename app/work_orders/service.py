@@ -80,9 +80,10 @@ def issue_material(wo_material, quantity, actor):
         wo.status = 'in_progress'
 
 
-def _new_je(entry_number, entry_date, description, reference, branch_id, actor):
+def _new_je(entry_number, entry_date, description, reference, branch_id, actor,
+           entry_type='manufacturing_consumption'):
     je = JournalEntry(entry_number=entry_number, entry_date=entry_date, description=description,
-                      reference=reference, entry_type='manufacturing_consumption', branch_id=branch_id,
+                      reference=reference, entry_type=entry_type, branch_id=branch_id,
                       created_by_id=actor.id, status='posted', posted_by_id=actor.id,
                       posted_at=ph_now(), is_balanced=False, total_debit=ZERO, total_credit=ZERO)
     db.session.add(je); db.session.flush()
@@ -176,7 +177,8 @@ def complete_work_order_batch(wo, batch_qty, actor):
     labor_account = get_control_account('labor_applied')
 
     je = _new_je(generate_entry_number(wo.branch_id), ph_now().date(),
-                 f'Work Order {wo.wo_number} completion', wo.wo_number, wo.branch_id, actor)
+                 f'Work Order {wo.wo_number} completion', wo.wo_number, wo.branch_id, actor,
+                 entry_type='manufacturing_production')
 
     mv, _went_negative = post_movement(
         product, wo.branch_id, 'production', batch_qty, wo.actual_unit_cost,
@@ -243,7 +245,8 @@ def force_close_work_order(wo, note, actor):
     variance_account = get_control_account('inventory_variance')
 
     je = _new_je(generate_entry_number(wo.branch_id), ph_now().date(),
-                 f'Force Close Work Order {wo.wo_number}', wo.wo_number, wo.branch_id, actor)
+                 f'Force Close Work Order {wo.wo_number}', wo.wo_number, wo.branch_id, actor,
+                 entry_type='manufacturing_production')
 
     variance_amount = (remaining_qty * wo.actual_unit_cost).quantize(Decimal('0.01'))
     material_amount = (remaining_qty * material_unit_cost).quantize(Decimal('0.01'))
