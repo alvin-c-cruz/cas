@@ -41,6 +41,10 @@
       });
     });
     sourceDrIds.push(dr.id);
+    var poEl = document.getElementById('customer_po_number');
+    if (poEl && !poEl.value && dr.customer_po_number) {
+      poEl.value = dr.customer_po_number;
+    }
     sync();
     pulled = true;
     if (rowEl) { rowEl.remove(); }
@@ -64,8 +68,10 @@
     drs.forEach(function (dr) {
       var tr = document.createElement('tr');
       var td1 = document.createElement('td');
-      td1.textContent = dr.dr_number + '  (' + (dr.delivery_date || '') + ', ' +
-                        (dr.lines || []).length + ' line/s)';
+      var lineNames = (dr.lines || []).map(function (ln) { return ln.product_name || 'Item'; }).join(', ');
+      var poText = dr.customer_po_number ? ('PO ' + dr.customer_po_number + ' — ') : '';
+      td1.textContent = dr.dr_number + '  (' + (dr.delivery_date || '') + ') — ' +
+                        poText + lineNames;
       tr.appendChild(td1);
       var td2 = document.createElement('td');
       td2.style.textAlign = 'right';

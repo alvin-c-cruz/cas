@@ -619,6 +619,7 @@ def billable_drs():
             })
         out.append({'id': dr.id, 'dr_number': dr.dr_number,
                     'delivery_date': dr.delivery_date.isoformat() if dr.delivery_date else None,
+                    'customer_po_number': dr.sales_order.customer_po_number if dr.sales_order else None,
                     'lines': lines})
     return jsonify({'consolidate': _si_billing_consolidate(), 'drs': out})
 
