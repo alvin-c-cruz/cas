@@ -4,7 +4,7 @@ from app.stock_adjustments.models import StockAdjustment, StockAdjustmentLine, R
 from app.stock_adjustments.numbering import generate_sa_number
 
 def test_reason_types():
-    assert set(REASON_TYPES) == {'correction', 'opening'}
+    assert set(REASON_TYPES) == {'correction', 'opening', 'physical_count'}
 
 def test_sa_number_format(db_session):
     n = generate_sa_number()
