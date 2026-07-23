@@ -114,3 +114,18 @@ def approve_physical_count(count, actor):
     count.approved_at = ph_now()
     count._drift_notices = drift_notices   # transient, read by the view for a flash
     return count, adjustment
+
+
+def void_physical_count(count, actor):
+    """Void the linked StockAdjustment (if any) via the EXISTING
+    void_adjustment() -- reuses its reversing-JE-plus-reversed-movements
+    logic exactly, no new reversal mechanism -- then flip this count's own
+    status. A count whose only variances were excluded-costing-method lines
+    (no linked adjustment) can still be voided as a plain record
+    correction. Does not commit."""
+    from app.stock_adjustments.service import void_adjustment
+
+    if count.stock_adjustment_id is not None:
+        void_adjustment(count.stock_adjustment, actor)
+    count.status = 'voided'
+    return count
