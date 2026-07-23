@@ -362,3 +362,123 @@ def void(id):
         current_app.logger.error('Error voiding Stock Adjustment', exc_info=True)
         flash('An error occurred while voiding the Stock Adjustment.', 'error')
     return redirect(view_url)
+
+
+# ─────────────────────────── Physical Count ───────────────────────────
+
+def _pc_or_404(id):
+    """Mirrors _adj_or_404 exactly: fetch by id, scoped to the user's
+    accessible branches, 404 if outside that set."""
+    from app.stock_adjustments.models import PhysicalCount
+    from app.users.utils import get_accessible_branches
+    pc = db.get_or_404(PhysicalCount, id)
+    accessible_ids = {b.id for b in get_accessible_branches(current_user)}
+    if pc.branch_id not in accessible_ids:
+        abort(404)
+    return pc
+
+
+@stock_adjustments_bp.route('/physical-counts')
+@login_required
+def physical_counts_list():
+    blocked = _guard()
+    if blocked:
+        return blocked
+    from app.stock_adjustments.models import PhysicalCount
+    from app.users.utils import get_accessible_branches
+    branch_ids = [b.id for b in get_accessible_branches(current_user)]
+    counts = (PhysicalCount.query.filter(PhysicalCount.branch_id.in_(branch_ids))
+             .order_by(PhysicalCount.id.desc()).all())
+    return render_template('stock_adjustments/physical_count_list.html', counts=counts,
+                           can_manage=_can_manage())
+
+
+@stock_adjustments_bp.route('/physical-counts/create', methods=['GET', 'POST'])
+@login_required
+def physical_counts_create():
+    blocked = _guard()
+    if blocked:
+        return blocked
+    if not _can_manage():
+        flash('You do not have permission to enter physical counts.', 'error')
+        return redirect(url_for('stock_adjustments.physical_counts_list'))
+    from app.stock_adjustments.forms import PhysicalCountForm
+    from app.stock_adjustments.models import PhysicalCount
+    from app.stock_adjustments.numbering import generate_pc_number
+    from app.stock_adjustments.physical_count_service import snapshot_physical_count_lines
+    from app.utils.concurrency import commit_with_renumber_retry
+    from app.audit.utils import log_create
+
+    form = PhysicalCountForm()
+    if form.validate_on_submit():
+        branch_id = session.get('selected_branch_id')
+        products = _tracked_products()
+        pc = PhysicalCount(pc_number=generate_pc_number(), branch_id=branch_id,
+                          count_date=form.count_date.data, notes=form.notes.data or None,
+                          status='draft', created_by_id=current_user.id)
+        snapshot_physical_count_lines(pc, products)
+        db.session.add(pc)
+        commit_with_renumber_retry(pc, 'pc_number', generate_pc_number)
+        log_create(module='stock_adjustments', record_id=pc.id, record_identifier=pc.pc_number,
+                  new_values={'pc_number': pc.pc_number, 'lines': len(pc.lines)})
+        flash(f'Physical Count {pc.pc_number} created with {len(pc.lines)} product(s). '
+             f'Enter counted quantities below.', 'success')
+        return redirect(url_for('stock_adjustments.physical_counts_entry', id=pc.id))
+    return render_template('stock_adjustments/physical_count_create.html', form=form)
+
+
+@stock_adjustments_bp.route('/physical-counts/<int:id>/entry', methods=['GET', 'POST'])
+@login_required
+def physical_counts_entry(id):
+    blocked = _guard()
+    if blocked:
+        return blocked
+    if not _can_manage():
+        flash('You do not have permission to edit physical counts.', 'error')
+        return redirect(url_for('stock_adjustments.physical_counts_list'))
+    from app.stock_adjustments.physical_count_service import line_variance, is_auto_postable_line
+    from app.utils.concurrency import claim_version, submitted_version, conflict_message
+    from app.audit.utils import log_update
+
+    pc = _pc_or_404(id)
+    if pc.status != 'draft':
+        # `physical_counts_view` is Task 10's route -- not yet defined on this
+        # branch. Building this url_for() unconditionally (as the Task 9 brief's
+        # draft did) raises BuildError on every call to this view, including the
+        # draft-status happy path that has nothing to do with Task 10. Deferred
+        # here so it's only evaluated on the branch that actually needs it; this
+        # specific redirect remains unreachable until Task 10 adds the endpoint
+        # (see tests/integration/test_physical_count_views_create.py::
+        # test_entry_blocked_once_approved, expected-failing on BuildError until
+        # then, analogous to the TemplateNotFound surface Task 11 resolves).
+        flash('Only a draft Physical Count can be edited.', 'error')
+        return redirect(url_for('stock_adjustments.physical_counts_view', id=pc.id))
+
+    if request.method == 'POST':
+        if not claim_version(type(pc), pc.id, submitted_version()):
+            db.session.rollback()
+            flash(conflict_message('stock_adjustments', pc.id), 'error')
+            return redirect(url_for('stock_adjustments.physical_counts_entry', id=pc.id))
+        for line in pc.lines:
+            raw = request.form.get(f'counted_qty_{line.id}')
+            if raw is None or raw.strip() == '':
+                line.counted_qty = None
+                continue
+            try:
+                line.counted_qty = Decimal(raw)
+            except InvalidOperation:
+                db.session.rollback()
+                flash(f'Invalid counted quantity for {line.product.code}.', 'error')
+                return redirect(url_for('stock_adjustments.physical_counts_entry', id=pc.id))
+        db.session.commit()
+        log_update(module='stock_adjustments', record_id=pc.id, record_identifier=pc.pc_number,
+                  old_values={}, new_values={'lines_counted':
+                                            sum(1 for li in pc.lines if li.counted_qty is not None)})
+        flash(f'Physical Count {pc.pc_number} saved.', 'success')
+        return redirect(url_for('stock_adjustments.physical_counts_entry', id=pc.id))
+
+    rows = [{'line': li, 'variance': line_variance(li),
+            'auto_postable': is_auto_postable_line(
+                li.product, pc.branch_id, line_variance(li) or Decimal('0'))}
+           for li in pc.lines]
+    return render_template('stock_adjustments/physical_count_entry.html', pc=pc, rows=rows)
