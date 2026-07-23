@@ -293,7 +293,7 @@ function addLineItem(existingItem) {
             </select></td>
         <td><input type="text" id="qty-${id}" class="form-control"
                    style="text-align:right;"
-                   value="${item.quantity != null ? soQtyFmt(item.quantity, currentUomCode(${id})) : ''}"
+                   value="${item.quantity != null ? soQtyFmt(item.quantity, currentUomCode(id)) : ''}"
                    onfocus="soQtyFocus(this)" onblur="soQtyBlur(this, ${id})"></td>
         ${uomMasterOn ? `
         <td><select class="form-control" id="uom-sel-${id}" onchange="onUomPick(${id}, this.value)">
