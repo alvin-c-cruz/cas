@@ -7,10 +7,11 @@ from decimal import Decimal
 from app import db
 from app.utils import ph_now
 from app.bill_of_materials.service import consume_materials
-from app.work_orders.models import WorkOrderMaterial, WorkOrderOperation
+from app.work_orders.models import WorkOrderMaterial, WorkOrderOperation, WorkOrderCompletion
 from app.journal_entries.models import JournalEntry, JournalEntryLine
 from app.journal_entries.utils import generate_entry_number
-from app.stock_adjustments.service import reverse_document_movements
+from app.stock_adjustments.service import reverse_document_movements, post_movement
+from app.posting.control_accounts import get_control_account
 
 ZERO = Decimal('0.00')
 
@@ -91,6 +92,61 @@ def _new_je(entry_number, entry_date, description, reference, branch_id, actor):
 def _add_line(je, n, account_id, description, debit, credit):
     db.session.add(JournalEntryLine(entry_id=je.id, line_number=n, account_id=account_id,
                                     description=description, debit_amount=debit, credit_amount=credit))
+
+
+def _check_all_operations_complete(wo):
+    outstanding = [op.operation_name for op in wo.operations if op.status != 'complete']
+    if outstanding:
+        raise ValueError(
+            'All operations must be complete before this Work Order can be completed -- '
+            f'still outstanding: {", ".join(outstanding)}.')
+
+
+def _materials_in_wip_total(wo, wip_account_id):
+    """Sum of every manufacturing_consumption JE's WIP debit lines posted for
+    this Work Order -- the REAL, actual material cost issued so far (D3's
+    issue_material -> consume_materials chain), not a planned/BOM figure."""
+    originals = (JournalEntry.query
+                .filter_by(entry_type='manufacturing_consumption', reference=wo.wo_number)
+                .all())
+    total = ZERO
+    for je in originals:
+        for line in je.lines:
+            if line.account_id == wip_account_id:
+                total += Decimal(line.debit_amount)
+    return total
+
+
+def _labor_total_cost(wo):
+    """Sum of actual_minutes/60 x hourly_rate across every operation --
+    fully deterministic once all operations are complete (actual_minutes
+    never changes after complete_operation() sets it once), so safe to
+    recompute on every call. Raises if any operation's work center has no
+    hourly rate assigned -- fail closed rather than silently costing labor
+    at zero."""
+    total = ZERO
+    for op in wo.operations:
+        if op.work_center.hourly_rate is None:
+            raise ValueError(
+                f'Work Center "{op.work_center.code}" has no hourly rate assigned -- '
+                f'set one before completing this Work Order.')
+        total += (Decimal(op.actual_minutes) / Decimal('60')) * Decimal(op.work_center.hourly_rate)
+    return total.quantize(Decimal('0.01'))
+
+
+def _ensure_actual_unit_cost(wo):
+    """Compute + freeze WorkOrder.actual_unit_cost the first time all
+    operations are complete. A no-op once already set -- every batch after
+    the first reuses the SAME frozen figure, so cost-per-unit never drifts
+    between batches of the same job. Does NOT commit."""
+    _check_all_operations_complete(wo)
+    if wo.actual_unit_cost is not None:
+        return
+    wip_account = get_control_account('wip')
+    materials_total = _materials_in_wip_total(wo, wip_account.id)
+    labor_total = _labor_total_cost(wo)
+    total_actual_cost = materials_total + labor_total
+    wo.actual_unit_cost = (total_actual_cost / wo.qty_to_produce).quantize(Decimal('0.01'))
 
 
 def reverse_consumption(wo, actor):
