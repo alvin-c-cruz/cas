@@ -60,3 +60,38 @@ def test_lots_report_export_excel(client, db_session, admin_user, branch_main, p
     resp = client.get(f'/reports/specific-id-lots/export/excel?product_id={product_specific_id.id}&branch_id={branch_main.id}')
     assert resp.status_code == 200
     assert resp.mimetype == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+def test_lots_report_reference_fallback_matches_screen_and_export(
+        client, db_session, admin_user, branch_main, product_specific_id):
+    # Reviewer finding: a lot with no lot_reference showed a bare '--' on screen but the
+    # received date in the Excel export -- the same lot rendered two different things on its
+    # two surfaces. Both must now show the same received-date fallback (matching the approved
+    # mockup), proving the screen route and the export route agree for the SAME data.
+    import io
+    from openpyxl import load_workbook
+    from app.stock_adjustments.models import StockLot
+    _enable_stock_adjustments()
+    lot = StockLot(product_id=product_specific_id.id, branch_id=branch_main.id,
+                   original_qty=D('6'), remaining_qty=D('6'), unit_cost=D('5.25'),
+                   received_at=datetime(2026, 3, 14), lot_reference=None)
+    db.session.add(lot); db.session.commit()
+    expected_fallback = '2026-03-14'
+
+    _login(client, admin_user, branch_main)
+
+    screen_resp = client.get(
+        f'/reports/specific-id-lots?product_id={product_specific_id.id}&branch_id={branch_main.id}')
+    assert screen_resp.status_code == 200
+    # The received date must appear TWICE on screen (Reference column fallback + Received
+    # Date column) -- not once, with a bare em-dash standing in for the missing reference.
+    assert screen_resp.data.count(expected_fallback.encode()) == 2
+    assert '<td>—</td>'.encode() not in screen_resp.data
+
+    export_resp = client.get(
+        f'/reports/specific-id-lots/export/excel?product_id={product_specific_id.id}&branch_id={branch_main.id}')
+    assert export_resp.status_code == 200
+    wb = load_workbook(io.BytesIO(export_resp.get_data()))
+    ws = wb.active
+    cell_values = [str(c.value) for row in ws.iter_rows() for c in row if c.value is not None]
+    assert expected_fallback in cell_values

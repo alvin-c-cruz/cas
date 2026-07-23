@@ -55,7 +55,7 @@
             <tbody>
                 {% for lot in lots %}
                 <tr class="{{ 'fifo-layer-drained' if lot.remaining_qty == 0 else '' }}">
-                  <td>{{ lot.lot_reference or '—' }}</td>
+                  <td>{% if lot.lot_reference %}{{ lot.lot_reference }}{% else %}<span class="text-muted">{{ lot.received_at.strftime('%Y-%m-%d') if lot.received_at else '—' }}</span>{% endif %}</td>
                   <td>{{ lot.received_at.strftime('%Y-%m-%d') if lot.received_at else '—' }}</td>
                   <td class="num">{{ '%.4f'|format(lot.remaining_qty) }}{% if lot.remaining_qty == 0 %} <span class="badge badge-drained">drained</span>{% endif %}</td>
                   <td class="num">₱{{ '%.2f'|format(lot.unit_cost) }}</td>
@@ -83,6 +83,7 @@
         {% if lots %}
         <div class="legend">
             <div class="legend-item"><span class="legend-swatch legend-swatch-drained"></span> Drained lot (remaining = 0, kept for audit trail)</div>
+            <div class="legend-item"><span class="legend-swatch" style="background: var(--text-3);"></span> No reference on file — showing received date instead</div>
         </div>
         {% endif %}
     </div>
