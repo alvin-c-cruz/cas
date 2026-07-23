@@ -193,7 +193,7 @@
 </div>
 {% endif %}
 
-{% if wo.status in ('draft', 'released') %}
+{% if wo.status in ('draft', 'released', 'in_progress') and wo.qty_completed_to_date == 0 %}
 <div id="cancelPanel" class="card" style="display:none; margin-top:20px; max-width:480px;">
     <div class="card-body">
         <h3 style="margin-bottom:12px;">Cancel Work Order</h3>
