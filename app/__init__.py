@@ -274,7 +274,8 @@ def create_app(config_name=None):
     from app.work_orders.models import WorkOrder, WorkOrderMaterial, WorkOrderOperation  # noqa: F401
     from app.stock_adjustments.models import (StockMovement, StockBalance, StockAdjustment,
                                                StockAdjustmentLine, StockCostLayer,
-                                               StockLayerConsumption)  # noqa: F401
+                                               StockLayerConsumption, StockLot,
+                                               StockLotConsumption)  # noqa: F401
 
     # Register blueprints
     from app.dashboard.views import dashboard_bp

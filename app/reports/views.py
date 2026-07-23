@@ -1904,6 +1904,71 @@ def fifo_layers_export_excel():
                            title=f'FIFO Layers — {product.name}' if product else 'FIFO Layers')
 
 
+def _specific_id_lots(product_id, branch_id=None):
+    """(products, lots) -- shared query for the screen/export variants of
+    the Specific-ID Lots on Hand report. products is filtered to
+    specific-identification-costed tracked products only."""
+    from app.stock_adjustments.models import StockLot
+    from app.products.models import Product
+    from app.users.utils import get_accessible_branches
+    accessible_branches = get_accessible_branches(current_user)
+    branch_ids = [b.id for b in accessible_branches]
+    if branch_id is not None and branch_id in branch_ids:
+        branch_ids = [branch_id]
+    products = Product.query.filter_by(is_active=True, track_inventory=True,
+                                       costing_method='specific_identification').order_by(Product.code).all()
+    lots = []
+    if product_id and branch_ids:
+        lots = (StockLot.query
+               .filter(StockLot.product_id == product_id,
+                       StockLot.branch_id.in_(branch_ids))
+               .order_by(StockLot.received_at, StockLot.id).all())
+    return products, lots
+
+
+@reports_bp.route('/reports/specific-id-lots')
+@login_required
+def specific_id_lots():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.users.utils import get_accessible_branches
+    from app.utils import ph_now
+    product_id = request.args.get('product_id', type=int)
+    branch_id = request.args.get('branch_id', type=int)
+    products, lots = _specific_id_lots(product_id, branch_id)
+    return render_template('reports/specific_id_lots.html', products=products,
+                           product_id=product_id, branch_id=branch_id,
+                           branches=get_accessible_branches(current_user), lots=lots,
+                           today=ph_now().date())
+
+
+@reports_bp.route('/reports/specific-id-lots/export/excel')
+@login_required
+def specific_id_lots_export_excel():
+    from app.users.module_access import module_enabled
+    if not module_enabled('stock_adjustments'):
+        flash('The Stock Adjustments module is not enabled.', 'error')
+        return redirect(url_for('dashboard.index'))
+    from app.utils.export import export_to_excel
+    product_id = request.args.get('product_id', type=int)
+    branch_id = request.args.get('branch_id', type=int)
+    products, lots = _specific_id_lots(product_id, branch_id)
+    product = next((p for p in products if p.id == product_id), None)
+    rows = [{
+        'reference': (l.lot_reference or l.received_at.strftime('%Y-%m-%d')),
+        'received_at': l.received_at.strftime('%Y-%m-%d') if l.received_at else '',
+        'remaining_qty': l.remaining_qty, 'unit_cost': l.unit_cost,
+        'value': (l.remaining_qty * l.unit_cost),
+    } for l in lots]
+    columns = ['reference', 'received_at', 'remaining_qty', 'unit_cost', 'value']
+    headers = ['Reference', 'Received', 'Remaining Qty', 'Unit Cost', 'Value']
+    filename = f'Specific_ID_Lots_{product.code if product else "all"}.xlsx'
+    return export_to_excel(rows, columns, headers, filename,
+                           title=f'Specific-ID Lots on Hand — {product.name}' if product else 'Specific-ID Lots on Hand')
+
+
 def _lifo_products():
     """LIFO-costed, active, tracked products -- shared across all three routes below."""
     from app.products.models import Product
