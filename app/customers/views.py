@@ -67,11 +67,11 @@ def build_customer_quick_add_form():
 # Adding a Customer column means editing this one list, not 6 scattered literals.
 CUSTOMER_FIELDS = ['code', 'name', 'contact_person', 'phone', 'email', 'tin',
                    'payment_terms', 'address', 'postal_code', 'default_vat_category',
-                   'default_wt_code', 'withholding_taxes_str', 'is_active']
+                   'default_wt_code', 'default_salesperson_id', 'withholding_taxes_str', 'is_active']
 
 CUSTOMER_EXPORT_HEADERS = ['Customer Code', 'Customer Name', 'Contact Person', 'Phone',
                            'Email', 'TIN', 'Payment Terms', 'Address', 'Postal Code',
-                           'VAT Category', 'WT Code', 'WT Codes', 'Active']
+                           'VAT Category', 'WT Code', 'Default Salesperson', 'WT Codes', 'Active']
 
 
 def _customer_export_rows(customers):
@@ -88,6 +88,7 @@ def _customer_export_rows(customers):
         'postal_code': c.postal_code or '',
         'default_vat_category': c.default_vat_category or '',
         'default_wt_code': c.default_wt_code or '',
+        'default_salesperson_id': c.default_salesperson.full_name if c.default_salesperson else '',
         'withholding_taxes_str': ', '.join(w.code for w in c.withholding_taxes),
         'is_active': 'Yes' if c.is_active else 'No',
     } for c in customers]
@@ -143,6 +144,15 @@ def populate_dropdown_choices(form):
     wt_choices = [('', '-- Select --')]
     wt_choices.extend([(wt.code, f'{wt_label(wt.to_dict(), "sales")} ({wt.rate}%)') for wt in wt_codes])
     form.default_wt_code.choices = wt_choices
+
+    # Default Salesperson (app-wide -- Customer itself isn't branch-scoped)
+    from app.employees.models import Employee
+    salespeople = (Employee.query.filter_by(is_active=True, is_salesperson=True)
+                  .order_by(Employee.last_name, Employee.first_name).all())
+    sp_choices = [('', '-- None --')]
+    sp_choices.extend([(str(e.id), f'{e.employee_no} - {e.full_name} ({e.branch.name if e.branch else "—"})')
+                       for e in salespeople])
+    form.default_salesperson_id.choices = sp_choices
 
 
 def _collections_by_invoice(invoice_ids):
@@ -265,6 +275,8 @@ def create():
                 postal_code=form.postal_code.data,
                 default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
                 default_wt_code=form.default_wt_code.data if form.default_wt_code.data else None,
+                default_salesperson_id=(int(form.default_salesperson_id.data)
+                                        if form.default_salesperson_id.data else None),
                 is_active=bool(int(form.is_active.data)) if form.is_active.data else True,
                 po_required=bool(form.po_required.data),
                 created_by_id=current_user.id,
@@ -359,6 +371,8 @@ def edit(id):
             customer.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
             # default_wt_code is legacy (the WHT multi-select is the source of truth now);
             # the form no longer exposes its picker, so preserve any existing value here.
+            customer.default_salesperson_id = (int(form.default_salesperson_id.data)
+                                               if form.default_salesperson_id.data else None)
             customer.is_active = bool(int(form.is_active.data))
             customer.po_required = bool(form.po_required.data)
             customer.updated_by_id = current_user.id
@@ -405,6 +419,8 @@ def edit(id):
         form.postal_code.data = customer.postal_code
         form.default_vat_category.data = customer.default_vat_category
         form.default_wt_code.data = customer.default_wt_code
+        form.default_salesperson_id.data = (str(customer.default_salesperson_id)
+                                            if customer.default_salesperson_id else '')
         form.is_active.data = '1' if customer.is_active else '0'
 
     withholding_taxes = WithholdingTax.query.filter_by(is_active=True).order_by(WithholdingTax.code).all()
@@ -569,4 +585,5 @@ def customer_defaults(id):
         'last_account_id': last_item.account_id if last_item else None,
         'last_cash_account_id': last_crv.cash_account_id if last_crv else None,
         'last_revenue_account_id': last_rev_line.account_id if last_rev_line else None,
+        'default_salesperson_id': customer.default_salesperson_id,
     })

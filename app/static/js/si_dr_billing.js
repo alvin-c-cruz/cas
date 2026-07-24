@@ -46,6 +46,7 @@
       poEl.value = dr.customer_po_number;
     }
     sync();
+    if (typeof window.refreshNotesAutofill === 'function') { window.refreshNotesAutofill(); }
     pulled = true;
     if (rowEl) { rowEl.remove(); }
     if (!consolidate) {

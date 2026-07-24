@@ -8,7 +8,8 @@ from app.accounts.models import Account
 from app.branches.models import Branch
 from app.vendors.models import Vendor
 from app.vat_categories.models import VATCategory
-from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine
+from app.accounts_payable.models import AccountsPayable
+from app.cash_disbursements.models import CashDisbursementVoucher, CDVExpenseLine, CDVApLine
 
 pytestmark = [pytest.mark.integration]
 
@@ -28,6 +29,27 @@ def make_vendor(db_session, code='V001'):
     db_session.add(v)
     db_session.flush()
     return v
+
+
+def make_bill(db_session, vendor, branch_id, balance=500, ap_number=None):
+    bill = AccountsPayable(
+        branch_id=branch_id,
+        ap_number=ap_number or f'APV-TEST-{balance}',
+        ap_date=date.today(),
+        due_date=date.today(),
+        vendor_id=vendor.id,
+        vendor_name=vendor.name,
+        status='posted',
+        amount_paid=Decimal('0.00'),
+        balance=Decimal(str(balance)),
+        total_amount=Decimal(str(balance)),
+        subtotal=Decimal(str(balance)),
+        vat_amount=Decimal('0.00'),
+        withholding_tax_amount=Decimal('0.00'),
+    )
+    db_session.add(bill)
+    db_session.flush()
+    return bill
 
 
 def make_input_vat_category(db_session, code, rate, input_vat_account=None):
@@ -62,6 +84,17 @@ def build_cdv(db_session, branch, vendor, cash_account,
     db_session.add(cdv)
     db_session.flush()
 
+    for i, (bill, amount_applied) in enumerate(ap_lines or [], start=1):
+        line = CDVApLine(
+            cdv_id=cdv.id,
+            line_number=i,
+            ap_id=bill.id,
+            ap_number=bill.ap_number,
+            original_balance=bill.balance,
+            amount_applied=Decimal(str(amount_applied)),
+        )
+        db_session.add(line)
+
     for i, rl_kwargs in enumerate(expense_lines or [], start=1):
         el = CDVExpenseLine(
             cdv_id=cdv.id, line_number=i,
@@ -95,6 +128,61 @@ class TestCDVPosting:
         from tests.conftest import assign_control_accounts
         assign_control_accounts(db_session)
         return ap, wht_pay
+
+    def test_two_bills_same_ap_account_post_as_one_grouped_je_line(
+            self, db_session, admin_user, main_branch):
+        """Regression for BUG-CRV-CDV-MULTI-LINE-SAME-ACCOUNT-NOT-SUMMED, exercised
+        end-to-end through the real posting entry point (_post_cdv_je), not just
+        the _grouped_ap_lines() helper in isolation.
+
+        Two bills with no per-bill AP override both resolve to the same default
+        AP control account (see _grouped_ap_lines' account-resolution rule). The
+        posted JE must contain exactly ONE debit line for that account -- not one
+        per bill -- with the debit summed across both bills and a comma-joined
+        "AP Payment: ..." description. Asserts against JournalEntryLine rows
+        re-queried straight from the DB (not the in-memory objects _post_cdv_je
+        built), so a future revert to a raw per-line loop, or a broken
+        _grouped_ap_lines() call, would fail this test."""
+        from app.cash_disbursements.views import _post_cdv_je
+        from app.journal_entries.models import JournalEntryLine
+
+        ap_acct, _ = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        vendor = make_vendor(db_session, code='V-GRP')
+        bill1 = make_bill(db_session, vendor, main_branch.id, balance=300)
+        bill2 = make_bill(db_session, vendor, main_branch.id, balance=200)
+
+        cdv = build_cdv(db_session, main_branch, vendor, cash,
+                        ap_lines=[(bill1, 300), (bill2, 200)], status='posted')
+
+        je = _post_cdv_je(cdv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced, f"JE not balanced: dr={je.total_debit} cr={je.total_credit}"
+        assert je.total_debit == je.total_credit == Decimal('500.00')
+
+        # Re-query the posted lines straight from the DB -- proves the REAL
+        # persisted rows, not just the in-memory objects _post_cdv_je built.
+        ap_lines_in_je = (JournalEntryLine.query
+                          .filter_by(entry_id=je.id, account_id=ap_acct.id)
+                          .all())
+        assert len(ap_lines_in_je) == 1, (
+            f"Expected exactly ONE grouped AP debit line, got {len(ap_lines_in_je)}"
+        )
+        ap_line = ap_lines_in_je[0]
+        assert ap_line.debit_amount == Decimal('300.00') + Decimal('200.00')
+        assert ap_line.debit_amount == Decimal('500.00')
+        assert ap_line.credit_amount == Decimal('0.00')
+        assert ap_line.description == (
+            f'AP Payment: {bill1.ap_number}, {bill2.ap_number}'
+        )
+        assert ap_line.description == 'AP Payment: APV-TEST-300, APV-TEST-200'
+
+        cash_line = next(l for l in je.lines if l.account_id == cash.id)
+        assert cash_line.credit_amount == Decimal('500.00')
+        assert cash_line.debit_amount == Decimal('0.00')
 
     def test_pure_negative_section_b_cdv(self, db_session, admin_user, main_branch):
         """Pure negative Section B (advance): Cr Expense 1000, Dr Cash 1000."""
