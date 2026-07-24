@@ -185,6 +185,62 @@ class TestCRVPosting:
 
         assert je.entry_type == 'receipt'
 
+    def test_two_invoices_same_ar_account_post_as_one_grouped_je_line(
+            self, db_session, admin_user, main_branch):
+        """Regression for BUG-CRV-CDV-MULTI-LINE-SAME-ACCOUNT-NOT-SUMMED, exercised
+        end-to-end through the real posting entry point (_post_crv_je), not just
+        the _grouped_ar_lines() helper in isolation.
+
+        Two invoices with no per-invoice AR override both resolve to the same
+        default AR control account (see _grouped_ar_lines' account-resolution
+        rule). The posted JE must contain exactly ONE credit line for that
+        account -- not one per invoice -- with the credit summed across both
+        invoices and a comma-joined "AR Collection: ..." description. Asserts
+        against JournalEntryLine rows re-queried straight from the DB (not the
+        in-memory objects _post_crv_je built), so a future revert to a raw
+        per-line loop, or a broken _grouped_ar_lines() call, would fail this test.
+        """
+        from app.cash_receipts.views import _post_crv_je
+        from app.journal_entries.models import JournalEntryLine
+
+        ar_acct, _ = self._setup_base_accounts(db_session)
+        cash = make_account(db_session, '1001', 'Cash on Hand',
+                            account_type='Asset', classification='Current Asset',
+                            normal_balance='Debit')
+        customer = make_customer(db_session)
+        inv1 = make_invoice(db_session, customer, main_branch.id, balance=300)
+        inv2 = make_invoice(db_session, customer, main_branch.id, balance=200)
+
+        crv = build_crv(db_session, main_branch, customer, cash,
+                        ar_lines=[(inv1, 300), (inv2, 200)], status='posted')
+
+        je = _post_crv_je(crv, admin_user.id)
+        db_session.commit()
+
+        assert je.is_balanced, f"JE not balanced: dr={je.total_debit} cr={je.total_credit}"
+        assert je.total_debit == je.total_credit == Decimal('500.00')
+
+        # Re-query the posted lines straight from the DB -- proves the REAL
+        # persisted rows, not just the in-memory objects _post_crv_je built.
+        ar_lines_in_je = (JournalEntryLine.query
+                          .filter_by(entry_id=je.id, account_id=ar_acct.id)
+                          .all())
+        assert len(ar_lines_in_je) == 1, (
+            f"Expected exactly ONE grouped AR credit line, got {len(ar_lines_in_je)}"
+        )
+        ar_line = ar_lines_in_je[0]
+        assert ar_line.credit_amount == Decimal('300.00') + Decimal('200.00')
+        assert ar_line.credit_amount == Decimal('500.00')
+        assert ar_line.debit_amount == Decimal('0.00')
+        assert ar_line.description == (
+            f'AR Collection: {inv1.invoice_number}, {inv2.invoice_number}'
+        )
+        assert ar_line.description == 'AR Collection: SI-TEST-300, SI-TEST-200'
+
+        cash_line = next(l for l in je.lines if l.account_id == cash.id)
+        assert cash_line.debit_amount == Decimal('500.00')
+        assert cash_line.credit_amount == Decimal('0.00')
+
     def test_direct_revenue_with_vat_is_balanced(self, db_session, admin_user, main_branch):
         """Direct revenue line 1120 incl 12% VAT → Cr Revenue 1000 + Cr Output VAT 120 + Dr Cash 1120."""
         from app.cash_receipts.views import _post_crv_je

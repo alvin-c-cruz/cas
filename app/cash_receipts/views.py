@@ -250,10 +250,12 @@ def _post_crv_je(crv, user_id):
     line_num = 1
     all_lines = []
 
-    # Credit: AR per applied invoice/memo. An invoice settlement inherits the
-    # SPECIFIC SalesInvoice's own AR-Trade account (set when that invoice
-    # posted); a Sales Memo (debit-note) settlement has no per-transaction
-    # field in this codebase, so it always uses the global default.
+    # Credit: AR per applied invoice/memo, grouped by resolved AR account so
+    # multiple invoices sharing one account post as a SINGLE summed line. An
+    # invoice settlement inherits the SPECIFIC SalesInvoice's own AR-Trade
+    # account (set when that invoice posted); a Sales Memo (debit-note)
+    # settlement has no per-transaction field in this codebase, so it always
+    # uses the global default.
     for g in _grouped_ar_lines(crv, ar_account):
         jl = JournalEntryLine(
             entry_id=je.id, line_number=line_num, account_id=g['account'].id,
@@ -425,9 +427,8 @@ def _build_crv_je_preview(crv):
     # Credit: AR per applied invoice/memo -- invoice settlements inherit the
     # settled SalesInvoice's own account; memo settlements use the global default.
     for g in _grouped_ar_lines(crv, accts['ar']):
-        if g['account']:
-            entries.append({'code': g['account'].code, 'name': g['account'].name,
-                            'debit': Decimal('0.00'), 'credit': g['total']})
+        entries.append({'code': g['account'].code, 'name': g['account'].name,
+                        'debit': Decimal('0.00'), 'credit': g['total']})
 
     # Revenue lines: positive → Cr Revenue (VAT-extracted); negative → Dr Revenue (bare, no VAT)
     positive_auto_vat = sum(
