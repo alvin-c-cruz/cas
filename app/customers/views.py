@@ -585,4 +585,5 @@ def customer_defaults(id):
         'last_account_id': last_item.account_id if last_item else None,
         'last_cash_account_id': last_crv.cash_account_id if last_crv else None,
         'last_revenue_account_id': last_rev_line.account_id if last_rev_line else None,
+        'default_salesperson_id': customer.default_salesperson_id,
     })

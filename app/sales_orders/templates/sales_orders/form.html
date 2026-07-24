@@ -249,6 +249,11 @@ if (customerSel) {
                 currentCustomerVatCategory = resolveVatCode(data.default_vat_category || '');
                 applyCustomerTerms(data.payment_terms || 'Net 30');
 
+                const spSel = document.getElementById('salesperson_id');
+                if (spSel && data.default_salesperson_id != null) {
+                    spSel.value = String(data.default_salesperson_id);
+                }
+
                 const hadItems = lineItems.length > 0;
                 setCustomerDone(customerName, data);
 
