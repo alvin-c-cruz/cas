@@ -65,4 +65,6 @@ class CustomerForm(FlaskForm):
 
     default_wt_code = SelectField('Withholding Tax', choices=[], validators=[Optional()])
 
+    default_salesperson_id = SelectField('Default Salesperson', choices=[], validators=[Optional()])
+
     po_required = BooleanField('Requires Purchase Order')
