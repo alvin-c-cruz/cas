@@ -41,6 +41,10 @@ class Customer(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     po_required = db.Column(db.Boolean, default=False, nullable=False)
 
+    # Default salesperson to auto-fill on Sales Orders for this customer (optional).
+    default_salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True)
+    default_salesperson = db.relationship('Employee', foreign_keys=[default_salesperson_id])
+
     # Audit fields
     created_at = db.Column(db.DateTime, default=ph_now)
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
