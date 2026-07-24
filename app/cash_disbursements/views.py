@@ -311,6 +311,26 @@ def _cdv_wht_payable_buckets(cdv, fallback_acct):
     )
 
 
+def _grouped_ap_lines(cdv, ap_account):
+    """Group cdv.ap_lines by resolved AP account -- same account resolution
+    _post_cdv_je already used, just aggregated. Returns a list of
+    {'account': Account, 'total': Decimal, 'refs': [ap_number, ...]}
+    in first-seen-account order, so a CDV settling several bills that
+    share the same AP account posts ONE summed JE line, not one per
+    bill. AP-side mirror of cash_receipts._grouped_ar_lines
+    (BUG-CRV-CDV-MULTI-LINE-SAME-ACCOUNT-NOT-SUMMED)."""
+    groups = {}
+    for ap_line in cdv.ap_lines:
+        line_ap_account = ap_line.accounts_payable.ap_trade_account or ap_account
+        if not line_ap_account:
+            continue
+        g = groups.setdefault(line_ap_account.id,
+                              {'account': line_ap_account, 'total': Decimal('0.00'), 'refs': []})
+        g['total'] += Decimal(str(ap_line.amount_applied))
+        g['refs'].append(ap_line.ap_number)
+    return list(groups.values())
+
+
 def _post_cdv_je(cdv, user_id):
     """Create a draft or posted disbursement JE for a CDV (sign-aware for negative Section B)."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
@@ -362,17 +382,18 @@ def _post_cdv_je(cdv, user_id):
     line_num = 1
     all_lines = []
 
-    # AP lines: Dr AP -- each line inherits the account from the SPECIFIC bill
-    # it settles (its own ap_trade_account, set when that bill posted), not
-    # one shared account for the whole voucher. Falls back to the global
-    # default only if the bill predates the per-transaction field.
-    for ap_line in cdv.ap_lines:
-        line_ap_account = ap_line.accounts_payable.ap_trade_account or ap_account
+    # AP lines: Dr AP -- grouped by resolved account (each line inherits the
+    # account from the SPECIFIC bill it settles, its own ap_trade_account set
+    # when that bill posted, falling back to the global default only if the
+    # bill predates the per-transaction field) so a CDV settling several bills
+    # that share the same AP account posts ONE summed JE line, not one per
+    # bill (BUG-CRV-CDV-MULTI-LINE-SAME-ACCOUNT-NOT-SUMMED).
+    for g in _grouped_ap_lines(cdv, ap_account):
         je_line = JournalEntryLine(
             entry_id=je.id, line_number=line_num,
-            account_id=line_ap_account.id,
-            description=f'AP Payment: {ap_line.ap_number}',
-            debit_amount=Decimal(str(ap_line.amount_applied)),
+            account_id=g['account'].id,
+            description=f"AP Payment: {', '.join(g['refs'])}",
+            debit_amount=g['total'],
             credit_amount=Decimal('0.00')
         )
         db.session.add(je_line)
@@ -584,11 +605,9 @@ def _build_cdv_je_preview(cdv):
         ])
     accts = _get_gl_accounts()
     entries = []
-    for ap_line in cdv.ap_lines:
-        line_ap_account = ap_line.accounts_payable.ap_trade_account or accts['ap']
-        if line_ap_account:
-            entries.append({'code': line_ap_account.code, 'name': line_ap_account.name,
-                            'debit': Decimal(str(ap_line.amount_applied)), 'credit': Decimal('0.00')})
+    for g in _grouped_ap_lines(cdv, accts['ap']):
+        entries.append({'code': g['account'].code, 'name': g['account'].name,
+                        'debit': g['total'], 'credit': Decimal('0.00')})
     # Expense lines: positive → Dr Expense (VAT-extracted); negative → Cr Expense (bare, no VAT)
     positive_auto_vat = sum(
         Decimal(str(el.vat_amount or 0))
