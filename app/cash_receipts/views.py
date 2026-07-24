@@ -190,6 +190,28 @@ def _crv_posted_wt(crv):
     )
 
 
+def _grouped_ar_lines(crv, ar_account):
+    """Group crv.ar_lines by resolved AR account -- same account resolution
+    _post_crv_je already used, just aggregated. Returns a list of
+    {'account': Account, 'total': Decimal, 'refs': [invoice_number, ...]}
+    in first-seen-account order, so a CR settling several invoices that
+    share the same AR account posts ONE summed JE line, not one per
+    invoice."""
+    groups = {}
+    for ar_line in crv.ar_lines:
+        if ar_line.invoice_id:
+            line_ar_account = ar_line.sales_invoice.ar_trade_account or ar_account
+        else:
+            line_ar_account = ar_account
+        if not line_ar_account:
+            continue
+        g = groups.setdefault(line_ar_account.id,
+                              {'account': line_ar_account, 'total': Decimal('0.00'), 'refs': []})
+        g['total'] += Decimal(str(ar_line.amount_applied))
+        g['refs'].append(ar_line.invoice_number)
+    return list(groups.values())
+
+
 def _post_crv_je(crv, user_id):
     """Create the receipt JE: Cr AR + Cr/Dr Revenue (sign-aware) + Cr/Dr Output VAT; Dr/Cr WHT Recv + Dr/Cr Cash."""
     from app.journal_entries.models import JournalEntry, JournalEntryLine
@@ -232,16 +254,12 @@ def _post_crv_je(crv, user_id):
     # SPECIFIC SalesInvoice's own AR-Trade account (set when that invoice
     # posted); a Sales Memo (debit-note) settlement has no per-transaction
     # field in this codebase, so it always uses the global default.
-    for ar_line in crv.ar_lines:
-        if ar_line.invoice_id:
-            line_ar_account = ar_line.sales_invoice.ar_trade_account or ar_account
-        else:
-            line_ar_account = ar_account
+    for g in _grouped_ar_lines(crv, ar_account):
         jl = JournalEntryLine(
-            entry_id=je.id, line_number=line_num, account_id=line_ar_account.id,
-            description=f'AR Collection: {ar_line.invoice_number}',
+            entry_id=je.id, line_number=line_num, account_id=g['account'].id,
+            description=f"AR Collection: {', '.join(g['refs'])}",
             debit_amount=Decimal('0.00'),
-            credit_amount=Decimal(str(ar_line.amount_applied)))
+            credit_amount=g['total'])
         db.session.add(jl); all_lines.append(jl); line_num += 1
 
     # Revenue lines: positive → Cr Revenue (VAT-extracted); negative → Dr Revenue (bare, no VAT)
@@ -406,15 +424,10 @@ def _build_crv_je_preview(crv):
 
     # Credit: AR per applied invoice/memo -- invoice settlements inherit the
     # settled SalesInvoice's own account; memo settlements use the global default.
-    for ar_line in crv.ar_lines:
-        if ar_line.invoice_id:
-            line_ar_account = ar_line.sales_invoice.ar_trade_account or accts['ar']
-        else:
-            line_ar_account = accts['ar']
-        if line_ar_account:
-            entries.append({'code': line_ar_account.code, 'name': line_ar_account.name,
-                            'debit': Decimal('0.00'),
-                            'credit': Decimal(str(ar_line.amount_applied))})
+    for g in _grouped_ar_lines(crv, accts['ar']):
+        if g['account']:
+            entries.append({'code': g['account'].code, 'name': g['account'].name,
+                            'debit': Decimal('0.00'), 'credit': g['total']})
 
     # Revenue lines: positive → Cr Revenue (VAT-extracted); negative → Dr Revenue (bare, no VAT)
     positive_auto_vat = sum(
