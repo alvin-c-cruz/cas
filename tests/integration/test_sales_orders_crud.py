@@ -656,7 +656,7 @@ def test_print_job_order_hides_pricing_and_uses_job_order_name(client, db_sessio
 
     _login(client, admin_user)
     _select_branch(client, main_branch.id)
-    resp = client.get(f'/sales-orders/{so.id}/print-job-order')
+    resp = client.get(f'/sales-orders/{so.so_number}/print-job-order')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -682,5 +682,5 @@ def test_print_job_order_cross_branch_404(client, db_session, admin_user, main_b
 
     _login(client, admin_user)
     _select_branch(client, main_branch.id)   # different branch than the SO
-    resp = client.get(f'/sales-orders/{so.id}/print-job-order')
+    resp = client.get(f'/sales-orders/{so.so_number}/print-job-order')
     assert resp.status_code == 404

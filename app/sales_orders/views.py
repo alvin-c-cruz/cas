@@ -518,14 +518,15 @@ def print_so(id):
                            company=company, printed_at=ph_now())
 
 
-@sales_orders_bp.route('/sales-orders/<int:id>/print-job-order')
+@sales_orders_bp.route('/sales-orders/<so_number>/print-job-order')
 @login_required
-def print_job_order(id):
+def print_job_order(so_number):
     """Operations-facing Job Order Slip -- same SalesOrder record as print_so, no pricing,
     uses each line's Product.job_order_name (falling back to Product.name) instead of the
     name that prints on the DR/SI. Not gated by so_print_form -- that setting controls the
-    accounting SO print form only."""
-    so = db.get_or_404(SalesOrder, id)
+    accounting SO print form only. Keyed by so_number (unique, business-facing) rather than
+    the internal id -- shop-floor staff reference the document by its printed number."""
+    so = SalesOrder.query.filter_by(so_number=so_number).first_or_404()
     if so.branch_id != session.get('selected_branch_id'):
         abort(404)
     company = {

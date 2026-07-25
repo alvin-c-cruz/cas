@@ -32,7 +32,7 @@
                         </span>
                     </td>
                     <td>
-                        <a href="{{ url_for('sales_orders.print_job_order', id=order.id) }}"
+                        <a href="{{ url_for('sales_orders.print_job_order', so_number=order.so_number) }}"
                            class="btn-action" target="_blank" rel="noopener">Print</a>
                     </td>
                 </tr>
