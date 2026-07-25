@@ -533,8 +533,11 @@ def print_job_order(id):
         'address': AppSettings.get_setting('company_address', ''),
         'tin': AppSettings.get_setting('company_tin', ''),
     }
+    created_by_user = (db.session.get(User, so.created_by_id)
+                       if so.created_by_id else None)
     return render_template('sales_orders/print_job_order.html', so=so,
-                           company=company, printed_at=ph_now())
+                           company=company, created_by_user=created_by_user,
+                           printed_at=ph_now())
 
 
 @sales_orders_bp.route('/sales-orders/job-order-slips')

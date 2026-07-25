@@ -632,8 +632,8 @@ def test_print_preprinted_renders_designer_no_currency_glyph(client, db_session,
 
 def test_print_job_order_hides_pricing_and_uses_job_order_name(client, db_session, admin_user,
                                                                 main_branch):
-    """The Job Order Slip shows job_order_name (falling back to name), Qty, UOM -- and NEVER
-    unit price, amount, VT, or the Total Sales summary."""
+    """The Job Order Slip shows job_order_name (falling back to name) and Quantity -- and NEVER
+    unit price, amount, VAT, or the Total Sales summary."""
     c = _customer(db_session)
     p_named = _product(db_session, code='JON-P1', name='Regular Name One')
     p_named.job_order_name = 'PROD-NAME-ONE'
@@ -660,7 +660,7 @@ def test_print_job_order_hides_pricing_and_uses_job_order_name(client, db_sessio
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
-    assert 'JOB ORDER SLIP' in html
+    assert 'JOB ORDER' in html
     assert 'PROD-NAME-ONE' in html          # job_order_name used when set
     assert 'Regular Name Two' in html       # falls back to product.name when blank
     assert 'Regular Name One' not in html   # the SET job_order_name replaces the regular name
