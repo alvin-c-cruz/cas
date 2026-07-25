@@ -68,3 +68,16 @@ class CustomerForm(FlaskForm):
     default_salesperson_id = SelectField('Default Salesperson', choices=[], validators=[Optional()])
 
     po_required = BooleanField('Requires Purchase Order')
+
+
+class CustomerDeliverySiteForm(FlaskForm):
+    """Form for creating/editing one of a Customer's delivery sites.
+
+    Name only -- no Address field (owner decision, mirrors the CustomerDeliverySite
+    model, which has no address column either).
+    """
+
+    name = StringField('Delivery Site Name', validators=[
+        DataRequired(message='Delivery site name is required.'),
+        Length(max=200, message='Delivery site name must be 200 characters or less.')
+    ])

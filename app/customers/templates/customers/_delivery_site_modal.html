@@ -1,0 +1,71 @@
+{# Add/Edit "Delivery Site" modal for the Customer detail page's Delivery Sites
+   tab. A single overlay + form handles both add and edit (no confirm()/alert()):
+   JS points the form's action at either the create or edit nested route and
+   pre-fills the Name field when editing. #}
+<div id="dsOverlay" style="display:none; position:fixed; inset:0; background:var(--backdrop);
+            z-index:1200; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
+  <div style="background:var(--card); border-radius:8px; padding:24px; max-width:420px; width:100%;
+              box-shadow:var(--shadow-md);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 id="dsModalTitle" style="margin:0; font-size:18px;">Add Delivery Site</h3>
+      <button type="button" id="dsClose"
+              style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text);"
+              aria-label="Close">&times;</button>
+    </div>
+
+    <form id="dsForm" method="POST"
+          action="{{ url_for('customers.create_delivery_site', id=customer.id) }}">
+      {{ site_form.csrf_token }}
+      <div class="form-group" style="margin-bottom:16px;">
+        <label class="form-label" for="dsName">Name <span style="color:var(--alert-error-text);">*</span></label>
+        <input type="text" id="dsName" name="name" class="form-control" maxlength="200" required>
+      </div>
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button type="button" id="dsCancel" class="btn btn-secondary">Cancel</button>
+        <button type="submit" id="dsSubmit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+    var overlay = document.getElementById('dsOverlay');
+    var form = document.getElementById('dsForm');
+    var title = document.getElementById('dsModalTitle');
+    var nameInput = document.getElementById('dsName');
+    var addBtn = document.getElementById('dsAddBtn');
+    if (!overlay || !form) return;
+    var createUrl = form.getAttribute('action');
+
+    function openAdd() {
+        title.textContent = 'Add Delivery Site';
+        form.setAttribute('action', createUrl);
+        nameInput.value = '';
+        overlay.style.display = 'flex';
+        nameInput.focus();
+    }
+
+    function openEdit(siteId, siteName) {
+        title.textContent = 'Edit Delivery Site';
+        form.setAttribute('action', createUrl.replace('/delivery-sites/create',
+            '/delivery-sites/' + siteId + '/edit'));
+        nameInput.value = siteName;
+        overlay.style.display = 'flex';
+        nameInput.focus();
+    }
+
+    function closeModal() { overlay.style.display = 'none'; }
+
+    if (addBtn) addBtn.addEventListener('click', openAdd);
+    document.getElementById('dsClose').addEventListener('click', closeModal);
+    document.getElementById('dsCancel').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+    document.querySelectorAll('.ds-edit-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            openEdit(this.getAttribute('data-site-id'), this.getAttribute('data-site-name'));
+        });
+    });
+})();
+</script>
