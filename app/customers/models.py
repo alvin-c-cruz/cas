@@ -55,6 +55,11 @@ class Customer(db.Model):
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='customers_created')
     updated_by = db.relationship('User', foreign_keys=[updated_by_id], backref='customers_updated')
 
+    # Named delivery sites (e.g. warehouses) a customer's Sales Order lines can ship to.
+    delivery_sites = db.relationship('CustomerDeliverySite', backref='customer',
+                                     cascade='all, delete-orphan',
+                                     order_by='CustomerDeliverySite.name')
+
     @property
     def withholding_taxes_str(self):
         """Comma-joined WHT codes for audit snapshots and exports."""
@@ -85,4 +90,34 @@ class Customer(db.Model):
             'po_required': self.po_required,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class CustomerDeliverySite(db.Model):
+    """A named delivery site (e.g. warehouse) belonging to a Customer.
+
+    Sales Order lines will later pick one of a customer's delivery sites plus a
+    per-line delivery date. No `address` column (owner decision) and no DB-level
+    unique constraint on (customer_id, name) -- legacy data is messy free text,
+    a hard constraint could reject a valid re-entry of a typo-adjacent name.
+    """
+    __tablename__ = 'customer_delivery_sites'
+
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=ph_now)
+    updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now)
+
+    def __repr__(self):
+        return f'<CustomerDeliverySite {self.name} (customer_id={self.customer_id})>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'customer_id': self.customer_id,
+            'name': self.name,
+            'is_active': self.is_active,
         }
