@@ -10,9 +10,8 @@
         <div class="form-group">
             <label for="{{ form.code.id }}">{{ form.code.label.text }}<span class="required" aria-hidden="true">*</span></label>
             {{ form.code(
-                class="form-control form-control-sm" + (" field-locked" if customer else ""),
+                class="form-control form-control-sm",
                 autocomplete="new-password",
-                readonly=(customer is not none),
                 **{'data-lpignore': 'true'}
             ) }}
             {% if form.code.errors %}<div class="error-message">{{ form.code.errors[0] }}</div>{% endif %}
