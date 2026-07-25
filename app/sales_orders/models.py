@@ -93,6 +93,11 @@ class SalesOrderItem(db.Model):
     line_total = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
+    # Per-line delivery commitment: when + which of the header customer's delivery sites.
+    delivery_date = db.Column(db.Date, nullable=True)
+    delivery_site_id = db.Column(db.Integer, db.ForeignKey('customer_delivery_sites.id'), nullable=True, index=True)
+    delivery_site = db.relationship('CustomerDeliverySite', foreign_keys=[delivery_site_id])
+
     def calculate_amounts(self):
         """Extract VAT from VAT-inclusive amount. Mirrors SalesInvoiceItem minus account/WHT."""
         # Derived amount when itemized (VAT-inclusive): amount = qty × unit_price.
@@ -124,6 +129,9 @@ class SalesOrderItem(db.Model):
             'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
             'vat_rate': float(self.vat_rate) if self.vat_rate is not None else 0.0,
+            'delivery_date': self.delivery_date.isoformat() if self.delivery_date else None,
+            'delivery_site_id': self.delivery_site_id,
+            'delivery_site_name': self.delivery_site.name if self.delivery_site else None,
         }
 
 

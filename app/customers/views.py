@@ -1,15 +1,15 @@
 """
 Customer management views (Admin and Accountant only)
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, abort
 from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy import func
 from app import db
-from app.customers.models import Customer
+from app.customers.models import Customer, CustomerDeliverySite
 from app.sales_vat_categories.models import SalesVATCategory
 from app.withholding_tax.models import WithholdingTax
-from app.customers.forms import CustomerForm
+from app.customers.forms import CustomerForm, CustomerDeliverySiteForm
 from app.sales_invoices.models import SalesInvoice
 from app.audit.utils import log_create, log_update, log_delete, model_to_dict
 from app.utils.export import export_to_excel, export_to_csv
@@ -189,8 +189,18 @@ def detail(id):
     customer = db.get_or_404(Customer, id)
     tab = request.args.get('tab', 'overview')
     total_invoices = SalesInvoice.query.filter_by(customer_id=id).count()
+    total_delivery_sites = len(customer.delivery_sites)
 
-    if tab == 'invoices':
+    if tab == 'delivery_sites':
+        return render_template(
+            'customers/detail.html',
+            customer=customer,
+            tab='delivery_sites',
+            total_invoices=total_invoices,
+            total_delivery_sites=total_delivery_sites,
+            site_form=CustomerDeliverySiteForm(),
+        )
+    elif tab == 'invoices':
         from datetime import date as date_type
         page = request.args.get('page', 1, type=int)
         date_from_str = request.args.get('date_from', '')
@@ -220,6 +230,7 @@ def detail(id):
             customer=customer,
             tab='invoices',
             total_invoices=total_invoices,
+            total_delivery_sites=total_delivery_sites,
             pagination=pagination,
             collections=collections,
             date_from=date_from_str,
@@ -235,9 +246,109 @@ def detail(id):
             customer=customer,
             tab='overview',
             total_invoices=total_invoices,
+            total_delivery_sites=total_delivery_sites,
             aging=aging,
             wht_ytd=wht_ytd,
         )
+
+
+@customers_bp.route('/customers/<int:id>/delivery-sites/create', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def create_delivery_site(id):
+    """Create a delivery site under a customer, from the Delivery Sites tab's
+    add modal. Also supports an AJAX branch (X-Requested-With) returning JSON
+    -- Task 5's Sales Order quick-add modal will reuse this same route/branch.
+    On validation failure the AJAX branch returns HTTP 422 (matching this
+    file's own customers.create AJAX pattern, NOT products.create's is_ajax
+    handling, which returns 400 for the same case). Any future caller (e.g.
+    the SO quick-add modal) should branch on the JSON body's `ok` field
+    rather than the HTTP status code, since the two sibling create routes in
+    this codebase don't agree on the status code (nothing calls it yet here)."""
+    customer = db.get_or_404(Customer, id)
+    form = CustomerDeliverySiteForm()
+
+    if form.validate_on_submit():
+        site = CustomerDeliverySite(customer_id=customer.id, name=form.name.data.strip(),
+                                    is_active=True)
+        db.session.add(site)
+        db.session.commit()
+
+        log_create(
+            module='customer_delivery_site',
+            record_id=site.id,
+            record_identifier=f'{customer.code} - {site.name}',
+            new_values=site.to_dict()
+        )
+
+        if _wants_json():
+            return jsonify(ok=True, site=site.to_dict())
+        flash(f'Delivery site "{site.name}" added.', 'success')
+        return redirect(url_for('customers.detail', id=customer.id, tab='delivery_sites'))
+
+    if _wants_json():
+        return jsonify(ok=False,
+                       errors={f: errs[0] for f, errs in form.errors.items()}), 422
+
+    flash('Could not add delivery site. Please check the name.', 'error')
+    return redirect(url_for('customers.detail', id=customer.id, tab='delivery_sites'))
+
+
+@customers_bp.route('/customers/<int:id>/delivery-sites/<int:site_id>/edit', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def edit_delivery_site(id, site_id):
+    """Rename a delivery site, from the Delivery Sites tab's edit modal."""
+    customer = db.get_or_404(Customer, id)
+    site = db.get_or_404(CustomerDeliverySite, site_id)
+    if site.customer_id != customer.id:
+        abort(404)
+    form = CustomerDeliverySiteForm()
+
+    if form.validate_on_submit():
+        old_values = site.to_dict()
+        site.name = form.name.data.strip()
+        db.session.commit()
+
+        log_update(
+            module='customer_delivery_site',
+            record_id=site.id,
+            record_identifier=f'{customer.code} - {site.name}',
+            old_values=old_values,
+            new_values=site.to_dict()
+        )
+        flash(f'Delivery site "{site.name}" updated.', 'success')
+    else:
+        flash('Could not update delivery site. Please check the name.', 'error')
+
+    return redirect(url_for('customers.detail', id=customer.id, tab='delivery_sites'))
+
+
+@customers_bp.route('/customers/<int:id>/delivery-sites/<int:site_id>/toggle-active', methods=['POST'])
+@login_required
+@accountant_or_admin_required
+def toggle_delivery_site_active(id, site_id):
+    """Deactivate/reactivate a delivery site -- mirrors the shared status-toggle
+    pattern (bank_accounts.toggle_active et al)."""
+    customer = db.get_or_404(Customer, id)
+    site = db.get_or_404(CustomerDeliverySite, site_id)
+    if site.customer_id != customer.id:
+        abort(404)
+
+    old_values = site.to_dict()
+    site.is_active = not site.is_active
+    db.session.commit()
+
+    log_update(
+        module='customer_delivery_site',
+        record_id=site.id,
+        record_identifier=f'{customer.code} - {site.name}',
+        old_values=old_values,
+        new_values=site.to_dict()
+    )
+    flash(f'Delivery site "{site.name}" is now '
+          f'{"active" if site.is_active else "inactive"}.', 'success')
+    return redirect(url_for('customers.detail', id=customer.id, tab='delivery_sites'))
 
 
 @customers_bp.route('/customers/create', methods=['GET', 'POST'])

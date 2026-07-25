@@ -28,6 +28,8 @@
        class="customer-tab {% if tab == 'overview' %}active{% endif %}">Overview</a>
     <a href="{{ url_for('customers.detail', id=customer.id, tab='invoices') }}"
        class="customer-tab {% if tab == 'invoices' %}active{% endif %}">Invoices ({{ total_invoices }})</a>
+    <a href="{{ url_for('customers.detail', id=customer.id, tab='delivery_sites') }}"
+       class="customer-tab {% if tab == 'delivery_sites' %}active{% endif %}">Delivery Sites ({{ total_delivery_sites }})</a>
 </div>
 
 {% if tab == 'overview' %}
@@ -108,7 +110,7 @@
     </div>
 </div>
 
-{% else %}
+{% elif tab == 'invoices' %}
 <!-- ── INVOICES TAB ── -->
 <div style="margin-top:16px;">
     <form method="GET" action="{{ url_for('customers.detail', id=customer.id) }}"
@@ -271,6 +273,73 @@
     })();
     </script>
 </div>
+
+{% else %}
+<!-- ── DELIVERY SITES TAB ── -->
+{% set can_manage_sites = (current_user.has_full_access or current_user.role == 'accountant') %}
+<div style="margin-top:16px;">
+    {% if can_manage_sites %}
+    <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <button type="button" id="dsAddBtn" class="btn btn-primary btn-sm">+ Add Delivery Site</button>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body" style="padding:0;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>NAME</th>
+                        <th>STATUS</th>
+                        {% if can_manage_sites %}<th style="text-align:right;">ACTIONS</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for site in customer.delivery_sites %}
+                    <tr class="{{ 'delivery-site-row-inactive' if not site.is_active else '' }}">
+                        <td>{{ site.name }}</td>
+                        <td>
+                            <span class="badge {{ 'badge-success' if site.is_active else 'badge-inactive' }}">
+                                {{ 'Active' if site.is_active else 'Inactive' }}
+                            </span>
+                        </td>
+                        {% if can_manage_sites %}
+                        <td style="text-align:right; white-space:nowrap;">
+                            {% if site.is_active %}
+                            <button type="button" class="btn btn-secondary btn-sm ds-edit-btn"
+                                    data-site-id="{{ site.id }}" data-site-name="{{ site.name }}">Edit</button>
+                            <form method="POST" style="display:inline;"
+                                  action="{{ url_for('customers.toggle_delivery_site_active', id=customer.id, site_id=site.id) }}">
+                                {{ site_form.csrf_token }}
+                                <button type="submit" class="btn btn-secondary btn-sm">Deactivate</button>
+                            </form>
+                            {% else %}
+                            <form method="POST" style="display:inline;"
+                                  action="{{ url_for('customers.toggle_delivery_site_active', id=customer.id, site_id=site.id) }}">
+                                {{ site_form.csrf_token }}
+                                <button type="submit" class="btn btn-secondary btn-sm">Reactivate</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ 3 if can_manage_sites else 2 }}"
+                            style="text-align:center; color:var(--text-2); padding:32px; font-style:italic;">
+                            No delivery sites found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if can_manage_sites %}
+{% include 'customers/_delivery_site_modal.html' %}
+{% endif %}
 {% endif %}
 
 <style>
@@ -341,6 +410,7 @@
 }
 .collections-table th { text-align: left; color: var(--text-2); font-size: 12px; }
 .collections-table tfoot td { border-bottom: none; border-top: 2px solid var(--border); }
+.delivery-site-row-inactive { opacity: 0.6; }
 @media (max-width: 768px) {
     .customer-overview-grid { grid-template-columns: 1fr; }
 }

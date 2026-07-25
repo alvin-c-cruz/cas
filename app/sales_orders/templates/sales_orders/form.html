@@ -83,12 +83,14 @@
                     <thead>
                         <tr>
                             <th style="width: 1%; white-space: nowrap; color: var(--text-2);">#</th>
-                            <th style="width: 34%;">Product</th>
+                            <th style="width: 22%;">Product</th>
                             <th style="width: 6%; text-align: right;">Qty</th>
-                            <th style="width: 7%;">UOM</th>
-                            <th style="width: 10%; text-align: right;">Unit Price</th>
-                            <th style="width: 12%; text-align: right;">Amount (VAT-incl.)</th>
-                            <th style="width: 14%;">VT</th>
+                            <th style="width: 6%;">UOM</th>
+                            <th style="width: 8%; text-align: right;">Unit Price</th>
+                            <th style="width: 10%; text-align: right;">Amount (VAT-incl.)</th>
+                            <th style="width: 9%;">VT</th>
+                            <th style="width: 9%;">Delivery Date</th>
+                            <th style="width: 11%;">Delivery Site</th>
                             <th style="width: 5%;"></th>
                         </tr>
                     </thead>
@@ -100,7 +102,7 @@
                         <tr>
                             <td colspan="5" style="text-align:right; font-weight:700;">Total Sales</td>
                             <td id="totalDisplay" style="text-align:right; font-family:var(--mono); font-weight:700;">0.00</td>
-                            <td colspan="2"></td>
+                            <td colspan="4"></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -128,6 +130,7 @@
 {% include "customers/_quick_add_modal.html" %}
 {% if module_enabled('products') %}{% include "products/_quick_add_modal.html" %}{% endif %}
 {% if module_enabled('units_of_measure') %}{% include "units_of_measure/_quick_add_modal.html" %}{% endif %}
+{% include "sales_orders/_delivery_site_quick_add_modal.html" %}
 
 <script src="{{ url_for('static', filename='choices.min.js') }}"></script>
 <script src="{{ url_for('static', filename='transaction-utils.js') }}"></script>
@@ -136,11 +139,13 @@
 <script src="{{ url_for('static', filename='customer-quick-add.js') }}?v=2"></script>
 {% if module_enabled('products') %}<script src="{{ url_for('static', filename='product-quick-add.js') }}?v=1"></script>{% endif %}
 {% if module_enabled('units_of_measure') %}<script src="{{ url_for('static', filename='uom-quick-add.js') }}?v=1"></script>{% endif %}
+<script src="{{ url_for('static', filename='delivery-site-quick-add.js') }}?v=1"></script>
 <script>
 // ── Context data from server ─────────────────────────────────────────────────
 const vatCategories   = {{ vat_categories | tojson }};
 const units           = {{ units          | tojson }};
 const products        = {{ products       | tojson }};
+let   deliverySites   = {{ delivery_sites | tojson }};
 const uomMasterOn     = {{ 'true' if module_enabled('units_of_measure') else 'false' }};
 const productMasterOn = {{ 'true' if module_enabled('products') else 'false' }};
 
@@ -167,6 +172,25 @@ if (customerSel) {
 
 if (productMasterOn && typeof initProductQuickAdd === 'function') initProductQuickAdd();
 if (uomMasterOn    && typeof initUomQuickAdd     === 'function') initUomQuickAdd();
+if (typeof initDeliverySiteQuickAdd === 'function') initDeliverySiteQuickAdd();
+
+// ── Delivery Site helpers (customer-scoped, Task 5) ──────────────────────────
+function currentCustomerId() {
+    return (customerSel && customerSel.value && customerSel.value !== '0') ? customerSel.value : null;
+}
+
+function sitesForCustomer(cid) {
+    return cid ? deliverySites.filter(s => String(s.customer_id) === String(cid)) : [];
+}
+
+function siteOptionsHtml(selectedSiteId) {
+    const filtered = sitesForCustomer(currentCustomerId());
+    let html = '<option value="">— select site —</option>';
+    html += filtered.map(s => `<option value="${s.id}" ${String(selectedSiteId) === String(s.id) ? 'selected' : ''}>${escHtml(s.name)}</option>`).join('');
+    html += '<option disabled>──────────</option>';
+    html += '<option value="__add_site__">+ Add Site</option>';
+    return html;
+}
 
 function setCustomerDone(customerName, defaults) {
     const card   = document.getElementById('customerCard');
@@ -259,6 +283,7 @@ if (customerSel) {
 
                 if (hadItems) {
                     rebuildCustomerLineDefaults();
+                    rebuildLineDeliverySiteOptions();
                 } else {
                     addFirstCustomerLine();
                 }
@@ -284,7 +309,8 @@ function addLineItem(existingItem) {
     const item = existingItem
         ? { ...existingItem, id }
         : { id, product_id: null, quantity: null, uom_id: null, uom_text: null,
-            unit_price: null, amount: 0.00, vat_category: currentCustomerVatCategory || '' };
+            unit_price: null, amount: 0.00, vat_category: currentCustomerVatCategory || '',
+            delivery_date: null, delivery_site_id: null };
 
     const rowNum = lineItems.length + 1;
     const row = document.createElement('tr');
@@ -323,6 +349,14 @@ function addLineItem(existingItem) {
                     const lbl = `${escHtml(v.code)} — ${escHtml(v.name)}`;
                     return `<option value="${escHtml(v.code)}" ${item.vat_category === v.code ? 'selected' : ''}>${lbl}</option>`;
                 }).join('')}
+            </select>
+        </td>
+        <td><input type="date" id="dd-${id}" class="form-control"
+                   value="${item.delivery_date || ''}"
+                   onchange="updateLineItem(${id}, 'delivery_date', this.value)"></td>
+        <td>
+            <select class="form-control" id="site-sel-${id}" onchange="onDeliverySitePick(${id}, this.value)">
+                ${siteOptionsHtml(item.delivery_site_id)}
             </select>
         </td>
         <td style="text-align:center;">
@@ -367,10 +401,12 @@ function addLineItem(existingItem) {
     };
     const prodSelEl = newRow.querySelector(`#prod-sel-${id}`);
     const uomSelEl  = newRow.querySelector(`#uom-sel-${id}`);
+    const siteSelEl = newRow.querySelector(`#site-sel-${id}`);
     const prodC = prodSelEl ? new Choices(prodSelEl, nameOnlyOpts) : null;
     const uomC  = uomSelEl  ? new Choices(uomSelEl, nameOnlyOpts)  : null;
+    const siteC = siteSelEl ? new Choices(siteSelEl, nameOnlyOpts) : null;
 
-    lineChoices[id] = { vat: vatC, prod: prodC, uom: uomC };
+    lineChoices[id] = { vat: vatC, prod: prodC, uom: uomC, site: siteC };
     lineItems.push(item);
     refreshLineNumbers();
     updateDerivedAmount(id);
@@ -388,6 +424,7 @@ function removeLineItem(id) {
         lineChoices[id].vat.destroy();
         if (lineChoices[id].prod) lineChoices[id].prod.destroy();
         if (lineChoices[id].uom)  lineChoices[id].uom.destroy();
+        if (lineChoices[id].site) lineChoices[id].site.destroy();
         delete lineChoices[id];
     }
     document.getElementById(`line-${id}`).remove();
@@ -509,6 +546,89 @@ function onUomPick(id, uomId) {
     updateLineItem(id, 'uom_id', uomId);
 }
 
+function onDeliverySitePick(id, siteId) {
+    if (siteId === '__add_site__') {
+        if (lineChoices[id] && lineChoices[id].site) lineChoices[id].site.setChoiceByValue('');
+        openDeliverySiteModal(id, currentCustomerId(), function (site) {
+            deliverySites.push(site);
+            if (lineChoices[id] && lineChoices[id].site) {
+                lineChoices[id].site.setChoices(
+                    [{ value: String(site.id), label: escHtml(site.name) }],
+                    'value', 'label', false
+                );
+                lineChoices[id].site.setChoiceByValue(String(site.id));
+            }
+            updateLineItem(id, 'delivery_site_id', String(site.id));
+            hideSiteWarning(id);
+        });
+        return;
+    }
+    updateLineItem(id, 'delivery_site_id', siteId || null);
+    hideSiteWarning(id);
+}
+
+function siteWarningCell(id) {
+    const sel = document.getElementById(`site-sel-${id}`);
+    return sel ? sel.closest('td') : null;
+}
+
+function showSiteWarning(id) {
+    const cell = siteWarningCell(id);
+    if (!cell) return;
+    let chip = cell.querySelector('.site-warn-chip');
+    if (!chip) {
+        chip = document.createElement('div');
+        chip.className = 'site-warn-chip';
+        chip.style.cssText = 'font-size:11px; margin-top:4px; color:var(--alert-warning-text);';
+        cell.appendChild(chip);
+    }
+    chip.textContent = 'Site cleared — select a site for the new customer';
+}
+
+function hideSiteWarning(id) {
+    const cell = siteWarningCell(id);
+    if (!cell) return;
+    const chip = cell.querySelector('.site-warn-chip');
+    if (chip) chip.remove();
+}
+
+// Delivery Site is the first per-line field scoped to the header Customer (Product/UOM
+// are global masters and never needed this). Called from the customer-change handler
+// alongside rebuildCustomerLineDefaults(): rebuilds each line's site options for the
+// new customer and, per the Task 3 mockup's screen 3, clears + flags any line whose
+// previously-picked site does not belong to the new customer -- never leaves a stale
+// foreign-customer site id on a line silently. Delivery Date is untouched here -- it
+// is not customer-scoped.
+function rebuildLineDeliverySiteOptions() {
+    const cid = currentCustomerId();
+    const filtered = sitesForCustomer(cid);
+    const choices = [{ value: '', label: '— select site —' }]
+        .concat(filtered.map(s => ({ value: String(s.id), label: s.name })))
+        .concat([{ value: '__divider__', label: '──────────', disabled: true },
+                 { value: '__add_site__', label: '+ Add Site' }]);
+
+    lineItems.forEach(item => {
+        const lc = lineChoices[item.id];
+        if (!lc || !lc.site) return;
+
+        const stillValid = item.delivery_site_id != null &&
+            filtered.some(s => String(s.id) === String(item.delivery_site_id));
+
+        lc.site.setChoices(choices, 'value', 'label', true);
+
+        if (stillValid) {
+            lc.site.setChoiceByValue(String(item.delivery_site_id));
+            hideSiteWarning(item.id);
+        } else {
+            const hadSite = item.delivery_site_id != null;
+            item.delivery_site_id = null;
+            lc.site.setChoiceByValue('');
+            if (hadSite) showSiteWarning(item.id);
+            else hideSiteWarning(item.id);
+        }
+    });
+}
+
 // ── Totals calculation ─────────────────────────────────────────────────────────
 // Accumulate in integer centavos (matches server Decimal ROUND_HALF_UP).
 // Formula: VAT = round2(Gross - Gross/1.12); Net of VAT = Gross - VAT.
@@ -563,14 +683,16 @@ document.getElementById('soForm').addEventListener('submit', function () {
         const vat     = vatCategories.find(v => v.code === item.vat_category);
         const vatRate = vat ? vat.rate : 0;
         return {
-            product_id:   item.product_id  != null ? item.product_id  : null,
-            quantity:     item.quantity    != null ? item.quantity    : null,
-            uom_id:       item.uom_id      != null ? item.uom_id      : null,
-            uom_text:     item.uom_text    != null ? item.uom_text    : null,
-            unit_price:   item.unit_price  != null ? item.unit_price  : null,
-            amount:       item.amount,
-            vat_category: item.vat_category,
-            vat_rate:     vatRate,
+            product_id:        item.product_id        != null ? item.product_id        : null,
+            quantity:          item.quantity           != null ? item.quantity          : null,
+            uom_id:            item.uom_id             != null ? item.uom_id            : null,
+            uom_text:          item.uom_text           != null ? item.uom_text          : null,
+            unit_price:        item.unit_price         != null ? item.unit_price        : null,
+            amount:            item.amount,
+            vat_category:      item.vat_category,
+            vat_rate:          vatRate,
+            delivery_date:     item.delivery_date      || null,
+            delivery_site_id:  item.delivery_site_id   != null ? item.delivery_site_id  : null,
         };
     }));
 });

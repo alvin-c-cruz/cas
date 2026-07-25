@@ -228,7 +228,7 @@ def create_app(config_name=None):
     from app.vat_categories.models import VATCategory, VATCategoryChangeRequest
     from app.sales_vat_categories.models import SalesVATCategory, SalesVATCategoryChangeRequest
     from app.withholding_tax.models import WithholdingTax, WithholdingTaxChangeRequest
-    from app.customers.models import Customer
+    from app.customers.models import Customer, CustomerDeliverySite
     from app.audit.models import AuditLog
     from app.notifications.models import Notification
     from app.settings import AppSettings

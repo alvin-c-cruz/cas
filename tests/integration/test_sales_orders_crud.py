@@ -1,5 +1,6 @@
 """Integration tests — Sales Orders create/edit, uniqueness, audit."""
 import json
+import re
 import datetime
 import pytest
 from decimal import Decimal
@@ -72,6 +73,40 @@ def _enable_products(db_session):
     clear_module_config_cache()
 
 
+def _delivery_site(db_session, customer, name='WAREHOUSE A', is_active=True):
+    from app.customers.models import CustomerDeliverySite
+    site = CustomerDeliverySite(customer_id=customer.id, name=name, is_active=is_active)
+    db_session.add(site)
+    db_session.commit()
+    return site
+
+
+def _line_items_row(html, line_number):
+    """Return the raw HTML of the single <tr> for a given line_number within the
+    Sales Order line-items table.
+
+    detail.html and print.html each contain exactly one <tbody> (the line-items
+    table) -- scoping the search to it avoids ever matching a header/footer row.
+    """
+    tbody_html = html[html.index('<tbody>'):html.index('</tbody>')]
+    rows = re.findall(r'<tr>.*?</tr>', tbody_html, re.DOTALL)
+    marker = f'<td>{line_number}</td>'
+    matches = [row for row in rows if marker in row]
+    assert len(matches) == 1, (
+        f'expected exactly one line-items row for line_number={line_number}, '
+        f'found {len(matches)}'
+    )
+    return matches[0]
+
+
+def _delivery_cells(row_html):
+    """Return (delivery_date_cell, delivery_site_cell) -- the last two <td>
+    cells of a line-items row. Delivery Date and Delivery Site are always the
+    8th and 9th (final) columns in both detail.html and print.html."""
+    cells = re.findall(r'<td[^>]*>(.*?)</td>', row_html, re.DOTALL)
+    return cells[-2].strip(), cells[-1].strip()
+
+
 # ── tests ─────────────────────────────────────────────────────────────────────
 
 def test_create_sales_order_persists_and_audits(client, db_session, admin_user, main_branch):
@@ -93,6 +128,102 @@ def test_create_sales_order_persists_and_audits(client, db_session, admin_user, 
     # no journal entry — SalesOrder is operational only
     assert not hasattr(so, 'journal_entry_id') or so.journal_entry_id is None
     assert AuditLog.query.filter_by(module='sales_orders', action='create').count() >= 1
+
+
+def test_create_sales_order_persists_delivery_date_and_site(client, db_session, admin_user, main_branch):
+    """Task 5: a line's delivery_date/delivery_site_id round-trip through the full
+    create POST, via _parse_and_attach_so_lines."""
+    c = _customer(db_session)
+    p = _product(db_session)
+    site = _delivery_site(db_session, c)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0',
+                         'delivery_date': '2026-08-15', 'delivery_site_id': str(site.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0099', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0099').first()
+    assert so is not None
+    line = so.line_items[0]
+    assert line.delivery_date == datetime.date(2026, 8, 15)
+    assert line.delivery_site_id == site.id
+
+
+def test_create_sales_order_drops_foreign_customer_delivery_site(client, db_session, admin_user, main_branch):
+    """A line's delivery_site_id must belong to the SO's own customer. A direct POST
+    (or a stale in-memory line array) naming another customer's site must not persist
+    -- silently dropped to None, matching this parser's existing tolerant style for
+    other soft-reference fields (e.g. an invalid uom_id is likewise just int()'d with
+    no cross-check), not a validation error that blocks the whole save."""
+    customer_a = _customer(db_session)
+    customer_b = Customer(code='OTHR01', name='Other Co', is_active=True)
+    db_session.add(customer_b)
+    db_session.commit()
+    p = _product(db_session)
+    foreign_site = _delivery_site(db_session, customer_b, name='OTHER WAREHOUSE')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0',
+                         'delivery_date': '2026-08-15', 'delivery_site_id': str(foreign_site.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0098', 'order_date': '2026-06-15',
+        'customer_id': str(customer_a.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0098').first()
+    assert so is not None
+    line = so.line_items[0]
+    assert line.delivery_site_id is None
+    # delivery_date is independent of the site and is not itself a cross-reference --
+    # it must survive untouched.
+    assert line.delivery_date == datetime.date(2026, 8, 15)
+
+
+def test_edit_sales_order_drops_foreign_customer_delivery_site_on_customer_change(
+        client, db_session, admin_user, main_branch):
+    """Editing a draft SO to switch its customer must not let a stale line still
+    carrying the OLD customer's delivery_site_id survive -- the server, not just
+    client-side JS, must re-check the site against the (new) so.customer_id."""
+    customer_a = _customer(db_session)
+    customer_b = Customer(code='OTHR02', name='Other Co 2', is_active=True)
+    db_session.add(customer_b)
+    db_session.commit()
+    p = _product(db_session)
+    site_a = _delivery_site(db_session, customer_a, name='ACME WAREHOUSE')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0',
+                         'delivery_date': '2026-08-15', 'delivery_site_id': str(site_a.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0097', 'order_date': '2026-06-15',
+        'customer_id': str(customer_a.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0097').first()
+    assert so.line_items[0].delivery_site_id == site_a.id
+
+    # Now edit the SO, switching its customer to B while the line still (as a stale
+    # client array would) carries customer A's site id.
+    edit_lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                              'vat_category': None, 'vat_rate': '0',
+                              'delivery_date': '2026-08-15', 'delivery_site_id': str(site_a.id)}])
+    resp = client.post(f'/sales-orders/{so.id}/edit', data={
+        'so_number': 'SO-2026-06-0097', 'order_date': '2026-06-15',
+        'customer_id': str(customer_b.id), 'customer_name': 'Other Co 2',
+        'payment_terms': 'Net 30', 'notes': '', 'line_items': edit_lines,
+        'row_version': str(so.row_version)}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = db.session.get(SalesOrder, so.id)
+    db.session.refresh(so)
+    assert so.customer_id == customer_b.id
+    assert so.line_items[0].delivery_site_id is None
 
 
 def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, admin_user, main_branch):
@@ -229,6 +360,54 @@ def test_create_form_offers_product_and_uom_quick_add_when_module_on(client, db_
     assert b'__add_uom__' in body                # line-grid "+ Add UOM" sentinel wired
 
 
+def test_create_form_renders_delivery_date_and_site_grid_columns(client, db_session, admin_user, main_branch):
+    """Task 5: the line grid must show Delivery Date/Delivery Site <th> headers and wire
+    the per-line hooks -- a native date input bound via updateLineItem, and a Choices-backed
+    site select stored on lineChoices[id].site (mirrors lineChoices[id].uom/.prod).
+    Not gated by module_enabled -- delivery sites carry no module flag."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/create')
+    assert resp.status_code == 200
+    body = resp.data
+    assert b'Delivery Date' in body
+    assert b'Delivery Site' in body
+    assert b'deliverySites' in body              # baked-in delivery sites context data
+    assert b'lineChoices[id].site' in body       # per-line site Choices hook
+    assert b'onDeliverySitePick' in body         # site select onchange handler wired
+    assert b"type=\"date\"" in body              # native date input for delivery_date
+    assert b"updateLineItem(${id}, 'delivery_date'" in body
+
+
+def test_create_form_offers_delivery_site_quick_add(client, db_session, admin_user, main_branch):
+    """Delivery Site quick-add modal + JS must be wired on the SO form (mirrors the
+    Product/UOM quick-add pattern), with a trailing '+ Add Site' sentinel in the line grid."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/create')
+    assert resp.status_code == 200
+    body = resp.data
+    assert b'deliverySiteQuickAddOverlay' in body    # site quick-add modal partial included
+    assert b'delivery-site-quick-add.js' in body     # site quick-add JS loaded
+    assert b'initDeliverySiteQuickAdd' in body       # site quick-add init call present
+    assert b'__add_site__' in body                   # line-grid "+ Add Site" sentinel wired
+
+
+def test_create_form_bakes_active_delivery_sites_tagged_with_customer_id(client, db_session, admin_user, main_branch):
+    """_common_form_ctx() must bake in all ACTIVE CustomerDeliverySite rows across all
+    customers, each carrying its own customer_id, for client-side filtering -- same
+    flat-list approach already used for products/units. Inactive sites are excluded."""
+    c = _customer(db_session)
+    _delivery_site(db_session, c, name='PLANT WAREHOUSE')
+    _delivery_site(db_session, c, name='RETIRED SITE', is_active=False)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/sales-orders/create').get_data(as_text=True)
+    assert 'PLANT WAREHOUSE' in html
+    assert 'RETIRED SITE' not in html
+    assert f'"customer_id": {c.id}' in html or f'"customer_id":{c.id}' in html
+
+
 def test_duplicate_so_number_rejected(client, db_session, admin_user, main_branch):
     import datetime
     c = _customer(db_session)
@@ -290,6 +469,113 @@ def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
     assert b'SO-VIEW-0001' in resp.data
     assert b'Blue Widget' in resp.data   # product name renders in the line
     assert b'150' in resp.data  # amount appears in the line
+
+
+def test_detail_and_print_render_delivery_date_and_site_columns(client, db_session, admin_user,
+                                                                  main_branch):
+    """Task 6: detail.html and print.html line-items tables show the Delivery Date /
+    Delivery Site columns -- header, a SET value, and the em-dash fallback when unset.
+
+    Both lines share one product (whose own cell hardcodes an unrelated ' — '
+    separator) and neither line sets a UOM (whose own fallback is independently
+    '—'), so a bare `html.count('—') >= 1` on the whole page would still pass
+    even if the Delivery Date/Site columns' own fallback logic were broken --
+    those other columns already guarantee an em-dash on every row. To make the
+    assertion provative: (1) both lines get an explicit UOM so that column
+    never falls back, and (2) each line's Delivery Date/Delivery Site cells are
+    located precisely (via `_line_items_row`/`_delivery_cells`, using the fixed
+    9-column layout) and asserted individually, isolating the two columns under
+    test from the product column's unrelated hardcoded dash. A third, mixed-state
+    line (date set, site unset) covers the reviewer's partial-fallback case.
+    """
+    c = _customer(db_session)
+    p = _product(db_session, code='DDS', name='Delivery Date Site Widget')
+    site = _delivery_site(db_session, c, name='PLANT WAREHOUSE')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    so = SalesOrder(
+        so_number='SO-DDS-0001',
+        order_date=datetime.date(2026, 6, 28),
+        customer_id=c.id,
+        customer_name='Acme',
+        branch_id=main_branch.id,
+        status='draft',
+    )
+    db_session.add(so)
+    db_session.flush()
+
+    # Every line sets its own UOM so the UOM column never independently falls
+    # back to '—' -- isolating the em-dash to the columns under test.
+    line_with_delivery = SalesOrderItem(
+        sales_order_id=so.id, line_number=1, product_id=p.id,
+        quantity=Decimal('1.0000'), unit_price=Decimal('100.00'), amount=Decimal('100.00'),
+        vat_rate=Decimal('0.00'), line_total=Decimal('100.00'), vat_amount=Decimal('0.00'),
+        uom_text='PCS',
+        delivery_date=datetime.date(2026, 8, 15), delivery_site_id=site.id,
+    )
+    line_without_delivery = SalesOrderItem(
+        sales_order_id=so.id, line_number=2, product_id=p.id,
+        quantity=Decimal('1.0000'), unit_price=Decimal('50.00'), amount=Decimal('50.00'),
+        vat_rate=Decimal('0.00'), line_total=Decimal('50.00'), vat_amount=Decimal('0.00'),
+        uom_text='PCS',
+    )
+    # Mixed state: date set, site left unset -- proves the two columns fall
+    # back independently rather than one flag gating both.
+    line_partial_delivery = SalesOrderItem(
+        sales_order_id=so.id, line_number=3, product_id=p.id,
+        quantity=Decimal('1.0000'), unit_price=Decimal('25.00'), amount=Decimal('25.00'),
+        vat_rate=Decimal('0.00'), line_total=Decimal('25.00'), vat_amount=Decimal('0.00'),
+        uom_text='PCS',
+        delivery_date=datetime.date(2026, 9, 1),
+    )
+    so.line_items.append(line_with_delivery)
+    so.line_items.append(line_without_delivery)
+    so.line_items.append(line_partial_delivery)
+    so.calculate_totals()
+    db_session.commit()
+
+    detail_html = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
+    assert 'Delivery Date' in detail_html
+    assert 'Delivery Site' in detail_html
+    assert '&#8212;' not in detail_html           # never the entity (leaks as literal text)
+
+    row1 = _line_items_row(detail_html, 1)
+    date_cell, site_cell = _delivery_cells(row1)
+    assert date_cell == 'Aug 15, 2026'            # set delivery_date, detail's own date format
+    assert site_cell == 'PLANT WAREHOUSE'         # set delivery_site name
+    assert '—' not in date_cell and '—' not in site_cell
+
+    row2 = _line_items_row(detail_html, 2)
+    date_cell, site_cell = _delivery_cells(row2)
+    assert date_cell == '—'                       # unset delivery_date falls back to em-dash
+    assert site_cell == '—'                       # unset delivery_site falls back to em-dash
+
+    row3 = _line_items_row(detail_html, 3)
+    date_cell, site_cell = _delivery_cells(row3)
+    assert date_cell == 'Sep 01, 2026'             # mixed state: date set...
+    assert site_cell == '—'                        # ...site still falls back independently
+
+    print_html = client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
+    assert 'Delivery Date' in print_html
+    assert 'Delivery Site' in print_html
+    assert '&#8212;' not in print_html
+
+    row1 = _line_items_row(print_html, 1)
+    date_cell, site_cell = _delivery_cells(row1)
+    assert date_cell == '15 August 2026'          # set delivery_date, print's own date format
+    assert site_cell == 'PLANT WAREHOUSE'
+    assert '—' not in date_cell and '—' not in site_cell
+
+    row2 = _line_items_row(print_html, 2)
+    date_cell, site_cell = _delivery_cells(row2)
+    assert date_cell == '—'
+    assert site_cell == '—'
+
+    row3 = _line_items_row(print_html, 3)
+    date_cell, site_cell = _delivery_cells(row3)
+    assert date_cell == '01 September 2026'
+    assert site_cell == '—'
 
 
 def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, main_branch):
