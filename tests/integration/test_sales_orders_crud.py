@@ -1,5 +1,6 @@
 """Integration tests — Sales Orders create/edit, uniqueness, audit."""
 import json
+import re
 import datetime
 import pytest
 from decimal import Decimal
@@ -78,6 +79,32 @@ def _delivery_site(db_session, customer, name='WAREHOUSE A', is_active=True):
     db_session.add(site)
     db_session.commit()
     return site
+
+
+def _line_items_row(html, line_number):
+    """Return the raw HTML of the single <tr> for a given line_number within the
+    Sales Order line-items table.
+
+    detail.html and print.html each contain exactly one <tbody> (the line-items
+    table) -- scoping the search to it avoids ever matching a header/footer row.
+    """
+    tbody_html = html[html.index('<tbody>'):html.index('</tbody>')]
+    rows = re.findall(r'<tr>.*?</tr>', tbody_html, re.DOTALL)
+    marker = f'<td>{line_number}</td>'
+    matches = [row for row in rows if marker in row]
+    assert len(matches) == 1, (
+        f'expected exactly one line-items row for line_number={line_number}, '
+        f'found {len(matches)}'
+    )
+    return matches[0]
+
+
+def _delivery_cells(row_html):
+    """Return (delivery_date_cell, delivery_site_cell) -- the last two <td>
+    cells of a line-items row. Delivery Date and Delivery Site are always the
+    8th and 9th (final) columns in both detail.html and print.html."""
+    cells = re.findall(r'<td[^>]*>(.*?)</td>', row_html, re.DOTALL)
+    return cells[-2].strip(), cells[-1].strip()
 
 
 # ── tests ─────────────────────────────────────────────────────────────────────
@@ -447,7 +474,20 @@ def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
 def test_detail_and_print_render_delivery_date_and_site_columns(client, db_session, admin_user,
                                                                   main_branch):
     """Task 6: detail.html and print.html line-items tables show the Delivery Date /
-    Delivery Site columns -- header, a SET value, and the em-dash fallback when unset."""
+    Delivery Site columns -- header, a SET value, and the em-dash fallback when unset.
+
+    Both lines share one product (whose own cell hardcodes an unrelated ' — '
+    separator) and neither line sets a UOM (whose own fallback is independently
+    '—'), so a bare `html.count('—') >= 1` on the whole page would still pass
+    even if the Delivery Date/Site columns' own fallback logic were broken --
+    those other columns already guarantee an em-dash on every row. To make the
+    assertion provative: (1) both lines get an explicit UOM so that column
+    never falls back, and (2) each line's Delivery Date/Delivery Site cells are
+    located precisely (via `_line_items_row`/`_delivery_cells`, using the fixed
+    9-column layout) and asserted individually, isolating the two columns under
+    test from the product column's unrelated hardcoded dash. A third, mixed-state
+    line (date set, site unset) covers the reviewer's partial-fallback case.
+    """
     c = _customer(db_session)
     p = _product(db_session, code='DDS', name='Delivery Date Site Widget')
     site = _delivery_site(db_session, c, name='PLANT WAREHOUSE')
@@ -465,37 +505,77 @@ def test_detail_and_print_render_delivery_date_and_site_columns(client, db_sessi
     db_session.add(so)
     db_session.flush()
 
+    # Every line sets its own UOM so the UOM column never independently falls
+    # back to '—' -- isolating the em-dash to the columns under test.
     line_with_delivery = SalesOrderItem(
         sales_order_id=so.id, line_number=1, product_id=p.id,
         quantity=Decimal('1.0000'), unit_price=Decimal('100.00'), amount=Decimal('100.00'),
         vat_rate=Decimal('0.00'), line_total=Decimal('100.00'), vat_amount=Decimal('0.00'),
+        uom_text='PCS',
         delivery_date=datetime.date(2026, 8, 15), delivery_site_id=site.id,
     )
     line_without_delivery = SalesOrderItem(
         sales_order_id=so.id, line_number=2, product_id=p.id,
         quantity=Decimal('1.0000'), unit_price=Decimal('50.00'), amount=Decimal('50.00'),
         vat_rate=Decimal('0.00'), line_total=Decimal('50.00'), vat_amount=Decimal('0.00'),
+        uom_text='PCS',
+    )
+    # Mixed state: date set, site left unset -- proves the two columns fall
+    # back independently rather than one flag gating both.
+    line_partial_delivery = SalesOrderItem(
+        sales_order_id=so.id, line_number=3, product_id=p.id,
+        quantity=Decimal('1.0000'), unit_price=Decimal('25.00'), amount=Decimal('25.00'),
+        vat_rate=Decimal('0.00'), line_total=Decimal('25.00'), vat_amount=Decimal('0.00'),
+        uom_text='PCS',
+        delivery_date=datetime.date(2026, 9, 1),
     )
     so.line_items.append(line_with_delivery)
     so.line_items.append(line_without_delivery)
+    so.line_items.append(line_partial_delivery)
     so.calculate_totals()
     db_session.commit()
 
     detail_html = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
     assert 'Delivery Date' in detail_html
     assert 'Delivery Site' in detail_html
-    assert 'Aug 15, 2026' in detail_html          # set delivery_date, detail's own date format
-    assert 'PLANT WAREHOUSE' in detail_html       # set delivery_site name
-    assert detail_html.count('—') >= 1            # the unset line falls back to the em-dash glyph
     assert '&#8212;' not in detail_html           # never the entity (leaks as literal text)
+
+    row1 = _line_items_row(detail_html, 1)
+    date_cell, site_cell = _delivery_cells(row1)
+    assert date_cell == 'Aug 15, 2026'            # set delivery_date, detail's own date format
+    assert site_cell == 'PLANT WAREHOUSE'         # set delivery_site name
+    assert '—' not in date_cell and '—' not in site_cell
+
+    row2 = _line_items_row(detail_html, 2)
+    date_cell, site_cell = _delivery_cells(row2)
+    assert date_cell == '—'                       # unset delivery_date falls back to em-dash
+    assert site_cell == '—'                       # unset delivery_site falls back to em-dash
+
+    row3 = _line_items_row(detail_html, 3)
+    date_cell, site_cell = _delivery_cells(row3)
+    assert date_cell == 'Sep 01, 2026'             # mixed state: date set...
+    assert site_cell == '—'                        # ...site still falls back independently
 
     print_html = client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
     assert 'Delivery Date' in print_html
     assert 'Delivery Site' in print_html
-    assert '15 August 2026' in print_html         # set delivery_date, print's own date format
-    assert 'PLANT WAREHOUSE' in print_html
-    assert print_html.count('—') >= 1
     assert '&#8212;' not in print_html
+
+    row1 = _line_items_row(print_html, 1)
+    date_cell, site_cell = _delivery_cells(row1)
+    assert date_cell == '15 August 2026'          # set delivery_date, print's own date format
+    assert site_cell == 'PLANT WAREHOUSE'
+    assert '—' not in date_cell and '—' not in site_cell
+
+    row2 = _line_items_row(print_html, 2)
+    date_cell, site_cell = _delivery_cells(row2)
+    assert date_cell == '—'
+    assert site_cell == '—'
+
+    row3 = _line_items_row(print_html, 3)
+    date_cell, site_cell = _delivery_cells(row3)
+    assert date_cell == '01 September 2026'
+    assert site_cell == '—'
 
 
 def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, main_branch):
