@@ -32,7 +32,7 @@
             </div>
 
             <div class="form-row-2">
-                {{ render_field(form.category_id) }}
+                {{ render_field(form.category_id, required=category_required) }}
                 {{ render_field(form.default_unit_price) }}
             </div>
 
