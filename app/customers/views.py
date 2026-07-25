@@ -258,8 +258,13 @@ def detail(id):
 def create_delivery_site(id):
     """Create a delivery site under a customer, from the Delivery Sites tab's
     add modal. Also supports an AJAX branch (X-Requested-With) returning JSON
-    -- Task 5's Sales Order quick-add modal will reuse this same route/branch,
-    mirroring products.create's is_ajax handling (nothing calls it yet here)."""
+    -- Task 5's Sales Order quick-add modal will reuse this same route/branch.
+    On validation failure the AJAX branch returns HTTP 422 (matching this
+    file's own customers.create AJAX pattern, NOT products.create's is_ajax
+    handling, which returns 400 for the same case). Any future caller (e.g.
+    the SO quick-add modal) should branch on the JSON body's `ok` field
+    rather than the HTTP status code, since the two sibling create routes in
+    this codebase don't agree on the status code (nothing calls it yet here)."""
     customer = db.get_or_404(Customer, id)
     form = CustomerDeliverySiteForm()
 
