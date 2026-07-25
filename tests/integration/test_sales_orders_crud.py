@@ -444,6 +444,60 @@ def test_view_sales_order_detail(client, db_session, admin_user, main_branch):
     assert b'150' in resp.data  # amount appears in the line
 
 
+def test_detail_and_print_render_delivery_date_and_site_columns(client, db_session, admin_user,
+                                                                  main_branch):
+    """Task 6: detail.html and print.html line-items tables show the Delivery Date /
+    Delivery Site columns -- header, a SET value, and the em-dash fallback when unset."""
+    c = _customer(db_session)
+    p = _product(db_session, code='DDS', name='Delivery Date Site Widget')
+    site = _delivery_site(db_session, c, name='PLANT WAREHOUSE')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    so = SalesOrder(
+        so_number='SO-DDS-0001',
+        order_date=datetime.date(2026, 6, 28),
+        customer_id=c.id,
+        customer_name='Acme',
+        branch_id=main_branch.id,
+        status='draft',
+    )
+    db_session.add(so)
+    db_session.flush()
+
+    line_with_delivery = SalesOrderItem(
+        sales_order_id=so.id, line_number=1, product_id=p.id,
+        quantity=Decimal('1.0000'), unit_price=Decimal('100.00'), amount=Decimal('100.00'),
+        vat_rate=Decimal('0.00'), line_total=Decimal('100.00'), vat_amount=Decimal('0.00'),
+        delivery_date=datetime.date(2026, 8, 15), delivery_site_id=site.id,
+    )
+    line_without_delivery = SalesOrderItem(
+        sales_order_id=so.id, line_number=2, product_id=p.id,
+        quantity=Decimal('1.0000'), unit_price=Decimal('50.00'), amount=Decimal('50.00'),
+        vat_rate=Decimal('0.00'), line_total=Decimal('50.00'), vat_amount=Decimal('0.00'),
+    )
+    so.line_items.append(line_with_delivery)
+    so.line_items.append(line_without_delivery)
+    so.calculate_totals()
+    db_session.commit()
+
+    detail_html = client.get(f'/sales-orders/{so.id}').get_data(as_text=True)
+    assert 'Delivery Date' in detail_html
+    assert 'Delivery Site' in detail_html
+    assert 'Aug 15, 2026' in detail_html          # set delivery_date, detail's own date format
+    assert 'PLANT WAREHOUSE' in detail_html       # set delivery_site name
+    assert detail_html.count('—') >= 1            # the unset line falls back to the em-dash glyph
+    assert '&#8212;' not in detail_html           # never the entity (leaks as literal text)
+
+    print_html = client.get(f'/sales-orders/{so.id}/print').get_data(as_text=True)
+    assert 'Delivery Date' in print_html
+    assert 'Delivery Site' in print_html
+    assert '15 August 2026' in print_html         # set delivery_date, print's own date format
+    assert 'PLANT WAREHOUSE' in print_html
+    assert print_html.count('—') >= 1
+    assert '&#8212;' not in print_html
+
+
 def test_list_shows_so_number_and_status_badge(client, db_session, admin_user, main_branch):
     """GET /sales-orders → 200; SO number and draft status badge appear in the list."""
     import datetime
