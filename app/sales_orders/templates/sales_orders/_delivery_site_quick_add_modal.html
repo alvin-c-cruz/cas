@@ -1,0 +1,40 @@
+{# Inline "Add Delivery Site" quick-add modal for the Sales Order line grid (Task 5).
+   Locked to the header's currently-selected customer -- POSTed action is rewritten by
+   delivery-site-quick-add.js to that customer's create_delivery_site route (Task 4's
+   AJAX branch): success returns JSON {ok:true, site:{...}}; validation failure returns
+   {ok:false, errors:{...}} with HTTP 422 (NOT 400 -- see app/customers/views.py's
+   create_delivery_site docstring). Branch on the JSON body's `ok` field, never the
+   status code. #}
+<div id="deliverySiteQuickAddOverlay"
+     style="display:none; position:fixed; inset:0; background:var(--backdrop);
+            z-index:1200; align-items:flex-start; justify-content:center; overflow:auto; padding:32px 16px;">
+  <div style="background:var(--card); border-radius:8px; padding:24px; max-width:420px; width:100%;
+              box-shadow:var(--shadow-md);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px;">Add Delivery Site</h3>
+      <button type="button" id="deliverySiteQuickAddClose"
+              style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text);"
+              aria-label="Close">&times;</button>
+    </div>
+
+    <div id="deliverySiteQuickAddError" class="form-error"
+         style="display:none; margin-bottom:12px; color:var(--alert-error-text);"></div>
+
+    {# data-url-template carries a placeholder customer id (0); JS swaps it for the
+       header's currently-selected customer id before each open. #}
+    <form id="deliverySiteQuickAddForm" method="POST"
+          data-url-template="{{ url_for('customers.create_delivery_site', id=0) }}" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="form-group" style="margin-bottom:16px;">
+        <label class="form-label" for="dsqa_name">Site Name <span style="color:var(--alert-error-text);">*</span></label>
+        <input type="text" id="dsqa_name" name="name" class="form-control" maxlength="200" required>
+      </div>
+
+      <div style="display:flex; gap:12px; justify-content:flex-end;">
+        <button type="button" id="deliverySiteQuickAddCancel" class="btn btn-secondary">Cancel</button>
+        <button type="submit" id="deliverySiteQuickAddSubmit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>

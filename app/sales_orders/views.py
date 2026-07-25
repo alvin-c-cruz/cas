@@ -14,7 +14,7 @@ from flask_login import login_required, current_user
 from app import db
 from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.sales_orders.forms import SalesOrderForm
-from app.customers.models import Customer
+from app.customers.models import Customer, CustomerDeliverySite
 from app.customers.views import build_customer_quick_add_form
 from app.withholding_tax.models import WithholdingTax
 from app.users.models import User
@@ -51,6 +51,14 @@ def _parse_and_attach_so_lines(so, lines_json):
         except (ValueError, TypeError):
             return None
 
+    def _date(v):
+        if v in (None, '', 'null'):
+            return None
+        try:
+            return date.fromisoformat(v)
+        except (ValueError, TypeError):
+            return None
+
     items = json.loads(lines_json) if lines_json else []
     kept = 0
     for idx, d in enumerate(items, start=1):
@@ -76,6 +84,8 @@ def _parse_and_attach_so_lines(so, lines_json):
             amount=amount,
             vat_category=d.get('vat_category') or None,
             vat_rate=vat_rate,
+            delivery_date=_date(d.get('delivery_date')),
+            delivery_site_id=_int(d.get('delivery_site_id')),
         )
         li.calculate_amounts()
         so.line_items.append(li)
@@ -123,11 +133,17 @@ def _salesperson_choices(branch_id):
 def _common_form_ctx():
     """Build the common template context shared by create and edit."""
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+    delivery_sites = (CustomerDeliverySite.query.filter_by(is_active=True)
+                       .order_by(CustomerDeliverySite.name).all())
     return {
         'units': [u.to_dict() for u in get_active_units()],
         'products': [p.to_dict() for p in get_active_products()],
         'vat_categories': [v.to_dict() for v in get_sales_vat_categories()],
         'customers': customers,
+        # All active CustomerDeliverySite rows across all customers, each tagged with its
+        # own customer_id -- filtered client-side to the header's selected customer, same
+        # flat-list approach already used for products/units (Task 5).
+        'delivery_sites': [s.to_dict() for s in delivery_sites],
         'customer_quick_add_form': build_customer_quick_add_form(),
         'customer_quick_add_whts': WithholdingTax.query.filter_by(is_active=True)
                                    .order_by(WithholdingTax.code).all(),

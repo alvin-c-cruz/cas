@@ -72,6 +72,14 @@ def _enable_products(db_session):
     clear_module_config_cache()
 
 
+def _delivery_site(db_session, customer, name='WAREHOUSE A', is_active=True):
+    from app.customers.models import CustomerDeliverySite
+    site = CustomerDeliverySite(customer_id=customer.id, name=name, is_active=is_active)
+    db_session.add(site)
+    db_session.commit()
+    return site
+
+
 # ── tests ─────────────────────────────────────────────────────────────────────
 
 def test_create_sales_order_persists_and_audits(client, db_session, admin_user, main_branch):
@@ -93,6 +101,29 @@ def test_create_sales_order_persists_and_audits(client, db_session, admin_user, 
     # no journal entry — SalesOrder is operational only
     assert not hasattr(so, 'journal_entry_id') or so.journal_entry_id is None
     assert AuditLog.query.filter_by(module='sales_orders', action='create').count() >= 1
+
+
+def test_create_sales_order_persists_delivery_date_and_site(client, db_session, admin_user, main_branch):
+    """Task 5: a line's delivery_date/delivery_site_id round-trip through the full
+    create POST, via _parse_and_attach_so_lines."""
+    c = _customer(db_session)
+    p = _product(db_session)
+    site = _delivery_site(db_session, c)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0',
+                         'delivery_date': '2026-08-15', 'delivery_site_id': str(site.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0099', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0099').first()
+    assert so is not None
+    line = so.line_items[0]
+    assert line.delivery_date == datetime.date(2026, 8, 15)
+    assert line.delivery_site_id == site.id
 
 
 def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, admin_user, main_branch):
@@ -227,6 +258,54 @@ def test_create_form_offers_product_and_uom_quick_add_when_module_on(client, db_
     assert b'uom-quick-add.js' in body           # uom quick-add JS loaded
     assert b'initUomQuickAdd' in body            # uom init call present
     assert b'__add_uom__' in body                # line-grid "+ Add UOM" sentinel wired
+
+
+def test_create_form_renders_delivery_date_and_site_grid_columns(client, db_session, admin_user, main_branch):
+    """Task 5: the line grid must show Delivery Date/Delivery Site <th> headers and wire
+    the per-line hooks -- a native date input bound via updateLineItem, and a Choices-backed
+    site select stored on lineChoices[id].site (mirrors lineChoices[id].uom/.prod).
+    Not gated by module_enabled -- delivery sites carry no module flag."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/create')
+    assert resp.status_code == 200
+    body = resp.data
+    assert b'Delivery Date' in body
+    assert b'Delivery Site' in body
+    assert b'deliverySites' in body              # baked-in delivery sites context data
+    assert b'lineChoices[id].site' in body       # per-line site Choices hook
+    assert b'onDeliverySitePick' in body         # site select onchange handler wired
+    assert b"type=\"date\"" in body              # native date input for delivery_date
+    assert b"updateLineItem(${id}, 'delivery_date'" in body
+
+
+def test_create_form_offers_delivery_site_quick_add(client, db_session, admin_user, main_branch):
+    """Delivery Site quick-add modal + JS must be wired on the SO form (mirrors the
+    Product/UOM quick-add pattern), with a trailing '+ Add Site' sentinel in the line grid."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/create')
+    assert resp.status_code == 200
+    body = resp.data
+    assert b'deliverySiteQuickAddOverlay' in body    # site quick-add modal partial included
+    assert b'delivery-site-quick-add.js' in body     # site quick-add JS loaded
+    assert b'initDeliverySiteQuickAdd' in body       # site quick-add init call present
+    assert b'__add_site__' in body                   # line-grid "+ Add Site" sentinel wired
+
+
+def test_create_form_bakes_active_delivery_sites_tagged_with_customer_id(client, db_session, admin_user, main_branch):
+    """_common_form_ctx() must bake in all ACTIVE CustomerDeliverySite rows across all
+    customers, each carrying its own customer_id, for client-side filtering -- same
+    flat-list approach already used for products/units. Inactive sites are excluded."""
+    c = _customer(db_session)
+    _delivery_site(db_session, c, name='PLANT WAREHOUSE')
+    _delivery_site(db_session, c, name='RETIRED SITE', is_active=False)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    html = client.get('/sales-orders/create').get_data(as_text=True)
+    assert 'PLANT WAREHOUSE' in html
+    assert 'RETIRED SITE' not in html
+    assert f'"customer_id": {c.id}' in html or f'"customer_id":{c.id}' in html
 
 
 def test_duplicate_so_number_rejected(client, db_session, admin_user, main_branch):
