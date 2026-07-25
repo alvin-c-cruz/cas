@@ -59,6 +59,21 @@ def _parse_and_attach_so_lines(so, lines_json):
         except (ValueError, TypeError):
             return None
 
+    def _delivery_site_id(v):
+        """Resolve a submitted delivery_site_id, but only if it actually belongs to
+        this SO's own customer -- a direct POST, a replay, or a stale in-memory line
+        array (e.g. from before a header customer change) must never silently persist
+        a foreign customer's site. Mirrors this parser's tolerant style for other
+        optional cross-reference fields (invalid/missing -> None, not a raised error).
+        """
+        site_id = _int(v)
+        if site_id is None:
+            return None
+        site = db.session.get(CustomerDeliverySite, site_id)
+        if site is None or site.customer_id != so.customer_id:
+            return None
+        return site_id
+
     items = json.loads(lines_json) if lines_json else []
     kept = 0
     for idx, d in enumerate(items, start=1):
@@ -85,7 +100,7 @@ def _parse_and_attach_so_lines(so, lines_json):
             vat_category=d.get('vat_category') or None,
             vat_rate=vat_rate,
             delivery_date=_date(d.get('delivery_date')),
-            delivery_site_id=_int(d.get('delivery_site_id')),
+            delivery_site_id=_delivery_site_id(d.get('delivery_site_id')),
         )
         li.calculate_amounts()
         so.line_items.append(li)

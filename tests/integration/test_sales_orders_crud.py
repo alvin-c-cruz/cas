@@ -126,6 +126,79 @@ def test_create_sales_order_persists_delivery_date_and_site(client, db_session, 
     assert line.delivery_site_id == site.id
 
 
+def test_create_sales_order_drops_foreign_customer_delivery_site(client, db_session, admin_user, main_branch):
+    """A line's delivery_site_id must belong to the SO's own customer. A direct POST
+    (or a stale in-memory line array) naming another customer's site must not persist
+    -- silently dropped to None, matching this parser's existing tolerant style for
+    other soft-reference fields (e.g. an invalid uom_id is likewise just int()'d with
+    no cross-check), not a validation error that blocks the whole save."""
+    customer_a = _customer(db_session)
+    customer_b = Customer(code='OTHR01', name='Other Co', is_active=True)
+    db_session.add(customer_b)
+    db_session.commit()
+    p = _product(db_session)
+    foreign_site = _delivery_site(db_session, customer_b, name='OTHER WAREHOUSE')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0',
+                         'delivery_date': '2026-08-15', 'delivery_site_id': str(foreign_site.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0098', 'order_date': '2026-06-15',
+        'customer_id': str(customer_a.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0098').first()
+    assert so is not None
+    line = so.line_items[0]
+    assert line.delivery_site_id is None
+    # delivery_date is independent of the site and is not itself a cross-reference --
+    # it must survive untouched.
+    assert line.delivery_date == datetime.date(2026, 8, 15)
+
+
+def test_edit_sales_order_drops_foreign_customer_delivery_site_on_customer_change(
+        client, db_session, admin_user, main_branch):
+    """Editing a draft SO to switch its customer must not let a stale line still
+    carrying the OLD customer's delivery_site_id survive -- the server, not just
+    client-side JS, must re-check the site against the (new) so.customer_id."""
+    customer_a = _customer(db_session)
+    customer_b = Customer(code='OTHR02', name='Other Co 2', is_active=True)
+    db_session.add(customer_b)
+    db_session.commit()
+    p = _product(db_session)
+    site_a = _delivery_site(db_session, customer_a, name='ACME WAREHOUSE')
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0',
+                         'delivery_date': '2026-08-15', 'delivery_site_id': str(site_a.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0097', 'order_date': '2026-06-15',
+        'customer_id': str(customer_a.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0097').first()
+    assert so.line_items[0].delivery_site_id == site_a.id
+
+    # Now edit the SO, switching its customer to B while the line still (as a stale
+    # client array would) carries customer A's site id.
+    edit_lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                              'vat_category': None, 'vat_rate': '0',
+                              'delivery_date': '2026-08-15', 'delivery_site_id': str(site_a.id)}])
+    resp = client.post(f'/sales-orders/{so.id}/edit', data={
+        'so_number': 'SO-2026-06-0097', 'order_date': '2026-06-15',
+        'customer_id': str(customer_b.id), 'customer_name': 'Other Co 2',
+        'payment_terms': 'Net 30', 'notes': '', 'line_items': edit_lines,
+        'row_version': str(so.row_version)}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = db.session.get(SalesOrder, so.id)
+    db.session.refresh(so)
+    assert so.customer_id == customer_b.id
+    assert so.line_items[0].delivery_site_id is None
+
+
 def test_detail_view_no_entity_leak_and_no_currency_glyph(client, db_session, admin_user, main_branch):
     """SO detail must render em-dashes as the literal glyph (never the '&#8212;'
     entity, which Jinja autoescaping leaks as literal text when it sits inside a
