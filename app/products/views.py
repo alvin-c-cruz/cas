@@ -1,18 +1,22 @@
 """Product / Item master (Maintenance). Mirrors the Vendor/UOM CRUD pattern."""
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from flask_login import login_required, current_user
+from wtforms.validators import DataRequired, Optional
 from app import db
 from app.products.models import Product
 from app.products.forms import ProductForm
 from app.utils.cache_helpers import (get_active_units, get_active_accounts, clear_product_cache,
                                      get_active_product_categories)
 from app.audit.utils import log_create, log_update
+from app.users.module_access import module_enabled
 
 products_bp = Blueprint('products', __name__, template_folder='templates')
 
 
 def _populate_choices(form):
-    """Populate FK select choices from cached active records."""
+    """Populate FK select choices from cached active records. Category becomes
+    required once the product_categories module is enabled -- otherwise it stays
+    optional (owner directive 2026-07-25)."""
     units = get_active_units()
     accounts = get_active_accounts()
     form.default_unit_of_measure_id.choices = (
@@ -25,6 +29,10 @@ def _populate_choices(form):
         [('', '— None —')] + [(str(c.id), f'{c.code} — {c.name}')
                               for c in get_active_product_categories()]
     )
+    if module_enabled('product_categories'):
+        form.category_id.validators = [DataRequired(message='Category is required.')]
+    else:
+        form.category_id.validators = [Optional()]
 
 
 def _int_or_none(v):
@@ -36,7 +44,8 @@ def _int_or_none(v):
 @login_required
 def list():
     products = Product.query.order_by(Product.code).all()
-    return render_template('products/list.html', products=products)
+    categories = get_active_product_categories()
+    return render_template('products/list.html', products=products, categories=categories)
 
 
 @products_bp.route('/products/create', methods=['GET', 'POST'])
@@ -86,7 +95,8 @@ def create():
     if is_ajax and request.method == 'POST':
         errors = {f.name: f.errors[0] for f in form if f.errors}
         return jsonify(ok=False, errors=errors), 400
-    return render_template('products/form.html', form=form, title='Create Product', product=None)
+    return render_template('products/form.html', form=form, title='Create Product', product=None,
+                           category_required=module_enabled('product_categories'))
 
 
 @products_bp.route('/products/<int:id>/edit', methods=['GET', 'POST'])
@@ -124,4 +134,5 @@ def edit(id):
         log_update('products', p.id, p.code, old, p.to_dict())
         flash('Product updated.', 'success')
         return redirect(url_for('products.list'))
-    return render_template('products/form.html', form=form, title='Edit Product', product=p)
+    return render_template('products/form.html', form=form, title='Edit Product', product=p,
+                           category_required=module_enabled('product_categories'))
