@@ -22,7 +22,8 @@
     "uri_prefix": "sqlite:///",
     "default": "cas",
     "instances": {
-      "cas": { "file": "cas.db", "resettable": true, "reset_allow": true, "live": false }
+      "cas": { "file": "cas.db", "resettable": true, "reset_allow": true, "live": false },
+      "ric": { "file": "ric.db", "resettable": false, "reset_allow": false, "live": true }
     },
     "seed_cmd": "flask seed-minimal",
     "migrate_cmd": "flask db upgrade"
@@ -39,7 +40,7 @@
   },
   "_notes": {
     "db_selector": "/run cas -> db.default ('cas' = cas.db). Single local DB. The db-key is the 2nd positional arg to /run; it maps to db.instances.<key>.file. The dev server picks the DB by /run pre-setting env_var (SQLALCHEMY_DATABASE_URI) before launch -- flask_app.py's load_dotenv(override=False) lets the pre-set env win over .env (.env default is also cas.db).",
-    "reset_rule": "reset-database may wipe an instance with resettable:true AND (file matches *_demo.db OR reset_allow:true) AND live!=true. As of 2026-07-06 the ONLY instance is 'cas' (cas.db), explicitly reset_allow:true -- the user consolidated to a single disposable local TESTING DB named cas.db (holds SavorPack demo data). reset_allow opts a non-*_demo.db name past the filename guard; the live!=true guard is ALWAYS hard and reset_allow can never override it. There is no live client DB in this manifest (RIC is authoritative on PythonAnywhere only).",
+    "reset_rule": "reset-database may wipe an instance with resettable:true AND (file matches *_demo.db OR reset_allow:true) AND live!=true. As of 2026-07-06 'cas' (cas.db) is a disposable local TESTING DB, explicitly reset_allow:true. The live!=true guard is ALWAYS hard and reset_allow can never override it. 'ric' (ric.db, added 2026-07-25) is real live RIC migration data -- resettable:false, reset_allow:false, live:true -- /reset-database refuses it unconditionally.",
     "db_cleanup_20260706": "Consolidated to a single cas.db. cas_demo.db (RIC's ~367-account migrated COA, disposable local copy) was ARCHIVED to C:/envs/_db-archive/cas_demo_RIC-COA_archived-20260706.db (outside all repos; authoritative RIC data lives on PythonAnywhere). cas_demo.savorpack-bak-20260705-170811.db and cas_pitch.db were removed by the user. The 'demo' and 'pitch' instances were dropped from this manifest.",
     "python": "CAS has a venv with pytest + pytest-xdist. zhiyuan has none (PATH python)."
   }
