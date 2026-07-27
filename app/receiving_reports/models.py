@@ -136,15 +136,15 @@ def po_line_open_qty(po_item, exclude_rr_id=None):
 
 
 def generate_rr_number(branch_id=None):
-    """Next RR-YYYY-MM-#### for the current PH month (global per month; mirror generate_dr_number)."""
-    today = ph_now().date()
-    prefix = f"RR-{today.year:04d}-{today.month:02d}-"
-    rows = (ReceivingReport.query
-            .filter(ReceivingReport.rr_number.like(prefix + '%'))
-            .with_entities(ReceivingReport.rr_number).all())
-    nums = []
-    for (n,) in rows:
-        tail = n.rsplit('-', 1)[-1]
-        if tail.isdigit():
-            nums.append(int(tail))
-    return f"{prefix}{(max(nums) + 1) if nums else 1:04d}"
+    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+
+    Mirrors generate_invoice_number's contract exactly (global, not per-branch;
+    branch_id accepted for call-site symmetry). Each RR gets the next number after
+    the highest existing purely-numeric rr_number -- this deliberately includes
+    legacy-migrated literal numbers, not just CAS-generated ones. Legacy prefixed
+    numbers (e.g. the old 'RR-2026-07-0030' format) are ignored.
+    """
+    rows = ReceivingReport.query.with_entities(ReceivingReport.rr_number).all()
+    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
+    next_num = (max(nums) + 1) if nums else 1
+    return f'{next_num:05d}'

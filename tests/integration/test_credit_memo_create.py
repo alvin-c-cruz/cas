@@ -90,7 +90,7 @@ def test_create_persists_memo_with_snapshot_and_calc(client, db_session, admin_u
     assert memo is not None and memo.status == 'draft'
     assert memo.original_invoice_number == 'SI-CM-1'
     assert memo.customer_name == 'Acme Corp'
-    assert memo.memo_number.startswith('CM-')
+    assert memo.memo_number.isdigit() and len(memo.memo_number) == 5
     assert len(memo.line_items) == 1
     line = memo.line_items[0]
     assert line.sales_invoice_item_id == soi.id

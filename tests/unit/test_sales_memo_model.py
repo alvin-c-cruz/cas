@@ -56,13 +56,11 @@ def test_calculate_totals_sums_lines_and_nets_wht(app):
     assert memo.total_amount == Decimal('1660.00')       # 1680 - 20
 
 
-def test_generate_memo_number_prefixes_by_type(app, db_session):
-    from app.utils import ph_now
-    today = ph_now().date()
+def test_generate_memo_number_is_plain_digit_by_type(app, db_session):
     cm = generate_memo_number('credit')
     dm = generate_memo_number('debit')
-    assert cm == f'CM-{today.year:04d}-{today.month:02d}-0001'
-    assert dm == f'DM-{today.year:04d}-{today.month:02d}-0001'
+    assert cm == '00001'
+    assert dm == '00001'
 
 
 def test_generate_memo_number_increments_within_type(app, db_session):
@@ -74,6 +72,28 @@ def test_generate_memo_number_increments_within_type(app, db_session):
         sales_invoice_id=1, original_invoice_number='SI-1', customer_id=1,
         customer_name='X', reason='return', status='draft'))
     db_session.commit()
-    assert generate_memo_number('credit') == f'CM-{today.year:04d}-{today.month:02d}-0002'
+    assert generate_memo_number('credit') == '00002'
     # A different type keeps its own sequence.
-    assert generate_memo_number('debit') == f'DM-{today.year:04d}-{today.month:02d}-0001'
+    assert generate_memo_number('debit') == '00001'
+
+
+def test_generate_memo_number_continues_from_legacy_literal_number(app, db_session):
+    from app.utils import ph_now
+    today = ph_now().date()
+    db_session.add(SalesMemo(
+        memo_type='credit', memo_number='680', memo_date=today,
+        sales_invoice_id=1, original_invoice_number='SI-1', customer_id=1,
+        customer_name='X', reason='return', status='draft'))
+    db_session.commit()
+    assert generate_memo_number('credit') == '00681'
+
+
+def test_generate_memo_number_ignores_legacy_prefixed_numbers(app, db_session):
+    from app.utils import ph_now
+    today = ph_now().date()
+    db_session.add(SalesMemo(
+        memo_type='credit', memo_number='CM-2026-07-0030', memo_date=today,
+        sales_invoice_id=1, original_invoice_number='SI-1', customer_id=1,
+        customer_name='X', reason='return', status='draft'))
+    db_session.commit()
+    assert generate_memo_number('credit') == '00001'

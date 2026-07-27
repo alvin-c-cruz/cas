@@ -84,8 +84,8 @@ def test_calculate_totals_sums_lines_and_nets_wht(app_ctx):
 
 
 def test_number_prefix(app_ctx):
-    assert generate_purchase_memo_number('debit').startswith('VDM-')
-    assert generate_purchase_memo_number('credit').startswith('VCM-')
+    assert generate_purchase_memo_number('debit') == '00001'
+    assert generate_purchase_memo_number('credit') == '00001'
 
 
 def test_generate_purchase_memo_number_increments_within_type(app_ctx, a_posted_ap, one_branch):
@@ -98,6 +98,19 @@ def test_generate_purchase_memo_number_increments_within_type(app_ctx, a_posted_
         vendor_id=a_posted_ap.vendor_id, vendor_name=a_posted_ap.vendor_name,
         branch_id=one_branch.id, reason='return', status='draft'))
     db.session.commit()
-    assert generate_purchase_memo_number('debit') == f'VDM-{today.year:04d}-{today.month:02d}-0002'
+    assert generate_purchase_memo_number('debit') == '00002'
     # A different type keeps its own sequence.
-    assert generate_purchase_memo_number('credit') == f'VCM-{today.year:04d}-{today.month:02d}-0001'
+    assert generate_purchase_memo_number('credit') == '00001'
+
+
+def test_generate_purchase_memo_number_continues_from_legacy_literal_number(
+        app_ctx, a_posted_ap, one_branch):
+    from app.utils import ph_now
+    today = ph_now().date()
+    db.session.add(PurchaseMemo(
+        memo_type='debit', memo_number='340', memo_date=today,
+        accounts_payable_id=a_posted_ap.id, original_ap_number=a_posted_ap.ap_number,
+        vendor_id=a_posted_ap.vendor_id, vendor_name=a_posted_ap.vendor_name,
+        branch_id=one_branch.id, reason='return', status='draft'))
+    db.session.commit()
+    assert generate_purchase_memo_number('debit') == '00341'

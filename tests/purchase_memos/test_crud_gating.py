@@ -175,7 +175,7 @@ def test_create_persists_draft_with_computed_totals(client, db_session, admin_us
     assert resp.status_code == 200
     memo = PurchaseMemo.query.filter_by(memo_type='debit').first()
     assert memo is not None and memo.status == 'draft'
-    assert memo.memo_number.startswith('VDM-')
+    assert memo.memo_number.isdigit() and len(memo.memo_number) == 5
     assert memo.original_ap_number == 'AP-PM-1'
     assert memo.vendor_name == 'Acme Supplier'
     assert len(memo.line_items) == 1

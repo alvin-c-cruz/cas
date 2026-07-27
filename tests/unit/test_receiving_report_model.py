@@ -22,11 +22,27 @@ def _po_with_line(db_session, qty=100, status='approved'):
 def test_generate_rr_number_increments(db_session):
     from app.receiving_reports.models import ReceivingReport, generate_rr_number
     n1 = generate_rr_number()
-    assert n1.startswith('RR-') and n1.endswith('-0001')
+    assert n1 == '00001'
     rr = ReceivingReport(rr_number=n1, receipt_date=date(2026, 7, 11), purchase_order_id=1,
                          vendor_name='Acme', status='draft')
     db_session.add(rr); db_session.commit()
-    assert generate_rr_number().endswith('-0002')
+    assert generate_rr_number() == '00002'
+
+
+def test_generate_rr_number_continues_from_legacy_literal_number(db_session):
+    from app.receiving_reports.models import ReceivingReport, generate_rr_number
+    rr = ReceivingReport(rr_number='19240', receipt_date=date(2026, 7, 11),
+                         purchase_order_id=1, vendor_name='Acme', status='draft')
+    db_session.add(rr); db_session.commit()
+    assert generate_rr_number() == '19241'
+
+
+def test_generate_rr_number_ignores_legacy_prefixed_numbers(db_session):
+    from app.receiving_reports.models import ReceivingReport, generate_rr_number
+    rr = ReceivingReport(rr_number='RR-2026-07-0030', receipt_date=date(2026, 7, 11),
+                         purchase_order_id=1, vendor_name='Acme', status='draft')
+    db_session.add(rr); db_session.commit()
+    assert generate_rr_number() == '00001'
 
 
 def test_committed_statuses(db_session):

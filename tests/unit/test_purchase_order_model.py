@@ -11,8 +11,7 @@ def test_vat_treatments_constant():
 
 def test_generate_po_number_first_of_month(db_session):
     n = generate_po_number()
-    assert n.startswith('PO-')
-    assert n.endswith('-0001')
+    assert n == '00001'
 
 
 def test_generate_po_number_increments(db_session):
@@ -20,7 +19,21 @@ def test_generate_po_number_increments(db_session):
     po = PurchaseOrder(po_number=n1, order_date=None, status='draft')
     db_session.add(po)
     db_session.commit()
-    assert generate_po_number().endswith('-0002')
+    assert generate_po_number() == '00002'
+
+
+def test_generate_po_number_continues_from_legacy_literal_number(db_session):
+    po = PurchaseOrder(po_number='30500', order_date=None, status='draft')
+    db_session.add(po)
+    db_session.commit()
+    assert generate_po_number() == '30501'
+
+
+def test_generate_po_number_ignores_legacy_prefixed_numbers(db_session):
+    po = PurchaseOrder(po_number='PO-2026-07-0030', order_date=None, status='draft')
+    db_session.add(po)
+    db_session.commit()
+    assert generate_po_number() == '00001'
 
 
 def test_line_amounts_inclusive_extracts_vat(db_session):

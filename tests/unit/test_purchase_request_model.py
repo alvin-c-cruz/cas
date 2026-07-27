@@ -10,10 +10,25 @@ from app.purchase_requests.models import PurchaseRequest, PurchaseRequestItem  #
 def test_generate_pr_number_increments(db_session):
     from app.purchase_requests.models import generate_pr_number
     n1 = generate_pr_number()
-    assert n1.startswith('PR-') and n1.endswith('-0001')
+    assert n1 == '00001'
     pr = PurchaseRequest(pr_number=n1, request_date=date(2026, 7, 11), status='draft')
     db_session.add(pr); db_session.commit()
-    assert generate_pr_number().endswith('-0002')
+    assert generate_pr_number() == '00002'
+
+
+def test_generate_pr_number_continues_from_legacy_literal_number(db_session):
+    from app.purchase_requests.models import generate_pr_number
+    pr = PurchaseRequest(pr_number='50000', request_date=date(2026, 7, 11), status='draft')
+    db_session.add(pr); db_session.commit()
+    assert generate_pr_number() == '50001'
+
+
+def test_generate_pr_number_ignores_legacy_prefixed_numbers(db_session):
+    from app.purchase_requests.models import generate_pr_number
+    pr = PurchaseRequest(pr_number='PR-2026-07-0030', request_date=date(2026, 7, 11),
+                         status='draft')
+    db_session.add(pr); db_session.commit()
+    assert generate_pr_number() == '00001'
 
 
 def test_pr_has_no_price_columns(db_session):

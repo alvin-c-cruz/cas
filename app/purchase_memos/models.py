@@ -181,16 +181,19 @@ class PurchaseMemoItem(db.Model):
 
 
 def generate_purchase_memo_number(memo_type):
-    """Next VDM-/VCM-YYYY-MM-#### for the current PH month (mirror generate_memo_number).
-    Each memo_type keeps its own monthly sequence."""
-    prefix_code = MEMO_PREFIX[memo_type]
-    today = ph_now().date()
-    prefix = f"{prefix_code}-{today.year:04d}-{today.month:02d}-"
-    rows = (PurchaseMemo.query.filter(PurchaseMemo.memo_number.like(prefix + '%'))
+    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+
+    Mirrors generate_invoice_number's contract exactly. Each memo_type ('debit'/
+    'credit') keeps its own independent sequence -- filtered by the memo_type
+    COLUMN, not a prefix string, so the fix doesn't merge Vendor Debit Memo and
+    Vendor Credit Memo numbering into one shared pool. Each memo gets the next
+    number after the highest existing purely-numeric memo_number of that type --
+    this deliberately includes legacy-migrated literal numbers, not just
+    CAS-generated ones. Legacy prefixed numbers (e.g. the old 'VDM-2026-07-0030'
+    format) are ignored.
+    """
+    rows = (PurchaseMemo.query.filter_by(memo_type=memo_type)
             .with_entities(PurchaseMemo.memo_number).all())
-    nums = []
-    for (n,) in rows:
-        tail = n.rsplit('-', 1)[-1]
-        if tail.isdigit():
-            nums.append(int(tail))
-    return f"{prefix}{(max(nums) + 1) if nums else 1:04d}"
+    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
+    next_num = (max(nums) + 1) if nums else 1
+    return f'{next_num:05d}'

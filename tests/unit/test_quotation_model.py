@@ -18,6 +18,29 @@ def _quote(treatment, amounts):
     return q
 
 
+def test_generate_quotation_number_starts_at_00001(db_session, main_branch):
+    from app.quotations.models import generate_quotation_number
+    assert generate_quotation_number(main_branch.id) == '00001'
+
+
+def test_generate_quotation_number_continues_from_legacy_literal_number(db_session, main_branch):
+    from app.quotations.models import generate_quotation_number
+    q = Quotation(quotation_number='4200', quotation_date=date(2026, 7, 9),
+                  customer_id=1, customer_name='Legacy Co', branch_id=main_branch.id,
+                  status='draft')
+    db_session.add(q); db_session.commit()
+    assert generate_quotation_number(main_branch.id) == '04201'
+
+
+def test_generate_quotation_number_ignores_legacy_prefixed_numbers(db_session, main_branch):
+    from app.quotations.models import generate_quotation_number
+    q = Quotation(quotation_number='QTN-2026-07-0030', quotation_date=date(2026, 7, 9),
+                  customer_id=1, customer_name='Legacy Co', branch_id=main_branch.id,
+                  status='draft')
+    db_session.add(q); db_session.commit()
+    assert generate_quotation_number(main_branch.id) == '00001'
+
+
 def test_calculate_totals_three_treatments():
     # inclusive: 1120 gross -> net 1000, vat 120, total 1120
     inc = _quote('inclusive', ['1120.00'])

@@ -48,7 +48,7 @@ def test_create_draft_dr_persists_and_snapshots_customer(client, db_session, adm
     assert dr is not None and dr.status == 'draft'
     assert dr.customer_name == 'Acme' and dr.customer_id == so.customer_id
     assert dr.line_items[0].delivered_quantity == Decimal('4')
-    assert dr.dr_number.startswith('DR-')
+    assert dr.dr_number.isdigit() and len(dr.dr_number) == 5
 
 
 def test_create_form_prefills_generated_dr_number(client, db_session, admin_user, main_branch):
@@ -59,7 +59,28 @@ def test_create_form_prefills_generated_dr_number(client, db_session, admin_user
     body = client.get('/delivery-receipts/create').data.decode('utf-8')
     assert 'name="dr_number"' in body
     m = re.search(r'name="dr_number"[^>]*value="([^"]+)"', body)
-    assert m and m.group(1).startswith('DR-')
+    assert m and m.group(1).isdigit() and len(m.group(1)) == 5
+
+
+def test_generate_dr_number_continues_from_legacy_literal_number(db_session, main_branch):
+    """Regression (BUG-DR-SI-NUMBER-DEFAULT-IGNORES-EXISTING): a purely-numeric
+    legacy-migrated dr_number (e.g. RIC's "25012") must NOT be ignored -- the next
+    suggested number continues from it, same as generate_invoice_number already does."""
+    from app.delivery_receipts.models import generate_dr_number
+    dr = DeliveryReceipt(dr_number='25012', branch_id=main_branch.id,
+                         delivery_date=date(2026, 7, 9), sales_order_id=1,
+                         customer_id=1, customer_name='Legacy Co', status='draft')
+    db.session.add(dr); db.session.commit()
+    assert generate_dr_number(main_branch.id) == '25013'
+
+
+def test_generate_dr_number_ignores_legacy_prefixed_numbers(db_session, main_branch):
+    from app.delivery_receipts.models import generate_dr_number
+    dr = DeliveryReceipt(dr_number='DR-2026-07-0030', branch_id=main_branch.id,
+                         delivery_date=date(2026, 7, 9), sales_order_id=1,
+                         customer_id=1, customer_name='Legacy Co', status='draft')
+    db.session.add(dr); db.session.commit()
+    assert generate_dr_number(main_branch.id) == '00001'
 
 
 def test_create_dr_accepts_custom_dr_number(client, db_session, admin_user, main_branch):

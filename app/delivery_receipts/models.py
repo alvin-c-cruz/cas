@@ -133,19 +133,17 @@ def so_line_open_qty(so_item, exclude_dr_id=None):
 
 
 def generate_dr_number(branch_id=None):
-    """Next DR-YYYY-MM-#### for the current PH month.
+    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
 
-    The sequence is global per month (not per branch), mirroring generate_so_number --
-    dr_number is a globally unique column. branch_id is accepted for call-site symmetry.
+    Mirrors generate_invoice_number's contract exactly. dr_number is a globally
+    unique column (not per-branch); branch_id is accepted for call-site symmetry.
+    Each DR gets the next number after the highest existing purely-numeric
+    dr_number -- this deliberately includes legacy-migrated literal numbers (e.g.
+    RIC's "25012"), not just CAS-generated ones. Legacy prefixed numbers (e.g. the
+    old 'DR-2026-07-0030' format) are ignored, so a client transitioning off that
+    format starts cleanly at 00001 and never collides with old rows.
     """
-    today = ph_now().date()
-    prefix = f"DR-{today.year:04d}-{today.month:02d}-"
-    rows = (DeliveryReceipt.query
-            .filter(DeliveryReceipt.dr_number.like(prefix + '%'))
-            .with_entities(DeliveryReceipt.dr_number).all())
-    nums = []
-    for (n,) in rows:
-        tail = n.rsplit('-', 1)[-1]
-        if tail.isdigit():
-            nums.append(int(tail))
-    return f"{prefix}{(max(nums) + 1) if nums else 1:04d}"
+    rows = DeliveryReceipt.query.with_entities(DeliveryReceipt.dr_number).all()
+    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
+    next_num = (max(nums) + 1) if nums else 1
+    return f'{next_num:05d}'

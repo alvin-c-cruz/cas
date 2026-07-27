@@ -107,18 +107,18 @@ def _parse_and_attach_so_lines(so, lines_json):
 
 
 def generate_so_number():
-    """Next SO-YYYY-MM-#### for the current PH month (suffix = max existing this month + 1)."""
-    today = ph_now().date()
-    prefix = f"SO-{today.year:04d}-{today.month:02d}-"
-    rows = (SalesOrder.query
-            .filter(SalesOrder.so_number.like(prefix + '%'))
-            .with_entities(SalesOrder.so_number).all())
-    nums = []
-    for (n,) in rows:
-        tail = n.rsplit('-', 1)[-1]
-        if tail.isdigit():
-            nums.append(int(tail))
-    return f"{prefix}{(max(nums) + 1) if nums else 1:04d}"
+    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+
+    Mirrors generate_invoice_number's contract exactly. Each SO gets the next
+    number after the highest existing purely-numeric so_number -- this
+    deliberately includes legacy-migrated literal numbers, not just CAS-generated
+    ones. Legacy prefixed numbers (e.g. the old 'SO-2026-07-0030' format) are
+    ignored, so a client transitioning off that format starts cleanly at 00001.
+    """
+    rows = SalesOrder.query.with_entities(SalesOrder.so_number).all()
+    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
+    next_num = (max(nums) + 1) if nums else 1
+    return f'{next_num:05d}'
 
 
 # ── role gate ────────────────────────────────────────────────────────────────

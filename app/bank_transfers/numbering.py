@@ -1,17 +1,15 @@
-"""BT-YYYY-MM-NNNN numbering, mirroring generate_po_number's pattern exactly."""
-from app.utils import ph_now
+"""Bank Transfer numbering, mirroring generate_invoice_number's pattern exactly."""
 from app.bank_transfers.models import BankTransfer
 
 
 def generate_bank_transfer_number():
-    today = ph_now().date()
-    prefix = f"BT-{today.year:04d}-{today.month:02d}-"
-    rows = (BankTransfer.query
-            .filter(BankTransfer.transfer_number.like(prefix + '%'))
-            .with_entities(BankTransfer.transfer_number).all())
-    nums = []
-    for (n,) in rows:
-        tail = n.rsplit('-', 1)[-1]
-        if tail.isdigit():
-            nums.append(int(tail))
-    return f"{prefix}{(max(nums) + 1) if nums else 1:04d}"
+    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+
+    Each transfer gets the next number after the highest existing purely-numeric
+    transfer_number. Legacy prefixed numbers (e.g. the old 'BT-2026-07-0030'
+    format) are ignored.
+    """
+    rows = BankTransfer.query.with_entities(BankTransfer.transfer_number).all()
+    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
+    next_num = (max(nums) + 1) if nums else 1
+    return f'{next_num:05d}'

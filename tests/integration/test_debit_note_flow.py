@@ -111,9 +111,9 @@ def test_debit_create_persists_and_redirects_to_detail(client, db_session, admin
     }, follow_redirects=True)
     assert resp.status_code == 200
     memo = SalesMemo.query.filter_by(memo_type='debit').first()
-    assert memo is not None and memo.memo_number.startswith('DM-')
+    assert memo is not None and memo.memo_number.isdigit() and len(memo.memo_number) == 5
     assert memo.total_amount == Decimal('560.00')
-    assert b'DEBIT NOTE' not in resp.data or b'DM-' in resp.data   # landed on detail
+    assert memo.memo_number.encode() in resp.data   # landed on detail
 
 
 def test_debit_post_increases_ar_without_touching_si_balance(client, db_session, admin_user, main_branch):
