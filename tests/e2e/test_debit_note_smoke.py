@@ -43,5 +43,6 @@ def test_debit_note_round_trip_submit(logged_in_sales_page, sales_e2e_server):
     page.locator('#memo-form button[type="submit"]').click()
     page.wait_for_url(re.compile(r'/debit-notes/\d+$'), timeout=15000)
     body = page.locator('body').inner_text()
-    assert 'DM-' in body
+    # memo_number is a plain continuous 5-digit sequence, no prefix (mirrors SI numbering).
+    assert re.search(r'\b\d{5}\b', body), body
     assert 'Draft' in body

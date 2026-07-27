@@ -48,5 +48,6 @@ def test_credit_memo_round_trip_submit(logged_in_sales_page, sales_e2e_server):
     # Lands on the detail view /credit-memos/<id> (regex excludes /create).
     page.wait_for_url(re.compile(r'/credit-memos/\d+$'), timeout=15000)
     body = page.locator('body').inner_text()
-    assert 'CM-' in body
+    # memo_number is a plain continuous 5-digit sequence, no prefix (mirrors SI numbering).
+    assert re.search(r'\b\d{5}\b', body), body
     assert 'Draft' in body        # a freshly created memo is a draft

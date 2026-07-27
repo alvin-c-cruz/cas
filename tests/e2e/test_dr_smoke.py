@@ -42,7 +42,8 @@ def test_so_select_renders_open_lines(logged_in_sales_page, sales_e2e_server):
 
     rows = _grid_rows(page)
     assert len(rows) == 1, rows
-    product, uom, ordered, delivered, open_qty, deliver_now = rows[0]
+    line_label, product, uom, ordered, delivered, open_qty, deliver_now = rows[0]
+    assert 'Line' in line_label, line_label
     assert 'P001' in product, product
     assert uom == 'PC', uom
     assert float(ordered) == 10.0, ordered
@@ -88,4 +89,5 @@ def test_dr_round_trip_submit(logged_in_sales_page, sales_e2e_server):
     # Land on the detail view /delivery-receipts/<id> (regex excludes /create).
     page.wait_for_url(re.compile(r'/delivery-receipts/\d+$'), timeout=15000)
     body = page.locator('body').inner_text()
-    assert 'DR-' in body, body
+    # dr_number is a plain continuous 5-digit sequence, no prefix (mirrors SI numbering).
+    assert re.search(r'\b\d{5}\b', body), body
