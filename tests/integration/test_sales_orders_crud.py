@@ -37,6 +37,16 @@ def _login(client, user):
     with client.session_transaction() as sess:
         sess['_user_id'] = str(user.id)
         sess['_fresh'] = True
+    # Flask-Login caches the loaded user on flask.g for the life of the app
+    # context. The `app` fixture keeps ONE app context open for the whole test
+    # function, and Flask's test client reuses that same context per request
+    # rather than pushing a fresh one -- so g._login_user (and therefore
+    # current_user) would otherwise stay stale across a mid-test user switch
+    # (log in as accountant, do something, log in as staff: current_user would
+    # still resolve to accountant on the next request). Bust the cache here so
+    # every _login() call is guaranteed to take effect on the very next request.
+    import flask
+    flask.g.pop('_login_user', None)
 
 
 def _select_branch(client, branch_id):
@@ -888,3 +898,60 @@ def test_detail_shows_wt_column(client, db_session, admin_user, main_branch):
     resp2 = client.get(f'/sales-orders/{so2.id}')
     row2 = _line_items_row(resp2.get_data(as_text=True), 1)
     assert '>—<' in row2
+
+
+def test_close_line_requires_confirmed_status_role_and_reason(client, db_session, admin_user,
+                                                                accountant_user, staff_user, main_branch):
+    from app.audit.models import AuditLog
+    c = _customer(db_session)
+    p = _product(db_session)
+
+    so = SalesOrder(branch_id=main_branch.id, so_number='SO-CL-0001',
+                    order_date=datetime.date(2026, 7, 28), customer_id=c.id,
+                    customer_name=c.name, status='draft')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+
+    # Draft SO: guard refuses (mirrors the header cancel's confirmed-only precondition).
+    resp = client.post(f'/sales-orders/{so.id}/lines/{li.id}/close',
+                       data={'closed_reason': 'no longer needed'}, follow_redirects=True)
+    assert resp.status_code == 200
+    db_session.refresh(li)
+    assert li.line_status == 'open'
+
+    so.status = 'confirmed'
+    db_session.commit()
+
+    # Staff: role guard refuses.
+    _login(client, staff_user)
+    resp = client.post(f'/sales-orders/{so.id}/lines/{li.id}/close',
+                       data={'closed_reason': 'no longer needed'}, follow_redirects=True)
+    db_session.refresh(li)
+    assert li.line_status == 'open'
+
+    # Accountant, reason too short: refused.
+    _login(client, accountant_user)
+    resp = client.post(f'/sales-orders/{so.id}/lines/{li.id}/close',
+                       data={'closed_reason': 'short'}, follow_redirects=True)
+    db_session.refresh(li)
+    assert li.line_status == 'open'
+
+    # Accountant, valid reason: succeeds and is audit-logged.
+    resp = client.post(f'/sales-orders/{so.id}/lines/{li.id}/close',
+                       data={'closed_reason': 'customer no longer wants the remainder'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db_session.refresh(li)
+    assert li.line_status == 'closed'
+    assert li.closed_by_id == accountant_user.id
+    assert li.closed_at is not None
+    assert li.closed_reason == 'customer no longer wants the remainder'
+    assert AuditLog.query.filter_by(module='sales_orders', action='update',
+                                    record_id=so.id).filter(
+                                        AuditLog.notes.like('%closed%')).count() >= 1

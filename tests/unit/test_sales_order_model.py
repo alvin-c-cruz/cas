@@ -196,3 +196,52 @@ def test_sales_order_item_closed_fields_round_trip(db_session, admin_user):
     d = fetched.to_dict()
     assert d['line_status'] == 'closed'
     assert d['closed_reason'] == 'Customer cancelled remaining balance'
+
+
+def test_so_line_open_qty_zero_when_line_closed(db_session):
+    from app.delivery_receipts.models import so_line_open_qty
+    from app.customers.models import Customer
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    c = Customer(code='OQ01', name='Open Qty Customer', is_active=True)
+    uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+    db_session.add_all([c, uom]); db_session.commit()
+    p = Product(code='OQP01', name='Open Qty Product', default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('10.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+
+    so = SalesOrder(branch_id=None, so_number='SO-OQ-0001', order_date=date(2026, 7, 28),
+                    customer_id=c.id, customer_name=c.name, status='confirmed')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    assert so_line_open_qty(li) == Decimal('10')
+    li.line_status = 'closed'
+    db_session.commit()
+    assert so_line_open_qty(li) == Decimal('0')
+
+
+def test_so_line_open_qty_zero_when_parent_so_cancelled(db_session):
+    from app.delivery_receipts.models import so_line_open_qty
+    from app.customers.models import Customer
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    c = Customer(code='OQ02', name='Open Qty Customer 2', is_active=True)
+    uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+    db_session.add_all([c, uom]); db_session.commit()
+    p = Product(code='OQP02', name='Open Qty Product 2', default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('10.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+
+    so = SalesOrder(branch_id=None, so_number='SO-OQ-0002', order_date=date(2026, 7, 28),
+                    customer_id=c.id, customer_name=c.name, status='cancelled')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    assert so_line_open_qty(li) == Decimal('0')

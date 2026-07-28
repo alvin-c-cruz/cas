@@ -120,7 +120,18 @@ class DeliveryReceiptItem(db.Model):
 def so_line_open_qty(so_item, exclude_dr_id=None):
     """Ordered qty of an SO line minus the qty already committed by non-cancelled,
     non-draft DR lines (statuses in COMMITTED_STATUSES). Pass exclude_dr_id to leave
-    a specific DR out of the sum (used when re-checking the DR being approved)."""
+    a specific DR out of the sum (used when re-checking the DR being approved).
+
+    Returns 0 immediately, skipping the ordered-minus-delivered computation, when
+    the line itself has been individually closed OR its parent SO has been
+    cancelled/closed -- neither case should ever show as still-open in Order
+    Monitoring or block a DR-quantity check, regardless of what was actually
+    delivered before that status change.
+    """
+    if so_item.line_status == 'closed':
+        return Decimal('0')
+    if so_item.order is not None and so_item.order.status in ('cancelled', 'closed'):
+        return Decimal('0')
     ordered = Decimal(str(so_item.quantity or 0))
     q = (db.session.query(db.func.coalesce(db.func.sum(DeliveryReceiptItem.delivered_quantity), 0))
          .join(DeliveryReceipt, DeliveryReceiptItem.delivery_receipt_id == DeliveryReceipt.id)

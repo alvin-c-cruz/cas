@@ -657,3 +657,57 @@ def cancel(id):
 
     flash(f'Sales Order "{so.so_number}" has been cancelled.', 'success')
     return redirect(url_for('sales_orders.view', id=id))
+
+
+@sales_orders_bp.route('/sales-orders/<int:id>/lines/<int:item_id>/close', methods=['POST'])
+@login_required
+def close_line(id, item_id):
+    """Close ONE line's remaining quantity (independent of the header cancel).
+    Does not touch quantity/amount/delivery history -- so_line_open_qty() reads
+    line_status to report 0 undelivered for this line going forward."""
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    item = db.session.get(SalesOrderItem, item_id)
+    if item is None or item.sales_order_id != so.id:
+        abort(404)
+
+    # Role guard: accountant/admin (mirrors cancel()'s gate exactly)
+    if not (current_user.role == 'accountant' or current_user.has_full_access):
+        flash('You do not have permission to close a Sales Order line.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    # Only a confirmed SO has lines worth closing -- a draft SO's lines are edited
+    # directly, and a cancelled/closed SO's lines are already fully closed via
+    # so_line_open_qty()'s header-status check.
+    if so.status != 'confirmed':
+        flash('Only lines on a confirmed Sales Order can be closed.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    if item.line_status == 'closed':
+        flash('This line is already closed.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    closed_reason = request.form.get('closed_reason', '').strip()
+    if len(closed_reason) < 10:
+        flash('Please provide a reason (at least 10 characters).', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    old_values = {'line_status': item.line_status}
+    item.line_status = 'closed'
+    item.closed_by_id = current_user.id
+    item.closed_at = ph_now()
+    item.closed_reason = closed_reason
+    db.session.commit()
+
+    log_update(
+        module='sales_orders',
+        record_id=so.id,
+        record_identifier=so.so_number,
+        old_values=old_values,
+        new_values={'line_status': item.line_status},
+        notes=f'Line {item.line_number} closed: {closed_reason}',
+    )
+
+    flash(f'Line {item.line_number} of "{so.so_number}" has been closed.', 'success')
+    return redirect(url_for('sales_orders.view', id=id))
