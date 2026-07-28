@@ -110,3 +110,51 @@ def test_billable_drs_wt_id_none_when_so_line_has_no_wt(client, db_session, admi
     assert resp.status_code == 200
     data = resp.get_json()
     assert data['drs'][0]['lines'][0]['wt_id'] is None
+
+
+def test_billable_drs_includes_source_so_line_wt_rate(client, db_session, admin_user, main_branch):
+    """Regression for the whole-branch-review finding: the Pull-DR payload must carry the
+    RATE alongside the wt_id, not just the id. Without the rate, si_dr_billing.js's pull()
+    has no way to populate the pulled line's wt_rate, and the SI form's calculateTotals()
+    gates WHT accrual entirely on item.wt_rate being truthy -- so the on-screen "Less:
+    Withholding Tax" preview shows P0 for a pulled line even though wt_id (and therefore
+    the WT code shown in the picker) is correctly populated. The saved SI recomputes the
+    rate server-side from wt_id, so this bug is purely a client-preview mismatch -- but
+    this endpoint is the one place that must supply the rate for the client to use."""
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db.session.add(wt); db.session.commit()
+    c, p, so, soi, rev = _setup(client, admin_user, main_branch, wt_id=wt.id)
+    _dr(main_branch, c, p, soi, 'DR-1')
+    resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    line = data['drs'][0]['lines'][0]
+    assert line['wt_id'] == wt.id
+    assert line['wt_rate'] == float(wt.rate)   # the actual rate, not None -- this is the fix
+
+
+def test_billable_drs_wt_rate_none_when_so_line_has_no_wt(client, db_session, admin_user, main_branch):
+    """No wt_id on the source SO line -> wt_rate must also be None, not 0 or omitted."""
+    c, p, so, soi, rev = _setup(client, admin_user, main_branch, wt_id=None)
+    _dr(main_branch, c, p, soi, 'DR-1')
+    resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['drs'][0]['lines'][0]['wt_rate'] is None
+
+
+def test_si_dr_billing_js_pull_passes_through_wt_rate():
+    """Source-level regression guard for the JS half of the fix: pull() must forward
+    ln.wt_rate from the billable-drs payload, not hardcode wt_rate: null -- otherwise the
+    endpoint carrying the real rate (proven above) is useless, since addLineItem()'s
+    existingItem branch only takes what pull() gives it."""
+    import pathlib
+    js_path = (pathlib.Path(__file__).resolve().parents[2]
+              / 'app' / 'static' / 'js' / 'si_dr_billing.js')
+    text = js_path.read_text(encoding='utf-8')
+    assert 'wt_rate: null' not in text, (
+        'pull() must no longer hardcode wt_rate to null -- it must forward ln.wt_rate '
+        'from the billable-drs payload')
+    assert 'ln.wt_rate' in text, (
+        'pull() must reference ln.wt_rate so the fetched rate reaches addLineItem()')

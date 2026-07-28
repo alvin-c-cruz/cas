@@ -616,6 +616,8 @@ def billable_drs():
                 'vat_category': soi.vat_category if soi else None,
                 'vat_rate': float(soi.vat_rate) if soi and soi.vat_rate is not None else 0.0,
                 'wt_id': (soi.wt_id if soi else None),
+                'wt_rate': (float(soi.withholding_tax.rate)
+                            if (soi and soi.withholding_tax) else None),
                 'account_id': (product.default_account_id if product else None),
             })
         out.append({'id': dr.id, 'dr_number': dr.dr_number,
