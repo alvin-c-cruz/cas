@@ -38,6 +38,7 @@ from app.reports.financial import (
 )
 from app.utils.export import export_to_excel, export_to_csv
 from app.utils.bir_books import get_company_identity
+from app.work_orders.views import accountant_or_above_required
 from app.journal_entries.models import JournalEntry
 from app.reports.general_journal_data import (build_general_journal,
     build_general_journal_xlsx, _write_gj_rows, VOUCHER_ENTRY_TYPES)
@@ -1150,6 +1151,38 @@ def budget_variance_export_excel():
                'YTD Budget', 'YTD Actual', 'YTD Variance', 'YTD Variance %']
     filename = f'Budget_Variance_{data["fiscal_year"]}_{data["month"]:02d}.xlsx'
     return export_to_excel(rows, columns, headers, filename, title='Budget-vs-Actual Variance')
+
+
+def _wo_costing_params():
+    """(status, date_from, date_to, branch_id) for the WO Costing & Variance report."""
+    from datetime import date as _date
+    status = request.args.get('status', 'completed')
+    date_from = None
+    date_to = None
+    raw_from = request.args.get('date_from')
+    raw_to = request.args.get('date_to')
+    if raw_from:
+        try:
+            date_from = _date.fromisoformat(raw_from)
+        except ValueError:
+            date_from = None
+    if raw_to:
+        try:
+            date_to = _date.fromisoformat(raw_to)
+        except ValueError:
+            date_to = None
+    return status, date_from, date_to, session.get('selected_branch_id')
+
+
+@reports_bp.route('/reports/work-order-costing-variance')
+@login_required
+@accountant_or_above_required
+def work_order_costing_variance():
+    from app.reports.work_order_costing import generate_work_order_costing_variance_report
+    status, date_from, date_to, branch_id = _wo_costing_params()
+    data = generate_work_order_costing_variance_report(
+        branch_id, status=status, date_from=date_from, date_to=date_to)
+    return render_template('reports/work_order_costing_variance.html', data=data, status=status)
 
 
 @reports_bp.route('/reports/balance-sheet')

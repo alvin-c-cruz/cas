@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Work Order Costing & Variance{% endblock %}
+{% block page_title %}Work Order Costing & Variance{% endblock %}
+{% block content %}
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Work Order Costing &amp; Variance Report</h1>
+        <p class="page-subheading">Material/labor actual cost vs. standard-cost baseline per completed Work Order</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="GET" class="filter-form">
+            <label for="status">Status</label>
+            <select id="status" name="status">
+                <option value="completed" {{ 'selected' if status == 'completed' }}>Completed</option>
+                <option value="force_closed" {{ 'selected' if status == 'force_closed' }}>Force-Closed</option>
+                <option value="all" {{ 'selected' if status == 'all' }}>All</option>
+            </select>
+            <label for="date_from">From</label>
+            <input type="date" id="date_from" name="date_from" value="{{ data.date_from.isoformat() if data.date_from else '' }}">
+            <label for="date_to">To</label>
+            <input type="date" id="date_to" name="date_to" value="{{ data.date_to.isoformat() if data.date_to else '' }}">
+            <button type="submit" class="btn btn-secondary">Apply</button>
+        </form>
+
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>WO #</th>
+                        <th>Product</th>
+                        <th class="num">Qty Completed</th>
+                        <th class="num">Material Cost</th>
+                        <th class="num">Labor Cost</th>
+                        <th class="num">Actual Total</th>
+                        <th class="num">Standard Cost</th>
+                        <th class="num">Variance</th>
+                        <th class="num">Variance %</th>
+                        <th>Completed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data.rows %}
+                    <tr class="{% if row.variance_amount is not none %}{% if row.variance_amount > 0 %}variance-unfavorable{% elif row.variance_amount < 0 %}variance-favorable{% endif %}{% endif %}">
+                        <td>
+                            <strong>{{ row.wo_number }}</strong>
+                            {% if row.is_force_closed %}<span class="badge badge-force-closed">Force-Closed</span>{% endif %}
+                        </td>
+                        <td>{{ row.product_code }}<br><span class="card-sub">{{ row.product_name }}</span></td>
+                        <td class="num">{{ '{:,.4f}'.format(row.qty_completed) }}</td>
+                        <td class="num">₱{{ '{:,.2f}'.format(row.material_cost) }}</td>
+                        <td class="num">₱{{ '{:,.2f}'.format(row.labor_cost) }}</td>
+                        <td class="num">₱{{ '{:,.2f}'.format(row.actual_total) }}</td>
+                        {% if row.standard_baseline is not none %}
+                        <td class="num">₱{{ '{:,.2f}'.format(row.standard_baseline) }}</td>
+                        <td class="num variance-cell">{{ '+' if row.variance_amount > 0 else '' }}₱{{ '{:,.2f}'.format(row.variance_amount) }}</td>
+                        <td class="num variance-cell">{{ '+' if row.variance_pct > 0 else '' }}{{ '{:.2f}'.format(row.variance_pct) }}%</td>
+                        {% else %}
+                        <td class="num text-muted">&mdash;</td>
+                        <td class="num text-muted">&mdash;</td>
+                        <td class="num text-muted">&mdash;</td>
+                        {% endif %}
+                        <td>{{ row.completion_date.strftime('%Y-%m-%d') if row.completion_date else '—' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="10" class="empty-state-cell"><p>No Work Orders found for the selected filters.</p></td></tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td colspan="3">TOTALS</td>
+                        <td class="num">₱{{ '{:,.2f}'.format(data.total_material) }}</td>
+                        <td class="num">₱{{ '{:,.2f}'.format(data.total_labor) }}</td>
+                        <td class="num">₱{{ '{:,.2f}'.format(data.total_actual) }}</td>
+                        <td class="num text-muted">&mdash;</td>
+                        <td class="num">{{ '+' if data.total_variance > 0 else '' }}₱{{ '{:,.2f}'.format(data.total_variance) }}</td>
+                        <td class="num text-muted">&mdash;</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">Unfavorable &mdash; actual cost exceeded the standard baseline</div>
+            <div class="legend-item">Favorable &mdash; actual cost came in under the standard baseline</div>
+            <div class="legend-item">&ldquo;&mdash;&rdquo; = moving-average-costed product, no standard-cost baseline to compare against</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

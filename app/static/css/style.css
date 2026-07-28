@@ -542,6 +542,13 @@ tr.pc-row-excluded { background: var(--bg); }
 /* ── Master-data change-request badge (rows with an open pending request) ── */
 .badge-pending-change   { background: #fef3c7; color: #92400e; margin-left: 6px; }
 
+/* ── Work Order Costing & Variance report (R-07 Discrete Track slice D5) ──
+   Flags a force-closed WO next to its WO # on the report row. Rides the
+   existing --aging-warn-* tokens (same pair .badge-age-warn already uses
+   above) rather than introducing new hex, per the no-hardcoded-styling rule.
+   Matches the approved mockup (2026-07-28-wo-costing-variance-mockup.html). */
+.badge-force-closed { background: var(--aging-warn-bg); color: var(--aging-warn-fg); margin-left: 8px; }
+
 /* ── User switcher (sidebar footer) ───────────────────────────
    Despite the historical name, this is the sidebar footer's user block
    (base.html's "User Switcher" comment, inside <nav>), not the topbar --
