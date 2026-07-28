@@ -99,6 +99,7 @@ def _parse_and_attach_so_lines(so, lines_json):
             amount=amount,
             vat_category=d.get('vat_category') or None,
             vat_rate=vat_rate,
+            wt_id=_int(d.get('wt_id')),
             delivery_date=_date(d.get('delivery_date')),
             delivery_site_id=_delivery_site_id(d.get('delivery_site_id')),
         )

@@ -153,6 +153,30 @@ def test_create_sales_order_persists_delivery_date_and_site(client, db_session, 
     assert line.delivery_site_id == site.id
 
 
+def test_create_sales_order_persists_wt_id(client, db_session, admin_user, main_branch):
+    """A WT selection on an SO line round-trips through the full create POST."""
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db_session.add(wt); db_session.commit()
+
+    c = _customer(db_session)
+    c.withholding_taxes = [wt]
+    db_session.commit()
+    p = _product(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0', 'wt_id': str(wt.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0003', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0003').first()
+    assert so.line_items[0].wt_id == wt.id
+
+
 def test_create_sales_order_drops_foreign_customer_delivery_site(client, db_session, admin_user, main_branch):
     """A line's delivery_site_id must belong to the SO's own customer. A direct POST
     (or a stale in-memory line array) naming another customer's site must not persist
