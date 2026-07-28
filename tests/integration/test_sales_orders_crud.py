@@ -851,3 +851,40 @@ def test_edit_form_customer_card_callback_populates_wht_and_rebuilds_selects(
         f'expected rebuildAllWhtSelects() to be called from at least 2 places, '
         f'found {call_count}'
     )
+
+
+def test_detail_shows_wt_column(client, db_session, admin_user, main_branch):
+    """SO detail must show a WT column (code or '—') on each line, matching
+    the display pattern in sales_invoices/detail.html."""
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db_session.add(wt); db_session.commit()
+    c = _customer(db_session)
+    p = _product(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0', 'wt_id': str(wt.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0004', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0004').first()
+
+    resp = client.get(f'/sales-orders/{so.id}')
+    html = resp.get_data(as_text=True)
+    row = _line_items_row(html, 1)
+    assert '>WC160<' in row
+
+    so2 = SalesOrder(branch_id=main_branch.id, so_number='SO-2026-06-0005',
+                     order_date=datetime.date(2026, 6, 15), customer_id=c.id,
+                     customer_name=c.name, status='draft')
+    li2 = SalesOrderItem(line_number=1, quantity=Decimal('1'), unit_price=Decimal('50.00'),
+                         product_id=p.id, amount=Decimal('50.00'))
+    li2.calculate_amounts()
+    so2.line_items.append(li2)
+    db_session.add(so2); db_session.commit()
+    resp2 = client.get(f'/sales-orders/{so2.id}')
+    row2 = _line_items_row(resp2.get_data(as_text=True), 1)
+    assert '>—<' in row2
