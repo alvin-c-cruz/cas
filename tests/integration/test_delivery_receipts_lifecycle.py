@@ -168,3 +168,106 @@ def test_billed_dr_cannot_be_cancelled(client, db_session, admin_user, main_bran
     db_session.refresh(dr)
     assert dr.status == 'billed'
     assert b'billed Delivery Receipt cannot be cancelled' in resp.data
+
+
+# -- whole-branch-review Finding 3: SO line-close vs. DR-approve re-check -----------------
+
+@pytest.fixture(autouse=True)
+def so_module_enabled(db_session):
+    """close_line()/cancel() live in the sales_orders blueprint -- enable that module too
+    (delivery_receipts is already enabled by dr_enabled above) so this file's cross-module
+    tests reach those routes instead of being bounced by the module-disabled gate."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    db_session.commit(); clear_module_config_cache()
+    yield; clear_module_config_cache()
+
+
+def test_dr_approval_after_so_cancel_shows_misleading_zero_open_qty(
+        client, db_session, admin_user, main_branch):
+    """The spec's Open Questions section named this explicitly: DR creation/approval
+    against a closed SO line 'needs an explicit test, not just an inference from the shared
+    helper.' This documents the actual current behavior when an SO's line becomes
+    unavailable (here, via cancelling the parent SO) WHILE a draft DR already exists
+    against it: so_line_open_qty() returns 0 unconditionally once the parent SO is
+    cancelled/closed (regardless of exclude_dr_id), so the DR-approve re-check reports
+    'exceeds the open quantity 0' for the stranded draft DR -- a misleading message, since
+    nothing was actually over-delivered. This SO-cancel path is intentionally left
+    unguarded (only close_line() gets the new guard below, per the review's scoped fix --
+    cancelling a whole SO is a separate, header-level action); this test exists to prove
+    and pin the current behavior the spec asked to be tested, not to claim it is fixed."""
+    so = _confirmed_so(db_session, main_branch.id)
+    soi = so.line_items[0]
+    _login(client, admin_user); _branch(client, main_branch.id)
+
+    dr = _create_dr(client, so, soi.id, 5)                        # left as draft
+    assert dr.status == 'draft'
+
+    client.post(f'/sales-orders/{so.id}/cancel',
+               data={'cancel_reason': 'Customer withdrew the order entirely.'},
+               follow_redirects=True)
+    db_session.refresh(so)
+    assert so.status == 'cancelled'
+
+    resp = client.post(f'/delivery-receipts/{dr.id}/approve', follow_redirects=True)
+    db_session.refresh(dr)
+    assert dr.status == 'draft'                                   # cannot approve
+    assert b'exceeds the open quantity 0' in resp.data             # the misleading message
+
+
+def test_close_line_refuses_when_a_live_dr_references_it(client, db_session, admin_user, main_branch):
+    """The fix: close_line() must refuse to close a line while a non-cancelled DR row still
+    references it, instead of silently stranding that DR the way the SO-cancel path above
+    does (P-63-style footgun: closed_reason is write-once and there is no un-close route).
+    A DRAFT DR blocks the close; an APPROVED DR blocks it too; once the blocking DR is
+    itself cancelled, the close proceeds normally."""
+    so = _confirmed_so(db_session, main_branch.id)
+    soi = so.line_items[0]
+    _login(client, admin_user); _branch(client, main_branch.id)
+
+    dr = _create_dr(client, so, soi.id, 5)                        # draft DR references the line
+    assert dr.status == 'draft'
+
+    resp = client.post(f'/sales-orders/{so.id}/lines/{soi.id}/close',
+                       data={'closed_reason': 'customer no longer wants the remainder'},
+                       follow_redirects=True)
+    db_session.refresh(soi)
+    assert soi.line_status == 'open'                               # refused
+    assert b'active Delivery Receipt' in resp.data
+
+    client.post(f'/delivery-receipts/{dr.id}/approve', follow_redirects=True)   # now approved
+    db_session.refresh(dr)
+    assert dr.status == 'approved'
+    resp = client.post(f'/sales-orders/{so.id}/lines/{soi.id}/close',
+                       data={'closed_reason': 'customer no longer wants the remainder'},
+                       follow_redirects=True)
+    db_session.refresh(soi)
+    assert soi.line_status == 'open'                               # still refused
+    assert b'active Delivery Receipt' in resp.data
+
+    client.post(f'/delivery-receipts/{dr.id}/cancel',                # clear the blocker
+               data={'cancel_reason': 'Customer refused the delivery at the gate.'},
+               follow_redirects=True)
+    db_session.refresh(dr)
+    assert dr.status == 'cancelled'
+
+    resp = client.post(f'/sales-orders/{so.id}/lines/{soi.id}/close',
+                       data={'closed_reason': 'customer no longer wants the remainder'},
+                       follow_redirects=True)
+    db_session.refresh(soi)
+    assert soi.line_status == 'closed'                             # now succeeds
+
+
+def test_close_line_works_normally_when_no_dr_references_it(client, db_session, admin_user, main_branch):
+    """Baseline: a line with NO Delivery Receipt against it at all closes exactly as
+    before -- the new guard must not regress the ordinary case."""
+    so = _confirmed_so(db_session, main_branch.id)
+    soi = so.line_items[0]
+    _login(client, admin_user); _branch(client, main_branch.id)
+
+    resp = client.post(f'/sales-orders/{so.id}/lines/{soi.id}/close',
+                       data={'closed_reason': 'no delivery ever attempted'},
+                       follow_redirects=True)
+    db_session.refresh(soi)
+    assert soi.line_status == 'closed'

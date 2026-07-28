@@ -288,7 +288,7 @@
                         </td>
                         <td style="font-size:12px; white-space:nowrap;">
                             {% if item.line_status == 'closed' %}
-                            <span class="badge badge-secondary" title="{{ item.closed_reason }}">Closed</span>
+                            <span class="badge badge-secondary" title="{{ item.closed_reason or '' }}">Closed</span>
                             {% elif so.status == 'confirmed' and (current_user.has_full_access or current_user.role == 'accountant') %}
                             <button type="button" class="btn btn-secondary" style="font-size:11px; padding:4px 8px;"
                                     onclick="openCloseLineModal({{ item.id }})">Close</button>
