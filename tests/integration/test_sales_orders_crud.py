@@ -730,3 +730,26 @@ def test_detail_shows_salesperson_and_plain_vat_code(client, db_session, admin_u
     row = _line_items_row(html, 1)
     assert 'VAT (12.00%)' not in row
     assert '>VAT<' in row
+
+
+def test_order_monitoring_is_first_link_in_sales_sidebar_area(client, db_session, admin_user, main_branch):
+    """Order Monitoring must render before every other Sales-area nav link
+    (Quotations, Sales Orders, etc.), not glued after Sales Orders."""
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/dashboard')
+    html = resp.get_data(as_text=True)
+
+    sales_section_start = html.index('data-area="sales"')
+    monitor_pos = html.index('sales-orders/monitor', sales_section_start)
+    # NOTE: the Sales Orders nav-text span concatenates the module label directly
+    # against its "(Customer Order)" nav-subtext span with no intervening
+    # whitespace/closing tag (see base.html's `{%- if m.key == ... %}` trim
+    # markers), so the rendered HTML is `...Sales Orders<span class="nav-subtext">...`
+    # -- there is no literal `>Sales Orders<` substring to match. Anchor on the
+    # label text itself instead, which is unique within the Sales sidebar area.
+    so_list_pos = html.index('Sales Orders', sales_section_start)
+    assert monitor_pos < so_list_pos, (
+        'Order Monitoring link must render before the Sales Orders link '
+        'within the Sales sidebar area'
+    )
