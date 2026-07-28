@@ -615,6 +615,7 @@ def billable_drs():
                 'uom_display': (soi.unit_of_measure.code if soi and soi.unit_of_measure else None),
                 'vat_category': soi.vat_category if soi else None,
                 'vat_rate': float(soi.vat_rate) if soi and soi.vat_rate is not None else 0.0,
+                'wt_id': (soi.wt_id if soi else None),
                 'account_id': (product.default_account_id if product else None),
             })
         out.append({'id': dr.id, 'dr_number': dr.dr_number,

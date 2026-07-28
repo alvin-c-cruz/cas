@@ -11,6 +11,7 @@ from app.units_of_measure.models import UnitOfMeasure
 from app.products.models import Product
 from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
+from app.withholding_tax.models import WithholdingTax
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_invoices]
 
@@ -20,7 +21,7 @@ def _login(client, u):
         s['_user_id'] = str(u.id); s['_fresh'] = True
 
 
-def _setup(client, admin_user, main_branch):
+def _setup(client, admin_user, main_branch, wt_id=None):
     rev = Account(code='40101', name='Sales - Goods', account_type='Income',
                   classification='General', normal_balance='Credit')
     pc = UnitOfMeasure(code='PC', name='Piece', is_active=True)
@@ -33,7 +34,7 @@ def _setup(client, admin_user, main_branch):
                     customer_name='Acme', branch_id=main_branch.id, status='confirmed')
     soi = SalesOrderItem(line_number=1, product_id=p.id, quantity=Decimal('10'),
                          unit_price=Decimal('100'), unit_of_measure_id=pc.id,
-                         vat_category='V12', vat_rate=Decimal('12'))
+                         vat_category='V12', vat_rate=Decimal('12'), wt_id=wt_id)
     soi.calculate_amounts(); so.line_items.append(soi)
     db.session.add(so); db.session.commit()
     _login(client, admin_user)
@@ -81,3 +82,31 @@ def test_billable_drs_excludes_billed_and_other_customer(client, db_session, adm
     _dr(main_branch, c2, p, soi, 'DR-4', status='delivered')                   # other customer
     resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
     assert [d['dr_number'] for d in resp.get_json()['drs']] == ['DR-1']
+
+
+def test_billable_drs_includes_source_so_line_wt_id(client, db_session, admin_user, main_branch):
+    """The Pull-DR JSON payload must carry each line's source SO-item wt_id, so the SI form
+    can default the WT picker from it (falls back to customer default when the SO line has
+    none -- that fallback is existing SI-side JS behavior, exercised by the sibling test
+    below only insofar as this endpoint must emit None, not re-tested past this endpoint)."""
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db.session.add(wt); db.session.commit()
+    c, p, so, soi, rev = _setup(client, admin_user, main_branch, wt_id=wt.id)
+    _dr(main_branch, c, p, soi, 'DR-1')
+    resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['drs'][0]['lines'][0]['wt_id'] == wt.id
+
+
+def test_billable_drs_wt_id_none_when_so_line_has_no_wt(client, db_session, admin_user, main_branch):
+    """When the source SO line has no wt_id set, the DR line's wt_id must be None (not
+    omitted, not defaulted here) so the SI-side JS falls back to the customer default WT,
+    unchanged from today's behavior."""
+    c, p, so, soi, rev = _setup(client, admin_user, main_branch, wt_id=None)
+    _dr(main_branch, c, p, soi, 'DR-1')
+    resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['drs'][0]['lines'][0]['wt_id'] is None
