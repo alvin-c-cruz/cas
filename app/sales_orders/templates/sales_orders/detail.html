@@ -61,6 +61,38 @@
 </div>
 {% endif %}
 
+{# ── Close-Line modal (confirmed only; per-line, opened via openCloseLineModal()) ── #}
+{% if so.status == 'confirmed' and (current_user.has_full_access or current_user.role == 'accountant') %}
+<div id="closeLineModal" style="display:none; position:fixed; inset:0; background:var(--backdrop);
+     z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
+        <h3 style="margin:0 0 12px 0;">Close Remaining Quantity?</h3>
+        <p id="closeLineModalText" style="color:var(--text-2); margin-bottom:24px;">
+            This line will be marked closed. Its remaining undelivered quantity will no
+            longer show as open in Order Monitoring. This cannot be undone.
+        </p>
+        <form method="POST" id="closeLineForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    Reason <span style="color:var(--red);">*</span>
+                </label>
+                <textarea name="closed_reason" rows="3" class="form-control"
+                          placeholder="Minimum 10 characters" required minlength="10"
+                          style="width:100%; resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary"
+                        onclick="document.getElementById('closeLineModal').style.display='none'">
+                    Keep Line Open
+                </button>
+                <button type="submit" class="btn btn-danger">Close Line</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <div class="card page-sales-order">
     <div class="card-header">
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -215,6 +247,7 @@
                         <th>WT</th>
                         <th>Delivery Date</th>
                         <th>Delivery Site</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -253,6 +286,16 @@
                         <td style="font-size:12px;">
                             {{ item.delivery_site.name if item.delivery_site else '—' }}
                         </td>
+                        <td style="font-size:12px; white-space:nowrap;">
+                            {% if item.line_status == 'closed' %}
+                            <span class="badge badge-secondary" title="{{ item.closed_reason }}">Closed</span>
+                            {% elif so.status == 'confirmed' and (current_user.has_full_access or current_user.role == 'accountant') %}
+                            <button type="button" class="btn btn-secondary" style="font-size:11px; padding:4px 8px;"
+                                    onclick="openCloseLineModal({{ item.id }})">Close</button>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -260,6 +303,7 @@
                     <tr>
                         <td colspan="5" style="text-align:right; font-weight:700;">Total Sales</td>
                         <td style="text-align:right; font-family:var(--mono); font-weight:700;">{{ '{:,.2f}'.format(so.total_amount) }}</td>
+                        <td></td>
                         <td></td>
                         <td></td>
                         <td></td>
@@ -302,4 +346,13 @@
     div[style*="grid-template-columns:1fr 1.5fr"] { grid-template-columns: 1fr !important; }
 }
 </style>
+
+{% if so.status == 'confirmed' and (current_user.has_full_access or current_user.role == 'accountant') %}
+<script>
+function openCloseLineModal(itemId) {
+    document.getElementById('closeLineForm').action = '/sales-orders/{{ so.id }}/lines/' + itemId + '/close';
+    document.getElementById('closeLineModal').style.display = 'flex';
+}
+</script>
+{% endif %}
 {% endblock %}

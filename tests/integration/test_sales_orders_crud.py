@@ -109,11 +109,15 @@ def _line_items_row(html, line_number):
     return matches[0]
 
 
-def _delivery_cells(row_html):
+def _delivery_cells(row_html, trailing_extra=0):
     """Return (delivery_date_cell, delivery_site_cell) -- the last two <td>
-    cells of a line-items row. Delivery Date and Delivery Site are always the
-    8th and 9th (final) columns in both detail.html and print.html."""
+    cells of a line-items row, before any trailing columns added after Delivery
+    Site (e.g. detail.html's Status column, Task 9 -- pass trailing_extra=1 to
+    skip it). Delivery Date and Delivery Site are the 8th and 9th columns in
+    both detail.html and print.html; print.html has no columns after them."""
     cells = re.findall(r'<td[^>]*>(.*?)</td>', row_html, re.DOTALL)
+    if trailing_extra:
+        cells = cells[:-trailing_extra]
     return cells[-2].strip(), cells[-1].strip()
 
 
@@ -575,18 +579,18 @@ def test_detail_and_print_render_delivery_date_and_site_columns(client, db_sessi
     assert '&#8212;' not in detail_html           # never the entity (leaks as literal text)
 
     row1 = _line_items_row(detail_html, 1)
-    date_cell, site_cell = _delivery_cells(row1)
+    date_cell, site_cell = _delivery_cells(row1, trailing_extra=1)  # skip Task 9's Status column
     assert date_cell == 'Aug 15, 2026'            # set delivery_date, detail's own date format
     assert site_cell == 'PLANT WAREHOUSE'         # set delivery_site name
     assert '—' not in date_cell and '—' not in site_cell
 
     row2 = _line_items_row(detail_html, 2)
-    date_cell, site_cell = _delivery_cells(row2)
+    date_cell, site_cell = _delivery_cells(row2, trailing_extra=1)
     assert date_cell == '—'                       # unset delivery_date falls back to em-dash
     assert site_cell == '—'                       # unset delivery_site falls back to em-dash
 
     row3 = _line_items_row(detail_html, 3)
-    date_cell, site_cell = _delivery_cells(row3)
+    date_cell, site_cell = _delivery_cells(row3, trailing_extra=1)
     assert date_cell == 'Sep 01, 2026'             # mixed state: date set...
     assert site_cell == '—'                        # ...site still falls back independently
 
@@ -1066,3 +1070,75 @@ def test_close_line_already_closed_is_idempotent(client, db_session, accountant_
     assert AuditLog.query.filter_by(
         module='sales_orders', action='update', record_id=so.id).filter(
             AuditLog.notes.like('%closed%')).count() == audit_count_after_first_close
+
+
+def test_detail_shows_close_button_then_closed_badge(client, db_session, admin_user,
+                                                       accountant_user, main_branch):
+    c = _customer(db_session)
+    p = _product(db_session)
+    so = SalesOrder(branch_id=main_branch.id, so_number='SO-CL-0002',
+                    order_date=datetime.date(2026, 7, 28), customer_id=c.id,
+                    customer_name=c.name, status='confirmed')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.get(f'/sales-orders/{so.id}')
+    html = resp.get_data(as_text=True)
+    row = _line_items_row(html, 1)
+    assert 'openCloseLineModal' in row
+    assert 'Closed' not in row
+
+    resp = client.post(f'/sales-orders/{so.id}/lines/{li.id}/close',
+                       data={'closed_reason': 'customer no longer wants the remainder'},
+                       follow_redirects=True)
+    html2 = resp.get_data(as_text=True)
+    row2 = _line_items_row(html2, 1)
+    assert 'Closed' in row2
+    assert 'openCloseLineModal' not in row2
+
+
+def test_monitoring_shows_closed_badge_for_cancelled_so(client, db_session, admin_user,
+                                                          accountant_user, main_branch):
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    db_session.commit()
+    clear_module_config_cache()
+
+    c = _customer(db_session)
+    p = _product(db_session)
+    so = SalesOrder(branch_id=main_branch.id, so_number='SO-CL-0003',
+                    order_date=datetime.date.today(), customer_id=c.id,
+                    customer_name=c.name, status='cancelled')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+    today = datetime.date.today()
+    resp = client.get(f'/sales-orders/monitor?date_from={today.isoformat()}&date_to={today.isoformat()}')
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'Closed' in html
+
+    # Tighter than a bare-substring "10" absence check (the ordered-qty column
+    # legitimately shows "10" in this same row -- asserting its absence would be
+    # a false-fragile test). Instead, isolate the Undelivered <td> specifically
+    # (the last <td>...</td> in the row, keyed on the product name) and assert
+    # THAT cell holds the badge, not a raw undelivered-quantity number.
+    row_match = re.search(r'<tr>\s*<td>Widget</td>.*?</tr>', html, re.DOTALL)
+    assert row_match, 'expected a Widget row in the Order Monitoring table'
+    row = row_match.group(0)
+    cells = re.findall(r'<td[^>]*>.*?</td>', row, re.DOTALL)
+    undelivered_cell = cells[-1]
+    assert 'badge' in undelivered_cell and 'Closed' in undelivered_cell
+    assert not re.search(r'>\s*10\s*<', undelivered_cell)
