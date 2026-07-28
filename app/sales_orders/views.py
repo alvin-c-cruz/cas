@@ -260,10 +260,14 @@ def list():
     pagination = query.paginate(page=page, per_page=50, error_out=False)
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
 
+    from app.sales_orders.utils import compute_sales_orders_summary
+    summary = compute_sales_orders_summary(branch_id)
+
     return render_template('sales_orders/list.html',
                            orders=pagination.items,
                            pagination=pagination,
                            customers=customers,
+                           summary=summary,
                            status_filter=status_filter,
                            customer_filter=customer_filter,
                            q=q_text,

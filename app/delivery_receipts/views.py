@@ -1,5 +1,6 @@
 """Delivery Receipt views -- deliveries against a confirmed Sales Order. Operational only."""
 import json
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
@@ -10,6 +11,7 @@ from app.delivery_receipts.models import (
     DeliveryReceipt, DeliveryReceiptItem, so_line_open_qty, generate_dr_number)
 from app.delivery_receipts.forms import DeliveryReceiptForm
 from app.sales_orders.models import SalesOrder, SalesOrderItem, copy_salesperson
+from app.customers.models import Customer
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
@@ -148,14 +150,61 @@ def _dr_or_404(id):
 @login_required
 def list():
     branch_id = session.get('selected_branch_id')
+    page = request.args.get('page', 1, type=int)
+
     query = DeliveryReceipt.query.filter_by(branch_id=branch_id)
+
     status_filter = request.args.get('status', 'all')
     if status_filter in VALID_DR_STATUSES:
         query = query.filter_by(status=status_filter)
-    receipts = query.order_by(DeliveryReceipt.delivery_date.desc(),
-                              DeliveryReceipt.id.desc()).all()
-    return render_template('delivery_receipts/list.html', receipts=receipts,
-                           status_filter=status_filter)
+
+    customer_filter = request.args.get('customer_id', 'all')
+    if customer_filter != 'all':
+        try:
+            query = query.filter_by(customer_id=int(customer_filter))
+        except ValueError:
+            pass
+
+    q_text = request.args.get('q', '').strip()
+    if q_text:
+        like = f'%{q_text}%'
+        query = query.filter(
+            db.or_(DeliveryReceipt.dr_number.ilike(like),
+                   DeliveryReceipt.customer_name.ilike(like))
+        )
+
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
+    if date_from:
+        try:
+            query = query.filter(DeliveryReceipt.delivery_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', f'{year}-12-31')
+    if date_to:
+        try:
+            query = query.filter(DeliveryReceipt.delivery_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    query = query.order_by(DeliveryReceipt.delivery_date.desc(), DeliveryReceipt.id.desc())
+    pagination = query.paginate(page=page, per_page=50, error_out=False)
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+
+    from app.delivery_receipts.utils import compute_delivery_receipts_summary
+    summary = compute_delivery_receipts_summary(branch_id)
+
+    return render_template('delivery_receipts/list.html',
+                           receipts=pagination.items,
+                           pagination=pagination,
+                           customers=customers,
+                           summary=summary,
+                           status_filter=status_filter,
+                           customer_filter=customer_filter,
+                           q=q_text,
+                           date_from=date_from,
+                           date_to=date_to)
 
 
 @delivery_receipts_bp.route('/delivery-receipts/create', methods=['GET', 'POST'])

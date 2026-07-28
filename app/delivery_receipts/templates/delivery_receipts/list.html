@@ -1,43 +1,262 @@
 {% extends "base.html" %}
 {% block title %}Delivery Receipts{% endblock %}
 {% block page_title %}Delivery Receipts{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='choices.min.css') }}">
+<style>
+.dr-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+}
+.dr-filter-bar .form-control { width: auto; }
+.dr-filter-bar select.form-control { width: 160px; }
+.dr-filter-bar input[type="date"].form-control { width: 150px; }
+.dr-filter-search { flex: 1 1 200px; min-width: 180px; }
+.dr-date-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.dr-date-group__label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-2);
+    padding-left: 2px;
+}
+/* Customer Choices.js — match native select appearance */
+.dr-filter-bar .choices { width: 160px; margin-bottom: 0; }
+.dr-filter-bar .choices__inner {
+    padding: 10px 36px 10px 14px;
+    font-size: 14px;
+    border: 1px solid var(--form-border);
+    border-radius: 6px;
+    background: var(--card);
+    min-height: unset;
+    font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
+    transition: all 0.2s;
+}
+.dr-filter-bar .choices.is-focused .choices__inner,
+.dr-filter-bar .choices.is-open .choices__inner {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    outline: none;
+}
+.dr-filter-bar .choices__list--single { padding: 0; }
+.dr-filter-bar .choices__list--single .choices__item {
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+}
+.dr-filter-bar .choices[data-type*='select-one']::after {
+    border-color: var(--text-2) transparent transparent;
+    right: 14px;
+}
+.dr-filter-bar .choices[data-type*='select-one'].is-open::after {
+    border-color: transparent transparent var(--text-2);
+}
+.dr-filter-bar .choices__list--dropdown { min-width: 220px; }
+.dr-filter-bar .choices__list--dropdown .choices__list { max-height: 200px; overflow-y: auto; }
+.btn-action {
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 14px;
+}
+.btn-action:hover { background: var(--border); }
+@media (max-width: 640px) {
+    .dr-filter-bar .form-control,
+    .dr-filter-bar select.form-control,
+    .dr-filter-bar input[type="date"].form-control,
+    .dr-filter-bar .choices { width: 100%; }
+}
+.dr-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.dr-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px;
+}
+.dr-card-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-2);
+}
+.dr-card-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--mono);
+    margin: 4px 0 2px;
+}
+.dr-card-detail { font-size: 12px; color: var(--text-3); }
+@media (max-width: 1024px) { .dr-summary-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .dr-summary-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Delivery Receipts</h1>
-  <a href="{{ url_for('sales_orders.list') }}" class="btn btn-secondary btn-sm">Sales Orders</a>
+
+<!-- Summary cards -->
+<div class="dr-summary-grid">
+    <div class="dr-card">
+        <div class="dr-card-label">Drafts</div>
+        <div class="dr-card-value">{{ summary.draft_count }}</div>
+        <div class="dr-card-detail">to finish</div>
+    </div>
+    <div class="dr-card">
+        <div class="dr-card-label" style="color:var(--amber);">Awaiting Delivery</div>
+        <div class="dr-card-value">{{ summary.awaiting_count }}</div>
+        <div class="dr-card-detail">approved, not yet delivered</div>
+    </div>
+    <div class="dr-card">
+        <div class="dr-card-label">Delivered, Unbilled</div>
+        <div class="dr-card-value">{{ summary.unbilled_count }}</div>
+        <div class="dr-card-detail">ready to bill</div>
+    </div>
+    <div class="dr-card">
+        <div class="dr-card-label" style="color:var(--green);">Billed</div>
+        <div class="dr-card-value">{{ summary.billed_count }}</div>
+        <div class="dr-card-detail">completed</div>
+    </div>
 </div>
-<div class="card"><div class="card-body">
-  {% if receipts %}
-  <div class="table-responsive">
-    <table class="table">
-      <thead>
-        <tr><th>DR #</th><th>Date</th><th>Customer</th><th>SO #</th><th>Status</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for dr in receipts %}
-        <tr>
-          <td><a href="{{ url_for('delivery_receipts.view', id=dr.id) }}">{{ dr.dr_number }}</a></td>
-          <td>{{ dr.delivery_date.strftime('%b %d, %Y') }}</td>
-          <td>{{ dr.customer_name }}</td>
-          <td>{{ dr.sales_order.so_number if dr.sales_order else '' }}</td>
-          <td>
-            <span class="badge badge-{{ 'secondary' if dr.status == 'draft'
-                                        else 'success' if dr.status in ('approved', 'delivered')
-                                        else 'info' if dr.status == 'billed'
-                                        else 'danger' }}">{{ dr.status|title }}</span>
-          </td>
-          <td class="text-right">
-            {% if dr.status == 'draft' %}
-            <a href="{{ url_for('delivery_receipts.edit', id=dr.id) }}" class="btn btn-secondary btn-sm">Edit</a>
-            {% endif %}
-          </td>
-        </tr>
+
+{# ── Filter bar ─────────────────────────────────────────────────────────── #}
+<form method="GET" action="{{ url_for('delivery_receipts.list') }}" class="dr-filter-bar">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search DR # or customer"
+           class="form-control form-control-sm dr-filter-search">
+    <select name="status" class="form-control form-control-sm">
+        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="draft"     {% if status_filter == 'draft'     %}selected{% endif %}>Draft</option>
+        <option value="approved"  {% if status_filter == 'approved'  %}selected{% endif %}>Approved</option>
+        <option value="delivered" {% if status_filter == 'delivered' %}selected{% endif %}>Delivered</option>
+        <option value="billed"    {% if status_filter == 'billed'    %}selected{% endif %}>Billed</option>
+        <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+    <select name="customer_id" id="dr-customer-filter" class="form-control form-control-sm">
+        <option value="all">All Customers</option>
+        {% for c in customers %}
+        <option value="{{ c.id }}" {% if customer_filter == c.id|string %}selected{% endif %}>{{ c.name }}</option>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p>No delivery receipts found.</p>
-  {% endif %}
-</div></div>
+    </select>
+    <label class="dr-date-group">
+        <span class="dr-date-group__label">From</span>
+        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
+    </label>
+    <label class="dr-date-group">
+        <span class="dr-date-group__label">To</span>
+        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+    <a href="{{ url_for('delivery_receipts.list') }}" class="btn btn-secondary btn-sm">Clear</a>
+</form>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-actions" style="display:flex; gap:8px; align-items:center; justify-content:flex-end;">
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] %}
+            <a href="{{ url_for('delivery_receipts.create') }}" class="btn btn-green">&#x2795; Enter Delivery Receipt</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        {% if receipts %}
+        {% set badge_map = {'draft':'draft','approved':'approved','delivered':'posted','billed':'billed','cancelled':'cancelled'} %}
+        <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>DR #</th>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>SO #</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dr in receipts %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('delivery_receipts.view', id=dr.id) }}"
+                           style="font-weight:600;color:var(--blue);">{{ dr.dr_number }}</a>
+                    </td>
+                    <td>{{ dr.delivery_date.strftime('%b %d, %Y') }}</td>
+                    <td>{{ dr.customer_name }}</td>
+                    <td>{{ dr.sales_order.so_number if dr.sales_order else '&mdash;' }}</td>
+                    <td>
+                        <span class="badge badge-{{ badge_map.get(dr.status, 'draft') }}">
+                            {{ dr.status|title }}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('delivery_receipts.view', id=dr.id) }}" class="btn-action">&#x1F441;&#xFE0F;</a>
+                        {% if dr.status == 'draft' %}
+                        <a href="{{ url_for('delivery_receipts.edit', id=dr.id) }}" class="btn-action">&#x270F;&#xFE0F;</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        {% set filters_active = q or status_filter != 'all' or customer_filter != 'all' or date_from or date_to %}
+        <div class="empty-state">
+            {% if filters_active %}
+            <p>No delivery receipts match your filters.</p>
+            {% else %}
+            <p>No delivery receipts found.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer" style="display:flex;justify-content:space-between;align-items:center;padding:16px;">
+        <div>
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }} to
+            {{ [pagination.page * pagination.per_page, pagination.total]|min }} of
+            {{ pagination.total }} delivery receipt{{ 's' if pagination.total != 1 else '' }}
+        </div>
+        <div style="display:flex;gap:8px;">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('delivery_receipts.list', page=pagination.prev_num, status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">&larr; Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="{{ url_for('delivery_receipts.list', page=pagination.next_num, status=status_filter, customer_id=customer_filter, q=q, date_from=date_from, date_to=date_to) }}"
+               class="btn btn-secondary btn-sm">Next &rarr;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='choices.min.js') }}"></script>
+<script>
+(function () {
+    const customerSel = document.getElementById('dr-customer-filter');
+    if (customerSel) {
+        new Choices(customerSel, {
+            searchEnabled: true,
+            itemSelectText: '',
+            shouldSort: false,
+            allowHTML: false,
+        });
+    }
+})();
+</script>
 {% endblock %}
