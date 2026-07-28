@@ -867,6 +867,54 @@ def test_edit_form_customer_card_callback_populates_wht_and_rebuilds_selects(
     )
 
 
+def test_addfirstcustomerline_defaults_single_customer_wt(client, db_session, admin_user, main_branch):
+    """Whole-branch-review finding: the SO WT picker must auto-default like SI's does (design
+    spec section 4) -- when a customer has exactly ONE assigned WT code, a newly-added line
+    for that customer defaults to it, same mechanism as the existing VT auto-default
+    (currentCustomerVatCategory) and SI's own autoWht/rebuildAllWhtSelects pattern. This was a
+    plan-writing gap (the plan's own code snippets omitted it), not an implementation
+    deviation -- the spec is unambiguous, so this is not "still open."
+
+    Client-side-only behavior (Choices.js selection state), so it is verified at the source
+    level -- the same technique the WT-picker edit-load test above uses: scope the assertion
+    to the specific function body, not a bare substring `in html` check (unreliable here since
+    'currentCustomerWHTs' etc. appear in multiple unrelated places in the script)."""
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db_session.add(wt); db_session.commit()
+    c = _customer(db_session)
+    c.withholding_taxes = [wt]
+    db_session.commit()
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+
+    html = client.get('/sales-orders/create').get_data(as_text=True)
+
+    # addFirstCustomerLine(): the new-line default must reference a single-WT autoWht,
+    # mirroring the VT auto-default already in the same function.
+    fn1_start = html.index('function addFirstCustomerLine')
+    fn1_end = html.index('function rebuildCustomerLineDefaults', fn1_start)
+    fn1_body = html[fn1_start:fn1_end]
+    assert 'currentCustomerWHTs.length === 1' in fn1_body, (
+        'addFirstCustomerLine() must compute a single-WT autoWht from currentCustomerWHTs, '
+        'like SI\'s form does')
+    assert 'wt_id: autoWht ? autoWht.id : null' in fn1_body, (
+        'addFirstCustomerLine() must default the new line\'s wt_id to the customer\'s sole '
+        'WT code, not hardcode null')
+
+    # rebuildAllWhtSelects(): a dropped/invalid code on customer switch must also fall
+    # forward to the new customer's sole WT, not to null -- mirrors SI's rebuildAllWhtSelects.
+    fn2_start = html.index('function rebuildAllWhtSelects')
+    fn2_end = html.index('function addLineItem', fn2_start)
+    fn2_body = html[fn2_start:fn2_end]
+    assert 'currentCustomerWHTs.length === 1' in fn2_body, (
+        'rebuildAllWhtSelects() must compute a single-WT autoWht from currentCustomerWHTs')
+    assert 'item.wt_id = autoWht ? autoWht.id : null;' in fn2_body, (
+        'rebuildAllWhtSelects() must default a dropped/invalid wt_id to the customer\'s '
+        'sole WT code, not unconditionally null it out')
+
+
 def test_detail_shows_wt_column(client, db_session, admin_user, main_branch):
     """SO detail must show a WT column (code or '—') on each line, matching
     the display pattern in sales_invoices/detail.html."""

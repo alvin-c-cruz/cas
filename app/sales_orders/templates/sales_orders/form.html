@@ -237,9 +237,13 @@ function applyCustomerTerms(terms) {
 }
 
 function addFirstCustomerLine() {
+    // Single-WT auto-default (parity with the SI form's currentCustomerWHTs autoWht):
+    // when the customer has exactly one assigned WT code, default the first line to it.
+    const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
     addLineItem({
         amount: 0.00,
         vat_category: currentCustomerVatCategory || '',
+        wt_id: autoWht ? autoWht.id : null,
     });
 }
 
@@ -322,6 +326,9 @@ function buildWhtOptions(selectedId) {
 
 function rebuildAllWhtSelects() {
     const noWht = currentCustomerWHTs.length === 0;
+    // Single-WT auto-default, same mechanism as addFirstCustomerLine()/SI's autoWht: a
+    // dropped code falls forward to the new customer's sole WT rather than to nothing.
+    const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
     const noneChoice = noWht
         ? { value: '', label: 'No WT', customProperties: { code: 'No WT' } }
         : { value: '', label: 'None', customProperties: { code: '' } };
@@ -330,7 +337,7 @@ function rebuildAllWhtSelects() {
         if (!lc || !lc.wht) return;
         const prev = item.wt_id;
         const stillValid = prev && currentCustomerWHTs.some(wt => wt.id == prev);
-        if (!stillValid) { item.wt_id = null; }
+        if (!stillValid) { item.wt_id = autoWht ? autoWht.id : null; }
         const choices = [noneChoice].concat(
             currentCustomerWHTs.map(wt => ({
                 value: String(wt.id),
