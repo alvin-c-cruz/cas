@@ -780,8 +780,10 @@ initItems();
     fetch(`/customers/${cid}/defaults`)
         .then(r => r.json())
         .then(data => {
-            currentCustomerVatCategory = resolveVatCode(data.default_vat_category || '');
+            currentCustomerWHTs         = data.withholding_taxes || [];
+            currentCustomerVatCategory  = resolveVatCode(data.default_vat_category || '');
             setCustomerDone(name, data);
+            rebuildAllWhtSelects();
         })
         .catch(() => {});
 })();

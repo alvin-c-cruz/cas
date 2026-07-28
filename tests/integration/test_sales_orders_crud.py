@@ -777,3 +777,77 @@ def test_order_monitoring_is_first_link_in_sales_sidebar_area(client, db_session
         'Order Monitoring link must render before the Sales Orders link '
         'within the Sales sidebar area'
     )
+
+
+def test_edit_form_customer_card_callback_populates_wht_and_rebuilds_selects(
+        client, db_session, admin_user, main_branch):
+    """Regression for the SO-Edit WT-picker bug: initCustomerCardOnEdit() -- the
+    IIFE that fires on every SO Edit page load to populate the customer-card
+    badges from /customers/<id>/defaults -- must ALSO set currentCustomerWHTs
+    and call rebuildAllWhtSelects(), mirroring Sales Invoice's parallel block
+    (sales_invoices/form.html's own initCustomerCardOnEdit). Without both lines,
+    initItems() has already built every line's WT <select> against an empty
+    currentCustomerWHTs (still its [] initial value) before this fetch resolves,
+    so buildWhtOptions() renders only the disabled "No WT" placeholder and the
+    saved wt_id is never reflected in the UI -- even though a customer WHT code
+    exists and the line's wt_id is correctly persisted server-side.
+
+    This is a client-side-only defect: a plain response-body substring check
+    can't see it (the string "currentCustomerWHTs" appears elsewhere in the
+    script for unrelated reasons -- declaration, the customer-picker's own
+    change handler, buildWhtOptions/rebuildAllWhtSelects themselves), so the
+    search is scoped to the initCustomerCardOnEdit function body specifically,
+    the same technique used for the Sales-sidebar-ordering assertion above
+    (index-from-offset rather than a bare `in html` check) and flagged by the
+    Task 2 reviewer as the correct way to avoid a false-pass on an unscoped
+    substring match.
+    """
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db_session.add(wt); db_session.commit()
+
+    c = _customer(db_session)
+    c.withholding_taxes = [wt]
+    db_session.commit()
+    p = _product(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': None, 'vat_rate': '0', 'wt_id': str(wt.id)}])
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0004', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0004').first()
+    assert so.line_items[0].wt_id == wt.id
+
+    html = client.get(f'/sales-orders/{so.id}/edit').get_data(as_text=True)
+
+    # Scope to the initCustomerCardOnEdit IIFE body only (its own `})();` close),
+    # not the whole <script> block or any other function of the same shape.
+    fn_start = html.index('function initCustomerCardOnEdit')
+    fn_end = html.index('})();', fn_start) + len('})();')
+    fn_body = html[fn_start:fn_end]
+
+    assert 'currentCustomerWHTs' in fn_body and 'data.withholding_taxes' in fn_body, (
+        'initCustomerCardOnEdit() must populate currentCustomerWHTs from the '
+        '/customers/<id>/defaults response, like Sales Invoice does'
+    )
+    assert 'rebuildAllWhtSelects();' in fn_body, (
+        'initCustomerCardOnEdit() must call rebuildAllWhtSelects() after '
+        'populating currentCustomerWHTs, or every line WT <select> built by '
+        'initItems() before this fetch resolves stays stuck on the disabled '
+        '"No WT" placeholder for the whole edit session'
+    )
+
+    # rebuildAllWhtSelects() must now be call-able from >=2 places in this file:
+    # the customer-picker's own change handler (create flow, existing items) and
+    # this edit-load callback (fixed here). Count literal calls (semicolon-
+    # terminated), not the `function rebuildAllWhtSelects() {` definition line.
+    call_count = html.count('rebuildAllWhtSelects();')
+    assert call_count >= 2, (
+        f'expected rebuildAllWhtSelects() to be called from at least 2 places, '
+        f'found {call_count}'
+    )
