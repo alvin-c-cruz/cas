@@ -684,3 +684,49 @@ def test_print_job_order_cross_branch_404(client, db_session, admin_user, main_b
     _select_branch(client, main_branch.id)   # different branch than the SO
     resp = client.get(f'/sales-orders/{so.so_number}/print-job-order')
     assert resp.status_code == 404
+
+
+def test_detail_shows_salesperson_and_plain_vat_code(client, db_session, admin_user, main_branch):
+    """SO detail must show a Salesperson row (parity with DR/SI detail) and the VT
+    cell must show only the code, not the rate — parity with sales_invoices/detail.html."""
+    from app.settings import AppSettings
+    from app.utils.cache_helpers import clear_module_config_cache
+    AppSettings.set_setting('module_enabled:sales_orders', '1')
+    AppSettings.set_setting('module_enabled:employees', '1')
+    db_session.commit()
+    clear_module_config_cache()
+
+    from app.employees.models import Employee
+    emp = Employee(employee_no='E001', first_name='Jane', last_name='Cruz',
+                    branch_id=main_branch.id, is_active=True, is_salesperson=True)
+    db_session.add(emp); db_session.commit()
+
+    c = _customer(db_session)
+    p = _product(db_session)
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    lines = json.dumps([{'product_id': str(p.id), 'quantity': '2', 'unit_price': '100.00',
+                         'vat_category': 'VAT', 'vat_rate': '12'}])
+    from app.sales_vat_categories.models import SalesVATCategory
+    if not SalesVATCategory.query.filter_by(code='VAT').first():
+        db_session.add(SalesVATCategory(code='VAT', name='Vatable Sale', rate=Decimal('12.00'),
+                                        transaction_nature='regular', is_active=True))
+        db_session.commit()
+
+    resp = client.post('/sales-orders/create', data={
+        'so_number': 'SO-2026-06-0002', 'order_date': '2026-06-15',
+        'customer_id': str(c.id), 'customer_name': 'Acme', 'payment_terms': 'Net 30',
+        'salesperson_id': str(emp.id), 'notes': '', 'line_items': lines}, follow_redirects=True)
+    assert resp.status_code == 200
+
+    so = SalesOrder.query.filter_by(so_number='SO-2026-06-0002').first()
+    so.salesperson_id = emp.id
+    db_session.commit()
+
+    resp = client.get(f'/sales-orders/{so.id}')
+    html = resp.get_data(as_text=True)
+    assert 'Salesperson' in html
+    assert 'Jane Cruz' in html or emp.full_name in html
+    row = _line_items_row(html, 1)
+    assert 'VAT (12.00%)' not in row
+    assert '>VAT<' in row

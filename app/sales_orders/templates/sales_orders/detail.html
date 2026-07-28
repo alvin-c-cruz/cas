@@ -121,6 +121,11 @@
                                  text-transform:uppercase; letter-spacing:0.04em;">Order Date</span>
                     <span>{{ so.order_date.strftime('%b %d, %Y') if so.order_date else '—' }}</span>
                 </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="color:var(--text-2); font-size:11px; font-weight:700;
+                                 text-transform:uppercase; letter-spacing:0.04em;">Salesperson</span>
+                    <span>{{ so.salesperson.full_name if so.salesperson else 'Company Account' }}</span>
+                </div>
                 {% if so.expected_delivery_date %}
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--text-2); font-size:11px; font-weight:700;
@@ -239,13 +244,7 @@
                         <td style="text-align:right; font-family:var(--mono); font-weight:600;">
                             {{ '{:,.2f}'.format(item.amount) }}
                         </td>
-                        <td>
-                            {% if item.vat_category %}
-                                {{ item.vat_category }} ({{ '{:.2f}'.format(item.vat_rate) }}%)
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </td>
+                        <td style="font-size:12px;">{{ item.vat_category or '—' }}</td>
                         <td style="font-size:12px;">
                             {{ item.delivery_date.strftime('%b %d, %Y') if item.delivery_date else '—' }}
                         </td>
