@@ -97,6 +97,14 @@ class SalesOrderItem(db.Model):
     wt_id = db.Column(db.Integer, db.ForeignKey('withholding_tax.id'), nullable=True)
     withholding_tax = db.relationship('WithholdingTax', foreign_keys=[wt_id])
 
+    # Per-line close (independent of the header-level cancel): marks this line's
+    # remaining quantity as no longer expected to deliver, without rewriting the
+    # original quantity or any delivery history. See close_line() in views.py.
+    line_status = db.Column(db.String(20), nullable=False, default='open', server_default='open')
+    closed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    closed_reason = db.Column(db.String(500), nullable=True)
+
     line_total = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
@@ -138,6 +146,8 @@ class SalesOrderItem(db.Model):
             'vat_rate': float(self.vat_rate) if self.vat_rate is not None else 0.0,
             'wt_id': self.wt_id,
             'wt_code': self.withholding_tax.code if self.withholding_tax else None,
+            'line_status': self.line_status,
+            'closed_reason': self.closed_reason,
             'delivery_date': self.delivery_date.isoformat() if self.delivery_date else None,
             'delivery_site_id': self.delivery_site_id,
             'delivery_site_name': self.delivery_site.name if self.delivery_site else None,
