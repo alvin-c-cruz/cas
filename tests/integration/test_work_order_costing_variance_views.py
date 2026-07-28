@@ -136,3 +136,33 @@ def test_renders_standard_costed_moving_average_and_force_closed_rows(
     assert 'Force-Closed' in body
     # totals footer present
     assert 'TOTALS' in body
+
+
+def test_zero_baseline_standard_costed_wo_renders_dash_not_crash(
+        client, db_session, accountant_user, main_branch, wo_control_accounts):
+    """Review finding 1: a standard-costed WO whose Product.standard_cost is 0.00
+    posts a completion whose standard_baseline computes to exactly Decimal('0.00')
+    (not None) while variance_pct stays None (division-by-zero guard). The old
+    template gated all three columns (baseline/variance/variance%) on a single
+    `standard_baseline is not none` check, so it took the "show the numbers"
+    branch and then crashed on `row.variance_pct > 0` (None > 0 -- Jinja
+    TypeError, uncaught 500). Each column must be judged independently."""
+    wo = _ready_wo(main_branch, accountant_user, qty_to_produce='10',
+                   costing_method='standard', standard_cost=Decimal('0.00'), code_suffix='ZB')
+    complete_work_order_batch(wo, Decimal('10'), accountant_user)
+    db.session.commit()
+
+    _login(client, accountant_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    resp = client.get('/reports/work-order-costing-variance')
+    assert resp.status_code == 200
+    body = resp.data.decode('utf-8')
+    assert wo.wo_number in body
+    # standard_baseline (0.00) is NOT None -- must render as a real number, not a dash
+    assert '₱0.00' in body
+    # variance_amount (110.00, the whole actual cost) IS shown
+    assert '+₱110.00' in body
+    # variance_pct IS None (baseline is exactly zero) -- must render the muted dash,
+    # independently of the other two columns both having real values
+    assert 'text-muted">&mdash;' in body or 'text-muted">—' in body

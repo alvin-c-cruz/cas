@@ -55,11 +55,17 @@
                         <td class="num">₱{{ '{:,.2f}'.format(row.actual_total) }}</td>
                         {% if row.standard_baseline is not none %}
                         <td class="num">₱{{ '{:,.2f}'.format(row.standard_baseline) }}</td>
-                        <td class="num variance-cell">{{ '+' if row.variance_amount > 0 else '' }}₱{{ '{:,.2f}'.format(row.variance_amount) }}</td>
-                        <td class="num variance-cell">{{ '+' if row.variance_pct > 0 else '' }}{{ '{:.2f}'.format(row.variance_pct) }}%</td>
                         {% else %}
                         <td class="num text-muted">&mdash;</td>
+                        {% endif %}
+                        {% if row.variance_amount is not none %}
+                        <td class="num variance-cell">{{ '+' if row.variance_amount > 0 else '' }}₱{{ '{:,.2f}'.format(row.variance_amount) }}</td>
+                        {% else %}
                         <td class="num text-muted">&mdash;</td>
+                        {% endif %}
+                        {% if row.variance_pct is not none %}
+                        <td class="num variance-cell">{{ '+' if row.variance_pct > 0 else '' }}{{ '{:.2f}'.format(row.variance_pct) }}%</td>
+                        {% else %}
                         <td class="num text-muted">&mdash;</td>
                         {% endif %}
                         <td>{{ row.completion_date.strftime('%Y-%m-%d') if row.completion_date else '—' }}</td>

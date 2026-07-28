@@ -61,9 +61,17 @@ def generate_work_order_costing_variance_report(branch_id, status='completed',
     """List of Work Orders (default: status='completed', which covers both
     normal completions and force-closed WOs) with their material/labor/total
     actual cost, standard-cost baseline, and variance, scoped to branch_id."""
-    wos = (WorkOrder.query
-          .filter(WorkOrder.branch_id == branch_id, WorkOrder.status == status)
-          .all())
+    query = WorkOrder.query.filter(WorkOrder.branch_id == branch_id)
+    if status == 'force_closed':
+        # Force-closed is a SUBSET of completed -- force_close_work_order() sets
+        # status='completed' too, only force_closed_at distinguishes it (there is
+        # no separate 'force_closed' value in WO_STATUSES).
+        query = query.filter(WorkOrder.status == 'completed', WorkOrder.force_closed_at.isnot(None))
+    elif status == 'all':
+        pass  # no status restriction at all -- 'all' is not a real WorkOrder.status value
+    else:
+        query = query.filter(WorkOrder.status == status)
+    wos = query.all()
 
     rows = []
     total_material = ZERO

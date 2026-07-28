@@ -171,3 +171,75 @@ def test_date_range_filter_excludes_out_of_range_wo(
     future_start = ph_now().date() + timedelta(days=30)
     data = generate_work_order_costing_variance_report(main_branch.id, date_from=future_start)
     assert data['rows'] == []
+
+
+def test_zero_standard_cost_makes_baseline_exactly_zero_with_none_variance_pct(
+        db_session, main_branch, accountant_user, wo_control_accounts):
+    """Review finding 1 (template crash risk): a standard-costed product whose
+    Product.standard_cost is 0.00 posts a completion whose entire actual cost is
+    booked as variance -- inventory_amount - qty*0.00 -- so standard_baseline
+    (actual_total - variance_amount) computes to exactly Decimal('0.00'), while
+    variance_pct stays None (division-by-zero guard in _variance_pct). This is
+    the exact "baseline is not None, but variance_pct IS None" combination the
+    template's old single `standard_baseline is not none` gate could not tell
+    apart from the moving-average case."""
+    wo = _ready_wo(main_branch, accountant_user, qty_to_produce='10',
+                   costing_method='standard', standard_cost=Decimal('0.00'), code_suffix='ZB')
+    complete_work_order_batch(wo, Decimal('10'), accountant_user)
+    db.session.commit()
+
+    data = generate_work_order_costing_variance_report(main_branch.id)
+    row = data['rows'][0]
+    assert row['standard_baseline'] == Decimal('0.00')
+    assert row['variance_amount'] == Decimal('110.00')
+    assert row['variance_pct'] is None
+
+
+def test_status_completed_includes_both_normal_and_force_closed(
+        db_session, main_branch, accountant_user, wo_control_accounts):
+    wo_normal = _ready_wo(main_branch, accountant_user, code_suffix='ST1')
+    complete_work_order_batch(wo_normal, Decimal('10'), accountant_user)
+    db.session.commit()
+
+    wo_fc = _ready_wo(main_branch, accountant_user, qty_to_produce='10', code_suffix='ST2')
+    complete_work_order_batch(wo_fc, Decimal('4'), accountant_user)
+    db.session.commit()
+    force_close_work_order(wo_fc, 'Line breakdown, aborting remainder', accountant_user)
+    db.session.commit()
+
+    data = generate_work_order_costing_variance_report(main_branch.id, status='completed')
+    numbers = {r['wo_number'] for r in data['rows']}
+    assert numbers == {wo_normal.wo_number, wo_fc.wo_number}
+
+
+def test_status_force_closed_returns_only_the_force_closed_wo(
+        db_session, main_branch, accountant_user, wo_control_accounts):
+    wo_normal = _ready_wo(main_branch, accountant_user, code_suffix='ST3')
+    complete_work_order_batch(wo_normal, Decimal('10'), accountant_user)
+    db.session.commit()
+
+    wo_fc = _ready_wo(main_branch, accountant_user, qty_to_produce='10', code_suffix='ST4')
+    complete_work_order_batch(wo_fc, Decimal('4'), accountant_user)
+    db.session.commit()
+    force_close_work_order(wo_fc, 'Line breakdown, aborting remainder', accountant_user)
+    db.session.commit()
+
+    data = generate_work_order_costing_variance_report(main_branch.id, status='force_closed')
+    numbers = {r['wo_number'] for r in data['rows']}
+    assert numbers == {wo_fc.wo_number}
+
+
+def test_status_all_removes_the_status_restriction_entirely(
+        db_session, main_branch, accountant_user, wo_control_accounts):
+    wo_completed = _ready_wo(main_branch, accountant_user, code_suffix='ST5')
+    complete_work_order_batch(wo_completed, Decimal('10'), accountant_user)
+    db.session.commit()
+
+    # never completed -- _ready_wo leaves it at 'in_progress' (operation completed,
+    # batch never posted). Zero cost data is fine -- it only needs to appear in the rows.
+    wo_in_progress = _ready_wo(main_branch, accountant_user, code_suffix='ST6')
+    assert wo_in_progress.status != 'completed'
+
+    data = generate_work_order_costing_variance_report(main_branch.id, status='all')
+    numbers = {r['wo_number'] for r in data['rows']}
+    assert numbers == {wo_completed.wo_number, wo_in_progress.wo_number}
