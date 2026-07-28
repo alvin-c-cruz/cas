@@ -90,6 +90,13 @@ class SalesOrderItem(db.Model):
     product = db.relationship('Product')
     vat_category = db.Column(db.String(100))
     vat_rate = db.Column(db.Numeric(5, 2), default=0.00, nullable=False)
+
+    # Informational only -- SalesOrder posts no WHT (see module docstring). This is a
+    # per-line hint that cascades as a DEFAULT into the Sales Invoice line created via
+    # Pull-DR (Task 6); it never affects this SO's own totals/status.
+    wt_id = db.Column(db.Integer, db.ForeignKey('withholding_tax.id'), nullable=True)
+    withholding_tax = db.relationship('WithholdingTax', foreign_keys=[wt_id])
+
     line_total = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
@@ -129,6 +136,8 @@ class SalesOrderItem(db.Model):
             'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
             'vat_rate': float(self.vat_rate) if self.vat_rate is not None else 0.0,
+            'wt_id': self.wt_id,
+            'wt_code': self.withholding_tax.code if self.withholding_tax else None,
             'delivery_date': self.delivery_date.isoformat() if self.delivery_date else None,
             'delivery_site_id': self.delivery_site_id,
             'delivery_site_name': self.delivery_site.name if self.delivery_site else None,

@@ -32,7 +32,9 @@ def test_item_to_dict_has_p56_keys_no_account():
     for k in ('quantity', 'unit_price', 'uom_text', 'unit_of_measure_id', 'uom_display',
               'product_id', 'product_code', 'product_name'):
         assert k in d
-    assert 'account_id' not in d and 'wt_id' not in d
+    # wt_id is now present (Task 3: informational WHT hint) -- only account_id stays absent,
+    # since an SO still posts no journal entry / has no GL account.
+    assert 'account_id' not in d
     assert 'description' not in d
 
 
@@ -96,3 +98,35 @@ def test_item_to_dict_delivery_date_isoformat_and_site_name_via_relationship(db_
     assert d['delivery_date'] == '2026-08-01'
     assert d['delivery_site_id'] == site.id
     assert d['delivery_site_name'] == 'Main Warehouse'
+
+
+def test_sales_order_item_wt_id_round_trips(db_session):
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db_session.add(wt); db_session.commit()
+
+    from app.customers.models import Customer
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    c = Customer(code='WTC01', name='WT Customer', is_active=True)
+    uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+    db_session.add_all([c, uom]); db_session.commit()
+    p = Product(code='WTP01', name='WT Product', default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('100.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+
+    so = SalesOrder(branch_id=None, so_number='SO-WT-0001', order_date=date(2026, 7, 28),
+                    customer_id=c.id, customer_name=c.name, status='draft')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('1'), unit_price=Decimal('100.00'),
+                        product_id=p.id, amount=Decimal('100.00'), wt_id=wt.id)
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    fetched = SalesOrderItem.query.filter_by(sales_order_id=so.id).first()
+    assert fetched.wt_id == wt.id
+    assert fetched.withholding_tax.code == 'WC160'
+    d = fetched.to_dict()
+    assert d['wt_id'] == wt.id
+    assert d['wt_code'] == 'WC160'
