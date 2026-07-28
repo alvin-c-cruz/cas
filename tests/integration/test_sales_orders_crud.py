@@ -955,3 +955,114 @@ def test_close_line_requires_confirmed_status_role_and_reason(client, db_session
     assert AuditLog.query.filter_by(module='sales_orders', action='update',
                                     record_id=so.id).filter(
                                         AuditLog.notes.like('%closed%')).count() >= 1
+
+
+def test_close_line_branch_scope_returns_404(client, db_session, accountant_user, main_branch,
+                                               branch_manila):
+    """An SO belonging to a DIFFERENT branch than the one currently selected in session
+    must 404 -- mirrors every other branch-scoped detail/action route. accountant_user is
+    only assigned main_branch, but the guard is a session-vs-SO check, not an authz check,
+    so we exercise it by selecting main_branch while the SO lives on branch_manila."""
+    c = _customer(db_session)
+    p = _product(db_session)
+
+    so = SalesOrder(branch_id=branch_manila.id, so_number='SO-CL-BR01',
+                    order_date=datetime.date(2026, 7, 28), customer_id=c.id,
+                    customer_name=c.name, status='confirmed')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+
+    resp = client.post(f'/sales-orders/{so.id}/lines/{li.id}/close',
+                       data={'closed_reason': 'no longer needed'})
+    assert resp.status_code == 404
+    db_session.refresh(li)
+    assert li.line_status == 'open'
+
+
+def test_close_line_item_so_mismatch_returns_404(client, db_session, accountant_user, main_branch):
+    """The URL carries both the SO id and the line-item id independently -- if item_id
+    belongs to a DIFFERENT sales order than the one named by id in the URL, the route
+    must 404 rather than close a line under the wrong SO's audit trail."""
+    c = _customer(db_session)
+    p = _product(db_session)
+
+    so1 = SalesOrder(branch_id=main_branch.id, so_number='SO-CL-MIS01',
+                     order_date=datetime.date(2026, 7, 28), customer_id=c.id,
+                     customer_name=c.name, status='confirmed')
+    li1 = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                         product_id=p.id, amount=Decimal('100.00'))
+    li1.calculate_amounts()
+    so1.line_items.append(li1)
+
+    so2 = SalesOrder(branch_id=main_branch.id, so_number='SO-CL-MIS02',
+                     order_date=datetime.date(2026, 7, 28), customer_id=c.id,
+                     customer_name=c.name, status='confirmed')
+    li2 = SalesOrderItem(line_number=1, quantity=Decimal('5'), unit_price=Decimal('10.00'),
+                         product_id=p.id, amount=Decimal('50.00'))
+    li2.calculate_amounts()
+    so2.line_items.append(li2)
+
+    db_session.add_all([so1, so2]); db_session.commit()
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+
+    # li2 belongs to so2, not so1 -- posting li2's id against so1's URL must 404.
+    resp = client.post(f'/sales-orders/{so1.id}/lines/{li2.id}/close',
+                       data={'closed_reason': 'no longer needed'})
+    assert resp.status_code == 404
+    db_session.refresh(li2)
+    assert li2.line_status == 'open'
+
+
+def test_close_line_already_closed_is_idempotent(client, db_session, accountant_user, main_branch):
+    """Closing an already-closed line must be refused with a flash, not silently
+    re-processed -- guards against a double-submit overwriting closed_by/closed_at/
+    closed_reason or emitting a duplicate audit entry."""
+    c = _customer(db_session)
+    p = _product(db_session)
+
+    so = SalesOrder(branch_id=main_branch.id, so_number='SO-CL-IDEM01',
+                    order_date=datetime.date(2026, 7, 28), customer_id=c.id,
+                    customer_name=c.name, status='confirmed')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    _login(client, accountant_user)
+    _select_branch(client, main_branch.id)
+
+    # First close: succeeds.
+    resp = client.post(f'/sales-orders/{so.id}/lines/{li.id}/close',
+                       data={'closed_reason': 'customer no longer wants the remainder'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    db_session.refresh(li)
+    assert li.line_status == 'closed'
+    first_closed_at = li.closed_at
+    first_closed_reason = li.closed_reason
+    audit_count_after_first_close = AuditLog.query.filter_by(
+        module='sales_orders', action='update', record_id=so.id).filter(
+            AuditLog.notes.like('%closed%')).count()
+
+    # Second close attempt on the SAME already-closed line: refused, state untouched.
+    resp = client.post(f'/sales-orders/{so.id}/lines/{li.id}/close',
+                       data={'closed_reason': 'trying to close it again'},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+    assert b'already closed' in resp.data
+    db_session.refresh(li)
+    assert li.line_status == 'closed'
+    assert li.closed_at == first_closed_at
+    assert li.closed_reason == first_closed_reason
+    assert AuditLog.query.filter_by(
+        module='sales_orders', action='update', record_id=so.id).filter(
+            AuditLog.notes.like('%closed%')).count() == audit_count_after_first_close
