@@ -693,21 +693,28 @@ def close_line(id, item_id):
     # forward-looking (it only blocks further delivery/billing of the line's remaining
     # open qty) and touches no posted accounting, so it is safe on a billed SO too.
 
-    # Guard: a live (non-cancelled) Delivery Receipt already references this line.
-    # so_line_open_qty() returns 0 unconditionally once line_status == 'closed',
-    # bypassing the exclude_dr_id re-check the DR-approve route relies on to stay
-    # idempotent -- so closing here would strand that draft/approved DR, permanently
-    # un-approvable with a misleading "exceeds the open quantity 0" message (there is
-    # no un-close route; recovery would require DB surgery). Refuse the close instead.
+    # Guard: a DRAFT Delivery Receipt already references this line. so_line_open_qty()
+    # returns 0 unconditionally once line_status == 'closed', bypassing the
+    # exclude_dr_id re-check the DR-approve route relies on to stay idempotent -- so
+    # closing here would strand that draft DR, permanently un-approvable with a
+    # misleading "exceeds the open quantity 0" message (there is no un-close route;
+    # recovery would require DB surgery). Refuse the close instead.
+    #
+    # Narrowed to status == 'draft' (not != 'cancelled'): approve() and edit() are the
+    # only call sites that re-check open qty via exclude_dr_id (delivery_receipts/views.py
+    # ~301), and both refuse anything not 'draft'. An approved/delivered/billed DR is
+    # already committed and can never be stranded by closing the line -- and blocking on
+    # those statuses would make short-closing a line after a partial delivery (the
+    # feature's primary use case) unreachable.
     from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
-    live_dr = (DeliveryReceiptItem.query
-               .join(DeliveryReceipt, DeliveryReceiptItem.delivery_receipt_id == DeliveryReceipt.id)
-               .filter(DeliveryReceiptItem.sales_order_item_id == item.id,
-                       DeliveryReceipt.status != 'cancelled')
-               .first())
-    if live_dr is not None:
-        flash('This line has an active Delivery Receipt referencing it -- cancel that '
-              'Delivery Receipt before closing the line.', 'error')
+    draft_dr = (DeliveryReceiptItem.query
+                .join(DeliveryReceipt, DeliveryReceiptItem.delivery_receipt_id == DeliveryReceipt.id)
+                .filter(DeliveryReceiptItem.sales_order_item_id == item.id,
+                        DeliveryReceipt.status == 'draft')
+                .first())
+    if draft_dr is not None:
+        flash('This line has a pending (draft) Delivery Receipt referencing it -- approve '
+              'or cancel that Delivery Receipt before closing the line.', 'error')
         return redirect(url_for('sales_orders.view', id=id))
 
     closed_reason = request.form.get('closed_reason', '').strip()
