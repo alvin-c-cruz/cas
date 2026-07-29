@@ -13,6 +13,7 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.sales_orders.models import SalesOrder, SalesOrderItem
+from app.branches.models import Branch
 from app.sales_orders.forms import SalesOrderForm
 from app.customers.models import Customer, CustomerDeliverySite
 from app.customers.views import build_customer_quick_add_form
@@ -107,19 +108,37 @@ def _parse_and_attach_so_lines(so, lines_json):
         so.line_items.append(li)
 
 
-def generate_so_number():
-    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+# Per-branch suffix appended to the numeric SO number (owner directive, 2026-07-29).
+# CORP is the default/no-suffix branch; any branch not listed here also gets no suffix.
+SO_NUMBER_BRANCH_SUFFIX = {'EXTRA': 'E'}
 
-    Mirrors generate_invoice_number's contract exactly. Each SO gets the next
-    number after the highest existing purely-numeric so_number -- this
-    deliberately includes legacy-migrated literal numbers, not just CAS-generated
-    ones. Legacy prefixed numbers (e.g. the old 'SO-2026-07-0030' format) are
-    ignored, so a client transitioning off that format starts cleanly at 00001.
+
+def generate_so_number(branch, order_date):
+    """Next SO number for `branch` in `order_date`'s month: YYYYMM + 4-digit
+    sequence + the branch's suffix (e.g. '2025120001' for CORP, '2025120001E'
+    for EXTRA). The sequence resets every month and is scoped per branch --
+    CORP and EXTRA each start fresh at 0001 independently. Legacy/manually
+    typed numbers that don't match this exact shape are ignored, so they
+    don't perturb the count (mirrors generate_invoice_number's contract of
+    only counting purely-numeric-shaped existing numbers).
     """
-    rows = SalesOrder.query.with_entities(SalesOrder.so_number).all()
-    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
-    next_num = (max(nums) + 1) if nums else 1
-    return f'{next_num:05d}'
+    yyyymm = f'{order_date.year:04d}{order_date.month:02d}'
+    suffix = SO_NUMBER_BRANCH_SUFFIX.get(branch.code, '')
+    rows = SalesOrder.query.filter(
+        SalesOrder.branch_id == branch.id,
+        SalesOrder.so_number.like(f'{yyyymm}%')
+    ).with_entities(SalesOrder.so_number).all()
+    seqs = []
+    for (num,) in rows:
+        body = num[len(yyyymm):]
+        if suffix:
+            if not body.endswith(suffix):
+                continue
+            body = body[:-len(suffix)]
+        if body.isdigit():
+            seqs.append(int(body))
+    next_seq = (max(seqs) + 1) if seqs else 1
+    return f'{yyyymm}{next_seq:04d}{suffix}'
 
 
 # ── role gate ────────────────────────────────────────────────────────────────
@@ -358,8 +377,9 @@ def create():
             flash('An error occurred while entering the Sales Order. Please try again.', 'error')
 
     if request.method == 'GET':
-        form.so_number.data = generate_so_number()
         form.order_date.data = ph_now().date()
+        branch = db.session.get(Branch, session.get('selected_branch_id'))
+        form.so_number.data = generate_so_number(branch, form.order_date.data)
 
     return render_template('sales_orders/form.html', form=form, so=None,
                            line_items=[], **_common_form_ctx())

@@ -369,9 +369,12 @@ def accept(id):
         return redirect(url_for('quotations.view', id=id))
     from app.sales_orders.models import SalesOrder, SalesOrderItem
     from app.sales_orders.views import generate_so_number
+    from app.branches.models import Branch
     try:
-        so = SalesOrder(so_number=generate_so_number(), branch_id=q.branch_id,
-                        order_date=ph_now().date(), customer_id=q.customer_id,
+        so_order_date = ph_now().date()
+        so_branch = db.session.get(Branch, q.branch_id)
+        so = SalesOrder(so_number=generate_so_number(so_branch, so_order_date), branch_id=q.branch_id,
+                        order_date=so_order_date, customer_id=q.customer_id,
                         customer_name=q.customer_name, customer_tin=q.customer_tin,
                         customer_address=q.customer_address, payment_terms=q.payment_terms,
                         reference=q.reference, notes=q.notes or '', status='draft',

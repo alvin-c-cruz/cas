@@ -376,6 +376,39 @@ def test_create_form_renders_so_number_and_line_editor(client, db_session, admin
     assert b'addLineBtn' in resp.data
 
 
+def test_create_form_prefills_yyyymm_seq_number_no_suffix_for_default_branch(
+        client, db_session, admin_user, main_branch):
+    """GET /sales-orders/create pre-fills so_number as YYYYMM0001 for a branch
+    with no configured suffix (main_branch's code 'MAIN' isn't in
+    SO_NUMBER_BRANCH_SUFFIX, same as CORP)."""
+    import re
+    from datetime import date
+    _login(client, admin_user)
+    _select_branch(client, main_branch.id)
+    resp = client.get('/sales-orders/create')
+    assert resp.status_code == 200
+    today = date.today()
+    expected = f'value="{today.year:04d}{today.month:02d}0001"'
+    assert expected.encode() in resp.data
+
+
+def test_create_form_prefills_e_suffix_for_extra_branch(client, db_session, admin_user):
+    """A branch coded 'EXTRA' gets the same YYYYMM+seq number with a trailing 'E'."""
+    from datetime import date
+    from app.branches.models import Branch
+    extra = Branch(code='EXTRA', name='Extra Branch', is_active=True)
+    db.session.add(extra); db.session.commit()
+    admin_user.set_branches([extra])
+    db.session.commit()
+    _login(client, admin_user)
+    _select_branch(client, extra.id)
+    resp = client.get('/sales-orders/create')
+    assert resp.status_code == 200
+    today = date.today()
+    expected = f'value="{today.year:04d}{today.month:02d}0001E"'
+    assert expected.encode() in resp.data
+
+
 def test_create_form_offers_product_and_uom_quick_add_when_module_on(client, db_session, admin_user, main_branch):
     """With the Products/UOM modules on, the SO form must render the product AND uom quick-add
     modals + scripts and the line grid's '+ Add Product' / '+ Add UOM' sentinels, so a delegate
