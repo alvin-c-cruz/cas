@@ -208,3 +208,34 @@ class TestSIJournalViews:
         assert resp.status_code == 200
         assert b'/journals/si' in resp.data
         assert b'(Soon)' not in resp.data
+
+    def test_si_list_view_journal_carries_active_date_filter(
+            self, client, db_session, main_branch, accountant_user):
+        """View Journal / Download Journal must carry the list's active date
+        range through as ?mode=custom&date_from=...&date_to=... -- otherwise
+        they silently land on the journal's own default (current) month and
+        can show an empty page even though the list has invoices in range."""
+        client.post('/login', data={'username': 'accountant', 'password': 'accountant123'},
+                    follow_redirects=True)
+        with client.session_transaction() as s:
+            s['selected_branch_id'] = main_branch.id
+        resp = client.get('/sales-invoices?date_from=2026-01-01&date_to=2026-12-31')
+        assert resp.status_code == 200
+        assert b'/journals/si?mode=custom&amp;date_from=2026-01-01&amp;date_to=2026-12-31' in resp.data
+        assert b'/journals/si/export?mode=custom&amp;date_from=2026-01-01&amp;date_to=2026-12-31' in resp.data
+
+    def test_si_list_print_list_link_has_selection_class(
+            self, client, db_session, main_branch, accountant_user):
+        """Print List must carry the checkbox row-selection (?ids=...) the same
+        way Export Excel/CSV already do -- it needs the shared 'si-export-link'
+        JS hook class, not a separate/missing one."""
+        client.post('/login', data={'username': 'accountant', 'password': 'accountant123'},
+                    follow_redirects=True)
+        with client.session_transaction() as s:
+            s['selected_branch_id'] = main_branch.id
+        resp = client.get('/sales-invoices')
+        assert resp.status_code == 200
+        import re
+        m = re.search(rb'<a href="[^"]*sales-invoices/print[^"]*"[^>]*class="([^"]*)"', resp.data)
+        assert m, 'Print List link not found'
+        assert 'si-export-link' in m.group(1).decode()
