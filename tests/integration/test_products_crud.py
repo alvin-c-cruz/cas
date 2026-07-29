@@ -82,6 +82,18 @@ def test_create_product_persists_and_audits(client, db_session, admin_user, main
     assert AuditLog.query.filter_by(module='products', action='create').count() >= 1
 
 
+def test_create_product_persists_customer_code(client, db_session, admin_user, main_branch,
+                                               products_module_enabled):
+    _login(client, admin_user, main_branch)
+    client.post('/products/create',
+               data={'code': 'WID-2', 'name': 'Widget', 'customer_code': '220176',
+                     'description': '', 'default_unit_of_measure_id': '',
+                     'default_unit_price': '', 'default_account_id': '', 'is_active': '1'},
+               follow_redirects=True)
+    p = Product.query.filter_by(code='WID-2').first()
+    assert p is not None and p.customer_code == '220176'
+
+
 def test_edit_product_updates(client, db_session, admin_user, main_branch,
                               products_module_enabled):
     p = Product(code='X', name='X1', is_active=True)

@@ -97,14 +97,15 @@ def cap_note_lines(text):
     return '\n'.join(text.replace('\r\n', '\n').split('\n')[:MAX_NOTE_LINES])
 
 
-COLUMN_KEYS = ['line_number', 'product', 'uom', 'quantity']   # no pricing on a DR
+COLUMN_KEYS = ['line_number', 'quantity', 'uom', 'customer_product_code', 'product']  # no pricing on a DR
 
 # Header labels for the line-item columns (presentation; keyed by COLUMN_KEYS).
 COLUMN_LABELS = {
     'line_number': '#',
-    'product': 'Product',
-    'uom': 'UOM',
     'quantity': 'Qty Delivered',
+    'uom': 'UOM',
+    'customer_product_code': "Customer's Code",
+    'product': 'Product',
 }
 
 ALLOWED_PAPERS = ('continuous', 'letter')
@@ -184,17 +185,18 @@ DEFAULT_DR_PREPRINTED_LAYOUT = {
     },
     # Line items: each column is INDEPENDENTLY positioned (its own x) so it can line
     # up with the pre-printed column boxes; all columns share the band top (y) and
-    # rowHeight so rows stay aligned. No header row. Legacy's row order is quantity,
-    # measure(uom), product_code, product_name -- CAS combines code+name into one
-    # "product" field and has no row-numbering column at all, so line_number is
-    # hidden by default (legacy doesn't show one).
+    # rowHeight so rows stay aligned. No header row. Matches legacy's exact row order:
+    # quantity, measure(uom), product_code (the CUSTOMER's own code, Product.customer_code
+    # -- not CAS's internal Product.code), product_name. CAS has no row-numbering
+    # column at all, so line_number is hidden by default (legacy doesn't show one).
     'lineItems': {
         'y': 295, 'rowHeight': 20, 'fontSize': 14, 'bold': True,
         'columns': [
-            {'key': 'line_number', 'x': 30,  'visible': False, 'width': 30},
-            {'key': 'quantity',    'x': 57,  'visible': True,  'width': 94},
-            {'key': 'uom',         'x': 151, 'visible': True,  'width': 144},
-            {'key': 'product',     'x': 295, 'visible': True,  'width': 454},
+            {'key': 'line_number',           'x': 30,  'visible': False, 'width': 30},
+            {'key': 'quantity',              'x': 57,  'visible': True,  'width': 94},
+            {'key': 'uom',                   'x': 151, 'visible': True,  'width': 144},
+            {'key': 'customer_product_code', 'x': 295, 'visible': True,  'width': 76},
+            {'key': 'product',               'x': 371, 'visible': True,  'width': 378},
         ],
     },
 }
