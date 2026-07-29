@@ -45,8 +45,10 @@
       <span class="badge badge-{{ badge_map.get(dr.status, 'draft') }}">{{ dr.status|title }}</span>
     </div>
     <div class="card-header-actions" style="display:flex; gap:8px; align-items:center;">
+      {% if dr_print_form != 'hidden' %}
       <a href="{{ url_for('delivery_receipts.print_dr', id=dr.id) }}" target="_blank"
          rel="noopener noreferrer" class="btn btn-secondary">Print</a>
+      {% endif %}
       {% if dr.status == 'draft' and may_edit %}
       <a href="{{ url_for('delivery_receipts.edit', id=dr.id) }}" class="btn btn-primary">Edit</a>
       {% endif %}
@@ -80,6 +82,8 @@
       </div>
       <div><strong>Salesperson:</strong> {{ dr.salesperson.full_name if dr.salesperson else 'Company Account' }}</div>
       {% if dr.remarks %}<div><strong>Remarks:</strong> {{ dr.remarks }}</div>{% endif %}
+      {% if dr.packing_notes %}<div><strong>Packing/Lot Breakdown:</strong> <span style="white-space:pre-line;">{{ dr.packing_notes }}</span></div>{% endif %}
+      {% if dr.schedule_notes %}<div><strong>Delivery Schedule:</strong> <span style="white-space:pre-line;">{{ dr.schedule_notes }}</span></div>{% endif %}
       {% if dr.status == 'cancelled' %}<div><strong>Cancelled:</strong> {{ dr.cancel_reason }}</div>{% endif %}
     </div>
   </div>

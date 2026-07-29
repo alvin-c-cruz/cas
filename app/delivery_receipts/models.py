@@ -29,6 +29,12 @@ class DeliveryReceipt(RowVersioned, db.Model):
 
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
     remarks = db.Column(db.Text)
+    # Legacy-mirroring free-text blocks (RIC's "Stacking" / "Production Date" textareas):
+    # feed the two multiline fields in the DR pre-printed layout designer. Blank for most
+    # orders; populated per-order by staff when the physical stock needs a packing/lot
+    # breakdown or a BO/CO delivery-window note printed alongside the fixed fields.
+    packing_notes = db.Column(db.Text, nullable=True)
+    schedule_notes = db.Column(db.Text, nullable=True)
 
     salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True, index=True)
     salesperson = db.relationship('Employee', foreign_keys=[salesperson_id])

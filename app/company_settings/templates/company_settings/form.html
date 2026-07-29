@@ -223,6 +223,9 @@
                 {% if module_states.sales_orders %}
                 {{ render_field(form.so_print_form) }}
                 {% endif %}
+                {% if module_states.delivery_receipts %}
+                {{ render_field(form.dr_print_form) }}
+                {% endif %}
                 {{ render_field(form.cr_print_form) }}
                 {{ render_field(form.ap_print_form) }}
                 {{ render_field(form.cd_print_form) }}

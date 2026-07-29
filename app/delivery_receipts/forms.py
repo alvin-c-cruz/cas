@@ -19,4 +19,8 @@ class DeliveryReceiptForm(RowVersionFormMixin, FlaskForm):
     salesperson_id = SelectField('Salesperson', coerce=int, validators=[Optional()],
                                  validate_choice=False)
     remarks = TextAreaField('Remarks', validators=[Optional()])
+    # Legacy-mirroring free-text blocks -- feed the DR pre-printed layout's positioned
+    # multiline fields (e.g. RIC's packing/lot breakdown and BO/CO delivery-window notes).
+    packing_notes = TextAreaField('Packing / Lot Breakdown', validators=[Optional(), Length(max=2000)])
+    schedule_notes = TextAreaField('Delivery Schedule (BO/CO)', validators=[Optional(), Length(max=2000)])
     lines = HiddenField('Lines JSON')
