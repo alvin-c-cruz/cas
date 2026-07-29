@@ -18,7 +18,9 @@
   .pp-col { position: absolute; }
   .pp-cell { overflow: hidden; white-space: nowrap; }
   /* Figures follow the page font; only right-align them. */
-  .pp-amount .pp-cell { text-align: right; }
+  .pp-amount .pp-cell { text-align: right; padding-right: 20px; }
+  /* Matches legacy's measure_name (uom) column: centered, 10px side padding. */
+  .pp-uom .pp-cell { text-align: center; padding-left: 10px; padding-right: 10px; }
   /* Columns are draggable in edit mode (horizontal = that column; vertical = the whole
      band, so rows stay aligned). No header row. */
   .pp-canvas.pp-editing .pp-col { outline: 1px dashed #2e7d32; cursor: move; }
@@ -108,6 +110,7 @@
     'dr_no': dr.dr_number,
     'delivery_date': dr.delivery_date.strftime(date_fmt) if dr.delivery_date else '',
     'so_no': dr.sales_order.so_number if dr.sales_order else '',
+    'customer_po': dr.sales_order.customer_po_number if dr.sales_order else '',
     'status': dr.status | title,
     'customer_name': dr.customer_name,
     'customer_tin': dr.sales_order.customer_tin if dr.sales_order else '',
@@ -130,7 +133,7 @@
      and rowHeight so rows align. Columns move; cells/rows don't move on their own. #}
   <div class="pp-lineitems" data-el="lineItems" data-rowheight="{{ li.rowHeight }}">
     {% for col in li.columns %}
-    <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key == 'quantity' else '' }}"
+    <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key == 'quantity' else '' }}{{ ' pp-uom' if col.key == 'uom' else '' }}"
          data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
          style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
       {%- for item in dr.line_items %}

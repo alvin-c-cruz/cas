@@ -137,8 +137,11 @@ class TestFonts:
         assert flat == ALLOWED_FONTS
         assert len(ALLOWED_FONTS) == len(set(ALLOWED_FONTS))
 
-    def test_default_font_is_monospace(self):
-        assert 'monospace' in DEFAULT_DR_PREPRINTED_LAYOUT['page']['fontFamily']
+    def test_default_font_matches_legacy_calibri(self):
+        # Unlike SO/SI (dot-matrix continuous forms, monospace-first), DR's default
+        # matches RIC's legacy print.html, which sets body { font-family: Calibri,
+        # Arial, sans-serif }.
+        assert DEFAULT_DR_PREPRINTED_LAYOUT['page']['fontFamily'].startswith('Calibri')
 
 
 class TestGetSave:

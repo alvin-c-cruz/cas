@@ -58,7 +58,7 @@ FONT_GROUPS = [
 ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 
 FIELD_KEYS = [
-    'dr_no', 'delivery_date', 'so_no', 'status',
+    'dr_no', 'delivery_date', 'so_no', 'customer_po', 'status',
     'customer_name', 'customer_tin', 'customer_address', 'salesperson',
     'packing_notes', 'schedule_notes',
 ]
@@ -68,6 +68,7 @@ FIELD_LABELS = {
     'dr_no': 'DR No.',
     'delivery_date': 'Delivery Date',
     'so_no': 'SO No.',
+    'customer_po': 'PO No.',
     'status': 'Status',
     'customer_name': 'Customer',
     'customer_tin': 'TIN',
@@ -142,37 +143,58 @@ TEXT_LABELS = {'prepared_by': 'Prepared by', 'released_by': 'Released by',
 TEXT_MAXLEN = 200
 
 DEFAULT_DR_PREPRINTED_LAYOUT = {
+    # Positions below are converted 1:1 from RIC's legacy print.html (rowell1968's
+    # delivery_receipt/print.html), whose absolute-positioned fields are declared in
+    # mm (96dpi: 1mm = 3.7795px). Every legacy field is wrapped in <strong> (bold=True)
+    # and the page font is "Calibri, Arial, sans-serif" -- reproduced here as closely
+    # as this designer's allow-listed fonts permit. Legacy fields with no CAS
+    # equivalent yet (vendor_code, customer_business_style, checked_by/carrier/
+    # approved_by as real per-DR data, the standalone "PRODUCT CODE:" line) are not
+    # represented -- they would need new DeliveryReceipt columns, out of scope here.
     'paper': 'continuous',
     'dateFormat': 'long',
     'extras': [],
+    # Legacy's checked_by/carrier/approved_by row (top=149mm, left=15/65/105mm,
+    # fontSize=13) is real per-DR DATA in the legacy schema; CAS has no such columns,
+    # so these stay LAYOUT-ONLY static signature labels -- just repositioned onto
+    # that same row/columns for a visual match.
     'texts': [
-        {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 60,  'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-        {'id': 'released_by', 'text': 'Released by:', 'x': 340, 'y': 720, 'fontSize': 10, 'bold': False, 'hidden': False},
-        {'id': 'received_by', 'text': 'Received by (Signature / Date):', 'x': 580, 'y': 720, 'fontSize': 9, 'bold': False, 'hidden': False},
+        {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 57,  'y': 563, 'fontSize': 13, 'bold': True, 'hidden': False},
+        {'id': 'released_by', 'text': 'Released by:', 'x': 246, 'y': 563, 'fontSize': 13, 'bold': True, 'hidden': False},
+        {'id': 'received_by', 'text': 'Received by (Signature / Date):', 'x': 397, 'y': 563, 'fontSize': 13, 'bold': True, 'hidden': False},
     ],
-    'page': {'fontFamily': '"Courier New", Courier, monospace'},
+    'page': {'fontFamily': 'Calibri, Candara, "Segoe UI", sans-serif'},
     'fields': {
-        'dr_no':            {'x': 520, 'y': 50,  'fontSize': 12, 'bold': True},
-        'delivery_date':    {'x': 520, 'y': 74,  'fontSize': 11, 'bold': False},
-        'so_no':            {'x': 520, 'y': 98,  'fontSize': 11, 'bold': False},
-        'status':           {'x': 520, 'y': 122, 'fontSize': 10, 'bold': False},
-        'customer_name':    {'x': 60,  'y': 50,  'fontSize': 12, 'bold': True},
-        'customer_tin':     {'x': 60,  'y': 74,  'fontSize': 11, 'bold': False},
-        'customer_address': {'x': 60,  'y': 98,  'fontSize': 11, 'bold': False},
-        'salesperson':      {'x': 60,  'y': 122, 'fontSize': 11, 'bold': False},
-        'packing_notes':    {'x': 60,  'y': 160, 'fontSize': 10, 'bold': False},
-        'schedule_notes':   {'x': 60,  'y': 220, 'fontSize': 10, 'bold': False},
+        'dr_no':            {'x': 699, 'y': 79,  'fontSize': 13, 'bold': True},
+        'delivery_date':    {'x': 635, 'y': 181, 'fontSize': 13, 'bold': True},
+        'so_no':            {'x': 654, 'y': 223, 'fontSize': 13, 'bold': True},
+        'customer_po':      {'x': 654, 'y': 200, 'fontSize': 13, 'bold': True},
+        # Not on the legacy slip at all -- hidden by default so a fresh install
+        # matches legacy exactly; toggle on in the designer if wanted.
+        'status':           {'x': 654, 'y': 270, 'fontSize': 11, 'bold': True, 'hidden': True},
+        'customer_name':    {'x': 155, 'y': 178, 'fontSize': 18, 'bold': True},
+        'customer_tin':     {'x': 106, 'y': 223, 'fontSize': 13, 'bold': True},
+        'customer_address': {'x': 125, 'y': 204, 'fontSize': 12, 'bold': True},
+        'salesperson':      {'x': 673, 'y': 242, 'fontSize': 13, 'bold': True},
+        # Legacy positions these via CSS margin in normal document flow, right below
+        # the line items (not a fixed absolute slot) -- these x/y are a reasonable
+        # starting point for a typical few-line order; drag to fit longer orders.
+        'packing_notes':    {'x': 321, 'y': 400, 'fontSize': 14, 'bold': True},
+        'schedule_notes':   {'x': 321, 'y': 460, 'fontSize': 14, 'bold': True},
     },
     # Line items: each column is INDEPENDENTLY positioned (its own x) so it can line
     # up with the pre-printed column boxes; all columns share the band top (y) and
-    # rowHeight so rows stay aligned. No header row.
+    # rowHeight so rows stay aligned. No header row. Legacy's row order is quantity,
+    # measure(uom), product_code, product_name -- CAS combines code+name into one
+    # "product" field and has no row-numbering column at all, so line_number is
+    # hidden by default (legacy doesn't show one).
     'lineItems': {
-        'y': 300, 'rowHeight': 20, 'fontSize': 10, 'bold': False,
+        'y': 295, 'rowHeight': 20, 'fontSize': 14, 'bold': True,
         'columns': [
-            {'key': 'line_number', 'x': 56,  'visible': True,  'width': 30},
-            {'key': 'product',     'x': 92,  'visible': True,  'width': 350},
-            {'key': 'uom',         'x': 460, 'visible': True,  'width': 60},
-            {'key': 'quantity',    'x': 530, 'visible': True,  'width': 80},
+            {'key': 'line_number', 'x': 30,  'visible': False, 'width': 30},
+            {'key': 'quantity',    'x': 57,  'visible': True,  'width': 94},
+            {'key': 'uom',         'x': 151, 'visible': True,  'width': 144},
+            {'key': 'product',     'x': 295, 'visible': True,  'width': 454},
         ],
     },
 }

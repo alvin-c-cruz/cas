@@ -33,7 +33,8 @@ def _billed_dr(db_session, main_branch, admin_user, packing_notes=None, schedule
     p = Product(code='W', name='Widget', is_active=True)
     db.session.add_all([c, p]); db.session.commit()
     so = SalesOrder(so_number='SO-PP-1', order_date=date(2026, 7, 9), customer_id=c.id,
-                    customer_name='Acme', branch_id=main_branch.id, status='confirmed')
+                    customer_name='Acme', branch_id=main_branch.id, status='confirmed',
+                    customer_po_number='2200099999')
     soi = SalesOrderItem(line_number=1, product_id=p.id, quantity=10, unit_price=100, amount=1000)
     so.line_items.append(soi)
     db.session.add(so); db.session.commit()
@@ -68,6 +69,7 @@ def test_print_preprinted_renders_overlay(client, db_session, admin_user, main_b
     assert b'pp-canvas' in resp.data
     assert b'350 BAGS X 20 PCS' in resp.data
     assert b'BO: JULY 16 - 17, 2026' in resp.data
+    assert b'2200099999' in resp.data  # customer_po, sourced from the linked SO
 
 
 def test_print_preprinted_blank_notes_render_nothing(client, db_session, admin_user, main_branch):
