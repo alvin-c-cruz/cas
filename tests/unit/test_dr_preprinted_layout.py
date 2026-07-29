@@ -3,7 +3,7 @@ import pytest
 from app.settings import AppSettings
 from app.delivery_receipts.preprinted_layout import (
     DEFAULT_DR_PREPRINTED_LAYOUT, LAYOUT_SETTING_KEY, FIELD_KEYS, COLUMN_KEYS,
-    MULTILINE_FIELD_KEYS, MAX_NOTE_LINES, ALLOWED_FONTS, FONT_GROUPS,
+    MULTILINE_FIELD_KEYS, MAX_NOTE_LINES, ALLOWED_FONTS, FONT_GROUPS, DATE_FORMATS,
     sanitize_layout, get_layout, save_layout, cap_note_lines,
 )
 from app.audit.models import AuditLog
@@ -120,15 +120,17 @@ class TestExtras:
 
 
 class TestDateFormat:
-    def test_default_is_long(self):
-        assert DEFAULT_DR_PREPRINTED_LAYOUT['dateFormat'] == 'long'
-        assert sanitize_layout({})['dateFormat'] == 'long'
+    def test_default_is_full_matching_legacy(self):
+        """'full' ('%B %d, %Y') matches legacy's hardcoded long_date() exactly."""
+        assert DEFAULT_DR_PREPRINTED_LAYOUT['dateFormat'] == 'full'
+        assert sanitize_layout({})['dateFormat'] == 'full'
+        assert DATE_FORMATS['full'] == '%B %d, %Y'
 
     def test_iso_accepted(self):
         assert sanitize_layout({'dateFormat': 'iso'})['dateFormat'] == 'iso'
 
-    def test_unknown_falls_back_to_long(self):
-        assert sanitize_layout({'dateFormat': 'bogus'})['dateFormat'] == 'long'
+    def test_unknown_falls_back_to_default(self):
+        assert sanitize_layout({'dateFormat': 'bogus'})['dateFormat'] == 'full'
 
 
 class TestFonts:

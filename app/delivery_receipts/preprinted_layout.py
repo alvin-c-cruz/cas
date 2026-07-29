@@ -136,6 +136,10 @@ PAPER_LABELS = {
 # these keys (so_preprinted_designer.js::fmtDate -- shared across all doc types).
 DATE_FORMATS = {
     'long':   '%d %B %Y',
+    # Legacy's long_date() (application/extensions.py): always this exact shape,
+    # hardcoded, no other option -- this is the DR default so a fresh install
+    # matches legacy's printed date verbatim ("December 19, 2025").
+    'full':   '%B %d, %Y',
     'medium': '%b %d, %Y',
     'us':     '%m/%d/%Y',
     'eu':     '%d/%m/%Y',
@@ -161,7 +165,9 @@ DEFAULT_DR_PREPRINTED_LAYOUT = {
     # DTI trade-name field) is confirmed "N/A" for every legacy customer row -- unused
     # in practice, not modeled here.
     'paper': 'continuous',
-    'dateFormat': 'long',
+    # 'full' ('%B %d, %Y' -> "December 19, 2025") matches legacy's long_date()
+    # exactly -- legacy's own DR date format, hardcoded, no other option there.
+    'dateFormat': 'full',
     'extras': [],
     # Generic signature labels, NOT tied to the checked_by/carrier/approved_by DATA
     # fields below (legacy prints the actual names/carrier there, not a blank "sign

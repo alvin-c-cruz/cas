@@ -95,6 +95,17 @@ def test_print_preprinted_renders_legacy_data_fields(client, db_session, admin_u
     assert b'VENDOR CODE: 200100' in resp.data
 
 
+def test_print_preprinted_default_date_format_matches_legacy(client, db_session, admin_user, main_branch):
+    """Default dateFormat ('full') renders 'July 10, 2026' -- matching legacy's
+    hardcoded long_date() ('%B %d, %Y'), not CAS's day-first 'long' default."""
+    AppSettings.set_setting('dr_print_form', 'preprinted')
+    dr = _billed_dr(db_session, main_branch, admin_user)
+    _login(client, 'admin', 'admin123')
+    resp = client.get(f'/delivery-receipts/{dr.id}/print')
+    assert b'July 10, 2026' in resp.data
+    assert b'10 July 2026' not in resp.data
+
+
 def test_print_preprinted_blank_notes_render_nothing(client, db_session, admin_user, main_branch):
     AppSettings.set_setting('dr_print_form', 'preprinted')
     dr = _billed_dr(db_session, main_branch, admin_user)  # notes left None
