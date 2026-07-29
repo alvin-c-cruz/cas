@@ -60,7 +60,7 @@ ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 FIELD_KEYS = [
     'dr_no', 'delivery_date', 'so_no', 'customer_po', 'status',
     'customer_name', 'customer_tin', 'customer_address', 'vendor_code', 'salesperson',
-    'remarks', 'packing_notes', 'schedule_notes',
+    'remarks', 'product_code', 'packing_notes', 'schedule_notes',
     'checked_by', 'carrier', 'approved_by',
 ]
 
@@ -77,6 +77,9 @@ FIELD_LABELS = {
     'vendor_code': "Customer's Code for Us",
     'salesperson': 'Salesperson',
     'remarks': 'Remarks',
+    # Single value (first line's customer product code) -- NOT the per-line
+    # customer_product_code column below; matches legacy's product_code_description.
+    'product_code': "Product Code (first line)",
     'packing_notes': 'Packing / Lot Breakdown',
     'schedule_notes': 'Delivery Schedule (BO/CO)',
     'checked_by': 'Checked By',
@@ -188,11 +191,15 @@ DEFAULT_DR_PREPRINTED_LAYOUT = {
         # Legacy renders `notes` right after the last line item (same column slot as
         # product name), before the stacking/production_date blocks below it.
         'remarks':          {'x': 321, 'y': 340, 'fontSize': 14, 'bold': True},
+        # Legacy's product_code_description: margin_left=90mm (~340px), printed once
+        # right below notes/remarks -- the FIRST line's customer product code only,
+        # not one per line (see FIELD_LABELS note above).
+        'product_code':     {'x': 321, 'y': 395, 'fontSize': 14, 'bold': True},
         # Legacy positions these via CSS margin in normal document flow, right below
         # the line items (not a fixed absolute slot) -- these x/y are a reasonable
         # starting point for a typical few-line order; drag to fit longer orders.
-        'packing_notes':    {'x': 321, 'y': 400, 'fontSize': 14, 'bold': True},
-        'schedule_notes':   {'x': 321, 'y': 460, 'fontSize': 14, 'bold': True},
+        'packing_notes':    {'x': 321, 'y': 450, 'fontSize': 14, 'bold': True},
+        'schedule_notes':   {'x': 321, 'y': 505, 'fontSize': 14, 'bold': True},
         # Legacy's checked_by/carrier/approved_by row (top=149mm, left=15/65/105mm).
         'checked_by':       {'x': 57,  'y': 563, 'fontSize': 13, 'bold': True},
         'carrier':          {'x': 246, 'y': 563, 'fontSize': 13, 'bold': True},
@@ -210,11 +217,8 @@ DEFAULT_DR_PREPRINTED_LAYOUT = {
             {'key': 'line_number',           'x': 30,  'visible': False, 'width': 30},
             {'key': 'quantity',              'x': 57,  'visible': True,  'width': 94},
             {'key': 'uom',                   'x': 151, 'visible': True,  'width': 144},
-            # Wider than the bare code (76px) to fit the "PRODUCT CODE: " prefix
-            # baked into the cell text (matches legacy's literal label+value string);
-            # 'product' shifts right to make room, same as it did for the code alone.
-            {'key': 'customer_product_code', 'x': 295, 'visible': True,  'width': 180},
-            {'key': 'product',               'x': 475, 'visible': True,  'width': 378},
+            {'key': 'customer_product_code', 'x': 295, 'visible': True,  'width': 76},
+            {'key': 'product',               'x': 371, 'visible': True,  'width': 378},
         ],
     },
 }

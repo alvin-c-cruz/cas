@@ -73,7 +73,9 @@ def test_print_preprinted_renders_overlay(client, db_session, admin_user, main_b
     assert b'350 BAGS X 20 PCS' in resp.data
     assert b'BO: JULY 16 - 17, 2026' in resp.data
     assert b'2200099999' in resp.data  # customer_po, sourced from the linked SO
-    assert b'PRODUCT CODE: 220176' in resp.data  # customer_product_code, labeled per legacy
+    assert b'PRODUCT CODE: 220176' in resp.data  # the single first-line product_code field, labeled
+    body = resp.data.decode('utf-8')
+    assert '>220176<' in body  # AND the per-line customer_product_code column, bare/unlabeled
     assert b'Widget' in resp.data      # product name, NOT prefixed with CAS's own code "W"
 
 
