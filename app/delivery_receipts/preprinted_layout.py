@@ -210,8 +210,11 @@ DEFAULT_DR_PREPRINTED_LAYOUT = {
             {'key': 'line_number',           'x': 30,  'visible': False, 'width': 30},
             {'key': 'quantity',              'x': 57,  'visible': True,  'width': 94},
             {'key': 'uom',                   'x': 151, 'visible': True,  'width': 144},
-            {'key': 'customer_product_code', 'x': 295, 'visible': True,  'width': 76},
-            {'key': 'product',               'x': 371, 'visible': True,  'width': 378},
+            # Wider than the bare code (76px) to fit the "PRODUCT CODE: " prefix
+            # baked into the cell text (matches legacy's literal label+value string);
+            # 'product' shifts right to make room, same as it did for the code alone.
+            {'key': 'customer_product_code', 'x': 295, 'visible': True,  'width': 180},
+            {'key': 'product',               'x': 475, 'visible': True,  'width': 378},
         ],
     },
 }

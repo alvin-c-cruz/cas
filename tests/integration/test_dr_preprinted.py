@@ -73,7 +73,7 @@ def test_print_preprinted_renders_overlay(client, db_session, admin_user, main_b
     assert b'350 BAGS X 20 PCS' in resp.data
     assert b'BO: JULY 16 - 17, 2026' in resp.data
     assert b'2200099999' in resp.data  # customer_po, sourced from the linked SO
-    assert b'220176' in resp.data      # customer_product_code, sourced from Product.customer_code
+    assert b'PRODUCT CODE: 220176' in resp.data  # customer_product_code, labeled per legacy
     assert b'Widget' in resp.data      # product name, NOT prefixed with CAS's own code "W"
 
 
@@ -90,7 +90,7 @@ def test_print_preprinted_renders_legacy_data_fields(client, db_session, admin_u
     assert b'CCK 3631' in resp.data
     assert b'WARLITO FUENTES' in resp.data
     assert b'DENNIS M. GALANG' in resp.data
-    assert b'200100' in resp.data
+    assert b'VENDOR CODE: 200100' in resp.data
 
 
 def test_print_preprinted_blank_notes_render_nothing(client, db_session, admin_user, main_branch):

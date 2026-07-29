@@ -104,7 +104,11 @@
 <div class="pp-canvas" id="ppCanvas" style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
   <div class="pp-margin-guide screen-only" style="left:48px;"></div>
   <div class="pp-margin-guide screen-only" style="right:48px;"></div>
-  {# Values only — the pre-printed stock supplies every label/header. #}
+  {# Values only — the pre-printed stock supplies every label/header, EXCEPT
+     vendor_code and the line items' customer_product_code: legacy bakes
+     "VENDOR CODE: "/"PRODUCT CODE: " into the printed text itself (there is
+     no such pre-printed label on the physical stock for either), so those
+     two carry their label inline to match. #}
   {% set date_fmt = date_formats[layout.dateFormat] %}
   {% set field_values = {
     'dr_no': dr.dr_number,
@@ -115,7 +119,7 @@
     'customer_name': dr.customer_name,
     'customer_tin': dr.sales_order.customer_tin if dr.sales_order else '',
     'customer_address': dr.sales_order.customer_address if dr.sales_order else '',
-    'vendor_code': dr.sales_order.customer.vendor_code
+    'vendor_code': ('VENDOR CODE: ' + dr.sales_order.customer.vendor_code)
       if dr.sales_order and dr.sales_order.customer and dr.sales_order.customer.vendor_code else '',
     'salesperson': dr.salesperson.full_name if dr.salesperson else 'Company Account',
     'remarks': remarks_text,
@@ -150,8 +154,9 @@
           {%- if soi and soi.product %}{{ soi.product.name }}
           {%- elif item.product %}{{ item.product.name }}{% endif -%}
         {%- elif col.key == 'customer_product_code' -%}
-          {%- if soi and soi.product %}{{ soi.product.customer_code or '' }}
-          {%- elif item.product %}{{ item.product.customer_code or '' }}{% endif -%}
+          {%- set ccode = (soi.product.customer_code if soi and soi.product
+                           else item.product.customer_code if item.product else '') -%}
+          {%- if ccode %}PRODUCT CODE: {{ ccode }}{% endif -%}
         {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '') }}
         {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
         {%- endif -%}
