@@ -78,7 +78,7 @@
 }
 .dr-summary-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 16px;
     margin-bottom: 16px;
 }
@@ -125,11 +125,6 @@
         <div class="dr-card-label">Delivered, Unbilled</div>
         <div class="dr-card-value">{{ summary.unbilled_count }}</div>
         <div class="dr-card-detail">ready to bill</div>
-    </div>
-    <div class="dr-card">
-        <div class="dr-card-label" style="color:var(--green);">Billed</div>
-        <div class="dr-card-value">{{ summary.billed_count }}</div>
-        <div class="dr-card-detail">completed</div>
     </div>
 </div>
 
