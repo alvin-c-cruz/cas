@@ -73,8 +73,8 @@
       <td>{{ item.line_number }}</td>
       <td>
         {%- set soi = item.sales_order_item -%}
-        {%- if soi and soi.product %}{{ soi.product.code }}: {{ soi.product.name }}
-        {%- elif item.product %}{{ item.product.code }}: {{ item.product.name }}{% endif -%}
+        {%- if soi and soi.product %}{{ soi.product.name }}
+        {%- elif item.product %}{{ item.product.name }}{% endif -%}
       </td>
       <td>{{ item.to_dict()['uom'] or '' }}</td>
       <td class="text-right">{{ item | qty_fmt }}</td>

@@ -141,8 +141,8 @@
         {%- set soi = item.sales_order_item -%}
         {%- if col.key == 'line_number' -%}{{ item.line_number }}
         {%- elif col.key == 'product' -%}
-          {%- if soi and soi.product %}{{ soi.product.code ~ ': ' ~ soi.product.name }}
-          {%- elif item.product %}{{ item.product.code ~ ': ' ~ item.product.name }}{% endif -%}
+          {%- if soi and soi.product %}{{ soi.product.name }}
+          {%- elif item.product %}{{ item.product.name }}{% endif -%}
         {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '') }}
         {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
         {%- endif -%}
