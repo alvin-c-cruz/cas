@@ -79,6 +79,18 @@ def test_print_preprinted_renders_overlay(client, db_session, admin_user, main_b
     assert b'Widget' in resp.data      # product name, NOT prefixed with CAS's own code "W"
 
 
+def test_print_preprinted_multiline_css_preserves_space_padding(client, db_session, admin_user, main_branch):
+    """.pp-multiline must be white-space:pre-wrap, not pre-line -- pre-line silently
+    collapses repeated spaces, dropping staff-typed indentation (e.g. legacy's
+    '                                            __________PRODUCTION DATE')."""
+    AppSettings.set_setting('dr_print_form', 'preprinted')
+    dr = _billed_dr(db_session, main_branch, admin_user)
+    _login(client, 'admin', 'admin123')
+    resp = client.get(f'/delivery-receipts/{dr.id}/print')
+    body = resp.data.decode('utf-8')
+    assert '.pp-multiline { white-space: pre-wrap;' in body
+
+
 def test_print_preprinted_renders_legacy_data_fields(client, db_session, admin_user, main_branch):
     AppSettings.set_setting('dr_print_form', 'preprinted')
     dr = _billed_dr(db_session, main_branch, admin_user,
