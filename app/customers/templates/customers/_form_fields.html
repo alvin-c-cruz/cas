@@ -30,6 +30,14 @@
             <small class="form-hint">When set, a Purchase Order number is required before a Sales Order for this customer can be confirmed.</small>
         </div>
     </div>
+    <div class="form-row-2col">
+        <div class="form-group">
+            <label for="{{ form.vendor_code.id }}">{{ form.vendor_code.label.text }}</label>
+            {{ form.vendor_code(class="form-control form-control-sm", autocomplete="new-password", **{'data-lpignore': 'true'}) }}
+            {% if form.vendor_code.errors %}<div class="error-message">{{ form.vendor_code.errors[0] }}</div>{% endif %}
+            <small class="form-hint">The code this customer uses to identify us as their vendor (e.g. in their own ERP) — prints on documents where they expect to see it.</small>
+        </div>
+    </div>
 </div>
 
 {# ── Tax Information ────────────────────────────────────────── #}

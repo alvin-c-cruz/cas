@@ -115,9 +115,15 @@
     'customer_name': dr.customer_name,
     'customer_tin': dr.sales_order.customer_tin if dr.sales_order else '',
     'customer_address': dr.sales_order.customer_address if dr.sales_order else '',
+    'vendor_code': dr.sales_order.customer.vendor_code
+      if dr.sales_order and dr.sales_order.customer and dr.sales_order.customer.vendor_code else '',
     'salesperson': dr.salesperson.full_name if dr.salesperson else 'Company Account',
+    'remarks': remarks_text,
     'packing_notes': packing_notes_text,
     'schedule_notes': schedule_notes_text,
+    'checked_by': dr.checked_by or '',
+    'carrier': dr.carrier or '',
+    'approved_by': dr.approved_by or '',
   } %}
   {% set field_isos = {
     'delivery_date': dr.delivery_date.isoformat() if dr.delivery_date else '',

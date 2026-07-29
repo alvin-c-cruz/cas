@@ -84,6 +84,9 @@
       {% if dr.remarks %}<div><strong>Remarks:</strong> {{ dr.remarks }}</div>{% endif %}
       {% if dr.packing_notes %}<div><strong>Packing/Lot Breakdown:</strong> <span style="white-space:pre-line;">{{ dr.packing_notes }}</span></div>{% endif %}
       {% if dr.schedule_notes %}<div><strong>Delivery Schedule:</strong> <span style="white-space:pre-line;">{{ dr.schedule_notes }}</span></div>{% endif %}
+      {% if dr.carrier %}<div><strong>Carrier:</strong> {{ dr.carrier }}</div>{% endif %}
+      {% if dr.checked_by %}<div><strong>Checked By:</strong> {{ dr.checked_by }}</div>{% endif %}
+      {% if dr.approved_by %}<div><strong>Approved By:</strong> {{ dr.approved_by }}</div>{% endif %}
       {% if dr.status == 'cancelled' %}<div><strong>Cancelled:</strong> {{ dr.cancel_reason }}</div>{% endif %}
     </div>
   </div>

@@ -384,6 +384,7 @@ def create():
                 payment_terms=form.payment_terms.data,
                 address=form.address.data,
                 postal_code=form.postal_code.data,
+                vendor_code=(form.vendor_code.data or '').strip() or None,
                 default_vat_category=form.default_vat_category.data if form.default_vat_category.data else None,
                 default_wt_code=form.default_wt_code.data if form.default_wt_code.data else None,
                 default_salesperson_id=(int(form.default_salesperson_id.data)
@@ -479,6 +480,7 @@ def edit(id):
             customer.payment_terms = form.payment_terms.data
             customer.address = form.address.data
             customer.postal_code = form.postal_code.data
+            customer.vendor_code = (form.vendor_code.data or '').strip() or None
             customer.default_vat_category = form.default_vat_category.data if form.default_vat_category.data else None
             # default_wt_code is legacy (the WHT multi-select is the source of truth now);
             # the form no longer exposes its picker, so preserve any existing value here.

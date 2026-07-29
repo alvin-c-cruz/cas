@@ -27,9 +27,10 @@ def dr_enabled(db_session):
     yield; clear_module_config_cache()
 
 
-def _billed_dr(db_session, main_branch, admin_user, packing_notes=None, schedule_notes=None):
+def _billed_dr(db_session, main_branch, admin_user, packing_notes=None, schedule_notes=None,
+               remarks=None, carrier=None, checked_by=None, approved_by=None, vendor_code=None):
     """A minimal DR with one line, ready to print."""
-    c = Customer(code='C1', name='Acme', is_active=True)
+    c = Customer(code='C1', name='Acme', is_active=True, vendor_code=vendor_code)
     p = Product(code='W', name='Widget', customer_code='220176', is_active=True)
     db.session.add_all([c, p]); db.session.commit()
     so = SalesOrder(so_number='SO-PP-1', order_date=date(2026, 7, 9), customer_id=c.id,
@@ -42,7 +43,9 @@ def _billed_dr(db_session, main_branch, admin_user, packing_notes=None, schedule
                           delivery_date=date(2026, 7, 10), sales_order_id=so.id,
                           customer_id=c.id, customer_name=c.name, status='billed',
                           created_by_id=admin_user.id,
-                          packing_notes=packing_notes, schedule_notes=schedule_notes)
+                          packing_notes=packing_notes, schedule_notes=schedule_notes,
+                          remarks=remarks, carrier=carrier, checked_by=checked_by,
+                          approved_by=approved_by)
     dr.line_items.append(DeliveryReceiptItem(line_number=1, sales_order_item_id=soi.id,
                                              product_id=p.id, delivered_quantity=10))
     db.session.add(dr); db.session.commit()
@@ -72,6 +75,22 @@ def test_print_preprinted_renders_overlay(client, db_session, admin_user, main_b
     assert b'2200099999' in resp.data  # customer_po, sourced from the linked SO
     assert b'220176' in resp.data      # customer_product_code, sourced from Product.customer_code
     assert b'Widget' in resp.data      # product name, NOT prefixed with CAS's own code "W"
+
+
+def test_print_preprinted_renders_legacy_data_fields(client, db_session, admin_user, main_branch):
+    AppSettings.set_setting('dr_print_form', 'preprinted')
+    dr = _billed_dr(db_session, main_branch, admin_user,
+                    remarks='(PARTIAL DELIVERY)', carrier='CCK 3631',
+                    checked_by='WARLITO FUENTES', approved_by='DENNIS M. GALANG',
+                    vendor_code='200100')
+    _login(client, 'admin', 'admin123')
+    resp = client.get(f'/delivery-receipts/{dr.id}/print')
+    assert resp.status_code == 200
+    assert b'(PARTIAL DELIVERY)' in resp.data
+    assert b'CCK 3631' in resp.data
+    assert b'WARLITO FUENTES' in resp.data
+    assert b'DENNIS M. GALANG' in resp.data
+    assert b'200100' in resp.data
 
 
 def test_print_preprinted_blank_notes_render_nothing(client, db_session, admin_user, main_branch):

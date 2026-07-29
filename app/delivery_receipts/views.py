@@ -249,6 +249,9 @@ def create():
                 remarks=form.remarks.data or None,
                 packing_notes=form.packing_notes.data or None,
                 schedule_notes=form.schedule_notes.data or None,
+                carrier=form.carrier.data or None,
+                checked_by=form.checked_by.data or None,
+                approved_by=form.approved_by.data or None,
                 status='draft',
                 created_by_id=current_user.id)
             copy_salesperson(so, dr)
@@ -320,6 +323,9 @@ def edit(id):
             dr.remarks = form.remarks.data or None
             dr.packing_notes = form.packing_notes.data or None
             dr.schedule_notes = form.schedule_notes.data or None
+            dr.carrier = form.carrier.data or None
+            dr.checked_by = form.checked_by.data or None
+            dr.approved_by = form.approved_by.data or None
             if form.salesperson_id.data:
                 dr.salesperson_id = form.salesperson_id.data
             # Rebuild lines through the ORM collection so delete-orphan evicts the old
@@ -471,6 +477,7 @@ def print_dr(id):
             signatory_ids=TEXT_KEYS, multiline_keys=MULTILINE_FIELD_KEYS,
             packing_notes_text=cap_note_lines(dr.packing_notes),
             schedule_notes_text=cap_note_lines(dr.schedule_notes),
+            remarks_text=cap_note_lines(dr.remarks),
             date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('delivery_receipts/print.html', dr=dr, company=company,
                            printed_at=ph_now())

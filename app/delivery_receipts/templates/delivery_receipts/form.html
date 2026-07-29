@@ -48,6 +48,20 @@
       {{ form.schedule_notes.label }}
       {{ form.schedule_notes(class="form-control", rows="2") }}
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        {{ form.carrier.label }}
+        {{ form.carrier(class="form-control") }}
+      </div>
+      <div class="form-group">
+        {{ form.checked_by.label }}
+        {{ form.checked_by(class="form-control") }}
+      </div>
+      <div class="form-group">
+        {{ form.approved_by.label }}
+        {{ form.approved_by(class="form-control") }}
+      </div>
+    </div>
   </div></div>
 
   <div class="card"><div class="card-body">

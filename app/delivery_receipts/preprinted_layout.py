@@ -59,8 +59,9 @@ ALLOWED_FONTS = [f for _label, _fonts in FONT_GROUPS for f in _fonts]
 
 FIELD_KEYS = [
     'dr_no', 'delivery_date', 'so_no', 'customer_po', 'status',
-    'customer_name', 'customer_tin', 'customer_address', 'salesperson',
-    'packing_notes', 'schedule_notes',
+    'customer_name', 'customer_tin', 'customer_address', 'vendor_code', 'salesperson',
+    'remarks', 'packing_notes', 'schedule_notes',
+    'checked_by', 'carrier', 'approved_by',
 ]
 
 # Friendly names for the per-field show/hide strip.
@@ -73,16 +74,21 @@ FIELD_LABELS = {
     'customer_name': 'Customer',
     'customer_tin': 'TIN',
     'customer_address': 'Address',
+    'vendor_code': "Customer's Code for Us",
     'salesperson': 'Salesperson',
+    'remarks': 'Remarks',
     'packing_notes': 'Packing / Lot Breakdown',
     'schedule_notes': 'Delivery Schedule (BO/CO)',
+    'checked_by': 'Checked By',
+    'carrier': 'Carrier',
+    'approved_by': 'Approved By',
 }
 
 # Subset of FIELD_KEYS whose rendered VALUE may contain newlines. Rendering-only
 # distinction (adds the `pp-multiline` CSS class in the print template) -- these
 # keys use the identical box shape (x/y/fontSize/bold/hidden) as every other field;
 # nothing new is stored or accepted from the client for them.
-MULTILINE_FIELD_KEYS = ('packing_notes', 'schedule_notes')
+MULTILINE_FIELD_KEYS = ('remarks', 'packing_notes', 'schedule_notes')
 
 # Server-side cap on rendered note lines -- bounds the DOCUMENT's own trusted DB
 # text (packing_notes/schedule_notes), never client-submitted layout JSON. Applied
@@ -148,21 +154,22 @@ DEFAULT_DR_PREPRINTED_LAYOUT = {
     # delivery_receipt/print.html), whose absolute-positioned fields are declared in
     # mm (96dpi: 1mm = 3.7795px). Every legacy field is wrapped in <strong> (bold=True)
     # and the page font is "Calibri, Arial, sans-serif" -- reproduced here as closely
-    # as this designer's allow-listed fonts permit. Legacy fields with no CAS
-    # equivalent yet (vendor_code, customer_business_style, checked_by/carrier/
-    # approved_by as real per-DR data, the standalone "PRODUCT CODE:" line) are not
-    # represented -- they would need new DeliveryReceipt columns, out of scope here.
+    # as this designer's allow-listed fonts permit. `customer_business_style` (legacy's
+    # DTI trade-name field) is confirmed "N/A" for every legacy customer row -- unused
+    # in practice, not modeled here.
     'paper': 'continuous',
     'dateFormat': 'long',
     'extras': [],
-    # Legacy's checked_by/carrier/approved_by row (top=149mm, left=15/65/105mm,
-    # fontSize=13) is real per-DR DATA in the legacy schema; CAS has no such columns,
-    # so these stay LAYOUT-ONLY static signature labels -- just repositioned onto
-    # that same row/columns for a visual match.
+    # Generic signature labels, NOT tied to the checked_by/carrier/approved_by DATA
+    # fields below (legacy prints the actual names/carrier there, not a blank "sign
+    # here" line -- there is no such concept on the legacy slip at all). Kept
+    # available but hidden by default and moved off that row to avoid overlapping
+    # the real data fields; enable in the designer if a physical signature line is
+    # still wanted in addition to the printed names.
     'texts': [
-        {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 57,  'y': 563, 'fontSize': 13, 'bold': True, 'hidden': False},
-        {'id': 'released_by', 'text': 'Released by:', 'x': 246, 'y': 563, 'fontSize': 13, 'bold': True, 'hidden': False},
-        {'id': 'received_by', 'text': 'Received by (Signature / Date):', 'x': 397, 'y': 563, 'fontSize': 13, 'bold': True, 'hidden': False},
+        {'id': 'prepared_by', 'text': 'Prepared by:', 'x': 57,  'y': 650, 'fontSize': 13, 'bold': True, 'hidden': True},
+        {'id': 'released_by', 'text': 'Released by:', 'x': 246, 'y': 650, 'fontSize': 13, 'bold': True, 'hidden': True},
+        {'id': 'received_by', 'text': 'Received by (Signature / Date):', 'x': 397, 'y': 650, 'fontSize': 13, 'bold': True, 'hidden': True},
     ],
     'page': {'fontFamily': 'Calibri, Candara, "Segoe UI", sans-serif'},
     'fields': {
@@ -176,12 +183,20 @@ DEFAULT_DR_PREPRINTED_LAYOUT = {
         'customer_name':    {'x': 155, 'y': 178, 'fontSize': 18, 'bold': True},
         'customer_tin':     {'x': 106, 'y': 223, 'fontSize': 13, 'bold': True},
         'customer_address': {'x': 125, 'y': 204, 'fontSize': 12, 'bold': True},
+        'vendor_code':      {'x': 136, 'y': 246, 'fontSize': 13, 'bold': True},
         'salesperson':      {'x': 673, 'y': 242, 'fontSize': 13, 'bold': True},
+        # Legacy renders `notes` right after the last line item (same column slot as
+        # product name), before the stacking/production_date blocks below it.
+        'remarks':          {'x': 321, 'y': 340, 'fontSize': 14, 'bold': True},
         # Legacy positions these via CSS margin in normal document flow, right below
         # the line items (not a fixed absolute slot) -- these x/y are a reasonable
         # starting point for a typical few-line order; drag to fit longer orders.
         'packing_notes':    {'x': 321, 'y': 400, 'fontSize': 14, 'bold': True},
         'schedule_notes':   {'x': 321, 'y': 460, 'fontSize': 14, 'bold': True},
+        # Legacy's checked_by/carrier/approved_by row (top=149mm, left=15/65/105mm).
+        'checked_by':       {'x': 57,  'y': 563, 'fontSize': 13, 'bold': True},
+        'carrier':          {'x': 246, 'y': 563, 'fontSize': 13, 'bold': True},
+        'approved_by':      {'x': 397, 'y': 563, 'fontSize': 13, 'bold': True},
     },
     # Line items: each column is INDEPENDENTLY positioned (its own x) so it can line
     # up with the pre-printed column boxes; all columns share the band top (y) and

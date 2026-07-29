@@ -91,6 +91,46 @@ def test_edit_dr_updates_packing_and_schedule_notes(client, db_session, admin_us
     assert dr.schedule_notes == 'CO: JULY 23 - 24, 2026'
 
 
+def test_create_dr_persists_carrier_checked_by_approved_by(client, db_session, admin_user, main_branch):
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    lines = json.dumps([{'sales_order_item_id': so.line_items[0].id, 'delivered_quantity': '4'}])
+    client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09', 'lines': lines,
+        'carrier': 'CCK 3631', 'checked_by': 'WARLITO FUENTES', 'approved_by': 'DENNIS M. GALANG'},
+        follow_redirects=True)
+    dr = DeliveryReceipt.query.filter_by(sales_order_id=so.id).first()
+    assert dr.carrier == 'CCK 3631'
+    assert dr.checked_by == 'WARLITO FUENTES'
+    assert dr.approved_by == 'DENNIS M. GALANG'
+
+
+def test_edit_dr_updates_carrier_checked_by_approved_by(client, db_session, admin_user, main_branch):
+    so = _confirmed_so(db_session, main_branch.id)
+    _login(client, admin_user)
+    with client.session_transaction() as s: s['selected_branch_id'] = main_branch.id
+    soi_id = so.line_items[0].id
+    client.post('/delivery-receipts/create', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09',
+        'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '4'}])},
+        follow_redirects=True)
+    dr = DeliveryReceipt.query.first()
+    edit_page = client.get(f'/delivery-receipts/{dr.id}/edit')
+    m = re.search(rb'name="row_version"[^>]*value="(\d+)"', edit_page.data)
+    assert m
+    client.post(f'/delivery-receipts/{dr.id}/edit', data={
+        'sales_order_id': so.id, 'delivery_date': '2026-07-09',
+        'row_version': m.group(1).decode(),
+        'lines': json.dumps([{'sales_order_item_id': soi_id, 'delivered_quantity': '4'}]),
+        'carrier': 'JRS Express', 'checked_by': 'JUAN DELA CRUZ', 'approved_by': 'MARIA SANTOS'},
+        follow_redirects=True)
+    db_session.refresh(dr)
+    assert dr.carrier == 'JRS Express'
+    assert dr.checked_by == 'JUAN DELA CRUZ'
+    assert dr.approved_by == 'MARIA SANTOS'
+
+
 def test_create_form_prefills_generated_dr_number(client, db_session, admin_user, main_branch):
     """Regression (BUG-DR-NUMBER-NOT-EDITABLE): the create GET must render an editable
     dr_number field pre-filled with a generated value, mirroring SalesOrderForm.so_number."""

@@ -35,6 +35,13 @@ class DeliveryReceipt(RowVersioned, db.Model):
     # breakdown or a BO/CO delivery-window note printed alongside the fixed fields.
     packing_notes = db.Column(db.Text, nullable=True)
     schedule_notes = db.Column(db.Text, nullable=True)
+    # Legacy-mirroring per-DR data: the trucking/delivery company, and the names of
+    # who checked/approved this specific delivery -- all printed as plain text on
+    # the pre-printed slip (not signature lines; legacy has no blank-signature
+    # concept here, it prints the actual names/carrier that were on file).
+    carrier = db.Column(db.String(200), nullable=True)
+    checked_by = db.Column(db.String(200), nullable=True)
+    approved_by = db.Column(db.String(200), nullable=True)
 
     salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True, index=True)
     salesperson = db.relationship('Employee', foreign_keys=[salesperson_id])
