@@ -586,18 +586,31 @@ def _unbill_drs(invoice):
 @login_required
 def billable_drs():
     """JSON: delivered, unbilled DRs for a customer, each line priced from its SO line +
-    the product's default revenue account. Data source for the SI form's DR-billing picker."""
+    the product's default revenue account. Data source for the SI form's DR-billing picker.
+
+    Excludes the EXTRA branch outright (it bills exclusively through SalesInvoiceExtra, a
+    separate no-VAT/no-WHT model this screen must never touch) and, as defense in depth,
+    excludes any DR that already has a SalesInvoiceExtra regardless of branch -- see
+    BUG-SALES-INVOICE-EXTRA-DR-DOUBLE-BILL."""
     from app.delivery_receipts.models import DeliveryReceipt
+    from app.sales_invoices_extra.models import SalesInvoiceExtra
+    from app.branches.models import Branch
     branch_id = session.get('selected_branch_id')
     customer_id = request.args.get('customer_id', type=int)
     if not customer_id:
         return jsonify({'consolidate': _si_billing_consolidate(), 'drs': []})
-    drs = (DeliveryReceipt.query
-           .filter(DeliveryReceipt.branch_id == branch_id,
-                   DeliveryReceipt.customer_id == customer_id,
-                   DeliveryReceipt.status == 'delivered',
-                   DeliveryReceipt.sales_invoice_id.is_(None))
-           .order_by(DeliveryReceipt.delivery_date.desc(), DeliveryReceipt.id.desc()).all())
+    extra_branch = Branch.query.filter_by(code='EXTRA').first()
+    already_extra_billed = db.session.query(SalesInvoiceExtra.delivery_receipt_id).filter(
+        SalesInvoiceExtra.delivery_receipt_id.isnot(None))
+    query = (DeliveryReceipt.query
+             .filter(DeliveryReceipt.branch_id == branch_id,
+                     DeliveryReceipt.customer_id == customer_id,
+                     DeliveryReceipt.status == 'delivered',
+                     DeliveryReceipt.sales_invoice_id.is_(None),
+                     ~DeliveryReceipt.id.in_(already_extra_billed)))
+    if extra_branch is not None:
+        query = query.filter(DeliveryReceipt.branch_id != extra_branch.id)
+    drs = query.order_by(DeliveryReceipt.delivery_date.desc(), DeliveryReceipt.id.desc()).all()
     out = []
     for dr in drs:
         lines = []
