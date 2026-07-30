@@ -102,17 +102,6 @@ CONTROL_ACCOUNTS = {
     # posted incrementally to WIP as operations complete -- see
     # app/work_orders/service.py's complete_work_order_batch).
     'labor_applied': ('labor_applied_account_code', 'Labor Applied control account'),
-
-    # SI-Extra (EXTRA-branch Sales Invoice, 2026-07-30). Fully accountant-
-    # assigned -- deliberately NOT in DEFAULT_CONTROL_ACCOUNT_CODES. The legacy
-    # accounting GL credited ONE account ("SALES - Tincan") for every EXTRA
-    # sale regardless of product, so SalesInvoiceExtra posting mirrors that:
-    # one control account for all EXTRA revenue, not per-product allocation
-    # like CORP's SalesInvoiceItem.account_id. AR-Trade is NOT duplicated here
-    # -- SalesInvoiceExtra reuses the existing 'ar_trade' key above (owner
-    # decision: the legacy books used the same physical AR-Trade account for
-    # both branches).
-    'extra_sales_revenue': ('extra_sales_revenue_account_code', 'EXTRA Sales Revenue control account'),
 }
 
 # key -> owning optional module key (app.users.module_access.MODULE_REGISTRY), used ONLY by the
