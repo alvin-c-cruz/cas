@@ -380,6 +380,36 @@ def ar_aging():
                            as_of_date=as_of_date)
 
 
+@reports_bp.route('/reports/ar-aging-combined')
+@login_required
+def ar_aging_combined():
+    """AR aging across ALL branches, with per-invoice branch labels.
+
+    Data scope is every branch, active or inactive: a deactivated branch can
+    still carry open receivables and dropping them would understate the total.
+    `viewable` is computed against get_accessible_branches (active-only), so an
+    invoice in a branch the user cannot reach is shown but not clickable.
+    """
+    from app.branches.models import Branch
+    from app.users.utils import get_accessible_branches
+
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+
+    all_branch_ids = [b.id for b in Branch.query.all()]
+    viewable_ids = {b.id for b in get_accessible_branches(current_user)}
+    customers_list, grand_totals = _build_ar_aging_data(
+        as_of_date, all_branch_ids, include_branch=True,
+        viewable_branch_ids=viewable_ids)
+    return render_template('reports/ar_aging_combined.html',
+                           customers=customers_list,
+                           grand_totals=grand_totals,
+                           as_of_date=as_of_date)
+
+
 @reports_bp.route('/reports/statement-of-account')
 @login_required
 @accountant_or_admin_required

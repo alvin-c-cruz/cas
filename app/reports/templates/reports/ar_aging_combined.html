@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}AR Aging Report — All Branches{% endblock %}
+{% block page_title %}AR Aging Report — All Branches{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <h2 style="margin:0;">AR Aging Report — All Branches</h2>
+                <p style="margin:4px 0 0 0;color:var(--text-2);">As of {{ as_of_date.strftime('%B %d, %Y') }}</p>
+            </div>
+            <div class="card-header-actions" style="display:flex;gap:8px;align-items:center;">
+                {# reports.ar_aging_combined_export_excel/_csv land in Task 6; hardcoded
+                   here (matching the route strings that task will register) so this
+                   template doesn't 500 via url_for(BuildError) in the meantime. #}
+                <a href="/reports/ar-aging-combined/export/excel?as_of={{ as_of_date.isoformat() }}" class="btn btn-secondary">&#11015; Excel</a>
+                <a href="/reports/ar-aging-combined/export/csv?as_of={{ as_of_date.isoformat() }}" class="btn btn-secondary">&#11015; CSV</a>
+                <button onclick="window.print()" class="btn btn-secondary">Print Report</button>
+                <a href="{{ url_for('reports.index') }}" class="btn btn-secondary">Back to Reports</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <!-- Date Filter -->
+        <form method="GET" style="margin-bottom:20px;">
+            <div style="display:flex;gap:12px;align-items:flex-end;">
+                <div class="form-group" style="margin:0;">
+                    <label>As of Date</label>
+                    <input type="date" name="as_of" value="{{ as_of_date.isoformat() }}" class="form-control" style="width:200px;">
+                </div>
+                <button type="submit" class="btn btn-primary">Update Report</button>
+            </div>
+        </form>
+
+        {% if customers %}
+        <!-- Customer Summary Table -->
+        <div style="background:var(--bg);padding:16px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border);">
+            <table class="table" style="margin:0;">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th style="text-align:right;">Current</th>
+                        <th style="text-align:right;">1-30 Days</th>
+                        <th style="text-align:right;">31-60 Days</th>
+                        <th style="text-align:right;">61-90 Days</th>
+                        <th style="text-align:right;">90+ Days</th>
+                        <th style="text-align:right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for customer in customers %}
+                    <tr style="cursor:pointer;" onclick="toggleCustomerDetails('customer-{{ loop.index }}')">
+                        <td>
+                            <strong>{{ customer.name }}</strong>
+                            <span id="customer-{{ loop.index }}-icon" style="margin-left:8px;color:var(--text-2);">&#9654;</span>
+                        </td>
+                        <td style="text-align:right;">₱{{ "{:,.2f}".format(customer.current) }}</td>
+                        <td style="text-align:right;{% if customer['1-30'] > 0 %}color:var(--aging-warn);{% endif %}">
+                            ₱{{ "{:,.2f}".format(customer['1-30']) }}
+                        </td>
+                        <td style="text-align:right;{% if customer['31-60'] > 0 %}color:var(--aging-warn);{% endif %}">
+                            ₱{{ "{:,.2f}".format(customer['31-60']) }}
+                        </td>
+                        <td style="text-align:right;{% if customer['61-90'] > 0 %}color:var(--red);{% endif %}">
+                            ₱{{ "{:,.2f}".format(customer['61-90']) }}
+                        </td>
+                        <td style="text-align:right;{% if customer['90+'] > 0 %}color:var(--red);font-weight:600;{% endif %}">
+                            ₱{{ "{:,.2f}".format(customer['90+']) }}
+                        </td>
+                        <td style="text-align:right;"><strong>₱{{ "{:,.2f}".format(customer.total) }}</strong></td>
+                    </tr>
+                    <!-- Invoice Details (hidden by default) -->
+                    <tr id="customer-{{ loop.index }}" style="display:none;">
+                        <td colspan="7" style="padding:0;">
+                            <div style="background:var(--card);padding:16px;margin:8px 0;border:1px solid var(--border);border-radius:var(--radius);">
+                                <table class="table" style="margin:0;font-size:0.9rem;">
+                                    <thead>
+                                        <tr style="background:var(--bg);">
+                                            <th>Invoice #</th>
+                                            <th>Branch</th>
+                                            <th>Invoice Date</th>
+                                            <th>Due Date</th>
+                                            <th style="text-align:right;">Days Overdue</th>
+                                            <th style="text-align:right;">Balance</th>
+                                            <th>Aging</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for invoice in customer.invoices %}
+                                        <tr>
+                                            <td>
+                                                {% if invoice.viewable %}
+                                                <a href="{{ url_for('sales_invoices.view', id=invoice.invoice_id) }}" style="color:var(--blue)">{{ invoice.invoice_number }}</a>
+                                                {% else %}
+                                                {{ invoice.invoice_number }}
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span style="background:var(--bg);color:var(--text-2);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">{{ invoice.branch_code }}</span>
+                                                {% if not invoice.viewable %}
+                                                {# no branch access -- shown for the total, but not openable #}
+                                                <span style="color:var(--text-3);font-size:11px;margin-left:4px;">no access</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ invoice.invoice_date.strftime('%Y-%m-%d') }}</td>
+                                            <td>{{ invoice.due_date.strftime('%Y-%m-%d') if invoice.due_date else 'N/A' }}</td>
+                                            <td style="text-align:right;">
+                                                {% if invoice.days_overdue > 0 %}
+                                                <span style="background:var(--aging-warn-bg);color:var(--aging-warn-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">{{ invoice.days_overdue }} days</span>
+                                                {% else %}
+                                                <span style="background:var(--aging-ok-bg);color:var(--aging-ok-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Current</span>
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align:right;">₱{{ "{:,.2f}".format(invoice.balance_due) }}</td>
+                                            <td>
+                                                {% if invoice.bucket == 'current' %}
+                                                <span style="background:var(--aging-ok-bg);color:var(--aging-ok-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">Current</span>
+                                                {% elif invoice.bucket == '1-30' %}
+                                                <span style="background:var(--aging-warn-bg);color:var(--aging-warn-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">1-30 Days</span>
+                                                {% elif invoice.bucket == '31-60' %}
+                                                <span style="background:var(--aging-warn-bg);color:var(--aging-warn-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">31-60 Days</span>
+                                                {% elif invoice.bucket == '61-90' %}
+                                                <span style="background:var(--aging-danger-bg);color:var(--aging-danger-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">61-90 Days</span>
+                                                {% else %}
+                                                <span style="background:var(--aging-danger-bg);color:var(--aging-danger-fg);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">90+ Days</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot style="border-top:2px solid var(--border);font-weight:600;">
+                    <tr style="background:var(--bg);">
+                        <td><strong>GRAND TOTAL</strong></td>
+                        <td style="text-align:right;">₱{{ "{:,.2f}".format(grand_totals.current) }}</td>
+                        <td style="text-align:right;{% if grand_totals['1-30'] > 0 %}color:var(--aging-warn);{% endif %}">
+                            ₱{{ "{:,.2f}".format(grand_totals['1-30']) }}
+                        </td>
+                        <td style="text-align:right;{% if grand_totals['31-60'] > 0 %}color:var(--aging-warn);{% endif %}">
+                            ₱{{ "{:,.2f}".format(grand_totals['31-60']) }}
+                        </td>
+                        <td style="text-align:right;{% if grand_totals['61-90'] > 0 %}color:var(--red);{% endif %}">
+                            ₱{{ "{:,.2f}".format(grand_totals['61-90']) }}
+                        </td>
+                        <td style="text-align:right;{% if grand_totals['90+'] > 0 %}color:var(--red);font-weight:600;{% endif %}">
+                            ₱{{ "{:,.2f}".format(grand_totals['90+']) }}
+                        </td>
+                        <td style="text-align:right;"><strong>₱{{ "{:,.2f}".format(grand_totals.total) }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No outstanding receivables as of {{ as_of_date.strftime('%B %d, %Y') }}.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function toggleCustomerDetails(id) {
+    const row = document.getElementById(id);
+    const icon = document.getElementById(id + '-icon');
+    if (row.style.display === 'none') {
+        row.style.display = '';
+        icon.textContent = '▼';
+    } else {
+        row.style.display = 'none';
+        icon.textContent = '►';
+    }
+}
+</script>
+
+<style>
+@media print {
+    .btn, form {
+        display: none !important;
+    }
+    .sidebar {
+        display: none !important;
+    }
+    .main-content {
+        margin-left: 0 !important;
+    }
+}
+</style>
+{% endblock %}

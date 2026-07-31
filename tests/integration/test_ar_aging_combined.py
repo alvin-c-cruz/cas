@@ -155,3 +155,55 @@ class TestCombinedModuleGating:
         staff_user.set_book_permissions(perms)
         db_session.commit()
         assert can_access_module(staff_user, 'ar_aging_combined') is True
+
+
+def _login(client, username='admin', password='admin123'):
+    return client.post('/login', data={'username': username, 'password': password},
+                       follow_redirects=True)
+
+
+def _set_branch(client, branch_id):
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch_id
+
+
+class TestCombinedRoute:
+
+    def test_page_loads(self, client, db_session, admin_user, main_branch):
+        _login(client)
+        _set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging-combined?as_of=2025-12-31')
+        assert r.status_code == 200
+
+    def test_shows_invoices_from_a_non_selected_branch(self, client, db_session,
+                                                      admin_user, main_branch,
+                                                      branch_manila):
+        c = _customer(db_session, 'CR1')
+        _invoice(db_session, c, branch_manila.id, 'SI-OTHER', Decimal('900.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging-combined?as_of=2025-12-31')
+        assert b'SI-OTHER' in r.data
+        assert branch_manila.code.encode() in r.data
+
+    def test_viewable_row_links_and_non_viewable_row_does_not(
+            self, client, db_session, staff_user, main_branch, branch_manila):
+        """Paired presence/absence assertion -- an absence check alone would
+        pass even if the link were merely renamed."""
+        c = _customer(db_session, 'CR2')
+        mine = _invoice(db_session, c, main_branch.id, 'SI-MINE', Decimal('10.00'))
+        theirs = _invoice(db_session, c, branch_manila.id, 'SI-THEIRS', Decimal('20.00'))
+        staff_user.set_branches([main_branch])
+        perms = staff_user.get_book_permissions()
+        perms['ar_aging_combined'] = True
+        staff_user.set_book_permissions(perms)
+        db_session.commit()
+
+        _login(client, username=staff_user.username, password='staff123')
+        _set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging-combined?as_of=2025-12-31')
+        body = r.data.decode()
+
+        assert f'/sales-invoices/{mine.id}' in body        # viewable -> linked
+        assert f'/sales-invoices/{theirs.id}' not in body  # not viewable -> no link
+        assert 'SI-THEIRS' in body                         # but still shown
