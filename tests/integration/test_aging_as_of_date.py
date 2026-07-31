@@ -116,14 +116,14 @@ class TestARAgingIsPointInTime:
         c = _customer(db_session)
         _invoice(db_session, c, main_branch.id, 'SI-FUTURE',
                  date(2026, 3, 1), Decimal('5000.00'))
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['total'] == Decimal('0.00')
 
     def test_includes_invoice_dated_on_as_of(self, db_session, main_branch):
         c = _customer(db_session)
         _invoice(db_session, c, main_branch.id, 'SI-ONDATE',
                  AS_OF, Decimal('1234.56'))
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['total'] == Decimal('1234.56')
 
     def test_ignores_collection_recorded_after_as_of(self, db_session, main_branch):
@@ -133,7 +133,7 @@ class TestARAgingIsPointInTime:
                        date(2025, 11, 10), Decimal('10000.00'))
         _collect(db_session, inv, main_branch.id, 'CRV-2026-1',
                  date(2026, 2, 15), Decimal('4000.00'))
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['total'] == Decimal('10000.00')
 
     def test_fully_settled_after_as_of_still_appears(self, db_session, main_branch):
@@ -145,7 +145,7 @@ class TestARAgingIsPointInTime:
         _collect(db_session, inv, main_branch.id, 'CRV-2026-2',
                  date(2026, 1, 20), Decimal('7500.00'))
         assert inv.status == 'paid' and inv.balance == Decimal('0.00')
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['total'] == Decimal('7500.00')
 
     def test_honours_collection_recorded_on_or_before_as_of(self, db_session, main_branch):
@@ -154,7 +154,7 @@ class TestARAgingIsPointInTime:
                        date(2025, 6, 1), Decimal('9000.00'))
         _collect(db_session, inv, main_branch.id, 'CRV-2025-1',
                  date(2025, 8, 30), Decimal('3500.00'))
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['total'] == Decimal('5500.00')
 
     def test_settled_before_as_of_is_excluded(self, db_session, main_branch):
@@ -163,7 +163,7 @@ class TestARAgingIsPointInTime:
                        date(2025, 4, 1), Decimal('2000.00'))
         _collect(db_session, inv, main_branch.id, 'CRV-2025-2',
                  date(2025, 5, 5), Decimal('2000.00'))
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['total'] == Decimal('0.00')
 
     def test_cancelled_receipt_does_not_reduce_balance(self, db_session, main_branch, cash_account):
@@ -174,14 +174,14 @@ class TestARAgingIsPointInTime:
         _collect(db_session, inv, main_branch.id, 'CRV-CANC',
                  date(2025, 8, 1), Decimal('6000.00'), status='cancelled',
                  cash_account_id=cash_account.id)
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['total'] == Decimal('6000.00')
 
     def test_draft_invoice_never_counted(self, db_session, main_branch):
         c = _customer(db_session)
         _invoice(db_session, c, main_branch.id, 'SI-DRAFT',
                  date(2025, 5, 1), Decimal('999.00'), status='draft')
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['total'] == Decimal('0.00')
 
     def test_buckets_use_as_of_not_today(self, db_session, main_branch):
@@ -191,7 +191,7 @@ class TestARAgingIsPointInTime:
                        date(2025, 11, 1), Decimal('800.00'))
         inv.due_date = date(2025, 12, 15)   # 16 days overdue at 2025-12-31
         db_session.commit()
-        _, totals = _build_ar_aging_data(AS_OF, main_branch.id)
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
         assert totals['1-30'] == Decimal('800.00')
         assert totals['total'] == Decimal('800.00')
 

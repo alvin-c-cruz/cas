@@ -201,29 +201,43 @@ def _ap_settled_as_of(ap_ids, as_of_date):
     return {ap_id: Decimal(str(total or 0)) for ap_id, total in rows}
 
 
-def _build_ar_aging_data(as_of_date, branch_id):
-    """Build AR aging data for the given as_of_date and branch.
+def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
+                         viewable_branch_ids=None):
+    """Build AR aging data for the given as_of_date and branches.
 
-    This is a TRUE point-in-time report: it includes only invoices dated on or
-    before as_of_date, and states each one's balance AS OF that date (i.e. net
-    of collections recorded up to that date, ignoring any later receipt). That
-    lets a past period-end figure be reproduced exactly — matching how a
-    client's own aging workbook is prepared.
+    Point-in-time: only invoices dated on or before as_of_date, each stated net
+    of collections recorded up to that date (ignoring any later receipt).
 
-    Returns (customers_list, grand_totals).
-    customers_list: list of dicts, each:
-      {'name': str, 'invoices': [...], 'current': Decimal, '1-30': Decimal,
-       '31-60': Decimal, '61-90': Decimal, '90+': Decimal, 'total': Decimal}
-      sorted by total desc.
-    grand_totals: dict with keys 'current','1-30','31-60','61-90','90+','total' as Decimals.
+    branch_ids is a LIST — the per-branch report passes [branch_id]. Customers
+    are grouped by customer_id (falling back to the customer_name snapshot only
+    when customer_id is null) and displayed under the Customer master's current
+    name, so a snapshot name that drifted in one branch does not split one
+    customer into two rows.
+
+    include_branch adds branch_id / branch_code / viewable to each invoice dict.
+    viewable is computed from viewable_branch_ids — passed in rather than read
+    from current_user, so this stays free of request state and unit-testable.
+    None means "everything is viewable", which is the per-branch report's case.
     """
+    from app.branches.models import Branch
+
     invoices = SalesInvoice.query.filter(
         SalesInvoice.status.in_(_SETTLEABLE_STATUSES),
         SalesInvoice.invoice_date <= as_of_date,
-        SalesInvoice.branch_id == branch_id
+        SalesInvoice.branch_id.in_(branch_ids)
     ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
 
     collected = _ar_settled_as_of([i.id for i in invoices], as_of_date)
+
+    branch_codes = {}
+    if include_branch:
+        branch_codes = {b.id: b.code for b in Branch.query.all()}
+
+    cust_ids = {i.customer_id for i in invoices if i.customer_id}
+    master_names = {}
+    if cust_ids:
+        master_names = {c.id: c.name for c in
+                        Customer.query.filter(Customer.id.in_(cust_ids)).all()}
 
     customers = {}
     for invoice in invoices:
@@ -231,10 +245,10 @@ def _build_ar_aging_data(as_of_date, branch_id):
                          - collected.get(invoice.id, Decimal('0.00')))
         if balance_as_of <= 0:
             continue
-        key = invoice.customer_name
+        key = invoice.customer_id if invoice.customer_id else f'name:{invoice.customer_name}'
         if key not in customers:
             customers[key] = {
-                'name': invoice.customer_name,
+                'name': master_names.get(invoice.customer_id) or invoice.customer_name,
                 'invoices': [],
                 'current': Decimal('0.00'),
                 '1-30': Decimal('0.00'),
@@ -244,7 +258,7 @@ def _build_ar_aging_data(as_of_date, branch_id):
                 'total': Decimal('0.00'),
             }
         bucket = calculate_age_bucket(invoice.due_date, as_of_date)
-        customers[key]['invoices'].append({
+        row = {
             'invoice_id': invoice.id,
             'invoice_number': invoice.invoice_number,
             'invoice_date': invoice.invoice_date,
@@ -252,7 +266,13 @@ def _build_ar_aging_data(as_of_date, branch_id):
             'balance_due': balance_as_of,
             'bucket': bucket,
             'days_overdue': max(0, (as_of_date - invoice.due_date).days) if invoice.due_date else 0,
-        })
+        }
+        if include_branch:
+            row['branch_id'] = invoice.branch_id
+            row['branch_code'] = branch_codes.get(invoice.branch_id, '')
+            row['viewable'] = (viewable_branch_ids is None
+                               or invoice.branch_id in viewable_branch_ids)
+        customers[key]['invoices'].append(row)
         customers[key][bucket] += balance_as_of
         customers[key]['total'] += balance_as_of
 
@@ -353,7 +373,7 @@ def ar_aging():
         as_of_date = date.today()
 
     current_branch_id = session.get('selected_branch_id')
-    customers_list, grand_totals = _build_ar_aging_data(as_of_date, current_branch_id)
+    customers_list, grand_totals = _build_ar_aging_data(as_of_date, [current_branch_id])
     return render_template('reports/ar_aging.html',
                            customers=customers_list,
                            grand_totals=grand_totals,
@@ -1551,7 +1571,7 @@ def ar_aging_export_excel():
     except ValueError:
         as_of_date = date.today()
     current_branch_id = session.get('selected_branch_id')
-    customers_list, grand_totals = _build_ar_aging_data(as_of_date, current_branch_id)
+    customers_list, grand_totals = _build_ar_aging_data(as_of_date, [current_branch_id])
     rows = [
         {
             'name': c['name'],
@@ -1589,7 +1609,7 @@ def ar_aging_export_csv():
     except ValueError:
         as_of_date = date.today()
     current_branch_id = session.get('selected_branch_id')
-    customers_list, grand_totals = _build_ar_aging_data(as_of_date, current_branch_id)
+    customers_list, grand_totals = _build_ar_aging_data(as_of_date, [current_branch_id])
     rows = [
         {
             'name': c['name'],
