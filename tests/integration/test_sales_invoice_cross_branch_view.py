@@ -66,6 +66,35 @@ class TestCrossBranchView:
         r = client.get(f'/sales-invoices/{inv.id}')
         assert r.status_code == 404
 
+    # -- Task 5 review defect (Finding 2): every entitled-user case above uses
+    # admin_user, who has full_access and trivially passes get_accessible_branches
+    # regardless of what it actually checks. A stub `_get_invoice_for_view` that
+    # reads `if current_user.has_full_access: allow else: deny` would pass every
+    # test in this file EXCEPT these two -- they positively pin the real
+    # branch-MEMBERSHIP check for a NON-full-access user assigned to BOTH branches. --
+
+    def test_non_full_access_user_in_both_branches_can_view_off_branch_invoice(
+            self, client, db_session, staff_user, main_branch, branch_manila):
+        inv = _invoice(db_session, branch_manila.id, 'SI-X12')
+        staff_user.set_branches([main_branch, branch_manila])
+        db_session.commit()
+        _login(client, username=staff_user.username, password='staff123')
+        _set_branch(client, main_branch.id)
+        r = client.get(f'/sales-invoices/{inv.id}')
+        assert r.status_code == 200
+
+    def test_non_full_access_user_not_in_invoice_branch_gets_404(
+            self, client, db_session, staff_user, main_branch, branch_manila):
+        """Pairs with the positive case above: same non-full-access user, but NOT
+        assigned to branch_manila -- must still 404, not fall through on role alone."""
+        inv = _invoice(db_session, branch_manila.id, 'SI-X13')
+        staff_user.set_branches([main_branch])
+        db_session.commit()
+        _login(client, username=staff_user.username, password='staff123')
+        _set_branch(client, main_branch.id)
+        r = client.get(f'/sales-invoices/{inv.id}')
+        assert r.status_code == 404
+
     def test_off_branch_view_hides_write_actions(self, client, db_session,
                                                 admin_user, main_branch,
                                                 branch_manila):
