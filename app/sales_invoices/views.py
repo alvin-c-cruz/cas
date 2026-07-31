@@ -1384,7 +1384,10 @@ def void(id):
 @sales_invoices_bp.route('/sales-invoices/<int:id>/print')
 @login_required
 def print_invoice(id):
-    invoice = _get_invoice_or_404(id)
+    # Read-only: follows branch ACCESS like `view`, not the selected branch --
+    # otherwise the detail page's unconditional Print link 404s for an off-branch
+    # invoice the user is legitimately viewing. See _get_invoice_for_view.
+    invoice = _get_invoice_for_view(id)
 
     sv_print_form = AppSettings.get_setting('sv_print_form', 'current')
     # 'hidden' turns SI printing off entirely: refuse the route, not just the button.
@@ -1493,7 +1496,9 @@ def upload_attachment(id):
 @login_required
 def download_attachment(attachment_id):
     attachment = db.get_or_404(SalesInvoiceAttachment, attachment_id)
-    invoice = _get_invoice_or_404(attachment.invoice_id)
+    # Read-only: follows branch ACCESS like `view` (see _get_invoice_for_view) --
+    # the detail page's attachment links are not gated on the selected branch.
+    invoice = _get_invoice_for_view(attachment.invoice_id)
     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
                              str(invoice.id), attachment.stored_filename)
     if not os.path.isfile(file_path):
@@ -1511,7 +1516,9 @@ def preview_attachment(attachment_id):
     attachment = db.get_or_404(SalesInvoiceAttachment, attachment_id)
     if not attachment.is_image:
         abort(404)
-    invoice = _get_invoice_or_404(attachment.invoice_id)
+    # Read-only: follows branch ACCESS like `view` (see _get_invoice_for_view) --
+    # the detail page's <img> preview is not gated on the selected branch.
+    invoice = _get_invoice_for_view(attachment.invoice_id)
     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
                              str(invoice.id), attachment.stored_filename)
     if not os.path.isfile(file_path):
