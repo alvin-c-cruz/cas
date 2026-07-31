@@ -1418,10 +1418,20 @@ def print_invoice(id):
     # 'preprinted' -> drag-positioned data-only layout for physical pre-printed
     # stock; else the standard self-contained printable form.
     if sv_print_form == 'preprinted':
+        # save_print_layout is branchless -- it has no invoice id and persists
+        # under session['selected_branch_id']. print_invoice now follows branch
+        # ACCESS (any branch the user can view), not the selected branch, so a
+        # full-access user can open an off-branch invoice's print page. Editing
+        # the layout there would silently write it under the WRONG (selected)
+        # branch's key. Layout EDITING therefore additionally requires the
+        # invoice's branch to be the currently selected one; viewing/printing
+        # is unaffected.
+        can_edit_layout = (current_user.has_full_access
+                           and invoice.branch_id == session.get('selected_branch_id'))
         return render_template(
             'sales_invoices/print_preprinted.html', invoice=invoice,
             je_entries=je_entries, company=company, printed_at=ph_now(),
-            layout=get_layout(invoice.branch_id), can_edit_layout=current_user.has_full_access,
+            layout=get_layout(invoice.branch_id), can_edit_layout=can_edit_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
@@ -1438,9 +1448,14 @@ def save_print_layout():
     if not current_user.has_full_access:
         abort(403)
     data = request.get_json(silent=True) or {}
-    # The layout is per-branch; viewing the print page requires the selected branch
-    # to equal the document's branch (_get_invoice_or_404), so the session branch is
-    # the document's branch.
+    # The layout is per-branch, keyed on session['selected_branch_id']. This route
+    # is branchless (no invoice id in the payload) and print_invoice now follows
+    # branch ACCESS rather than the selected branch, so the invoice being edited
+    # is NOT guaranteed to be in the selected branch -- the print_preprinted.html
+    # designer UI is gated (can_edit_layout in print_invoice) to only load when
+    # invoice.branch_id == session['selected_branch_id'], which is what keeps this
+    # write scoped to the right branch's layout. If that gate is ever bypassed,
+    # this still writes under the SELECTED branch's key, not the document's.
     clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
     return jsonify(ok=True, layout=clean)
 

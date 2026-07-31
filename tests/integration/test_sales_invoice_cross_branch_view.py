@@ -13,6 +13,7 @@ from datetime import date
 
 from app.customers.models import Customer
 from app.sales_invoices.models import SalesInvoice, SalesInvoiceAttachment
+from app.settings import AppSettings
 
 pytestmark = [pytest.mark.integration]
 
@@ -154,3 +155,29 @@ class TestCrossBranchView:
         _set_branch(client, main_branch.id)
         r = client.get(f'/sales-invoices/attachments/{att.id}/download')
         assert r.status_code == 404
+
+    # -- save_print_layout writes to session['selected_branch_id']. Now that
+    # print_invoice follows branch ACCESS (not selection), a full-access user
+    # can open an off-branch invoice's print page -- the layout designer must
+    # only be OFFERED when the invoice's branch equals the selected branch,
+    # or editing there would silently corrupt the SELECTED branch's layout. --
+
+    def test_own_branch_print_offers_layout_designer(self, client, db_session,
+                                                      admin_user, main_branch):
+        AppSettings.set_setting('sv_print_form', 'preprinted', 'system')
+        inv = _invoice(db_session, main_branch.id, 'SI-X10', status='posted')
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get(f'/sales-invoices/{inv.id}/print').data.decode()
+        assert 'id="editLayoutBtn"' in body
+
+    def test_off_branch_print_does_not_offer_layout_designer(self, client, db_session,
+                                                              admin_user, main_branch,
+                                                              branch_manila):
+        AppSettings.set_setting('sv_print_form', 'preprinted', 'system')
+        inv = _invoice(db_session, branch_manila.id, 'SI-X11', status='posted')
+        _login(client)
+        _set_branch(client, main_branch.id)
+        r = client.get(f'/sales-invoices/{inv.id}/print')
+        assert r.status_code == 200
+        assert 'id="editLayoutBtn"' not in r.data.decode()
