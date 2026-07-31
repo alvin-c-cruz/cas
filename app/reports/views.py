@@ -1667,6 +1667,70 @@ def ar_aging_export_csv():
                          filename=f'ar_aging_{as_of_date.isoformat()}.csv')
 
 
+def _combined_ar_export_rows(as_of_date):
+    """Invoice-level rows for the combined AR aging exports, plus a total row.
+
+    Invoice-level rather than the per-branch export's customer summary, because
+    the Branch column belongs to an invoice. Non-viewable rows are included:
+    the figures are already visible on screen, and dropping them would make the
+    export's total disagree with the page.
+    """
+    from app.branches.models import Branch
+    all_branch_ids = [b.id for b in Branch.query.all()]
+    customers_list, grand_totals = _build_ar_aging_data(
+        as_of_date, all_branch_ids, include_branch=True)
+    rows = []
+    for c in customers_list:
+        for inv in c['invoices']:
+            rows.append({
+                'customer': c['name'],
+                'branch': inv['branch_code'],
+                'invoice_number': inv['invoice_number'],
+                'invoice_date': inv['invoice_date'].isoformat() if inv['invoice_date'] else '',
+                'due_date': inv['due_date'].isoformat() if inv['due_date'] else '',
+                'days_overdue': inv['days_overdue'],
+                'bucket': inv['bucket'],
+                'balance_due': inv['balance_due'],
+            })
+    rows.append({
+        'customer': 'GRAND TOTAL', 'branch': '', 'invoice_number': '',
+        'invoice_date': '', 'due_date': '', 'days_overdue': '', 'bucket': '',
+        'balance_due': grand_totals['total'],
+    })
+    columns = ['customer', 'branch', 'invoice_number', 'invoice_date',
+               'due_date', 'days_overdue', 'bucket', 'balance_due']
+    headers = ['Customer', 'Branch', 'Invoice #', 'Invoice Date', 'Due Date',
+               'Days Overdue', 'Aging', 'Balance']
+    return rows, columns, headers
+
+
+@reports_bp.route('/reports/ar-aging-combined/export/excel')
+@login_required
+def ar_aging_combined_export_excel():
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+    rows, columns, headers = _combined_ar_export_rows(as_of_date)
+    return export_to_excel(rows, columns, headers,
+                           filename=f'ar_aging_all_branches_{as_of_date.isoformat()}.xlsx',
+                           title=f'AR Aging (All Branches) as of {as_of_date}')
+
+
+@reports_bp.route('/reports/ar-aging-combined/export/csv')
+@login_required
+def ar_aging_combined_export_csv():
+    as_of_str = request.args.get('as_of', date.today().isoformat())
+    try:
+        as_of_date = date.fromisoformat(as_of_str)
+    except ValueError:
+        as_of_date = date.today()
+    rows, columns, headers = _combined_ar_export_rows(as_of_date)
+    return export_to_csv(rows, columns, headers,
+                         filename=f'ar_aging_all_branches_{as_of_date.isoformat()}.csv')
+
+
 # ============================================================================
 # BOOKS OF ACCOUNTS — General Journal
 # ============================================================================

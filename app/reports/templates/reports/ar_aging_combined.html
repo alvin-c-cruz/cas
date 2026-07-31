@@ -12,11 +12,8 @@
                 <p style="margin:4px 0 0 0;color:var(--text-2);">As of {{ as_of_date.strftime('%B %d, %Y') }}</p>
             </div>
             <div class="card-header-actions" style="display:flex;gap:8px;align-items:center;">
-                {# reports.ar_aging_combined_export_excel/_csv land in Task 6; hardcoded
-                   here (matching the route strings that task will register) so this
-                   template doesn't 500 via url_for(BuildError) in the meantime. #}
-                <a href="/reports/ar-aging-combined/export/excel?as_of={{ as_of_date.isoformat() }}" class="btn btn-secondary">&#11015; Excel</a>
-                <a href="/reports/ar-aging-combined/export/csv?as_of={{ as_of_date.isoformat() }}" class="btn btn-secondary">&#11015; CSV</a>
+                <a href="{{ url_for('reports.ar_aging_combined_export_excel', as_of=as_of_date.isoformat()) }}" class="btn btn-secondary">&#11015; Excel</a>
+                <a href="{{ url_for('reports.ar_aging_combined_export_csv', as_of=as_of_date.isoformat()) }}" class="btn btn-secondary">&#11015; CSV</a>
                 <button onclick="window.print()" class="btn btn-secondary">Print Report</button>
                 <a href="{{ url_for('reports.index') }}" class="btn btn-secondary">Back to Reports</a>
             </div>

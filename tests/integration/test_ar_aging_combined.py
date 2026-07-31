@@ -207,3 +207,29 @@ class TestCombinedRoute:
         assert f'/sales-invoices/{mine.id}' in body        # viewable -> linked
         assert f'/sales-invoices/{theirs.id}' not in body  # not viewable -> no link
         assert 'SI-THEIRS' in body                         # but still shown
+
+
+class TestCombinedExports:
+
+    def test_excel_export_returns_a_file(self, client, db_session, admin_user,
+                                         main_branch, branch_manila):
+        c = _customer(db_session, 'CE1')
+        _invoice(db_session, c, branch_manila.id, 'SI-EXP', Decimal('123.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging-combined/export/excel?as_of=2025-12-31')
+        assert r.status_code == 200
+        assert len(r.data) > 0
+
+    def test_csv_export_includes_branch_column_and_the_invoice(
+            self, client, db_session, admin_user, main_branch, branch_manila):
+        c = _customer(db_session, 'CE2')
+        _invoice(db_session, c, branch_manila.id, 'SI-CSV', Decimal('456.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging-combined/export/csv?as_of=2025-12-31')
+        body = r.data.decode()
+        assert r.status_code == 200
+        assert 'Branch' in body
+        assert 'SI-CSV' in body
+        assert branch_manila.code in body
