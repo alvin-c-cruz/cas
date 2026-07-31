@@ -233,6 +233,7 @@ class TestCombinedRoute:
         assert f'/sales-invoices/{mine.id}' in body        # viewable -> linked
         assert f'/sales-invoices/{theirs.id}' not in body  # not viewable -> no link
         assert 'SI-THEIRS' in body                         # but still shown
+        assert 'no access' in body                         # the only visible explanation
 
 
 class TestCombinedExports:
