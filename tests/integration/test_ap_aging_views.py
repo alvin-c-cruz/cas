@@ -9,6 +9,29 @@ from app.accounts_payable.models import AccountsPayable
 pytestmark = [pytest.mark.integration]
 
 
+
+def _pay_ap(db_session, bill, branch_id, cash_account_id, cdv_number, cdv_date, amount):
+    """Record a POSTED disbursement settling `bill`, mirroring CDV posting."""
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
+    cdv = CashDisbursementVoucher(
+        branch_id=branch_id, cdv_number=cdv_number, cdv_date=cdv_date,
+        vendor_id=bill.vendor_id, vendor_name=bill.vendor_name,
+        payment_method='cash', cash_account_id=cash_account_id, notes='',
+        total_ap_applied=amount, total_expense=Decimal('0.00'),
+        total_vat=Decimal('0.00'), total_wt=Decimal('0.00'),
+        total_amount=amount, vat_override=False, wt_override=False,
+        status='posted',
+    )
+    db_session.add(cdv)
+    db_session.flush()
+    db_session.add(CDVApLine(
+        cdv_id=cdv.id, line_number=1, ap_id=bill.id, ap_number=bill.ap_number,
+        original_balance=bill.total_amount, amount_applied=amount,
+    ))
+    db_session.commit()
+    return cdv
+
+
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
@@ -125,13 +148,21 @@ class TestAPAgingView:
         assert resp.status_code == 200
         assert b'Partial Pay Vendor' in resp.data
 
-    def test_paid_bill_excluded(self, client, db_session, accountant_user, main_branch):
-        """A fully-paid bill should NOT appear in the report."""
+    def test_paid_bill_excluded(self, client, db_session, accountant_user, main_branch,
+                                cash_account):
+        """A fully-paid bill should NOT appear in the report.
+
+        The aging report is point-in-time, so "paid" is evidenced by an actual
+        POSTED disbursement dated on or before the as-of date -- not by the
+        live `balance` column, which cannot say WHEN the bill was settled.
+        """
         vendor = make_vendor(db_session, code='APV-PAID', name='Fully Paid Vendor')
-        make_ap(db_session, vendor, main_branch.id,
+        bill = make_ap(db_session, vendor, main_branch.id,
                   ap_number='AP-2026-01-0003', status='paid',
                   total_amount=Decimal('2000.00'),
                   balance=Decimal('0.00'))
+        _pay_ap(db_session, bill, main_branch.id, cash_account.id,
+                'CDV-PAID-0003', date.today() - timedelta(days=1), Decimal('2000.00'))
         login(client)
         set_branch(client, main_branch.id)
         resp = client.get('/reports/ap-aging')
@@ -356,6 +387,7 @@ class TestAPAgingBuilder:
         make_ap(db_session, vendor, main_branch.id,
                 ap_number='AP-BLD-0001', status='posted',
                 due_date=today - timedelta(days=50),
+                total_amount=Decimal('3000.00'),
                 balance=Decimal('3000.00'))
         vendors_list, grand_totals = _build_ap_aging_data(today, main_branch.id)
         assert len(vendors_list) == 1

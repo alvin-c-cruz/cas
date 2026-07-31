@@ -152,8 +152,63 @@ def calculate_age_bucket(due_date, as_of_date):
         return '90+'
 
 
+# Statuses whose documents represent a real, booked receivable/payable. 'paid'
+# MUST be included: a document settled AFTER as_of_date was still outstanding
+# ON as_of_date, and excluding it would silently drop it from a past-dated
+# report. Draft/cancelled/voided documents never represent a booked balance.
+_SETTLEABLE_STATUSES = ('posted', 'partially_paid', 'paid')
+
+
+def _ar_settled_as_of(invoice_ids, as_of_date):
+    """{invoice_id: amount collected as of as_of_date} from posted CRVs.
+
+    A cancelled voucher never settles anything, and a voucher dated after
+    as_of_date had not happened yet — both are excluded, which is what makes
+    the aging reports true point-in-time reports rather than a snapshot of
+    today's live balances.
+    """
+    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+    if not invoice_ids:
+        return {}
+    rows = (
+        db.session.query(CRVArLine.invoice_id,
+                         db.func.sum(CRVArLine.amount_applied))
+        .join(CashReceiptVoucher, CRVArLine.crv_id == CashReceiptVoucher.id)
+        .filter(CRVArLine.invoice_id.in_(invoice_ids),
+                CashReceiptVoucher.status == 'posted',
+                CashReceiptVoucher.crv_date <= as_of_date)
+        .group_by(CRVArLine.invoice_id)
+        .all()
+    )
+    return {inv_id: Decimal(str(total or 0)) for inv_id, total in rows}
+
+
+def _ap_settled_as_of(ap_ids, as_of_date):
+    """{ap_id: amount paid as of as_of_date} from posted CDVs."""
+    from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
+    if not ap_ids:
+        return {}
+    rows = (
+        db.session.query(CDVApLine.ap_id, db.func.sum(CDVApLine.amount_applied))
+        .join(CashDisbursementVoucher,
+              CDVApLine.cdv_id == CashDisbursementVoucher.id)
+        .filter(CDVApLine.ap_id.in_(ap_ids),
+                CashDisbursementVoucher.status == 'posted',
+                CashDisbursementVoucher.cdv_date <= as_of_date)
+        .group_by(CDVApLine.ap_id)
+        .all()
+    )
+    return {ap_id: Decimal(str(total or 0)) for ap_id, total in rows}
+
+
 def _build_ar_aging_data(as_of_date, branch_id):
     """Build AR aging data for the given as_of_date and branch.
+
+    This is a TRUE point-in-time report: it includes only invoices dated on or
+    before as_of_date, and states each one's balance AS OF that date (i.e. net
+    of collections recorded up to that date, ignoring any later receipt). That
+    lets a past period-end figure be reproduced exactly — matching how a
+    client's own aging workbook is prepared.
 
     Returns (customers_list, grand_totals).
     customers_list: list of dicts, each:
@@ -163,13 +218,19 @@ def _build_ar_aging_data(as_of_date, branch_id):
     grand_totals: dict with keys 'current','1-30','31-60','61-90','90+','total' as Decimals.
     """
     invoices = SalesInvoice.query.filter(
-        SalesInvoice.status.in_(['posted', 'partially_paid']),
-        SalesInvoice.balance > 0,
+        SalesInvoice.status.in_(_SETTLEABLE_STATUSES),
+        SalesInvoice.invoice_date <= as_of_date,
         SalesInvoice.branch_id == branch_id
     ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
 
+    collected = _ar_settled_as_of([i.id for i in invoices], as_of_date)
+
     customers = {}
     for invoice in invoices:
+        balance_as_of = (Decimal(str(invoice.total_amount))
+                         - collected.get(invoice.id, Decimal('0.00')))
+        if balance_as_of <= 0:
+            continue
         key = invoice.customer_name
         if key not in customers:
             customers[key] = {
@@ -188,12 +249,12 @@ def _build_ar_aging_data(as_of_date, branch_id):
             'invoice_number': invoice.invoice_number,
             'invoice_date': invoice.invoice_date,
             'due_date': invoice.due_date,
-            'balance_due': invoice.balance,
+            'balance_due': balance_as_of,
             'bucket': bucket,
             'days_overdue': max(0, (as_of_date - invoice.due_date).days) if invoice.due_date else 0,
         })
-        customers[key][bucket] += invoice.balance
-        customers[key]['total'] += invoice.balance
+        customers[key][bucket] += balance_as_of
+        customers[key]['total'] += balance_as_of
 
     grand_totals = {
         'current': Decimal('0.00'), '1-30': Decimal('0.00'),
@@ -211,6 +272,10 @@ def _build_ar_aging_data(as_of_date, branch_id):
 def _build_ap_aging_data(as_of_date, branch_id):
     """Build AP aging data for the given as_of_date and branch.
 
+    Point-in-time, on the same contract as _build_ar_aging_data: only bills
+    dated on or before as_of_date, each stated net of payments recorded up to
+    that date (ignoring any later disbursement).
+
     Returns (vendors_list, grand_totals).
     vendors_list: list of dicts, each:
       {'name': str, 'bills': [...], 'current': Decimal, '1-30': Decimal,
@@ -219,14 +284,20 @@ def _build_ap_aging_data(as_of_date, branch_id):
     grand_totals: dict with keys 'current','1-30','31-60','61-90','90+','total' as Decimals.
     """
     bills = AccountsPayable.query.filter(
-        AccountsPayable.status.in_(['posted', 'partially_paid']),
-        AccountsPayable.balance > 0,
+        AccountsPayable.status.in_(_SETTLEABLE_STATUSES),
+        AccountsPayable.ap_date <= as_of_date,
         AccountsPayable.branch_id == branch_id,
         AccountsPayable.payee_type == 'vendor',   # exclude employee-payee vouchers
     ).order_by(AccountsPayable.vendor_name, AccountsPayable.due_date).all()
 
+    paid = _ap_settled_as_of([b.id for b in bills], as_of_date)
+
     vendors = {}
     for bill in bills:
+        balance_as_of = (Decimal(str(bill.total_amount))
+                         - paid.get(bill.id, Decimal('0.00')))
+        if balance_as_of <= 0:
+            continue
         key = bill.vendor_name
         if key not in vendors:
             vendors[key] = {
@@ -245,12 +316,12 @@ def _build_ap_aging_data(as_of_date, branch_id):
             'ap_number': bill.ap_number,
             'ap_date': bill.ap_date,
             'due_date': bill.due_date,
-            'balance_due': bill.balance,
+            'balance_due': balance_as_of,
             'bucket': bucket,
             'days_overdue': max(0, (as_of_date - bill.due_date).days) if bill.due_date else 0,
         })
-        vendors[key][bucket] += bill.balance
-        vendors[key]['total'] += bill.balance
+        vendors[key][bucket] += balance_as_of
+        vendors[key]['total'] += balance_as_of
 
     grand_totals = {
         'current': Decimal('0.00'), '1-30': Decimal('0.00'),
