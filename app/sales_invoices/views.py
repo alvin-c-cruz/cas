@@ -107,6 +107,22 @@ def _get_invoice_or_404(id):
     return invoice
 
 
+def _get_invoice_for_view(id):
+    """Read-only lookup: any branch the user can ACCESS, not just the selected one.
+
+    The combined AR aging report links to invoices across branches, so viewing
+    cannot be tied to session['selected_branch_id']. Deliberately separate from
+    _get_invoice_or_404 -- edit/post/void/cancel keep the strict selected-branch
+    guard, so a user can read an off-branch document but never mutate one.
+    """
+    from app.users.utils import get_accessible_branches
+    invoice = db.get_or_404(SalesInvoice, id)
+    accessible = {b.id for b in get_accessible_branches(current_user)}
+    if invoice.branch_id not in accessible:
+        abort(404)
+    return invoice
+
+
 def _get_all_accounts_for_select():
     """Full COA for Choices.js account picker — groups marked non-selectable."""
     all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
@@ -1213,7 +1229,8 @@ def _crv_settlements(invoice):
 @sales_invoices_bp.route('/sales-invoices/<int:id>')
 @login_required
 def view(id):
-    invoice = _get_invoice_or_404(id)
+    invoice = _get_invoice_for_view(id)
+    can_modify = invoice.branch_id == session.get('selected_branch_id')
     je_entries = _build_je_preview(invoice)
     sv_print_access = AppSettings.get_setting('sv_print_access', 'posted_only')
     sv_print_form = AppSettings.get_setting('sv_print_form', 'current')
@@ -1224,7 +1241,7 @@ def view(id):
     return render_template('sales_invoices/detail.html', invoice=invoice,
                            je_entries=je_entries, sv_print_access=sv_print_access,
                            sv_print_form=sv_print_form, payments=payments,
-                           source_drs=source_drs)
+                           source_drs=source_drs, can_modify=can_modify)
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
