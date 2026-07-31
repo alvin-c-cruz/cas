@@ -326,6 +326,12 @@
     }));
     return {
       paper: (paperSel && paperSel.value) || document.body.dataset.paper || 'continuous',
+      // Echoed back so save_print_layout can verify the invoice's own branch
+      // still matches the currently selected branch at SAVE time (a render-time
+      // UI gate alone can't catch the selected branch changing between page
+      // load and this POST -- e.g. a second tab switches branch).
+      branchId: document.body.dataset.invoiceBranchId != null
+        ? parseInt(document.body.dataset.invoiceBranchId, 10) : null,
       dateFormat: (dateSel && dateSel.value) || 'long',
       extras,
       texts,

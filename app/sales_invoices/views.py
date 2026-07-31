@@ -1425,7 +1425,11 @@ def print_invoice(id):
         # the layout there would silently write it under the WRONG (selected)
         # branch's key. Layout EDITING therefore additionally requires the
         # invoice's branch to be the currently selected one; viewing/printing
-        # is unaffected.
+        # is unaffected. This is a render-time UI convenience gate only -- the
+        # actual protection is server-side in save_print_layout, which checks
+        # the invoice branch id the designer echoes back in the POST body
+        # against session['selected_branch_id'] at SAVE time (catches the
+        # selected branch changing between this render and that POST).
         can_edit_layout = (current_user.has_full_access
                            and invoice.branch_id == session.get('selected_branch_id'))
         return render_template(
@@ -1449,13 +1453,26 @@ def save_print_layout():
         abort(403)
     data = request.get_json(silent=True) or {}
     # The layout is per-branch, keyed on session['selected_branch_id']. This route
-    # is branchless (no invoice id in the payload) and print_invoice now follows
-    # branch ACCESS rather than the selected branch, so the invoice being edited
-    # is NOT guaranteed to be in the selected branch -- the print_preprinted.html
-    # designer UI is gated (can_edit_layout in print_invoice) to only load when
-    # invoice.branch_id == session['selected_branch_id'], which is what keeps this
-    # write scoped to the right branch's layout. If that gate is ever bypassed,
-    # this still writes under the SELECTED branch's key, not the document's.
+    # is branchless (no invoice id in the URL) and print_invoice now follows branch
+    # ACCESS rather than the selected branch, so the invoice being edited is NOT
+    # guaranteed to be in the selected branch. print_preprinted.html stamps the
+    # invoice's own branch id onto <body data-invoice-branch-id> (render_time), and
+    # the designer JS echoes it back as `branchId` in the POST body (see
+    # sv_preprinted_designer.js::collect()). That is a second, SERVER-SIDE check
+    # here -- not just the render-time can_edit_layout UI gate in print_invoice,
+    # which only decides whether to show the designer at render time and cannot
+    # catch the selected branch changing (e.g. a second tab) between render and
+    # this POST. A `branchId` present in the payload that disagrees with the
+    # CURRENT session['selected_branch_id'] is refused outright, before writing.
+    # A payload with no `branchId` at all (an older cached designer page, from
+    # before this field existed) is treated as making no branch claim and falls
+    # back to the pre-fix behavior -- write under the selected branch's key --
+    # rather than breaking that legitimate stale client; the case this closes is
+    # a PRESENT but WRONG branch id.
+    submitted_branch_id = data.get('branchId')
+    if submitted_branch_id is not None and submitted_branch_id != session.get('selected_branch_id'):
+        return jsonify(ok=False, error='Selected branch changed; layout not saved. '
+                       'Reopen the print page and try again.'), 409
     clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
     return jsonify(ok=True, layout=clean)
 
