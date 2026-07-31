@@ -119,3 +119,39 @@ class TestCombinedBuilder:
             viewable_branch_ids={main_branch.id})
         assert totals['total'] == Decimal('500.00')
         assert rows[0]['invoices'][0]['viewable'] is False
+
+
+class TestCombinedModuleGating:
+
+    def test_key_is_in_the_registry(self):
+        from app.users.module_access import MODULE_REGISTRY
+        entry = next(m for m in MODULE_REGISTRY if m['key'] == 'ar_aging_combined')
+        assert entry['endpoints'] == (
+            'reports.ar_aging_combined',
+            'reports.ar_aging_combined_export_excel',
+            'reports.ar_aging_combined_export_csv',
+        )
+
+    def test_full_access_user_is_granted(self, db_session, admin_user):
+        from app.users.module_access import can_access_module
+        assert can_access_module(admin_user, 'ar_aging_combined') is True
+
+    def test_absent_permission_denies_non_full_access_user(self, db_session,
+                                                          staff_user):
+        """No migration/backfill: the key is simply absent from stored
+        book_permissions, and can_access_module's .get(key, False) denies."""
+        from app.users.module_access import can_access_module
+        perms = staff_user.get_book_permissions()
+        perms.pop('ar_aging_combined', None)
+        staff_user.set_book_permissions(perms)
+        db_session.commit()
+        assert can_access_module(staff_user, 'ar_aging_combined') is False
+
+    def test_granted_permission_allows_non_full_access_user(self, db_session,
+                                                           staff_user):
+        from app.users.module_access import can_access_module
+        perms = staff_user.get_book_permissions()
+        perms['ar_aging_combined'] = True
+        staff_user.set_book_permissions(perms)
+        db_session.commit()
+        assert can_access_module(staff_user, 'ar_aging_combined') is True

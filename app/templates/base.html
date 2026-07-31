@@ -1063,6 +1063,7 @@
               {%- elif key == 'chart_of_accounts' and ep.startswith('accounts.') -%}active
               {%- elif key == 'general_ledger' and ep.startswith('reports.general_ledger') -%}active
               {%- elif key == 'books_of_accounts' and (ep.startswith('reports.books') or ep.startswith('reports.general_journal')) -%}active
+              {%- elif key == 'ar_aging_combined' and ep.startswith('reports.ar_aging_combined') -%}active
               {%- elif key == 'ar_aging' and ep.startswith('reports.ar_aging') -%}active
               {%- elif key == 'statement_of_account' and ep.startswith('reports.statement_of_account') -%}active
               {%- elif key == 'ap_aging' and ep.startswith('reports.ap_aging') -%}active
@@ -1117,6 +1118,7 @@
                 'general_ledger':     'reports.general_ledger',
                 'books_of_accounts':  'reports.books_of_accounts',
                 'ar_aging':           'reports.ar_aging',
+                'ar_aging_combined':  'reports.ar_aging_combined',
                 'statement_of_account':'reports.statement_of_account',
                 'ap_aging':           'reports.ap_aging',
                 'income_statement':   'reports.income_statement',
@@ -1170,6 +1172,7 @@
                 'general_ledger':     '📖',
                 'books_of_accounts':  '📚',
                 'ar_aging':           '📅',
+                'ar_aging_combined':  '🗓️',
                 'statement_of_account':'🧾',
                 'ap_aging':           '📆',
                 'income_statement':   '💰',
