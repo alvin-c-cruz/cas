@@ -368,9 +368,16 @@
         setTimeout(() => { saveBtn.textContent = 'Save Layout'; }, 1500);
       } else {
         saveBtn.textContent = 'Save failed';
+        let reason = 'Save failed. Please try again.';
+        try {
+          const body = await resp.json();
+          if (body && body.error) reason = body.error;
+        } catch (parseErr) { /* non-JSON error body -- keep the generic reason */ }
+        showNotice(reason);
       }
     } catch (err) {
       saveBtn.textContent = 'Save failed';
+      showNotice('Save failed. Please try again.');
     }
   });
 
