@@ -208,11 +208,17 @@ def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
     Point-in-time: only invoices dated on or before as_of_date, each stated net
     of collections recorded up to that date (ignoring any later receipt).
 
-    branch_ids is a LIST — the per-branch report passes [branch_id]. Customers
-    are grouped by customer_id (falling back to the customer_name snapshot only
-    when customer_id is null) and displayed under the Customer master's current
-    name, so a snapshot name that drifted in one branch does not split one
-    customer into two rows.
+    branch_ids is a LIST — the per-branch report passes [branch_id]. None means
+    NO branch filter at all ("all branches" = every invoice, not just those in
+    branches that still exist): branch_id is nullable, branch delete does not
+    check dependent transactions, and SQLite FK enforcement is off app-wide, so
+    a deleted branch can leave invoices with a dangling branch_id. Building
+    "all branches" from a snapshot of the current `branches` table would
+    silently drop those invoices from a report whose whole purpose is a
+    reconciling company-wide AR total. Customers are grouped by customer_id
+    (falling back to the customer_name snapshot only when customer_id is null)
+    and displayed under the Customer master's current name, so a snapshot name
+    that drifted in one branch does not split one customer into two rows.
 
     include_branch adds branch_id / branch_code / viewable to each invoice dict.
     viewable is computed from viewable_branch_ids — passed in rather than read
@@ -221,11 +227,12 @@ def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
     """
     from app.branches.models import Branch
 
-    invoices = SalesInvoice.query.filter(
+    q = SalesInvoice.query.filter(
         SalesInvoice.status.in_(_SETTLEABLE_STATUSES),
-        SalesInvoice.invoice_date <= as_of_date,
-        SalesInvoice.branch_id.in_(branch_ids)
-    ).order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
+        SalesInvoice.invoice_date <= as_of_date)
+    if branch_ids is not None:
+        q = q.filter(SalesInvoice.branch_id.in_(branch_ids))
+    invoices = q.order_by(SalesInvoice.customer_name, SalesInvoice.due_date).all()
 
     collected = _ar_settled_as_of([i.id for i in invoices], as_of_date)
 
@@ -385,13 +392,19 @@ def ar_aging():
 def ar_aging_combined():
     """AR aging across ALL branches, with per-invoice branch labels.
 
-    Data scope is every branch, active or inactive: a deactivated branch can
-    still carry open receivables and dropping them would understate the total.
-    `viewable` is computed against get_accessible_branches (active-only), so an
-    invoice in a branch the user cannot reach is shown but not clickable.
+    Data scope is unfiltered by branch (branch_ids=None): every invoice
+    regardless of branch, including a deactivated branch (still carries open
+    receivables) and an invoice whose branch_id is dangling (references no
+    existing `branches` row -- branch delete does not check dependent
+    transactions and SQLite FK enforcement is off app-wide). Dropping either
+    would understate a total whose whole purpose is to reconcile company-wide
+    AR. `viewable` is computed against get_accessible_branches (active-only)
+    AND the accounts_receivable module, so an invoice in a branch the user
+    cannot reach -- or a user without accounts_receivable access at all -- is
+    shown but not clickable.
     """
-    from app.branches.models import Branch
     from app.users.utils import get_accessible_branches
+    from app.users.module_access import can_access_module
 
     as_of_str = request.args.get('as_of', date.today().isoformat())
     try:
@@ -399,10 +412,15 @@ def ar_aging_combined():
     except ValueError:
         as_of_date = date.today()
 
-    all_branch_ids = [b.id for b in Branch.query.all()]
-    viewable_ids = {b.id for b in get_accessible_branches(current_user)}
+    # viewable also requires the accounts_receivable module: a user granted
+    # ar_aging_combined but not accounts_receivable would otherwise get a
+    # rendered link that enforce_module_access bounces to the dashboard.
+    if can_access_module(current_user, 'accounts_receivable'):
+        viewable_ids = {b.id for b in get_accessible_branches(current_user)}
+    else:
+        viewable_ids = set()
     customers_list, grand_totals = _build_ar_aging_data(
-        as_of_date, all_branch_ids, include_branch=True,
+        as_of_date, None, include_branch=True,
         viewable_branch_ids=viewable_ids)
     return render_template('reports/ar_aging_combined.html',
                            customers=customers_list,
@@ -1673,12 +1691,11 @@ def _combined_ar_export_rows(as_of_date):
     Invoice-level rather than the per-branch export's customer summary, because
     the Branch column belongs to an invoice. Non-viewable rows are included:
     the figures are already visible on screen, and dropping them would make the
-    export's total disagree with the page.
+    export's total disagree with the page. branch_ids=None (no branch filter,
+    see _build_ar_aging_data) so a dangling branch_id is still exported.
     """
-    from app.branches.models import Branch
-    all_branch_ids = [b.id for b in Branch.query.all()]
     customers_list, grand_totals = _build_ar_aging_data(
-        as_of_date, all_branch_ids, include_branch=True)
+        as_of_date, None, include_branch=True)
     rows = []
     for c in customers_list:
         for inv in c['invoices']:

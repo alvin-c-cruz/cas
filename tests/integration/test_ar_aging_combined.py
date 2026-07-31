@@ -120,6 +120,32 @@ class TestCombinedBuilder:
         assert totals['total'] == Decimal('500.00')
         assert rows[0]['invoices'][0]['viewable'] is False
 
+    def test_branch_ids_none_means_no_branch_filter(self, db_session, main_branch):
+        """A dangling branch_id (references no existing `branches` row -- e.g. left
+        behind by a branch delete that didn't check dependent transactions) must
+        still be counted when branch_ids=None ("all branches" = no filter), not
+        silently dropped because it isn't in a snapshot of currently-existing
+        branch ids."""
+        c = _customer(db_session, 'CC9')
+        _invoice(db_session, c, 999999, 'SI-DANGLING', Decimal('750.00'))
+        rows, totals = _build_ar_aging_data(
+            AS_OF, None, include_branch=True,
+            viewable_branch_ids={main_branch.id})
+        assert totals['total'] == Decimal('750.00')
+        assert len(rows) == 1
+        assert rows[0]['invoices'][0]['viewable'] is False
+        assert rows[0]['invoices'][0]['branch_code'] == ''
+
+    def test_branch_ids_list_still_filters(self, db_session, main_branch,
+                                           branch_manila):
+        """The per-branch caller's contract (a real list of branch ids) must be
+        unaffected by branch_ids=None meaning no filter."""
+        c = _customer(db_session, 'CC10')
+        _invoice(db_session, c, main_branch.id, 'SI-M', Decimal('50.00'))
+        _invoice(db_session, c, branch_manila.id, 'SI-N', Decimal('60.00'))
+        rows, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
+        assert totals['total'] == Decimal('50.00')
+
 
 class TestCombinedModuleGating:
 
