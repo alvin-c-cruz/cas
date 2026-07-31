@@ -21,7 +21,7 @@
     </div>
 
     <div class="card-body">
-        <!-- Date Filter -->
+        {# Date Filter #}
         <form method="GET" style="margin-bottom:20px;">
             <div style="display:flex;gap:12px;align-items:flex-end;">
                 <div class="form-group" style="margin:0;">
@@ -33,7 +33,7 @@
         </form>
 
         {% if customers %}
-        <!-- Customer Summary Table -->
+        {# Customer Summary Table #}
         <div style="background:var(--bg);padding:16px;border-radius:8px;margin-bottom:20px;border:1px solid var(--border);">
             <table class="table" style="margin:0;">
                 <thead>
@@ -69,7 +69,7 @@
                         </td>
                         <td style="text-align:right;"><strong>₱{{ "{:,.2f}".format(customer.total) }}</strong></td>
                     </tr>
-                    <!-- Invoice Details (hidden by default) -->
+                    {# Invoice Details (hidden by default) #}
                     <tr id="customer-{{ loop.index }}" style="display:none;">
                         <td colspan="7" style="padding:0;">
                             <div style="background:var(--card);padding:16px;margin:8px 0;border:1px solid var(--border);border-radius:var(--radius);">
