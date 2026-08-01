@@ -99,7 +99,15 @@
                                         <tr>
                                             <td>
                                                 {% if invoice.viewable %}
+                                                {# A debit-memo row shares the invoice-row shape (invoice_id is the
+                                                   REFERENCED invoice's id, kept so nothing else here needs a
+                                                   special case) -- but its own document lives at debit_view, not
+                                                   at the referenced invoice's page. #}
+                                                {% if invoice.doc_type == 'debit_memo' %}
+                                                <a href="{{ url_for('sales_memos.debit_view', id=invoice.memo_id) }}" style="color:var(--blue)">{{ invoice.invoice_number }}</a>
+                                                {% else %}
                                                 <a href="{{ url_for('sales_invoices.view', id=invoice.invoice_id) }}" style="color:var(--blue)">{{ invoice.invoice_number }}</a>
+                                                {% endif %}
                                                 {% else %}
                                                 {{ invoice.invoice_number }}
                                                 {% endif %}

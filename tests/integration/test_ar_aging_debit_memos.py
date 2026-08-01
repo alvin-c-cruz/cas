@@ -360,3 +360,178 @@ class TestBuildArAgingDataWithMemos:
         assert rows[0]['total'] == Decimal('1300.00')
         numbers = {i['invoice_number'] for i in rows[0]['invoices']}
         assert numbers == {'SI-DM16', 'DM-16001'}
+
+
+# ── Template rendering (Task 3) ─────────────────────────────────────────────
+#
+# Task 2 gave memo rows the same dict shape as invoice rows so the existing
+# drill-down loops in ar_aging.html / ar_aging_combined.html keep working
+# with zero template changes for: the memo's own document number (rendered
+# as text via `invoice.invoice_number`), the branch chip in the combined
+# report (rendered via `invoice.branch_code`/`branch_theme`, populated from
+# the REFERENCED invoice per views.py:404-406), and the no-access-chip pill
+# (rendered via `invoice.viewable`, likewise from the referenced invoice).
+# Investigation found exactly ONE place that shares the row shape but does
+# NOT already render correctly: both templates' anchor tag unconditionally
+# builds `url_for('sales_invoices.view', id=invoice.invoice_id)`. For a
+# memo row `invoice_id` is deliberately set to the REFERENCED invoice's id
+# (views.py:395, "existing invoice-row keys, kept populated so nothing
+# downstream breaks on a missing key") -- so before this fix, clicking a
+# memo's own document number silently opened the referenced invoice's page
+# instead of the memo's own `sales_memos.debit_view` page. That is fixed
+# below by branching the href on `invoice.doc_type` in both templates --
+# the minimum change; nothing else in either drill-down loop needed to move.
+
+def _login(client, username='admin', password='admin123'):
+    return client.post('/login', data={'username': username, 'password': password},
+                       follow_redirects=True)
+
+
+def _set_branch(client, branch_id):
+    with client.session_transaction() as sess:
+        sess['selected_branch_id'] = branch_id
+
+
+class TestMemoRowRendersInPerBranchReport:
+
+    def test_memo_row_shows_its_own_document_number(
+            self, client, db_session, admin_user, main_branch):
+        c = _customer(db_session, 'RN1')
+        inv = _invoice(db_session, c, main_branch.id, 'SI-RN1', Decimal('1000.00'))
+        _memo(db_session, c, inv, 'DM-RN1', Decimal('300.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging').data.decode()
+        assert 'DM-RN1' in body
+
+    def test_memo_row_links_to_its_own_document_not_the_referenced_invoice(
+            self, client, db_session, admin_user, main_branch):
+        """The invoice's own row legitimately links to /sales-invoices/{inv.id}
+        (that row is real and must keep working) -- so this checks the SPECIFIC
+        anchor wrapping the memo's document number, not mere absence anywhere
+        in the page."""
+        c = _customer(db_session, 'RN2')
+        inv = _invoice(db_session, c, main_branch.id, 'SI-RN2', Decimal('1000.00'))
+        memo = _memo(db_session, c, inv, 'DM-RN2', Decimal('300.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging').data.decode()
+        memo_idx = body.index('DM-RN2')
+        anchor = body[body.rindex('<a href=', 0, memo_idx):memo_idx]
+        assert f'/debit-notes/{memo.id}' in anchor
+        assert f'/sales-invoices/{inv.id}' not in anchor
+
+    def test_invoice_row_link_is_unaffected(
+            self, client, db_session, admin_user, main_branch):
+        """Guards the doc_type branch: a plain invoice row must keep
+        linking to sales_invoices.view exactly as before."""
+        c = _customer(db_session, 'RN3')
+        inv = _invoice(db_session, c, main_branch.id, 'SI-RN3', Decimal('1000.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging').data.decode()
+        assert f'/sales-invoices/{inv.id}' in body
+
+
+class TestMemoRowRendersInCombinedReport:
+
+    def test_memo_row_carries_the_referenced_invoices_branch_chip(
+            self, client, db_session, admin_user, main_branch, branch_manila):
+        c = _customer(db_session, 'RN4')
+        inv = _invoice(db_session, c, branch_manila.id, 'SI-RN4', Decimal('1000.00'))
+        memo = _memo(db_session, c, inv, 'DM-RN4', Decimal('300.00'))
+        # Deliberately give the memo its OWN (different) branch_id, mirroring
+        # test_memo_branch_is_inherited_from_the_referenced_invoice -- this
+        # fails if the template (or builder) ever reads memo.branch_id.
+        memo.branch_id = main_branch.id
+        db_session.commit()
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging-combined?as_of=' + AS_OF.isoformat()).data.decode()
+        assert 'DM-RN4' in body
+        assert f'>{branch_manila.code}<' in body
+
+    def test_memo_row_links_to_its_own_document_not_the_referenced_invoice(
+            self, client, db_session, admin_user, main_branch):
+        """As the per-branch equivalent: check the anchor specific to the
+        memo's own document number, since the invoice's own row legitimately
+        links to /sales-invoices/{inv.id} elsewhere on the same page."""
+        c = _customer(db_session, 'RN5')
+        inv = _invoice(db_session, c, main_branch.id, 'SI-RN5', Decimal('1000.00'))
+        memo = _memo(db_session, c, inv, 'DM-RN5', Decimal('300.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging-combined?as_of=' + AS_OF.isoformat()).data.decode()
+        memo_idx = body.index('DM-RN5')
+        anchor = body[body.rindex('<a href=', 0, memo_idx):memo_idx]
+        assert f'/debit-notes/{memo.id}' in anchor
+        assert f'/sales-invoices/{inv.id}' not in anchor
+
+    def test_non_viewable_memo_row_shows_the_no_access_chip(
+            self, client, db_session, staff_user, main_branch, branch_manila):
+        """A branch-restricted user sees the memo's amount in the totals but
+        cannot drill into it -- same rule as a non-viewable invoice."""
+        c = _customer(db_session, 'RN6')
+        inv = _invoice(db_session, c, branch_manila.id, 'SI-RN6', Decimal('1000.00'))
+        memo = _memo(db_session, c, inv, 'DM-RN6', Decimal('300.00'))
+        staff_user.set_branches([main_branch])
+        perms = staff_user.get_book_permissions()
+        perms['ar_aging_combined'] = True
+        staff_user.set_book_permissions(perms)
+        db_session.commit()
+
+        _login(client, username=staff_user.username, password='staff123')
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging-combined?as_of=' + AS_OF.isoformat()).data.decode()
+
+        assert 'DM-RN6' in body                       # still shown, for the total
+        assert f'/debit-notes/{memo.id}' not in body   # but not clickable
+        assert f'/sales-invoices/{inv.id}' not in body
+        assert 'class="no-access-chip"' in body
+
+
+class TestUnchangedWhereNoMemosExist:
+    """The regression that matters most: every live client is at zero
+    memos today, so this is the test proving the whole change (Tasks 1-3)
+    is inert for them right now. Built from an invoices-only fixture,
+    asserting totals/row-count DIRECTLY -- not diffed against a captured
+    pre-change snapshot, since none of this code walks a memo query at all
+    for such a dataset (memos = [] short-circuits every memo-side branch in
+    _build_ar_aging_data), so the direct assertion already pins the exact
+    invoices-only contract that existed before this feature."""
+
+    def test_totals_and_row_count_are_exactly_what_invoices_alone_produce(
+            self, db_session, main_branch, branch_manila):
+        c1 = _customer(db_session, 'UNC1')
+        c2 = _customer(db_session, 'UNC2')
+        # due_date == invoice_date via the _invoice() helper -- AS_OF itself
+        # gives 0 days overdue, i.e. the 'current' bucket.
+        _invoice(db_session, c1, main_branch.id, 'SI-UNC1', Decimal('1000.00'),
+                invoice_date=AS_OF)
+        inv2 = _invoice(db_session, c2, main_branch.id, 'SI-UNC2', Decimal('2000.00'),
+                        invoice_date=date(2025, 10, 1))
+        inv2.due_date = date(2025, 11, 15)  # 46 days overdue as of AS_OF -> '31-60'
+        db_session.commit()
+        _settle_invoice(db_session, inv2, main_branch.id, 'CR-UNC1', AS_OF, Decimal('500.00'))
+
+        rows, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
+
+        assert len(rows) == 2
+        assert sum(len(r['invoices']) for r in rows) == 2  # one row each, no memo rows
+        assert totals['total'] == Decimal('2500.00')  # 1000 + (2000 - 500)
+        assert totals['current'] == Decimal('1000.00')
+        assert totals['31-60'] == Decimal('1500.00')
+        for r in rows:
+            assert all(i['doc_type'] == 'invoice' for i in r['invoices'])
+
+    def test_combined_report_page_is_unchanged_with_zero_memos(
+            self, client, db_session, admin_user, main_branch, branch_manila):
+        """End-to-end: the actual HTTP response for the combined report, with
+        an invoices-only dataset, contains no debit-memo markup at all."""
+        c = _customer(db_session, 'UNC3')
+        _invoice(db_session, c, main_branch.id, 'SI-UNC3', Decimal('1000.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging-combined?as_of=' + AS_OF.isoformat()).data.decode()
+        assert 'SI-UNC3' in body
+        assert '/debit-notes/' not in body
