@@ -183,6 +183,33 @@ def _ar_settled_as_of(invoice_ids, as_of_date):
     return {inv_id: Decimal(str(total or 0)) for inv_id, total in rows}
 
 
+def _memo_settled_as_of(memo_ids, as_of_date):
+    """{memo_id: amount collected as of as_of_date} from posted CRVs.
+
+    Mirrors `_ar_settled_as_of` exactly (same posted-status filter, same
+    `<= as_of_date` rule, same empty-input short-circuit, same Decimal
+    conversion) but keyed on `CRVArLine.sales_memo_id` instead of
+    `CRVArLine.invoice_id`. A memo-settling CRV line sets `sales_memo_id`
+    and leaves `invoice_id` NULL (exactly one of the two is set,
+    parser-enforced), so `_ar_settled_as_of`'s invoice_id filter cannot
+    reach these rows -- this is a parallel function, not a wider filter.
+    """
+    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+    if not memo_ids:
+        return {}
+    rows = (
+        db.session.query(CRVArLine.sales_memo_id,
+                         db.func.sum(CRVArLine.amount_applied))
+        .join(CashReceiptVoucher, CRVArLine.crv_id == CashReceiptVoucher.id)
+        .filter(CRVArLine.sales_memo_id.in_(memo_ids),
+                CashReceiptVoucher.status == 'posted',
+                CashReceiptVoucher.crv_date <= as_of_date)
+        .group_by(CRVArLine.sales_memo_id)
+        .all()
+    )
+    return {memo_id: Decimal(str(total or 0)) for memo_id, total in rows}
+
+
 def _ap_settled_as_of(ap_ids, as_of_date):
     """{ap_id: amount paid as of as_of_date} from posted CDVs."""
     from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
