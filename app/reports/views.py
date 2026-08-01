@@ -1337,6 +1337,43 @@ def work_order_costing_variance_print():
                            status=status, company=company, branch_name=branch_name)
 
 
+@reports_bp.route('/reports/work-order-costing-variance/export/excel')
+@login_required
+@accountant_or_above_required
+def work_order_costing_variance_export_excel():
+    from app.reports.work_order_costing import generate_work_order_costing_variance_report
+    from app.utils.export import export_to_excel
+    status, date_from, date_to, branch_id = _wo_costing_params()
+    data = generate_work_order_costing_variance_report(
+        branch_id, status=status, date_from=date_from, date_to=date_to)
+    rows = []
+    for r in data['rows']:
+        # Hand export_to_excel the generator's Decimals/dates UNCHANGED -- its own
+        # format_value() turns a Decimal into a numeric cell but sends a plain float
+        # through str(), which writes a TEXT cell that only looks like a number.
+        # Same passthrough shape as budget_variance_export_excel above. A None
+        # becomes '' there too, so only variance_pct (a float already) needs a guard.
+        rows.append({
+            'wo_number': r['wo_number'],
+            'product': f"{r['product_code']} - {r['product_name']}",
+            'qty_completed': r['qty_completed'],
+            'material_cost': r['material_cost'], 'labor_cost': r['labor_cost'],
+            'actual_total': r['actual_total'],
+            'standard_baseline': r['standard_baseline'],
+            'variance_amount': r['variance_amount'],
+            'variance_pct': r['variance_pct'] if r['variance_pct'] is not None else '',
+            'completion_date': r['completion_date'],
+        })
+    columns = ['wo_number', 'product', 'qty_completed', 'material_cost', 'labor_cost',
+               'actual_total', 'standard_baseline', 'variance_amount', 'variance_pct',
+               'completion_date']
+    headers = ['WO #', 'Product', 'Qty Completed', 'Material Cost', 'Labor Cost', 'Actual Total',
+               'Standard Cost', 'Variance', 'Variance %', 'Completed']
+    filename = 'Work_Order_Costing_Variance.xlsx'
+    return export_to_excel(rows, columns, headers, filename,
+                           title='Work Order Costing & Variance Report')
+
+
 @reports_bp.route('/reports/balance-sheet')
 @login_required
 def balance_sheet():

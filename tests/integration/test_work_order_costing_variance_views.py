@@ -1,7 +1,9 @@
 """Screen route for the Work Order Costing & Variance Report (R-07 D5)."""
+import io
 from datetime import timedelta
 from decimal import Decimal
 
+import openpyxl
 import pytest
 
 from app import db
@@ -174,3 +176,91 @@ def test_zero_baseline_standard_costed_wo_renders_dash_not_crash(
     # variance_pct IS None (baseline is exactly zero) -- must render the muted dash,
     # independently of the other two columns both having real values
     assert 'text-muted">&mdash;' in body or 'text-muted">—' in body
+
+
+def test_export_excel_route_returns_xlsx(client, db_session, accountant_user, main_branch):
+    _login(client, accountant_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    resp = client.get('/reports/work-order-costing-variance/export/excel')
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'] == (
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+def _sheet_rows_by_wo(resp):
+    """{wo_number: [cell values]} for every data row of the exported workbook.
+    Layout (app/utils/export.py): row 1 title, row 2 headers, row 3+ data."""
+    ws = openpyxl.load_workbook(io.BytesIO(resp.data)).active
+    out = {}
+    for row in ws.iter_rows(min_row=3, values_only=True):
+        if row[0]:
+            out[row[0]] = list(row)
+    return ws, out
+
+
+def test_export_excel_writes_money_as_numeric_cells_not_text(
+        client, db_session, accountant_user, main_branch, wo_control_accounts):
+    """Money/qty columns must arrive in Excel as REAL NUMBERS, so the file is
+    sum-able in a spreadsheet without a text-to-number pass.
+
+    app/utils/export.py::format_value converts a Decimal to float (numeric cell)
+    but sends anything else -- including a Python float -- through str(), which
+    lands a TEXT cell that merely looks numeric. So the row dicts must hand it
+    the generator's Decimals untouched, exactly as budget_variance_export_excel
+    already does. A float() cast here silently produces a text-cell export that
+    a status-code/Content-Type-only test cannot see.
+    """
+    wo_std = _ready_wo(main_branch, accountant_user, qty_to_produce='10',
+                       costing_method='standard', standard_cost=Decimal('6.00'),
+                       code_suffix='XLSTD')
+    complete_work_order_batch(wo_std, Decimal('10'), accountant_user)
+    db.session.commit()
+
+    _login(client, accountant_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    resp = client.get('/reports/work-order-costing-variance/export/excel')
+    assert resp.status_code == 200
+
+    ws, rows = _sheet_rows_by_wo(resp)
+    assert ws.cell(row=1, column=1).value == 'Work Order Costing & Variance Report'
+    assert [c.value for c in ws[2]] == [
+        'WO #', 'Product', 'Qty Completed', 'Material Cost', 'Labor Cost', 'Actual Total',
+        'Standard Cost', 'Variance', 'Variance %', 'Completed']
+
+    def _numeric(value, label):
+        """openpyxl reads a whole number back as int and a fractional one as float --
+        either is a real numeric cell. A str here is the text-cell bug."""
+        assert isinstance(value, (int, float)) and not isinstance(value, (str, bool)), (
+            f'{label} cell was {value!r} ({type(value).__name__}), expected a numeric cell')
+
+    row = rows[wo_std.wo_number]
+    # material 50.00 + labor 60.00 = 110.00 actual; baseline 60.00; variance +50.00
+    for idx, expected, label in ((3, 50, 'material'), (4, 60, 'labor'), (5, 110, 'actual total'),
+                                 (6, 60, 'standard baseline'), (7, 50, 'variance')):
+        _numeric(row[idx], label)
+        assert row[idx] == expected, f'{label} cell was {row[idx]!r}, expected {expected}'
+    _numeric(row[2], 'qty completed')
+
+
+def test_export_excel_leaves_variance_columns_blank_for_moving_average_wo(
+        client, db_session, accountant_user, main_branch, wo_control_accounts):
+    """A moving-average WO has no standard baseline: those three columns carry
+    None out of the generator and must export as an EMPTY cell, never the string
+    'None' and never a misleading 0."""
+    wo_ma = _ready_wo(main_branch, accountant_user, code_suffix='XLMA')
+    complete_work_order_batch(wo_ma, Decimal('10'), accountant_user)
+    db.session.commit()
+
+    _login(client, accountant_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    resp = client.get('/reports/work-order-costing-variance/export/excel')
+    assert resp.status_code == 200
+
+    _ws, rows = _sheet_rows_by_wo(resp)
+    row = rows[wo_ma.wo_number]
+    assert row[5] == 110.00, 'actual total still exports for a moving-average WO'
+    for idx, label in ((6, 'standard baseline'), (7, 'variance'), (8, 'variance %')):
+        assert row[idx] in (None, ''), f'{label} cell was {row[idx]!r}, expected blank'
