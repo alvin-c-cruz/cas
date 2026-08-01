@@ -22,7 +22,10 @@ from app.customers.models import Customer
 from app.sales_invoices.models import SalesInvoice
 from app.sales_memos.models import SalesMemo
 from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
-from app.reports.views import _memo_settled_as_of, _ar_settled_as_of
+from app.reports.views import (
+    _memo_settled_as_of, _ar_settled_as_of, _memo_derived_due_date,
+    _build_ar_aging_data,
+)
 
 pytestmark = [pytest.mark.integration]
 
@@ -191,3 +194,169 @@ class TestMemoSettledAsOf:
 
         memo_result = _memo_settled_as_of([memo.id], AS_OF)
         assert memo_result == {memo.id: Decimal('300.00')}
+
+
+class TestMemoDerivedDueDate:
+    """Unit tests for the pure derivation, including the null-due-date
+    fallback. `SalesInvoice.due_date` is `nullable=False` in the current
+    model/migrated schema (so a real invoice row cannot be persisted with
+    due_date=None through db_session/create_all() in this suite) -- this
+    is tested as a pure function of dates, not via a DB row, for exactly
+    that reason. The design doc's stated fallback (a real invoice row
+    with due_date unset, e.g. from schema drift or a legacy bulk import
+    that bypassed ORM validation) is still covered: the function's
+    behaviour is identical either way, it just takes its inputs directly
+    instead of via `invoice.due_date`."""
+
+    def test_derives_from_the_invoice_terms_interval(self):
+        result = _memo_derived_due_date(
+            date(2025, 11, 15), date(2025, 10, 1), date(2025, 10, 31))
+        assert result == date(2025, 12, 15)
+
+    def test_memo_with_no_invoice_due_date_falls_back_to_memo_date(self):
+        result = _memo_derived_due_date(
+            date(2025, 11, 15), date(2025, 10, 1), None)
+        assert result == date(2025, 11, 15)
+
+
+class TestBuildArAgingDataWithMemos:
+    """Union of posted debit memos into `_build_ar_aging_data`, per
+    docs/superpowers/specs/2026-08-01-ar-aging-debit-memos-design.md."""
+
+    def test_a_debit_memo_appears_as_its_own_row(self, db_session, main_branch):
+        c = _customer(db_session, 'DM10')
+        _invoice(db_session, c, main_branch.id, 'SI-DM10', Decimal('1000.00'))
+        _memo(db_session, c, _invoice(db_session, c, main_branch.id, 'SI-DM10-REF',
+                                      Decimal('1.00')), 'DM-10001', Decimal('300.00'))
+        rows, _ = _build_ar_aging_data(AS_OF, [main_branch.id])
+        assert len(rows) == 1
+        by_num = {i['invoice_number']: i for i in rows[0]['invoices']}
+        assert by_num['SI-DM10']['doc_type'] == 'invoice'
+        assert by_num['DM-10001']['doc_type'] == 'debit_memo'
+        assert len(rows[0]['invoices']) == 3
+
+    def test_memo_buckets_on_the_derived_due_date(self, db_session, main_branch):
+        """The case that motivated the spec revision: an invoice and a memo
+        raised the SAME DAY on 30-day terms must land in the SAME bucket."""
+        c1 = _customer(db_session, 'DM20')
+        c2 = _customer(db_session, 'DM21')
+        ref_invoice = _invoice(db_session, c1, main_branch.id, 'SI-DM20-REF',
+                               Decimal('500.00'), invoice_date=date(2025, 10, 1))
+        ref_invoice.due_date = date(2025, 10, 31)  # 30-day terms
+        db_session.commit()
+        memo = _memo(db_session, c1, ref_invoice, 'DM-20001', Decimal('300.00'),
+                    memo_date=date(2025, 11, 15))
+        # derived due = 2025-11-15 + 30 days = 2025-12-15
+
+        test_invoice = _invoice(db_session, c2, main_branch.id, 'SI-DM21',
+                                Decimal('700.00'), invoice_date=date(2025, 11, 15))
+        test_invoice.due_date = date(2025, 12, 15)  # same 30-day terms, same raise day
+        db_session.commit()
+
+        rows, _ = _build_ar_aging_data(AS_OF, [main_branch.id])
+        by_num = {}
+        for row in rows:
+            for i in row['invoices']:
+                by_num[i['invoice_number']] = i
+
+        assert by_num['DM-20001']['due_date'] == date(2025, 12, 15)
+        assert by_num['DM-20001']['bucket'] == by_num['SI-DM21']['bucket']
+
+    def test_fully_settled_memo_is_excluded(self, db_session, main_branch):
+        c = _customer(db_session, 'DM11')
+        inv = _invoice(db_session, c, main_branch.id, 'SI-DM11', Decimal('1000.00'))
+        memo = _memo(db_session, c, inv, 'DM-11001', Decimal('300.00'))
+        _settle_memo(db_session, memo, main_branch.id, 'CR-DM11', AS_OF, Decimal('300.00'))
+        rows, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
+        numbers = [i['invoice_number'] for i in rows[0]['invoices']]
+        assert 'DM-11001' not in numbers
+        assert totals['total'] == Decimal('1000.00')
+
+    def test_credit_memos_are_never_included(self, db_session, main_branch):
+        c = _customer(db_session, 'DM12')
+        inv = _invoice(db_session, c, main_branch.id, 'SI-DM12', Decimal('1000.00'))
+        memo = _memo(db_session, c, inv, 'CM-12001', Decimal('300.00'))
+        memo.memo_type = 'credit'
+        db_session.commit()
+        rows, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
+        numbers = [i['invoice_number'] for i in rows[0]['invoices']]
+        assert 'CM-12001' not in numbers
+        assert totals['total'] == Decimal('1000.00')
+
+    def test_draft_and_voided_memos_are_excluded(self, db_session, main_branch):
+        c = _customer(db_session, 'DM13')
+        inv = _invoice(db_session, c, main_branch.id, 'SI-DM13', Decimal('1000.00'))
+        draft_memo = _memo(db_session, c, inv, 'DM-13001', Decimal('100.00'))
+        draft_memo.status = 'draft'
+        voided_memo = _memo(db_session, c, inv, 'DM-13002', Decimal('100.00'))
+        voided_memo.status = 'voided'
+        db_session.commit()
+        rows, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
+        numbers = [i['invoice_number'] for i in rows[0]['invoices']]
+        assert 'DM-13001' not in numbers
+        assert 'DM-13002' not in numbers
+        assert totals['total'] == Decimal('1000.00')
+
+    def test_memo_branch_is_inherited_from_the_referenced_invoice(
+            self, db_session, main_branch, branch_manila):
+        c = _customer(db_session, 'DM14')
+        inv = _invoice(db_session, c, branch_manila.id, 'SI-DM14', Decimal('1000.00'))
+        memo = _memo(db_session, c, inv, 'DM-14001', Decimal('300.00'))
+        # Deliberately set the memo's OWN branch_id to a DIFFERENT branch, so
+        # this test fails if the implementation reads memo.branch_id instead
+        # of the referenced invoice's branch_id.
+        memo.branch_id = main_branch.id
+        db_session.commit()
+
+        rows, _ = _build_ar_aging_data(AS_OF, None, include_branch=True)
+        by_num = {i['invoice_number']: i for i in rows[0]['invoices']}
+        assert by_num['DM-14001']['branch_id'] == branch_manila.id
+        assert by_num['DM-14001']['branch_code'] == branch_manila.code
+
+    def test_branch_restricted_user_sees_the_amount_but_cannot_drill_in(
+            self, db_session, main_branch, branch_manila):
+        c = _customer(db_session, 'DM15')
+        inv = _invoice(db_session, c, branch_manila.id, 'SI-DM15', Decimal('1000.00'))
+        _memo(db_session, c, inv, 'DM-15001', Decimal('300.00'))
+        rows, totals = _build_ar_aging_data(
+            AS_OF, None, include_branch=True, viewable_branch_ids={main_branch.id})
+        by_num = {i['invoice_number']: i for i in rows[0]['invoices']}
+        assert by_num['DM-15001']['viewable'] is False
+        assert totals['total'] == Decimal('1300.00')
+
+    def test_grand_total_equals_invoices_plus_memos_outstanding(
+            self, db_session, main_branch):
+        """The reconciliation invariant -- the gate for this task. Built
+        independently of the builder's internals so it would fail if
+        memos were either omitted (total too low) or double-counted
+        (total too high)."""
+        c1 = _customer(db_session, 'GT1')
+        c2 = _customer(db_session, 'GT2')
+        inv1 = _invoice(db_session, c1, main_branch.id, 'SI-GT1', Decimal('1000.00'))
+        inv2 = _invoice(db_session, c2, main_branch.id, 'SI-GT2', Decimal('2000.00'))
+        memo1 = _memo(db_session, c1, inv1, 'DM-GT1', Decimal('300.00'))
+        memo2 = _memo(db_session, c2, inv2, 'DM-GT2', Decimal('150.00'))
+        _settle_memo(db_session, memo2, main_branch.id, 'CR-GT1', AS_OF, Decimal('50.00'))
+        _settle_invoice(db_session, inv2, main_branch.id, 'CR-GT2', AS_OF, Decimal('500.00'))
+
+        expected_invoices_outstanding = (
+            (Decimal('1000.00') - Decimal('0.00'))
+            + (Decimal('2000.00') - Decimal('500.00')))
+        expected_memos_outstanding = (
+            (Decimal('300.00') - Decimal('0.00'))
+            + (Decimal('150.00') - Decimal('50.00')))
+        expected = expected_invoices_outstanding + expected_memos_outstanding
+
+        _, totals = _build_ar_aging_data(AS_OF, [main_branch.id])
+        assert totals['total'] == expected
+
+    def test_memos_group_under_the_same_customer_row_as_their_invoices(
+            self, db_session, main_branch):
+        c = _customer(db_session, 'DM16')
+        inv = _invoice(db_session, c, main_branch.id, 'SI-DM16', Decimal('1000.00'))
+        _memo(db_session, c, inv, 'DM-16001', Decimal('300.00'))
+        rows, _ = _build_ar_aging_data(AS_OF, [main_branch.id])
+        assert len(rows) == 1
+        assert rows[0]['total'] == Decimal('1300.00')
+        numbers = {i['invoice_number'] for i in rows[0]['invoices']}
+        assert numbers == {'SI-DM16', 'DM-16001'}
