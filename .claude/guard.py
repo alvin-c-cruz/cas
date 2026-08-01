@@ -117,6 +117,16 @@ def main():
     if '--head' in argv:
         explicit_head = argv[argv.index('--head') + 1]
 
+    # An EXPLICITLY provided ref that does not resolve must fail closed -- silently
+    # guarding nothing and reporting a clean pass is indistinguishable from a real
+    # verified-clean pass. Auto-detection (no --base given) is unaffected: it may
+    # legitimately find nothing and fall back to uncommitted-only, unchanged below.
+    if explicit_head is not None and not _ref_exists(explicit_head):
+        print(f'[guard] ERROR: --head ref does not resolve: {explicit_head!r}')
+        print('[guard] cannot verify changed files against an unresolvable ref -- refusing '
+              'to report a clean pass.')
+        return 1
+
     with open(MAP, encoding='utf-8') as fh:
         mapping = json.load(fh)
 
@@ -124,6 +134,13 @@ def main():
     is_stub = not mapping.get('blast_radius')
 
     base_ref = resolve_base(explicit_base)
+    if explicit_base is not None and base_ref is None:
+        print(f'[guard] ERROR: --base ref does not resolve: {explicit_base!r} '
+              f'(tried origin/{explicit_base} and {explicit_base})')
+        print('[guard] cannot verify changed files against an unresolvable ref -- refusing '
+              'to report a clean pass.')
+        return 1
+
     files = changed_files(base_ref, explicit_head or 'HEAD')
     mods = affected_modules(files, mapping)
     print(f'[guard] base={base_ref or "(none -- uncommitted only)"}')
