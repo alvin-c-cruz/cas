@@ -236,6 +236,67 @@ class TestCombinedRoute:
         assert 'no access' in body                         # the only visible explanation
 
 
+class TestCombinedBranchChips:
+    """Branch chips are theme_color-driven (owner decision, 2026-08-01):
+    a branch with a theme_color renders a coloured chip derived via
+    app.utils.color.derive_chip_theme; a branch with NULL theme_color (the
+    default -- see main_branch/branch_manila fixtures) renders exactly
+    today's flat-grey `.branch-chip` appearance, no inline colour override.
+    The "no access" indicator is a pill (`.no-access-chip`), shown only for
+    non-viewable rows."""
+
+    def test_branch_with_theme_color_renders_derived_chip_colors(
+            self, client, db_session, admin_user, main_branch, branch_manila):
+        branch_manila.theme_color = '#1d4ed8'
+        db_session.commit()
+        c = _customer(db_session, 'CH1')
+        _invoice(db_session, c, branch_manila.id, 'SI-THEME', Decimal('10.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging-combined?as_of=2025-12-31')
+        body = r.data.decode()
+
+        from app.utils.color import derive_chip_theme
+        derived = derive_chip_theme('#1d4ed8')
+        assert 'class="branch-chip"' in body
+        assert f'background:{derived["bg"]}' in body
+        assert f'color:{derived["fg"]}' in body
+
+    def test_branch_with_null_theme_color_renders_grey_fallback(
+            self, client, db_session, admin_user, main_branch, branch_manila):
+        assert branch_manila.theme_color is None
+        c = _customer(db_session, 'CH2')
+        _invoice(db_session, c, branch_manila.id, 'SI-GREY', Decimal('10.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging-combined?as_of=2025-12-31')
+        body = r.data.decode()
+
+        # Grey fallback == the bare class, no inline color override -- the
+        # exact pre-theming markup, just moved from an inline style to a class.
+        assert '<span class="branch-chip">' + branch_manila.code + '</span>' in body
+
+    def test_no_access_pill_only_on_non_viewable_row(
+            self, client, db_session, staff_user, main_branch, branch_manila):
+        c = _customer(db_session, 'CH3')
+        mine = _invoice(db_session, c, main_branch.id, 'SI-MINE2', Decimal('10.00'))
+        theirs = _invoice(db_session, c, branch_manila.id, 'SI-THEIRS2', Decimal('20.00'))
+        staff_user.set_branches([main_branch])
+        perms = staff_user.get_book_permissions()
+        perms['ar_aging_combined'] = True
+        staff_user.set_book_permissions(perms)
+        db_session.commit()
+
+        _login(client, username=staff_user.username, password='staff123')
+        _set_branch(client, main_branch.id)
+        r = client.get('/reports/ar-aging-combined?as_of=2025-12-31')
+        body = r.data.decode()
+
+        assert body.count('no-access-chip') >= 1
+        # exactly one non-viewable invoice row in this report -> exactly one pill
+        assert body.count('class="no-access-chip"') == 1
+
+
 class TestCombinedExports:
 
     def test_excel_export_returns_a_file(self, client, db_session, admin_user,

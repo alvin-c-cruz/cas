@@ -237,8 +237,11 @@ def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
     collected = _ar_settled_as_of([i.id for i in invoices], as_of_date)
 
     branch_codes = {}
+    branch_themes = {}
     if include_branch:
-        branch_codes = {b.id: b.code for b in Branch.query.all()}
+        for b in Branch.query.all():
+            branch_codes[b.id] = b.code
+            branch_themes[b.id] = b.theme_color
 
     cust_ids = {i.customer_id for i in invoices if i.customer_id}
     master_names = {}
@@ -277,6 +280,7 @@ def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
         if include_branch:
             row['branch_id'] = invoice.branch_id
             row['branch_code'] = branch_codes.get(invoice.branch_id, '')
+            row['branch_theme'] = branch_themes.get(invoice.branch_id)
             row['viewable'] = (viewable_branch_ids is None
                                or invoice.branch_id in viewable_branch_ids)
         customers[key]['invoices'].append(row)

@@ -96,10 +96,15 @@
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                <span style="background:var(--bg);color:var(--text-2);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">{{ invoice.branch_code }}</span>
+                                                {% set chip = invoice.branch_theme | derive_chip_theme %}
+                                                {% if chip %}
+                                                <span class="branch-chip" style="background:{{ chip.bg }};color:{{ chip.fg }};border:1px solid {{ chip.border }};">{{ invoice.branch_code }}</span>
+                                                {% else %}
+                                                <span class="branch-chip">{{ invoice.branch_code }}</span>
+                                                {% endif %}
                                                 {% if not invoice.viewable %}
                                                 {# no branch access -- shown for the total, but not openable #}
-                                                <span style="color:var(--text-3);font-size:11px;margin-left:4px;">no access</span>
+                                                <span class="no-access-chip">no access</span>
                                                 {% endif %}
                                             </td>
                                             <td>{{ invoice.invoice_date.strftime('%Y-%m-%d') }}</td>
