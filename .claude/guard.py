@@ -16,7 +16,10 @@ Usage:
   python .claude/guard.py --head feat/x  # diff a branch that is NOT checked out
                                          # (default: HEAD, the checked-out tree)
 
-Changed files = (<base>)...HEAD  PLUS uncommitted working-tree changes.
+Changed files = (<base>)...<head>, where <head> defaults to HEAD.
+When <head> is HEAD, uncommitted working-tree changes are folded in too; when an
+explicit --head ref is given they are NOT (that dirt belongs to whatever is checked
+out, not to the branch being asked about).
 """
 import fnmatch
 import json
