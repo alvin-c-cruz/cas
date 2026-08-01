@@ -13,6 +13,46 @@ from app.utils.color import is_valid_hex_color
 
 branches_bp = Blueprint('branches', __name__, template_folder='templates')
 
+# Models that carry branch_id but must NOT block a branch delete:
+#   User     -- checked separately above, with a more actionable message.
+#   AuditLog -- immutable history. Blocking on it would make any branch that ever
+#               saw activity permanently undeletable, since deleting the branch is
+#               itself an audited event.
+_BRANCH_DELETE_NON_BLOCKING = {'User', 'AuditLog'}
+
+
+def _humanize(class_name):
+    """'SalesInvoice' -> 'Sales Invoice' (for the user-facing flash)."""
+    import re
+    return re.sub(r'(?<!^)(?=[A-Z])', ' ', class_name)
+
+
+def branch_dependent_counts(branch_id):
+    """[(label, count), ...] for every model still owning rows in this branch.
+
+    Derived from the mapper registry rather than a hardcoded list: this repo's
+    branch-scoping rule requires every NEW transactional model to carry
+    branch_id from day one, so a literal list would silently rot the moment
+    someone follows that rule -- and the failure mode would be a silent orphan,
+    not an error. Sorted by descending count so the flash leads with the
+    biggest blocker.
+    """
+    counts = []
+    for mapper in db.Model.registry.mappers:
+        cls = mapper.class_
+        if cls.__name__ in _BRANCH_DELETE_NON_BLOCKING:
+            continue
+        if 'branch_id' not in cls.__table__.columns:
+            continue
+        n = (db.session.query(db.func.count())
+             .select_from(cls)
+             .filter(cls.branch_id == branch_id)
+             .scalar())
+        if n:
+            counts.append((_humanize(cls.__name__), n))
+    counts.sort(key=lambda pair: (-pair[1], pair[0]))
+    return counts
+
 
 @branches_bp.route('/branches')
 @login_required
@@ -150,34 +190,45 @@ def delete(id):
         flash(f'Cannot delete branch "{branch.name}" because it has {branch.users.count()} assigned user(s). Please reassign users first.', 'error')
         return redirect(url_for('branches.list_branches'))
 
-    # TEMPORARILY DISABLED ERROR HANDLING FOR DEBUGGING - See full stack trace
-    # try:
-    branch_name = branch.name
+    # Check if branch still owns transactional data. Nothing below the app layer
+    # will stop this: SQLite FK enforcement is OFF app-wide and branch_id is
+    # nullable on every owning model, so the delete would succeed and leave the
+    # rows orphaned -- invisible to every branch-scoped query while still sitting
+    # in the tables.
+    dependents = branch_dependent_counts(branch.id)
+    if dependents:
+        summary = ', '.join(f'{n} {label}' for label, n in dependents)
+        flash(f'Cannot delete branch "{branch.name}" because it still owns {summary}. '
+              f'Set the branch inactive instead.', 'error')
+        return redirect(url_for('branches.list_branches'))
 
-    # Capture branch data before deletion
-    old_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
-    branch_id = branch.id
-    branch_identifier = f'{branch.code} - {branch.name}'
+    try:
+        branch_name = branch.name
 
-    db.session.delete(branch)
-    db.session.commit()
+        # Capture branch data before deletion
+        old_values = model_to_dict(branch, ['code', 'name', 'address', 'phone', 'email', 'is_active'])
+        branch_id = branch.id
+        branch_identifier = f'{branch.code} - {branch.name}'
 
-    # Audit log for branch deletion
-    log_delete(
-        module='branch',
-        record_id=branch_id,
-        record_identifier=branch_identifier,
-        old_values=old_values
-    )
+        db.session.delete(branch)
+        db.session.commit()
 
-    flash(f'Branch "{branch_name}" deleted successfully!', 'success')
-    # except Exception as e:
-    #     from flask import current_app
-    #     from app.errors.utils import log_exception
-    #     current_app.logger.error(f"Error deleting branch", exc_info=True)
-    #     log_exception(e, severity='ERROR', module='branches.delete')
-    #     db.session.rollback()
-    #     flash(f'Error deleting branch: {str(e)}', 'error')
+        # Audit log for branch deletion
+        log_delete(
+            module='branch',
+            record_id=branch_id,
+            record_identifier=branch_identifier,
+            old_values=old_values
+        )
+
+        flash(f'Branch "{branch_name}" deleted successfully!', 'success')
+    except Exception as e:
+        from flask import current_app
+        from app.errors.utils import log_exception
+        current_app.logger.error('Error deleting branch', exc_info=True)
+        log_exception(e, severity='ERROR', module='branches.delete')
+        db.session.rollback()
+        flash('An error occurred while deleting the branch. Please try again.', 'error')
 
     return redirect(url_for('branches.list_branches'))
 
