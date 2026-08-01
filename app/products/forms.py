@@ -11,6 +11,7 @@ _COSTING_METHOD_CHOICES = [('', '— None —')] + [(m, m.replace('_', ' ').titl
 class ProductForm(FlaskForm):
     code = StringField('Code', validators=[DataRequired(message='Code is required.'),
                                            Length(max=50)])
+    customer_code = StringField("Customer's Product Code", validators=[Optional(), Length(max=50)])
     name = StringField('Name', validators=[DataRequired(message='Name is required.'),
                                            Length(max=200)])
     description = TextAreaField('Description', validators=[Optional()])

@@ -85,3 +85,36 @@ def test_has_journal_entry_id_column_and_relationship(db_session):
 def test_post_delivery_je_stub_removed():
     import app.delivery_receipts.models as m
     assert not hasattr(m, 'post_delivery_je')
+
+
+def test_packing_and_schedule_notes_default_none_and_round_trip(db_session, main_branch):
+    so, li = _so_with_line(db_session, main_branch.id)
+    dr = _dr(db_session, so, li, main_branch.id, '5', 'draft')
+    assert dr.packing_notes is None
+    assert dr.schedule_notes is None
+
+    dr.packing_notes = '350 BAGS X 20 PCS = 7,000 PCS\n175 BAGS X 40 PCS = 7,000 PCS'
+    dr.schedule_notes = 'BO: JULY 16 - 17, 2026\nCO: JULY 23 - 24, 2026'
+    db.session.commit()
+
+    reloaded = db.session.get(DeliveryReceipt, dr.id)
+    assert reloaded.packing_notes == '350 BAGS X 20 PCS = 7,000 PCS\n175 BAGS X 40 PCS = 7,000 PCS'
+    assert reloaded.schedule_notes == 'BO: JULY 16 - 17, 2026\nCO: JULY 23 - 24, 2026'
+
+
+def test_carrier_checked_by_approved_by_default_none_and_round_trip(db_session, main_branch):
+    so, li = _so_with_line(db_session, main_branch.id)
+    dr = _dr(db_session, so, li, main_branch.id, '5', 'draft')
+    assert dr.carrier is None
+    assert dr.checked_by is None
+    assert dr.approved_by is None
+
+    dr.carrier = 'CCK 3631'
+    dr.checked_by = 'WARLITO FUENTES'
+    dr.approved_by = 'DENNIS M. GALANG'
+    db.session.commit()
+
+    reloaded = db.session.get(DeliveryReceipt, dr.id)
+    assert reloaded.carrier == 'CCK 3631'
+    assert reloaded.checked_by == 'WARLITO FUENTES'
+    assert reloaded.approved_by == 'DENNIS M. GALANG'

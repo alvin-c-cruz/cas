@@ -11,6 +11,7 @@ from app.units_of_measure.models import UnitOfMeasure
 from app.products.models import Product
 from app.sales_orders.models import SalesOrder, SalesOrderItem
 from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
+from app.withholding_tax.models import WithholdingTax
 
 pytestmark = [pytest.mark.integration, pytest.mark.sales_invoices]
 
@@ -20,7 +21,7 @@ def _login(client, u):
         s['_user_id'] = str(u.id); s['_fresh'] = True
 
 
-def _setup(client, admin_user, main_branch):
+def _setup(client, admin_user, main_branch, wt_id=None):
     rev = Account(code='40101', name='Sales - Goods', account_type='Income',
                   classification='General', normal_balance='Credit')
     pc = UnitOfMeasure(code='PC', name='Piece', is_active=True)
@@ -33,7 +34,7 @@ def _setup(client, admin_user, main_branch):
                     customer_name='Acme', branch_id=main_branch.id, status='confirmed')
     soi = SalesOrderItem(line_number=1, product_id=p.id, quantity=Decimal('10'),
                          unit_price=Decimal('100'), unit_of_measure_id=pc.id,
-                         vat_category='V12', vat_rate=Decimal('12'))
+                         vat_category='V12', vat_rate=Decimal('12'), wt_id=wt_id)
     soi.calculate_amounts(); so.line_items.append(soi)
     db.session.add(so); db.session.commit()
     _login(client, admin_user)
@@ -81,3 +82,79 @@ def test_billable_drs_excludes_billed_and_other_customer(client, db_session, adm
     _dr(main_branch, c2, p, soi, 'DR-4', status='delivered')                   # other customer
     resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
     assert [d['dr_number'] for d in resp.get_json()['drs']] == ['DR-1']
+
+
+def test_billable_drs_includes_source_so_line_wt_id(client, db_session, admin_user, main_branch):
+    """The Pull-DR JSON payload must carry each line's source SO-item wt_id, so the SI form
+    can default the WT picker from it (falls back to customer default when the SO line has
+    none -- that fallback is existing SI-side JS behavior, exercised by the sibling test
+    below only insofar as this endpoint must emit None, not re-tested past this endpoint)."""
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db.session.add(wt); db.session.commit()
+    c, p, so, soi, rev = _setup(client, admin_user, main_branch, wt_id=wt.id)
+    _dr(main_branch, c, p, soi, 'DR-1')
+    resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['drs'][0]['lines'][0]['wt_id'] == wt.id
+
+
+def test_billable_drs_wt_id_none_when_so_line_has_no_wt(client, db_session, admin_user, main_branch):
+    """When the source SO line has no wt_id set, the DR line's wt_id must be None (not
+    omitted, not defaulted here) so the SI-side JS falls back to the customer default WT,
+    unchanged from today's behavior."""
+    c, p, so, soi, rev = _setup(client, admin_user, main_branch, wt_id=None)
+    _dr(main_branch, c, p, soi, 'DR-1')
+    resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['drs'][0]['lines'][0]['wt_id'] is None
+
+
+def test_billable_drs_includes_source_so_line_wt_rate(client, db_session, admin_user, main_branch):
+    """Regression for the whole-branch-review finding: the Pull-DR payload must carry the
+    RATE alongside the wt_id, not just the id. Without the rate, si_dr_billing.js's pull()
+    has no way to populate the pulled line's wt_rate, and the SI form's calculateTotals()
+    gates WHT accrual entirely on item.wt_rate being truthy -- so the on-screen "Less:
+    Withholding Tax" preview shows P0 for a pulled line even though wt_id (and therefore
+    the WT code shown in the picker) is correctly populated. The saved SI recomputes the
+    rate server-side from wt_id, so this bug is purely a client-preview mismatch -- but
+    this endpoint is the one place that must supply the rate for the client to use."""
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db.session.add(wt); db.session.commit()
+    c, p, so, soi, rev = _setup(client, admin_user, main_branch, wt_id=wt.id)
+    _dr(main_branch, c, p, soi, 'DR-1')
+    resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    line = data['drs'][0]['lines'][0]
+    assert line['wt_id'] == wt.id
+    assert line['wt_rate'] == float(wt.rate)   # the actual rate, not None -- this is the fix
+
+
+def test_billable_drs_wt_rate_none_when_so_line_has_no_wt(client, db_session, admin_user, main_branch):
+    """No wt_id on the source SO line -> wt_rate must also be None, not 0 or omitted."""
+    c, p, so, soi, rev = _setup(client, admin_user, main_branch, wt_id=None)
+    _dr(main_branch, c, p, soi, 'DR-1')
+    resp = client.get(f'/sales-invoices/billable-drs?customer_id={c.id}')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data['drs'][0]['lines'][0]['wt_rate'] is None
+
+
+def test_si_dr_billing_js_pull_passes_through_wt_rate():
+    """Source-level regression guard for the JS half of the fix: pull() must forward
+    ln.wt_rate from the billable-drs payload, not hardcode wt_rate: null -- otherwise the
+    endpoint carrying the real rate (proven above) is useless, since addLineItem()'s
+    existingItem branch only takes what pull() gives it."""
+    import pathlib
+    js_path = (pathlib.Path(__file__).resolve().parents[2]
+              / 'app' / 'static' / 'js' / 'si_dr_billing.js')
+    text = js_path.read_text(encoding='utf-8')
+    assert 'wt_rate: null' not in text, (
+        'pull() must no longer hardcode wt_rate to null -- it must forward ln.wt_rate '
+        'from the billable-drs payload')
+    assert 'ln.wt_rate' in text, (
+        'pull() must reference ln.wt_rate so the fetched rate reaches addLineItem()')

@@ -20,6 +20,11 @@ class Product(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    # The CUSTOMER's own code for this product (e.g. their SKU/article number) --
+    # distinct from `code` above (this product's own internal CAS code). Optional,
+    # not unique: legacy data shows it's usually only set for customer-dedicated
+    # SKUs, and different customers may coincidentally reuse a short numeric code.
+    customer_code = db.Column(db.String(50), nullable=True)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
     job_order_name = db.Column(db.String(200), nullable=True)
@@ -45,7 +50,8 @@ class Product(db.Model):
 
     def to_dict(self):
         return {
-            'id': self.id, 'code': self.code, 'name': self.name,
+            'id': self.id, 'code': self.code, 'customer_code': self.customer_code,
+            'name': self.name,
             'description': self.description,
             'job_order_name': self.job_order_name,
             'default_uom_id': self.default_unit_of_measure_id,

@@ -118,6 +118,18 @@ MODULE_REGISTRY = [
     {'key': 'ar_aging', 'label': 'Aging of AR', 'section': 'Ledger',
      'area': 'Sales', 'group': 'Reports',
      'endpoints': ('reports.ar_aging', 'reports.ar_aging_export_excel', 'reports.ar_aging_export_csv')},
+    # Combined all-branches variant. Its own key because it deliberately exposes
+    # OTHER branches' figures to a branch-restricted user (only drill-down is
+    # blocked), which is a strictly wider disclosure than 'ar_aging' -- so it
+    # must be withholdable without also withholding the per-branch report.
+    # Non-optional, matching its ar_aging sibling: admin/CA always granted;
+    # existing accountant/staff/viewer denied because the key is absent from
+    # their stored book_permissions and can_access_module ends in
+    # .get(key, False), so no migration or backfill is needed.
+    {'key': 'ar_aging_combined', 'label': 'Aging of AR (All Branches)', 'section': 'Ledger',
+     'area': 'Sales', 'group': 'Reports',
+     'endpoints': ('reports.ar_aging_combined', 'reports.ar_aging_combined_export_excel',
+                   'reports.ar_aging_combined_export_csv')},
     {'key': 'statement_of_account', 'label': 'Statement of Account', 'section': 'Ledger',
      'area': 'Sales', 'group': 'Reports',
      'endpoints': ('reports.statement_of_account', 'reports.statement_of_account_print',

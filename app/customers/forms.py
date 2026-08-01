@@ -61,6 +61,11 @@ class CustomerForm(FlaskForm):
         Length(max=20, message='Postal code must be 20 characters or less.')
     ])
 
+    vendor_code = StringField("Customer's Code for Us", validators=[
+        Optional(),
+        Length(max=50, message='Vendor code must be 50 characters or less.')
+    ])
+
     default_vat_category = SelectField('Registration Type', choices=[], validators=[Optional()])
 
     default_wt_code = SelectField('Withholding Tax', choices=[], validators=[Optional()])

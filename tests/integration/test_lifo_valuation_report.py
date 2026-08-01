@@ -67,7 +67,14 @@ def test_lifo_valuation_report_ambiguous_branch_does_not_silently_pick_one(
     resp = client.get(f'/reports/lifo-valuation?product_id={product.id}')  # no branch_id
     assert resp.status_code == 200
     assert b'9.99' not in resp.data  # branch_main's layer must NOT silently appear
-    assert b'All Branches' not in resp.data  # the old, misleading label must be gone
+    # Scope the "All Branches" check to the report's OWN rendered markup, not the whole
+    # page: base.html's sidebar (rendered before {% block content %}) carries an unrelated
+    # nav item literally labeled "Aging of AR (All Branches)" (app/users/module_access.py),
+    # which otherwise false-trips a whole-body absence check on every page, including this
+    # one. `id="lifo-valuation"` opens Tab 1's markup -- the exact region where the old bug
+    # mislabeled the ambiguous-branch result -- so slice from there before asserting.
+    report_html = resp.data[resp.data.index(b'id="lifo-valuation"'):]
+    assert b'All Branches' not in report_html  # the old, misleading label must be gone
     assert b'Select a specific branch' in resp.data
 
 

@@ -134,20 +134,65 @@ class SalesInvoice(RowVersioned, db.Model):
 
     def calculate_totals(self):
         subtotal = Decimal('0.00')
-        auto_vat = Decimal('0.00')
-        auto_wt = Decimal('0.00')
         for item in self.line_items:
             subtotal += Decimal(str(item.line_total))
-            auto_vat += Decimal(str(item.vat_amount or 0))
-            auto_wt += Decimal(str(item.wt_amount or 0))
         self.subtotal = subtotal
+
+        auto_vat, auto_wt = self._grouped_tax_totals()
         if not self.vat_override:
             self.vat_amount = auto_vat
         if not self.wt_override:
             self.withholding_tax_amount = auto_wt
+
         self.total_before_wt = self.subtotal
         self.total_amount = self.subtotal - Decimal(str(self.withholding_tax_amount))
         self.balance = self.total_amount - Decimal(str(self.amount_paid))
+
+    def _grouped_tax_totals(self):
+        """VAT and WHT, each rounded ONCE per (vat_category, vat_rate, wt_id,
+        wt_rate) group -- not per line then summed. Per-line rounding can drift
+        +/-0.01 from the standard single invoice-level rounding on a multi-line
+        invoice (each line's own extraction rounds independently); grouping by
+        the tax attributes that actually vary reduces to exactly that single
+        rounding for the common case (every line shares one VAT category and
+        WHT code) while staying correct for a genuinely mixed-category invoice.
+        Confirmed real, RIC SI 34043, 2026-07-29: legacy computes VAT once on
+        the whole invoice total, CAS's old per-line sum was off by 0.01.
+
+        item.vat_amount / item.wt_amount (set by SalesInvoiceItem.calculate_
+        amounts()) are intentionally left as their independent per-line values
+        -- they only feed output_vat_buckets()'s bucket WEIGHTS and _post_
+        invoice_je()'s per-line revenue net-base, both of which already
+        reconcile/absorb any rounding residual against this header total
+        (reconcile_buckets_to_total's largest-bucket rule; _post_invoice_je's
+        "absorb rounding residual into first revenue line"), so they don't
+        need to be rewritten to match this grouped total line-by-line.
+        """
+        from collections import OrderedDict
+        groups = OrderedDict()
+        for item in self.line_items:
+            key = (item.vat_category, str(item.vat_rate or 0), item.wt_id, str(item.wt_rate or 0))
+            groups[key] = groups.get(key, Decimal('0.00')) + Decimal(str(item.line_total))
+
+        total_vat = Decimal('0.00')
+        total_wt = Decimal('0.00')
+        for (vat_category, vat_rate_str, wt_id, wt_rate_str), amount in groups.items():
+            vat_rate = Decimal(vat_rate_str)
+            if vat_rate > 0:
+                net = (amount / (1 + vat_rate / Decimal('100'))).quantize(
+                    Decimal('0.01'), rounding='ROUND_HALF_UP')
+                group_vat = amount - net
+            else:
+                group_vat = Decimal('0.00')
+            total_vat += group_vat
+
+            wt_rate = Decimal(wt_rate_str)
+            if wt_id and wt_rate > 0:
+                net_of_vat = amount - group_vat
+                total_wt += (net_of_vat * wt_rate / Decimal('100')).quantize(
+                    Decimal('0.01'), rounding='ROUND_HALF_UP')
+
+        return total_vat, total_wt
 
     def to_dict(self):
         """Convert invoice to dictionary for JSON serialization."""

@@ -107,6 +107,22 @@ def _get_invoice_or_404(id):
     return invoice
 
 
+def _get_invoice_for_view(id):
+    """Read-only lookup: any branch the user can ACCESS, not just the selected one.
+
+    The combined AR aging report links to invoices across branches, so viewing
+    cannot be tied to session['selected_branch_id']. Deliberately separate from
+    _get_invoice_or_404 -- edit/post/void/cancel keep the strict selected-branch
+    guard, so a user can read an off-branch document but never mutate one.
+    """
+    from app.users.utils import get_accessible_branches
+    invoice = db.get_or_404(SalesInvoice, id)
+    accessible = {b.id for b in get_accessible_branches(current_user)}
+    if invoice.branch_id not in accessible:
+        abort(404)
+    return invoice
+
+
 def _get_all_accounts_for_select():
     """Full COA for Choices.js account picker — groups marked non-selectable."""
     all_accts = Account.query.filter_by(is_active=True).order_by(Account.code).all()
@@ -615,6 +631,9 @@ def billable_drs():
                 'uom_display': (soi.unit_of_measure.code if soi and soi.unit_of_measure else None),
                 'vat_category': soi.vat_category if soi else None,
                 'vat_rate': float(soi.vat_rate) if soi and soi.vat_rate is not None else 0.0,
+                'wt_id': (soi.wt_id if soi else None),
+                'wt_rate': (float(soi.withholding_tax.rate)
+                            if (soi and soi.withholding_tax) else None),
                 'account_id': (product.default_account_id if product else None),
             })
         out.append({'id': dr.id, 'dr_number': dr.dr_number,
@@ -1210,7 +1229,8 @@ def _crv_settlements(invoice):
 @sales_invoices_bp.route('/sales-invoices/<int:id>')
 @login_required
 def view(id):
-    invoice = _get_invoice_or_404(id)
+    invoice = _get_invoice_for_view(id)
+    can_modify = invoice.branch_id == session.get('selected_branch_id')
     je_entries = _build_je_preview(invoice)
     sv_print_access = AppSettings.get_setting('sv_print_access', 'posted_only')
     sv_print_form = AppSettings.get_setting('sv_print_form', 'current')
@@ -1221,7 +1241,7 @@ def view(id):
     return render_template('sales_invoices/detail.html', invoice=invoice,
                            je_entries=je_entries, sv_print_access=sv_print_access,
                            sv_print_form=sv_print_form, payments=payments,
-                           source_drs=source_drs)
+                           source_drs=source_drs, can_modify=can_modify)
 
 
 @sales_invoices_bp.route('/sales-invoices/<int:id>/post', methods=['POST'])
@@ -1364,7 +1384,10 @@ def void(id):
 @sales_invoices_bp.route('/sales-invoices/<int:id>/print')
 @login_required
 def print_invoice(id):
-    invoice = _get_invoice_or_404(id)
+    # Read-only: follows branch ACCESS like `view`, not the selected branch --
+    # otherwise the detail page's unconditional Print link 404s for an off-branch
+    # invoice the user is legitimately viewing. See _get_invoice_for_view.
+    invoice = _get_invoice_for_view(id)
 
     sv_print_form = AppSettings.get_setting('sv_print_form', 'current')
     # 'hidden' turns SI printing off entirely: refuse the route, not just the button.
@@ -1395,10 +1418,24 @@ def print_invoice(id):
     # 'preprinted' -> drag-positioned data-only layout for physical pre-printed
     # stock; else the standard self-contained printable form.
     if sv_print_form == 'preprinted':
+        # save_print_layout is branchless -- it has no invoice id and persists
+        # under session['selected_branch_id']. print_invoice now follows branch
+        # ACCESS (any branch the user can view), not the selected branch, so a
+        # full-access user can open an off-branch invoice's print page. Editing
+        # the layout there would silently write it under the WRONG (selected)
+        # branch's key. Layout EDITING therefore additionally requires the
+        # invoice's branch to be the currently selected one; viewing/printing
+        # is unaffected. This is a render-time UI convenience gate only -- the
+        # actual protection is server-side in save_print_layout, which checks
+        # the invoice branch id the designer echoes back in the POST body
+        # against session['selected_branch_id'] at SAVE time (catches the
+        # selected branch changing between this render and that POST).
+        can_edit_layout = (current_user.has_full_access
+                           and invoice.branch_id == session.get('selected_branch_id'))
         return render_template(
             'sales_invoices/print_preprinted.html', invoice=invoice,
             je_entries=je_entries, company=company, printed_at=ph_now(),
-            layout=get_layout(invoice.branch_id), can_edit_layout=current_user.has_full_access,
+            layout=get_layout(invoice.branch_id), can_edit_layout=can_edit_layout,
             col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
             paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
             date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
@@ -1415,9 +1452,27 @@ def save_print_layout():
     if not current_user.has_full_access:
         abort(403)
     data = request.get_json(silent=True) or {}
-    # The layout is per-branch; viewing the print page requires the selected branch
-    # to equal the document's branch (_get_invoice_or_404), so the session branch is
-    # the document's branch.
+    # The layout is per-branch, keyed on session['selected_branch_id']. This route
+    # is branchless (no invoice id in the URL) and print_invoice now follows branch
+    # ACCESS rather than the selected branch, so the invoice being edited is NOT
+    # guaranteed to be in the selected branch. print_preprinted.html stamps the
+    # invoice's own branch id onto <body data-invoice-branch-id> (render_time), and
+    # the designer JS echoes it back as `branchId` in the POST body (see
+    # sv_preprinted_designer.js::collect()). That is a second, SERVER-SIDE check
+    # here -- not just the render-time can_edit_layout UI gate in print_invoice,
+    # which only decides whether to show the designer at render time and cannot
+    # catch the selected branch changing (e.g. a second tab) between render and
+    # this POST. A `branchId` present in the payload that disagrees with the
+    # CURRENT session['selected_branch_id'] is refused outright, before writing.
+    # A payload with no `branchId` at all (an older cached designer page, from
+    # before this field existed) is treated as making no branch claim and falls
+    # back to the pre-fix behavior -- write under the selected branch's key --
+    # rather than breaking that legitimate stale client; the case this closes is
+    # a PRESENT but WRONG branch id.
+    submitted_branch_id = data.get('branchId')
+    if submitted_branch_id is not None and submitted_branch_id != session.get('selected_branch_id'):
+        return jsonify(ok=False, error='Selected branch changed; layout not saved. '
+                       'Reopen the print page and try again.'), 409
     clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
     return jsonify(ok=True, layout=clean)
 
@@ -1473,7 +1528,9 @@ def upload_attachment(id):
 @login_required
 def download_attachment(attachment_id):
     attachment = db.get_or_404(SalesInvoiceAttachment, attachment_id)
-    invoice = _get_invoice_or_404(attachment.invoice_id)
+    # Read-only: follows branch ACCESS like `view` (see _get_invoice_for_view) --
+    # the detail page's attachment links are not gated on the selected branch.
+    invoice = _get_invoice_for_view(attachment.invoice_id)
     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
                              str(invoice.id), attachment.stored_filename)
     if not os.path.isfile(file_path):
@@ -1491,7 +1548,9 @@ def preview_attachment(attachment_id):
     attachment = db.get_or_404(SalesInvoiceAttachment, attachment_id)
     if not attachment.is_image:
         abort(404)
-    invoice = _get_invoice_or_404(attachment.invoice_id)
+    # Read-only: follows branch ACCESS like `view` (see _get_invoice_for_view) --
+    # the detail page's <img> preview is not gated on the selected branch.
+    invoice = _get_invoice_for_view(attachment.invoice_id)
     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'sales_invoices',
                              str(invoice.id), attachment.stored_filename)
     if not os.path.isfile(file_path):

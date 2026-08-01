@@ -64,6 +64,7 @@ def create():
     if form.validate_on_submit():
         p = Product(
             code=form.code.data.strip(),
+            customer_code=(form.customer_code.data or '').strip() or None,
             name=form.name.data.strip(),
             description=(form.description.data or '').strip() or None,
             job_order_name=(form.job_order_name.data or '').strip() or None,
@@ -117,6 +118,7 @@ def edit(id):
     if form.validate_on_submit():
         old = p.to_dict()
         p.code = form.code.data.strip()
+        p.customer_code = (form.customer_code.data or '').strip() or None
         p.name = form.name.data.strip()
         p.description = (form.description.data or '').strip() or None
         p.job_order_name = (form.job_order_name.data or '').strip() or None

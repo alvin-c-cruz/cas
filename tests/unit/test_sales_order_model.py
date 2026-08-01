@@ -32,7 +32,9 @@ def test_item_to_dict_has_p56_keys_no_account():
     for k in ('quantity', 'unit_price', 'uom_text', 'unit_of_measure_id', 'uom_display',
               'product_id', 'product_code', 'product_name'):
         assert k in d
-    assert 'account_id' not in d and 'wt_id' not in d
+    # wt_id is now present (Task 3: informational WHT hint) -- only account_id stays absent,
+    # since an SO still posts no journal entry / has no GL account.
+    assert 'account_id' not in d
     assert 'description' not in d
 
 
@@ -96,3 +98,150 @@ def test_item_to_dict_delivery_date_isoformat_and_site_name_via_relationship(db_
     assert d['delivery_date'] == '2026-08-01'
     assert d['delivery_site_id'] == site.id
     assert d['delivery_site_name'] == 'Main Warehouse'
+
+
+def test_sales_order_item_wt_id_round_trips(db_session):
+    from app.withholding_tax.models import WithholdingTax
+    wt = WithholdingTax(code='WC160', name='Goods - Individual', sales_name='Goods - Individual',
+                        rate=Decimal('1.00'), is_active=True, tax_type='expanded')
+    db_session.add(wt); db_session.commit()
+
+    from app.customers.models import Customer
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    c = Customer(code='WTC01', name='WT Customer', is_active=True)
+    uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+    db_session.add_all([c, uom]); db_session.commit()
+    p = Product(code='WTP01', name='WT Product', default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('100.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+
+    so = SalesOrder(branch_id=None, so_number='SO-WT-0001', order_date=date(2026, 7, 28),
+                    customer_id=c.id, customer_name=c.name, status='draft')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('1'), unit_price=Decimal('100.00'),
+                        product_id=p.id, amount=Decimal('100.00'), wt_id=wt.id)
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    fetched = SalesOrderItem.query.filter_by(sales_order_id=so.id).first()
+    assert fetched.wt_id == wt.id
+    assert fetched.withholding_tax.code == 'WC160'
+    d = fetched.to_dict()
+    assert d['wt_id'] == wt.id
+    assert d['wt_code'] == 'WC160'
+
+
+def test_sales_order_item_line_status_defaults_open(db_session):
+    from app.customers.models import Customer
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    c = Customer(code='LSC01', name='Line Status Customer', is_active=True)
+    uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+    db_session.add_all([c, uom]); db_session.commit()
+    p = Product(code='LSP01', name='Line Status Product', default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('10.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+
+    so = SalesOrder(branch_id=None, so_number='SO-LS-0001', order_date=date(2026, 7, 28),
+                    customer_id=c.id, customer_name=c.name, status='confirmed')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    fetched = SalesOrderItem.query.filter_by(sales_order_id=so.id).first()
+    assert fetched.line_status == 'open'
+    assert fetched.closed_by_id is None
+    assert fetched.closed_at is None
+    assert fetched.closed_reason is None
+
+
+def test_sales_order_item_closed_fields_round_trip(db_session, admin_user):
+    from app.customers.models import Customer
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    from app.utils import ph_now
+    c = Customer(code='LSC02', name='Line Close Customer', is_active=True)
+    uom = UnitOfMeasure(code='box', name='Box', is_active=True)
+    db_session.add_all([c, uom]); db_session.commit()
+    p = Product(code='LSP02', name='Line Close Product', default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('25.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+
+    so = SalesOrder(branch_id=None, so_number='SO-LS-0002', order_date=date(2026, 7, 28),
+                    customer_id=c.id, customer_name=c.name, status='confirmed')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('5'), unit_price=Decimal('25.00'),
+                        product_id=p.id, amount=Decimal('125.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    closed_ts = ph_now()
+    li.line_status = 'closed'
+    li.closed_by_id = admin_user.id
+    li.closed_at = closed_ts
+    li.closed_reason = 'Customer cancelled remaining balance'
+    db_session.commit()
+    db_session.expire_all()
+
+    fetched = SalesOrderItem.query.filter_by(sales_order_id=so.id).first()
+    assert fetched.line_status == 'closed'
+    assert fetched.closed_by_id == admin_user.id
+    assert fetched.closed_at is not None
+    assert fetched.closed_at.isoformat()[:19] == closed_ts.isoformat()[:19]
+    assert fetched.closed_reason == 'Customer cancelled remaining balance'
+
+    d = fetched.to_dict()
+    assert d['line_status'] == 'closed'
+    assert d['closed_reason'] == 'Customer cancelled remaining balance'
+
+
+def test_so_line_open_qty_zero_when_line_closed(db_session):
+    from app.delivery_receipts.models import so_line_open_qty
+    from app.customers.models import Customer
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    c = Customer(code='OQ01', name='Open Qty Customer', is_active=True)
+    uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+    db_session.add_all([c, uom]); db_session.commit()
+    p = Product(code='OQP01', name='Open Qty Product', default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('10.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+
+    so = SalesOrder(branch_id=None, so_number='SO-OQ-0001', order_date=date(2026, 7, 28),
+                    customer_id=c.id, customer_name=c.name, status='confirmed')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    assert so_line_open_qty(li) == Decimal('10')
+    li.line_status = 'closed'
+    db_session.commit()
+    assert so_line_open_qty(li) == Decimal('0')
+
+
+def test_so_line_open_qty_zero_when_parent_so_cancelled(db_session):
+    from app.delivery_receipts.models import so_line_open_qty
+    from app.customers.models import Customer
+    from app.products.models import Product
+    from app.units_of_measure.models import UnitOfMeasure
+    c = Customer(code='OQ02', name='Open Qty Customer 2', is_active=True)
+    uom = UnitOfMeasure(code='pcs', name='Pieces', is_active=True)
+    db_session.add_all([c, uom]); db_session.commit()
+    p = Product(code='OQP02', name='Open Qty Product 2', default_unit_of_measure_id=uom.id,
+                default_unit_price=Decimal('10.00'), is_active=True)
+    db_session.add(p); db_session.commit()
+
+    so = SalesOrder(branch_id=None, so_number='SO-OQ-0002', order_date=date(2026, 7, 28),
+                    customer_id=c.id, customer_name=c.name, status='cancelled')
+    li = SalesOrderItem(line_number=1, quantity=Decimal('10'), unit_price=Decimal('10.00'),
+                        product_id=p.id, amount=Decimal('100.00'))
+    li.calculate_amounts()
+    so.line_items.append(li)
+    db_session.add(so); db_session.commit()
+
+    assert so_line_open_qty(li) == Decimal('0')

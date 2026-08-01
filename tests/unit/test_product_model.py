@@ -37,3 +37,15 @@ def test_product_job_order_name_optional_and_in_dict(db_session):
     db.session.add(p2); db.session.commit()
     assert p2.job_order_name == 'WGT-B-PROD'
     assert p2.to_dict()['job_order_name'] == 'WGT-B-PROD'
+
+
+def test_customer_code_optional_and_in_dict(db_session):
+    p1 = Product(code='CC-1', name='Widget A', is_active=True)
+    db.session.add(p1); db.session.commit()
+    assert p1.customer_code is None
+    assert p1.to_dict()['customer_code'] is None
+
+    p2 = Product(code='CC-2', name='Widget B', customer_code='220176', is_active=True)
+    db.session.add(p2); db.session.commit()
+    assert p2.customer_code == '220176'
+    assert p2.to_dict()['customer_code'] == '220176'

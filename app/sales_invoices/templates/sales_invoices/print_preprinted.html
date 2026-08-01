@@ -52,7 +52,7 @@
 </style>
 <style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
 </head>
-<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
+<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}" data-invoice-branch-id="{{ invoice.branch_id }}">
 
 {% macro field(key, value, iso='') %}
   {% set f = layout.fields[key] %}
@@ -155,7 +155,7 @@
 </div>
 
 {% if can_edit_layout %}
-<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=25"></script>
+<script src="{{ url_for('static', filename='js/sv_preprinted_designer.js') }}?v=27"></script>
 {% endif %}
 </body>
 </html>

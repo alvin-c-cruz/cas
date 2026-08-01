@@ -90,6 +90,21 @@ class SalesOrderItem(db.Model):
     product = db.relationship('Product')
     vat_category = db.Column(db.String(100))
     vat_rate = db.Column(db.Numeric(5, 2), default=0.00, nullable=False)
+
+    # Informational only -- SalesOrder posts no WHT (see module docstring). This is a
+    # per-line hint that cascades as a DEFAULT into the Sales Invoice line created via
+    # Pull-DR (Task 6); it never affects this SO's own totals/status.
+    wt_id = db.Column(db.Integer, db.ForeignKey('withholding_tax.id'), nullable=True)
+    withholding_tax = db.relationship('WithholdingTax', foreign_keys=[wt_id])
+
+    # Per-line close (independent of the header-level cancel): marks this line's
+    # remaining quantity as no longer expected to deliver, without rewriting the
+    # original quantity or any delivery history. See close_line() in views.py.
+    line_status = db.Column(db.String(20), nullable=False, default='open', server_default='open')
+    closed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    closed_reason = db.Column(db.String(500), nullable=True)
+
     line_total = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
     vat_amount = db.Column(db.Numeric(15, 2), default=0.00, nullable=False)
 
@@ -129,6 +144,10 @@ class SalesOrderItem(db.Model):
             'product_name': self.product.name if self.product else None,
             'vat_category': self.vat_category,
             'vat_rate': float(self.vat_rate) if self.vat_rate is not None else 0.0,
+            'wt_id': self.wt_id,
+            'wt_code': self.withholding_tax.code if self.withholding_tax else None,
+            'line_status': self.line_status,
+            'closed_reason': self.closed_reason,
             'delivery_date': self.delivery_date.isoformat() if self.delivery_date else None,
             'delivery_site_id': self.delivery_site_id,
             'delivery_site_name': self.delivery_site.name if self.delivery_site else None,

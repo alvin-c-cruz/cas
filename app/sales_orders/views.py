@@ -13,6 +13,7 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.sales_orders.models import SalesOrder, SalesOrderItem
+from app.branches.models import Branch
 from app.sales_orders.forms import SalesOrderForm
 from app.customers.models import Customer, CustomerDeliverySite
 from app.customers.views import build_customer_quick_add_form
@@ -99,6 +100,7 @@ def _parse_and_attach_so_lines(so, lines_json):
             amount=amount,
             vat_category=d.get('vat_category') or None,
             vat_rate=vat_rate,
+            wt_id=_int(d.get('wt_id')),
             delivery_date=_date(d.get('delivery_date')),
             delivery_site_id=_delivery_site_id(d.get('delivery_site_id')),
         )
@@ -106,19 +108,37 @@ def _parse_and_attach_so_lines(so, lines_json):
         so.line_items.append(li)
 
 
-def generate_so_number():
-    """Plain continuous 5-digit sequence: 00001, 00002, ... No prefix, no reset.
+# Per-branch suffix appended to the numeric SO number (owner directive, 2026-07-29).
+# CORP is the default/no-suffix branch; any branch not listed here also gets no suffix.
+SO_NUMBER_BRANCH_SUFFIX = {'EXTRA': 'E'}
 
-    Mirrors generate_invoice_number's contract exactly. Each SO gets the next
-    number after the highest existing purely-numeric so_number -- this
-    deliberately includes legacy-migrated literal numbers, not just CAS-generated
-    ones. Legacy prefixed numbers (e.g. the old 'SO-2026-07-0030' format) are
-    ignored, so a client transitioning off that format starts cleanly at 00001.
+
+def generate_so_number(branch, order_date):
+    """Next SO number for `branch` in `order_date`'s month: YYYYMM + 4-digit
+    sequence + the branch's suffix (e.g. '2025120001' for CORP, '2025120001E'
+    for EXTRA). The sequence resets every month and is scoped per branch --
+    CORP and EXTRA each start fresh at 0001 independently. Legacy/manually
+    typed numbers that don't match this exact shape are ignored, so they
+    don't perturb the count (mirrors generate_invoice_number's contract of
+    only counting purely-numeric-shaped existing numbers).
     """
-    rows = SalesOrder.query.with_entities(SalesOrder.so_number).all()
-    nums = [int(r[0]) for r in rows if r[0] and r[0].isdigit()]
-    next_num = (max(nums) + 1) if nums else 1
-    return f'{next_num:05d}'
+    yyyymm = f'{order_date.year:04d}{order_date.month:02d}'
+    suffix = SO_NUMBER_BRANCH_SUFFIX.get(branch.code, '')
+    rows = SalesOrder.query.filter(
+        SalesOrder.branch_id == branch.id,
+        SalesOrder.so_number.like(f'{yyyymm}%')
+    ).with_entities(SalesOrder.so_number).all()
+    seqs = []
+    for (num,) in rows:
+        body = num[len(yyyymm):]
+        if suffix:
+            if not body.endswith(suffix):
+                continue
+            body = body[:-len(suffix)]
+        if body.isdigit():
+            seqs.append(int(body))
+    next_seq = (max(seqs) + 1) if seqs else 1
+    return f'{yyyymm}{next_seq:04d}{suffix}'
 
 
 # ── role gate ────────────────────────────────────────────────────────────────
@@ -259,10 +279,14 @@ def list():
     pagination = query.paginate(page=page, per_page=50, error_out=False)
     customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
 
+    from app.sales_orders.utils import compute_sales_orders_summary
+    summary = compute_sales_orders_summary(branch_id)
+
     return render_template('sales_orders/list.html',
                            orders=pagination.items,
                            pagination=pagination,
                            customers=customers,
+                           summary=summary,
                            status_filter=status_filter,
                            customer_filter=customer_filter,
                            q=q_text,
@@ -353,8 +377,9 @@ def create():
             flash('An error occurred while entering the Sales Order. Please try again.', 'error')
 
     if request.method == 'GET':
-        form.so_number.data = generate_so_number()
         form.order_date.data = ph_now().date()
+        branch = db.session.get(Branch, session.get('selected_branch_id'))
+        form.so_number.data = generate_so_number(branch, form.order_date.data)
 
     return render_template('sales_orders/form.html', form=form, so=None,
                            line_items=[], **_common_form_ctx())
@@ -655,4 +680,87 @@ def cancel(id):
     )
 
     flash(f'Sales Order "{so.so_number}" has been cancelled.', 'success')
+    return redirect(url_for('sales_orders.view', id=id))
+
+
+@sales_orders_bp.route('/sales-orders/<int:id>/lines/<int:item_id>/close', methods=['POST'])
+@login_required
+def close_line(id, item_id):
+    """Close ONE line's remaining quantity (independent of the header cancel).
+    Does not touch quantity/amount/delivery history -- so_line_open_qty() reads
+    line_status to report 0 undelivered for this line going forward."""
+    so = db.get_or_404(SalesOrder, id)
+    if so.branch_id != session.get('selected_branch_id'):
+        abort(404)
+    item = db.session.get(SalesOrderItem, item_id)
+    if item is None or item.sales_order_id != so.id:
+        abort(404)
+
+    # Role guard: accountant/admin (mirrors cancel()'s gate exactly)
+    if not (current_user.role == 'accountant' or current_user.has_full_access):
+        flash('You do not have permission to close a Sales Order line.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    # Only a confirmed SO has lines worth closing -- a draft SO's lines are edited
+    # directly, and a cancelled/closed SO's lines are already fully closed via
+    # so_line_open_qty()'s header-status check.
+    if so.status != 'confirmed':
+        flash('Only lines on a confirmed Sales Order can be closed.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    if item.line_status == 'closed':
+        flash('This line is already closed.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    # Note: unlike cancel()'s P-60 billed guard (so.sales_invoice_id), close_line
+    # intentionally does NOT check whether the SO has been billed -- closing a line is
+    # forward-looking (it only blocks further delivery/billing of the line's remaining
+    # open qty) and touches no posted accounting, so it is safe on a billed SO too.
+
+    # Guard: a DRAFT Delivery Receipt already references this line. so_line_open_qty()
+    # returns 0 unconditionally once line_status == 'closed', bypassing the
+    # exclude_dr_id re-check the DR-approve route relies on to stay idempotent -- so
+    # closing here would strand that draft DR, permanently un-approvable with a
+    # misleading "exceeds the open quantity 0" message (there is no un-close route;
+    # recovery would require DB surgery). Refuse the close instead.
+    #
+    # Narrowed to status == 'draft' (not != 'cancelled'): approve() and edit() are the
+    # only call sites that re-check open qty via exclude_dr_id (delivery_receipts/views.py
+    # ~301), and both refuse anything not 'draft'. An approved/delivered/billed DR is
+    # already committed and can never be stranded by closing the line -- and blocking on
+    # those statuses would make short-closing a line after a partial delivery (the
+    # feature's primary use case) unreachable.
+    from app.delivery_receipts.models import DeliveryReceipt, DeliveryReceiptItem
+    draft_dr = (DeliveryReceiptItem.query
+                .join(DeliveryReceipt, DeliveryReceiptItem.delivery_receipt_id == DeliveryReceipt.id)
+                .filter(DeliveryReceiptItem.sales_order_item_id == item.id,
+                        DeliveryReceipt.status == 'draft')
+                .first())
+    if draft_dr is not None:
+        flash('This line has a pending (draft) Delivery Receipt referencing it -- approve '
+              'or cancel that Delivery Receipt before closing the line.', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    closed_reason = request.form.get('closed_reason', '').strip()
+    if len(closed_reason) < 10:
+        flash('Please provide a reason (at least 10 characters).', 'error')
+        return redirect(url_for('sales_orders.view', id=id))
+
+    old_values = {'line_status': item.line_status}
+    item.line_status = 'closed'
+    item.closed_by_id = current_user.id
+    item.closed_at = ph_now()
+    item.closed_reason = closed_reason
+    db.session.commit()
+
+    log_update(
+        module='sales_orders',
+        record_id=so.id,
+        record_identifier=so.so_number,
+        old_values=old_values,
+        new_values={'line_status': item.line_status},
+        notes=f'Line {item.line_number} closed: {closed_reason}',
+    )
+
+    flash(f'Line {item.line_number} of "{so.so_number}" has been closed.', 'success')
     return redirect(url_for('sales_orders.view', id=id))

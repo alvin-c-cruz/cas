@@ -23,7 +23,8 @@
     "default": "cas",
     "instances": {
       "cas": { "file": "cas.db", "resettable": true, "reset_allow": true, "live": false },
-      "ric": { "file": "ric.db", "resettable": false, "reset_allow": false, "live": true }
+      "ric": { "file": "ric.db", "resettable": false, "reset_allow": false, "live": true },
+      "zhiyuan": { "file": "zhiyuan.db", "resettable": false, "reset_allow": false, "live": true }
     },
     "seed_cmd": "flask seed-minimal",
     "migrate_cmd": "flask db upgrade"
@@ -40,7 +41,7 @@
   },
   "_notes": {
     "db_selector": "/run cas -> db.default ('cas' = cas.db). Single local DB. The db-key is the 2nd positional arg to /run; it maps to db.instances.<key>.file. The dev server picks the DB by /run pre-setting env_var (SQLALCHEMY_DATABASE_URI) before launch -- flask_app.py's load_dotenv(override=False) lets the pre-set env win over .env (.env default is also cas.db).",
-    "reset_rule": "reset-database may wipe an instance with resettable:true AND (file matches *_demo.db OR reset_allow:true) AND live!=true. As of 2026-07-06 'cas' (cas.db) is a disposable local TESTING DB, explicitly reset_allow:true. The live!=true guard is ALWAYS hard and reset_allow can never override it. 'ric' (ric.db, added 2026-07-25) is real live RIC migration data -- resettable:false, reset_allow:false, live:true -- /reset-database refuses it unconditionally.",
+    "reset_rule": "reset-database may wipe an instance with resettable:true AND (file matches *_demo.db OR reset_allow:true) AND live!=true. As of 2026-07-06 'cas' (cas.db) is a disposable local TESTING DB, explicitly reset_allow:true. The live!=true guard is ALWAYS hard and reset_allow can never override it. 'ric' (ric.db, added 2026-07-25) is real live RIC migration data -- resettable:false, reset_allow:false, live:true -- /reset-database refuses it unconditionally. 'zhiyuan' (zhiyuan.db, added 2026-07-28) is a persistent local copy of the client's live PA database, pulled via /backup zhiyuan for legacy-data migration work (replacing the earlier throwaway /ui-test sandbox approach) -- same resettable:false, reset_allow:false, live:true guard as ric; it is NOT auto-synced back to the live server, so any migrated data entered here must be pushed live separately (e.g. via /deploy or a manual data transfer) once reviewed.",
     "db_cleanup_20260706": "Consolidated to a single cas.db. cas_demo.db (RIC's ~367-account migrated COA, disposable local copy) was ARCHIVED to C:/envs/_db-archive/cas_demo_RIC-COA_archived-20260706.db (outside all repos; authoritative RIC data lives on PythonAnywhere). cas_demo.savorpack-bak-20260705-170811.db and cas_pitch.db were removed by the user. The 'demo' and 'pitch' instances were dropped from this manifest.",
     "python": "CAS has a venv with pytest + pytest-xdist. zhiyuan has none (PATH python)."
   }

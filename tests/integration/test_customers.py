@@ -151,6 +151,41 @@ def test_customer_create_records_acting_user(
     assert cust.updated_by_id == accountant_user.id
 
 
+def test_customer_create_persists_vendor_code(
+        client, db_session, accountant_user, main_branch):
+    from app.customers.models import Customer
+
+    _login_accountant(client, accountant_user, main_branch)
+    client.post('/customers/create', data={
+        'code': 'C910', 'name': 'MySan Corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'default_vat_category': '', 'default_wt_code': '',
+        'vendor_code': '200100',
+    }, follow_redirects=True)
+
+    cust = Customer.query.filter_by(code='C910').first()
+    assert cust is not None
+    assert cust.vendor_code == '200100'
+
+
+def test_customer_edit_updates_vendor_code(
+        client, db_session, accountant_user, main_branch):
+    from app.customers.models import Customer
+    c = Customer(code='C911', name='Edit VC Corp', payment_terms='Net 30', is_active=True)
+    db_session.add(c)
+    db_session.commit()
+    cid = c.id
+
+    _login_accountant(client, accountant_user, main_branch)
+    client.post(f'/customers/{cid}/edit', data={
+        'code': 'C911', 'name': 'Edit VC Corp', 'payment_terms': 'Net 30',
+        'is_active': '1', 'default_vat_category': '', 'default_wt_code': '',
+        'vendor_code': '300200',
+    }, follow_redirects=True)
+
+    updated = db.session.get(Customer, cid)
+    assert updated.vendor_code == '300200'
+
+
 def test_customer_list_search_filters_server_side(
         client, db_session, accountant_user, main_branch):
     """?q= filters the rows returned by the server, not just client-side JS."""

@@ -52,7 +52,13 @@
                 {{ '{:,.0f}'.format(li.dr_qty) }}
                 {% endif %}
               </td>
-              <td style="text-align:right;">{{ '{:,.0f}'.format(li.undelivered_qty) }}</td>
+              <td style="text-align:right;">
+                {% if li.line_status == 'closed' or so.status in ('cancelled', 'closed') %}
+                <span class="badge badge-secondary" title="{{ li.closed_reason or '' }}">Closed</span>
+                {% else %}
+                {{ '{:,.0f}'.format(li.undelivered_qty) }}
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -101,4 +107,8 @@
     {% endfor %}
   {% endfor %}
 {% endfor %}
+
+<style>
+.badge-secondary { background:var(--text-3); color:white; }
+</style>
 {% endblock %}

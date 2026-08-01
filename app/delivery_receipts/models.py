@@ -29,6 +29,19 @@ class DeliveryReceipt(RowVersioned, db.Model):
 
     status = db.Column(db.String(20), default='draft', nullable=False, index=True)
     remarks = db.Column(db.Text)
+    # Legacy-mirroring free-text blocks (RIC's "Stacking" / "Production Date" textareas):
+    # feed the two multiline fields in the DR pre-printed layout designer. Blank for most
+    # orders; populated per-order by staff when the physical stock needs a packing/lot
+    # breakdown or a BO/CO delivery-window note printed alongside the fixed fields.
+    packing_notes = db.Column(db.Text, nullable=True)
+    schedule_notes = db.Column(db.Text, nullable=True)
+    # Legacy-mirroring per-DR data: the trucking/delivery company, and the names of
+    # who checked/approved this specific delivery -- all printed as plain text on
+    # the pre-printed slip (not signature lines; legacy has no blank-signature
+    # concept here, it prints the actual names/carrier that were on file).
+    carrier = db.Column(db.String(200), nullable=True)
+    checked_by = db.Column(db.String(200), nullable=True)
+    approved_by = db.Column(db.String(200), nullable=True)
 
     salesperson_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True, index=True)
     salesperson = db.relationship('Employee', foreign_keys=[salesperson_id])
@@ -120,7 +133,18 @@ class DeliveryReceiptItem(db.Model):
 def so_line_open_qty(so_item, exclude_dr_id=None):
     """Ordered qty of an SO line minus the qty already committed by non-cancelled,
     non-draft DR lines (statuses in COMMITTED_STATUSES). Pass exclude_dr_id to leave
-    a specific DR out of the sum (used when re-checking the DR being approved)."""
+    a specific DR out of the sum (used when re-checking the DR being approved).
+
+    Returns 0 immediately, skipping the ordered-minus-delivered computation, when
+    the line itself has been individually closed OR its parent SO has been
+    cancelled/closed -- neither case should ever show as still-open in Order
+    Monitoring or block a DR-quantity check, regardless of what was actually
+    delivered before that status change.
+    """
+    if so_item.line_status == 'closed':
+        return Decimal('0')
+    if so_item.order is not None and so_item.order.status in ('cancelled', 'closed'):
+        return Decimal('0')
     ordered = Decimal(str(so_item.quantity or 0))
     q = (db.session.query(db.func.coalesce(db.func.sum(DeliveryReceiptItem.delivered_quantity), 0))
          .join(DeliveryReceipt, DeliveryReceiptItem.delivery_receipt_id == DeliveryReceipt.id)

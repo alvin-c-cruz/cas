@@ -37,7 +37,7 @@
         amount: (qty != null && up != null) ? round2(num(qty) * num(up)) : 0,
         vat_category: ln.vat_category || '',
         account_id: ln.account_id,
-        wt_id: null, wt_rate: null
+        wt_id: ln.wt_id || null, wt_rate: ln.wt_rate != null ? ln.wt_rate : null
       });
     });
     sourceDrIds.push(dr.id);

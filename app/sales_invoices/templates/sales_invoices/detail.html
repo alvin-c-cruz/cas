@@ -30,8 +30,8 @@
 </div>
 {% endif %}{% endfor %}
 
-{# ── Post modal (draft only) ─────────────────────────────────────────────── #}
-{% if invoice.status == 'draft' %}
+{# ── Post modal (draft only; write actions stay selected-branch-scoped) ───── #}
+{% if invoice.status == 'draft' and can_modify %}
 <div id="postModal" style="display:none; position:fixed; inset:0; background:var(--backdrop); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:440px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Post this Sales Invoice?</h3>
@@ -68,7 +68,7 @@
 {% endif %}
 
 {# ── Cancel modal (posted, accountant/admin, no payments) ────────────────── #}
-{% if invoice.status == 'posted' and invoice.amount_paid == 0 %}
+{% if invoice.status == 'posted' and invoice.amount_paid == 0 and can_modify %}
 <div id="cancelModal" style="display:none; position:fixed; inset:0; background:var(--backdrop); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--card); border-radius:8px; padding:32px; max-width:480px; width:90%;">
         <h3 style="margin:0 0 12px 0;">Cancel this Sales Invoice?</h3>
@@ -114,20 +114,20 @@
                rel="noopener noreferrer"
                class="btn btn-secondary">Print</a>
             {% endif %}
-            {# Post: accountant/admin only #}
-            {% if (current_user.has_full_access or current_user.role == 'accountant') and invoice.status == 'draft' %}
+            {# Post: accountant/admin only; write actions stay selected-branch-scoped #}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') and invoice.status == 'draft' and can_modify %}
             <button type="button" class="btn btn-success" onclick="document.getElementById('postModal').style.display='flex'">Post Invoice</button>
             {% endif %}
-            {# Edit: staff/accountant/admin, draft only #}
-            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] and invoice.status == 'draft' %}
+            {# Edit: staff/accountant/admin, draft only; write actions stay selected-branch-scoped #}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] and invoice.status == 'draft' and can_modify %}
             <a href="{{ url_for('sales_invoices.edit', id=invoice.id) }}" class="btn btn-primary">Edit</a>
             {% endif %}
-            {# Void: staff/accountant/admin, draft only #}
-            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] and invoice.status == 'draft' %}
+            {# Void: staff/accountant/admin, draft only; write actions stay selected-branch-scoped #}
+            {% if current_user.role in ['staff', 'accountant', 'admin', 'chief_accountant'] and invoice.status == 'draft' and can_modify %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('voidModal').style.display='flex'">Void Invoice</button>
             {% endif %}
-            {# Cancel: accountant/admin, posted + no payments #}
-            {% if (current_user.has_full_access or current_user.role == 'accountant') and invoice.status == 'posted' and invoice.amount_paid == 0 %}
+            {# Cancel: accountant/admin, posted + no payments; write actions stay selected-branch-scoped #}
+            {% if (current_user.has_full_access or current_user.role == 'accountant') and invoice.status == 'posted' and invoice.amount_paid == 0 and can_modify %}
             <button type="button" class="btn btn-danger" onclick="document.getElementById('cancelModal').style.display='flex'">Cancel Invoice</button>
             {% endif %}
             <a href="{{ url_for('sales_invoices.list_invoices') }}" class="btn btn-secondary">&#8592; Back to List</a>

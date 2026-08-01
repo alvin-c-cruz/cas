@@ -27,6 +27,11 @@ class Customer(db.Model):
     payment_terms = db.Column(db.String(50))
     address = db.Column(db.Text)
     postal_code = db.Column(db.String(20))
+    # The code this customer uses to identify US as their vendor in their own
+    # system (e.g. MySan's "200100" for Rowell) -- distinct from `code` above,
+    # which is this app's own internal code for the customer. Optional: legacy
+    # data shows it's only populated for some customers.
+    vendor_code = db.Column(db.String(50), nullable=True)
 
     # VAT and WT for customer transactions
     default_vat_category = db.Column(db.String(100))
@@ -80,6 +85,7 @@ class Customer(db.Model):
             'payment_terms': self.payment_terms,
             'address': self.address,
             'postal_code': self.postal_code,
+            'vendor_code': self.vendor_code,
             'default_vat_category': self.default_vat_category,
             'default_wt_code': self.default_wt_code,
             'withholding_taxes': [

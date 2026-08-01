@@ -1,15 +1,21 @@
 """Delivery Receipt views -- deliveries against a confirmed Sales Order. Operational only."""
 import json
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, abort
+from flask import (Blueprint, render_template, redirect, url_for, flash, request, session,
+                   abort, jsonify)
 from flask_login import login_required, current_user
 
 from app import db
 from app.delivery_receipts.models import (
     DeliveryReceipt, DeliveryReceiptItem, so_line_open_qty, generate_dr_number)
 from app.delivery_receipts.forms import DeliveryReceiptForm
+from app.delivery_receipts.preprinted_layout import (
+    get_layout, save_layout, FONT_GROUPS, COLUMN_LABELS, PAPER_SIZES, PAPER_LABELS,
+    DATE_FORMATS, FIELD_LABELS, TEXT_KEYS, MULTILINE_FIELD_KEYS, cap_note_lines)
 from app.sales_orders.models import SalesOrder, SalesOrderItem, copy_salesperson
+from app.customers.models import Customer
 from app.audit.utils import log_audit, log_create, log_update, model_to_dict
 from app.utils import ph_now
 from app.utils.concurrency import claim_version, conflict_message, submitted_version
@@ -148,14 +154,61 @@ def _dr_or_404(id):
 @login_required
 def list():
     branch_id = session.get('selected_branch_id')
+    page = request.args.get('page', 1, type=int)
+
     query = DeliveryReceipt.query.filter_by(branch_id=branch_id)
+
     status_filter = request.args.get('status', 'all')
     if status_filter in VALID_DR_STATUSES:
         query = query.filter_by(status=status_filter)
-    receipts = query.order_by(DeliveryReceipt.delivery_date.desc(),
-                              DeliveryReceipt.id.desc()).all()
-    return render_template('delivery_receipts/list.html', receipts=receipts,
-                           status_filter=status_filter)
+
+    customer_filter = request.args.get('customer_id', 'all')
+    if customer_filter != 'all':
+        try:
+            query = query.filter_by(customer_id=int(customer_filter))
+        except ValueError:
+            pass
+
+    q_text = request.args.get('q', '').strip()
+    if q_text:
+        like = f'%{q_text}%'
+        query = query.filter(
+            db.or_(DeliveryReceipt.dr_number.ilike(like),
+                   DeliveryReceipt.customer_name.ilike(like))
+        )
+
+    year = ph_now().year
+    date_from = request.args.get('date_from', f'{year}-01-01')
+    if date_from:
+        try:
+            query = query.filter(DeliveryReceipt.delivery_date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+
+    date_to = request.args.get('date_to', f'{year}-12-31')
+    if date_to:
+        try:
+            query = query.filter(DeliveryReceipt.delivery_date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    query = query.order_by(DeliveryReceipt.delivery_date.desc(), DeliveryReceipt.id.desc())
+    pagination = query.paginate(page=page, per_page=50, error_out=False)
+    customers = Customer.query.filter_by(is_active=True).order_by(Customer.name).all()
+
+    from app.delivery_receipts.utils import compute_delivery_receipts_summary
+    summary = compute_delivery_receipts_summary(branch_id)
+
+    return render_template('delivery_receipts/list.html',
+                           receipts=pagination.items,
+                           pagination=pagination,
+                           customers=customers,
+                           summary=summary,
+                           status_filter=status_filter,
+                           customer_filter=customer_filter,
+                           q=q_text,
+                           date_from=date_from,
+                           date_to=date_to)
 
 
 @delivery_receipts_bp.route('/delivery-receipts/create', methods=['GET', 'POST'])
@@ -193,7 +246,13 @@ def create():
                 dr_number=dr_number, branch_id=branch_id,
                 delivery_date=form.delivery_date.data, sales_order_id=so.id,
                 customer_id=so.customer_id, customer_name=so.customer_name,
-                remarks=form.remarks.data or None, status='draft',
+                remarks=form.remarks.data or None,
+                packing_notes=form.packing_notes.data or None,
+                schedule_notes=form.schedule_notes.data or None,
+                carrier=form.carrier.data or None,
+                checked_by=form.checked_by.data or None,
+                approved_by=form.approved_by.data or None,
+                status='draft',
                 created_by_id=current_user.id)
             copy_salesperson(so, dr)
             if form.salesperson_id.data:   # allow override; 0 == Company Account
@@ -224,8 +283,10 @@ def create():
 @delivery_receipts_bp.route('/delivery-receipts/<int:id>')
 @login_required
 def view(id):
+    from app.settings import AppSettings
     dr = _dr_or_404(id)
-    return render_template('delivery_receipts/detail.html', dr=dr)
+    return render_template('delivery_receipts/detail.html', dr=dr,
+                           dr_print_form=AppSettings.get_setting('dr_print_form', 'current'))
 
 
 @delivery_receipts_bp.route('/delivery-receipts/<int:id>/edit', methods=['GET', 'POST'])
@@ -260,6 +321,11 @@ def edit(id):
 
             dr.delivery_date = form.delivery_date.data
             dr.remarks = form.remarks.data or None
+            dr.packing_notes = form.packing_notes.data or None
+            dr.schedule_notes = form.schedule_notes.data or None
+            dr.carrier = form.carrier.data or None
+            dr.checked_by = form.checked_by.data or None
+            dr.approved_by = form.approved_by.data or None
             if form.salesperson_id.data:
                 dr.salesperson_id = form.salesperson_id.data
             # Rebuild lines through the ORM collection so delete-orphan evicts the old
@@ -387,10 +453,44 @@ def cancel(id):
 @delivery_receipts_bp.route('/delivery-receipts/<int:id>/print')
 @login_required
 def print_dr(id):
+    """Print a Delivery Receipt -- the form is chosen by the `dr_print_form` company
+    setting (current = standard printable form · preprinted = data-only overlay for
+    RIC's physical pre-printed stock · hidden = printing disabled). Mirrors the
+    SI/SO/APV/CRV/CDV/JV pattern."""
     from app.settings import AppSettings
     dr = _dr_or_404(id)
+    dr_print_form = AppSettings.get_setting('dr_print_form', 'current')
+    if dr_print_form == 'hidden':
+        flash('Delivery Receipt printing is not enabled.', 'error')
+        return redirect(url_for('delivery_receipts.view', id=id))
     company = {'name': AppSettings.get_setting('company_name', ''),
                'address': AppSettings.get_setting('company_address', ''),
                'tin': AppSettings.get_setting('company_tin', '')}
+    if dr_print_form == 'preprinted':
+        return render_template(
+            'delivery_receipts/print_preprinted.html', dr=dr, company=company,
+            printed_at=ph_now(), layout=get_layout(dr.branch_id),
+            can_edit_layout=current_user.has_full_access,
+            col_labels=COLUMN_LABELS, font_groups=FONT_GROUPS,
+            paper_sizes=PAPER_SIZES, paper_labels=PAPER_LABELS,
+            date_formats=DATE_FORMATS, field_labels=FIELD_LABELS,
+            signatory_ids=TEXT_KEYS, multiline_keys=MULTILINE_FIELD_KEYS,
+            packing_notes_text=cap_note_lines(dr.packing_notes),
+            schedule_notes_text=cap_note_lines(dr.schedule_notes),
+            remarks_text=cap_note_lines(dr.remarks),
+            date_labels={k: date(2026, 6, 17).strftime(v) for k, v in DATE_FORMATS.items()})
     return render_template('delivery_receipts/print.html', dr=dr, company=company,
                            printed_at=ph_now())
+
+
+@delivery_receipts_bp.route('/delivery-receipts/print-layout', methods=['POST'])
+@login_required
+def save_dr_print_layout():
+    """Persist the pre-printed layout JSON (full-access: admin or Chief Accountant)."""
+    if not current_user.has_full_access:
+        abort(403)
+    data = request.get_json(silent=True) or {}
+    # The layout is per-branch; the print page requires the selected branch to equal
+    # the document's branch, so the session branch is the document's branch.
+    clean = save_layout(data, current_user.username, session.get('selected_branch_id'))
+    return jsonify(ok=True, layout=clean)

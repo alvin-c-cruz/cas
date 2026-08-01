@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Delivery Receipt {{ dr.dr_number }} — Pre-printed</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dr_preprinted_designer.css') }}?v=1">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: {{ layout.page.fontFamily }}; color: #111; background: #eee; }
+  /* Canvas size is paper-driven (set inline; JS updates it live on paper change). */
+  .pp-canvas { position: relative; margin: 16px auto; background: #fff; }
+  .pp-el { position: absolute; white-space: nowrap; }
+  /* Multi-line record text (remarks/packing/schedule notes) -- everything else stays
+     single-line. pre-wrap, not pre-line: pre-line COLLAPSES repeated spaces within a
+     line, silently dropping intentional space-padding staff type into these fields to
+     visually indent text (matches legacy's <pre> tags, which are UA-default
+     white-space:pre -- exact whitespace preserved). pre-wrap keeps that padding AND
+     still wraps an overlong line, unlike plain pre. */
+  .pp-multiline { white-space: pre-wrap; line-height: 1.3; }
+  .pp-lineitems { white-space: normal; }
+  /* Each line-item column is independently positioned; cells stack vertically. */
+  .pp-col { position: absolute; }
+  .pp-cell { overflow: hidden; white-space: nowrap; }
+  /* Figures follow the page font; only right-align them. */
+  .pp-amount .pp-cell { text-align: right; padding-right: 20px; }
+  /* Matches legacy's measure_name (uom) column: centered, 10px side padding. */
+  .pp-uom .pp-cell { text-align: center; padding-left: 10px; padding-right: 10px; }
+  /* Columns are draggable in edit mode (horizontal = that column; vertical = the whole
+     band, so rows stay aligned). No header row. */
+  .pp-canvas.pp-editing .pp-col { outline: 1px dashed #2e7d32; cursor: move; }
+  .pp-canvas.pp-editing .pp-col:hover { outline: 2px solid #2e7d32; background: rgba(46, 125, 50, .05); }
+  /* Empty value fields are invisible/zero-size; give them a grab target while editing. */
+  .pp-canvas.pp-editing .pp-el:empty::before { content: attr(data-el); color: #bbb; font-style: italic; }
+  /* A column with no rows is empty -> show its label while editing so it stays grabbable. */
+  .pp-canvas.pp-editing .pp-col:empty::before { content: attr(data-label); color: #bbb; font-style: italic; }
+  .pp-col-hidden { display: none; }
+  /* Hidden fields: gone in view/print; shown greyed while editing so they can be restored. */
+  .pp-field-hidden { display: none; }
+  .pp-canvas.pp-editing .pp-field-hidden { display: block; opacity: .4; }
+  /* Layout-only editable signature texts: dotted outline in edit mode; double-click to type. */
+  .pp-canvas.pp-editing .pp-text { outline: 1px dotted #1565c0; }
+  .pp-canvas.pp-editing .pp-text[contenteditable="true"] { outline: 2px solid #1565c0; cursor: text; background: #fff; }
+  /* Screen-only guides: 0.5in (48px @96dpi) tractor-feed margins for CONTINUOUS stock
+     (the holes). Dropped for cut sheets (letter). Never printed. */
+  .pp-margin-guide { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #d00; pointer-events: none; }
+  body:not([data-paper="continuous"]) .pp-margin-guide { display: none; }
+  .pp-col-controls { max-width: 912px; margin: 8px auto 0; display: none; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+  .pp-col-controls.pp-show { display: flex; }
+  .pp-col-controls label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+  .pp-toolbar { max-width: 912px; margin: 12px auto 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+  .btn-print { background: #1565c0; color: #fff; }
+  .btn-close { background: #666; color: #fff; }
+  .btn-edit  { background: #2e7d32; color: #fff; }
+  @media print {
+    body { background: #fff; }
+    .screen-only { display: none !important; }
+    .pp-canvas { margin: 0; }
+  }
+</style>
+<style id="ppPageStyle">@page { size: {{ paper_sizes[layout.paper].css }}; margin: 0; }</style>
+</head>
+<body data-can-edit="{{ 'true' if can_edit_layout else 'false' }}" data-paper="{{ layout.paper }}">
+
+{% macro field(key, value, iso='', multiline=False) %}
+  {% set f = layout.fields[key] %}
+  <div class="pp-el{{ ' pp-multiline' if multiline else '' }}{{ ' pp-field-hidden' if f.hidden else '' }}" data-el="{{ key }}" data-label="{{ field_labels[key] }}"{% if iso %} data-date="{{ iso }}"{% endif %}
+       style="left:{{ f.x }}px;top:{{ f.y }}px;font-size:{{ f.fontSize }}px;font-weight:{{ 'bold' if f.bold else 'normal' }};">{{ value }}</div>
+{% endmacro %}
+
+{% macro field_extra(ex, value, iso='', multiline=False) %}
+  <div class="pp-el{{ ' pp-multiline' if multiline else '' }}" data-el="{{ ex.key }}" data-label="{{ field_labels[ex.key] }}" data-extra="1"{% if iso %} data-date="{{ iso }}"{% endif %}
+       style="left:{{ ex.x }}px;top:{{ ex.y }}px;font-size:{{ ex.fontSize }}px;font-weight:{{ 'bold' if ex.bold else 'normal' }};">{{ value }}</div>
+{% endmacro %}
+
+<div class="pp-toolbar screen-only">
+  <button type="button" class="btn btn-print" onclick="window.print()">Print</button>
+  <button type="button" class="btn btn-close" onclick="window.close()">Close</button>
+  {% if can_edit_layout %}
+  <button type="button" id="editLayoutBtn" class="btn btn-edit">Edit Layout</button>
+  <select id="ppPaper" class="screen-only" style="display:none;">
+    {% for key, sz in paper_sizes.items() %}
+    <option value="{{ key }}" data-w="{{ sz.w }}" data-h="{{ sz.h }}" data-css="{{ sz.css }}" {{ 'selected' if key == layout.paper else '' }}>{{ paper_labels[key] }}</option>
+    {% endfor %}
+  </select>
+  <select id="ppFontFamily" class="screen-only" style="display:none;">
+    {% for group, fonts in font_groups %}
+    <optgroup label="{{ group }}">
+      {% for font in fonts %}
+      <option value="{{ font }}" {{ 'selected' if font == layout.page.fontFamily else '' }}>{{ font.split(',')[0].replace('"','') }}</option>
+      {% endfor %}
+    </optgroup>
+    {% endfor %}
+  </select>
+  <select id="ppDateFormat" class="screen-only" style="display:none;" title="Date format">
+    {% for key in date_formats %}
+    <option value="{{ key }}" {{ 'selected' if key == layout.dateFormat else '' }}>{{ date_labels[key] }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+</div>
+
+{% if can_edit_layout %}
+<div id="ppFieldControls" class="pp-col-controls screen-only"></div>
+<div id="ppColControls" class="pp-col-controls screen-only"></div>
+{% endif %}
+
+<div class="pp-canvas" id="ppCanvas" style="width:{{ paper_sizes[layout.paper].w }}px;height:{{ paper_sizes[layout.paper].h }}px;">
+  <div class="pp-margin-guide screen-only" style="left:48px;"></div>
+  <div class="pp-margin-guide screen-only" style="right:48px;"></div>
+  {# Values only — the pre-printed stock supplies every label/header, EXCEPT
+     vendor_code and product_code: legacy bakes "VENDOR CODE: "/"PRODUCT CODE: "
+     into the printed text itself (there is no such pre-printed label on the
+     physical stock for either), so those two carry their label inline to
+     match. product_code is a SINGLE value (the first line's customer product
+     code, not one per line) printed once below the remarks -- matches
+     legacy's product_code_description, which reads only
+     delivery_receipt_details[0].product.customer_code. The per-line
+     customer_product_code column (below, in the line-items band) stays a
+     bare, unlabeled value -- that's legacy's separate per-line product_code
+     cell. #}
+  {% set date_fmt = date_formats[layout.dateFormat] %}
+  {% set first_item = dr.line_items[0] if dr.line_items else None %}
+  {% set first_soi = first_item.sales_order_item if first_item else None %}
+  {% set first_code = (first_soi.product.customer_code if first_soi and first_soi.product
+                        else first_item.product.customer_code if first_item and first_item.product else '') %}
+  {% set field_values = {
+    'dr_no': dr.dr_number,
+    'delivery_date': dr.delivery_date.strftime(date_fmt) if dr.delivery_date else '',
+    'so_no': dr.sales_order.so_number if dr.sales_order else '',
+    'customer_po': dr.sales_order.customer_po_number if dr.sales_order else '',
+    'status': dr.status | title,
+    'customer_name': dr.customer_name,
+    'customer_tin': dr.sales_order.customer_tin if dr.sales_order else '',
+    'customer_address': dr.sales_order.customer_address if dr.sales_order else '',
+    'vendor_code': ('VENDOR CODE: ' + dr.sales_order.customer.vendor_code)
+      if dr.sales_order and dr.sales_order.customer and dr.sales_order.customer.vendor_code else '',
+    'product_code': ('PRODUCT CODE: ' + first_code) if first_code else '',
+    'salesperson': dr.salesperson.full_name if dr.salesperson else 'Company Account',
+    'remarks': remarks_text,
+    'packing_notes': packing_notes_text,
+    'schedule_notes': schedule_notes_text,
+    'checked_by': dr.checked_by or '',
+    'carrier': dr.carrier or '',
+    'approved_by': dr.approved_by or '',
+  } %}
+  {% set field_isos = {
+    'delivery_date': dr.delivery_date.isoformat() if dr.delivery_date else '',
+  } %}
+  {% for key in field_values %}{{ field(key, field_values[key], field_isos.get(key, ''), key in multiline_keys) }}{% endfor %}
+  {# Duplicated copies (elements outside the line-item group) #}
+  {% for ex in layout.extras %}{{ field_extra(ex, field_values[ex.key], field_isos.get(ex.key, ''), ex.key in multiline_keys) }}{% endfor %}
+  {# Layout-only editable signature texts (prepared by / released by / received by) — not record data #}
+  {% for t in layout.texts %}<div class="pp-el pp-text{{ ' pp-field-hidden' if t.hidden else '' }}" data-text="{{ t.id }}" data-label="{{ t.text }}"{{ ' data-signatory="1"' if t.id in signatory_ids else '' }} style="left:{{ t.x }}px;top:{{ t.y }}px;font-size:{{ t.fontSize }}px;font-weight:{{ 'bold' if t.bold else 'normal' }};">{{ t.text }}</div>{% endfor %}
+
+  {% set li = layout.lineItems %}
+  {# Each column is independently positioned (own x); all share the band top (li.y)
+     and rowHeight so rows align. Columns move; cells/rows don't move on their own. #}
+  <div class="pp-lineitems" data-el="lineItems" data-rowheight="{{ li.rowHeight }}">
+    {% for col in li.columns %}
+    <div class="pp-col{{ ' pp-col-hidden' if not col.visible else '' }}{{ ' pp-amount' if col.key == 'quantity' else '' }}{{ ' pp-uom' if col.key == 'uom' else '' }}"
+         data-col="{{ col.key }}" data-label="{{ col_labels[col.key] }}"
+         style="left:{{ col.x }}px;top:{{ li.y }}px;width:{{ col.width }}px;font-size:{{ li.fontSize }}px;font-weight:{{ 'bold' if li.bold else 'normal' }};">
+      {%- for item in dr.line_items %}
+      <div class="pp-cell" style="height:{{ li.rowHeight }}px;line-height:{{ li.rowHeight }}px;">
+        {%- set soi = item.sales_order_item -%}
+        {%- if col.key == 'line_number' -%}{{ item.line_number }}
+        {%- elif col.key == 'product' -%}
+          {%- if soi and soi.product %}{{ soi.product.name }}
+          {%- elif item.product %}{{ item.product.name }}{% endif -%}
+        {%- elif col.key == 'customer_product_code' -%}
+          {%- if soi and soi.product %}{{ soi.product.customer_code or '' }}
+          {%- elif item.product %}{{ item.product.customer_code or '' }}{% endif -%}
+        {%- elif col.key == 'uom' -%}{{ item.unit_of_measure.name if item.unit_of_measure else (item.uom_text or '') }}
+        {%- elif col.key == 'quantity' -%}{{ item | qty_fmt }}
+        {%- endif -%}
+      </div>
+      {% endfor -%}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if can_edit_layout %}
+<script src="{{ url_for('static', filename='js/dr_preprinted_designer.js') }}?v=1"></script>
+{% endif %}
+</body>
+</html>

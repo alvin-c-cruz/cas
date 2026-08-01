@@ -83,14 +83,15 @@
                     <thead>
                         <tr>
                             <th style="width: 1%; white-space: nowrap; color: var(--text-2);">#</th>
-                            <th style="width: 22%;">Product</th>
+                            <th style="width: 20%;">Product</th>
                             <th style="width: 6%; text-align: right;">Qty</th>
                             <th style="width: 6%;">UOM</th>
-                            <th style="width: 8%; text-align: right;">Unit Price</th>
-                            <th style="width: 10%; text-align: right;">Amount (VAT-incl.)</th>
-                            <th style="width: 9%;">VT</th>
-                            <th style="width: 9%;">Delivery Date</th>
-                            <th style="width: 11%;">Delivery Site</th>
+                            <th style="width: 7%; text-align: right;">Unit Price</th>
+                            <th style="width: 9%; text-align: right;">Amount (VAT-incl.)</th>
+                            <th style="width: 8%;">VT</th>
+                            <th style="width: 8%;">WT</th>
+                            <th style="width: 8%;">Delivery Date</th>
+                            <th style="width: 10%;">Delivery Site</th>
                             <th style="width: 5%;"></th>
                         </tr>
                     </thead>
@@ -102,7 +103,7 @@
                         <tr>
                             <td colspan="5" style="text-align:right; font-weight:700;">Total Sales</td>
                             <td id="totalDisplay" style="text-align:right; font-family:var(--mono); font-weight:700;">0.00</td>
-                            <td colspan="4"></td>
+                            <td colspan="5"></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -156,6 +157,7 @@ let lineChoices = {};
 
 // ── Customer card state ───────────────────────────────────────────────────────
 let currentCustomerVatCategory = '';
+let currentCustomerWHTs        = [];
 let currentCustomerName        = '';
 
 // Resolve a VAT name-or-code to the canonical code.
@@ -235,9 +237,13 @@ function applyCustomerTerms(terms) {
 }
 
 function addFirstCustomerLine() {
+    // Single-WT auto-default (parity with the SI form's currentCustomerWHTs autoWht):
+    // when the customer has exactly one assigned WT code, default the first line to it.
+    const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
     addLineItem({
         amount: 0.00,
         vat_category: currentCustomerVatCategory || '',
+        wt_id: autoWht ? autoWht.id : null,
     });
 }
 
@@ -271,6 +277,7 @@ if (customerSel) {
             .then(r => r.json())
             .then(data => {
                 currentCustomerVatCategory = resolveVatCode(data.default_vat_category || '');
+                currentCustomerWHTs        = data.withholding_taxes || [];
                 applyCustomerTerms(data.payment_terms || 'Net 30');
 
                 const spSel = document.getElementById('salesperson_id');
@@ -283,6 +290,7 @@ if (customerSel) {
 
                 if (hadItems) {
                     rebuildCustomerLineDefaults();
+                    rebuildAllWhtSelects();
                     rebuildLineDeliverySiteOptions();
                 } else {
                     addFirstCustomerLine();
@@ -303,6 +311,48 @@ if (ptSel) {
 
 // ── Line item helpers ──────────────────────────────────────────────────────────
 
+function buildWhtOptions(selectedId) {
+    if (currentCustomerWHTs.length === 0) {
+        const cp = escHtml(JSON.stringify({ code: 'No WT' }));
+        return `<option value="" data-custom-properties="${cp}">No WT</option>`;
+    }
+    return '<option value="">None</option>' +
+        currentCustomerWHTs.map(wt => {
+            const long = `${escHtml(wt.code)} — ${escHtml(wt.name)} (${wt.rate}%)`;
+            const cp = escHtml(JSON.stringify({ code: wt.code }));
+            return `<option value="${wt.id}" data-rate="${wt.rate}" data-custom-properties="${cp}" ${selectedId == wt.id ? 'selected' : ''}>${long}</option>`;
+        }).join('');
+}
+
+function rebuildAllWhtSelects() {
+    const noWht = currentCustomerWHTs.length === 0;
+    // Single-WT auto-default, same mechanism as addFirstCustomerLine()/SI's autoWht: a
+    // dropped code falls forward to the new customer's sole WT rather than to nothing.
+    const autoWht = currentCustomerWHTs.length === 1 ? currentCustomerWHTs[0] : null;
+    const noneChoice = noWht
+        ? { value: '', label: 'No WT', customProperties: { code: 'No WT' } }
+        : { value: '', label: 'None', customProperties: { code: '' } };
+    lineItems.forEach(item => {
+        const lc = lineChoices[item.id];
+        if (!lc || !lc.wht) return;
+        const prev = item.wt_id;
+        const stillValid = prev && currentCustomerWHTs.some(wt => wt.id == prev);
+        if (!stillValid) { item.wt_id = autoWht ? autoWht.id : null; }
+        const choices = [noneChoice].concat(
+            currentCustomerWHTs.map(wt => ({
+                value: String(wt.id),
+                label: `${wt.code} — ${wt.name} (${wt.rate}%)`,
+                customProperties: { code: wt.code }
+            }))
+        );
+        lc.wht.enable();
+        lc.wht.clearChoices();
+        lc.wht.setChoices(choices, 'value', 'label', false);
+        lc.wht.setChoiceByValue(item.wt_id ? String(item.wt_id) : '');
+        if (noWht) lc.wht.disable();
+    });
+}
+
 function addLineItem(existingItem) {
     lineCounter++;
     const id = lineCounter;
@@ -310,7 +360,7 @@ function addLineItem(existingItem) {
         ? { ...existingItem, id }
         : { id, product_id: null, quantity: null, uom_id: null, uom_text: null,
             unit_price: null, amount: 0.00, vat_category: currentCustomerVatCategory || '',
-            delivery_date: null, delivery_site_id: null };
+            wt_id: null, delivery_date: null, delivery_site_id: null };
 
     const rowNum = lineItems.length + 1;
     const row = document.createElement('tr');
@@ -351,6 +401,11 @@ function addLineItem(existingItem) {
                 }).join('')}
             </select>
         </td>
+        <td>
+            <select class="form-control wht-select">
+                ${buildWhtOptions(item.wt_id)}
+            </select>
+        </td>
         <td><input type="date" id="dd-${id}" class="form-control"
                    value="${item.delivery_date || ''}"
                    onchange="updateLineItem(${id}, 'delivery_date', this.value)"></td>
@@ -386,6 +441,11 @@ function addLineItem(existingItem) {
     const vatC = new Choices(vatSel, codeOnlyOpts);
     vatSel.addEventListener('change', () => { updateLineItem(id, 'vat_category', vatSel.value); calculateTotals(); });
 
+    const whtSel = newRow.querySelector('.wht-select');
+    const whtC = new Choices(whtSel, codeOnlyOpts);
+    if (currentCustomerWHTs.length === 0) whtC.disable();
+    whtSel.addEventListener('change', () => { updateLineItem(id, 'wt_id', whtSel.value || null); });
+
     const nameOnlyOpts = {
         searchEnabled: true, itemSelectText: '', shouldSort: false, searchResultLimit: 50,
         allowHTML: false,
@@ -406,7 +466,7 @@ function addLineItem(existingItem) {
     const uomC  = uomSelEl  ? new Choices(uomSelEl, nameOnlyOpts)  : null;
     const siteC = siteSelEl ? new Choices(siteSelEl, nameOnlyOpts) : null;
 
-    lineChoices[id] = { vat: vatC, prod: prodC, uom: uomC, site: siteC };
+    lineChoices[id] = { vat: vatC, wht: whtC, prod: prodC, uom: uomC, site: siteC };
     lineItems.push(item);
     refreshLineNumbers();
     updateDerivedAmount(id);
@@ -422,6 +482,7 @@ function updateLineItem(id, field, value) {
 function removeLineItem(id) {
     if (lineChoices[id]) {
         lineChoices[id].vat.destroy();
+        lineChoices[id].wht.destroy();
         if (lineChoices[id].prod) lineChoices[id].prod.destroy();
         if (lineChoices[id].uom)  lineChoices[id].uom.destroy();
         if (lineChoices[id].site) lineChoices[id].site.destroy();
@@ -691,6 +752,7 @@ document.getElementById('soForm').addEventListener('submit', function () {
             amount:            item.amount,
             vat_category:      item.vat_category,
             vat_rate:          vatRate,
+            wt_id:             item.wt_id              != null ? item.wt_id             : null,
             delivery_date:     item.delivery_date      || null,
             delivery_site_id:  item.delivery_site_id   != null ? item.delivery_site_id  : null,
         };
@@ -725,8 +787,10 @@ initItems();
     fetch(`/customers/${cid}/defaults`)
         .then(r => r.json())
         .then(data => {
-            currentCustomerVatCategory = resolveVatCode(data.default_vat_category || '');
+            currentCustomerWHTs         = data.withholding_taxes || [];
+            currentCustomerVatCategory  = resolveVatCode(data.default_vat_category || '');
             setCustomerDone(name, data);
+            rebuildAllWhtSelects();
         })
         .catch(() => {});
 })();
