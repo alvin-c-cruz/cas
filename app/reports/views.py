@@ -1324,6 +1324,19 @@ def work_order_costing_variance():
     return render_template('reports/work_order_costing_variance.html', data=data, status=status)
 
 
+@reports_bp.route('/reports/work-order-costing-variance/print')
+@login_required
+@accountant_or_above_required
+def work_order_costing_variance_print():
+    from app.reports.work_order_costing import generate_work_order_costing_variance_report
+    status, date_from, date_to, branch_id = _wo_costing_params()
+    data = generate_work_order_costing_variance_report(
+        branch_id, status=status, date_from=date_from, date_to=date_to)
+    company, branch_name = _bs_company_branch(branch_id)
+    return render_template('reports/work_order_costing_variance_print.html', data=data,
+                           status=status, company=company, branch_name=branch_name)
+
+
 @reports_bp.route('/reports/balance-sheet')
 @login_required
 def balance_sheet():

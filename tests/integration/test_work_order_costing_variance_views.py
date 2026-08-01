@@ -138,6 +138,14 @@ def test_renders_standard_costed_moving_average_and_force_closed_rows(
     assert 'TOTALS' in body
 
 
+def test_print_route_renders(client, db_session, accountant_user, main_branch):
+    _login(client, accountant_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+    resp = client.get('/reports/work-order-costing-variance/print')
+    assert resp.status_code == 200
+
+
 def test_zero_baseline_standard_costed_wo_renders_dash_not_crash(
         client, db_session, accountant_user, main_branch, wo_control_accounts):
     """Review finding 1: a standard-costed WO whose Product.standard_cost is 0.00

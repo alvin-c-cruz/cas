@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Work Order Costing &amp; Variance</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #000; margin: 24px; }
+        .company { font-size: 14px; font-weight: bold; }
+        .meta { color: #333; margin: 2px 0 14px 0; }
+        h1 { font-size: 16px; margin: 0 0 2px 0; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+        td, th { padding: 3px 8px; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .colhead td, .colhead th { font-weight: bold; border-bottom: 1px solid #000; }
+        .total-row td { font-weight: bold; border-top: 1px solid #000; }
+    </style>
+</head>
+<body onload="window.print()">
+    {% if company.name %}<div class="company">{{ company.name }}</div>{% endif %}
+    <div class="meta">
+        {% if company.tin %}TIN: {{ company.tin }} &nbsp; {% endif %}
+        {% if company.address %}{{ company.address }}<br>{% endif %}
+        {% if branch_name %}Branch: {{ branch_name }} &nbsp; {% endif %}
+    </div>
+    <h1>Work Order Costing &amp; Variance Report</h1>
+    <div class="meta">
+        Status: {{ status|capitalize|replace('_', '-') }}
+        {% if data.date_from or data.date_to %}
+        &nbsp; &middot; &nbsp;
+        {{ data.date_from.isoformat() if data.date_from else 'earliest' }}
+        to
+        {{ data.date_to.isoformat() if data.date_to else 'latest' }}
+        {% endif %}
+    </div>
+
+    <table>
+        <tbody>
+            <tr class="colhead">
+                <td>WO #</td>
+                <td>Product</td>
+                <td class="num">Qty Completed</td>
+                <td class="num">Material Cost</td>
+                <td class="num">Labor Cost</td>
+                <td class="num">Actual Total</td>
+                <td class="num">Standard Cost</td>
+                <td class="num">Variance</td>
+                <td class="num">Variance %</td>
+                <td>Completed</td>
+            </tr>
+            {% for row in data.rows %}
+            <tr>
+                <td>{{ row.wo_number }}{% if row.is_force_closed %} (Force-Closed){% endif %}</td>
+                <td>{{ row.product_code }} &mdash; {{ row.product_name }}</td>
+                <td class="num">{{ '{:,.4f}'.format(row.qty_completed) }}</td>
+                <td class="num">₱{{ '{:,.2f}'.format(row.material_cost) }}</td>
+                <td class="num">₱{{ '{:,.2f}'.format(row.labor_cost) }}</td>
+                <td class="num">₱{{ '{:,.2f}'.format(row.actual_total) }}</td>
+                {% if row.standard_baseline is not none %}
+                <td class="num">₱{{ '{:,.2f}'.format(row.standard_baseline) }}</td>
+                {% else %}
+                <td class="num">&mdash;</td>
+                {% endif %}
+                {% if row.variance_amount is not none %}
+                <td class="num">{{ '+' if row.variance_amount > 0 else '' }}₱{{ '{:,.2f}'.format(row.variance_amount) }}</td>
+                {% else %}
+                <td class="num">&mdash;</td>
+                {% endif %}
+                {% if row.variance_pct is not none %}
+                <td class="num">{{ '+' if row.variance_pct > 0 else '' }}{{ '{:.2f}'.format(row.variance_pct) }}%</td>
+                {% else %}
+                <td class="num">&mdash;</td>
+                {% endif %}
+                <td>{{ row.completion_date.strftime('%Y-%m-%d') if row.completion_date else '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10">No Work Orders found for the selected filters.</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row">
+                <td colspan="3">TOTALS</td>
+                <td class="num">₱{{ '{:,.2f}'.format(data.total_material) }}</td>
+                <td class="num">₱{{ '{:,.2f}'.format(data.total_labor) }}</td>
+                <td class="num">₱{{ '{:,.2f}'.format(data.total_actual) }}</td>
+                <td class="num">&mdash;</td>
+                <td class="num">{{ '+' if data.total_variance > 0 else '' }}₱{{ '{:,.2f}'.format(data.total_variance) }}</td>
+                <td class="num">&mdash;</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</body>
+</html>
