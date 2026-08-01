@@ -297,6 +297,57 @@ class TestCombinedBranchChips:
         assert body.count('class="no-access-chip"') == 1
 
 
+class TestPrintExpandControls:
+    """BUG-AR-AGING-COMBINED-PRINT-SUMMARY-ONLY.
+
+    Print is WYSIWYG (`window.print()`), and drill-downs start COLLAPSED, so a fresh
+    page printed straight away emitted summary rows only -- silently dropping every
+    invoice row and branch chip. The fix is discoverability, not forcing full detail:
+    one-click Expand All makes a detail print deliberate, while a client with ~1000
+    open invoices is never forced into a 50-page job.
+    """
+
+    def test_expand_and_collapse_all_controls_are_rendered(
+            self, client, db_session, admin_user, main_branch):
+        c = _customer(db_session, 'CH-EXP')
+        _invoice(db_session, c, main_branch.id, 'SI-EXP1', Decimal('10.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging-combined?as_of=2025-12-31').data.decode()
+
+        assert 'setAllCustomerDetails(true)' in body, "Expand All control missing"
+        assert 'setAllCustomerDetails(false)' in body, "Collapse All control missing"
+        assert '>Expand All<' in body
+        assert '>Collapse All<' in body
+
+    def test_the_expand_helper_is_defined(
+            self, client, db_session, admin_user, main_branch):
+        """The buttons call it inline; if the function were dropped they would be
+        dead controls that silently do nothing."""
+        c = _customer(db_session, 'CH-EXP2')
+        _invoice(db_session, c, main_branch.id, 'SI-EXP2', Decimal('10.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging-combined?as_of=2025-12-31').data.decode()
+
+        assert 'function setAllCustomerDetails(' in body
+
+    def test_controls_are_buttons_not_submits(
+            self, client, db_session, admin_user, main_branch):
+        """They sit in a header that also carries links/forms; a bare <button>
+        defaults to type=submit and would navigate instead of expanding."""
+        c = _customer(db_session, 'CH-EXP3')
+        _invoice(db_session, c, main_branch.id, 'SI-EXP3', Decimal('10.00'))
+        _login(client)
+        _set_branch(client, main_branch.id)
+        body = client.get('/reports/ar-aging-combined?as_of=2025-12-31').data.decode()
+
+        for call in ('setAllCustomerDetails(true)', 'setAllCustomerDetails(false)'):
+            i = body.index(call)
+            tag = body[body.rindex('<button', 0, i):i]
+            assert 'type="button"' in tag, "control missing type=button: %s" % tag
+
+
 class TestCombinedExports:
 
     def test_excel_export_returns_a_file(self, client, db_session, admin_user,
