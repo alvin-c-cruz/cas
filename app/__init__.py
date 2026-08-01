@@ -173,6 +173,18 @@ def create_app(config_name=None):
         except ValueError:
             return None
 
+    # Light-background chip variant (combined AR aging report branch chips,
+    # 2026-08-01) -- same fail-closed contract as derive_sidebar_theme_filter
+    # above: a malformed/absent stored theme_color degrades to None so the
+    # template falls back to the flat-grey chip instead of a 500.
+    @app.template_filter('derive_chip_theme')
+    def derive_chip_theme_filter(hex_color):
+        from app.utils.color import derive_chip_theme
+        try:
+            return derive_chip_theme(hex_color)
+        except ValueError:
+            return None
+
     # BIR purchase-nature classification label. Distinguishes an
     # unclassified value (None) from an unrecognized/stale token -- a bare
     # dict .get(value, '-') would render both identically and hide the

@@ -14,6 +14,15 @@
             <div class="card-header-actions" style="display:flex;gap:8px;align-items:center;">
                 <a href="{{ url_for('reports.ar_aging_combined_export_excel', as_of=as_of_date.isoformat()) }}" class="btn btn-secondary">&#11015; Excel</a>
                 <a href="{{ url_for('reports.ar_aging_combined_export_csv', as_of=as_of_date.isoformat()) }}" class="btn btn-secondary">&#11015; CSV</a>
+                {# Print is WYSIWYG -- window.print() emits only what is currently shown, and
+                   drill-downs start COLLAPSED. Without these controls, clicking Print on a fresh
+                   page silently produced summary rows only, dropping every invoice and branch chip
+                   (BUG-AR-AGING-COMBINED-PRINT-SUMMARY-ONLY). Expanding is now one click and
+                   DELIBERATE, so a full-detail print is easy to get and never a surprise -- and a
+                   client with ~1000 open invoices is never forced into a 50-page job they did not
+                   ask for. #}
+                <button type="button" onclick="setAllCustomerDetails(true)" class="btn btn-secondary">Expand All</button>
+                <button type="button" onclick="setAllCustomerDetails(false)" class="btn btn-secondary">Collapse All</button>
                 <button onclick="window.print()" class="btn btn-secondary">Print Report</button>
                 <a href="{{ url_for('reports.index') }}" class="btn btn-secondary">Back to Reports</a>
             </div>
@@ -90,16 +99,29 @@
                                         <tr>
                                             <td>
                                                 {% if invoice.viewable %}
+                                                {# A debit-memo row shares the invoice-row shape (invoice_id is the
+                                                   REFERENCED invoice's id, kept so nothing else here needs a
+                                                   special case) -- but its own document lives at debit_view, not
+                                                   at the referenced invoice's page. #}
+                                                {% if invoice.doc_type == 'debit_memo' %}
+                                                <a href="{{ url_for('sales_memos.debit_view', id=invoice.memo_id) }}" style="color:var(--blue)">{{ invoice.invoice_number }}</a>
+                                                {% else %}
                                                 <a href="{{ url_for('sales_invoices.view', id=invoice.invoice_id) }}" style="color:var(--blue)">{{ invoice.invoice_number }}</a>
+                                                {% endif %}
                                                 {% else %}
                                                 {{ invoice.invoice_number }}
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                <span style="background:var(--bg);color:var(--text-2);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;">{{ invoice.branch_code }}</span>
+                                                {% set chip = invoice.branch_theme | derive_chip_theme %}
+                                                {% if chip %}
+                                                <span class="branch-chip" style="background:{{ chip.bg }};color:{{ chip.fg }};border:1px solid {{ chip.border }};">{{ invoice.branch_code }}</span>
+                                                {% else %}
+                                                <span class="branch-chip">{{ invoice.branch_code }}</span>
+                                                {% endif %}
                                                 {% if not invoice.viewable %}
                                                 {# no branch access -- shown for the total, but not openable #}
-                                                <span style="color:var(--text-3);font-size:11px;margin-left:4px;">no access</span>
+                                                <span class="no-access-chip">no access</span>
                                                 {% endif %}
                                             </td>
                                             <td>{{ invoice.invoice_date.strftime('%Y-%m-%d') }}</td>
@@ -164,6 +186,16 @@
 </div>
 
 <script>
+function setAllCustomerDetails(expand) {
+    // Detail rows are <tr id="customer-N">; their chevrons are <span id="customer-N-icon">.
+    // The span is not a <tr>, so this selector cannot pick it up by accident.
+    document.querySelectorAll('tr[id^="customer-"]').forEach(function (row) {
+        row.style.display = expand ? '' : 'none';
+        var icon = document.getElementById(row.id + '-icon');
+        if (icon) { icon.textContent = expand ? '▼' : '►'; }
+    });
+}
+
 function toggleCustomerDetails(id) {
     const row = document.getElementById(id);
     const icon = document.getElementById(id + '-icon');

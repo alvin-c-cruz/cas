@@ -13,8 +13,13 @@ Usage:
   python .claude/guard.py --run-e2e    # run the e2e gate for affected modules; exit != 0 on failure
   python .claude/guard.py --base main  # compare against a specific base branch
                                        # (default: auto-detect main/master)
+  python .claude/guard.py --head feat/x  # diff a branch that is NOT checked out
+                                         # (default: HEAD, the checked-out tree)
 
-Changed files = (<base>)...HEAD  PLUS uncommitted working-tree changes.
+Changed files = (<base>)...<head>, where <head> defaults to HEAD.
+When <head> is HEAD, uncommitted working-tree changes are folded in too; when an
+explicit --head ref is given they are NOT (that dirt belongs to whatever is checked
+out, not to the branch being asked about).
 """
 import fnmatch
 import json
@@ -48,16 +53,26 @@ def resolve_base(explicit):
     return None  # no base ref found -- fall back to uncommitted-only diff
 
 
-def changed_files(base_ref):
+def changed_files(base_ref, head_ref='HEAD'):
+    """Changed paths between base and head.
+
+    head_ref defaults to HEAD (the checked-out tree). Pass an explicit ref -- e.g. the
+    branch /ship is about to merge -- to diff a branch that is NOT checked out. This
+    exists because /ship runs with HEAD on the default branch (its merge step requires
+    that), so '<base>...HEAD' would diff the default branch against itself and see none
+    of the branch's commits.
+    """
     files = []
     if base_ref:
-        res = _git(['diff', '--name-only', f'{base_ref}...HEAD'])
+        res = _git(['diff', '--name-only', f'{base_ref}...{head_ref}'])
         if res.returncode == 0:
             files = [l.strip().replace('\\', '/') for l in res.stdout.splitlines() if l.strip()]
-    # include uncommitted edits too (so a dirty tree is guarded before commit)
-    un = _git(['diff', '--name-only', 'HEAD'])
-    if un.returncode == 0:
-        files += [l.strip().replace('\\', '/') for l in un.stdout.splitlines() if l.strip()]
+    # Uncommitted edits belong to the WORKING TREE, not to some other branch's ref --
+    # include them only when we are actually guarding the checked-out tree.
+    if head_ref == 'HEAD':
+        un = _git(['diff', '--name-only', 'HEAD'])
+        if un.returncode == 0:
+            files += [l.strip().replace('\\', '/') for l in un.stdout.splitlines() if l.strip()]
     return sorted(set(files))
 
 
@@ -98,6 +113,20 @@ def main():
     if '--base' in argv:
         explicit_base = argv[argv.index('--base') + 1]
 
+    explicit_head = None
+    if '--head' in argv:
+        explicit_head = argv[argv.index('--head') + 1]
+
+    # An EXPLICITLY provided ref that does not resolve must fail closed -- silently
+    # guarding nothing and reporting a clean pass is indistinguishable from a real
+    # verified-clean pass. Auto-detection (no --base given) is unaffected: it may
+    # legitimately find nothing and fall back to uncommitted-only, unchanged below.
+    if explicit_head is not None and not _ref_exists(explicit_head):
+        print(f'[guard] ERROR: --head ref does not resolve: {explicit_head!r}')
+        print('[guard] cannot verify changed files against an unresolvable ref -- refusing '
+              'to report a clean pass.')
+        return 1
+
     with open(MAP, encoding='utf-8') as fh:
         mapping = json.load(fh)
 
@@ -105,14 +134,21 @@ def main():
     is_stub = not mapping.get('blast_radius')
 
     base_ref = resolve_base(explicit_base)
-    files = changed_files(base_ref)
+    if explicit_base is not None and base_ref is None:
+        print(f'[guard] ERROR: --base ref does not resolve: {explicit_base!r} '
+              f'(tried origin/{explicit_base} and {explicit_base})')
+        print('[guard] cannot verify changed files against an unresolvable ref -- refusing '
+              'to report a clean pass.')
+        return 1
+
+    files = changed_files(base_ref, explicit_head or 'HEAD')
     mods = affected_modules(files, mapping)
     print(f'[guard] base={base_ref or "(none -- uncommitted only)"}')
 
     ui_hits = ui_touching(files)
     if ui_hits:
         print(f'[guard] UI-touching changes detected ({len(ui_hits)} file(s)) -- '
-              f'run /ui-test <slug> --branch {current_branch()} before merging '
+              f'run /ui-test <slug> --branch {explicit_head or current_branch()} before merging '
               f'(browser-only defects pass pytest + this guard).')
 
     if is_stub:

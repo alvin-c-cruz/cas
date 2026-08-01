@@ -500,6 +500,39 @@ tr.type-expense  td:first-child { border-left: 3px solid #f59e0b; }
 .legend-swatch-drained { background: #f1f5f9; border: 1px solid #64748b; }
 .legend-swatch-deficit { background: var(--aging-danger-bg); border: 1px solid var(--aging-danger-fg); }
 
+/* ── Combined (All-Branches) AR Aging report branch chips (2026-08-01) ──
+   .branch-chip's base look (var(--bg)/var(--text-2)) is the token-backed
+   grey fallback for a branch with no theme_color -- byte-identical to the
+   report's original inline-styled span. When a branch DOES have a
+   theme_color, the view carries `derive_chip_theme` output down and the
+   template overrides background/color/border with an inline style (the
+   color is per-row DATA, not a design constant, so it can't live in this
+   stylesheet as a fixed value -- this mirrors the sidebar theming filter's
+   same approach). .no-access-chip replaces the old bare muted span with a
+   pill, per the approved mockup. */
+.branch-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg);
+  color: var(--text-2);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.no-access-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
 /* ── LIFO Valuation (Internal) report (R-03 slice 2c) ──────────
    Tab 1's deficit row reuses .fifo-layer-deficit/.badge-error verbatim above --
    same conceptual "deficit" state, just a different report. Tab 2's variance-cell

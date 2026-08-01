@@ -57,3 +57,33 @@ def derive_sidebar_theme(hex_color):
         'active_border': hex_color,
         'badge_shadow': f'rgba({r}, {g}, {b}, 0.4)',
     }
+
+
+def derive_chip_theme(hex_color):
+    """Derive light-background chip tokens (bg/fg/border) from one hex color
+    (combined AR aging report branch chips, 2026-08-01). Same hue-preserving
+    HLS approach as derive_sidebar_theme above, but inverted for a LIGHT chip
+    context (the report card is pale, not the dark sidebar): fg and bg
+    lightness are each clamped into a fixed band regardless of the *input*
+    color's own lightness, so a near-white or near-black stored theme_color
+    still produces a legible, hue-matching chip rather than invisible or
+    illegible text. Raises ValueError on a malformed '#RRGGBB' string.
+    """
+    if not is_valid_hex_color(hex_color):
+        raise ValueError(f'Invalid hex color: {hex_color!r}')
+
+    r, g, b = _hex_to_rgb(hex_color)
+    h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+
+    fg_s = max(s, 0.45)
+    fg_l = max(0.28, min(0.42, l))
+    fg = _hls_to_hex(h, fg_l, fg_s)
+
+    bg_s = min(s, 0.55)
+    bg = _hls_to_hex(h, 0.93, bg_s)
+
+    border_s = min(s, 0.55)
+    border_l = max(0.68, min(0.80, l))
+    border = _hls_to_hex(h, border_l, border_s)
+
+    return {'bg': bg, 'fg': fg, 'border': border}

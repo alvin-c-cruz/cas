@@ -184,6 +184,61 @@ def _ar_settled_as_of(invoice_ids, as_of_date):
     return {inv_id: Decimal(str(total or 0)) for inv_id, total in rows}
 
 
+def _memo_settled_as_of(memo_ids, as_of_date):
+    """{memo_id: amount collected as of as_of_date} from posted CRVs.
+
+    Mirrors `_ar_settled_as_of` exactly (same posted-status filter, same
+    `<= as_of_date` rule, same empty-input short-circuit, same Decimal
+    conversion) but keyed on `CRVArLine.sales_memo_id` instead of
+    `CRVArLine.invoice_id`. A memo-settling CRV line sets `sales_memo_id`
+    and leaves `invoice_id` NULL (exactly one of the two is set,
+    parser-enforced), so `_ar_settled_as_of`'s invoice_id filter cannot
+    reach these rows -- this is a parallel function, not a wider filter.
+    """
+    from app.cash_receipts.models import CashReceiptVoucher, CRVArLine
+    if not memo_ids:
+        return {}
+    rows = (
+        db.session.query(CRVArLine.sales_memo_id,
+                         db.func.sum(CRVArLine.amount_applied))
+        .join(CashReceiptVoucher, CRVArLine.crv_id == CashReceiptVoucher.id)
+        .filter(CRVArLine.sales_memo_id.in_(memo_ids),
+                CashReceiptVoucher.status == 'posted',
+                CashReceiptVoucher.crv_date <= as_of_date)
+        .group_by(CRVArLine.sales_memo_id)
+        .all()
+    )
+    return {memo_id: Decimal(str(total or 0)) for memo_id, total in rows}
+
+
+def _memo_derived_due_date(memo_date, invoice_date, invoice_due_date):
+    """The date a debit memo ages against: memo_date + the referenced
+    invoice's terms interval (invoice.due_date - invoice.invoice_date).
+
+    A `SalesMemo` has no `due_date` of its own, and invoices bucket on
+    `due_date` -- so bucketing a memo on its raw `memo_date` compares an
+    ISSUE date to invoices' DUE dates, not like-for-like: a debit note and
+    an invoice raised the same day on 30-day terms would land in different
+    buckets, the memo reading a full terms-period older than it
+    economically is. Deriving the due date preserves the intent that a
+    memo ages independently (it does not inherit an old invoice's age)
+    while comparing due-date to due-date.
+
+    Fallback: `SalesInvoice.due_date` is declared NOT NULL today, but a
+    past migration or a legacy bulk import may leave a real row with it
+    unset (see CLAUDE.md's batch-migration drift gotcha) -- when either
+    referenced date is missing, the terms interval is zero and the
+    derived due date is simply the memo_date. `calculate_age_bucket`
+    already tolerates a null due date, so this needs no special-casing
+    downstream.
+    """
+    if invoice_due_date and invoice_date:
+        interval = invoice_due_date - invoice_date
+    else:
+        interval = timedelta(0)
+    return memo_date + interval
+
+
 def _ap_settled_as_of(ap_ids, as_of_date):
     """{ap_id: amount paid as of as_of_date} from posted CDVs."""
     from app.cash_disbursements.models import CashDisbursementVoucher, CDVApLine
@@ -227,6 +282,7 @@ def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
     None means "everything is viewable", which is the per-branch report's case.
     """
     from app.branches.models import Branch
+    from app.sales_memos.models import SalesMemo
 
     q = SalesInvoice.query.filter(
         SalesInvoice.status.in_(_SETTLEABLE_STATUSES),
@@ -237,11 +293,31 @@ def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
 
     collected = _ar_settled_as_of([i.id for i in invoices], as_of_date)
 
+    # Posted debit memos carry their own receivable, separate from the
+    # invoice they reference (see module docstring on _memo_settled_as_of).
+    # Credit memos are already represented via the referenced invoice's
+    # balance (or are not AR at all) -- including them here would double
+    # count. Draft/voided memos are not a booked receivable.
+    mq = (SalesMemo.query
+          .join(SalesInvoice, SalesMemo.sales_invoice_id == SalesInvoice.id)
+          .filter(SalesMemo.memo_type == 'debit',
+                  SalesMemo.status == 'posted',
+                  SalesMemo.memo_date <= as_of_date))
+    if branch_ids is not None:
+        mq = mq.filter(SalesInvoice.branch_id.in_(branch_ids))
+    memos = mq.all()
+
+    memo_collected = _memo_settled_as_of([m.id for m in memos], as_of_date)
+
     branch_codes = {}
+    branch_themes = {}
     if include_branch:
-        branch_codes = {b.id: b.code for b in Branch.query.all()}
+        for b in Branch.query.all():
+            branch_codes[b.id] = b.code
+            branch_themes[b.id] = b.theme_color
 
     cust_ids = {i.customer_id for i in invoices if i.customer_id}
+    cust_ids |= {m.customer_id for m in memos if m.customer_id}
     master_names = {}
     if cust_ids:
         master_names = {c.id: c.name for c in
@@ -267,6 +343,7 @@ def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
             }
         bucket = calculate_age_bucket(invoice.due_date, as_of_date)
         row = {
+            'doc_type': 'invoice',
             'invoice_id': invoice.id,
             'invoice_number': invoice.invoice_number,
             'invoice_date': invoice.invoice_date,
@@ -278,8 +355,58 @@ def _build_ar_aging_data(as_of_date, branch_ids, *, include_branch=False,
         if include_branch:
             row['branch_id'] = invoice.branch_id
             row['branch_code'] = branch_codes.get(invoice.branch_id, '')
+            row['branch_theme'] = branch_themes.get(invoice.branch_id)
             row['viewable'] = (viewable_branch_ids is None
                                or invoice.branch_id in viewable_branch_ids)
+        customers[key]['invoices'].append(row)
+        customers[key][bucket] += balance_as_of
+        customers[key]['total'] += balance_as_of
+
+    for memo in memos:
+        balance_as_of = (Decimal(str(memo.total_amount))
+                         - memo_collected.get(memo.id, Decimal('0.00')))
+        if balance_as_of <= 0:
+            continue
+        key = memo.customer_id if memo.customer_id else f'name:{memo.customer_name}'
+        if key not in customers:
+            customers[key] = {
+                'name': master_names.get(memo.customer_id) or memo.customer_name,
+                'invoices': [],
+                'current': Decimal('0.00'),
+                '1-30': Decimal('0.00'),
+                '31-60': Decimal('0.00'),
+                '61-90': Decimal('0.00'),
+                '90+': Decimal('0.00'),
+                'total': Decimal('0.00'),
+            }
+        # Branch fields come from the REFERENCED invoice, never the memo's
+        # own branch_id -- SalesMemo.sales_invoice_id is nullable=False, so
+        # this always resolves (see design doc fact 3).
+        ref_invoice = memo.sales_invoice
+        derived_due = _memo_derived_due_date(
+            memo.memo_date, ref_invoice.invoice_date, ref_invoice.due_date)
+        bucket = calculate_age_bucket(derived_due, as_of_date)
+        row = {
+            'doc_type': 'debit_memo',
+            'memo_id': memo.id,
+            'memo_number': memo.memo_number,
+            'memo_date': memo.memo_date,
+            # Existing invoice-row keys, kept populated so nothing
+            # downstream breaks on a missing key.
+            'invoice_id': ref_invoice.id,
+            'invoice_number': memo.memo_number,
+            'invoice_date': memo.memo_date,
+            'due_date': derived_due,
+            'balance_due': balance_as_of,
+            'bucket': bucket,
+            'days_overdue': max(0, (as_of_date - derived_due).days) if derived_due else 0,
+        }
+        if include_branch:
+            row['branch_id'] = ref_invoice.branch_id
+            row['branch_code'] = branch_codes.get(ref_invoice.branch_id, '')
+            row['branch_theme'] = branch_themes.get(ref_invoice.branch_id)
+            row['viewable'] = (viewable_branch_ids is None
+                               or ref_invoice.branch_id in viewable_branch_ids)
         customers[key]['invoices'].append(row)
         customers[key][bucket] += balance_as_of
         customers[key]['total'] += balance_as_of
