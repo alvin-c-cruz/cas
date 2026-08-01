@@ -1,4 +1,10 @@
 {
+  "2114b41122a4b813768b71ef1bfe6eac93212d0e": {
+    "branch": "fix/ar-aging-expand-all",
+    "date": "2026-08-01",
+    "reason": null,
+    "waived": false
+  },
   "7f8810198ba62f6ca7b9a7120ed606cc9cfd6537": {
     "branch": "fix/ar-aging-branch-chips",
     "date": "2026-08-01",
