@@ -47,6 +47,31 @@ class ProductionRun(RowVersioned, db.Model):
     # period dimension; see the spec's dated correction.
     conversion_cost = db.Column(db.Numeric(15, 2), nullable=True)
 
+    # --- Period close + WIP carry-forward (R-07 P4) ---
+    # Beginning WIP is what the PREDECESSOR run left in WIP, pulled forward when this
+    # run is created (not pushed at close -- at close time the successor usually does
+    # not exist yet, because the old period is closed before the new one is opened).
+    # NOT NULL with a 0 default on purpose: every run has a beginning WIP even when it
+    # is zero, and a NULL would silently drop out of the cost pool's arithmetic rather
+    # than adding nothing.
+    beginning_wip_units = db.Column(db.Numeric(15, 4), default=0, nullable=False,
+                                    server_default='0')
+    beginning_wip_cost = db.Column(db.Numeric(15, 2), default=0, nullable=False,
+                                   server_default='0')
+    # Frozen AT CLOSE, never recomputed -- mirrors WorkOrder.actual_unit_cost. A later
+    # Product.standard_cost or BOM edit must not be able to retroactively disagree with
+    # what was actually posted. ending_wip_cost is the residual PLUG (cost pool minus
+    # the amount transferred out), NOT units x cost/EU: the ending-WIP units are only
+    # partially complete, so valuing them at a full equivalent-unit cost would strand
+    # the difference in WIP permanently. Carrying the plug is what keeps WIP tied to
+    # the GL, and it becomes the successor run's beginning_wip_cost.
+    ending_wip_cost = db.Column(db.Numeric(15, 2), nullable=True)
+    transferred_unit_cost = db.Column(db.Numeric(15, 2), nullable=True)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    # Plain Integer, not db.ForeignKey: a batch add_column cannot carry an inline FK
+    # ("Constraint must have a name") and SQLite FK enforcement is off app-wide anyway.
+    closed_by_id = db.Column(db.Integer, nullable=True)
+
     cancel_reason = db.Column(db.String(500), nullable=True)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     cancelled_at = db.Column(db.DateTime, nullable=True)
@@ -84,6 +109,14 @@ class ProductionRun(RowVersioned, db.Model):
                                         if self.ending_wip_pct_complete is not None else None),
             'conversion_cost': (float(self.conversion_cost)
                                 if self.conversion_cost is not None else None),
+            'beginning_wip_units': float(self.beginning_wip_units or 0),
+            'beginning_wip_cost': float(self.beginning_wip_cost or 0),
+            'ending_wip_cost': (float(self.ending_wip_cost)
+                                if self.ending_wip_cost is not None else None),
+            'transferred_unit_cost': (float(self.transferred_unit_cost)
+                                      if self.transferred_unit_cost is not None else None),
+            'closed_at': self.closed_at.isoformat() if self.closed_at else None,
+            'closed_by_id': self.closed_by_id,
             'output_product_code': product.code if product else None,
         }
 
