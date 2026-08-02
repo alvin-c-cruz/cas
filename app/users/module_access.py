@@ -302,6 +302,14 @@ MODULE_REGISTRY = [
      'area': 'Manufacturing', 'group': 'Masters',
      'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
      'endpoints': ('work_centers.',)},
+    # ── Manufacturing Departments (R-07 Process Track slice P1) — the process-mode
+    # cost pool, counterpart to the Discrete track's WorkCenter. Same reasoning as
+    # work_centers for NOT gating on manufacturing_process_enabled: a company may set
+    # up reference data before switching the mode on.
+    {'key': 'manufacturing_departments', 'label': 'Manufacturing Departments',
+     'section': 'Maintenance', 'area': 'Manufacturing', 'group': 'Masters',
+     'optional': True, 'depends_on': [], 'default_enabled': False, 'per_user': True,
+     'endpoints': ('manufacturing_departments.',)},
     # ── Work Orders (R-07 Discrete Track slice D2) — accountant+-only, same
     # per_user=True precedent; depends on bill_of_materials (a WO needs an
     # existing BOM to release against).

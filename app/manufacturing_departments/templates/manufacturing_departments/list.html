@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Manufacturing Departments{% endblock %}
+{% block page_title %}Manufacturing Departments{% endblock %}
+
+{% block content %}
+
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Manufacturing Departments</h1>
+        <p class="page-subheading">Cost pools process-mode production accumulates against over a period</p>
+    </div>
+    <div class="page-actions">
+        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+        <a href="{{ url_for('manufacturing_departments.create') }}" class="btn btn-primary">+ Create Department</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>CODE</th>
+                    <th>NAME</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for department in departments %}
+                <tr>
+                    <td><strong>{{ department.code }}</strong></td>
+                    <td>{{ department.name }}</td>
+                    <td>
+                        {% if department.is_active %}
+                        <span class="badge badge-active">Active</span>
+                        {% else %}
+                        <span class="badge badge-inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+                        <div class="action-buttons">
+                            <a href="{{ url_for('manufacturing_departments.edit', id=department.id) }}" class="btn-action btn-action-edit" title="Edit">Edit</a>
+                        </div>
+                        {% else %}
+                        &mdash;
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="empty-state-cell">
+                        <p>No manufacturing departments found.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
