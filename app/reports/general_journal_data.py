@@ -7,7 +7,8 @@ from io import BytesIO
 VOUCHER_ENTRY_TYPES = ('reversal', 'adjustment', 'closing', 'closing_reversal',
                        'opening', 'opening_balance', 'reclassification', 'transfer',
                        'petty_cash_replenishment', 'stock_adjustment', 'receiving_report',
-                       'delivery_receipt', 'manufacturing_consumption', 'manufacturing_production')
+                       'delivery_receipt', 'manufacturing_consumption', 'manufacturing_production',
+                       'manufacturing_conversion')
 
 
 def build_general_journal(entries):

@@ -6,10 +6,12 @@ under way -- the same rule release_work_order() applies on the Discrete side.
 """
 from decimal import Decimal
 
+from app import db
 from app.bill_of_materials.service import consume_materials
 from app.production_runs.models import ProductionRun, ProductionRunMaterial
 
 ZERO = Decimal('0.00')
+MONEY = Decimal('0.01')
 
 
 def find_predecessor_run(bom_id, department_id, branch_id, period_start):
@@ -57,6 +59,120 @@ def carry_beginning_wip(run):
     run.beginning_wip_units = Decimal(str(prior.units_ending_wip or 0))
     run.beginning_wip_cost = Decimal(str(prior.ending_wip_cost or 0)).quantize(ZERO)
     return prior
+
+
+def close_run(run, actor):
+    """Close the period: apply conversion cost, transfer completed units to finished
+    goods at the period's cost per equivalent unit, and freeze what stays in WIP.
+
+    Two postings, both keyed on the run number:
+
+    1. **Conversion applied** (`manufacturing_conversion`) -- Dr WIP / Cr Labor
+       Applied. Conversion cost is entered MANUALLY on the run (P3, owner decision)
+       and reaches the books nowhere else. Without this leg the cost pool would
+       include value that never entered WIP, and relieving WIP at a cost/EU that
+       includes conversion would drive the ledger's WIP balance NEGATIVE. Skipped
+       entirely when conversion is zero.
+    2. **Transfer** (`manufacturing_production`) -- Dr Inventory / Cr WIP at
+       `units_transferred x cost_per_EU`, plus an `inventory_variance` leg when the
+       output product is standard-costed.
+
+    Why this does NOT call produce_finished_goods(): for a standard-costed output,
+    post_movement values the receipt at Product.standard_cost and IGNORES the
+    unit_cost passed to it, while produce_finished_goods reads its JE amount back
+    from mv.unit_cost -- so WIP would be relieved at standard and the difference
+    stranded. D4 hit this first and wrote its own JE for the same reason.
+
+    What remains in WIP is the residual PLUG (pool - transferred), NOT
+    `ending units x cost/EU`: the ending-WIP units are only partially complete, so
+    valuing them at a full equivalent-unit cost would strand the difference in WIP
+    permanently. The plug is what ties WIP to the GL, and it is what the successor
+    run inherits as its beginning WIP.
+
+    Does NOT commit -- the caller owns the transaction.
+    """
+    from app.bill_of_materials.service import _add_line, _new_je
+    from app.journal_entries.utils import generate_entry_number
+    from app.posting.control_accounts import get_control_account
+    from app.production_runs.costing import compute_run_costing
+    from app.stock_adjustments.service import post_movement
+    from app.utils import ph_now
+
+    if run.status != 'open':
+        raise ValueError('Only an open Production Run can be closed.')
+
+    data = compute_run_costing(run)
+    transferred_units = Decimal(str(run.units_completed_and_transferred or 0))
+    ending_units = Decimal(str(run.units_ending_wip or 0))
+    if transferred_units <= 0 and ending_units <= 0:
+        raise ValueError('There is nothing to close -- no period results have been '
+                         'reported for this run.')
+
+    product = run.output_product
+    if transferred_units > 0 and (product is None or not product.track_inventory):
+        raise ValueError('The output product is not inventory-tracked, so completed '
+                         'units cannot be transferred to finished goods.')
+
+    pool = data['total_cost']
+    per_eu = data['cost_per_equivalent_unit'] or ZERO
+    conversion = data['conversion_cost']
+
+    wip_account = get_control_account('wip')
+
+    # 1. apply conversion cost to WIP so the pool and the ledger agree
+    if conversion > ZERO:
+        labor_account = get_control_account('labor_applied')
+        je = _new_je(generate_entry_number(run.branch_id), ph_now().date(),
+                     f'Production Run {run.run_number} conversion applied',
+                     run.run_number, 'manufacturing_conversion', run.branch_id, actor)
+        _add_line(je, 1, wip_account.id, 'Conversion cost applied', conversion, ZERO)
+        _add_line(je, 2, labor_account.id, 'Conversion cost applied', ZERO, conversion)
+        db.session.flush()
+        je.calculate_totals()
+        if not je.is_balanced:
+            raise ValueError(f'{run.run_number} conversion JE does not balance.')
+
+    # 2. transfer the completed units out of WIP
+    transferred_amount = ZERO
+    if transferred_units > 0:
+        inv_account = get_control_account('inventory')
+        transferred_amount = (transferred_units * per_eu).quantize(MONEY)
+        je = _new_je(generate_entry_number(run.branch_id), ph_now().date(),
+                     f'Production Run {run.run_number} transferred to finished goods',
+                     run.run_number, 'manufacturing_production', run.branch_id, actor)
+        mv, _went_negative = post_movement(
+            product, run.branch_id, 'production', transferred_units, per_eu,
+            'production_run', run.id, f'{run.run_number} transferred to finished goods',
+            actor, journal_entry_id=je.id)
+        # The movement's OWN unit_cost, not per_eu -- they differ for a standard-costed
+        # product, and the stock ledger's figure is what Inventory must be debited.
+        inventory_amount = (transferred_units * Decimal(str(mv.unit_cost))).quantize(MONEY)
+        n = 1
+        _add_line(je, n, inv_account.id, f'{product.code} transferred in',
+                  inventory_amount, ZERO); n += 1
+        _add_line(je, n, wip_account.id, f'{product.code} relieved from WIP',
+                  ZERO, transferred_amount); n += 1
+        variance = (transferred_amount - inventory_amount).quantize(MONEY)
+        if variance != ZERO:
+            variance_account = get_control_account('inventory_variance')
+            if variance > ZERO:
+                _add_line(je, n, variance_account.id,
+                          f'{product.code} standard cost variance', variance, ZERO)
+            else:
+                _add_line(je, n, variance_account.id,
+                          f'{product.code} standard cost variance', ZERO, -variance)
+        db.session.flush()
+        je.calculate_totals()
+        if not je.is_balanced:
+            raise ValueError(f'{run.run_number} transfer JE does not balance '
+                             f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    run.transferred_unit_cost = per_eu
+    run.ending_wip_cost = (pool - transferred_amount).quantize(MONEY)
+    run.status = 'closed'
+    run.closed_at = ph_now()
+    run.closed_by_id = actor.id
+    return run
 
 
 def snapshot_materials(run):
