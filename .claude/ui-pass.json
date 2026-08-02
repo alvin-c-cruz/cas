@@ -5,6 +5,12 @@
     "reason": null,
     "waived": false
   },
+  "2cad91bcba052623c6ef5f4d7a62a0771b7521b4": {
+    "branch": "feat/r07-p1-manufacturing-departments",
+    "date": "2026-08-02",
+    "reason": null,
+    "waived": false
+  },
   "50dabeeb75cd1e0125cfc4cb9256f7a9f679d9ba": {
     "branch": "feat/ar-aging-debit-memos",
     "date": "2026-08-01",
@@ -20,6 +26,12 @@
   "7f8810198ba62f6ca7b9a7120ed606cc9cfd6537": {
     "branch": "fix/ar-aging-branch-chips",
     "date": "2026-08-01",
+    "reason": null,
+    "waived": false
+  },
+  "849357bf90b0ed3b1bf91b239f8c30c412eb263c": {
+    "branch": "fix/manufacturing-mode-gating",
+    "date": "2026-08-02",
     "reason": null,
     "waived": false
   }
