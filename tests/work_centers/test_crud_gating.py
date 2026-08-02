@@ -66,3 +66,42 @@ def test_list_scoped_to_current_branch(client, admin_user, db_session, main_bran
         sess['selected_branch_id'] = branch_manila.id
     resp = client.get('/work-centers')
     assert b'WC-MAIN' not in resp.data
+
+
+class TestRoleGuardIsReachable:
+    """`_can_manage()` (app/work_centers/views.py:15) had NO coverage until 2026-08-02.
+
+    Two guards stack on these routes and the OUTER one masks the inner: a staff user
+    without the per-user module grant is stopped by enforce_module_access ("You do not
+    have access to this module") and never reaches the view at all. So the role guard
+    can only be exercised by first SATISFYING the module gate -- granting the module,
+    then asserting the role guard still refuses.
+
+    Without this, deleting `_can_manage()` from create/edit leaves the suite green.
+    See memory feedback-outer-gate-masks-inner-guard.
+    """
+
+    def test_staff_without_the_grant_is_stopped_by_the_outer_module_gate(
+            self, client, db_session, staff_user, main_branch):
+        _enable(db_session)
+        staff_user.set_branches([main_branch])
+        db_session.commit()
+        _login(client, staff_user, main_branch)
+        resp = client.post('/work-centers/create',
+                           data={'code': 'NOPE', 'name': 'Nope', 'is_active': '1'},
+                           follow_redirects=True)
+        assert b'do not have access to this module' in resp.data
+
+    def test_staff_with_the_grant_is_still_refused_by_the_role_guard(
+            self, client, db_session, staff_user, main_branch):
+        from app.work_centers.models import WorkCenter
+        _enable(db_session)
+        staff_user.set_branches([main_branch])
+        staff_user.set_book_permissions({'work_centers': True})
+        db_session.commit()
+        _login(client, staff_user, main_branch)
+        resp = client.post('/work-centers/create',
+                           data={'code': 'NOPE2', 'name': 'Nope', 'is_active': '1'},
+                           follow_redirects=True)
+        assert b'do not have permission to manage' in resp.data
+        assert WorkCenter.query.filter_by(code='NOPE2').first() is None
