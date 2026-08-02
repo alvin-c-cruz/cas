@@ -2,7 +2,7 @@
 mirroring generate_invoice_number's contract (no prefix, no reset)."""
 import pytest
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def test_generate_wo_number_format(db_session):

@@ -6,7 +6,7 @@ from app.work_orders.models import WorkOrder, WorkOrderMaterial
 from app.bill_of_materials.models import BillOfMaterial
 from app.products.models import Product
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def _bom(mode='discrete'):

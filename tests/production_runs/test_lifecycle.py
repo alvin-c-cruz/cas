@@ -17,7 +17,7 @@ from app.settings import AppSettings
 from app.stock_adjustments.service import post_movement
 from app.utils.cache_helpers import clear_module_config_cache
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.production_runs]
 
 
 def _login(client, user, branch):

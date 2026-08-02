@@ -27,7 +27,7 @@ from app.production_runs.service import issue_material, snapshot_materials
 from app.products.models import Product
 from app.stock_adjustments.service import post_movement
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.production_runs]
 
 
 def _setup(branch, actor, suffix='A', unit_cost='5.00', qty_per='2'):

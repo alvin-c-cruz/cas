@@ -23,7 +23,7 @@ from app.production_runs.models import ProductionRun, ProductionRunMaterial
 from app.products.models import Product
 from app.stock_adjustments.service import post_movement
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.production_runs]
 
 
 def _component(branch, actor, code='SEAM-C', qty='1000', cost='5.00'):

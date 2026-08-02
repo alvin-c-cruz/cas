@@ -7,7 +7,7 @@ from app.bill_of_materials.models import BillOfMaterial, BillOfMaterialLine, Bil
 from app.products.models import Product
 from app.work_centers.models import WorkCenter
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def _released_wo(main_branch):

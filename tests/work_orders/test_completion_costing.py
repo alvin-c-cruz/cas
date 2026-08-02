@@ -7,7 +7,7 @@ from app.bill_of_materials.models import BillOfMaterial, BillOfMaterialLine, Bil
 from app.products.models import Product
 from app.work_centers.models import WorkCenter
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def _wo_with_one_op(main_branch, hourly_rate='60.00'):

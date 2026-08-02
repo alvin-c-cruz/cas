@@ -13,7 +13,7 @@ from app.stock_adjustments.service import post_movement
 from app.posting.control_accounts import ControlAccountError
 from app.settings import AppSettings
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bill_of_materials]
 
 
 def _assign(code_setting, code, account_factory):

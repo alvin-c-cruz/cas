@@ -15,7 +15,7 @@ from app.settings import AppSettings
 from app.journal_entries.models import JournalEntry
 from app.utils.cache_helpers import clear_module_config_cache
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def _assign(code_setting, code, account_factory):

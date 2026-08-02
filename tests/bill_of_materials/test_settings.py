@@ -2,7 +2,7 @@
 import pytest
 from app.settings import AppSettings
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bill_of_materials]
 
 
 def _login(client, user, branch):

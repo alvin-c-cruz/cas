@@ -7,7 +7,7 @@ from app.audit.models import AuditLog
 from app.bill_of_materials.models import BillOfMaterial, BillOfMaterialLine
 from app.products.models import Product
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def _login(client, user, branch):

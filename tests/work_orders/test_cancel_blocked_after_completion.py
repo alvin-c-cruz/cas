@@ -6,7 +6,7 @@ from app.settings import AppSettings
 from app.utils.cache_helpers import clear_module_config_cache
 from tests.work_orders.test_completion_batch import _ready_wo
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def _login(client, user, branch):

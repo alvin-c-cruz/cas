@@ -7,7 +7,7 @@ from app.products.models import Product
 from app.utils.cache_helpers import clear_product_cache
 from app.work_centers.models import WorkCenter
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bill_of_materials]
 
 
 def _bom(db_session, main_branch, mode='discrete'):

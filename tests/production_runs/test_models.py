@@ -17,7 +17,7 @@ from app.manufacturing_departments.models import ManufacturingDepartment
 from app.production_runs.models import ProductionRun, ProductionRunMaterial
 from app.products.models import Product
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.production_runs]
 
 
 def _bom(code='P2-OUT'):

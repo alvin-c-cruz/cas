@@ -9,7 +9,7 @@ from app.work_centers.models import WorkCenter
 from app.stock_adjustments.service import post_movement
 from app.journal_entries.models import JournalEntry
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def _ready_wo(main_branch, accountant_user, qty_to_produce='10', costing_method='moving_average',

@@ -3,7 +3,7 @@ import pytest
 from app.settings import AppSettings
 from app.audit.models import AuditLog
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bill_of_materials]
 
 
 def _login(client, user, branch):

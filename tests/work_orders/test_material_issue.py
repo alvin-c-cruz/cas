@@ -11,7 +11,7 @@ from app.work_orders.models import WorkOrder
 from app.bill_of_materials.models import BillOfMaterial, BillOfMaterialLine
 from app.products.models import Product
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def _released_wo_with_material(main_branch, qty_per='2'):

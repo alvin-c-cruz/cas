@@ -5,7 +5,7 @@ from app import db
 from app.journal_entries.models import JournalEntry
 from tests.work_orders.test_completion_batch import _ready_wo
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.work_orders]
 
 
 def test_force_close_writes_off_leftover_pool_and_completes(

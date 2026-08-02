@@ -7,7 +7,7 @@ from app import db
 from app.bill_of_materials.models import BillOfMaterial
 from app.products.models import Product
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.bill_of_materials]
 
 
 def _products(db_session, n=2):
