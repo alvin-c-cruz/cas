@@ -7,7 +7,56 @@ under way -- the same rule release_work_order() applies on the Discrete side.
 from decimal import Decimal
 
 from app.bill_of_materials.service import consume_materials
-from app.production_runs.models import ProductionRunMaterial
+from app.production_runs.models import ProductionRun, ProductionRunMaterial
+
+ZERO = Decimal('0.00')
+
+
+def find_predecessor_run(bom_id, department_id, branch_id, period_start):
+    """The most recent CLOSED run for the same cost pool ending before *period_start*.
+
+    "Same cost pool" is (bom, department, branch): a different product line, a
+    different department, or another branch accumulates its own WIP, so carrying
+    across any of them would move value between pools that never touched.
+
+    Only a CLOSED run qualifies. An OPEN one has not settled its ending WIP -- that
+    figure is still moving, and is not even frozen yet. A CANCELLED one reversed its
+    consumptions and therefore left nothing in WIP at all.
+
+    period_end must be strictly BEFORE period_start; an overlapping run is not a
+    predecessor, it is a double count.
+    """
+    return (ProductionRun.query
+            .filter(ProductionRun.bom_id == bom_id,
+                    ProductionRun.department_id == department_id,
+                    ProductionRun.branch_id == branch_id,
+                    ProductionRun.status == 'closed',
+                    ProductionRun.period_end < period_start)
+            .order_by(ProductionRun.period_end.desc(), ProductionRun.id.desc())
+            .first())
+
+
+def carry_beginning_wip(run):
+    """Stamp *run*'s beginning WIP from its predecessor, or leave it at zero.
+
+    PULLED here at create time rather than PUSHED at the predecessor's close: when a
+    run closes, its successor usually does not exist yet, because the accountant
+    closes the old period before opening the new one.
+
+    What carries is the predecessor's units_ending_wip and its frozen
+    ending_wip_cost -- the residual plug left sitting in the WIP account. A run
+    closed before P4 shipped has no ending_wip_cost at all; that reads as zero, never
+    NULL, since NULL would drop out of the cost pool's sum instead of adding nothing.
+    """
+    prior = find_predecessor_run(run.bom_id, run.department_id, run.branch_id,
+                                 run.period_start)
+    if prior is None:
+        run.beginning_wip_units = Decimal('0')
+        run.beginning_wip_cost = ZERO
+        return None
+    run.beginning_wip_units = Decimal(str(prior.units_ending_wip or 0))
+    run.beginning_wip_cost = Decimal(str(prior.ending_wip_cost or 0)).quantize(ZERO)
+    return prior
 
 
 def snapshot_materials(run):

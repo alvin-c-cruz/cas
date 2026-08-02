@@ -17,7 +17,8 @@ from app.production_runs.costing import compute_run_costing
 from app.production_runs.forms import (ProductionRunForm, ProductionRunPeriodForm,
                                        generate_run_number)
 from app.production_runs.models import ProductionRun
-from app.production_runs.service import issue_material, snapshot_materials
+from app.production_runs.service import (carry_beginning_wip, issue_material,
+                                        snapshot_materials)
 
 production_runs_bp = Blueprint('production_runs', __name__, template_folder='templates')
 
@@ -74,6 +75,10 @@ def create():
         )
         db.session.add(run)
         db.session.flush()          # need run.bom for the snapshot
+        # Pull the predecessor period's leftover WIP forward before anything else --
+        # it is part of this period's cost pool, so it must be stamped on the run
+        # itself, not recomputed on every page view.
+        carry_beginning_wip(run)
         try:
             snapshot_materials(run)
         except ValueError as exc:
