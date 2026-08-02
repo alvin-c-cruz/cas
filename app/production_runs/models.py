@@ -41,6 +41,11 @@ class ProductionRun(RowVersioned, db.Model):
     units_completed_and_transferred = db.Column(db.Numeric(15, 4), default=0, nullable=False)
     units_ending_wip = db.Column(db.Numeric(15, 4), default=0, nullable=False)
     ending_wip_pct_complete = db.Column(db.Numeric(5, 2), nullable=True)
+    # Conversion cost (labour + overhead) for the period, entered MANUALLY
+    # (owner decision 2026-08-02). The arc spec's "reuse ExpenseAllocationRule"
+    # is impossible -- that driver is product-line scoped with no department or
+    # period dimension; see the spec's dated correction.
+    conversion_cost = db.Column(db.Numeric(15, 2), nullable=True)
 
     cancel_reason = db.Column(db.String(500), nullable=True)
     cancelled_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
@@ -77,6 +82,8 @@ class ProductionRun(RowVersioned, db.Model):
             'units_ending_wip': float(self.units_ending_wip or 0),
             'ending_wip_pct_complete': (float(self.ending_wip_pct_complete)
                                         if self.ending_wip_pct_complete is not None else None),
+            'conversion_cost': (float(self.conversion_cost)
+                                if self.conversion_cost is not None else None),
             'output_product_code': product.code if product else None,
         }
 

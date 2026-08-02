@@ -1,7 +1,7 @@
 """Forms for Production Runs (R-07 Process Track slice P2)."""
 from flask_wtf import FlaskForm
 from wtforms import SelectField, DecimalField, DateField
-from wtforms.validators import DataRequired, NumberRange
+from wtforms.validators import DataRequired, NumberRange, Optional
 
 from app.utils.concurrency import RowVersionFormMixin
 
@@ -24,3 +24,22 @@ class ProductionRunForm(RowVersionFormMixin, FlaskForm):
                                                          message='Units started must be greater than zero.')])
     period_start = DateField('Period Start', validators=[DataRequired()])
     period_end = DateField('Period End', validators=[DataRequired()])
+
+
+class ProductionRunPeriodForm(FlaskForm):
+    """Period results the accountant reports at period end (R-07 P3).
+
+    conversion_cost is entered manually -- see costing.py for why the arc spec's
+    ExpenseAllocationRule reuse was not possible.
+    """
+    units_completed_and_transferred = DecimalField(
+        'Units Completed & Transferred', places=4, validators=[Optional(), NumberRange(min=0)])
+    units_ending_wip = DecimalField(
+        'Units in Ending WIP', places=4, validators=[Optional(), NumberRange(min=0)])
+    ending_wip_pct_complete = DecimalField(
+        '% Complete (Ending WIP)', places=2,
+        validators=[Optional(), NumberRange(min=0, max=100,
+                                            message='Percent complete must be between 0 and 100.')])
+    conversion_cost = DecimalField(
+        'Conversion Cost (Labour + Overhead)', places=2,
+        validators=[Optional(), NumberRange(min=0)])

@@ -13,7 +13,9 @@ from app import db
 from app.audit.utils import log_create, log_update
 from app.bill_of_materials.models import BillOfMaterial
 from app.manufacturing_departments.models import ManufacturingDepartment
-from app.production_runs.forms import ProductionRunForm, generate_run_number
+from app.production_runs.costing import compute_run_costing
+from app.production_runs.forms import (ProductionRunForm, ProductionRunPeriodForm,
+                                       generate_run_number)
 from app.production_runs.models import ProductionRun
 from app.production_runs.service import issue_material, snapshot_materials
 
@@ -91,7 +93,38 @@ def create():
 @login_required
 def detail(id):
     run = _get_scoped(id)
-    return render_template('production_runs/detail.html', run=run)
+    period_form = ProductionRunPeriodForm(obj=run)
+    return render_template('production_runs/detail.html', run=run,
+                           period_form=period_form, costing=compute_run_costing(run))
+
+
+@production_runs_bp.route('/production-runs/<int:id>/period', methods=['POST'])
+@login_required
+def period_results(id):
+    """Record the period's completed/ending-WIP units and conversion cost (R-07 P3)."""
+    if not _can_manage():
+        flash('You do not have permission to manage production runs.', 'error')
+        return redirect(url_for('production_runs.list'))
+    run = _get_scoped(id)
+    form = ProductionRunPeriodForm()
+    if not form.validate_on_submit():
+        for field, errors in form.errors.items():
+            for err in errors:
+                flash(err, 'error')
+        return redirect(url_for('production_runs.detail', id=run.id))
+    old = run.to_dict()
+    if form.units_completed_and_transferred.data is not None:
+        run.units_completed_and_transferred = form.units_completed_and_transferred.data
+    if form.units_ending_wip.data is not None:
+        run.units_ending_wip = form.units_ending_wip.data
+    if form.ending_wip_pct_complete.data is not None:
+        run.ending_wip_pct_complete = form.ending_wip_pct_complete.data
+    if form.conversion_cost.data is not None:
+        run.conversion_cost = form.conversion_cost.data
+    db.session.commit()
+    log_update('production_runs', run.id, run.run_number, old, run.to_dict())
+    flash('Period results saved.', 'success')
+    return redirect(url_for('production_runs.detail', id=run.id))
 
 
 @production_runs_bp.route('/production-runs/<int:id>/materials/<int:material_id>/issue',
