@@ -40,5 +40,11 @@
     "date": "2026-08-02",
     "reason": null,
     "waived": false
+  },
+  "8f4fd3896c273690f707b530e720b4270e4f33f4": {
+    "branch": "feat/r07-p3-equivalent-units",
+    "date": "2026-08-02",
+    "reason": null,
+    "waived": false
   }
 }
