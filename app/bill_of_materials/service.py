@@ -53,18 +53,25 @@ def _add_line(je, n, account_id, description, debit, credit):
 
 
 def _source_document_type(source_document):
+    """(movement source_document_type, reference, human label) for a consuming
+    document. Stays fail-closed on an unknown type -- extending the dispatch must
+    never turn it into a catch-all that files movements under a wrong/blank type."""
     from app.work_orders.models import WorkOrder
+    from app.production_runs.models import ProductionRun
     if isinstance(source_document, WorkOrder):
-        return 'work_order', source_document.wo_number
+        return 'work_order', source_document.wo_number, 'Work Order'
+    if isinstance(source_document, ProductionRun):
+        return 'production_run', source_document.run_number, 'Production Run'
     raise ValueError(
         f'unsupported source_document type {type(source_document).__name__!r}')
 
 
 def consume_materials(source_document, lines, actor):
     """Decrement component stock for each (component_line, quantity) pair
-    consumed by *source_document* -- a WorkOrder today; ProductionRun, once
-    R-07 Process Track P2 ships, will call this unchanged (dispatch is by
-    isinstance, not a hardcoded WorkOrder assumption). No-op (no JE, no
+    consumed by *source_document* -- a WorkOrder (Discrete track) or a
+    ProductionRun (Process track, R-07 P2). Dispatch is by isinstance via
+    _source_document_type(), which also supplies the human label used in the JE
+    description; that description was hardcoded to "Work Order" until P2. No-op (no JE, no
     movements, no control accounts resolved) if every line's component is
     untracked. Fail-closed: wip/inventory resolved before any write, only
     when at least one line is tracked. Does NOT commit -- caller owns the
@@ -74,8 +81,8 @@ def consume_materials(source_document, lines, actor):
     if not tracked:
         return
 
-    source_document_type, reference = _source_document_type(source_document)
-    description = f'Work Order {reference} material consumption'
+    source_document_type, reference, label = _source_document_type(source_document)
+    description = f'{label} {reference} material consumption'
 
     wip_account = get_control_account('wip')
     inv_account = get_control_account('inventory')
@@ -119,8 +126,8 @@ def produce_finished_goods(source_document, product_id, quantity, unit_cost, act
     if not product or not product.track_inventory:
         return
 
-    source_document_type, reference = _source_document_type(source_document)
-    description = f'Work Order {reference} completion'
+    source_document_type, reference, label = _source_document_type(source_document)
+    description = f'{label} {reference} completion'
 
     inv_account = get_control_account('inventory')
     wip_account = get_control_account('wip')
