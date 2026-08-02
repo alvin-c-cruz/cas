@@ -7,6 +7,19 @@
         <h1 class="page-heading">Work Order Costing &amp; Variance Report</h1>
         <p class="page-subheading">Material/labor actual cost vs. standard-cost baseline per completed Work Order</p>
     </div>
+    {# Both links carry the CURRENT filter state, so the printed/exported output matches
+       what is on screen -- a Print that silently ignored the filter would be worse than
+       no button at all. Mirrors budget_variance.html's own header actions. #}
+    <div class="page-actions">
+        <a href="{{ url_for('reports.work_order_costing_variance_print', status=status,
+                            date_from=data.date_from.isoformat() if data.date_from else None,
+                            date_to=data.date_to.isoformat() if data.date_to else None) }}"
+           class="btn btn-secondary" target="_blank">Print</a>
+        <a href="{{ url_for('reports.work_order_costing_variance_export_excel', status=status,
+                            date_from=data.date_from.isoformat() if data.date_from else None,
+                            date_to=data.date_to.isoformat() if data.date_to else None) }}"
+           class="btn btn-secondary">Export Excel</a>
+    </div>
 </div>
 
 <div class="card">

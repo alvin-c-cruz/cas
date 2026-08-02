@@ -178,6 +178,35 @@ def test_zero_baseline_standard_costed_wo_renders_dash_not_crash(
     assert 'text-muted">&mdash;' in body or 'text-muted">—' in body
 
 
+def test_screen_links_to_print_and_excel_carrying_the_filter(
+        client, db_session, accountant_user, main_branch):
+    """The report SCREEN must link to its own print and Excel routes.
+
+    Both routes are otherwise unreachable: every other test in this file reaches them
+    by URL, which proves the route works and says nothing about whether a user can get
+    there. Shipped that way once -- BUG-D5-REPORT-PRINT-EXPORT-BUTTONS-MISSING, caught
+    only by the pre-merge browser pass -- so it is pinned here as a render assertion.
+
+    The links must also carry the current filter state, or Print/Export would silently
+    report a different row set than the one on screen.
+    """
+    _login(client, accountant_user)
+    with client.session_transaction() as s:
+        s['selected_branch_id'] = main_branch.id
+
+    resp = client.get('/reports/work-order-costing-variance'
+                      '?status=all&date_from=2026-01-01&date_to=2026-12-31')
+    assert resp.status_code == 200
+    body = resp.data.decode('utf-8')
+
+    assert '/reports/work-order-costing-variance/print' in body, 'no Print link on the screen'
+    assert '/reports/work-order-costing-variance/export/excel' in body, 'no Excel link on the screen'
+    assert '>Print<' in body and '>Export Excel<' in body
+
+    for token in ('status=all', 'date_from=2026-01-01', 'date_to=2026-12-31'):
+        assert token in body, 'print/export links dropped the active filter (%s)' % token
+
+
 def test_export_excel_route_returns_xlsx(client, db_session, accountant_user, main_branch):
     _login(client, accountant_user)
     with client.session_transaction() as s:
