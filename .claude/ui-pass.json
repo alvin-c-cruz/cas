@@ -11,6 +11,12 @@
     "reason": "PARTIAL browser pass, owner-approved to merge. VERIFIED LIVE: with zero memos the report is byte-identical to pre-change (grand total 31,514,203.67, 209 chips) -- the state every live client is in today. NOT verified live: memo ROW RENDERING, because RIC has the sales_memos module DISABLED, so no memo can exist or be created without first enabling it; the enablement control was not found under /settings or its Packages tab. That path is covered by 87 tests incl. the reconciliation invariant, and is currently unreachable by any client.",
     "waived": true
   },
+  "786f29ccd6d3f7e0b7523553bf2569304985caf6": {
+    "branch": "feat/r07-d5-wo-costing-variance",
+    "date": "2026-08-02",
+    "reason": null,
+    "waived": false
+  },
   "7f8810198ba62f6ca7b9a7120ed606cc9cfd6537": {
     "branch": "fix/ar-aging-branch-chips",
     "date": "2026-08-01",
