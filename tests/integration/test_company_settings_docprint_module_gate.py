@@ -77,3 +77,53 @@ class TestSoPrintFormGate:
         _login(client, admin_user, main_branch)
         body = client.get('/settings').data
         assert b'name="so_print_form"' in body
+
+
+class TestManufacturingModeGate:
+    """BUG-MANUFACTURING-MODE-GATED-BEHIND-SALES-ORDERS.
+
+    The two manufacturing mode toggles were rendered inside
+    `{% if module_states.sales_orders %}`, a module with no relationship to
+    manufacturing. Since "at least one mode must be on before a Bill of Materials
+    can be created", a manufacturing-only company that enabled Bill of Materials /
+    Work Centers / Work Orders but not Sales Orders could not switch manufacturing
+    on AT ALL -- the whole shipped R-07 arc was unreachable.
+
+    Invisible to every other test because they set the mode directly via
+    `AppSettings.set_setting('manufacturing_discrete_enabled', '1')` and never
+    render this template. Found by the R-07 D5 pre-merge browser pass, 2026-08-02.
+    """
+
+    def test_shown_when_bom_enabled_even_though_sales_orders_disabled(
+            self, client, db_session, admin_user, main_branch):
+        """The bug, reproduced: manufacturing on, Sales Orders off."""
+        _set_modules(db_session, bill_of_materials=True, sales_orders=False)
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data
+        assert b'name="manufacturing_discrete_enabled"' in body
+        assert b'name="manufacturing_process_enabled"' in body
+
+    def test_shown_when_both_enabled(self, client, db_session, admin_user, main_branch):
+        _set_modules(db_session, bill_of_materials=True, sales_orders=True)
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data
+        assert b'name="manufacturing_discrete_enabled"' in body
+        assert b'name="manufacturing_process_enabled"' in body
+
+    def test_hidden_when_bom_disabled(self, client, db_session, admin_user, main_branch):
+        """Still gated -- the fix must re-home the toggles, not un-gate them."""
+        _set_modules(db_session, bill_of_materials=False, sales_orders=True)
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data
+        assert b'name="manufacturing_discrete_enabled"' not in body
+        assert b'name="manufacturing_process_enabled"' not in body
+
+    def test_job_order_slips_stays_gated_on_sales_orders(
+            self, client, db_session, admin_user, main_branch):
+        """Guards against over-correcting: job_order_slips_show_drafts shares the
+        block being split and DOES belong to sales_orders, so it must stay hidden
+        when Sales Orders is off even while manufacturing is on."""
+        _set_modules(db_session, bill_of_materials=True, sales_orders=False)
+        _login(client, admin_user, main_branch)
+        body = client.get('/settings').data
+        assert b'name="job_order_slips_show_drafts"' not in body

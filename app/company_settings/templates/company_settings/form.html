@@ -250,6 +250,12 @@
             <div class="form-hint">When on, the Job Order Slips list also shows draft (not yet
                 confirmed) Sales Orders. When off (default), only confirmed/cancelled/closed
                 orders appear there.</div>
+            {% endif %}
+            {# The manufacturing MODE toggles belong to Bill of Materials, not Sales Orders.
+               They sat inside the sales_orders block until 2026-08-02, which meant a
+               manufacturing-only company could not switch manufacturing on at all -- see
+               BUG-MANUFACTURING-MODE-GATED-BEHIND-SALES-ORDERS. #}
+            {% if module_states.bill_of_materials %}
             <label class="checkbox-label" style="margin-top:12px;">
                 {{ form.manufacturing_discrete_enabled() }}
                 <span>{{ form.manufacturing_discrete_enabled.label.text }}</span>
