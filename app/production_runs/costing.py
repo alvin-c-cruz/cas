@@ -56,15 +56,28 @@ def equivalent_units(run):
 def compute_run_costing(run):
     """Costing figures for one Production Run. Never raises on an incomplete run --
     a period with nothing reported yet returns cost_per_equivalent_unit=None rather
-    than dividing by zero."""
+    than dividing by zero.
+
+    The cost pool is BEGINNING WIP BROUGHT FORWARD + costs added this period (R-07
+    P4). P3 shipped with the pool reading only this run's own posted JEs, which is
+    right for a first period and understates every period after it by exactly what
+    the predecessor left in WIP -- value that would otherwise sit stranded in the
+    control account with nothing ever relieving it.
+
+    Beginning-WIP UNITS deliberately do NOT enter equivalent units: under weighted
+    average those units are already counted in units_completed_and_transferred once
+    they finish, so adding them again would double-count. Only the COST joins the pool.
+    """
+    beginning = Decimal(str(run.beginning_wip_cost or 0)).quantize(MONEY)
     material = _material_cost(run)
     conversion = Decimal(str(run.conversion_cost or 0)).quantize(MONEY)
-    total = (material + conversion).quantize(MONEY)
+    total = (beginning + material + conversion).quantize(MONEY)
     eu = equivalent_units(run)
     per_eu = None
     if eu > 0:
         per_eu = (total / eu).quantize(MONEY, rounding=ROUND_HALF_UP)
     return {
+        'beginning_wip_cost': beginning,
         'material_cost': material,
         'conversion_cost': conversion,
         'total_cost': total,
