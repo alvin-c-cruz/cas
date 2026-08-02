@@ -210,3 +210,60 @@ class TestMaterialIssue:
         snapshot_materials(run); db.session.commit()
         with pytest.raises(ValueError, match='greater than zero'):
             issue_material(run.materials[0], Decimal('0'), accountant_user)
+
+
+class TestRoleGuardIsReachable:
+    """`_can_manage()` (app/production_runs/views.py:23) had NO coverage until
+    2026-08-02 -- the P1 lesson was not carried into P2 hours later.
+
+    The module gate masks the role guard: a staff user without the per-user grant is
+    stopped by enforce_module_access before the view runs. Grant the module first,
+    then assert the role guard still refuses. Covers BOTH guarded routes (create at
+    :56, issue at :101). See memory feedback-outer-gate-masks-inner-guard.
+    """
+
+    def _staff_with_module(self, db_session, staff_user, main_branch):
+        staff_user.set_branches([main_branch])
+        staff_user.set_book_permissions({'production_runs': True})
+        db_session.commit()
+
+    def test_staff_without_the_grant_is_stopped_by_the_outer_module_gate(
+            self, client, db_session, staff_user, main_branch):
+        _enable(db_session)
+        staff_user.set_branches([main_branch]); db_session.commit()
+        _login(client, staff_user, main_branch)
+        resp = client.post('/production-runs/create', data={}, follow_redirects=True)
+        assert b'do not have access to this module' in resp.data
+
+    def test_staff_with_the_grant_is_still_refused_at_create(
+            self, client, db_session, staff_user, accountant_user, main_branch):
+        _enable(db_session)
+        comp = _component(main_branch, accountant_user, code='RG-C1')
+        bom = _bom(comp, code='RG-B1'); dept = _dept(main_branch, code='RG1')
+        self._staff_with_module(db_session, staff_user, main_branch)
+        _login(client, staff_user, main_branch)
+        resp = client.post('/production-runs/create', data={
+            'bom_id': bom.id, 'department_id': dept.id, 'units_started': '10',
+            'period_start': '2026-08-01', 'period_end': '2026-08-31',
+        }, follow_redirects=True)
+        assert b'do not have permission to manage' in resp.data
+        assert ProductionRun.query.filter_by(bom_id=bom.id).first() is None
+
+    def test_staff_with_the_grant_is_still_refused_at_material_issue(
+            self, client, db_session, staff_user, accountant_user, main_branch,
+            wo_control_accounts):
+        """The second guarded route -- a fix that only covered create would leave
+        material issue (which POSTS TO THE GL) unprotected and still green."""
+        _enable(db_session)
+        comp = _component(main_branch, accountant_user, code='RG-C2')
+        run = _run(main_branch, _bom(comp, code='RG-B2'), _dept(main_branch, code='RG2'),
+                   number='00900')
+        snapshot_materials(run); db.session.commit()
+        self._staff_with_module(db_session, staff_user, main_branch)
+        _login(client, staff_user, main_branch)
+        resp = client.post(
+            f'/production-runs/{run.id}/materials/{run.materials[0].id}/issue',
+            data={'quantity': '5'}, follow_redirects=True)
+        assert b'do not have permission to manage' in resp.data
+        db.session.refresh(run)
+        assert run.materials[0].quantity_issued == Decimal('0'), 'nothing may post'
