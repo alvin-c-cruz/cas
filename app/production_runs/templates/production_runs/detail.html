@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Production Run {{ run.run_number }}{% endblock %}
+{% block page_title %}Production Run {{ run.run_number }}{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Production Run {{ run.run_number }}</h1>
+        <p class="page-subheading">
+            {{ run.output_product.code if run.output_product }} &middot;
+            {{ run.department.name if run.department }} &middot;
+            {{ run.period_start }} &ndash; {{ run.period_end }}
+        </p>
+    </div>
+    <div class="page-actions">
+        <span class="badge badge-{{ 'active' if run.status == 'open' else 'inactive' }}">{{ run.status|title }}</span>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h2 class="section-heading">Materials</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>COMPONENT</th>
+                    <th class="text-right">REQUIRED</th>
+                    <th class="text-right">ISSUED</th>
+                    {% if run.status == 'open' and (current_user.has_full_access or current_user.role == 'accountant') %}
+                    <th>ISSUE</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in run.materials %}
+                <tr>
+                    <td>{{ m.line_number }}</td>
+                    <td>{{ m.component_product.code }} &mdash; {{ m.component_product.name }}</td>
+                    <td class="text-right">{{ '%.4f'|format(m.quantity_required) }}</td>
+                    <td class="text-right">{{ '%.4f'|format(m.quantity_issued or 0) }}</td>
+                    {% if run.status == 'open' and (current_user.has_full_access or current_user.role == 'accountant') %}
+                    <td>
+                        <form method="POST" action="{{ url_for('production_runs.issue', id=run.id, material_id=m.id) }}" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="number" step="0.0001" min="0" name="quantity" class="form-control form-control-sm" style="width:120px;display:inline-block">
+                            <button type="submit" class="btn btn-secondary btn-sm">Issue</button>
+                        </form>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty-state-cell"><p>No components snapshotted.</p></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="form-actions">
+            <a href="{{ url_for('production_runs.list') }}" class="btn btn-secondary">Back</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -313,6 +313,13 @@ MODULE_REGISTRY = [
     # ── Work Orders (R-07 Discrete Track slice D2) — accountant+-only, same
     # per_user=True precedent; depends on bill_of_materials (a WO needs an
     # existing BOM to release against).
+    # -- Production Runs (R-07 Process Track slice P2) -- the process-mode costing
+    # document. depends_on bill_of_materials: a run snapshots a BOM's component lines
+    # at open, so there is nothing to open without one.
+    {'key': 'production_runs', 'label': 'Production Runs', 'section': 'Transactions',
+     'area': 'Manufacturing', 'group': 'Manufacturing',
+     'optional': True, 'depends_on': ['bill_of_materials'], 'default_enabled': False,
+     'per_user': True, 'endpoints': ('production_runs.',)},
     {'key': 'work_orders', 'label': 'Work Orders', 'section': 'Transactions',
      'area': 'Manufacturing', 'group': 'Manufacturing',
      'optional': True, 'depends_on': ['bill_of_materials'], 'default_enabled': False, 'per_user': True,

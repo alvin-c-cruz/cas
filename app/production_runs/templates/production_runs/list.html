@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Production Runs{% endblock %}
+{% block page_title %}Production Runs{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Production Runs</h1>
+        <p class="page-subheading">Period-based process costing per department</p>
+    </div>
+    <div class="page-actions">
+        {% if (current_user.has_full_access or current_user.role == 'accountant') %}
+        <a href="{{ url_for('production_runs.create') }}" class="btn btn-primary">+ Enter Production Run</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>RUN #</th>
+                    <th>PRODUCT</th>
+                    <th>DEPARTMENT</th>
+                    <th>PERIOD</th>
+                    <th class="text-right">UNITS STARTED</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                <tr>
+                    <td><strong>{{ run.run_number }}</strong></td>
+                    <td>{{ run.output_product.code if run.output_product else '&mdash;' }}</td>
+                    <td>{{ run.department.code if run.department else '&mdash;' }}</td>
+                    <td>{{ run.period_start }} &ndash; {{ run.period_end }}</td>
+                    <td class="text-right">{{ '%.4f'|format(run.units_started) }}</td>
+                    <td><span class="badge badge-{{ 'active' if run.status == 'open' else 'inactive' }}">{{ run.status|title }}</span></td>
+                    <td>
+                        <div class="action-buttons">
+                            <a href="{{ url_for('production_runs.detail', id=run.id) }}" class="btn-action btn-action-edit" title="View">View</a>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="empty-state-cell"><p>No production runs found.</p></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

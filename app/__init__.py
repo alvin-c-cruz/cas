@@ -345,6 +345,7 @@ def create_app(config_name=None):
     from app.bill_of_materials.views import bill_of_materials_bp
     from app.work_centers.views import work_centers_bp
     from app.manufacturing_departments.views import manufacturing_departments_bp
+    from app.production_runs.views import production_runs_bp
     from app.work_orders.views import work_orders_bp
 
     app.register_blueprint(dashboard_bp)
@@ -399,6 +400,7 @@ def create_app(config_name=None):
     app.register_blueprint(bill_of_materials_bp)
     app.register_blueprint(work_centers_bp)
     app.register_blueprint(manufacturing_departments_bp)
+    app.register_blueprint(production_runs_bp)
     app.register_blueprint(work_orders_bp)
 
     from app.backup.views import backup_bp
