@@ -283,6 +283,7 @@ def create_app(config_name=None):
     from app.budgeting.models import BudgetLine  # noqa: F401
     from app.bill_of_materials.models import BillOfMaterial, BillOfMaterialLine  # noqa: F401
     from app.work_centers.models import WorkCenter  # noqa: F401
+    from app.manufacturing_departments.models import ManufacturingDepartment  # noqa: F401
     from app.work_orders.models import WorkOrder, WorkOrderMaterial, WorkOrderOperation, WorkOrderCompletion  # noqa: F401
     from app.stock_adjustments.models import (StockMovement, StockBalance, StockAdjustment,
                                                StockAdjustmentLine, StockCostLayer,
