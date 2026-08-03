@@ -2610,8 +2610,24 @@ def production_run_cost_export_excel(run_id):
         {'label': 'Ending work in process', 'value': data['units_ending_wip']},
         {'label': 'Units accounted for', 'value': data['units_accounted_for']},
         {'label': 'Unaccounted (loss / shrinkage)', 'value': data['unaccounted_units']},
+    ]
+    # Only when an expectation exists to split against -- a 0.0000 abnormal row
+    # would read as someone having judged the loss, rather than nobody having set
+    # a rate. Same rule the two templates follow.
+    if data['abnormal_loss_units'] > 0:
+        rows += [
+            {'label': 'Normal loss', 'value': data['normal_loss_units']},
+            {'label': 'Abnormal loss', 'value': data['abnormal_loss_units']},
+        ]
+    rows += [
         {'label': '', 'value': None},
         {'label': 'EQUIVALENT UNITS', 'value': None},
+        {'label': 'Completed & transferred out', 'value': data['units_completed_and_transferred']},
+        {'label': 'Ending work in process equivalents', 'value': data['ending_wip_equivalent_units']},
+    ]
+    if data['abnormal_loss_units'] > 0:
+        rows += [{'label': 'Abnormal loss equivalents', 'value': data['abnormal_loss_units']}]
+    rows += [
         {'label': 'Equivalent units', 'value': data['equivalent_units']},
         {'label': 'Cost per equivalent unit', 'value': data['cost_per_equivalent_unit']},
         {'label': '', 'value': None},
@@ -2623,6 +2639,11 @@ def production_run_cost_export_excel(run_id):
         {'label': '', 'value': None},
         {'label': 'COSTS ACCOUNTED FOR', 'value': None},
         {'label': 'Transferred out', 'value': data['transferred_out']},
+    ]
+    if data['abnormal_loss_charged'] > 0:
+        rows += [{'label': 'Abnormal loss charged out',
+                  'value': data['abnormal_loss_charged']}]
+    rows += [
         {'label': 'Ending work in process', 'value': data['ending_wip_cost']},
         {'label': 'Total accounted for', 'value': data['total_accounted_for']},
         {'label': 'Difference', 'value': data['difference']},

@@ -72,6 +72,17 @@
                     {% endif %}
                 </td>
                 <td class="text-right">{{ '%.4f'|format(data.unaccounted_units) }}</td></tr>
+            {# Split only when an expectation exists to split against. With no
+               normal_loss_pct set every lost unit is normal, and printing a
+               0.0000 abnormal line would imply someone had judged it so. #}
+            {% if data.abnormal_loss_units > 0 %}
+            <tr><td class="text-muted" style="padding-left:26px;">Normal loss
+                    <span class="text-muted">&mdash; absorbed by the good units</span></td>
+                <td class="text-right">{{ '%.4f'|format(data.normal_loss_units) }}</td></tr>
+            <tr><td class="text-muted" style="padding-left:26px;">Abnormal loss
+                    <span class="text-muted">&mdash; charged to the period</span></td>
+                <td class="text-right">{{ '%.4f'|format(data.abnormal_loss_units) }}</td></tr>
+            {% endif %}
         </tbody>
     </table>
 
@@ -82,7 +93,14 @@
                 <td class="text-right">{{ '%.4f'|format(data.units_completed_and_transferred) }}</td></tr>
             <tr><td class="text-muted" style="padding-left:26px;">Ending work in process
                     &times; {{ '%.2f'|format(data.ending_wip_pct_complete or 0) }}% complete</td>
-                <td class="text-right">{{ '%.4f'|format(data.equivalent_units - data.units_completed_and_transferred) }}</td></tr>
+                <td class="text-right">{{ '%.4f'|format(data.ending_wip_equivalent_units) }}</td></tr>
+            {% if data.abnormal_loss_units > 0 %}
+            <tr><td class="text-muted" style="padding-left:26px;">Abnormal loss
+                    <div class="form-hint">Counted in the denominator so it carries a cost of its
+                        own. Normal loss is deliberately excluded &mdash; that is what makes the
+                        good units absorb it.</div></td>
+                <td class="text-right">{{ '%.4f'|format(data.abnormal_loss_units) }}</td></tr>
+            {% endif %}
             <tr class="total-row"><td><strong>Equivalent units</strong></td>
                 <td class="text-right"><strong>{{ '%.4f'|format(data.equivalent_units) }}</strong></td></tr>
         </tbody>
@@ -115,6 +133,14 @@
                         &times; {{ '%.2f'|format(data.cost_per_equivalent_unit) }}</span>
                     {% endif %}</td>
                 <td class="text-right">{{ '%.2f'|format(data.transferred_out) }}</td></tr>
+            {% if data.abnormal_loss_charged > 0 %}
+            <tr><td>Abnormal loss charged out
+                    <span class="text-muted">&mdash; {{ '%.4f'|format(data.abnormal_loss_units) }}
+                        &times; {{ '%.2f'|format(data.cost_per_equivalent_unit) }}</span>
+                    <div class="form-hint">An expense of this period, not a cost of the finished
+                        goods.</div></td>
+                <td class="text-right">{{ '%.2f'|format(data.abnormal_loss_charged) }}</td></tr>
+            {% endif %}
             <tr><td>Ending work in process</td>
                 <td class="text-right">{{ '%.2f'|format(data.ending_wip_cost) }}</td></tr>
             <tr class="total-row"><td><strong>Total accounted for</strong></td>

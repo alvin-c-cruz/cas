@@ -11,10 +11,11 @@ WHERE THE FIGURES COME FROM, and why that matters:
     material added      Sum of WIP DEBITS on the run's manufacturing_consumption JEs
     conversion applied  Sum of WIP DEBITS on its manufacturing_conversion JE
     transferred out     Sum of WIP CREDITS on its manufacturing_production JE
+    abnormal loss       Sum of WIP CREDITS on its manufacturing_abnormal_loss JE
     beginning WIP       run.beginning_wip_cost  (carried forward; no JE represents it)
     ending WIP          run.ending_wip_cost     (frozen at close)
 
-Three of the five come straight off the ledger, so "costs accounted for == costs
+Four of the six come straight off the ledger, so "costs accounted for == costs
 to account for" reconciles the WIP control account -- it is not the report
 agreeing with itself. It CAN fail, and that is the point: if the run record has
 been edited since it closed, or a posting is missing, the difference shows here.
@@ -30,7 +31,7 @@ from decimal import Decimal
 
 from app.journal_entries.models import JournalEntry
 from app.posting.control_accounts import get_control_account
-from app.production_runs.costing import equivalent_units
+from app.production_runs.costing import equivalent_units, loss_split
 from app.production_runs.models import ProductionRun
 
 ZERO = Decimal('0.00')
@@ -53,7 +54,8 @@ def _wip_sums_by_entry_type(run):
     jes = JournalEntry.query.filter_by(reference=run.run_number).all()
     for je in jes:
         if je.entry_type not in ('manufacturing_consumption', 'manufacturing_conversion',
-                                 'manufacturing_production'):
+                                 'manufacturing_production',
+                                 'manufacturing_abnormal_loss'):
             continue
         for line in je.lines:
             if line.account_id != wip.id:
@@ -84,6 +86,13 @@ def generate_production_run_cost_report(run_id, branch_id):
     # The WIP CREDIT, not the Inventory debit: for a standard-costed output those
     # differ by the variance leg, and WIP is what this statement is reconciling.
     transferred_out = credits.get('manufacturing_production', ZERO).quantize(MONEY)
+    # Also a WIP credit, and also read off the ledger rather than recomputed (R-07
+    # P6). Its own entry_type is what keeps it out of transferred_out above -- under
+    # a shared type the statement would report spoilage as though it had reached
+    # finished goods. Recomputing it from the run record instead would exempt it from
+    # the tie-out, so the check would stay green through exactly the drift it exists
+    # to catch.
+    abnormal_charged = credits.get('manufacturing_abnormal_loss', ZERO).quantize(MONEY)
     # A cancellation reversal posts WIP credits under manufacturing_consumption; a
     # cancelled run can never reach here (status must be 'closed'), so the
     # consumption credits are not netted off -- keep it that way rather than
@@ -93,10 +102,13 @@ def generate_production_run_cost_report(run_id, branch_id):
     ending_wip_cost = Decimal(str(run.ending_wip_cost or 0)).quantize(MONEY)
 
     total_to_account_for = (beginning_wip_cost + material_added + conversion_applied).quantize(MONEY)
-    total_accounted_for = (transferred_out + ending_wip_cost).quantize(MONEY)
+    total_accounted_for = (transferred_out + abnormal_charged + ending_wip_cost).quantize(MONEY)
     difference = (total_to_account_for - total_accounted_for).quantize(MONEY)
 
     eu = equivalent_units(run)
+    # Unit COUNTS legitimately come from the run rather than the ledger -- no journal
+    # entry carries one, which is the same reason equivalent_units() is shared.
+    _total_loss, normal_loss, abnormal_loss = loss_split(run)
 
     beginning_units = Decimal(str(run.beginning_wip_units or 0)).quantize(QTY)
     started = Decimal(str(run.units_started or 0)).quantize(QTY)
@@ -118,9 +130,20 @@ def generate_production_run_cost_report(run_id, branch_id):
         # units accounted for than ever existed, i.e. a data error. The sign is
         # returned raw -- deciding which one to flag is the template's job.
         'unaccounted_units': (units_to_account_for - units_accounted_for).quantize(QTY),
+        # ...split into the half the good units absorb and the half that is costed
+        # out (R-07 P6). With no expected-loss percentage set, normal carries the
+        # whole figure and abnormal is zero -- P5's statement, unchanged.
+        'normal_loss_units': normal_loss,
+        'abnormal_loss_units': abnormal_loss,
         'ending_wip_pct_complete': run.ending_wip_pct_complete,
         # equivalent units
         'equivalent_units': eu,
+        # Handed over explicitly rather than left to the template to derive by
+        # subtracting completed units from EU: with abnormal loss now a third term in
+        # that denominator, the subtraction would silently fold spoilage into the
+        # ending-WIP line.
+        'ending_wip_equivalent_units': (ending_units * Decimal(str(
+            run.ending_wip_pct_complete or 0)) / Decimal('100')).quantize(QTY),
         'cost_per_equivalent_unit': run.transferred_unit_cost,
         # costs to account for
         'beginning_wip_cost': beginning_wip_cost,
@@ -129,6 +152,7 @@ def generate_production_run_cost_report(run_id, branch_id):
         'total_to_account_for': total_to_account_for,
         # costs accounted for
         'transferred_out': transferred_out,
+        'abnormal_loss_charged': abnormal_charged,
         'ending_wip_cost': ending_wip_cost,
         'total_accounted_for': total_accounted_for,
         'difference': difference,
