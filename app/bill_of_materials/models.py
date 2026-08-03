@@ -18,6 +18,18 @@ class BillOfMaterial(RowVersioned, db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, unique=True)
     manufacturing_mode = db.Column(db.String(20), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # R-07 P6. Percentage of units STARTED that this process is expected to lose.
+    # Loss up to it is NORMAL and stays absorbed by the good units (correct since P3
+    # -- equivalent_units() excludes lost units from the denominator); loss beyond it
+    # is ABNORMAL and gets costed at cost/EU and charged to the P&L.
+    #
+    # NULL is NOT zero, and the difference is the backward-compatibility guarantee.
+    # NULL = nobody set an expectation, so there is no allowance to exceed and all
+    # loss stays absorbed -- exactly today's behaviour for every existing run and
+    # every live client. 0.00 = "expected to lose nothing", so ALL loss is abnormal.
+    # Defaulting to 0 would silently reclassify every historical run's ordinary
+    # shrinkage as an abnormal loss.
+    normal_loss_pct = db.Column(db.Numeric(5, 2), nullable=True)
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=ph_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=ph_now, onupdate=ph_now, nullable=False)
