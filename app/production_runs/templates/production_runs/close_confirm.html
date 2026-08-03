@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Close Production Run {{ run.run_number }}{% endblock %}
+{% block page_title %}Close Production Run {{ run.run_number }}{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Close Period</h1>
+        <p class="page-subheading">
+            Production Run {{ run.run_number }} &middot;
+            {{ run.output_product.code if run.output_product }} &middot;
+            {{ run.period_start }} &ndash; {{ run.period_end }}
+        </p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {# An HTML confirm page, not a JS confirm() -- project convention. #}
+        <div class="alert alert-warning">
+            Closing posts the transfer to finished goods and freezes this period's cost
+            per equivalent unit. It cannot be reopened.
+        </div>
+
+        <table class="data-table">
+            <tbody>
+                <tr><td>Units to transfer</td>
+                    <td class="text-right">{{ '%.4f'|format(transferred_units) }}</td></tr>
+                <tr><td>At cost per equivalent unit</td>
+                    <td class="text-right">
+                        {% if costing.cost_per_equivalent_unit is not none %}{{ '%.2f'|format(costing.cost_per_equivalent_unit) }}
+                        {% else %}<span class="text-muted">&mdash;</span>{% endif %}
+                    </td></tr>
+                <tr class="total-row">
+                    <td><strong>Amount posted to finished goods</strong></td>
+                    <td class="text-right"><strong>{{ '%.2f'|format(transferred_amount) }}</strong></td></tr>
+                <tr><td>Ending WIP left in Work in Process
+                        <div class="form-hint">Carried forward as the next period's beginning WIP.</div></td>
+                    <td class="text-right">{{ '%.2f'|format(remaining_in_wip) }}</td></tr>
+            </tbody>
+        </table>
+
+        {% if costing.conversion_cost > 0 %}
+        <div class="form-hint" style="margin-top:12px;">
+            Conversion cost of {{ '%.2f'|format(costing.conversion_cost) }} is applied to
+            Work in Process as part of this close &mdash; it reaches the books here, not
+            when it was entered.
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('production_runs.close', id=run.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Close Period</button>
+                <a href="{{ url_for('production_runs.detail', id=run.id) }}"
+                   class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

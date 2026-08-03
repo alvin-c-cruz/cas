@@ -10,14 +10,14 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 
 from app import db
-from app.audit.utils import log_create, log_update
+from app.audit.utils import log_audit, log_create, log_update
 from app.bill_of_materials.models import BillOfMaterial
 from app.manufacturing_departments.models import ManufacturingDepartment
 from app.production_runs.costing import compute_run_costing
 from app.production_runs.forms import (ProductionRunForm, ProductionRunPeriodForm,
                                        generate_run_number)
 from app.production_runs.models import ProductionRun
-from app.production_runs.service import (carry_beginning_wip, issue_material,
+from app.production_runs.service import (carry_beginning_wip, close_run, issue_material,
                                         snapshot_materials)
 
 production_runs_bp = Blueprint('production_runs', __name__, template_folder='templates')
@@ -129,6 +129,51 @@ def period_results(id):
     db.session.commit()
     log_update('production_runs', run.id, run.run_number, old, run.to_dict())
     flash('Period results saved.', 'success')
+    return redirect(url_for('production_runs.detail', id=run.id))
+
+
+@production_runs_bp.route('/production-runs/<int:id>/close', methods=['GET', 'POST'])
+@login_required
+def close(id):
+    """Confirm (GET) then close (POST) the period.
+
+    The GET is deliberately side-effect free -- a crawler or a link prefetch must
+    never be able to close an accounting period. Both this and the POST run the
+    view's own _can_manage() check: the outer enforce_module_access gate stops an
+    ungranted user first, so without checking here too a staff user WITH the module
+    grant would reach a route that posts to the GL.
+    """
+    if not _can_manage():
+        flash('You do not have permission to manage production runs.', 'error')
+        return redirect(url_for('production_runs.list'))
+    run = _get_scoped(id)
+    if run.status != 'open':
+        flash('Only an open Production Run can be closed.', 'error')
+        return redirect(url_for('production_runs.detail', id=run.id))
+
+    if request.method == 'GET':
+        costing = compute_run_costing(run)
+        transferred_units = Decimal(str(run.units_completed_and_transferred or 0))
+        per_eu = costing['cost_per_equivalent_unit'] or Decimal('0.00')
+        transferred_amount = (transferred_units * per_eu).quantize(Decimal('0.01'))
+        return render_template(
+            'production_runs/close_confirm.html', run=run, costing=costing,
+            transferred_units=transferred_units, transferred_amount=transferred_amount,
+            remaining_in_wip=(costing['total_cost'] - transferred_amount).quantize(Decimal('0.01')))
+
+    old = run.to_dict()
+    try:
+        close_run(run, current_user)
+    except (ValueError, ArithmeticError) as exc:
+        db.session.rollback()
+        flash(str(exc), 'error')
+        return redirect(url_for('production_runs.detail', id=run.id))
+    db.session.commit()
+    log_audit(module='production_runs', action='close', record_id=run.id,
+              record_identifier=run.run_number, old_values=old, new_values=run.to_dict(),
+              notes=f'Period closed; {run.units_completed_and_transferred} units transferred '
+                    f'at {run.transferred_unit_cost} per equivalent unit')
+    flash(f'Production Run {run.run_number} closed.', 'success')
     return redirect(url_for('production_runs.detail', id=run.id))
 
 
