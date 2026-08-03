@@ -30,7 +30,9 @@ pytestmark = [pytest.mark.integration, pytest.mark.production_runs]
 
 @pytest.fixture
 def bom(db_session):
-    out = Product(code='W-OUT', name='Dried Mango', is_active=True)
+    # Output must be inventory-tracked -- the create form only offers such BOMs.
+    out = Product(code='W-OUT', name='Dried Mango', track_inventory=True,
+                  costing_method='moving_average', is_active=True)
     comp = Product(code='W-COMP', name='Fresh Mango', track_inventory=True,
                    costing_method='moving_average', standard_cost=Decimal('5.00'),
                    is_active=True)
@@ -44,7 +46,8 @@ def bom(db_session):
 
 @pytest.fixture
 def other_bom(db_session):
-    out = Product(code='W-OUT2', name='Dried Banana', is_active=True)
+    out = Product(code='W-OUT2', name='Dried Banana', track_inventory=True,
+                  costing_method='moving_average', is_active=True)
     comp = Product(code='W-COMP2', name='Fresh Banana', track_inventory=True,
                    costing_method='moving_average', standard_cost=Decimal('4.00'),
                    is_active=True)

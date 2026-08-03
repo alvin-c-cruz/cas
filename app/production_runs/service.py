@@ -92,6 +92,29 @@ def update_period_results(run, units_completed_and_transferred=None, units_endin
     return run
 
 
+def preview_close(run):
+    """(costing, preview) for the close confirm screen -- the SAME arithmetic
+    close_run() will use.
+
+    Split out because the confirm screen used to recompute the transfer amount and
+    the WIP remainder independently. Both were pinned to the same constants by
+    separate tests, but nothing asserted the PREVIEW equalled what was POSTED, so a
+    change to one could silently make the screen promise a different number than the
+    ledger recorded.
+    """
+    from app.production_runs.costing import compute_run_costing
+    costing = compute_run_costing(run)
+    transferred_units = Decimal(str(run.units_completed_and_transferred or 0))
+    per_eu = costing['cost_per_equivalent_unit'] or ZERO
+    transferred_amount = (transferred_units * per_eu).quantize(MONEY)
+    return costing, {
+        'transferred_units': transferred_units,
+        'per_eu': per_eu,
+        'transferred_amount': transferred_amount,
+        'remaining_in_wip': (costing['total_cost'] - transferred_amount).quantize(MONEY),
+    }
+
+
 def close_run(run, actor):
     """Close the period: apply conversion cost, transfer completed units to finished
     goods at the period's cost per equivalent unit, and freeze what stays in WIP.

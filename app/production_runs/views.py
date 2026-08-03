@@ -18,7 +18,7 @@ from app.production_runs.forms import (ProductionRunForm, ProductionRunPeriodFor
                                        generate_run_number)
 from app.production_runs.models import ProductionRun
 from app.production_runs.service import (cancel_run, carry_beginning_wip, close_run,
-                                        issue_material, snapshot_materials,
+                                        issue_material, preview_close, snapshot_materials,
                                         update_period_results)
 
 production_runs_bp = Blueprint('production_runs', __name__, template_folder='templates')
@@ -35,9 +35,17 @@ def _get_scoped(id):
 
 
 def _populate_choices(form, branch_id):
+    # Only BOMs whose OUTPUT product is inventory-tracked. Closing a period transfers
+    # completed units into finished goods, and an untracked output has nowhere to
+    # receive them -- close refuses outright. Offering it here would let an accountant
+    # work a whole period before finding out
+    # (BUG-PRODUCTION-RUN-UNTRACKED-OUTPUT-FAILS-ONLY-AT-CLOSE). An unselectable
+    # option cannot be chosen by mistake; create() validates the POST as well, since a
+    # narrowed picker is not a guard on its own.
     form.bom_id.choices = [
         (b.id, f'{b.product.code} - {b.product.name}')
-        for b in BillOfMaterial.query.filter_by(is_active=True).all() if b.product]
+        for b in BillOfMaterial.query.filter_by(is_active=True).all()
+        if b.product and b.product.track_inventory]
     form.department_id.choices = [
         (d.id, f'{d.code} - {d.name}')
         for d in ManufacturingDepartment.query
@@ -74,6 +82,13 @@ def create():
             units_started=form.units_started.data,
             created_by_id=current_user.id,
         )
+        bom = db.session.get(BillOfMaterial, form.bom_id.data)
+        if bom is None or bom.product is None or not bom.product.track_inventory:
+            flash('That product is not inventory-tracked, so completed units could '
+                  'never be transferred to finished goods. Enable inventory tracking '
+                  'on the product first.', 'error')
+            return render_template('production_runs/form.html', form=form,
+                                   title='Open Production Run')
         db.session.add(run)
         db.session.flush()          # need run.bom for the snapshot
         # Pull the predecessor period's leftover WIP forward before anything else --
@@ -156,14 +171,14 @@ def close(id):
         return redirect(url_for('production_runs.detail', id=run.id))
 
     if request.method == 'GET':
-        costing = compute_run_costing(run)
-        transferred_units = Decimal(str(run.units_completed_and_transferred or 0))
-        per_eu = costing['cost_per_equivalent_unit'] or Decimal('0.00')
-        transferred_amount = (transferred_units * per_eu).quantize(Decimal('0.01'))
+        # ONE calculation shared with close_run(), so the screen cannot promise a
+        # number the ledger then contradicts. It used to be recomputed here.
+        costing, preview = preview_close(run)
         return render_template(
             'production_runs/close_confirm.html', run=run, costing=costing,
-            transferred_units=transferred_units, transferred_amount=transferred_amount,
-            remaining_in_wip=(costing['total_cost'] - transferred_amount).quantize(Decimal('0.01')))
+            transferred_units=preview['transferred_units'],
+            transferred_amount=preview['transferred_amount'],
+            remaining_in_wip=preview['remaining_in_wip'])
 
     old = run.to_dict()
     try:

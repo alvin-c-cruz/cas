@@ -27,13 +27,14 @@
 
 <div class="card"><div class="card-body">
     {% if data.reconciles %}
-    <div class="alert alert-info">
+    {# One wrapper: .alert is display:flex, so multiple children lay out as columns. #}
+    <div class="alert alert-info"><div>
         Costs accounted for equal costs to account for. Material, conversion and
         transferred-out are read from this run's posted journal entries, so this statement
         reconciles the Work in Process control account.
-    </div>
+    </div></div>
     {% else %}
-    <div class="alert alert-error">
+    <div class="alert alert-error"><div>
         <strong>This period does not reconcile.</strong>
         Costs accounted for ({{ '%.2f'|format(data.total_accounted_for) }}) differ from costs to
         account for ({{ '%.2f'|format(data.total_to_account_for) }}) by
@@ -41,7 +42,7 @@
         The cost figures come from the posted journal entries, so the ledger and this run's
         stored figures disagree &mdash; the run record has been changed since it was closed, or a
         posting is missing. Do not rely on this period's unit cost until it is investigated.
-    </div>
+    </div></div>
     {% endif %}
 
     <h2 class="card-title">Quantity schedule</h2>

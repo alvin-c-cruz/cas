@@ -35,7 +35,13 @@ def _enable(db_session, on=True):
 
 
 def _bom(comp, code='PR-OUT', with_lines=True):
-    out = Product(code=code, name='Dried Mango', is_active=True)
+    # The OUTPUT product must be inventory-tracked: closing a period transfers
+    # completed units into finished goods, so the Production Run create form only
+    # offers BOMs whose output can receive them (R-07 P5 Task 8,
+    # BUG-PRODUCTION-RUN-UNTRACKED-OUTPUT-FAILS-ONLY-AT-CLOSE). This fixture
+    # predates that rule and built an untracked output.
+    out = Product(code=code, name='Dried Mango', track_inventory=True,
+                  costing_method='moving_average', is_active=True)
     db.session.add(out); db.session.commit()
     bom = BillOfMaterial(product_id=out.id, manufacturing_mode='process')
     if with_lines:

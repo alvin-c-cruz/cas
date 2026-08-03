@@ -36,8 +36,10 @@
 
 {% if run.status == 'cancelled' %}
 <div class="alert alert-warning">
-    <strong>Cancelled{% if run.cancelled_at %} {{ run.cancelled_at.strftime('%b %d, %Y') }}{% endif %}.</strong>
-    {{ run.cancel_reason }}
+    <div>
+        <strong>Cancelled{% if run.cancelled_at %} {{ run.cancelled_at.strftime('%b %d, %Y') }}{% endif %}.</strong>
+        {{ run.cancel_reason }}
+    </div>
 </div>
 {% endif %}
 
@@ -116,17 +118,24 @@
             so it reconciles to the GL.</div>
 
         {% if run.status == 'closed' %}
+        {# .alert is display:flex, so EVERY child -- <strong>, each bare text run, a
+           nested <div> -- becomes its own flex ITEM and the content lays out as
+           side-by-side columns (BUG-CLOSED-RUN-SUMMARY-ALERT-SPLITS-INTO-THREE-COLUMNS).
+           Wrapping the content in a single element gives the flex container exactly
+           one item, so it flows as normal prose. #}
         <div class="alert alert-info" style="margin-top: 16px;">
-            <strong>Closed{% if run.closed_at %} {{ run.closed_at.strftime('%b %d, %Y') }}{% endif %}.</strong>
-            Transferred {{ '%.4f'|format(run.units_completed_and_transferred or 0) }} units to finished
-            goods at the frozen cost per equivalent unit of
-            {{ '%.2f'|format(run.transferred_unit_cost or 0) }} &mdash; posted
-            {{ '%.2f'|format((run.units_completed_and_transferred or 0) * (run.transferred_unit_cost or 0)) }}
-            (Dr Inventory / Cr Work in Process).
-            Ending WIP carried forward: {{ '%.4f'|format(run.units_ending_wip or 0) }} units valued
-            {{ '%.2f'|format(run.ending_wip_cost or 0) }}, which becomes the next period's beginning WIP.
-            <div class="form-hint">The transferred unit cost is frozen at close, so a later standard-cost
-                or BOM edit can never retroactively disagree with what was posted.</div>
+            <div>
+                <strong>Closed{% if run.closed_at %} {{ run.closed_at.strftime('%b %d, %Y') }}{% endif %}.</strong>
+                Transferred {{ '%.4f'|format(run.units_completed_and_transferred or 0) }} units to finished
+                goods at the frozen cost per equivalent unit of
+                {{ '%.2f'|format(run.transferred_unit_cost or 0) }} &mdash; posted
+                {{ '%.2f'|format((run.units_completed_and_transferred or 0) * (run.transferred_unit_cost or 0)) }}
+                (Dr Inventory / Cr Work in Process).
+                Ending WIP carried forward: {{ '%.4f'|format(run.units_ending_wip or 0) }} units valued
+                {{ '%.2f'|format(run.ending_wip_cost or 0) }}, which becomes the next period's beginning WIP.
+                <div class="form-hint">The transferred unit cost is frozen at close, so a later standard-cost
+                    or BOM edit can never retroactively disagree with what was posted.</div>
+            </div>
         </div>
         {% endif %}
 
