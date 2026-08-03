@@ -107,11 +107,18 @@ def preview_close(run):
     transferred_units = Decimal(str(run.units_completed_and_transferred or 0))
     per_eu = costing['cost_per_equivalent_unit'] or ZERO
     transferred_amount = (transferred_units * per_eu).quantize(MONEY)
+    abnormal_amount = costing['abnormal_loss_cost']
     return costing, {
         'transferred_units': transferred_units,
         'per_eu': per_eu,
         'transferred_amount': transferred_amount,
-        'remaining_in_wip': (costing['total_cost'] - transferred_amount).quantize(MONEY),
+        'abnormal_loss_units': costing['abnormal_loss_units'],
+        'abnormal_loss_cost': abnormal_amount,
+        # Three terms since P6, matching close_run's plug exactly. Showing the
+        # two-term figure here would promise the accountant a carry-forward that
+        # includes value the close is about to expense.
+        'remaining_in_wip': (costing['total_cost'] - transferred_amount
+                             - abnormal_amount).quantize(MONEY),
     }
 
 
@@ -119,7 +126,7 @@ def close_run(run, actor):
     """Close the period: apply conversion cost, transfer completed units to finished
     goods at the period's cost per equivalent unit, and freeze what stays in WIP.
 
-    Two postings, both keyed on the run number:
+    Three postings, all keyed on the run number:
 
     1. **Conversion applied** (`manufacturing_conversion`) -- Dr WIP / Cr Labor
        Applied. Conversion cost is entered MANUALLY on the run (P3, owner decision)
@@ -137,8 +144,16 @@ def close_run(run, actor):
     from mv.unit_cost -- so WIP would be relieved at standard and the difference
     stranded. D4 hit this first and wrote its own JE for the same reason.
 
-    What remains in WIP is the residual PLUG (pool - transferred), NOT
-    `ending units x cost/EU`: the ending-WIP units are only partially complete, so
+    3. **Abnormal loss** (`manufacturing_abnormal_loss`, R-07 P6) -- Dr Abnormal
+       Loss / Cr WIP at `abnormal units x cost/EU`, skipped entirely when nothing is
+       abnormal. Its OWN journal entry, not extra lines on the transfer: a period can
+       owe a charge while transferring nothing (so there is no transfer JE to append
+       to), and P5's report derives "transferred out" from the WIP credits on
+       `manufacturing_production` entries -- crediting WIP for spoilage under that
+       type would report it as though it had reached finished goods.
+
+    What remains in WIP is the residual PLUG (pool - transferred - abnormal charged),
+    NOT `ending units x cost/EU`: the ending-WIP units are only partially complete, so
     valuing them at a full equivalent-unit cost would strand the difference in WIP
     permanently. The plug is what ties WIP to the GL, and it is what the successor
     run inherits as its beginning WIP.
@@ -232,8 +247,29 @@ def close_run(run, actor):
             raise ValueError(f'{run.run_number} transfer JE does not balance '
                              f'(debit={je.total_debit}, credit={je.total_credit}).')
 
+    # 3. charge abnormal loss out of WIP to a period expense (R-07 P6)
+    abnormal_amount = data['abnormal_loss_cost']
+    if abnormal_amount > ZERO:
+        # Resolved only when a charge is actually owed. Demanding the account from
+        # every install would recreate the labor_applied deadlock one layer down:
+        # a client who has never set an expected-loss percentage can never post
+        # against it and must keep closing periods exactly as they did in P4.
+        loss_account = get_control_account('abnormal_loss')
+        je = _new_je(generate_entry_number(run.branch_id), ph_now().date(),
+                     f'Production Run {run.run_number} abnormal loss charged out',
+                     run.run_number, 'manufacturing_abnormal_loss', run.branch_id, actor)
+        units = data['abnormal_loss_units']
+        _add_line(je, 1, loss_account.id, f'{units} units lost beyond the expected rate',
+                  abnormal_amount, ZERO)
+        _add_line(je, 2, wip_account.id, f'{units} units lost beyond the expected rate',
+                  ZERO, abnormal_amount)
+        db.session.flush()
+        je.calculate_totals()
+        if not je.is_balanced:
+            raise ValueError(f'{run.run_number} abnormal loss JE does not balance.')
+
     run.transferred_unit_cost = per_eu
-    run.ending_wip_cost = (pool - transferred_amount).quantize(MONEY)
+    run.ending_wip_cost = (pool - transferred_amount - abnormal_amount).quantize(MONEY)
     run.status = 'closed'
     run.closed_at = ph_now()
     run.closed_by_id = actor.id

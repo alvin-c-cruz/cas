@@ -35,6 +35,13 @@
                 <tr class="total-row">
                     <td><strong>Amount posted to finished goods</strong></td>
                     <td class="text-right"><strong>{{ '%.2f'|format(transferred_amount) }}</strong></td></tr>
+                {% if abnormal_loss_cost > 0 %}
+                <tr><td>Abnormal loss charged out
+                        <div class="form-hint">{{ '%.4f'|format(abnormal_loss_units) }} units lost
+                        beyond the rate this product is expected to lose. Their cost becomes an
+                        expense of this period instead of being carried by the good units.</div></td>
+                    <td class="text-right">{{ '%.2f'|format(abnormal_loss_cost) }}</td></tr>
+                {% endif %}
                 <tr><td>Ending WIP left in Work in Process
                         <div class="form-hint">Carried forward as the next period's beginning WIP.</div></td>
                     <td class="text-right">{{ '%.2f'|format(remaining_in_wip) }}</td></tr>

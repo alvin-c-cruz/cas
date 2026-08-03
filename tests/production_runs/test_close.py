@@ -125,6 +125,14 @@ class TestCloseArithmetic:
         that INCLUDES conversion would drive the ledger's WIP negative -- here
         1000.00 in, 1288.80 out. Applying conversion to WIP at close closes the gap:
         1000.00 + 450.00 - 1288.80 = 161.20, exactly the carried figure.
+
+        EXTENDED by P6 (Task 5), not replaced: WIP is now relieved by THREE legs
+        rather than one, so the identity is `pool - transferred - abnormal charged`.
+        This run's BOM sets no expected-loss percentage and loses nothing, so the
+        third term is zero and every figure above is untouched -- which is precisely
+        the claim worth keeping here. The non-zero case lives in
+        test_close_abnormal_loss.py, and deleting this one would lose the guard that
+        caught P4's missing conversion posting in the first place.
         """
         run, out = _standard_run(main_branch, accountant_user, 'C')
         assert _wip_balance() == Decimal('1000.00'), 'only material is in WIP before close'
@@ -132,6 +140,14 @@ class TestCloseArithmetic:
         db.session.commit()
         assert _wip_balance() == Decimal('161.20')
         assert _wip_balance() == run.ending_wip_cost, 'ledger and carried figure must agree'
+
+        from app.production_runs.costing import compute_run_costing
+        data = compute_run_costing(run)
+        assert data['abnormal_loss_cost'] == Decimal('0.00'), 'no expectation set'
+        assert run.ending_wip_cost == (data['total_cost']
+                                       - Decimal('1288.80')
+                                       - data['abnormal_loss_cost']), \
+            'the three-term identity, with its third term at zero'
 
     def test_conversion_cost_is_applied_to_wip_at_close(
             self, db_session, main_branch, accountant_user, wo_control_accounts):

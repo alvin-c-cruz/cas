@@ -178,6 +178,8 @@ def close(id):
             'production_runs/close_confirm.html', run=run, costing=costing,
             transferred_units=preview['transferred_units'],
             transferred_amount=preview['transferred_amount'],
+            abnormal_loss_units=preview['abnormal_loss_units'],
+            abnormal_loss_cost=preview['abnormal_loss_cost'],
             remaining_in_wip=preview['remaining_in_wip'])
 
     old = run.to_dict()
