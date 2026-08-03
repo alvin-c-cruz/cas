@@ -2,7 +2,9 @@
 
     equivalent units = units_completed_and_transferred
                      + (units_ending_wip x ending_wip_pct_complete / 100)
+                     + abnormal loss units                        (R-07 P6)
     cost per EU      = (material cost + conversion cost) / equivalent units
+    abnormal charge  = abnormal loss units x cost per EU           (R-07 P6)
 
 Material cost is read back off the run's posted `manufacturing_consumption` journal
 entries -- specifically the WIP debits -- and never recomputed from
@@ -80,16 +82,34 @@ def loss_split(run):
 
 
 def equivalent_units(run):
-    """Completed-and-transferred units plus the completed FRACTION of ending WIP.
+    """Completed-and-transferred units, the completed FRACTION of ending WIP, and
+    ABNORMAL loss (R-07 P6).
 
     A single ending_wip_pct_complete covers both materials and conversion -- the
     deliberate simplification recorded in the arc design, extendable later if a real
     customer process needs the split.
+
+    **NORMAL loss is deliberately absent from this denominator and ABNORMAL loss is
+    deliberately in it.** That asymmetry IS the accounting:
+
+    - leaving normal loss out makes `pool / EU` spread the cost of ordinary shrinkage
+      across the units that survived, which is what "absorbed by the good units"
+      means. This is how the app has behaved since P3 and stays the behaviour for
+      every BOM with no `normal_loss_pct` set.
+    - putting abnormal loss in gives those units a cost of their own, which close_run
+      then relieves out of WIP to an expense account. Left out, they would carry
+      nothing, there would be nothing to charge, and the good units would silently
+      absorb a failure instead.
+
+    Shared with the Cost of Production Report (P5), which must NOT call
+    compute_run_costing() -- so the abnormal term lives here rather than in the
+    wrapper, or the statement's denominator would disagree with the preview panel's.
     """
     completed = Decimal(str(run.units_completed_and_transferred or 0))
     wip_units = Decimal(str(run.units_ending_wip or 0))
     pct = Decimal(str(run.ending_wip_pct_complete or 0))
-    return (completed + (wip_units * pct / Decimal('100'))).quantize(QTY)
+    _total, _normal, abnormal = loss_split(run)
+    return (completed + (wip_units * pct / Decimal('100')) + abnormal).quantize(QTY)
 
 
 def compute_run_costing(run):
@@ -115,6 +135,15 @@ def compute_run_costing(run):
     per_eu = None
     if eu > 0:
         per_eu = (total / eu).quantize(MONEY, rounding=ROUND_HALF_UP)
+    total_loss, normal_loss, abnormal_loss = loss_split(run)
+    # The `per_eu is None` arm is a TYPE guard, not a value branch, and no mutation
+    # can distinguish it -- returning zero here is provably the only answer. EU is
+    # completed + ending-WIP equivalents + abnormal, all non-negative, so per_eu is
+    # None only when EU is 0, which forces abnormal to 0 as well. A non-zero abnormal
+    # figure puts ITSELF into the denominator and therefore always has a cost/EU to
+    # be valued at. test_no_denominator_implies_nothing_abnormal pins that implication
+    # rather than leaving the arm looking like untested behaviour.
+    abnormal_cost = ZERO if per_eu is None else (abnormal_loss * per_eu).quantize(MONEY)
     return {
         'beginning_wip_cost': beginning,
         'material_cost': material,
@@ -122,4 +151,8 @@ def compute_run_costing(run):
         'total_cost': total,
         'equivalent_units': eu,
         'cost_per_equivalent_unit': per_eu,
+        'total_loss_units': total_loss,
+        'normal_loss_units': normal_loss,
+        'abnormal_loss_units': abnormal_loss,
+        'abnormal_loss_cost': abnormal_cost,
     }
