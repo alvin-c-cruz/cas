@@ -2543,3 +2543,91 @@ def lifo_valuation_cogs_export_excel():
     filename = f'LIFO_vs_Actual_COGS_{product.code if product else "all"}.xlsx'
     return export_to_excel(rows, columns, headers, filename,
                            title=f'LIFO vs Actual COGS — {product.name}' if product else 'LIFO vs Actual COGS')
+
+
+# --- R-07 P5: Production Run Cost of Production Report -------------------------
+# Process costing's three-schedule statement for one CLOSED period. Deliberately
+# NOT a mirror of D5's Work Order LIST: a Work Order is a job, a Production Run is
+# a period, and the domain's deliverable here is a statement. Route trio, auth and
+# branch scoping DO mirror D5.
+
+def _run_cost_report_or_redirect(run_id):
+    """(data, None) or (None, redirect). Keeps the guard in one place across all
+    three routes -- a report that refused on screen but rendered on /print would be
+    the worst of both."""
+    from app.reports.production_run_costing import generate_production_run_cost_report
+    branch_id = session.get('selected_branch_id')
+    try:
+        return generate_production_run_cost_report(run_id, branch_id), None
+    except ValueError as exc:
+        flash(str(exc), 'error')
+        return None, redirect(url_for('production_runs.list'))
+
+
+@reports_bp.route('/reports/production-run-cost/<int:run_id>')
+@login_required
+@accountant_or_above_required
+def production_run_cost(run_id):
+    data, bail = _run_cost_report_or_redirect(run_id)
+    if bail:
+        return bail
+    return render_template('reports/production_run_cost.html', data=data)
+
+
+@reports_bp.route('/reports/production-run-cost/<int:run_id>/print')
+@login_required
+@accountant_or_above_required
+def production_run_cost_print(run_id):
+    data, bail = _run_cost_report_or_redirect(run_id)
+    if bail:
+        return bail
+    company, branch_name = _bs_company_branch(session.get('selected_branch_id'))
+    return render_template('reports/production_run_cost_print.html', data=data,
+                           company=company, branch_name=branch_name)
+
+
+@reports_bp.route('/reports/production-run-cost/<int:run_id>/export/excel')
+@login_required
+@accountant_or_above_required
+def production_run_cost_export_excel(run_id):
+    from app.utils.export import export_to_excel
+    data, bail = _run_cost_report_or_redirect(run_id)
+    if bail:
+        return bail
+    run = data['run']
+    # A statement is not a table, so this exports as a two-column label/value sheet
+    # with the schedule headings as section rows (owner decision) rather than being
+    # forced into D5's column layout.
+    # Every figure is handed over as the generator's own Decimal, UNCHANGED --
+    # format_value() turns a Decimal into a numeric cell but sends a plain float
+    # through str(), writing TEXT that only looks like a number (the D5 defect).
+    rows = [
+        {'label': 'QUANTITY SCHEDULE', 'value': None},
+        {'label': 'Beginning work in process', 'value': data['beginning_wip_units']},
+        {'label': 'Started this period', 'value': data['units_started']},
+        {'label': 'Units to account for', 'value': data['units_to_account_for']},
+        {'label': 'Completed & transferred out', 'value': data['units_completed_and_transferred']},
+        {'label': 'Ending work in process', 'value': data['units_ending_wip']},
+        {'label': 'Units accounted for', 'value': data['units_accounted_for']},
+        {'label': 'Unaccounted (loss / shrinkage)', 'value': data['unaccounted_units']},
+        {'label': '', 'value': None},
+        {'label': 'EQUIVALENT UNITS', 'value': None},
+        {'label': 'Equivalent units', 'value': data['equivalent_units']},
+        {'label': 'Cost per equivalent unit', 'value': data['cost_per_equivalent_unit']},
+        {'label': '', 'value': None},
+        {'label': 'COSTS TO ACCOUNT FOR', 'value': None},
+        {'label': 'Beginning work in process brought forward', 'value': data['beginning_wip_cost']},
+        {'label': 'Material added this period', 'value': data['material_added']},
+        {'label': 'Conversion applied', 'value': data['conversion_applied']},
+        {'label': 'Total cost pool', 'value': data['total_to_account_for']},
+        {'label': '', 'value': None},
+        {'label': 'COSTS ACCOUNTED FOR', 'value': None},
+        {'label': 'Transferred out', 'value': data['transferred_out']},
+        {'label': 'Ending work in process', 'value': data['ending_wip_cost']},
+        {'label': 'Total accounted for', 'value': data['total_accounted_for']},
+        {'label': 'Difference', 'value': data['difference']},
+    ]
+    return export_to_excel(
+        rows, ['label', 'value'], ['', ''],
+        f'Cost_of_Production_{run.run_number}.xlsx',
+        title=f'Cost of Production Report — Run {run.run_number}')

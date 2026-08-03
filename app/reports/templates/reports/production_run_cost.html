@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Cost of Production Report{% endblock %}
+{% block page_title %}Cost of Production Report{% endblock %}
+{% block content %}
+{# Process costing's three-schedule statement. Rendered as a STATEMENT, not a table:
+   tabular figures, a single rule under each subtotal and a double rule under the
+   grand total. Matches the mockup approved 2026-08-03. #}
+<div class="content-header">
+    <div>
+        <h1 class="page-heading">Cost of Production Report</h1>
+        <p class="page-subheading">
+            Production Run {{ data.run.run_number }} &middot;
+            {{ data.run.output_product.code if data.run.output_product }} &middot;
+            {{ data.run.department.name if data.run.department }} &middot;
+            {{ data.run.period_start }} &ndash; {{ data.run.period_end }}
+        </p>
+    </div>
+    <div class="page-actions">
+        <span class="badge badge-{{ 'active' if data.reconciles else 'inactive' }}">
+            {{ 'Reconciled' if data.reconciles else 'Does not reconcile' }}</span>
+        <a href="{{ url_for('reports.production_run_cost_print', run_id=data.run.id) }}"
+           class="btn btn-secondary" target="_blank">Print</a>
+        <a href="{{ url_for('reports.production_run_cost_export_excel', run_id=data.run.id) }}"
+           class="btn btn-secondary">Export Excel</a>
+    </div>
+</div>
+
+<div class="card"><div class="card-body">
+    {% if data.reconciles %}
+    <div class="alert alert-info">
+        Costs accounted for equal costs to account for. Material, conversion and
+        transferred-out are read from this run's posted journal entries, so this statement
+        reconciles the Work in Process control account.
+    </div>
+    {% else %}
+    <div class="alert alert-error">
+        <strong>This period does not reconcile.</strong>
+        Costs accounted for ({{ '%.2f'|format(data.total_accounted_for) }}) differ from costs to
+        account for ({{ '%.2f'|format(data.total_to_account_for) }}) by
+        <strong>{{ '%.2f'|format(data.difference|abs) }}</strong>.
+        The cost figures come from the posted journal entries, so the ledger and this run's
+        stored figures disagree &mdash; the run record has been changed since it was closed, or a
+        posting is missing. Do not rely on this period's unit cost until it is investigated.
+    </div>
+    {% endif %}
+
+    <h2 class="card-title">Quantity schedule</h2>
+    <table class="data-table">
+        <tbody>
+            <tr><td>Beginning work in process</td>
+                <td class="text-right">{{ '%.4f'|format(data.beginning_wip_units) }}</td></tr>
+            <tr><td>Started this period</td>
+                <td class="text-right">{{ '%.4f'|format(data.units_started) }}</td></tr>
+            <tr class="total-row"><td><strong>Units to account for</strong></td>
+                <td class="text-right"><strong>{{ '%.4f'|format(data.units_to_account_for) }}</strong></td></tr>
+            <tr><td>Completed &amp; transferred out</td>
+                <td class="text-right">{{ '%.4f'|format(data.units_completed_and_transferred) }}</td></tr>
+            <tr><td>Ending work in process</td>
+                <td class="text-right">{{ '%.4f'|format(data.units_ending_wip) }}</td></tr>
+            <tr class="total-row"><td><strong>Units accounted for</strong></td>
+                <td class="text-right"><strong>{{ '%.4f'|format(data.units_accounted_for) }}</strong></td></tr>
+            {# POSITIVE is ordinary shrinkage -- dehydration loses mass -- and is shown
+               plainly. NEGATIVE means more units were accounted for than ever existed,
+               which is a data error, so only that direction is flagged. #}
+            <tr>
+                <td>Unaccounted (loss / shrinkage)
+                    {% if data.unaccounted_units < 0 %}
+                    <span class="badge badge-age-warn">Data error</span>
+                    <div class="form-hint">More units were accounted for than existed in this
+                        period.</div>
+                    {% endif %}
+                </td>
+                <td class="text-right">{{ '%.4f'|format(data.unaccounted_units) }}</td></tr>
+        </tbody>
+    </table>
+
+    <h2 class="card-title" style="margin-top:24px;">Equivalent units &mdash; weighted average</h2>
+    <table class="data-table">
+        <tbody>
+            <tr><td>Completed &amp; transferred out</td>
+                <td class="text-right">{{ '%.4f'|format(data.units_completed_and_transferred) }}</td></tr>
+            <tr><td class="text-muted" style="padding-left:26px;">Ending work in process
+                    &times; {{ '%.2f'|format(data.ending_wip_pct_complete or 0) }}% complete</td>
+                <td class="text-right">{{ '%.4f'|format(data.equivalent_units - data.units_completed_and_transferred) }}</td></tr>
+            <tr class="total-row"><td><strong>Equivalent units</strong></td>
+                <td class="text-right"><strong>{{ '%.4f'|format(data.equivalent_units) }}</strong></td></tr>
+        </tbody>
+    </table>
+
+    <h2 class="card-title" style="margin-top:24px;">Costs to account for</h2>
+    <table class="data-table">
+        <tbody>
+            <tr><td>Beginning work in process brought forward</td>
+                <td class="text-right">{{ '%.2f'|format(data.beginning_wip_cost) }}</td></tr>
+            <tr><td>Material added this period</td>
+                <td class="text-right">{{ '%.2f'|format(data.material_added) }}</td></tr>
+            <tr><td>Conversion applied</td>
+                <td class="text-right">{{ '%.2f'|format(data.conversion_applied) }}</td></tr>
+            <tr class="total-row"><td><strong>Total cost pool</strong></td>
+                <td class="text-right"><strong>{{ '%.2f'|format(data.total_to_account_for) }}</strong></td></tr>
+            <tr><td class="text-muted" style="padding-left:26px;">Cost per equivalent unit</td>
+                <td class="text-right">
+                    {% if data.cost_per_equivalent_unit is not none %}{{ '%.2f'|format(data.cost_per_equivalent_unit) }}
+                    {% else %}<span class="text-muted">&mdash;</span>{% endif %}</td></tr>
+        </tbody>
+    </table>
+
+    <h2 class="card-title" style="margin-top:24px;">Costs accounted for</h2>
+    <table class="data-table">
+        <tbody>
+            <tr><td>Transferred out
+                    {% if data.cost_per_equivalent_unit is not none %}
+                    <span class="text-muted">&mdash; {{ '%.4f'|format(data.units_completed_and_transferred) }}
+                        &times; {{ '%.2f'|format(data.cost_per_equivalent_unit) }}</span>
+                    {% endif %}</td>
+                <td class="text-right">{{ '%.2f'|format(data.transferred_out) }}</td></tr>
+            <tr><td>Ending work in process</td>
+                <td class="text-right">{{ '%.2f'|format(data.ending_wip_cost) }}</td></tr>
+            <tr class="total-row"><td><strong>Total accounted for</strong></td>
+                <td class="text-right"><strong>{{ '%.2f'|format(data.total_accounted_for) }}</strong></td></tr>
+            {% if not data.reconciles %}
+            <tr class="total-row"><td><strong>Difference</strong>
+                    <span class="badge badge-age-warn">Out of balance</span></td>
+                <td class="text-right"><strong>{{ '%.2f'|format(data.difference) }}</strong></td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <div class="form-hint" style="margin-top:16px;">
+        Weighted-average method. Beginning work in process is carried forward from the preceding
+        period and has no journal entry of its own; ending work in process was frozen when this
+        period closed.
+    </div>
+
+    <div class="form-actions">
+        <a href="{{ url_for('production_runs.detail', id=data.run.id) }}"
+           class="btn btn-secondary">Back to Production Run</a>
+    </div>
+</div></div>
+{% endblock %}

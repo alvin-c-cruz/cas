@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Cost of Production Report &mdash; Run {{ data.run.run_number }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #000; margin: 24px; }
+        .company { font-size: 14px; font-weight: bold; }
+        .meta { color: #333; margin: 2px 0 14px 0; }
+        h1 { font-size: 16px; margin: 0 0 2px 0; }
+        .centered { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        td { padding: 3px 8px; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; width: 30%; }
+        .sched td { font-weight: bold; padding-top: 14px; }
+        .total-row td { font-weight: bold; border-top: 1px solid #000; }
+        .grand td { font-weight: bold; border-top: 1px solid #000; border-bottom: 3px double #000; }
+        .indent { padding-left: 22px; color: #333; }
+        .warn td { font-weight: bold; }
+        .note { color: #333; font-size: 11px; margin-top: 18px; }
+    </style>
+</head>
+<body onload="window.print()">
+    <div class="centered">
+        {% if company.name %}<div class="company">{{ company.name }}</div>{% endif %}
+        {% if branch_name %}<div class="meta">{{ branch_name }}</div>{% endif %}
+        <h1>COST OF PRODUCTION REPORT</h1>
+        <div class="meta">
+            {{ data.run.department.name if data.run.department }} &middot;
+            Run {{ data.run.run_number }} &middot;
+            {{ data.run.period_start }} &ndash; {{ data.run.period_end }}
+            {% if data.run.output_product %} &middot; {{ data.run.output_product.code }}{% endif %}
+        </div>
+    </div>
+
+    {% if not data.reconciles %}
+    <table><tr class="warn"><td colspan="2">
+        THIS PERIOD DOES NOT RECONCILE &mdash; difference {{ '%.2f'|format(data.difference) }}.
+        The posted journal entries and this run's stored figures disagree.
+    </td></tr></table>
+    {% endif %}
+
+    <table>
+        <tr class="sched"><td colspan="2">Quantity schedule</td></tr>
+        <tr><td>Beginning work in process</td>
+            <td class="num">{{ '%.4f'|format(data.beginning_wip_units) }}</td></tr>
+        <tr><td>Started this period</td>
+            <td class="num">{{ '%.4f'|format(data.units_started) }}</td></tr>
+        <tr class="total-row"><td>Units to account for</td>
+            <td class="num">{{ '%.4f'|format(data.units_to_account_for) }}</td></tr>
+        <tr><td>Completed &amp; transferred out</td>
+            <td class="num">{{ '%.4f'|format(data.units_completed_and_transferred) }}</td></tr>
+        <tr><td>Ending work in process</td>
+            <td class="num">{{ '%.4f'|format(data.units_ending_wip) }}</td></tr>
+        <tr class="total-row"><td>Units accounted for</td>
+            <td class="num">{{ '%.4f'|format(data.units_accounted_for) }}</td></tr>
+        <tr {% if data.unaccounted_units < 0 %}class="warn"{% endif %}>
+            <td>Unaccounted (loss / shrinkage){% if data.unaccounted_units < 0 %}
+                &mdash; data error, more units accounted for than existed{% endif %}</td>
+            <td class="num">{{ '%.4f'|format(data.unaccounted_units) }}</td></tr>
+
+        <tr class="sched"><td colspan="2">Equivalent units</td></tr>
+        <tr><td>Completed &amp; transferred out</td>
+            <td class="num">{{ '%.4f'|format(data.units_completed_and_transferred) }}</td></tr>
+        <tr><td class="indent">Ending work in process
+                &times; {{ '%.2f'|format(data.ending_wip_pct_complete or 0) }}% complete</td>
+            <td class="num">{{ '%.4f'|format(data.equivalent_units - data.units_completed_and_transferred) }}</td></tr>
+        <tr class="total-row"><td>Equivalent units</td>
+            <td class="num">{{ '%.4f'|format(data.equivalent_units) }}</td></tr>
+
+        <tr class="sched"><td colspan="2">Costs to account for</td></tr>
+        <tr><td>Beginning work in process brought forward</td>
+            <td class="num">{{ '%.2f'|format(data.beginning_wip_cost) }}</td></tr>
+        <tr><td>Material added this period</td>
+            <td class="num">{{ '%.2f'|format(data.material_added) }}</td></tr>
+        <tr><td>Conversion applied</td>
+            <td class="num">{{ '%.2f'|format(data.conversion_applied) }}</td></tr>
+        <tr class="total-row"><td>Total cost pool</td>
+            <td class="num">{{ '%.2f'|format(data.total_to_account_for) }}</td></tr>
+        <tr><td class="indent">Cost per equivalent unit</td>
+            <td class="num">{% if data.cost_per_equivalent_unit is not none %}{{ '%.2f'|format(data.cost_per_equivalent_unit) }}{% else %}&mdash;{% endif %}</td></tr>
+
+        <tr class="sched"><td colspan="2">Costs accounted for</td></tr>
+        <tr><td>Transferred out{% if data.cost_per_equivalent_unit is not none %}
+                &mdash; {{ '%.4f'|format(data.units_completed_and_transferred) }}
+                &times; {{ '%.2f'|format(data.cost_per_equivalent_unit) }}{% endif %}</td>
+            <td class="num">{{ '%.2f'|format(data.transferred_out) }}</td></tr>
+        <tr><td>Ending work in process</td>
+            <td class="num">{{ '%.2f'|format(data.ending_wip_cost) }}</td></tr>
+        <tr class="grand"><td>Total accounted for</td>
+            <td class="num">{{ '%.2f'|format(data.total_accounted_for) }}</td></tr>
+    </table>
+
+    <div class="note">
+        Weighted-average method. Material, conversion and transferred-out figures are taken from
+        this run's posted journal entries.
+    </div>
+</body>
+</html>
