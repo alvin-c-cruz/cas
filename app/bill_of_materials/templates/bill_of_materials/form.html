@@ -25,6 +25,16 @@
                     {{ render_field(form.manufacturing_mode) }}
                     <div class="form-hint">Only shows manufacturing mode(s) currently enabled in Company Settings.</div>
                 </div>
+                {# Process mode only, shown/hidden by the same toggle that drives the
+                   Routing section for discrete mode. A discrete Work Order has no
+                   loss concept to set an expectation against. #}
+                <div class="form-group" style="max-width:420px; flex:1;" id="processSection">
+                    {{ render_field(form.normal_loss_pct) }}
+                    <div class="form-hint">Percentage of units STARTED this process is expected to
+                        lose. Leave blank if there is no expectation &mdash; all loss then stays
+                        absorbed by the good units. Loss beyond the percentage is charged out as
+                        an abnormal loss; entering 0 means any loss at all is abnormal.</div>
+                </div>
             </div>
 
             <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); margin: 24px 0 12px;">Components</h3>
@@ -189,8 +199,14 @@ function refreshOperationNumbers() {
 function updateRoutingVisibility() {
     const modeSelect = document.getElementById('manufacturing_mode');
     const section = document.getElementById('routingSection');
-    if (!modeSelect || !section) return;
-    section.style.display = (modeSelect.value === 'discrete') ? '' : 'none';
+    const processOnly = document.getElementById('processSection');
+    if (!modeSelect) return;
+    const isDiscrete = (modeSelect.value === 'discrete');
+    if (section) { section.style.display = isDiscrete ? '' : 'none'; }
+    // The mirror of the line above: expected normal loss is a process-costing
+    // concept. The server also refuses to store it for a discrete BOM, so hiding it
+    // here is the courtesy, not the guard.
+    if (processOnly) { processOnly.style.display = isDiscrete ? 'none' : ''; }
 }
 
 document.getElementById('bomForm').addEventListener('submit', function () {

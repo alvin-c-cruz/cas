@@ -18,7 +18,7 @@ from app.work_centers.models import WorkCenter
 
 bill_of_materials_bp = Blueprint('bill_of_materials', __name__, template_folder='templates')
 
-_BOM_FIELDS = ['product_id', 'manufacturing_mode', 'is_active']
+_BOM_FIELDS = ['product_id', 'manufacturing_mode', 'normal_loss_pct', 'is_active']
 
 
 def accountant_or_above_required(f):
@@ -31,6 +31,23 @@ def accountant_or_above_required(f):
             return redirect(url_for('dashboard.index'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def _loss_pct_for(form):
+    """The submitted expected-loss percentage, or None.
+
+    None for a DISCRETE BOM whatever was submitted -- the field is hidden for that
+    mode, so a value means the mode was switched after typing, and a discrete Work
+    Order has no equivalent-units denominator to charge an excess against. Storing
+    it would create an expectation nothing could ever act on. Same shape as the
+    operations parse just below, which is likewise discrete-only.
+
+    Blank comes back as None rather than 0 (the form field is Optional()), and that
+    distinction is the backward-compatibility guarantee -- see the form.
+    """
+    if form.manufacturing_mode.data == 'discrete':
+        return None
+    return form.normal_loss_pct.data
 
 
 def _unclaimed_product_choices(exclude_bom_id=None):
@@ -67,6 +84,7 @@ def new_bom():
         try:
             bom = BillOfMaterial(product_id=form.product_id.data,
                                  manufacturing_mode=form.manufacturing_mode.data,
+                                 normal_loss_pct=_loss_pct_for(form),
                                  created_by_id=current_user.id)
             _parse_and_attach_bom_lines(bom, request.form.get('lines', '[]'))
             if bom.manufacturing_mode == 'discrete':
@@ -111,6 +129,7 @@ def edit_bom(bom_id):
         try:
             old_values = model_to_dict(bom, _BOM_FIELDS)
             bom.manufacturing_mode = form.manufacturing_mode.data
+            bom.normal_loss_pct = _loss_pct_for(form)
             bom.lines = []
             _parse_and_attach_bom_lines(bom, request.form.get('lines', '[]'))
             bom.operations = []

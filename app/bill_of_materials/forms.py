@@ -6,8 +6,8 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from flask_wtf import FlaskForm
-from wtforms import SelectField
-from wtforms.validators import DataRequired
+from wtforms import DecimalField, SelectField
+from wtforms.validators import DataRequired, NumberRange, Optional
 
 from app.bill_of_materials.models import BillOfMaterialLine, BillOfMaterialOperation
 from app.utils.concurrency import RowVersionFormMixin
@@ -16,6 +16,13 @@ from app.utils.concurrency import RowVersionFormMixin
 class BillOfMaterialForm(RowVersionFormMixin, FlaskForm):
     product_id = SelectField('Product (output)', coerce=int, validators=[DataRequired()])
     manufacturing_mode = SelectField('Manufacturing Mode', validators=[DataRequired()])
+    # Process mode only (R-07 P6). Optional() is load-bearing, not tidiness: it is
+    # what lets a blank field arrive as None instead of being coerced to 0, and NULL
+    # vs 0.00 is the whole backward-compatibility guarantee -- NULL means no
+    # expectation was ever set, so all loss stays absorbed as it has been since P3,
+    # while 0.00 means this process should lose nothing and makes ALL loss abnormal.
+    normal_loss_pct = DecimalField(
+        'Expected Normal Loss %', places=2, validators=[Optional(), NumberRange(min=0, max=100)])
 
 
 def _dec(v):
