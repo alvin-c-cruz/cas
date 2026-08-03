@@ -40,6 +40,45 @@ def _material_cost(run):
     return total.quantize(MONEY)
 
 
+def loss_split(run):
+    """(total_loss, normal_loss, abnormal_loss) in units, for one run.
+
+        total loss       = (beginning WIP + started) - (completed + ending WIP)
+        normal allowance = BOM.normal_loss_pct% x units STARTED
+        abnormal loss    = max(0, total loss - allowance)
+        normal loss      = total loss - abnormal loss
+
+    **`normal_loss_pct` NULL means no expectation was ever set**, so there is no
+    threshold to exceed and ALL loss is normal -- i.e. absorbed by the good units,
+    exactly as the app has behaved since P3. That is the backward-compatibility
+    guarantee, and it is why the column is nullable with no default. `0.00` is the
+    opposite: an explicit expectation of no loss, making all loss abnormal.
+
+    The allowance is a percentage of units STARTED, not of units to account for.
+    Basing it on the latter would make the allowance depend on how much unfinished
+    work happened to be carried in, so the same physical process would show a
+    different allowance month to month -- the opposite of what an expectation is for.
+
+    **max(0, ...) is load-bearing.** A NEGATIVE total loss means more units were
+    accounted for than ever existed, which P5's report flags as a data error. Turning
+    that into a negative abnormal loss would CREDIT the P&L for a mistake.
+    """
+    beginning = Decimal(str(run.beginning_wip_units or 0))
+    started = Decimal(str(run.units_started or 0))
+    completed = Decimal(str(run.units_completed_and_transferred or 0))
+    ending = Decimal(str(run.units_ending_wip or 0))
+    total_loss = ((beginning + started) - (completed + ending)).quantize(QTY)
+
+    pct = run.bom.normal_loss_pct if run.bom else None
+    if pct is None:
+        return total_loss, total_loss, Decimal('0').quantize(QTY)
+
+    allowance = (started * Decimal(str(pct)) / Decimal('100')).quantize(QTY)
+    abnormal = max(Decimal('0'), total_loss - allowance).quantize(QTY)
+    normal = (total_loss - abnormal).quantize(QTY)
+    return total_loss, normal, abnormal
+
+
 def equivalent_units(run):
     """Completed-and-transferred units plus the completed FRACTION of ending WIP.
 
