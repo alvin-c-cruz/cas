@@ -4,7 +4,7 @@ from app.settings import AppSettings
 from app.posting.control_accounts import (
     get_control_account, ControlAccountError, assign_default_control_accounts,
     get_postable_accounts, CONTROL_ACCOUNTS, CONTROL_ACCOUNT_MODULE_GATE,
-    visible_control_accounts,
+    visible_control_accounts, DEFAULT_CONTROL_ACCOUNT_CODES,
 )
 
 
@@ -127,6 +127,52 @@ class TestLaborAppliedVisibleOnAProcessOnlyInstall:
         _set_module('work_orders', False)
         _set_module('production_runs', False)
         assert 'labor_applied' not in visible_control_accounts()
+
+
+def test_abnormal_loss_key_registered_and_gated_on_production_runs_ALONE():
+    """R-07 P6 Task 4. Deliberately NOT the two-owner tuple labor_applied carries.
+
+    Only the process track ever posts abnormal loss: it is a period-costing concept
+    that needs an expected-loss percentage and an equivalent-units denominator, and
+    the discrete track has neither -- D4's force-close writes its shortfall off to
+    inventory_variance instead. Naming work_orders here would render a field a
+    discrete-only install can never use, which is the mirror image of the P4 bug and
+    just as much a defect.
+    """
+    assert 'abnormal_loss' in CONTROL_ACCOUNTS
+    assert CONTROL_ACCOUNTS['abnormal_loss'][0] == 'abnormal_loss_account_code'
+    assert CONTROL_ACCOUNT_MODULE_GATE['abnormal_loss'] == 'production_runs', \
+        'a single module key, not a tuple -- the discrete track never posts this'
+
+
+def test_abnormal_loss_is_accountant_assigned_not_seeded():
+    """Like wip and labor_applied, and unlike ar_trade: no seed, migration or test
+    default may pick an expense account for the client. Which account abnormal loss
+    lands in is a chart-of-accounts decision only their accountant can make."""
+    assert 'abnormal_loss' not in DEFAULT_CONTROL_ACCOUNT_CODES
+
+
+class TestAbnormalLossVisibleOnAProcessOnlyInstall:
+    def test_visible_when_only_production_runs_is_enabled(self, db_session):
+        """The Philgen-shaped install. Task 5 makes close_run demand this account
+        whenever a charge is owed, so the field has to be reachable there."""
+        _set_module('work_orders', False)
+        _set_module('production_runs', True)
+        assert 'abnormal_loss' in visible_control_accounts()
+
+    def test_hidden_when_production_runs_is_disabled(self, db_session):
+        _set_module('work_orders', False)
+        _set_module('production_runs', False)
+        assert 'abnormal_loss' not in visible_control_accounts()
+
+    def test_hidden_on_a_DISCRETE_only_install(self, db_session):
+        """work_orders enabled is not enough -- nothing in the discrete track posts
+        abnormal loss, so the field would be dead weight on that install."""
+        _set_module('work_orders', True)
+        _set_module('production_runs', False)
+        assert 'abnormal_loss' not in visible_control_accounts()
+        assert 'labor_applied' in visible_control_accounts(), \
+            'the contrast is the point: labor_applied IS posted by the discrete track'
 
 
 def test_get_postable_accounts_excludes_group_headers(db_session):

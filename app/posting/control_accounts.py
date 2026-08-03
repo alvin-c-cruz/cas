@@ -102,6 +102,15 @@ CONTROL_ACCOUNTS = {
     # posted incrementally to WIP as operations complete -- see
     # app/work_orders/service.py's complete_work_order_batch).
     'labor_applied': ('labor_applied_account_code', 'Labor Applied control account'),
+
+    # Abnormal spoilage (R-07 Process Track slice P6). Fully accountant-assigned --
+    # deliberately NOT in DEFAULT_CONTROL_ACCOUNT_CODES: which expense account
+    # abnormal loss lands in is a chart-of-accounts decision, and guessing one would
+    # put a real charge somewhere nobody chose. Debited at close for
+    # `abnormal loss units x cost per equivalent unit`, relieving WIP -- see
+    # app/production_runs/costing.py for why only the ABNORMAL half is costed out
+    # (normal loss is absorbed by the good units and never leaves WIP separately).
+    'abnormal_loss': ('abnormal_loss_account_code', 'Abnormal Loss control account'),
 }
 
 # key -> owning optional module key, OR a tuple of keys when more than one module can post
@@ -144,6 +153,13 @@ CONTROL_ACCOUNT_MODULE_GATE = {
     # whose field is not rendered). Found by the P4 browser gate, not by pytest:
     # every test sets control accounts directly and nothing renders the page.
     'labor_applied': ('work_orders', 'production_runs'),
+    # ONE owner, deliberately -- not the two-track tuple above. Abnormal loss is a
+    # period-costing concept: it needs an expected-loss percentage on the BOM and an
+    # equivalent-units denominator to value the excess against, and the discrete track
+    # has neither (D4's force-close writes its shortfall off to inventory_variance).
+    # Naming work_orders here would render a field a discrete-only install can never
+    # use -- the mirror image of the labor_applied bug, and just as much a defect.
+    'abnormal_loss': 'production_runs',
 }
 
 
