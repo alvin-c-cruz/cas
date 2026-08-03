@@ -17,8 +17,8 @@ from app.production_runs.costing import compute_run_costing
 from app.production_runs.forms import (ProductionRunForm, ProductionRunPeriodForm,
                                        generate_run_number)
 from app.production_runs.models import ProductionRun
-from app.production_runs.service import (carry_beginning_wip, close_run, issue_material,
-                                        snapshot_materials)
+from app.production_runs.service import (cancel_run, carry_beginning_wip, close_run,
+                                        issue_material, snapshot_materials)
 
 production_runs_bp = Blueprint('production_runs', __name__, template_folder='templates')
 
@@ -174,6 +174,29 @@ def close(id):
               notes=f'Period closed; {run.units_completed_and_transferred} units transferred '
                     f'at {run.transferred_unit_cost} per equivalent unit')
     flash(f'Production Run {run.run_number} closed.', 'success')
+    return redirect(url_for('production_runs.detail', id=run.id))
+
+
+@production_runs_bp.route('/production-runs/<int:id>/cancel', methods=['POST'])
+@login_required
+def cancel(id):
+    """Cancel an open run, reversing every consumption it posted. Reason required."""
+    if not _can_manage():
+        flash('You do not have permission to manage production runs.', 'error')
+        return redirect(url_for('production_runs.list'))
+    run = _get_scoped(id)
+    old = run.to_dict()
+    try:
+        cancel_run(run, request.form.get('cancel_reason'), current_user)
+    except (ValueError, ArithmeticError) as exc:
+        db.session.rollback()
+        flash(str(exc), 'error')
+        return redirect(url_for('production_runs.detail', id=run.id))
+    db.session.commit()
+    log_audit(module='production_runs', action='cancel', record_id=run.id,
+              record_identifier=run.run_number, old_values=old, new_values=run.to_dict(),
+              notes=run.cancel_reason)
+    flash(f'Production Run {run.run_number} cancelled.', 'success')
     return redirect(url_for('production_runs.detail', id=run.id))
 
 

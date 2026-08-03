@@ -175,6 +175,72 @@ def close_run(run, actor):
     return run
 
 
+def cancel_run(run, reason, actor):
+    """Cancel an open run, reversing every material consumption it posted.
+
+    Component stock returns to its pre-issue level and the WIP debits are reversed,
+    so a cancelled run leaves NOTHING behind in WIP -- which is exactly why
+    find_predecessor_run() refuses to carry a beginning WIP from one.
+
+    Reversal goes through the shared reverse_document_movements() primitive (the
+    same one delivery_receipts / receiving_reports / sales_memos use), which posts
+    an opposite movement per original at the SAME cost basis, keeping the
+    append-only ledger consistent. It does not create a JE, so one is created here
+    and passed in -- and it is skipped entirely when the run consumed nothing.
+
+    A CLOSED run cannot be cancelled: it has already transferred value into finished
+    goods, and unwinding that is a different operation.
+
+    Does NOT commit -- the caller owns the transaction.
+    """
+    from app.bill_of_materials.service import _add_line, _new_je
+    from app.journal_entries.utils import generate_entry_number
+    from app.posting.control_accounts import get_control_account
+    from app.stock_adjustments.models import StockMovement
+    from app.stock_adjustments.service import post_movement, reverse_document_movements
+    from app.utils import ph_now
+
+    if run.status == 'closed':
+        raise ValueError('A closed Production Run cannot be cancelled.')
+    if run.status != 'open':
+        raise ValueError('Only an open Production Run can be cancelled.')
+    reason = (reason or '').strip()
+    if not reason:
+        raise ValueError('A reason is required to cancel a Production Run.')
+
+    originals = StockMovement.query.filter_by(
+        source_document_type='production_run', source_document_id=run.id).all()
+    if originals:
+        wip_account = get_control_account('wip')
+        inv_account = get_control_account('inventory')
+        je = _new_je(generate_entry_number(run.branch_id), ph_now().date(),
+                     f'Production Run {run.run_number} cancelled -- consumption reversed',
+                     run.run_number, 'manufacturing_consumption', run.branch_id, actor)
+        reversals = reverse_document_movements('production_run', run.id, actor,
+                                               journal_entry_id=je.id)
+        n = 1
+        for mv in reversals:
+            amount = (abs(Decimal(str(mv.quantity))) * Decimal(str(mv.unit_cost))).quantize(MONEY)
+            if amount == ZERO:
+                continue
+            # The original was Dr WIP / Cr Inventory; the reversal is the mirror.
+            _add_line(je, n, inv_account.id, 'Component returned to stock',
+                      amount, ZERO); n += 1
+            _add_line(je, n, wip_account.id, 'WIP reversed on cancellation',
+                      ZERO, amount); n += 1
+        db.session.flush()
+        je.calculate_totals()
+        if not je.is_balanced:
+            raise ValueError(f'{run.run_number} cancellation JE does not balance '
+                             f'(debit={je.total_debit}, credit={je.total_credit}).')
+
+    run.status = 'cancelled'
+    run.cancel_reason = reason
+    run.cancelled_by_id = actor.id
+    run.cancelled_at = ph_now()
+    return run
+
+
 def snapshot_materials(run):
     """Copy the BOM's component lines onto the run, scaled by units_started."""
     if not run.bom.lines:
