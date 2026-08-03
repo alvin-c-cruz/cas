@@ -1,4 +1,10 @@
 {
+  "0431c6cf6305de664de0c8838120690325429c03": {
+    "branch": "feat/r07-p5-cost-report",
+    "date": "2026-08-03",
+    "reason": null,
+    "waived": false
+  },
   "13f1467e62eaeb2c8a2e19385acc5031687ef15d": {
     "branch": "feat/r07-p4-period-close",
     "date": "2026-08-03",
