@@ -196,6 +196,12 @@ class TestTheThreeSurfaces:
         # denominator whose lines do not mean what they say while still summing to 87.
         assert b'10.0000' in r.data, 'the ending-WIP equivalents, on their own'
         assert b'17.0000' not in r.data, 'not the two terms silently folded together'
+        # The reconciled banner enumerates which figures come from the ledger, and
+        # abnormal loss is now the fourth. Found by the live browser gate, not by
+        # pytest: nothing asserted the banner's CONTENT, only that the page rendered,
+        # so it kept claiming three sources while reconciling four.
+        assert b'abnormal loss are read from' in r.data, \
+            'the banner must name every ledger-read figure it reconciles'
 
     def test_the_print_view_renders_them_too(
             self, client, db_session, main_branch, accountant_user, wo_control_accounts,
