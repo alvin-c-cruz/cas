@@ -5,6 +5,11 @@
 
 {% block content %}
 {% from "macros.html" import render_field %}
+{# One flag for the whole page: an open run, viewed by someone allowed to manage it.
+   The view's own _can_manage() must stay in step with this -- a template guard that
+   drifts from its route leaves either a control that 403s, or a route with no UI
+   path to it at all (memory feedback-premerge-uitest-gate). #}
+{% set can_act = run.status == 'open' and (current_user.has_full_access or current_user.role == 'accountant') %}
 <div class="content-header">
     <div>
         <h1 class="page-heading">Production Run {{ run.run_number }}</h1>
@@ -16,8 +21,18 @@
     </div>
     <div class="page-actions">
         <span class="badge badge-{{ 'active' if run.status == 'open' else 'inactive' }}">{{ run.status|title }}</span>
+        {% if can_act %}
+        <a href="{{ url_for('production_runs.close', id=run.id) }}" class="btn btn-primary">Close Period</a>
+        {% endif %}
     </div>
 </div>
+
+{% if run.status == 'cancelled' %}
+<div class="alert alert-warning">
+    <strong>Cancelled{% if run.cancelled_at %} {{ run.cancelled_at.strftime('%b %d, %Y') }}{% endif %}.</strong>
+    {{ run.cancel_reason }}
+</div>
+{% endif %}
 
 <div class="card">
     <div class="card-body">
@@ -29,7 +44,7 @@
                     <th>COMPONENT</th>
                     <th class="text-right">REQUIRED</th>
                     <th class="text-right">ISSUED</th>
-                    {% if run.status == 'open' and (current_user.has_full_access or current_user.role == 'accountant') %}
+                    {% if can_act %}
                     <th>ISSUE</th>
                     {% endif %}
                 </tr>
@@ -41,7 +56,7 @@
                     <td>{{ m.component_product.code }} &mdash; {{ m.component_product.name }}</td>
                     <td class="text-right">{{ '%.4f'|format(m.quantity_required) }}</td>
                     <td class="text-right">{{ '%.4f'|format(m.quantity_issued or 0) }}</td>
-                    {% if run.status == 'open' and (current_user.has_full_access or current_user.role == 'accountant') %}
+                    {% if can_act %}
                     <td>
                         <form method="POST" action="{{ url_for('production_runs.issue', id=run.id, material_id=m.id) }}" class="inline-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -56,9 +71,9 @@
                 {% endfor %}
             </tbody>
         </table>
-        <div class="form-actions">
-            <a href="{{ url_for('production_runs.list') }}" class="btn btn-secondary">Back</a>
-        </div>
+        {% if run.status == 'closed' %}
+        <div class="form-hint">A closed run accepts no further material.</div>
+        {% endif %}
     </div>
 </div>
 
@@ -67,10 +82,20 @@
         <h2 class="section-heading">Period Costing (Weighted Average)</h2>
         <table class="data-table">
             <tbody>
-                <tr><td>Material Cost</td><td class="text-right">{{ '%.2f'|format(costing.material_cost) }}</td></tr>
-                <tr><td>Conversion Cost (Labour + Overhead)</td><td class="text-right">{{ '%.2f'|format(costing.conversion_cost) }}</td></tr>
-                <tr class="total-row"><td><strong>Total Cost</strong></td><td class="text-right"><strong>{{ '%.2f'|format(costing.total_cost) }}</strong></td></tr>
-                <tr><td>Equivalent Units</td><td class="text-right">{{ '%.4f'|format(costing.equivalent_units) }}</td></tr>
+                <tr><td>Beginning WIP &mdash; cost brought forward</td>
+                    <td class="text-right">{{ '%.2f'|format(costing.beginning_wip_cost) }}</td></tr>
+                {% if run.beginning_wip_units and run.beginning_wip_units > 0 %}
+                <tr><td style="padding-left: 26px;" class="text-muted">Beginning WIP units</td>
+                    <td class="text-right">{{ '%.4f'|format(run.beginning_wip_units) }}</td></tr>
+                {% endif %}
+                <tr><td>Material Cost <span class="text-muted">(this period)</span></td>
+                    <td class="text-right">{{ '%.2f'|format(costing.material_cost) }}</td></tr>
+                <tr><td>Conversion Cost (Labour + Overhead)</td>
+                    <td class="text-right">{{ '%.2f'|format(costing.conversion_cost) }}</td></tr>
+                <tr class="total-row"><td><strong>Total Cost Pool</strong></td>
+                    <td class="text-right"><strong>{{ '%.2f'|format(costing.total_cost) }}</strong></td></tr>
+                <tr><td>Equivalent Units</td>
+                    <td class="text-right">{{ '%.4f'|format(costing.equivalent_units) }}</td></tr>
                 <tr class="total-row"><td><strong>Cost per Equivalent Unit</strong></td>
                     <td class="text-right"><strong>
                         {% if costing.cost_per_equivalent_unit is not none %}{{ '%.2f'|format(costing.cost_per_equivalent_unit) }}
@@ -79,9 +104,26 @@
             </tbody>
         </table>
         <div class="form-hint">Equivalent units = units completed &amp; transferred + (ending WIP &times; % complete).
-            Material cost is read from this run's posted journal entries, so it reconciles to the GL.</div>
+            The cost pool is beginning WIP brought forward <strong>plus</strong> this period's costs &mdash;
+            the weighted-average method. Material cost is read from this run's posted journal entries,
+            so it reconciles to the GL.</div>
 
-        {% if run.status == 'open' and (current_user.has_full_access or current_user.role == 'accountant') %}
+        {% if run.status == 'closed' %}
+        <div class="alert alert-info" style="margin-top: 16px;">
+            <strong>Closed{% if run.closed_at %} {{ run.closed_at.strftime('%b %d, %Y') }}{% endif %}.</strong>
+            Transferred {{ '%.4f'|format(run.units_completed_and_transferred or 0) }} units to finished
+            goods at the frozen cost per equivalent unit of
+            {{ '%.2f'|format(run.transferred_unit_cost or 0) }} &mdash; posted
+            {{ '%.2f'|format((run.units_completed_and_transferred or 0) * (run.transferred_unit_cost or 0)) }}
+            (Dr Inventory / Cr Work in Process).
+            Ending WIP carried forward: {{ '%.4f'|format(run.units_ending_wip or 0) }} units valued
+            {{ '%.2f'|format(run.ending_wip_cost or 0) }}, which becomes the next period's beginning WIP.
+            <div class="form-hint">The transferred unit cost is frozen at close, so a later standard-cost
+                or BOM edit can never retroactively disagree with what was posted.</div>
+        </div>
+        {% endif %}
+
+        {% if can_act %}
         <h2 class="section-heading" style="margin-top:20px;">Report Period Results</h2>
         <form method="POST" action="{{ url_for('production_runs.period_results', id=run.id) }}">
             {{ period_form.hidden_tag() }}
@@ -101,4 +143,36 @@
     </div>
 </div>
 
+{% if can_act %}
+<div class="card">
+    <div class="card-body">
+        <h2 class="section-heading">Cancel Run</h2>
+        <div class="form-hint" style="margin-bottom: 12px;">
+            Cancelling reverses every material consumption posted by this run &mdash; component
+            stock is returned and the GL postings are reversed. A reason is required.
+        </div>
+        {# An inline HTML form, never a JS confirm() -- project convention. #}
+        <form method="POST" action="{{ url_for('production_runs.cancel', id=run.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label class="form-label" for="cancel_reason">Reason</label>
+                <input type="text" id="cancel_reason" name="cancel_reason" class="form-control"
+                       maxlength="500" placeholder="Why is this run being cancelled?" required>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-danger">Cancel Run</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# Back belongs at the END of the page. It used to sit inside the Materials card,
+   which stranded it mid-page once P3 appended the costing card after it
+   (BUG-PRODUCTION-RUN-DETAIL-BACK-BUTTON-STRANDED-MIDPAGE, backlog 270). #}
+<div class="card">
+    <div class="card-body">
+        <a href="{{ url_for('production_runs.list') }}" class="btn btn-secondary">Back</a>
+    </div>
+</div>
 {% endblock %}
