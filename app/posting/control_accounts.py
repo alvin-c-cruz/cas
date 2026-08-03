@@ -104,7 +104,8 @@ CONTROL_ACCOUNTS = {
     'labor_applied': ('labor_applied_account_code', 'Labor Applied control account'),
 }
 
-# key -> owning optional module key (app.users.module_access.MODULE_REGISTRY), used ONLY by the
+# key -> owning optional module key, OR a tuple of keys when more than one module can post
+# against it (shown if ANY of them is enabled). (app.users.module_access.MODULE_REGISTRY), used ONLY by the
 # Company Settings > Control Accounts page to hide a field when its module is disabled (nothing
 # can post against it anyway). A key absent from this dict is always shown -- ar_trade/ap_trade/
 # creditable_wht/wht_payable are core/non-optional, never module-gated. Deliberately a SEPARATE
@@ -135,18 +136,35 @@ CONTROL_ACCOUNT_MODULE_GATE = {
     'inventory_variance': 'inventory',
     'cogs': 'inventory',
     'wip':  'bill_of_materials',
-    'labor_applied': 'work_orders',
+    # TWO owners since R-07 P4. D4 credits labor_applied for a Work Order's labor;
+    # P4 credits it for a Production Run's applied conversion cost. A Philgen-shaped
+    # install runs production_runs WITHOUT work_orders, and gating on work_orders
+    # alone HID the field on exactly those installs -- while close still demanded the
+    # account, which is a hard deadlock (the accountant is told to assign an account
+    # whose field is not rendered). Found by the P4 browser gate, not by pytest:
+    # every test sets control accounts directly and nothing renders the page.
+    'labor_applied': ('work_orders', 'production_runs'),
 }
 
 
 def visible_control_accounts():
-    """CONTROL_ACCOUNTS filtered to keys whose owning module (if any) is currently enabled."""
+    """CONTROL_ACCOUNTS filtered to keys whose owning module (if any) is currently enabled.
+
+    A gate value may be a single module key or a TUPLE of them; a tuple is satisfied
+    when ANY of its modules is enabled, since any one of them can post against the
+    account. See the labor_applied comment above for why that case exists.
+    """
     from app.users.module_access import module_enabled
-    return {
-        key: meta for key, meta in CONTROL_ACCOUNTS.items()
-        if CONTROL_ACCOUNT_MODULE_GATE.get(key) is None
-        or module_enabled(CONTROL_ACCOUNT_MODULE_GATE[key])
-    }
+
+    def _visible(key):
+        gate = CONTROL_ACCOUNT_MODULE_GATE.get(key)
+        if gate is None:
+            return True
+        if isinstance(gate, str):
+            return module_enabled(gate)
+        return any(module_enabled(m) for m in gate)
+
+    return {key: meta for key, meta in CONTROL_ACCOUNTS.items() if _visible(key)}
 
 # Legacy magic codes -> control key. Used ONLY by seeds, the backfill migration,
 # and test setup -- NEVER by get_control_account. Single place the legacy chart's

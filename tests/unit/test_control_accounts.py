@@ -94,10 +94,39 @@ class TestVisibleControlAccounts:
         assert set(visible) == {'ar_trade', 'ap_trade', 'creditable_wht', 'wht_payable'}
 
 
-def test_labor_applied_key_registered_and_gated_on_work_orders():
+def test_labor_applied_key_registered_and_gated_on_both_manufacturing_tracks():
+    """labor_applied has TWO owners since R-07 P4: D4 credits it for a Work Order's
+    labor, and P4 credits it for a Production Run's applied conversion cost. The gate
+    was written when work_orders was the only consumer."""
     assert 'labor_applied' in CONTROL_ACCOUNTS
     assert CONTROL_ACCOUNTS['labor_applied'][0] == 'labor_applied_account_code'
-    assert CONTROL_ACCOUNT_MODULE_GATE['labor_applied'] == 'work_orders'
+    assert set(CONTROL_ACCOUNT_MODULE_GATE['labor_applied']) == {'work_orders', 'production_runs'}
+
+
+class TestLaborAppliedVisibleOnAProcessOnlyInstall:
+    """Regression guard for BUG-LABOR-APPLIED-FIELD-HIDDEN-ON-A-PROCESS-ONLY-INSTALL.
+
+    A Philgen-shaped install runs production_runs WITHOUT work_orders. Closing a
+    period there demands labor_applied, so hiding the field is a hard deadlock: the
+    accountant is told to assign an account whose field is not rendered.
+    """
+
+    def test_visible_when_only_production_runs_is_enabled(self, db_session):
+        _set_module('work_orders', False)
+        _set_module('production_runs', True)
+        assert 'labor_applied' in visible_control_accounts()
+
+    def test_visible_when_only_work_orders_is_enabled(self, db_session):
+        """The original discrete-only case must keep working."""
+        _set_module('work_orders', True)
+        _set_module('production_runs', False)
+        assert 'labor_applied' in visible_control_accounts()
+
+    def test_hidden_when_NEITHER_manufacturing_track_is_enabled(self, db_session):
+        """Still gated -- nothing can post against it, so it stays out of the way."""
+        _set_module('work_orders', False)
+        _set_module('production_runs', False)
+        assert 'labor_applied' not in visible_control_accounts()
 
 
 def test_get_postable_accounts_excludes_group_headers(db_session):
