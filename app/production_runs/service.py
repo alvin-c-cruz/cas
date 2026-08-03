@@ -61,6 +61,37 @@ def carry_beginning_wip(run):
     return prior
 
 
+def update_period_results(run, units_completed_and_transferred=None, units_ending_wip=None,
+                          ending_wip_pct_complete=None, conversion_cost=None):
+    """Record the period's reported units and conversion cost. OPEN runs only.
+
+    The status guard lives HERE rather than only in the view, copying
+    issue_material() -- which is exactly why the material-issue route was safe all
+    along while this one was not. P3 shipped the route with no status check at all;
+    the template hid the form, so nothing surfaced it until a probe POSTed the URL
+    directly against a CLOSED run and rewrote every figure
+    (BUG-PERIOD-RESULTS-ROUTE-HAS-NO-STATUS-GUARD).
+
+    The books survived that, because transferred_unit_cost/ending_wip_cost are frozen
+    at close -- but the NEXT period did not: carry_beginning_wip() reads
+    units_ending_wip LIVE beside that frozen cost, so a successor could inherit a
+    fabricated unit count against a real cost.
+
+    Does NOT commit -- the caller owns the transaction.
+    """
+    if run.status != 'open':
+        raise ValueError('Period results can only be recorded on an open Production Run.')
+    if units_completed_and_transferred is not None:
+        run.units_completed_and_transferred = units_completed_and_transferred
+    if units_ending_wip is not None:
+        run.units_ending_wip = units_ending_wip
+    if ending_wip_pct_complete is not None:
+        run.ending_wip_pct_complete = ending_wip_pct_complete
+    if conversion_cost is not None:
+        run.conversion_cost = conversion_cost
+    return run
+
+
 def close_run(run, actor):
     """Close the period: apply conversion cost, transfer completed units to finished
     goods at the period's cost per equivalent unit, and freeze what stays in WIP.
@@ -114,6 +145,17 @@ def close_run(run, actor):
                          'units cannot be transferred to finished goods.')
 
     pool = data['total_cost']
+    # Transferring units out of an EMPTY pool would receive finished goods at 0.00 and
+    # post a zero-value JE -- which balances (0 = 0), so is_balanced cannot catch it,
+    # and the free stock then relieves COGS at zero when it is sold
+    # (BUG-CLOSE-WITH-ZERO-COST-POOL-CREATES-FREE-INVENTORY). Refuse rather than skip
+    # the posting: skipping would mark the run closed while stranding the units.
+    # Note this guards the TRANSFER only -- a period that finished nothing is
+    # legitimately empty and still closes.
+    if transferred_units > 0 and pool <= ZERO:
+        raise ValueError('This period has no cost to transfer -- no material has been '
+                         'issued and no conversion cost entered. Record them before '
+                         'closing, or the finished goods would be received at zero cost.')
     per_eu = data['cost_per_equivalent_unit'] or ZERO
     conversion = data['conversion_cost']
 

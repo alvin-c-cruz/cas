@@ -18,7 +18,8 @@ from app.production_runs.forms import (ProductionRunForm, ProductionRunPeriodFor
                                        generate_run_number)
 from app.production_runs.models import ProductionRun
 from app.production_runs.service import (cancel_run, carry_beginning_wip, close_run,
-                                        issue_material, snapshot_materials)
+                                        issue_material, snapshot_materials,
+                                        update_period_results)
 
 production_runs_bp = Blueprint('production_runs', __name__, template_folder='templates')
 
@@ -118,14 +119,17 @@ def period_results(id):
                 flash(err, 'error')
         return redirect(url_for('production_runs.detail', id=run.id))
     old = run.to_dict()
-    if form.units_completed_and_transferred.data is not None:
-        run.units_completed_and_transferred = form.units_completed_and_transferred.data
-    if form.units_ending_wip.data is not None:
-        run.units_ending_wip = form.units_ending_wip.data
-    if form.ending_wip_pct_complete.data is not None:
-        run.ending_wip_pct_complete = form.ending_wip_pct_complete.data
-    if form.conversion_cost.data is not None:
-        run.conversion_cost = form.conversion_cost.data
+    try:
+        update_period_results(
+            run,
+            units_completed_and_transferred=form.units_completed_and_transferred.data,
+            units_ending_wip=form.units_ending_wip.data,
+            ending_wip_pct_complete=form.ending_wip_pct_complete.data,
+            conversion_cost=form.conversion_cost.data)
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), 'error')
+        return redirect(url_for('production_runs.detail', id=run.id))
     db.session.commit()
     log_update('production_runs', run.id, run.run_number, old, run.to_dict())
     flash('Period results saved.', 'success')
