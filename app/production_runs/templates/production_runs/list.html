@@ -42,6 +42,10 @@
                     <td>
                         <div class="action-buttons">
                             <a href="{{ url_for('production_runs.detail', id=run.id) }}" class="btn-action btn-action-edit" title="View">View</a>
+                            {% if run.status == 'closed' and (current_user.has_full_access or current_user.role == 'accountant') %}
+                            <a href="{{ url_for('reports.production_run_cost', run_id=run.id) }}"
+                               class="btn-action" title="Cost of Production Report">Cost Report</a>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>

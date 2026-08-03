@@ -24,6 +24,13 @@
         {% if can_act %}
         <a href="{{ url_for('production_runs.close', id=run.id) }}" class="btn btn-primary">Close Period</a>
         {% endif %}
+        {# Closed runs only: the report refuses anything else, so a link on an open or
+           cancelled run would point at a guaranteed redirect. Accountant-or-above to
+           match the report route's own guard. #}
+        {% if run.status == 'closed' and (current_user.has_full_access or current_user.role == 'accountant') %}
+        <a href="{{ url_for('reports.production_run_cost', run_id=run.id) }}"
+           class="btn btn-secondary">Cost of Production Report</a>
+        {% endif %}
     </div>
 </div>
 
